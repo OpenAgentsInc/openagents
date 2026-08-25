@@ -190,20 +190,42 @@ export const boxClientLayer = Layer.effect(
     const resolveConversationId = Effect.fn("BoxClient.resolveConversationId")(function* (
       input: AuthenticatedApi,
     ) {
-      const response = yield* transport.request({
+      // `/conversation` is the route a `box:control` token can actually
+      // reach, and it creates the account's conversation when there is none.
+      // `/user` sits behind `forge:write`, so resolving through it refused
+      // every box command a box-scoped credential tried to run.
+      const named = yield* transport.request({
+        origin: input.origin,
+        method: "GET",
+        path: `${API_VERSION_PATH}/conversation`,
+        token: input.token,
+      });
+      if (named.status === 200) {
+        const convId = asText(asRecord(named.body)["conversation_id"]);
+        if (convId !== undefined) return convId;
+      }
+
+      // A deployment that predates that route still answers on `/user`, so a
+      // published CLI keeps working against one. Kept deliberately: the CLI
+      // ships on its own schedule and cannot assume the server is ahead of it.
+      const user = yield* transport.request({
         origin: input.origin,
         method: "GET",
         path: `${API_VERSION_PATH}/user`,
         token: input.token,
       });
-      if (response.status === 200) {
-        const body = asRecord(response.body);
-        const convId = asText(body["conversation_id"]) ?? asText(asRecord(body["user"])["conversation_id"]);
+      if (user.status === 200) {
+        const body = asRecord(user.body);
+        const convId =
+          asText(body["conversation_id"]) ??
+          asText(asRecord(body["openagents"])["conversation_id"]) ??
+          asText(asRecord(body["user"])["conversation_id"]);
         if (convId !== undefined) return convId;
       }
+
       return yield* new ApiError({
         operation: "resolve user conversation",
-        status: response.status,
+        status: named.status === 200 ? user.status : named.status,
         message:
           "This deployment does not report a conversation for the account. " +
           "Pass --conversation <conversation_id> to name the conversation to use.",

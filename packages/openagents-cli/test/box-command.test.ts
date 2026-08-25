@@ -45,6 +45,56 @@ const harness = (
 };
 
 describe("openagents box CLI commands", () => {
+  it("resolves the conversation through the box-scoped route", async () => {
+    // A `box:control` token cannot reach `/user`, which sits behind
+    // `forge:write`. Resolving through `/conversation` is what lets a
+    // box-scoped credential run a box command at all.
+    const seen: string[] = [];
+    const { layer, written } = harness((req) => {
+      seen.push(req.path);
+      if (req.path === "/api/v1/conversation") {
+        return Effect.succeed({ status: 200, body: { conversation_id: "conv-box" } });
+      }
+      if (req.path === "/api/v1/user") {
+        return Effect.succeed({ status: 401, body: { error: { code: "invalid_api_token" } } });
+      }
+      if (req.path === "/api/v1/conversations/conv-box/boxes") {
+        return Effect.succeed({ status: 200, body: { boxes: [] } });
+      }
+      return Effect.succeed({ status: 404, body: {} });
+    });
+
+    await Effect.runPromise(runCliWith(["box", "list"]).pipe(Effect.provide(layer)));
+
+    expect(seen).toContain("/api/v1/conversation");
+    expect(seen).not.toContain("/api/v1/user");
+    expect(written.length).toBe(1);
+  });
+
+  it("falls back to the user route on a deployment without the conversation route", async () => {
+    // The CLI ships on its own schedule, so a published client still has to
+    // work against a server that predates the route.
+    const seen: string[] = [];
+    const { layer, written: _written } = harness((req) => {
+      seen.push(req.path);
+      if (req.path === "/api/v1/conversation") {
+        return Effect.succeed({ status: 404, body: {} });
+      }
+      if (req.path === "/api/v1/user") {
+        return Effect.succeed({ status: 200, body: { conversation_id: "conv-old" } });
+      }
+      if (req.path === "/api/v1/conversations/conv-old/boxes") {
+        return Effect.succeed({ status: 200, body: { boxes: [] } });
+      }
+      return Effect.succeed({ status: 404, body: {} });
+    });
+
+    await Effect.runPromise(runCliWith(["box", "list"]).pipe(Effect.provide(layer)));
+
+    expect(seen).toContain("/api/v1/conversation");
+    expect(seen).toContain("/api/v1/conversations/conv-old/boxes");
+  });
+
   it("lists boxes for the conversation", async () => {
     const { layer, written } = harness((req) => {
       if (req.path === "/api/v1/user") {
