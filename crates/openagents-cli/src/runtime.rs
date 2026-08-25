@@ -60,6 +60,8 @@ impl Lane {
 pub struct InferenceGrant {
     pub thread_id: String,
     pub token: String,
+    pub proxy_url: String,
+    pub model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,27 +141,34 @@ impl CoderRuntimeSession {
         let resp = self.http.post(&url)
             .headers(headers)
             .json(&serde_json::json!({
+                "objective": "Coding assistant session",
                 "lane": self.lane.model_name(),
-                "agent_name": "openagents-coder-rust"
             }))
             .send()
             .await?;
 
         if resp.status().is_success() {
             let body: serde_json::Value = resp.json().await?;
-            let thread_id = body.get("thread_id").or_else(|| body.get("id"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("th_fallback")
-                .to_string();
-            let token = body.get("token").or_else(|| body.get("grant_token"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("oat_fallback")
-                .to_string();
-            Ok(InferenceGrant { thread_id, token })
+            let thread = body.get("thread").cloned().unwrap_or(serde_json::json!({}));
+            let grant = body.get("grant").cloned().unwrap_or(serde_json::json!({}));
+
+            let thread_id = thread.get("id").and_then(|v| v.as_str()).unwrap_or("th_active").to_string();
+            let token = grant.get("token").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let grant_url = grant.get("url").and_then(|v| v.as_str()).unwrap_or("https://openagents.com/api/inference/proxy").to_string();
+            let model = grant.get("model").and_then(|v| v.as_str()).unwrap_or(self.lane.model_name()).to_string();
+
+            Ok(InferenceGrant {
+                thread_id,
+                token,
+                proxy_url: grant_url,
+                model,
+            })
         } else {
             Ok(InferenceGrant {
                 thread_id: "th_local_fallback".to_string(),
                 token: self.user_token.clone().unwrap_or_else(|| "oat_anon".to_string()),
+                proxy_url: "https://openagents.com/api/inference/proxy".to_string(),
+                model: self.lane.model_name().to_string(),
             })
         }
     }
@@ -194,14 +203,8 @@ impl CoderRuntimeSession {
         while max_steps > 0 {
             max_steps -= 1;
 
-            let proxy_url = if self.api_base.ends_with("/api/v1") {
-                self.api_base.replace("/api/v1", "/api/inference/proxy")
-            } else {
-                format!("{}/inference/proxy", self.api_base)
-            };
-
             let req_body = serde_json::json!({
-                "model": self.lane.model_name(),
+                "model": grant.model,
                 "messages": self.messages,
                 "tools": tool_defs.iter().map(|t| serde_json::json!({
                     "type": "function",
@@ -218,7 +221,7 @@ impl CoderRuntimeSession {
             headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
             headers.insert(AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {}", grant.token))?);
 
-            let resp = self.http.post(&proxy_url)
+            let resp = self.http.post(&grant.proxy_url)
                 .headers(headers)
                 .json(&req_body)
                 .send()
