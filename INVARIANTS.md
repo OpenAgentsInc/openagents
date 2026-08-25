@@ -1058,6 +1058,31 @@ come from the Freerange teardown
   raw provider material in context/history/logs, missing app-owned idempotency,
   generic provider tools, and platform-authority widening.
 
+## One Seed, One Identity, One Wallet
+
+- The CLI derives both the Nostr identity and the wallet from one BIP-39 seed
+  under the frozen profile `openagents.legacy_unified_nostr_spark.v1`: the
+  identity at `m/44'/1237'/0'/0/0` (NIP-06 account zero), the wallet at
+  `m/44'/0'/0'/0/0` (BIP-44 account zero), both on the English word list with an
+  EMPTY BIP-39 passphrase. That profile is the same one
+  `packages/sovereign-identity/src/contract/derivation.ts` froze, and no surface
+  may add a passphrase, change an index, or introduce a second profile. A change
+  here reissues every existing identity and orphans every address people were
+  told to receive at.
+- The derivation is pinned by fixed vectors, not by review.
+  `packages/openagents-cli/test/seed-identity.test.ts` asserts the `npub`, the
+  public keys, the fingerprint, and the receive address that the published
+  BIP-39 test phrase must always produce, and re-derives them through
+  `@openagentsinc/sovereign-identity` so the two surfaces cannot drift apart.
+- Secret material stays out of every output. The seed file is written `0600`
+  inside a `0700` directory, `openagents identity backup` is the only command
+  that prints the phrase and it refuses `--json`, no command prints an `nsec` or
+  a raw private key, and `openagents trace redact` removes seed phrases (word
+  list-gated) and `nsec`/`xprv`-family keys from a redacted export.
+- The wallet receives; it does not spend. The spending rail is an owner decision
+  that is not recorded, so no CLI surface may imply a spend path exists until it
+  is.
+
 ## Retired Verse World Service
 
 - The Verse world service is retired and `apps/openagents-world/` is deleted.

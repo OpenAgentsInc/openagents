@@ -233,3 +233,25 @@ State 2026-07-09: per the owner decision on #8544, public review submissions are
 - Submit the Play release and record the Play Console release/submission ID and review state.
 
 Consoles: https://appstoreconnect.apple.com/apps and https://play.google.com/console
+
+## OPEN — Choose the CLI wallet's spending rail (#29)
+
+`openagents identity` now derives one Nostr identity and one wallet from one
+BIP-39 seed (issue #29). Receiving works under either candidate rail, so the
+derivation landed without waiting. Spending did not: issue #29 states the rail
+is an explicit owner decision recorded before implementation, and no decision is
+recorded, so `openagents identity show` reports the rail as unselected and no
+CLI surface implies a spend path.
+
+Decide between:
+
+1. **Self-custodial MDK/LDK.** Keys stay on the machine and the CLI holds a
+   Lightning node's responsibilities: channel liquidity, backups, and being
+   online to receive.
+2. **The deterministic Spark rail preserved from Pylon v1.0.** The proven shape
+   the frozen derivation profile was written for, at the cost of the rail's own
+   trust and availability assumptions.
+
+Record the choice as a comment on issue #29. Confirm-before-spend, tips, and
+bounty payouts are blocked on it; the derivation, storage, and receive
+identifiers are not.

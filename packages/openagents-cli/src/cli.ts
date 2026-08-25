@@ -150,6 +150,7 @@ import { DeviceClient } from "./device-client.js";
 import { type EndpointOverrides, Profile } from "./endpoint.js";
 import { ForumClient } from "./forum-client.js";
 import { GitRunner } from "./git-runner.js";
+import { makeIdentityCommand } from "./identity-command.js";
 import { IssueClient } from "./issue-client.js";
 import { runGitCredentialHelper } from "./git-credential-helper.js";
 import { Output, type OutputMode } from "./output.js";
@@ -3952,6 +3953,8 @@ const projectCommand = Command.make("project").pipe(
   ]),
 );
 
+const identityCommand = makeIdentityCommand(rootCommand);
+
 const traceCommand = makeTraceCommand(rootCommand);
 
 // The deploy command group: named operator deployment commands over the
@@ -4338,6 +4341,7 @@ export const openagentsCommand = rootCommand.pipe(
     computerCommand,
     deployCommand,
     forumCommand,
+    identityCommand,
     issueCommand,
     projectCommand,
     repoCommand,

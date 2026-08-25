@@ -236,6 +236,19 @@ describe("trace redaction", () => {
       text: `exported OPENAI_API_KEY="quoted-secret-value"`,
       secret: "quoted-secret-value",
     },
+    {
+      // The published BIP-39 test phrase, not anyone's seed. `openagents
+      // identity` gives every machine one of these to keep, so a phrase pasted
+      // into a session is now a shape a redacted export has to remove.
+      category: "seed_phrase",
+      text: "my backup is abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about ok",
+      secret: "abandon abandon",
+    },
+    {
+      category: "private_key",
+      text: "signing with nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5 today",
+      secret: "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5",
+    },
   ];
 
   it.each(plantedSecrets)("removes a planted $category", ({ category, secret, text }) => {
@@ -265,6 +278,17 @@ describe("trace redaction", () => {
     const result = redactText("The agent listed files and wrote a summary.", rules);
     expect(result.total).toBe(0);
     expect(result.text).toBe("The agent listed files and wrote a summary.");
+  });
+
+  it("keeps a twelve-word run of ordinary words, and keeps the public npub", () => {
+    const prose =
+      "the coder read every file that the reviewer had marked before the second pass began";
+    const npub = "npub1az708q3kd9zy6z6f44zav5ygvdwelkzspf6mtusttx47lft2z38sghk0w7";
+    const result = redactText(`${prose} for ${npub}`, rules);
+    expect(result.text).toContain(prose);
+    expect(result.text).toContain(npub);
+    expect(result.counts["seed_phrase"]).toBeUndefined();
+    expect(result.counts["private_key"]).toBeUndefined();
   });
 
   it("shapes the sibling path for json, jsonl, and other names", () => {

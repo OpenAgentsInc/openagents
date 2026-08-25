@@ -2220,6 +2220,15 @@ importers:
       '@noble/hashes':
         specifier: 1.7.1
         version: 1.7.1
+      '@scure/base':
+        specifier: 1.2.4
+        version: 1.2.4
+      '@scure/bip32':
+        specifier: 1.6.2
+        version: 1.6.2
+      '@scure/bip39':
+        specifier: 1.5.4
+        version: 1.5.4
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -2230,6 +2239,9 @@ importers:
         specifier: 8.21.1
         version: 8.21.1
     devDependencies:
+      '@openagentsinc/sovereign-identity':
+        specifier: workspace:*
+        version: link:../sovereign-identity
       '@types/node':
         specifier: 24.13.1
         version: 24.13.1

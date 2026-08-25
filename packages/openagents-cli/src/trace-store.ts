@@ -16,6 +16,8 @@
 import { lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { BIP39_ENGLISH_WORDS } from "./memory/bip39-wordlist.js";
+
 /** Where a candidate trace came from. */
 export type TraceSourceKind =
   | "openagents_export"
@@ -322,12 +324,77 @@ export interface RedactionRule {
   readonly category: string;
   readonly pattern: RegExp;
   readonly replacement: string;
+  /**
+   * A rule that has to look at what it matched before deciding. It returns the
+   * text to substitute, or the match unchanged to decline. Only the seed-phrase
+   * rule needs this: a 12-word run is a cheap shape to find and an expensive one
+   * to guess at, so the wordlist decides rather than the regex.
+   */
+  readonly resolve?: (match: string) => string;
 }
 
 const escapeForRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** Word counts a BIP-39 mnemonic can have; below twelve is prose, not a seed. */
+const MIN_SEED_WORDS = 12;
+
+/**
+ * A run of short lowercase words the length of a mnemonic. This finds candidates
+ * cheaply; {@link seedPhraseResolve} confirms against the word list before
+ * anything is removed, so ordinary English is left alone.
+ */
+const SEED_PHRASE_SHAPE = /\b(?:[a-z]{3,8} ){11}[a-z]{3,8}(?:(?: [a-z]{3,8}){3})*\b/g;
+
+/**
+ * Redact the longest run of consecutive BIP-39 words inside a shape match, and
+ * only when that run is a whole mnemonic. Surrounding prose survives, which is
+ * what keeps this rule usable on a real session log.
+ */
+const seedPhraseResolve = (match: string): string => {
+  const words = match.split(" ");
+  let bestStart = -1;
+  let bestLength = 0;
+  let runStart = 0;
+  let runLength = 0;
+  for (let index = 0; index < words.length; index += 1) {
+    if (BIP39_ENGLISH_WORDS.has(words[index] as string)) {
+      if (runLength === 0) runStart = index;
+      runLength += 1;
+      if (runLength > bestLength) {
+        bestLength = runLength;
+        bestStart = runStart;
+      }
+    } else {
+      runLength = 0;
+    }
+  }
+  if (bestLength < MIN_SEED_WORDS) return match;
+  return [
+    words.slice(0, bestStart).join(" "),
+    "[REDACTED:seed_phrase]",
+    words.slice(bestStart + bestLength).join(" "),
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+};
+
 /** The conservative rule set. `home` scopes the path rules to this machine. */
 export const redactionRules = (home: string): ReadonlyArray<RedactionRule> => [
+  {
+    // The CLI now keeps one seed phrase per machine and tells people to write
+    // it down, so a phrase pasted into a session is a shape this promise has to
+    // cover. `npub` is deliberately not here: it is the public name.
+    category: "seed_phrase",
+    pattern: SEED_PHRASE_SHAPE,
+    replacement: "[REDACTED:seed_phrase]",
+    resolve: seedPhraseResolve,
+  },
+  {
+    category: "private_key",
+    pattern:
+      /\b(?:nsec1[02-9ac-hj-np-z]{50,}|(?:xprv|yprv|zprv|tprv|uprv|vprv)[1-9A-HJ-NP-Za-km-z]{50,})\b/g,
+    replacement: "[REDACTED:private_key]",
+  },
   {
     category: "bearer_token",
     pattern: /\b[Bb]earer\s+[A-Za-z0-9._~+/=-]{8,}/g,
@@ -387,6 +454,14 @@ export const redactText = (text: string, rules: ReadonlyArray<RedactionRule>): R
   for (const rule of rules) {
     let matched = 0;
     output = output.replace(rule.pattern, (...args) => {
+      const match = args[0] as string;
+      if (rule.resolve !== undefined) {
+        const resolved = rule.resolve(match);
+        // A rule that declines has not redacted anything, so it must not count.
+        if (resolved === match) return match;
+        matched += 1;
+        return resolved;
+      }
       matched += 1;
       // Rebuild the replacement's capture references by hand: the replacement
       // string is data, and String.replace only expands `$1` for literal

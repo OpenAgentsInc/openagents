@@ -303,6 +303,45 @@ passes to the child as `OPENCODE_CONFIG` and nothing else. A child approves its
 own tool use, because a delegated child has nobody to ask; `--child-ask` stops
 it at its first edit for a dry run.
 
+## Hold one identity and one wallet
+
+One BIP-39 seed phrase produces both your Nostr identity and your wallet, so
+there is one thing to back up and nothing that can drift apart:
+
+```sh
+openagents identity create
+openagents identity backup
+openagents identity show
+```
+
+`create` writes the phrase to `~/.openagents/identity/seed` with mode `0600` and
+does not print it. `backup` is the one command that prints it, and it refuses
+`--json` so the phrase cannot be captured by a caller collecting machine output.
+`show` prints public identifiers only — the `npub`, the receive address, and the
+derivation paths — and never the phrase, an `nsec`, or a private key.
+
+To restore an existing seed, pipe the phrase in. It is validated before anything
+is written, and it is never echoed:
+
+```sh
+openagents identity import < phrase.txt
+```
+
+Both branches come from the frozen OpenAgents profile
+`openagents.legacy_unified_nostr_spark.v1`: the identity from `m/44'/1237'/0'/0/0`
+(NIP-06 account zero) and the wallet from `m/44'/0'/0'/0/0` (BIP-44 account
+zero), both under the English word list and an empty BIP-39 passphrase. The same
+phrase gives the same `npub` and the same address on every machine and every
+version, and `test/seed-identity.test.ts` pins that with fixed vectors.
+
+The wallet receives; it does not spend yet. Which rail it spends over is an open
+owner decision, and a receive address is the same under either candidate, so
+`show` reports the rail as unselected rather than implying a spend path exists.
+
+Set `OPENAGENTS_IDENTITY_DIR` to keep a seed somewhere other than
+`~/.openagents/identity`. `openagents identity forget --force` deletes it;
+without the phrase, the identity and wallet are unrecoverable.
+
 ## Manage issues
 
 ```sh
