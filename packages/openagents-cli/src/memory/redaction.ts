@@ -1,6 +1,9 @@
+// Vendored from packages/atif/src/redaction.ts by scripts/vendor-memory.mjs — do not edit here.
+// The drift guard (test/vendored-memory-drift.test.ts) fails when this copy
+// no longer matches the canonical source.
 import { Context, Effect, Layer } from "effect"
 
-import { BIP39_ENGLISH_WORDS } from "./bip39-wordlist.ts"
+import { BIP39_ENGLISH_WORDS } from "./bip39-wordlist.js"
 
 export type RedactionCategory =
   | "private_key"

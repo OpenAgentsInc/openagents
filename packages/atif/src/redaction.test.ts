@@ -66,6 +66,12 @@ const SECRET_FIXTURES: ReadonlyArray<{
     category: "oa_token",
   },
   {
+    label: "oa_pat_ personal access token",
+    raw: "the token is oa_pat_abc123def456ghi789jkl012 here",
+    leak: "oa_pat_abc123def456",
+    category: "oa_token",
+  },
+  {
     label: "X verification code",
     raw: "Code: oa-x-9f2bc-defG",
     leak: "9f2bc-defG",

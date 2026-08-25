@@ -46,6 +46,7 @@ import {
   selfChildLane,
 } from "./coder-delegate.js";
 import { fleetPlainLines } from "./coder-fleet.js";
+import { CoderMemory } from "./coder-memory.js";
 import { runCoderPlain } from "./coder-plain.js";
 import type { CoderDelegation } from "./coder-session.js";
 import type { ReplySource } from "./coder-session.js";
@@ -1693,6 +1694,11 @@ async function buildDelegation(options: {
   // children of two models still render as one fleet and stop together.
   const registry = new CoderTaskRegistry();
 
+  // One memory for the session too: children inherit the parent's distilled
+  // heuristics in their prompts, and what they report is harvested back into
+  // the local engram ledger (openagents.com project 15, issues #226/#227).
+  const memory = new CoderMemory({ projectScope: `project:${options.cwd}` });
+
   // Labelled by the name that was asked for. A caller who names `ox-alpha` and
   // is answered `x-preview-f-free` cannot tell whether the request was honoured
   // or silently fell back, and one that was asked exactly this said so rather
@@ -1716,6 +1722,7 @@ async function buildDelegation(options: {
       fleet: new DelegateFleet(registry, harness, {
         maxConcurrent: Math.max(1, options.concurrency),
         cwd: options.cwd,
+        memory,
       }),
       label: `${harness.agent} (${childLaneName(harness.model)})`,
     };
@@ -1774,6 +1781,7 @@ async function buildDelegation(options: {
     const fleet = new DelegateFleet(registry, harness, {
       maxConcurrent: Math.max(1, options.concurrency),
       cwd: options.cwd,
+      memory,
     });
 
     return {
@@ -1834,6 +1842,7 @@ async function buildDelegation(options: {
   const fleet = new DelegateFleet(registry, harness, {
     maxConcurrent: Math.max(1, options.concurrency),
     cwd: options.cwd,
+    memory,
   });
   return {
     delegation: {

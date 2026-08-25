@@ -563,7 +563,8 @@ export const CHILD_LANES: ReadonlyArray<ChildLane> = [
     name: "ox-alpha",
     harness: "openagents (this process, one `shell` tool)",
     model: "Ox Alpha",
-    served: "the OpenAgents inference proxy, routed to OpenRouter `stealth/ox-alpha`, on this session's thread grant",
+    served:
+      "the OpenAgents inference proxy, routed to OpenRouter `stealth/ox-alpha`, on this session's thread grant",
     bestFor: "work whose shape is the question: design, architecture, an open-ended refactor",
   },
   {
@@ -574,7 +575,8 @@ export const CHILD_LANES: ReadonlyArray<ChildLane> = [
     // implies two models sends a caller here for the wrong reason.
     model: "Ox Alpha — the same model as `ox-alpha`, under opencode's name for it",
     served: "OpenCode Zen, on this machine's opencode credential",
-    bestFor: "the same work as `ox-alpha`, when you want opencode's harness and tools instead of ours",
+    bestFor:
+      "the same work as `ox-alpha`, when you want opencode's harness and tools instead of ours",
   },
   {
     name: "gemini",
@@ -906,6 +908,8 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 }
 
+import type { CoderDelegationMemory } from "./coder-memory.js";
+
 export interface DelegateFleetOptions {
   /**
    * How many children may run at once.
@@ -921,6 +925,12 @@ export interface DelegateFleetOptions {
   readonly transcriptDirectory?: string | undefined;
   /** The console's own directory, used when a request names none. */
   readonly cwd?: string | undefined;
+  /**
+   * The parent's memory, when the session carries one. `inherit` contributes
+   * an advisory block to each child prompt; `harvest` records a completed
+   * child's answer. Both are best-effort: memory never breaks a delegation.
+   */
+  readonly memory?: CoderDelegationMemory | undefined;
 }
 
 /**
@@ -974,12 +984,21 @@ export class DelegateFleet {
     }
 
     const cwd = request.cwd ?? this.options.cwd ?? process.cwd();
+    // Inherited memory rides the prompt itself, so every harness — a shell
+    // child, Devin over ACP, an opencode lane — carries it the same way.
+    let inherited = "";
+    try {
+      inherited = this.options.memory?.inherit(request.prompt) ?? "";
+    } catch {
+      inherited = "";
+    }
+    const prompt = inherited.length > 0 ? `${request.prompt}\n\n${inherited}` : request.prompt;
     // Registered before it can queue, so a child waiting for a slot is visible
     // as `pending` rather than as nothing at all.
     const task = this.registry.register({
       id: this.mintId(),
       description: request.description.trim().length > 0 ? request.description : "delegated task",
-      prompt: request.prompt,
+      prompt,
       agent: this.harness.agent,
       model: this.harness.model,
       cwd,
@@ -998,7 +1017,7 @@ export class DelegateFleet {
 
     this.active += 1;
     try {
-      return await this.execute(task.id, request, cwd);
+      return await this.execute(task.id, { ...request, prompt }, cwd);
     } finally {
       this.active -= 1;
       this.waiting.shift()?.();
@@ -1067,6 +1086,11 @@ export class DelegateFleet {
       const failure = reported ?? thrown;
       if (failure === undefined) {
         this.registry.complete(id, text);
+        try {
+          this.options.memory?.harvest(id, text);
+        } catch {
+          // Memory must never turn a completed child into a failed one.
+        }
         return { status: "completed", taskId: id, result: text };
       }
 

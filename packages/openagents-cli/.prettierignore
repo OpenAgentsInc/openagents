@@ -1,0 +1,4 @@
+# Vendored from packages/agent-experience-memory and packages/atif;
+# kept byte-identical to the canonical sources (see scripts/vendor-memory.mjs),
+# so the canonical formatting wins over this package's formatter.
+src/memory/

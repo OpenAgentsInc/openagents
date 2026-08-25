@@ -1012,7 +1012,6 @@
     "packages/agent-experience-memory/src/owner-profile.ts#disabledOwnerProfileStoreLayer",
     "packages/agent-experience-memory/src/owner-profile.ts#inMemoryOwnerProfileStoreLayer",
     "packages/agent-experience-memory/src/owner-profile.ts#ownerProfileScopeForNpub",
-    "packages/agent-experience-memory/src/ranking.ts#recallOrderBySalience",
     "packages/agent-experience-memory/src/store.ts#disabledMemoryStoreLayer",
     "packages/agent-experience-memory/src/store.ts#inMemoryMemoryStoreLayer",
     "packages/agent-readiness/src/index.ts#agentReadinessTaskForDomain",
@@ -1774,40 +1773,12 @@
   ],
   "allowed": [
     {
-      "ref": "packages/agent-experience-memory/src/consolidation.ts#consolidateEpisodes",
-      "reason": "Background consolidation loop for agent memory, issue openagents.com#224: clusters episodes and synthesises lessons. Landed with its suites ahead of the loop that runs it, which is what #224 builds."
-    },
-    {
-      "ref": "packages/agent-experience-memory/src/consolidation.ts#promoteHeuristicToPattern",
-      "reason": "The promotion half of the same consolidation loop, issue openagents.com#224. Called once #224 has a scheduler to call it from."
-    },
-    {
-      "ref": "packages/agent-experience-memory/src/engram.ts#signSupersedingEngram",
-      "reason": "Supersession signing from the formal engram schema, issue openagents.com#221. The schema and its redaction invariants land before the relay sync adapter in #222 writes through them."
-    },
-    {
-      "ref": "packages/agent-experience-memory/src/engram.ts#verifySupersessionChain",
-      "reason": "The verification half of the same schema, issue openagents.com#221. Read by the deterministic projection worker in #223, which is not built yet."
-    },
-    {
       "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.applyDeletePlan",
       "reason": "Owner deletion half of the published graph-memory SDK contract: the typed, receipted delete plan every store layer implements. Its caller was the deleted Electron owner-lifecycle surface; hosted Sarah graph memory (openagents#9189) is the surviving composition root that owes owners a deletion path."
     },
     {
       "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.exportArchive",
       "reason": "Owner data-portability half of the published graph-memory SDK contract, implemented by every store layer and paired with the live importArchive. Its caller was the deleted Electron owner-lifecycle surface; hosted Sarah graph memory (openagents#9189) is the surviving composition root that owes owners an export path."
-    },
-    {
-      "ref": "packages/agent-experience-memory/src/subagent-memory.ts#buildSubagentMemoryContext",
-      "reason": "Scoped memory inheritance for delegated children, issue openagents.com#226: the bootstrap heuristics a child is given. Its caller is the coder's delegate path, which #226 changes."
-    },
-    {
-      "ref": "packages/agent-experience-memory/src/subagent-memory.ts#harvestSubagentOutcome",
-      "reason": "Child engram harvest, issue openagents.com#227: what a finished child contributes back to the parent ledger. Called by the delegate path #227 builds."
-    },
-    {
-      "ref": "packages/agent-experience-memory/src/subagent-memory.ts#ledgerEntriesAsHeuristics",
-      "reason": "The parent-ledger reintegration half of the same harvest, issue openagents.com#227."
     },
     {
       "ref": "packages/agent-surface/src/index.ts#projectSafeMessageChain",
