@@ -26,12 +26,15 @@ the trial's `trajectory.json`.
 When `OPENAGENTS_GYM_RUN_ID` is set (`bench/run-suite.sh` registers the run
 against the Gym lifecycle API, OpenAgentsInc/openagents#38), the adapter
 reports each trial to the run from the host side: state `running` at
-agent-phase start, and again after the agent phase with the thread id parsed
-from the captured coder output (`coder.txt`, the `[oa:thread <uuid>]` line
-the coder prints in `--plain` mode). Reporting never fails a trial: a
-refused or unreachable Gym is logged and the trial continues.
+agent-phase start, the thread link as soon as the coder announces it (a
+watcher polls the host-mirrored `coder.txt` for the `[oa:thread <uuid>]`
+line while the agent runs, so the transcript is watchable live on /gym),
+and a final backstop report after the agent phase. Reporting never fails a
+trial: a refused or unreachable Gym is logged and the trial continues.
 """
 
+import asyncio
+import contextlib
 import json
 import os
 import re
@@ -233,12 +236,26 @@ class OpenAgentsCoder(BaseInstalledAgent):
                 "OPENAGENTS_CODER_OLLAMA_HOST", "http://host.docker.internal:11434"
             )
 
-        # The trial exists before the agent phase does anything, and after it
-        # the coder's captured output names the thread the session opened —
-        # on both lanes now that the local lane reports too (#39). The second
-        # report runs in `finally` so a failed agent phase still links its
-        # trial before the exception continues to Harbor.
+        # The trial exists before the agent phase does anything, and the
+        # thread link lands while the agent still works: the container writes
+        # `coder.txt` through Harbor's host mirror, so the `[oa:thread …]`
+        # announcement is greppable on the host within seconds of the session
+        # opening, and posting it then is what makes the trial's transcript
+        # watchable live on /gym rather than only after the trial ends. The
+        # `finally` report stays as the backstop — a session that never
+        # announced (offline lane) or a watcher that lost a race still links
+        # its trial before the exception continues to Harbor.
         self._report_trial("running")
+
+        async def _link_when_announced() -> None:
+            while True:
+                thread_id = self._thread_id_from_log()
+                if thread_id:
+                    await asyncio.to_thread(self._report_trial, "running", thread_id)
+                    return
+                await asyncio.sleep(2)
+
+        watcher = asyncio.create_task(_link_when_announced())
         try:
             await self.exec_as_agent(
                 environment,
@@ -246,4 +263,7 @@ class OpenAgentsCoder(BaseInstalledAgent):
                 env=env,
             )
         finally:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
             self._report_trial("running", self._thread_id_from_log())
