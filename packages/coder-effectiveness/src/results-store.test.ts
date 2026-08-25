@@ -66,7 +66,7 @@ const manifestFor = (name: string) =>
         commit: "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         path: trial.task,
       },
-      environmentProven: true,
+      environmentAvailable: true,
     })),
   });
 

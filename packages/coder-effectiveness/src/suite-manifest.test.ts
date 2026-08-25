@@ -36,7 +36,7 @@ const registryTask = (id: string, overrides: Partial<{ commit: string; path: str
     commit: overrides.commit ?? "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
     path: overrides.path ?? id,
   },
-  environmentProven: true,
+  environmentAvailable: true,
 });
 
 const suite = (overrides: Partial<SuiteManifest> = {}): SuiteManifest =>
@@ -91,14 +91,14 @@ describe("parseSuiteManifest", () => {
     // The owned tasks are pinned and real and have no container yet. A score
     // over them would read their absence as the coder failing.
     expect(() =>
-      suite({ tasks: [{ ...registryTask("regex-log"), environmentProven: false }] }),
-    ).toThrow(/environment has never been built/u);
+      suite({ tasks: [{ ...registryTask("regex-log"), environmentAvailable: false }] }),
+    ).toThrow(/no environment that can grade/u);
   });
 
   test("allows an unproven task in a smoke suite", () => {
     const manifest = suite({
       tier: "smoke",
-      tasks: [{ ...registryTask("regex-log"), environmentProven: false }],
+      tasks: [{ ...registryTask("regex-log"), environmentAvailable: false }],
     });
 
     expect(manifest.tier).toBe("smoke");

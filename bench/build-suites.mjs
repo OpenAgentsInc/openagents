@@ -168,10 +168,10 @@ const firstInstanceOf = (datasets, dataset, repo) => {
   return names[0];
 };
 
-const registryTask = (datasets, dataset, name, rationale, environmentProven) => ({
+const registryTask = (datasets, dataset, name, rationale, environmentAvailable) => ({
   id: name,
   pin: pinFor(datasets, dataset, name),
-  environmentProven,
+  environmentAvailable,
   ...(rationale === undefined ? {} : { rationale }),
 });
 
@@ -184,7 +184,7 @@ const registryTask = (datasets, dataset, name, rationale, environmentProven) => 
  * be perfectly well closed, but without a commit there is nothing to grade
  * against.
  *
- * Every one of these is `environmentProven: false` today. The pin is real — the
+ * Every one of these is `environmentAvailable: false` today. The pin is real — the
  * issue, its instruction, and the commit that satisfied it — and no container
  * has been built that can grade it, so `parseSuiteManifest` will refuse to let
  * them into a score-tier suite until one has. See `bench/tasks/owned/README.md`.
@@ -213,7 +213,7 @@ const ownedTasks = (issuesPath) => {
         issue: issue.number,
         acceptedCommit,
       },
-      environmentProven: false,
+      environmentAvailable: false,
       rationale: issue.title,
     });
   }

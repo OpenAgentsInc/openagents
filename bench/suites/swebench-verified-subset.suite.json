@@ -13,7 +13,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/astropy__astropy-12907"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "astropy: table and unit handling in a large scientific codebase"
     },
     {
@@ -25,7 +25,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/django__django-10097"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "Django: the framework half of the benchmark, wide blast radius per change"
     },
     {
@@ -37,7 +37,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/matplotlib__matplotlib-13989"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "matplotlib: rendering state, where the test is the only oracle"
     },
     {
@@ -49,7 +49,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/pydata__xarray-2905"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "xarray: array semantics over pandas and numpy, dtype-sensitive"
     },
     {
@@ -61,7 +61,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/pytest-dev__pytest-10051"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "pytest: the test runner itself, so a fix has to be reentrant"
     },
     {
@@ -73,7 +73,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/scikit-learn__scikit-learn-10297"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "scikit-learn: estimator API conformance, contract-shaped"
     },
     {
@@ -85,7 +85,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/sphinx-doc__sphinx-10323"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "Sphinx: documentation tooling, heavy on configuration surface"
     },
     {
@@ -97,7 +97,7 @@
         "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
         "path": "datasets/swebench-verified/sympy__sympy-11618"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "SymPy: symbolic evaluation, where a plausible-looking fix is usually wrong"
     }
   ]

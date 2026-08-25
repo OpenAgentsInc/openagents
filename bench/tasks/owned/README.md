@@ -23,7 +23,7 @@ carries one into a task pinned to that commit:
     "issue": 31,
     "acceptedCommit": "cf1861c9cb..."
   },
-  "environmentProven": false,
+  "environmentAvailable": false,
   "rationale": "Adopt the proxy's reasoning and tool-call fidelity in the coder"
 }
 ```
@@ -44,10 +44,16 @@ below needs.
 
 **No container exists that can grade any of these.** The pin is real and the
 suite is real; the environment is not. Every owned task therefore carries
-`environmentProven: false`, and `parseSuiteManifest` refuses to let an unproven
-task into a `score`-tier suite — so `owned-closed-issues.suite.json` is
-`smoke`, and `coder-effectiveness-v1` holds the twenty proven public tasks and
-none of these.
+`environmentAvailable: false`, and `parseSuiteManifest` refuses to let a task
+with no gradeable environment into a `score`-tier suite — so
+`owned-closed-issues.suite.json` is `smoke`, and `coder-effectiveness-v1` holds
+the twenty registry-backed public tasks and none of these.
+
+The registry tasks carry `environmentAvailable: true` because the dataset ships
+their environment and verifier, which is what makes a public subset cost a
+manifest entry rather than a harness. The flag says a gradeable definition
+exists; it does not say the task has been run here, or that it passed, or that
+its image builds on any particular machine.
 
 That refusal is the point rather than a limitation. A score suite that included
 a task nobody could run would report those trials as missing, and a missing
@@ -68,8 +74,8 @@ closing commit touches both source and test files:
    recorded test pass; it does not mean the agent reproduced the recorded diff,
    and it should not.
 
-Two things have to be true before the first of these is `environmentProven`,
-and neither is cheap:
+Two things have to be true before the first of these can flip
+`environmentAvailable`, and neither is cheap:
 
 - **The image.** `packages/openagents-cli` sits in a 117-package pnpm
   workspace, so the environment is a repo snapshot plus an install, not a

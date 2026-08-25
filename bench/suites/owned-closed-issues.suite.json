@@ -12,7 +12,7 @@
         "issue": 21,
         "acceptedCommit": "586edf191fb221d1e1f5c600b4a714d40fc95820"
       },
-      "environmentProven": false,
+      "environmentAvailable": false,
       "rationale": "Add Ollama local model support to openagents coder"
     },
     {
@@ -23,7 +23,7 @@
         "issue": 24,
         "acceptedCommit": "f6366a80930ade654bc29b3b1217268011506061"
       },
-      "environmentProven": false,
+      "environmentAvailable": false,
       "rationale": "Resume a coder thread with --resume"
     },
     {
@@ -34,7 +34,7 @@
         "issue": 31,
         "acceptedCommit": "cf1861c9cbd2b2bf3e02593bf4c291db82c88e58"
       },
-      "environmentProven": false,
+      "environmentAvailable": false,
       "rationale": "Adopt the proxy's reasoning and tool-call fidelity in the coder"
     },
     {
@@ -45,7 +45,7 @@
         "issue": 36,
         "acceptedCommit": "2a631cf63107d1b706e7e8058f49c1bd283447ed"
       },
-      "environmentProven": false,
+      "environmentAvailable": false,
       "rationale": "Teach the coder's tools token economy, per model family"
     },
     {
@@ -56,7 +56,7 @@
         "issue": 40,
         "acceptedCommit": "fb705a506a2d56263b07698aa02b3223861d0df6"
       },
-      "environmentProven": false,
+      "environmentAvailable": false,
       "rationale": "Coder presents model tiers, never vendor model names"
     },
     {
@@ -67,7 +67,7 @@
         "issue": 41,
         "acceptedCommit": "a04c4fcf4708ff30b264970eb08acbebe5f20ed5"
       },
-      "environmentProven": false,
+      "environmentAvailable": false,
       "rationale": "Read a conversation on request: the read-conversation plugin, discovered, loaded, and streamed in the coder"
     }
   ]

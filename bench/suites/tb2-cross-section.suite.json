@@ -13,7 +13,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "git-leak-recovery"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "sanitize-git-repo",
@@ -24,7 +24,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "sanitize-git-repo"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "merge-diff-arc-agi-task",
@@ -35,7 +35,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "merge-diff-arc-agi-task"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "build-cython-ext",
@@ -46,7 +46,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "build-cython-ext"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "sqlite-with-gcov",
@@ -57,7 +57,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "sqlite-with-gcov"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "fix-code-vulnerability",
@@ -68,7 +68,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "fix-code-vulnerability"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "regex-log",
@@ -79,7 +79,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "regex-log"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "count-dataset-tokens",
@@ -90,7 +90,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "count-dataset-tokens"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "password-recovery",
@@ -101,7 +101,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "password-recovery"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "openssl-selfsigned-cert",
@@ -112,7 +112,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "openssl-selfsigned-cert"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "nginx-request-logging",
@@ -123,7 +123,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "nginx-request-logging"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "schemelike-metacircular-eval",
@@ -134,7 +134,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "schemelike-metacircular-eval"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     }
   ]
 }

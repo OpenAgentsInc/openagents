@@ -13,7 +13,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "regex-log"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "near-zero tool surface: the suite's test of whether the agent can just answer"
     },
     {
@@ -25,7 +25,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "openssl-selfsigned-cert"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "a fully specified checklist: every command is known upfront, so round count is a tool habit rather than a reasoning result"
     }
   ]

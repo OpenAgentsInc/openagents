@@ -69,7 +69,7 @@ A manifest task carries its identity rather than its label:
     "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
     "path": "regex-log"
   },
-  "environmentProven": true
+  "environmentAvailable": true
 }
 ```
 
@@ -79,10 +79,12 @@ anything: `regex-log` names a task whose content moved when the dataset moved,
 and a suite that pinned only names would report two different measurements
 under one heading.
 
-`environmentProven` is whether a container for this task has ever been built
-and graded. A `score` suite may not hold an unproven task — a trial nobody
-could run reads as the coder failing rather than as a missing environment — so
-an owned task lives in a `smoke` suite until somebody proves it.
+`environmentAvailable` is whether a container and verifier that can grade this
+task exist. A registry task has them by construction; an owned task drawn from
+a closed issue has neither until somebody writes them. A `score` suite may not
+hold a task with no gradeable environment — a trial nobody can run reads as the
+coder failing rather than as a missing environment — so the owned tasks live in
+a `smoke` suite until their environments are written.
 
 ## A smoke run is never a published score, structurally
 
@@ -304,7 +306,7 @@ leaves unpriced stays unpriced here — that omission is the signal.
 
 - **The owned lane's environments.** Six closed issues are pinned to their
   closing commits and none of them has a container that can grade it, so they
-  are `environmentProven: false` and their suite is `smoke`.
+  are `environmentAvailable: false` and their suite is `smoke`.
   `bench/tasks/owned/README.md` has the construction and the two things that
   have to be true before the first one is admitted to a score.
 - **Per-model cost from the coder's own trajectory.** The ATIF exporter writes

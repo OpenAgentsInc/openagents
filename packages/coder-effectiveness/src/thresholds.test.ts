@@ -227,7 +227,7 @@ const tierManifest = (tier: "score" | "smoke", tasks: ReadonlyArray<string>) =>
         commit: "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         path: id,
       },
-      environmentProven: true,
+      environmentAvailable: true,
     })),
   });
 

@@ -89,18 +89,26 @@ export const SuiteTaskSchema = S.Struct({
   id: S.String,
   pin: SuiteTaskPinSchema,
   /**
-   * Whether a container for this task has been built and graded at least once.
+   * Whether a container and verifier that can grade this task exist.
    *
-   * An owned task drawn from a closed issue is a real, pinned piece of work
-   * long before anybody has built an image that can grade it, and writing it
-   * into the manifest early is how the suite records the intent. But a score
-   * cannot include a task nobody has ever run: its absence from the results
-   * would read as a failure of the coder rather than an absence of an
-   * environment. So {@link parseSuiteManifest} refuses a `score` manifest that
-   * holds an unproven task, and the suite that holds them stays `smoke` until
-   * somebody proves them.
+   * A `harbor-registry` task has them by construction: the dataset ships the
+   * environment and the verifier, which is the entire reason a public subset
+   * costs a manifest entry rather than a harness. A `tracker-closed-issue` task
+   * has neither until somebody writes them — it is a real, pinned piece of work
+   * with a recorded accepted outcome and no way yet to run it, and writing it
+   * into the manifest early is how the suite records the intent.
+   *
+   * Note what this field does NOT claim: that the task has been run here, or
+   * that it passed, or that its image builds on this machine. It claims a
+   * gradeable definition exists. That is the property a suite needs, because a
+   * score cannot include a task nobody can run at all — its absence from the
+   * results would read as a failure of the coder rather than an absence of an
+   * environment, and the suite would get quietly worse the day somebody added a
+   * task and forgot to build it. So {@link parseSuiteManifest} refuses a
+   * `score` manifest that holds one, and the suite that holds them stays
+   * `smoke` until the environments are written.
    */
-  environmentProven: S.Boolean,
+  environmentAvailable: S.Boolean,
   /** One line on why this task is in the suite. Not digested. */
   rationale: S.optional(S.String),
 });
@@ -150,12 +158,12 @@ export const parseSuiteManifest = (value: unknown): SuiteManifest => {
   }
 
   if (manifest.tier === "score") {
-    const unproven = manifest.tasks
-      .filter((task) => !task.environmentProven)
+    const unavailable = manifest.tasks
+      .filter((task) => !task.environmentAvailable)
       .map((task) => task.id);
-    if (unproven.length > 0) {
+    if (unavailable.length > 0) {
       throw new Error(
-        `suite ${manifest.id} is tier score but holds ${String(unproven.length)} task(s) whose environment has never been built and graded (${unproven.join(", ")}); a task nobody has run would read as a failure of the coder rather than a missing environment`,
+        `suite ${manifest.id} is tier score but holds ${String(unavailable.length)} task(s) with no environment that can grade them (${unavailable.join(", ")}); a task nobody can run would read as a failure of the coder rather than a missing environment`,
       );
     }
   }
@@ -168,9 +176,9 @@ export const parseSuiteManifest = (value: unknown): SuiteManifest => {
  *
  * `id` is in because it is how a trial directory names itself, so a suite that
  * renamed a task is running against a different result shape. `rationale` and
- * `environmentProven` are out: prose about why a task was chosen, and whether
- * anybody has built it yet, are facts about the suite's bookkeeping rather than
- * about the work the coder is asked to do.
+ * `environmentAvailable` are out: prose about why a task was chosen, and
+ * whether anybody has written its environment yet, are facts about the suite's
+ * bookkeeping rather than about the work the coder is asked to do.
  */
 export const taskDigestOf = (task: SuiteTask): string =>
   `task:${createHash("sha256")

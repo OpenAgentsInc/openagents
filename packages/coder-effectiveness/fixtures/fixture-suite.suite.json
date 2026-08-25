@@ -13,7 +13,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "build-cmake"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "fix-git",
@@ -24,7 +24,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "fix-git"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "parse-log",
@@ -35,7 +35,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "parse-log"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     },
     {
       "id": "port-forward",
@@ -46,7 +46,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "port-forward"
       },
-      "environmentProven": true
+      "environmentAvailable": true
     }
   ]
 }

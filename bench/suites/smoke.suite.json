@@ -13,7 +13,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "fix-code-vulnerability"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "quick-shaped"
     },
     {
@@ -25,7 +25,7 @@
         "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
         "path": "regex-log"
       },
-      "environmentProven": true,
+      "environmentAvailable": true,
       "rationale": "quick-shaped"
     }
   ]
