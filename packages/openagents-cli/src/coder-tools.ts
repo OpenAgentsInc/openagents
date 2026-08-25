@@ -510,8 +510,10 @@ export function shellTool(cwd: string): CoderTool {
       "answers the prompt. A few commands that cannot be undone are refused, such as erasing a " +
       "root or a home directory, reformatting a disk, or halting the machine. Work economically: " +
       "batch independent commands into one call with && instead of one call each — every call " +
-      "replays the conversation so far. Use quiet flags and `git --no-pager`; prefer `--stat` " +
-      "before `-p`, and dump a full patch only for the file you are actually deciding about.",
+      "replays the conversation so far. Disable pagers and prefer quiet flags (for example " +
+      "`git --no-pager`, `PAGER=cat`), and ask for summaries before full dumps: get the shape " +
+      "of a thing (a stat, a listing, a count) before printing all of it, and print all of it " +
+      "only for what you are actually deciding about.",
     parameters: {
       type: "object",
       properties: {
