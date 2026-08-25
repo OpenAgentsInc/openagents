@@ -8,6 +8,7 @@ import {
   discoverPluginCatalog,
   type CapabilityGap,
   type PluginCatalogEntry,
+  matchCapabilities,
 } from "../src/coder-capability.js";
 import {
   isRefusal,
@@ -39,35 +40,38 @@ const baseCatalog: ReadonlyArray<PluginCatalogEntry> = [
 ];
 
 describe("capabilityTool", () => {
-  it("declares one standing tool that names the catalog, capped rather than unbounded", () => {
-    // The description deliberately carries the installed names and first
-    // sentences: a model that has never heard what is installed answered
-    // "read that conversation back" with an improvised shell script while
-    // the capability sat unused. The growth is capped, not zero — past the
-    // cap, the rest ride behind `query`.
-    const bigCatalog = Array.from({ length: 20 }, (_unused, index) => ({
+  it("declares one standing tool whose description is constant, however big the catalog", () => {
+    // The constant-size contract (OpenAgentsInc/openagents#42): the catalog
+    // is searched, never enumerated in the standing prompt, so installing a
+    // capability costs zero standing bytes. The behavioral sentence — search
+    // before scripting — is what keeps the tool reachable without the list.
+    const bigCatalog = Array.from({ length: 500 }, (_unused, index) => ({
       ...baseCatalog[0],
       name: `demo_${String(index)}`,
     }));
-    const tool = capabilityTool({
+    const small = capabilityTool({
+      catalog: [],
+      approval: new PluginApproval(),
+      recordGap: () => {},
+      onSelect: () => {},
+    });
+    const big = capabilityTool({
       catalog: bigCatalog,
       approval: new PluginApproval(),
       recordGap: () => {},
       onSelect: () => {},
     });
-    expect(tool.name).toBe("capability");
-    const properties = tool.parameters["properties"] as Record<string, unknown>;
+    expect(big.name).toBe("capability");
+    const properties = big.parameters["properties"] as Record<string, unknown>;
     expect(Object.keys(properties)).toContain("query");
     expect(Object.keys(properties)).toContain("name");
-    expect(tool.description).toMatch(/No semantic embedding is available/);
-    expect(tool.description).toContain("demo_0");
-    expect(tool.description).toContain("demo_11");
-    expect(tool.description).not.toContain("demo_12");
-    expect(tool.description).toContain("and 8 more");
-    expect(tool.parameters["additionalProperties"]).toBe(false);
+    expect(big.description).toBe(small.description);
+    expect(big.description).not.toContain("demo_");
+    expect(big.description).toContain("search here first");
+    expect(big.parameters["additionalProperties"]).toBe(false);
   });
 
-  it("returns the full catalog on a query and does not use keyword selection", async () => {
+  it("searches the catalog on a query: candidates narrow, invocation stays exact-name", async () => {
     const catalog: ReadonlyArray<PluginCatalogEntry> = [
       baseCatalog[0],
       { ...baseCatalog[0], name: "git_lost_work", description: "Scan a git repository." },
@@ -78,10 +82,20 @@ describe("capabilityTool", () => {
       recordGap: () => {},
       onSelect: () => {},
     });
-    const output = await tool.run({ query: "word" }, new AbortController().signal);
+    const output = await tool.run(
+      { query: "statistics about words" },
+      new AbortController().signal,
+    );
+    // The match leads; the miss is counted, not listed.
     expect(output).toContain("word_stats");
-    expect(output).toContain("git_lost_work");
-    expect(output).toMatch(/No semantic embedding is available/);
+    expect(output).not.toContain("git_lost_work");
+    expect(output).toContain("and 1 more");
+    expect(output).toContain("exact name");
+
+    // A query nothing matches still shows a bounded catalog to choose from.
+    const missed = await tool.run({ query: "zzzz" }, new AbortController().signal);
+    expect(missed).toContain("Nothing installed matches");
+    expect(missed).toContain("word_stats");
   });
 
   it("loads and selects a capability by exact catalog name", async () => {
@@ -130,7 +144,7 @@ describe("capabilityTool", () => {
     const output = await tool.run({ query: "something" }, new AbortController().signal);
     expect(gaps).toHaveLength(1);
     expect(gaps[0].query).toBe("something");
-    expect(output).toMatch(/The local catalog is empty/);
+    expect(output).toContain("No capabilities are installed");
   });
 });
 
@@ -234,5 +248,37 @@ describe("defaultCapabilityGapRecorder", () => {
   it("produces an async writer for the default gap file", () => {
     const recorder = defaultCapabilityGapRecorder();
     expect(typeof recorder).toBe("function");
+  });
+});
+
+describe("matchCapabilities", () => {
+  const catalog: ReadonlyArray<PluginCatalogEntry> = [
+    {
+      name: "read_conversation",
+      version: "0.1.0",
+      description: "Read a conversation back from this machine: a Claude Code or Codex session.",
+      manifestPath: "/tmp/a.json",
+      artifact: { path: "a.wasm", digest: "sha256:aa" },
+      capabilities: { mounts: [], hosts: [], timeout_ms: 1000, memory_max_mib: 64 },
+    },
+    {
+      name: "word_stats",
+      version: "0.1.0",
+      description: "Compute statistics for a piece of text.",
+      manifestPath: "/tmp/b.json",
+      artifact: { path: "b.wasm", digest: "sha256:bb" },
+      capabilities: { mounts: [], hosts: [], timeout_ms: 1000, memory_max_mib: 64 },
+    },
+  ];
+
+  it("scores the catalog against free text, best first, misses dropped", () => {
+    const matches = matchCapabilities(catalog, "read back the conversation on this machine");
+    expect(matches[0]?.entry.name).toBe("read_conversation");
+    expect(matches[0]?.hits).toBeGreaterThanOrEqual(2);
+    expect(matches.some((match) => match.entry.name === "word_stats")).toBe(false);
+  });
+
+  it("returns nothing for text nothing matches, so a turn costs nothing", () => {
+    expect(matchCapabilities(catalog, "deploy the kubernetes cluster")).toEqual([]);
   });
 });

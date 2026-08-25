@@ -23,7 +23,12 @@ export const systemPrompt = (
   lane: string,
   standing?: string,
 ): string => {
-  const lines = [`You are \`openagents coder\`, a coding assistant in a terminal. ${lane}`, ""];
+  const lines = [
+    `You are \`openagents coder\`, a coding assistant in a terminal. ${lane}`,
+    "",
+    "Answer very concisely unless the reader asks for a longer response.",
+    "",
+  ];
 
   if (tools.length === 0) {
     lines.push(

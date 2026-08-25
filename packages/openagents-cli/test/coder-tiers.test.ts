@@ -203,3 +203,39 @@ describe("session tier cycling", () => {
     expect(notices).not.toContain(TIER_MODELS.flash);
   });
 });
+
+// Retrieval is the harness's job: the hook runs over the submitted prompt
+// and its note rides the outgoing turn, so the model sees the match without
+// having consulted anything (OpenAgentsInc/openagents#42).
+describe("session capability retrieval", () => {
+  it("attaches the retrieval note to what the source receives", async () => {
+    const seen: string[] = [];
+    const source: ReplySource = {
+      model: "Coder Auto",
+      async *reply(prompt: string) {
+        seen.push(prompt);
+        yield { type: "text", value: "ok" } as const;
+      },
+    };
+    const session = new CoderSession(
+      source,
+      "repo",
+      "main",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (prompt) =>
+        Promise.resolve(
+          prompt.includes("conversation") ? "[Attached by the harness: loaded.]" : undefined,
+        ),
+    );
+
+    await session.submit("read the conversation");
+    await session.submit("hello there");
+
+    expect(seen[0]).toContain("read the conversation");
+    expect(seen[0]).toContain("[Attached by the harness: loaded.]");
+    expect(seen[1]).toBe("hello there");
+  });
+});

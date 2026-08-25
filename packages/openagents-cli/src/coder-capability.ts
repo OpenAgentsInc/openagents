@@ -144,43 +144,83 @@ function catalogDescription(catalog: ReadonlyArray<PluginCatalogEntry>): string 
  * Those appear only after a search with `query` returns the catalog and an
  * exact-name call with `name` loads the chosen plugin.
  */
-/** Most capabilities the standing summary names; the rest ride behind `query`. */
-const SUMMARY_CAP = 12;
+/** Most candidates one search returns; the rest are counted, not listed. */
+const SEARCH_LIMIT = 5;
 
-/** A description's first sentence, for the one-line standing summary. */
+/** A description's first sentence, for a one-line candidate row. */
 const firstSentence = (text: string): string => {
   const at = text.indexOf(". ");
   return at > 0 ? text.slice(0, at + 1) : text;
 };
 
+/** "; and K more" when the catalog holds more than one answer showed. */
+const remainder = (beyond: number): string =>
+  beyond > 0 ? `\n…and ${String(beyond)} more; search again with other words.` : "";
+
+/**
+ * Lexical retrieval over the catalog: token overlap between the query and
+ * each manifest's name and description, best first, at most [`SEARCH_LIMIT`].
+ *
+ * Retrieval narrows candidates; it never routes. The model still invokes by
+ * the exact returned name and the load still verifies the digest, so the
+ * no-keyword-routing law holds. An embedding index can replace this scoring
+ * without changing the surface (OpenAgentsInc/openagents#42).
+ */
+const searchCatalog = (
+  catalog: ReadonlyArray<PluginCatalogEntry>,
+  query: string,
+): PluginCatalogEntry[] =>
+  matchCapabilities(catalog, query)
+    .slice(0, SEARCH_LIMIT)
+    .map((candidate) => candidate.entry);
+
+/**
+ * Score the catalog against free text, best first.
+ *
+ * Exported because retrieval is the harness's job, not only the model's
+ * (OpenAgentsInc/openagents#42): the session runs this over each incoming
+ * message and materializes what matches, so the model sees the right tool
+ * without having consulted anything.
+ */
+export const matchCapabilities = (
+  catalog: ReadonlyArray<PluginCatalogEntry>,
+  text: string,
+): Array<{ readonly entry: PluginCatalogEntry; readonly hits: number }> => {
+  const terms = tokens(text);
+  if (terms.length === 0) return [];
+  const scored = catalog
+    .map((entry) => {
+      const haystack = new Set(tokens(`${entry.name} ${entry.description}`));
+      const hits = terms.filter((term) => haystack.has(term)).length;
+      return { entry, hits };
+    })
+    .filter((candidate) => candidate.hits > 0);
+  scored.sort((left, right) => right.hits - left.hits);
+  return scored;
+};
+
+/** Lowercased word stems of three letters or more; the rest is noise. */
+const tokens = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 3);
+
 export function capabilityTool(options: CapabilityOptions): CoderTool {
   const { catalog, approval, recordGap, onSelect, load = loadPluginFromManifest } = options;
-  // The catalog's names and first sentences ride in the standing
-  // description: a model that has never heard what is installed answers
-  // "read that conversation back" with an improvised shell script, and the
-  // sandboxed, bounded capability sits unused. One tool, but an honest one.
-  const shown = catalog.slice(0, SUMMARY_CAP);
-  const beyond = catalog.length - shown.length;
-  const summary =
-    catalog.length === 0
-      ? ""
-      : "Installed: " +
-        shown
-          .map((entry) => `\`${entry.name}\` (${firstSentence(entry.description)})`)
-          .join("; ") +
-        (beyond > 0 ? `; and ${String(beyond)} more via \`query\`` : "") +
-        ". When one of these covers the work, load and call it instead of improvising a script: it is sandboxed, bounded, and returns structured output. ";
   return {
     name: "capability",
+    // Constant-size on purpose (OpenAgentsInc/openagents#42): the catalog is
+    // searched, never enumerated here, so the standing prompt does not grow
+    // as capabilities are installed.
     description:
-      "Discover and load a local plugin capability from the installed catalog. " +
-      summary +
-      "No semantic embedding is available in this package, so `query` returns " +
-      "the full catalog of installed capabilities and their descriptions for you " +
-      "to choose from. Do not try to guess a name by substring or keyword. " +
-      "Once you see the exact catalog name, call `capability` again with `name` " +
-      "set to that exact name to load it and make its dedicated tool available. " +
-      "Every later call to the loaded capability uses that exact catalog name as the tool name.",
+      "Discover and load installed plugin capabilities: sandboxed, sealed programs this " +
+      "machine already holds for common agent work. Before writing a script for a task, " +
+      "search here first — a capability that covers it is bounded, reviewable, and returns " +
+      "structured output. Call with `query` describing what you need to get the best " +
+      "matches; then call again with `name` set to the exact returned name to load it and " +
+      "make its dedicated tool available. Every later call to the loaded capability uses " +
+      "that exact name as the tool name.",
     parameters: {
       type: "object",
       properties: {
@@ -234,13 +274,23 @@ export function capabilityTool(options: CapabilityOptions): CoderTool {
       }
 
       if (query !== undefined && query.length > 0) {
-        if (catalog.length === 0) {
+        const ranked = searchCatalog(catalog, query);
+        if (ranked.length === 0) {
           await recordGap({ requestedAt: Date.now(), query });
+          return catalog.length === 0
+            ? "No capabilities are installed on this machine."
+            : "Nothing installed matches that. The full catalog:\n\n" +
+                `${catalogDescription(catalog.slice(0, SEARCH_LIMIT))}` +
+                remainder(catalog.length - SEARCH_LIMIT) +
+                "\n\nCall `capability` with `name` set to an exact name to load it.";
         }
         return (
-          "No semantic embedding is available, so the full catalog is shown for you to choose.\n\n" +
-          `${catalogDescription(catalog)}\n\n` +
-          "Call `capability` with `name` set to the exact catalog name you want to load."
+          "Best matches, most relevant first:\n\n" +
+          ranked
+            .map((entry) => `- \`${entry.name}\` — ${firstSentence(entry.description)}`)
+            .join("\n") +
+          remainder(catalog.length - ranked.length) +
+          "\n\nCall `capability` with `name` set to the exact name you want to load."
         );
       }
 

@@ -100,6 +100,7 @@ import {
   capabilityTool,
   defaultCapabilityGapRecorder,
   discoverPluginCatalog,
+  matchCapabilities,
 } from "./coder-capability.js";
 import { runForeignResume } from "./coder-foreign-resume.js";
 import { existsSync } from "node:fs";
@@ -2457,6 +2458,7 @@ const coderCommand = Command.make(
           (buildTier !== undefined && initialTier !== undefined
             ? { initial: initialTier, build: buildTier }
             : undefined),
+        (prompt) => capabilityRetrieval(prompt),
       );
 
       // The resumed thread's history goes on the session before anything new,
@@ -2584,6 +2586,46 @@ const coderCommand = Command.make(
         }
         onSelect(outcome, manifestFile);
         return described;
+      };
+
+      // Retrieval is the harness's job (OpenAgentsInc/openagents#42): score
+      // the catalog against each incoming message, auto-load what clearly
+      // matches so the model simply sees the right tool, and note a weaker
+      // match for the model to load itself. Nothing matched costs nothing.
+      const capabilityRetrieval = async (prompt: string): Promise<string | undefined> => {
+        const matches = matchCapabilities(catalog, prompt);
+        const held = new Set(plugins.map((plugin) => plugin.manifest.name));
+
+        const materialized: string[] = [];
+        for (const match of matches.filter((candidate) => candidate.hits >= 2).slice(0, 2)) {
+          if (held.has(match.entry.name)) {
+            materialized.push(match.entry.name);
+            continue;
+          }
+          const described = loadPlugin(match.entry.manifestPath);
+          if (described.startsWith("Loaded plugin")) materialized.push(match.entry.name);
+        }
+
+        if (materialized.length > 0) {
+          const names = materialized.map((name) => `\`${name}\``).join(", ");
+          return (
+            `[Attached by the harness: installed capabilities matched this request, and ` +
+            `${names} ${materialized.length === 1 ? "is" : "are"} loaded and available as ` +
+            `${materialized.length === 1 ? "a tool" : "tools"} right now. Prefer ` +
+            `${materialized.length === 1 ? "it" : "them"} over scripting the same thing.]`
+          );
+        }
+
+        const near = matches.slice(0, 2);
+        if (near.length > 0) {
+          const names = near.map((candidate) => `\`${candidate.entry.name}\``).join(", ");
+          return (
+            `[Attached by the harness: ${names} in the installed capability catalog may ` +
+            `cover this. Load one with the capability tool, name set exactly, if it fits.]`
+          );
+        }
+
+        return undefined;
       };
 
       const locateForeignSessionsManifest = (): string | undefined => {

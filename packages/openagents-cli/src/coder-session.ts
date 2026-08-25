@@ -552,6 +552,15 @@ export class CoderSession {
         history: ReadonlyArray<unknown>,
       ): Promise<ReplySource>;
     },
+    /**
+     * Harness-side capability retrieval, run over each submitted prompt.
+     *
+     * Returns a short note to attach to the outgoing turn — after loading
+     * whatever matched, so the model sees the right tool rather than being
+     * asked to go looking — or undefined when nothing matched, which costs
+     * the turn nothing. The model is never expected to consult a registry.
+     */
+    private readonly retrieve?: (prompt: string) => Promise<string | undefined>,
   ) {
     this.tier = tiers?.initial;
     // A child reporting progress has to reach the renderer, and the renderer
@@ -1043,6 +1052,14 @@ export class CoderSession {
     try {
       await this.applyPendingTier();
 
+      // Retrieval before the turn goes out: what matched is loaded and its
+      // note rides the prompt. A failed retrieval is a turn without a note,
+      // never a failed turn.
+      const attached =
+        this.retrieve === undefined
+          ? undefined
+          : await this.retrieve(prompt).catch(() => undefined);
+
       // The reader's entry above keeps what they typed; the model receives the
       // standing context ahead of it on the first turn only.
       const sent =
@@ -1055,8 +1072,9 @@ export class CoderSession {
         this.source.useContext !== undefined
           ? prompt
           : `${this.standing}\n\n---\n\n${prompt}`;
+      const outgoing = attached === undefined ? sent : `${sent}\n\n${attached}`;
 
-      for await (const chunk of this.source.reply(sent, controller.signal)) {
+      for await (const chunk of this.source.reply(outgoing, controller.signal)) {
         if (controller.signal.aborted) break;
 
         if (chunk.type === "text") {
