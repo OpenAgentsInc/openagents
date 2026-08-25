@@ -31,6 +31,13 @@ interface ForumClientInterface {
   readonly topics: (
     input: AuthenticatedApi & { readonly board: string; readonly page?: number },
   ) => Effect.Effect<unknown, CliError>;
+  readonly search: (
+    input: AuthenticatedApi & {
+      readonly query: string;
+      readonly board?: string;
+      readonly page?: number;
+    },
+  ) => Effect.Effect<unknown, CliError>;
   readonly topic: (
     input: AuthenticatedApi & { readonly id: string; readonly page?: number },
   ) => Effect.Effect<unknown, CliError>;
@@ -151,6 +158,15 @@ export const forumClientLayer = Layer.effect(
           path: `${API_VERSION_PATH}/forum/topics?forum=${encodeURIComponent(input.board)}${
             input.page === undefined ? "" : `&page=${input.page}`
           }`,
+        }),
+
+      search: (input) =>
+        request("search forum topics", {
+          ...input,
+          method: "GET",
+          path: `${API_VERSION_PATH}/forum/topics?q=${encodeURIComponent(input.query)}${
+            input.board === undefined ? "" : `&forum=${encodeURIComponent(input.board)}`
+          }${input.page === undefined ? "" : `&page=${input.page}`}`,
         }),
 
       topic: (input) =>

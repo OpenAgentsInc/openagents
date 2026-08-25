@@ -2885,6 +2885,46 @@ const forumTopicsCommand = Command.make(
     }),
 ).pipe(Command.withDescription("List the topics in one forum board"));
 
+const forumQueryArgument = Argument.string("query").pipe(
+  Argument.withDescription("Words to match in topic titles, post bodies, and authors"),
+);
+
+const forumSearchCommand = Command.make(
+  "search",
+  { query: forumQueryArgument, board: forumBoardFlag, page: forumPageFlag },
+  ({ query, board, page }) =>
+    Effect.gen(function* () {
+      if (query.trim() === "") {
+        return yield* new InputError({ message: "Pass the words to search for." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const forums = yield* ForumClient;
+      const output = yield* Output;
+      const pageNum = parsePage(page);
+      const value = yield* forums.search({
+        origin: session.endpoint.origin,
+        token: session.token,
+        query,
+        ...(Option.isNone(board) ? {} : { board: board.value }),
+        ...(pageNum === undefined ? {} : { page: pageNum }),
+      });
+      const topics = rows(value, "topics");
+      const human =
+        topics.length === 0
+          ? ["No topics match."]
+          : topics.map((topic) => {
+              const author = record(topic["author"]);
+              const home = record(topic["board"]);
+              const who =
+                author["display_name"] === undefined ? "?" : String(author["display_name"]);
+              const where = home["slug"] === undefined ? "" : ` [${String(home["slug"])}]`;
+              return `${String(topic["id"]).slice(0, 8)} — ${String(topic["title"])} — ${who}${where}`;
+            });
+      yield* output.write({ value, human }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Search forum topics by title, visible post body, or author"));
+
 const topicIdArgument = Argument.string("id").pipe(
   Argument.withDescription("Topic id (the prefix of a topic URL works too)"),
 );
@@ -3022,6 +3062,7 @@ const forumCommand = Command.make("forum").pipe(
   Command.withSubcommands([
     forumBoardsCommand,
     forumTopicsCommand,
+    forumSearchCommand,
     forumTopicCommand,
     forumPostCommand,
     forumReplyCommand,
