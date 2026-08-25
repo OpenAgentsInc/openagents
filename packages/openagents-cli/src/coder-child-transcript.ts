@@ -108,6 +108,9 @@ const parseLine = (line: string): ChildEntry | undefined => {
   const own = fromSelfHarness(record);
   if (own !== undefined) return own;
 
+  const acp = fromAcp(record);
+  if (acp !== undefined) return acp;
+
   // Anything else is a harness with its own event stream, and `opencode`'s is
   // the one the fleet already reads live.
   const event = parseOpencodeEvent(trimmed);
@@ -124,6 +127,56 @@ const parseLine = (line: string): ChildEntry | undefined => {
       return undefined;
   }
 };
+
+/**
+ * A Devin child, which writes the ACP protocol it spoke.
+ *
+ * The harness records every JSON-RPC message so a reader can open a running
+ * child and watch it work. Most of those messages are not worth showing — the
+ * handshake, the mode, dozens of thought fragments a token at a time — so this
+ * takes the three that are: what it ran, what came back, and what it said.
+ */
+const fromAcp = (message: Record<string, unknown>): ChildEntry | undefined => {
+  if (message["method"] !== "session/update") return undefined;
+
+  const update = nested(nested(message["params"])["update"]);
+  const kind = update["sessionUpdate"];
+
+  if (kind === "tool_call") {
+    // Devin's `title` is already the phrase a person would read — "Ran ls",
+    // "Read src/a.ts" — so it is the target rather than a name to look up.
+    const name = text(update["kind"]) ?? "tool";
+    return { kind: "tool", name, target: text(update["title"]) };
+  }
+
+  if (kind === "tool_call_update") {
+    const said = firstContentText(update["content"]);
+    return said === undefined ? undefined : { kind: "output", text: said };
+  }
+
+  if (kind === "agent_message_chunk") {
+    const said = text(nested(update["content"])["text"]);
+    return said === undefined ? undefined : { kind: "text", text: said };
+  }
+
+  return undefined;
+};
+
+/** The first piece of text inside an ACP content array, if there is one. */
+const firstContentText = (content: unknown): string | undefined => {
+  if (!Array.isArray(content)) return undefined;
+  for (const part of content) {
+    const inner = nested(nested(part)["content"]);
+    const said = text(inner["text"]);
+    if (said !== undefined) return said;
+  }
+  return undefined;
+};
+
+const nested = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 
 const fromSelfHarness = (record: Record<string, unknown>): ChildEntry | undefined => {
   const type = record["type"];

@@ -31,7 +31,9 @@
 
 import type { ChildProcess } from "node:child_process";
 import { execFileSync, spawn } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import { appendFileSync, createWriteStream, mkdirSync } from "node:fs";
+
+import { runDevinAcp } from "./coder-devin-acp.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CoderTaskId, CoderTaskRegistry, CoderToolActivity } from "./coder-tasks.js";
@@ -403,11 +405,21 @@ export class DevinHarness implements DelegateHarness {
   readonly model: string;
 
   constructor(private readonly options: DevinHarnessOptions = {}) {
-    // Devin picks its own model from its own configuration, and print mode does
-    // not report which. Naming one here would be inventing it.
+    // Devin picks its own model from its own configuration, and neither print
+    // mode nor ACP reports which. Naming one here would be inventing it.
     this.model = options.permissionMode ?? "dangerous";
   }
 
+  /**
+   * Run the child over ACP rather than print mode.
+   *
+   * `devin -p` writes nothing until it finishes — measured: fourteen seconds of
+   * silence for a one-word answer, and `--export` is written at close too. A
+   * child doing four minutes of real work reported no tool calls, no tokens,
+   * and no transcript, so the fleet showed `Initializing…` for the whole run
+   * and a reader could not tell it from a hang. `devin acp` is the same agent
+   * streaming the events the fleet already draws.
+   */
   async *run(
     input: {
       readonly prompt: string;
@@ -417,98 +429,51 @@ export class DevinHarness implements DelegateHarness {
     },
     signal: AbortSignal,
   ): AsyncIterable<DelegateEvent> {
-    const command = this.options.command ?? "devin";
-    const mode = this.options.permissionMode ?? "dangerous";
-
-    const child = spawn(
-      command,
-      [
-        "-p",
-        input.prompt,
-        "--permission-mode",
-        mode,
-        // Print mode cannot show the trust prompt, so without this a child in a
-        // directory nobody has opened Devin in exits before doing anything.
-        "--respect-workspace-trust",
-        "false",
-      ],
-      {
-        cwd: input.cwd,
-        env: { ...process.env, ...this.options.env },
-        // No terminal: a child that would prompt gets end-of-file and stops
-        // rather than waiting where the fleet shows it as still working.
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-
-    const events: DelegateEvent[] = [];
-    let resolveNext: (() => void) | undefined;
-    const wake = () => {
-      resolveNext?.();
-      resolveNext = undefined;
-    };
-
-    let answer = "";
-    let failure = "";
-    let done = false;
-    let startFailure: Error | undefined;
-
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      answer += chunk;
-    });
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      failure += chunk;
-    });
-
-    const onAbort = () => child.kill("SIGKILL");
-    signal.addEventListener("abort", onAbort, { once: true });
-
-    child.on("error", (cause: Error) => {
-      startFailure =
-        (cause as NodeJS.ErrnoException).code === "ENOENT"
-          ? new Error(`The \`${command}\` command is not on PATH.`)
-          : cause;
-      done = true;
-      wake();
-    });
-    child.on("close", (code: number | null) => {
-      const text = answer.trim();
-      if (code === 0) {
-        if (text.length > 0) events.push({ type: "text", value: text });
-      } else {
-        const said = `${failure.trim()}\n${text}`.trim();
-        events.push({
-          type: "error",
-          message:
-            said.length > 0
-              ? said
-              : `The \`${command}\` child exited with code ${String(code ?? -1)}.`,
-        });
-      }
-      done = true;
-      wake();
-    });
-
     try {
-      for (;;) {
-        while (events.length > 0) {
-          const next = events.shift();
-          if (next !== undefined) yield next;
-        }
-        if (done) break;
-        await new Promise<void>((resolve) => {
-          resolveNext = resolve;
-        });
-      }
+      yield* runDevinAcp(
+        { prompt: input.prompt, cwd: input.cwd },
+        {
+          ...(this.options.command === undefined ? {} : { command: this.options.command }),
+          ...(this.options.env === undefined ? {} : { env: this.options.env }),
+          // Devin's own word for what this harness has always called a
+          // permission mode. `bypass` is its `dangerous`.
+          mode: DEVIN_MODES[this.options.permissionMode ?? "dangerous"] ?? "bypass",
+          // Appended synchronously as each message arrives, not through a
+          // stream: a stream's `end()` does not flush before the next line of
+          // this process runs, so a child read the instant it finished showed
+          // a transcript missing everything it had just done.
+          record: (entry) => {
+            try {
+              appendFileSync(input.transcriptPath, `${JSON.stringify(entry)}\n`);
+            } catch {
+              // A transcript that cannot be written must not end the child.
+            }
+          },
+        },
+        signal,
+      );
     } finally {
-      signal.removeEventListener("abort", onAbort);
+      // Nothing to close: every line was already on disk.
     }
-
-    if (startFailure !== undefined) throw startFailure;
   }
 }
+
+/**
+ * The old permission-mode names, mapped to the session modes ACP offers.
+ *
+ * `devin -p --permission-mode dangerous` and a `bypass` ACP session are the
+ * same posture, and a caller that wrote the old name should not have to learn
+ * the new one.
+ */
+const DEVIN_MODES: Readonly<Record<string, string>> = {
+  dangerous: "bypass",
+  bypass: "bypass",
+  auto: "accept-edits",
+  "accept-edits": "accept-edits",
+  ask: "ask",
+  plan: "plan",
+  smart: "smart",
+};
 
 /**
  * The models a child is given, in the order they are preferred.

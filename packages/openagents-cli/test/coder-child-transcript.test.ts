@@ -94,3 +94,70 @@ describe("reading a child that has written nothing", () => {
     expect(readChildTranscript(undefined)).toEqual([]);
   });
 });
+
+describe("reading a child Devin ran", () => {
+  it("reads the ACP protocol the Devin harness records", () => {
+    const path = transcript([
+      { jsonrpc: "2.0", id: 1, result: { protocolVersion: 1 } },
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "s",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "functions.exec:0",
+            title: "Ran ls",
+            kind: "execute",
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "s",
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "functions.exec:0",
+            status: "in_progress",
+            content: [{ type: "content", content: { type: "text", text: "a.txt" } }],
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "s",
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done" } },
+        },
+      },
+    ]);
+
+    expect(readChildTranscript(path)).toEqual([
+      { kind: "tool", name: "execute", target: "Ran ls" },
+      { kind: "output", text: "a.txt" },
+      { kind: "text", text: "done" },
+    ]);
+  });
+
+  it("shows none of the handshake, and none of the thinking a token at a time", () => {
+    // A Devin child writes hundreds of messages and three kinds are worth
+    // reading. Showing the rest would bury what it actually did.
+    const path = transcript([
+      { jsonrpc: "2.0", id: 2, result: { sessionId: "ses_x" } },
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "s",
+          update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "hmm" } },
+        },
+      },
+      { jsonrpc: "2.0", method: "_cognition.ai/output", params: { message: "Connecting to MCP" } },
+    ]);
+
+    expect(readChildTranscript(path)).toEqual([]);
+  });
+});
