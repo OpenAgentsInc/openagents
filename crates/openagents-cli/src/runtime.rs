@@ -1,12 +1,17 @@
 //! Live OpenAgents inference proxy client & streaming multi-turn loop
 //! Replicates coder-thread.ts behavior over POST /api/v1/threads and POST /api/inference/proxy
 
-use crate::tools::{HarnessToolRegistry, ToolCall};
+use crate::tools::{HarnessToolRegistry, ToolCall, ToolDefinition};
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+pub const THREAD_LANE_NOTICE: &str =
+    "You answer through the OpenAgents inference proxy, on a thread opened for this session. \
+    Every round of tool calls re-sends the whole conversation to a metered model, so batch \
+    independent commands into one call and keep large dumps out of the transcript.";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Lane {
@@ -92,6 +97,37 @@ impl CoderRuntimeSession {
         }
     }
 
+    pub fn build_system_prompt(&self, tool_defs: &[ToolDefinition]) -> String {
+        let mut lines = vec![
+            format!("You are `openagents coder`, a coding assistant in a terminal. {}", THREAD_LANE_NOTICE),
+            "".to_string(),
+            "Answer very concisely unless the reader asks for a longer response.".to_string(),
+            "".to_string(),
+        ];
+
+        if tool_defs.is_empty() {
+            lines.push(
+                "You have no tools in this session: you cannot read or write files, run commands, or \
+                reach anything outside this conversation. Answer from what the reader tells you, and \
+                say plainly when something would need a tool you do not have.".to_string()
+            );
+        } else {
+            lines.push(format!("You have {} tools, and no others:", tool_defs.len()));
+            for t in tool_defs {
+                lines.push(format!("- `{}`", t.name));
+            }
+            lines.push("".to_string());
+            lines.push(
+                "That list is complete: a capability not on it is one you do not have, whatever a model \
+                like you usually has. Read a tool's description before assuming what it covers. Where \
+                a description says what a child agent can do, that is the child's capability and not \
+                yours. Never say you ran something you did not run.".to_string()
+            );
+        }
+
+        lines.join("\n")
+    }
+
     pub async fn create_thread(&self) -> Result<InferenceGrant, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/threads", self.api_base);
         let mut headers = HeaderMap::new();
@@ -132,6 +168,17 @@ impl CoderRuntimeSession {
     where
         F: FnMut(&str) + Send + 'static,
     {
+        let tool_defs = self.tools.list_tools();
+        if self.messages.is_empty() {
+            let sys = self.build_system_prompt(&tool_defs);
+            self.messages.push(ChatMessage {
+                role: "system".to_string(),
+                content: Some(sys),
+                tool_calls: None,
+                tool_call_id: None,
+            });
+        }
+
         self.messages.push(ChatMessage {
             role: "user".to_string(),
             content: Some(prompt.to_string()),
@@ -140,9 +187,8 @@ impl CoderRuntimeSession {
         });
 
         let grant = self.create_thread().await?;
-        let tool_defs = self.tools.list_tools();
 
-        let mut max_steps = 25;
+        let mut max_steps = 30;
         let mut final_answer = String::new();
 
         while max_steps > 0 {

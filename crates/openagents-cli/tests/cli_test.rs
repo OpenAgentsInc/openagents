@@ -3,7 +3,6 @@ mod tests {
     use openagents_cli::runtime::{CoderRuntimeSession, Lane};
     use openagents_cli::delegate::DelegationSupervisor;
     use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
-
     use openagents_cli::auth::CredentialStore;
     use openagents_cli::identity::IdentityStore;
     use openagents_cli::tracker::TrackerClient;
@@ -106,5 +105,12 @@ mod tests {
         let results = supervisor.dispatch("test task").await;
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
+    }
+
+    #[test]
+    fn test_cargo_metadata_issue_86() {
+        let cargo_toml = include_str!("../Cargo.toml");
+        assert!(cargo_toml.contains("name = \"openagents-cli\""));
+        assert!(cargo_toml.contains("name = \"oa\""));
     }
 }

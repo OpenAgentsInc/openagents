@@ -35,9 +35,16 @@ pub struct ToolOutput {
     pub is_error: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+    pub body: String,
+}
+
 pub struct HarnessToolRegistry {
     pub cwd: PathBuf,
-    pub skills: HashMap<String, String>,
+    pub skills: HashMap<String, SkillInfo>,
 }
 
 impl HarnessToolRegistry {
@@ -54,6 +61,7 @@ impl HarnessToolRegistry {
     pub fn load_local_skills(&mut self) {
         let mut search_dirs = Vec::new();
         search_dirs.push(self.cwd.join(".agents").join("skills"));
+        search_dirs.push(self.cwd.join("packages").join("openagents-cli").join("skills"));
         if let Ok(home) = std::env::var("HOME") {
             search_dirs.push(PathBuf::from(home).join(".agents").join("skills"));
         }
@@ -68,18 +76,19 @@ impl HarnessToolRegistry {
                     let skill_md = if path.is_dir() {
                         path.join("SKILL.md")
                     } else if path.extension().map_or(false, |ext| ext == "md") {
-                        path
+                        path.clone()
                     } else {
                         continue;
                     };
 
                     if skill_md.exists() {
                         if let Ok(content) = fs::read_to_string(&skill_md) {
-                            let name = skill_md.parent()
-                                .and_then(|p| p.file_name())
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("unknown");
-                            self.skills.insert(name.to_string(), content);
+                            let (name, desc, body) = parse_skill_markdown(&skill_md, &content);
+                            self.skills.insert(name.clone(), SkillInfo {
+                                name,
+                                description: desc,
+                                body,
+                            });
                         }
                     }
                 }
@@ -88,22 +97,27 @@ impl HarnessToolRegistry {
     }
 
     pub fn list_tools(&self) -> Vec<ToolDefinition> {
+        let mut skill_list = String::new();
+        for (name, info) in &self.skills {
+            skill_list.push_str(&format!("\n- `{}`: {}", name, info.description));
+        }
+
         vec![
             ToolDefinition {
                 name: "shell".to_string(),
-                description: "Run a shell command on this machine. Returns combined stdout and stderr with exit code. Bounded to 30k characters.".to_string(),
+                description: "Run a shell command on this machine. Returns combined stdout and stderr with exit code. Paths are relative to the working directory. Batch independent commands with &&.".to_string(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
                         "command": {"type": "string", "description": "The command line to run through /bin/sh -c."},
-                        "timeout_seconds": {"type": "integer", "description": "How long to wait. Defaults to 120."}
+                        "timeout_seconds": {"type": "integer", "description": "How long to wait. Defaults to 120; raise for a build or test run."}
                     },
                     "required": ["command"]
                 }),
             },
             ToolDefinition {
                 name: "skill".to_string(),
-                description: format!("Read one of this repository skill procedures. Available skills: {}", self.skills.keys().cloned().collect::<Vec<_>>().join(", ")),
+                description: format!("Read one of this repository skill procedures: a written procedure with conventions, commands, and rules. Call it before doing work a skill covers. Skills available:{}", skill_list),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -114,7 +128,7 @@ impl HarnessToolRegistry {
             },
             ToolDefinition {
                 name: "openagents".to_string(),
-                description: "Run the OpenAgents CLI commands directly (issues, projects, auth, repo, box, etc.).".to_string(),
+                description: "Run the OpenAgents CLI commands (issue, project, repo, auth, etc.). Pass the arguments as a list without openagents itself.".to_string(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -156,16 +170,16 @@ impl HarnessToolRegistry {
             }
             "skill" => {
                 let name = call.arguments.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                if let Some(content) = self.skills.get(name) {
+                if let Some(skill_info) = self.skills.get(name) {
                     ToolOutput {
                         call_id: call.id.clone(),
-                        output: content.clone(),
+                        output: skill_info.body.clone(),
                         is_error: false,
                     }
                 } else {
                     ToolOutput {
                         call_id: call.id.clone(),
-                        output: format!("Skill {} not found.", name),
+                        output: format!("Skill '{}' not found.", name),
                         is_error: true,
                     }
                 }
@@ -190,6 +204,38 @@ impl HarnessToolRegistry {
             },
         }
     }
+}
+
+fn parse_skill_markdown(path: &Path, content: &str) -> (String, String, String) {
+    let fallback_name = path.parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("skill");
+
+    if let Some(after_front) = content.strip_prefix("---") {
+        if let Some(end_front) = after_front.find("---") {
+            let front_matter = &after_front[..end_front];
+            let body = after_front[end_front + 3..].trim().to_string();
+
+            let mut name = fallback_name.to_string();
+            let mut desc = String::new();
+
+            for line in front_matter.lines() {
+                let trimmed = line.trim();
+                if let Some(val) = trimmed.strip_prefix("name:") {
+                    name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                } else if let Some(val) = trimmed.strip_prefix("description:") {
+                    desc = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                }
+            }
+            if desc.is_empty() {
+                desc = format!("Procedure for {}", name);
+            }
+            return (name, desc, body);
+        }
+    }
+
+    (fallback_name.to_string(), format!("Procedure for {}", fallback_name), content.to_string())
 }
 
 pub fn check_shell_refusal(cmd: &str) -> Option<String> {
