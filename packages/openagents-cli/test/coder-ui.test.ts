@@ -139,6 +139,33 @@ describe("runCoderUi", () => {
     expect(rows.join("\n")).not.toContain("connected:Here");
   });
 
+  it("draws no bullet for an entry that settled with nothing in it", async () => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    const session = new CoderSession(source([{ type: "text", value: "hello" }]), "repo", "main");
+    // A blank entry the interface is handed anyway: a record replayed from a
+    // turn that only ran tools used to restore as one. The dot says somebody
+    // spoke, and beside an empty line it says it about a turn that never
+    // happened.
+    session.restore([
+      { role: "you", text: "earlier", settled: true, at: Date.now() },
+      { role: "assistant", text: "", settled: true, at: Date.now() },
+    ]);
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    await session.submit("go");
+    const rows = screen(stdout.written);
+    stdin.emit("data", "\x04");
+    await running;
+
+    const bullets = rows.filter((row) => row.trimStart().startsWith("\u25cf"));
+    expect(bullets.length).toBeGreaterThan(0);
+    expect(bullets.every((row) => row.replace("\u25cf", "").trim().length > 0)).toBe(true);
+  });
+
   it("shows the tool, its call, and its outcome, on two rows", async () => {
     const { rows } = await drive([
       { type: "tool_call", callId: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },

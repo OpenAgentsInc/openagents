@@ -74,6 +74,43 @@ describe("CoderSession", () => {
     expect(session.snapshot().running).toBe(false);
   });
 
+  it("withdraws the opening entry when the turn produces nothing", async () => {
+    const session = new CoderSession(source([]), "repo", "main");
+    await session.submit("go");
+
+    // The empty assistant entry is the caret shown while the first chunk is in
+    // flight. A turn that never produced one used to settle it empty, and the
+    // interface drew a dot with nothing beside it.
+    expect(session.snapshot().entries.map((entry) => entry.role)).toEqual(["you"]);
+  });
+
+  it("withdraws the opening entry when the turn is interrupted before its first chunk", async () => {
+    const session = new CoderSession(scripted(["a"], 40), "repo", "main");
+    const pending = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(session.interrupt()).toBe(true);
+    await pending;
+
+    expect(session.snapshot().entries.map((entry) => entry.role)).toEqual(["you"]);
+  });
+
+  it("keeps a withdrawn placeholder's cost on the entry that is left", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "usage", promptTokens: 12, completionTokens: 0, calls: 1 },
+      ] as ReadonlyArray<ReplyChunk>),
+      "repo",
+      "main",
+    );
+    await session.submit("go");
+
+    const entries = session.snapshot().entries;
+    expect(entries.map((entry) => entry.role)).toEqual(["you"]);
+    // Withdrawing the caret must not withdraw what the turn cost with it.
+    expect(entries[0]?.metrics?.promptTokens).toBe(12);
+  });
+
   it("queues a prompt typed during a turn, and sends it when the turn ends", async () => {
     const sent: string[] = [];
     const recording: ReplySource = {

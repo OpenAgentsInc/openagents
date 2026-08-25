@@ -367,6 +367,54 @@ describe("replayEntries", () => {
     expect(interrupted?.text).toBe("There is no VERSION file;\n\n[interrupted]");
   });
 
+  it("does not replay a turn that said nothing as an entry", () => {
+    // A turn that only ran tools is recorded with an empty answer. Replaying
+    // it put a bullet with nothing beside it on the resumed transcript, and
+    // the cost it carried belongs on the last step the turn actually took.
+    const entries = replayEntries([
+      ...FIXTURE,
+      {
+        id: 8,
+        eventType: "tool.ran",
+        payload: {
+          call_id: "call-3",
+          tool: "shell",
+          arguments: `{"command":"ls"}`,
+          status: "succeeded",
+          output: "mix.exs",
+        },
+        emittedAt: "2026-08-24T12:00:08Z",
+      },
+      {
+        id: 9,
+        eventType: "turn.assistant",
+        payload: {
+          text: "",
+          usage: { prompt_tokens: 40, completion_tokens: 0, total_tokens: 40, calls: 1 },
+          tool_calls: 1,
+        },
+        emittedAt: "2026-08-24T12:00:09Z",
+      },
+    ]);
+
+    expect(entries).toHaveLength(8);
+    expect(entries.at(-1)?.role).toBe("tool");
+    expect(entries.at(-1)?.metrics).toEqual({
+      promptTokens: 40,
+      completionTokens: 0,
+      calls: 1,
+    });
+  });
+
+  it("does not replay a recorded thought that has no text", () => {
+    const entries = replayEntries([
+      { id: 1, eventType: "turn.user", payload: { text: "go" }, emittedAt: undefined },
+      { id: 2, eventType: "turn.reasoning", payload: { text: "" }, emittedAt: undefined },
+      { id: 3, eventType: "turn.assistant", payload: { text: "done" }, emittedAt: undefined },
+    ]);
+    expect(entries.map((entry) => entry.role)).toEqual(["you", "assistant"]);
+  });
+
   it("skips event types outside the vocabulary rather than refusing the replay", () => {
     const entries = replayEntries([
       { id: 1, eventType: "thread.noted", payload: { note: "?" }, emittedAt: undefined },

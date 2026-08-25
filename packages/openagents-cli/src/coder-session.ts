@@ -1081,12 +1081,45 @@ export class CoderSession {
     let text: CoderEntry | undefined = opening;
     let reasoning: CoderEntry | undefined;
 
+    /**
+     * Every prose entry this turn opened, filled or not.
+     *
+     * Held so the turn can withdraw the ones nothing ever arrived for. Tool
+     * entries are not in it: a call with no output is still a call that ran.
+     */
+    const opened = new Set<CoderEntry>([opening]);
+
     const settle = (entry: CoderEntry | undefined) => {
       if (entry !== undefined) entry.settled = true;
     };
     const withdrawOpening = () => {
       const at = this.entries.indexOf(opening);
       if (at >= 0 && opening.text.length === 0) this.entries.splice(at, 1);
+    };
+    /**
+     * Withdraw what the turn opened and no chunk ever filled.
+     *
+     * The opening entry is a caret, not a turn: it is there so the interface
+     * shows something while the first chunk is in flight. Until now it was
+     * withdrawn only when the turn went on to reason or call a tool, so a turn
+     * that produced nothing at all — a source that yielded no chunks, an
+     * escape pressed before the first one — settled it empty and left a bullet
+     * with nothing beside it on the transcript for the rest of the session.
+     * `/export` has always skipped these; the interface now does too.
+     */
+    const withdrawEmpty = () => {
+      for (const entry of opened) {
+        if (entry.text.length > 0) continue;
+        const at = this.entries.indexOf(entry);
+        if (at === -1) continue;
+        this.entries.splice(at, 1);
+        // The turn's cost was reported onto whatever entry it ended on. If
+        // that was this placeholder, it moves to the entry that is really
+        // last, so withdrawing a caret does not take the figures with it.
+        if (entry.metrics === undefined) continue;
+        const last = this.entries.at(-1);
+        if (last !== undefined && last.metrics === undefined) last.metrics = entry.metrics;
+      }
     };
 
     const controller = new AbortController();
@@ -1132,6 +1165,7 @@ export class CoderSession {
             reasoning = undefined;
             text = { role: "assistant", text: "", settled: false, at: Date.now() };
             this.entries.push(text);
+            opened.add(text);
           }
           text.text += chunk.value;
         } else if (chunk.type === "reasoning") {
@@ -1141,6 +1175,7 @@ export class CoderSession {
             text = undefined;
             reasoning = { role: "reasoning", text: "", settled: false, at: Date.now() };
             this.entries.push(reasoning);
+            opened.add(reasoning);
           }
           reasoning.text += chunk.value;
         } else if (chunk.type === "tool_call") {
@@ -1233,6 +1268,7 @@ export class CoderSession {
       }
       this.entries.push({ role: "notice", text: message, settled: true, at: Date.now() });
     } finally {
+      withdrawEmpty();
       for (const entry of this.entries) {
         if (entry.settled) continue;
         entry.settled = true;

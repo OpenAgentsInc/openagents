@@ -469,11 +469,20 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // One blank row between entries. It is what keeps a tool call from
       // reading as part of the sentence before it.
       for (const entry of snapshot.entries) {
+        // An entry that settled with nothing in it draws nothing. The dot is
+        // the interface saying somebody spoke, and a dot beside an empty line
+        // says it about a turn that never happened. A turn still streaming is
+        // a different case: it has nothing yet and shows a caret.
+        if (drawsNothing(entry)) continue;
         if (out.length > 0) out.push("");
         out.push(...renderEntry(entry, body, sidebar ? [] : snapshot.tasks));
       }
       return out;
     };
+
+    /** Whether an entry would render as a bullet and a blank line. */
+    const drawsNothing = (entry: CoderEntry): boolean =>
+      entry.role !== "tool" && entry.settled && entry.text.length === 0;
 
     const renderEntry = (
       entry: CoderEntry,

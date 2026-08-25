@@ -221,7 +221,10 @@ export function replayEntries(events: ReadonlyArray<ThreadEvent>): ReadonlyArray
     if (event.eventType === "turn.user") {
       entries.push({ role: "you", text: text(payload["text"]), settled: true, at });
     } else if (event.eventType === "turn.reasoning") {
-      entries.push({ role: "reasoning", text: text(payload["text"]), settled: true, at });
+      const thought = text(payload["text"]);
+      // A recorded thought with no text is not a thought. Replaying it as an
+      // entry puts a bullet with nothing beside it on the resumed transcript.
+      if (thought.length > 0) entries.push({ role: "reasoning", text: thought, settled: true, at });
     } else if (event.eventType === "tool.ran") {
       const name = text(payload["tool"]) || "tool";
       const failure = typeof payload["error"] === "string" ? payload["error"] : undefined;
@@ -243,19 +246,32 @@ export function replayEntries(events: ReadonlyArray<ThreadEvent>): ReadonlyArray
       const said = text(payload["text"]);
       const interrupted = payload["interrupted"] === true;
       const usage = record(payload["usage"]);
+      const metrics =
+        Object.keys(usage).length === 0
+          ? undefined
+          : {
+              promptTokens: count(usage["prompt_tokens"]),
+              completionTokens: count(usage["completion_tokens"]),
+              calls: count(usage["calls"]),
+            };
+      // A turn that only ran tools is recorded with an empty answer, and an
+      // empty answer has nothing to draw: replaying it as an entry is what put
+      // a bullet with no text beside it on a resumed transcript. The cost it
+      // carried is real, so it lands on the last step the turn actually took.
+      if (said.length === 0) {
+        const last = entries.at(-1);
+        if (metrics !== undefined && last !== undefined && last.metrics === undefined) {
+          last.metrics = metrics;
+        }
+        continue;
+      }
       const entry: CoderEntry = {
         role: "assistant",
-        text: interrupted && said.length > 0 ? `${said}\n\n[interrupted]` : said,
+        text: interrupted ? `${said}\n\n[interrupted]` : said,
         settled: true,
         at,
       };
-      if (Object.keys(usage).length > 0) {
-        entry.metrics = {
-          promptTokens: count(usage["prompt_tokens"]),
-          completionTokens: count(usage["completion_tokens"]),
-          calls: count(usage["calls"]),
-        };
-      }
+      if (metrics !== undefined) entry.metrics = metrics;
       entries.push(entry);
     }
   }
