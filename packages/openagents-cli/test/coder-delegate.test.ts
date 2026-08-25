@@ -141,6 +141,54 @@ describe("parseOpencodeEvent", () => {
     expect(parseOpencodeEvent(line)).toMatchObject({ name: "bash", target: "pnpm test" });
   });
 
+  it("extracts a file range from offset and limit", () => {
+    const line = JSON.stringify({
+      type: "tool_use",
+      part: {
+        tool: "read",
+        callID: "call-range",
+        state: { input: { filePath: "src/a.ts", offset: 10, limit: 40 } },
+      },
+    });
+    expect(parseOpencodeEvent(line)).toMatchObject({
+      name: "read",
+      target: "src/a.ts",
+      meta: { range: { start: 10, end: 50 } },
+    });
+  });
+
+  it("extracts a file size from output", () => {
+    const line = JSON.stringify({
+      type: "tool_use",
+      part: {
+        tool: "read",
+        callID: "call-size",
+        state: { input: { filePath: "src/b.ts" }, output: { size: 240 } },
+      },
+    });
+    expect(parseOpencodeEvent(line)).toMatchObject({
+      name: "read",
+      target: "src/b.ts",
+      meta: { size: 240 },
+    });
+  });
+
+  it("extracts a search hit count from output", () => {
+    const line = JSON.stringify({
+      type: "tool_use",
+      part: {
+        tool: "grep",
+        callID: "call-hits",
+        state: { input: { pattern: "needle" }, output: { matches: [1, 2, 3] } },
+      },
+    });
+    expect(parseOpencodeEvent(line)).toMatchObject({
+      name: "grep",
+      target: "needle",
+      meta: { hitCount: 3 },
+    });
+  });
+
   it("reads text and token usage", () => {
     expect(parseOpencodeEvent('{"type":"text","part":{"text":"banana"}}')).toEqual({
       type: "text",

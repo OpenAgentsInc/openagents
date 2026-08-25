@@ -35,6 +35,16 @@ export type CoderTaskId = string;
  */
 export type CoderTaskStatus = "pending" | "running" | "completed" | "failed" | "stopped";
 
+/** Optional metadata for richer display of a tool activity. */
+export interface CoderToolActivityMeta {
+  /** Inclusive byte/character range for a file read or write. */
+  readonly range?: { readonly start: number; readonly end: number };
+  /** Size of the data read or written, in bytes or characters. */
+  readonly size?: number;
+  /** Number of matches for a search tool. */
+  readonly hitCount?: number;
+}
+
 /** One thing a child did, in the shape a one-line status needs. */
 export interface CoderToolActivity {
   readonly toolName: string;
@@ -44,6 +54,8 @@ export interface CoderToolActivity {
    * then only the tool name is shown.
    */
   readonly target: string | undefined;
+  /** Optional structured display metadata derived from the tool's input and output. */
+  readonly meta?: CoderToolActivityMeta;
 }
 
 /** What a fleet row and a detail view read. Aggregated, never recomputed. */
@@ -355,6 +367,8 @@ function isSameTask(previous: CoderTask, next: CoderTask): boolean {
     previous.progress.toolUseCount === next.progress.toolUseCount &&
     previous.progress.tokenCount === next.progress.tokenCount &&
     previous.progress.lastActivity?.toolName === next.progress.lastActivity?.toolName &&
-    previous.progress.lastActivity?.target === next.progress.lastActivity?.target
+    previous.progress.lastActivity?.target === next.progress.lastActivity?.target &&
+    JSON.stringify(previous.progress.lastActivity?.meta) ===
+      JSON.stringify(next.progress.lastActivity?.meta)
   );
 }

@@ -1065,17 +1065,17 @@ describe("where a running child is shown", () => {
     const previews = rows.slice(childRow + 1, childRow + 4);
     expect(previews).toHaveLength(3);
     const text = previews.join("\n");
-    expect(text).toContain("shell(mix test)");
-    expect(text).toContain("edit(src/b.ts)");
-    expect(text).toContain("bash(pnpm test)");
+    expect(text).toContain("shell: mix test");
+    expect(text).toContain("edit: src/b.ts");
+    expect(text).toContain("bash: pnpm test");
     // Pushed out by the newer work.
-    expect(text).not.toContain("read(src/a.ts)");
-    expect(text).not.toContain("grep(needle)");
+    expect(text).not.toContain("read: src/a.ts");
+    expect(text).not.toContain("grep: needle");
 
     // Newest last, so reading down is reading forward in time.
     const at = (phrase: string) => previews.findIndex((row) => row.includes(phrase));
-    expect(at("bash(pnpm test)")).toBeLessThan(at("edit(src/b.ts)"));
-    expect(at("edit(src/b.ts)")).toBeLessThan(at("shell(mix test)"));
+    expect(at("bash: pnpm test")).toBeLessThan(at("edit: src/b.ts"));
+    expect(at("edit: src/b.ts")).toBeLessThan(at("shell: mix test"));
   });
 
   it("draws no preview until the child has done something", async () => {

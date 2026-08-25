@@ -36,7 +36,12 @@ import { appendFileSync, createWriteStream, mkdirSync } from "node:fs";
 import { runDevinAcp } from "./coder-devin-acp.js";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { CoderTaskId, CoderTaskRegistry, CoderToolActivity } from "./coder-tasks.js";
+import type {
+  CoderTaskId,
+  CoderTaskRegistry,
+  CoderToolActivity,
+  CoderToolActivityMeta,
+} from "./coder-tasks.js";
 
 /** What the console asks for. One shape whether it wants one child or fifteen. */
 export interface DelegationRequest {
@@ -123,6 +128,8 @@ export type DelegateEvent =
       readonly callId: string;
       readonly name: string;
       readonly target: string | undefined;
+      /** Optional display metadata derived from the tool's input and output. */
+      readonly meta?: CoderToolActivityMeta;
     }
   | { readonly type: "text"; readonly value: string }
   | { readonly type: "tokens"; readonly input: number; readonly output: number }
@@ -185,7 +192,8 @@ export function parseOpencodeEvent(line: string): DelegateEvent | undefined {
     const name = stringField(part, "tool") ?? "tool";
     const callId = stringField(part, "callID") ?? `${name}-${String(event["timestamp"] ?? "")}`;
     const state = isRecord(part["state"]) ? part["state"] : undefined;
-    return { type: "tool", callId, name, target: toolTarget(state) };
+    const { target, ...rest } = toolTarget(state);
+    return { type: "tool", callId, name, target, ...rest };
   }
 
   if (type === "text" && part !== undefined) {
@@ -412,23 +420,73 @@ function describeHarnessError(event: Record<string, unknown>): string {
 }
 
 /**
- * What the child was working on.
+ * What the child was working on, plus any display metadata the harness gave.
  *
  * The harness's own title is preferred because it is what the harness chose to
- * show; the input fields are a fallback for tools that set no title. A row that
- * says only `bash` is much less use than one that says the command.
+ * show; the input fields are a fallback for tools that set no title. File
+ * ranges come from `offset`/`limit` or `start`/`end`, and search hit counts come
+ * from the output fields a real opencode harness uses.
  */
-function toolTarget(state: Record<string, unknown> | undefined): string | undefined {
-  if (state === undefined) return undefined;
+type MutableToolMeta = { -readonly [K in keyof CoderToolActivityMeta]: CoderToolActivityMeta[K] };
+
+function toolTarget(
+  state: Record<string, unknown> | undefined,
+): { readonly target: string | undefined; readonly meta?: CoderToolActivityMeta } {
+  if (state === undefined) return { target: undefined };
+
   const title = stringField(state, "title");
-  if (title !== undefined && title.length > 0) return title;
   const input = isRecord(state["input"]) ? state["input"] : undefined;
-  if (input === undefined) return undefined;
-  for (const key of ["filePath", "path", "command", "pattern", "query", "description", "url"]) {
-    const value = stringField(input, key);
-    if (value !== undefined && value.length > 0) return value;
+  const output = isRecord(state["output"]) ? state["output"] : undefined;
+
+  let target: string | undefined;
+  if (title !== undefined && title.length > 0) {
+    target = title;
+  } else if (input !== undefined) {
+    for (const key of ["filePath", "path", "file_path", "file", "command", "pattern", "query", "description", "url"]) {
+      const value = stringField(input, key);
+      if (value !== undefined && value.length > 0) {
+        target = value;
+        break;
+      }
+    }
   }
-  return undefined;
+
+  if (target === undefined) return { target: undefined };
+
+  const meta: MutableToolMeta = {};
+
+  if (input !== undefined) {
+    const offset = numberField(input, "offset");
+    const limit = numberField(input, "limit");
+    const start = numberField(input, "start");
+    const end = numberField(input, "end");
+    if (offset !== undefined && limit !== undefined) {
+      meta.range = { start: offset, end: offset + limit };
+    } else if (start !== undefined && end !== undefined) {
+      meta.range = { start, end };
+    }
+  }
+
+  if (output !== undefined) {
+    const size = numberField(output, "size") ?? numberField(output, "length");
+    if (size !== undefined) meta.size = size;
+
+    const hits =
+      numberField(output, "hits") ??
+      numberField(output, "hitCount") ??
+      numberField(output, "total") ??
+      numberField(output, "totalHits");
+    if (hits !== undefined) {
+      meta.hitCount = hits;
+    } else {
+      const matches = Array.isArray(output["matches"]) ? (output["matches"] as ReadonlyArray<unknown>).length : undefined;
+      const results = Array.isArray(output["results"]) ? (output["results"] as ReadonlyArray<unknown>).length : undefined;
+      if (matches !== undefined) meta.hitCount = matches;
+      else if (results !== undefined) meta.hitCount = results;
+    }
+  }
+
+  return Object.keys(meta).length === 0 ? { target } : { target, meta };
 }
 
 export interface OpencodeHarnessOptions {
@@ -1410,7 +1468,11 @@ export class DelegateFleet {
           } else if (event.type === "tool") {
             if (counted.has(event.callId)) continue;
             counted.add(event.callId);
-            const activity: CoderToolActivity = { toolName: event.name, target: event.target };
+            const activity: CoderToolActivity = {
+              toolName: event.name,
+              target: event.target,
+              ...(event.meta === undefined ? {} : { meta: event.meta }),
+            };
             this.registry.recordToolUse(id, activity);
           } else if (event.type === "tokens") {
             this.registry.recordTokens(id, { input: event.input, output: event.output });

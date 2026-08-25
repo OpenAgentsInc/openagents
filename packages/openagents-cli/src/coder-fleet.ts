@@ -83,6 +83,80 @@ export function activityPhrase(activity: CoderToolActivity): string {
 }
 
 /**
+ * A renderer turns one tool activity into one or more bounded display rows.
+ */
+export type CoderActivityRenderer = (
+  activity: CoderToolActivity,
+  width: number,
+) => ReadonlyArray<string>;
+
+/** Show a shell or command as `name: <command>`, cut to the available width. */
+const shellActivityRenderer: CoderActivityRenderer = (activity, width) => {
+  if (activity.target === undefined) return [activity.toolName];
+  return [cut(`${activity.toolName}: ${activity.target}`, width)];
+};
+
+/** Show a file read or write as `name: <path>:<start>-<end>` or `name: <path> (<size>)`. */
+const fileActivityRenderer: CoderActivityRenderer = (activity, width) => {
+  if (activity.target === undefined) return [activity.toolName];
+  let body = `${activity.toolName}: ${activity.target}`;
+  if (activity.meta?.range !== undefined) {
+    body += `:${activity.meta.range.start}-${activity.meta.range.end}`;
+  } else if (activity.meta?.size !== undefined) {
+    body += ` (${activity.meta.size})`;
+  }
+  return [cut(body, width)];
+};
+
+/** Show a search as `name: <pattern>` plus a hit count. */
+const searchActivityRenderer: CoderActivityRenderer = (activity, width) => {
+  if (activity.target === undefined) return [activity.toolName];
+  const hits = activity.meta?.hitCount;
+  const body =
+    hits === undefined
+      ? `${activity.toolName}: ${activity.target}`
+      : `${activity.toolName}: ${activity.target} (${hits} ${hits === 1 ? "hit" : "hits"})`;
+  return [cut(body, width)];
+};
+
+/**
+ * Tool-name lookup for the row renderer.
+ *
+ * Activity names come from the tools this session declares (shell, openagents,
+ * skill, delegate) and from the child harnesses that emit them (bash, read,
+ * write, edit, grep, search, repo_grep). Each name is mapped to the renderer
+ * that best shows its argument.
+ */
+export const activityRenderers: Readonly<Record<string, CoderActivityRenderer>> = Object.freeze({
+  shell: shellActivityRenderer,
+  bash: shellActivityRenderer,
+  read: fileActivityRenderer,
+  write: fileActivityRenderer,
+  edit: fileActivityRenderer,
+  search: searchActivityRenderer,
+  grep: searchActivityRenderer,
+  repo_grep: searchActivityRenderer,
+});
+
+/**
+ * The bounded, multi-row display for a single activity.
+ *
+ * Unregistered tools fall back to the exact one-line `activityPhrase` so the
+ * fleet and the detail view stay readable for anything that shows up later.
+ *
+ * `taskActivity` keeps the existing one-line status phrase; surfaces that want
+ * more than one row can call `activityRows` directly.
+ */
+export function activityRows(
+  activity: CoderToolActivity,
+  width: number,
+): ReadonlyArray<string> {
+  const renderer = activityRenderers[activity.toolName];
+  if (renderer === undefined) return [activityPhrase(activity)];
+  return renderer(activity, Math.max(4, width));
+}
+
+/**
  * The newest activities across a fleet, oldest first, at most `count` of them.
  *
  * Within a child, `recentActivities` is oldest to newest. Across children the

@@ -37,7 +37,7 @@
 
 import { readChildTranscript } from "./coder-child-transcript.js";
 import { summarizeToolCall } from "./coder-tool-summary.js";
-import { activityPhrase, fleetRows, latestActivities, taskActivity } from "./coder-fleet.js";
+import { activityRows, fleetRows, latestActivities, taskActivity } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
 import type { CoderTask, CoderTaskStatus } from "./coder-tasks.js";
@@ -559,7 +559,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           // Three lines of the child's own latest activity, nested under it.
           const activities = latestActivities([task], PREVIEW_ROWS);
           for (const activity of activities) {
-            const text = truncate(activityPhrase(activity), Math.max(4, width - 12));
+            const rendered = activityRows(activity, Math.max(4, width - 12));
+            const text = rendered[0] ?? "";
             rows.push(`${DIM}  → ${text}${RESET}`);
           }
         }
@@ -739,7 +740,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
         for (const activity of activities) {
           if (rows.length + 1 > height) break;
-          rows.push(`${DIM}  → ${truncate(activityPhrase(activity), inner - 4)}${RESET}`);
+          const rendered = activityRows(activity, Math.max(4, inner - 4));
+          const text = rendered[0] ?? "";
+          rows.push(`${DIM}  → ${text}${RESET}`);
         }
 
         rows.push("");
