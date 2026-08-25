@@ -1,15 +1,7 @@
-//! OpenAgents experimental Rust CLI (`openagents-cli`)
-
-pub mod cli;
-pub mod tui;
-pub mod runtime;
-pub mod delegate;
-pub mod tools;
-pub mod acp;
-pub mod interactive;
+//! OpenAgents Rust CLI (`openagents-cli`)
 
 use clap::Parser;
-use cli::Cli;
+use openagents_cli::cli::{self, Cli};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

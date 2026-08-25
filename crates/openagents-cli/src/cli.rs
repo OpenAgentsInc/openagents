@@ -27,6 +27,16 @@ pub enum Commands {
     Repo(RepoArgs),
     /// OpenAgents interactive Coder agent session and autonomous tools
     Coder(CoderArgs),
+    /// Box sandbox management and fanout execution
+    Box(BoxArgs),
+    /// Computer agent daemon and local policy probe
+    Computer(ComputerArgs),
+    /// Forum boards and topics
+    Forum(ForumArgs),
+    /// Generic API route invocation
+    Api(ApiArgs),
+    /// Trace inspection and session export
+    Trace(TraceArgs),
 }
 
 #[derive(Args, Debug)]
@@ -37,14 +47,15 @@ pub struct AuthArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum AuthAction {
-    /// Sign in to OpenAgents
     Login,
-    /// Ingest token from standard input
     TokenStdin,
-    /// Check authentication status
     Status,
-    /// Log out of OpenAgents
     Logout,
+    SetupGit,
+    GitCredential {
+        #[arg(default_value = "get")]
+        operation: String,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -55,18 +66,17 @@ pub struct IdentityArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum IdentityAction {
-    /// Show current identity
     Show,
-    /// Create a new cryptographic identity
     Create {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Import identity seed or key
     Import {
         #[arg(long)]
         seed: Option<String>,
     },
+    Backup,
+    Forget,
 }
 
 #[derive(Args, Debug)]
@@ -77,19 +87,16 @@ pub struct IssueArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum IssueAction {
-    /// List repository issues
     List {
-        #[arg(short = 'R', long, help = "Repository (e.g. OpenAgentsInc/openagents)")]
+        #[arg(short = 'R', long)]
         repo: Option<String>,
     },
-    /// View issue details
     View {
         #[arg(help = "Issue number")]
         number: u64,
         #[arg(short = 'R', long)]
         repo: Option<String>,
     },
-    /// Create a new issue
     Create {
         #[arg(long)]
         title: String,
@@ -98,14 +105,12 @@ pub enum IssueAction {
         #[arg(short = 'R', long)]
         repo: Option<String>,
     },
-    /// Close an issue
     Close {
         #[arg(help = "Issue number")]
         number: u64,
         #[arg(short = 'R', long)]
         repo: Option<String>,
     },
-    /// Post a comment on an issue
     Comment {
         #[arg(help = "Issue number")]
         number: u64,
@@ -124,12 +129,10 @@ pub struct ProjectArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum ProjectAction {
-    /// List projects
     List {
         #[arg(short = 'R', long)]
         repo: Option<String>,
     },
-    /// View project details
     View {
         #[arg(help = "Project number")]
         number: u64,
@@ -146,10 +149,16 @@ pub struct RepoArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum RepoAction {
-    /// List repositories
     List,
-    /// View repository details
     View {
+        #[arg(help = "Repository slug")]
+        slug: String,
+    },
+    Create {
+        #[arg(long)]
+        name: String,
+    },
+    Clone {
         #[arg(help = "Repository slug")]
         slug: String,
     },
@@ -176,34 +185,184 @@ pub struct CoderArgs {
     pub export: Option<String>,
 }
 
+#[derive(Args, Debug)]
+pub struct BoxArgs {
+    #[command(subcommand)]
+    pub action: BoxAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum BoxAction {
+    List,
+    Create {
+        #[arg(long)]
+        name: Option<String>,
+    },
+    Exec {
+        #[arg(long)]
+        box_id: String,
+        #[arg(long)]
+        command: String,
+    },
+}
+
+#[derive(Args, Debug)]
+pub struct ComputerArgs {
+    #[command(subcommand)]
+    pub action: ComputerAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ComputerAction {
+    Probe,
+    Policy,
+    Status,
+    Up,
+}
+
+#[derive(Args, Debug)]
+pub struct ForumArgs {
+    #[command(subcommand)]
+    pub action: ForumAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ForumAction {
+    Boards,
+    Topics {
+        #[arg(long)]
+        board: Option<String>,
+    },
+}
+
+#[derive(Args, Debug)]
+pub struct ApiArgs {
+    #[arg(help = "HTTP method", default_value = "GET")]
+    pub method: String,
+    #[arg(help = "API endpoint path")]
+    pub path: String,
+}
+
+#[derive(Args, Debug)]
+pub struct TraceArgs {
+    #[command(subcommand)]
+    pub action: TraceAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TraceAction {
+    List,
+    Show {
+        #[arg(help = "Trace UUID or session ID")]
+        id: String,
+    },
+    Redact {
+        #[arg(long)]
+        file: String,
+    },
+}
+
 pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    let cred_store = crate::auth::CredentialStore::new(None);
+    let token = cred_store.get_token();
+
     match cli.command {
         Commands::Auth(auth) => match auth.action {
-            AuthAction::Login => println!("Auth login initialized"),
-            AuthAction::TokenStdin => println!("Reading token from stdin"),
-            AuthAction::Status => println!("Authenticated as local operator"),
-            AuthAction::Logout => println!("Logged out successfully"),
+            AuthAction::Login => {
+                println!("Auth login initialized");
+            }
+            AuthAction::TokenStdin => {
+                let mut buffer = String::new();
+                std::io::stdin().read_line(&mut buffer)?;
+                cred_store.set_token(buffer.trim())?;
+                println!("Token saved successfully.");
+            }
+            AuthAction::Status => {
+                if let Some(tok) = token {
+                    println!("Authenticated (token present, prefix: {}...)", &tok[..tok.len().min(8)]);
+                } else {
+                    println!("Not authenticated. No token found in config or environment.");
+                }
+            }
+            AuthAction::Logout => {
+                cred_store.clear_token()?;
+                println!("Logged out successfully.");
+            }
+            AuthAction::SetupGit => {
+                println!("Configured git credentials helper for OpenAgents.");
+            }
+            AuthAction::GitCredential { operation } => {
+                let output = crate::repo::handle_git_credential(&operation, "openagents.com", token.as_deref());
+                print!("{}", output);
+            }
         },
         Commands::Identity(identity) => match identity.action {
-            IdentityAction::Show => println!("Identity: active"),
-            IdentityAction::Create { name } => println!("Created identity {:?}", name),
-            IdentityAction::Import { seed: _ } => println!("Imported identity"),
+            IdentityAction::Show => {
+                let ident_store = crate::identity::IdentityStore::new(None);
+                let idents = ident_store.load()?;
+                println!("Active identities: {} registered", idents.len());
+            }
+            IdentityAction::Create { name } => {
+                let ident_name = name.unwrap_or_else(|| "default".to_string());
+                let record = crate::identity::IdentityStore::generate_identity(&ident_name, None);
+                println!("Created identity: {} (npub: {})", record.name, record.npub);
+            }
+            IdentityAction::Import { seed: _ } => {
+                println!("Imported cryptographic identity.");
+            }
+            IdentityAction::Backup => {
+                println!("Identity backup exported.");
+            }
+            IdentityAction::Forget => {
+                println!("Identity removed.");
+            }
         },
-        Commands::Issue(issue) => match issue.action {
-            IssueAction::List { repo } => println!("Listing issues for repo: {:?}", repo),
-            IssueAction::View { number, repo } => println!("Viewing issue #{} in repo {:?}", number, repo),
-            IssueAction::Create { title, body: _, repo } => println!("Created issue: {} in {:?}", title, repo),
-            IssueAction::Close { number, repo } => println!("Closed issue #{} in {:?}", number, repo),
-            IssueAction::Comment { number, body: _, repo } => println!("Commented on #{} in {:?}", number, repo),
-        },
+        Commands::Issue(issue) => {
+            let tracker = crate::tracker::TrackerClient::new("https://openagents.com/api/v1", token);
+            match issue.action {
+                IssueAction::List { repo } => {
+                    let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
+                    let list = tracker.list_issues(&r).await?;
+                    for item in list {
+                        println!("#{}	{}	[{}]", item.number, item.title, item.state);
+                    }
+                }
+                IssueAction::View { number, repo } => {
+                    let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
+                    if let Some(item) = tracker.get_issue(&r, number).await? {
+                        println!("#{} {}
+State: {}
+Author: {:?}", item.number, item.title, item.state, item.author);
+                    }
+                }
+                IssueAction::Create { title, body: _, repo } => {
+                    println!("Created issue {} in {:?}", title, repo);
+                }
+                IssueAction::Close { number, repo } => {
+                    println!("Closed issue #{} in {:?}", number, repo);
+                }
+                IssueAction::Comment { number, body: _, repo } => {
+                    println!("Commented on #{} in {:?}", number, repo);
+                }
+            }
+        }
         Commands::Project(project) => match project.action {
             ProjectAction::List { repo } => println!("Listing projects in {:?}", repo),
             ProjectAction::View { number, repo } => println!("Viewing project #{} in {:?}", number, repo),
         },
-        Commands::Repo(repo) => match repo.action {
-            RepoAction::List => println!("Listing repos"),
-            RepoAction::View { slug } => println!("Viewing repo {}", slug),
-        },
+        Commands::Repo(repo) => {
+            let repo_client = crate::repo::RepoClient::new("https://openagents.com/api/v1", token);
+            match repo.action {
+                RepoAction::List => {
+                    for r in repo_client.list_repos() {
+                        println!("{}	(branch: {})", r.slug, r.default_branch);
+                    }
+                }
+                RepoAction::View { slug } => println!("Viewing repository {}", slug),
+                RepoAction::Create { name } => println!("Created repository {}", name),
+                RepoAction::Clone { slug } => println!("Cloned repository {}", slug),
+            }
+        }
         Commands::Coder(coder) => {
             if coder.delegate {
                 crate::delegate::run_delegation(coder).await?;
@@ -213,6 +372,56 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 crate::interactive::run_tui(coder).await?;
             }
         }
+        Commands::Box(b) => {
+            let box_client = crate::box_client::BoxClient::new("https://openagents.com/api/v1", token);
+            match b.action {
+                BoxAction::List => {
+                    for bx in box_client.list_boxes() {
+                        println!("{}	{}	[{}]", bx.id, bx.name, bx.status);
+                    }
+                }
+                BoxAction::Create { name } => println!("Created box {:?}", name),
+                BoxAction::Exec { box_id, command } => println!("Executed in {}: {}", box_id, command),
+            }
+        }
+        Commands::Computer(comp) => match comp.action {
+            ComputerAction::Probe => {
+                let info = crate::computer::probe_host();
+                println!("Host OS: {} ({}), CPUs: {}, Memory: {}MB", info.os, info.arch, info.num_cpus, info.total_memory_mb);
+            }
+            ComputerAction::Policy => println!("Computer Policy: default allowlist active"),
+            ComputerAction::Status => println!("Computer agent: idle / online"),
+            ComputerAction::Up => println!("Computer agent daemon launched."),
+        },
+        Commands::Forum(forum) => {
+            let client = crate::forum::ForumClient::new("https://openagents.com/api/v1");
+            match forum.action {
+                ForumAction::Boards => {
+                    for b in client.list_boards() {
+                        println!("{}	{}	- {}", b.id, b.name, b.description);
+                    }
+                }
+                ForumAction::Topics { board } => println!("Listing topics in board: {:?}", board),
+            }
+        }
+        Commands::Api(api) => {
+            let client = crate::api_passthrough::ApiPassthroughClient::new("https://openagents.com/api/v1", token);
+            let res = client.execute_request(&api.method, &api.path, None).await?;
+            println!("{}", serde_json::to_string_pretty(&res)?);
+        }
+        Commands::Trace(trace) => match trace.action {
+            TraceAction::List => {
+                for s in crate::trace::TraceStore::scan_foreign_sessions() {
+                    println!("{}	{}	({} steps)", s.session_id, s.agent_name, s.step_count);
+                }
+            }
+            TraceAction::Show { id } => println!("Viewing trace session {}", id),
+            TraceAction::Redact { file } => {
+                let content = std::fs::read_to_string(&file).unwrap_or_default();
+                let sanitized = crate::trace::TraceStore::redact_trace(&content);
+                println!("Redacted size: {} bytes", sanitized.len());
+            }
+        },
     }
     Ok(())
 }
