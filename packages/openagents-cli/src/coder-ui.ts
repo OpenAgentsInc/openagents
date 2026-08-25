@@ -347,8 +347,17 @@ function splashLines(width: number, height: number): ReadonlyArray<string> {
 
   /** Wrap inner rows in the frame and center the block in the viewport. */
   const framed = (inner: ReadonlyArray<string>, innerWidth: number): ReadonlyArray<string> => {
+    const title = " OpenAgents ";
+    let topBorder: string;
+    if (innerWidth >= title.length + 2) {
+      const leftDashes = Math.max(0, Math.floor((innerWidth - title.length) / 2));
+      const rightDashes = Math.max(0, innerWidth - title.length - leftDashes);
+      topBorder = `${DIM}┌${"─".repeat(leftDashes)}${RESET}${title}${DIM}${"─".repeat(rightDashes)}┐${RESET}`;
+    } else {
+      topBorder = `${DIM}┌${"─".repeat(innerWidth)}┐${RESET}`;
+    }
     const rows = [
-      `${DIM}┌${"─".repeat(innerWidth)}┐${RESET}`,
+      topBorder,
       ...inner,
       `${DIM}└${"─".repeat(innerWidth)}┘${RESET}`,
     ];

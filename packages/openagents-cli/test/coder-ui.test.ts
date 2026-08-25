@@ -985,6 +985,7 @@ describe("the splash before the first message", () => {
     // says what to do next without repeating what the status line says.
     expect(joined).toContain("██████╗");
     expect(joined).toContain("┌");
+    expect(joined).toContain("OpenAgents");
     expect(joined).toContain("└");
     expect(joined).toMatch(/[01]{20}/);
     expect(joined).toContain("type a prompt below to begin");
