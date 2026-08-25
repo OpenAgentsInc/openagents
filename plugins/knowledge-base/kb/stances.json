@@ -1,0 +1,71 @@
+[
+  {
+    "id": "earning-bitcoin",
+    "title": "Earning bitcoin or money on OpenAgents",
+    "questions": [
+      "how can I earn bitcoin with this system",
+      "how do I make money here",
+      "can I get paid sats for work",
+      "how do payouts and rewards work",
+      "monetize my agent or plugin"
+    ],
+    "state": "built and specified, deliberately parked; on the near-to-medium-term roadmap",
+    "answer": "Earning is real history here, not vapor: the network ran a full plugin economy in 2024 (per-use sats pricing, an agent store with revenue sharing, episodes 048-102), later paid sats bounties for merged work, proved Lightning MPP settlement with public receipts, and built forum tipping end to end (Bolt 12 and LNURL destinations, settled-tip ranking). All of it is deliberately parked right now: tipping is disabled in the interface, the plugin manifest's pricing fields are reserved and empty, and no payout lane is live. The honest answer today is that there is nothing you can do yet to earn - and that the rails exist, the history is on the forum, and re-enabling the economy is on the near-to-medium-term roadmap.",
+    "sources": ["forum board artanis (Bitcoin accounting and rewards)", "docs/forum-bitcoin-tips.md", "docs/2026-08-24-triage-and-plugin-model-assessment.md section 4"],
+    "date": "2026-08-25"
+  },
+  {
+    "id": "threads",
+    "title": "Threads: the unit of agent work",
+    "questions": [
+      "what is a thread",
+      "how do coder sessions work",
+      "what is an inference grant",
+      "where do my coder transcripts go"
+    ],
+    "state": "live",
+    "answer": "A thread is the unit of agent work: opening one (POST /api/v1/threads) returns a budgeted inference grant, the grant is the bearer for the OpenAI-compatible inference proxy, and the session reports its transcript back as append-only thread events that the web /threads pages render live. Accounts hold a bounded number of open threads; a local Ollama session still records a transcript-only thread so everything rehydrates from the server.",
+    "sources": ["docs/2026-08-23-thread-primitive-audit.md", "priv/docs/cli-api.md"],
+    "date": "2026-08-25"
+  },
+  {
+    "id": "tipping",
+    "title": "Forum tipping status",
+    "questions": [
+      "can I tip a post",
+      "why is tipping disabled",
+      "how do forum tips work"
+    ],
+    "state": "built, currently disabled",
+    "answer": "Forum tipping is fully built - recipients attach a Bolt 12 offer, LNURL, or on-chain destination they control, the forum never holds keys, and settled tips feed topic ranking - but the payment service is currently disabled, so the tip controls are hidden and any attempt answers that tipping is not enabled yet. It returns when the payment service does.",
+    "sources": ["docs/forum-bitcoin-tips.md"],
+    "date": "2026-08-25"
+  },
+  {
+    "id": "plugins",
+    "title": "The plugin and capability system",
+    "questions": [
+      "how do plugins work",
+      "what are capabilities",
+      "can I write a plugin for the coder",
+      "how does the coder discover tools"
+    ],
+    "state": "live",
+    "answer": "A capability is a WASM module plus a manifest: content-addressed by SHA-256 digest, sandboxed with declared read-only mounts and no network, typed input and output schemas, loaded from a digest-pinned catalog with auto-approval. Discovery is the harness's job: every prompt is scored against the catalog, clear matches auto-load so the model simply sees the right tool, and the capability tool remains for explicit search. Authoring one is a Rust function on the owned PDK, a manifest, and a checked-in digest.",
+    "sources": ["plugins/README.md", "docs/2026-08-24-triage-and-plugin-model-assessment.md", "docs/2026-08-25-plugin-harvest-targets.md"],
+    "date": "2026-08-25"
+  },
+  {
+    "id": "coder-tiers",
+    "title": "Coder tiers, not model names",
+    "questions": [
+      "which model does the coder use",
+      "what is coder auto or coder pro",
+      "how do I switch models in the coder"
+    ],
+    "state": "live",
+    "answer": "The coder never shows vendor model names: a session is OpenAgents Coder, and what varies is the tier - Coder Auto (the server picks the lane per call), Coder Flash, Coder Pro, and Coder Local (a local model server answers). Shift+tab cycles the tier; tab cycles reasoning effort. Vendor identifiers survive only in records and exports.",
+    "sources": ["INVARIANTS.md, Coder Model Naming"],
+    "date": "2026-08-25"
+  }
+]

@@ -1,0 +1,126 @@
+{
+  "manifest_version": 1,
+  "name": "git_facts",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Report the git state of this repository: current branch, recent commits and history, and which files changed, are untracked, or are missing. It reads .git plumbing files directly — HEAD, refs/heads, packed-refs, the reflog, and a version-2 index — never a git binary, the object store, or packfiles. Its honest limits: history is reflog-based (only as far back as .git/logs/HEAD reaches), changed files are size-and-mtime candidates rather than content-hashed verdicts, index versions above 2 report counts but not per-entry facts, and there is no blame. Anything skipped or degraded is named in notes.",
+  "artifact": {
+    "path": "git_facts.wasm",
+    "digest": "sha256:ea5913e66d237a647d7cbd34b15641bc8478ccfbcefce82b57d46a680f9a1f8a"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["head", "branches", "log", "status"]
+          },
+          "description": "Which facts to report. All four when omitted."
+        },
+        "max_log": {
+          "type": "integer",
+          "description": "Most reflog entries to return. Default 15, capped at 100."
+        },
+        "max_paths": {
+          "type": "integer",
+          "description": "Most paths listed per status category. Default 20, capped at 100."
+        },
+        "max_walk": {
+          "type": "integer",
+          "description": "Most workdir files statted by the status walk. Default 5000, capped at 20000."
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "head": {
+          "type": "object",
+          "properties": {
+            "branch": { "type": "string" },
+            "detached": {
+              "type": "string",
+              "description": "The commit id HEAD holds directly, when detached."
+            }
+          }
+        },
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "id": { "type": "string" }
+            }
+          }
+        },
+        "log": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "at_ms": { "type": "integer" },
+              "message": { "type": "string" }
+            }
+          },
+          "description": "Recent history from the HEAD reflog, newest first."
+        },
+        "status": {
+          "type": "object",
+          "properties": {
+            "tracked": { "type": "integer" },
+            "changed_candidates": {
+              "type": "object",
+              "properties": {
+                "count": { "type": "integer" },
+                "paths": { "type": "array", "items": { "type": "string" } }
+              },
+              "description": "Tracked files whose size or mtime differs from the index. Candidates, not verdicts: content was never hashed."
+            },
+            "untracked": {
+              "type": "object",
+              "properties": {
+                "count": { "type": "integer" },
+                "paths": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "missing": {
+              "type": "object",
+              "properties": {
+                "count": { "type": "integer" },
+                "paths": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "walk_truncated": { "type": "boolean" },
+            "comparison": {
+              "type": "string",
+              "description": "Always size_and_mtime_only."
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Everything honestly skipped or degraded, named."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [
+      { "path": "${workspace}", "readonly": true }
+    ],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 128
+  }
+}

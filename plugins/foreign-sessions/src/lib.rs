@@ -1,7 +1,9 @@
 //! Foreign coding-agent session discovery, as a `packet-v0` guest plugin.
 //!
 //! The scanner half of OpenAgentsInc/openagents.com#198: given read-only
-//! mounts over `~/.claude` (mount 0) and `~/.codex` (mount 1), report
+//! mounts over `~/.claude` (mount 0), `~/.codex` (mount 1), the opencode
+//! state directory (mount 2, SQLite-backed), and Devin's ACP message
+//! databases (mount 3, SQLite-backed; OpenAgentsInc/openagents#48), report
 //! recent session *metadata* — source, session id, working directory,
 //! mtime, size, record count — and nothing else. Resuming a session is
 //! deliberately not here; this plugin only says what exists.
@@ -20,12 +22,38 @@
 
 #[cfg(feature = "entry")]
 use openagents_pdk::plugin_entry;
-use openagents_pdk::{list_mounted_dir, read_mounted_file, MountDirListing, Refusal, RefusalCode};
+#[cfg(feature = "entry")]
+use openagents_pdk::{list_mounted_dir, read_mounted_file, read_mounted_file_range};
+use openagents_pdk::{MountDirListing, Refusal, RefusalCode};
 use serde::{Deserialize, Serialize};
 
+pub mod sqlite;
+
 /// Mount indices, fixed by the order `manifest.json` declares the mounts.
+/// This order is a frozen contract: 0 and 1 are forever `~/.claude` and
+/// `~/.codex`; new stores only ever append.
 const CLAUDE_MOUNT: u32 = 0;
 const CODEX_MOUNT: u32 = 1;
+/// Mount 2: `~/.local/share/opencode`, whose `opencode.db` SQLite file
+/// holds every opencode session.
+const OPENCODE_MOUNT: u32 = 2;
+/// Mount 3: Devin's per-session ACP message databases
+/// (`~/Library/Application Support/devin/User/acp-messages`).
+const DEVIN_MOUNT: u32 = 3;
+
+/// The opencode store's database file, relative to its mount root. Sessions
+/// found inside it are reported with the path convention
+/// `opencode.db#<session-id>`, since many sessions share the one file.
+const OPENCODE_DB: &str = "opencode.db";
+/// Page reads allowed while scanning the opencode session table.
+const OPENCODE_SCAN_PAGE_BUDGET: usize = 16_384;
+/// Per-row payload cap for session rows (`summary_diffs` can be large and
+/// sits before `time_updated` on disk).
+const OPENCODE_ROW_CAP: usize = 262_144;
+/// Page reads allowed per Devin database while reading its `meta` table.
+const DEVIN_META_PAGE_BUDGET: usize = 64;
+/// Most Devin databases opened for metadata in one scan.
+const MAX_DEVIN_DBS: usize = 100;
 
 const DEFAULT_MAX_AGE_DAYS: f64 = 30.0;
 const DEFAULT_LIMIT: usize = 50;
@@ -82,6 +110,15 @@ pub struct Session {
     /// the directory listing's metadata is known.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub metadata_truncated: bool,
+    /// The session's title, where the store records one (opencode, devin).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// True when the store's SQLite write-ahead log held bytes at scan
+    /// time. This scanner never parses the WAL, so rows not yet
+    /// checkpointed — the freshest activity — may be missing from what it
+    /// reports; the flag discloses that instead of staying silent.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub wal_unread: bool,
 }
 
 #[derive(Debug, Default, Serialize, PartialEq, Eq)]
@@ -119,6 +156,15 @@ pub struct Output {
 pub trait Host {
     fn list(&self, mount_index: u32, path: &str) -> Result<MountDirListing, Refusal>;
     fn read(&self, path: &str) -> Result<Vec<u8>, Refusal>;
+    /// Read a bounded byte range of a mounted file — the random access the
+    /// SQLite-backed stores (opencode, devin) need. Defaulted to a refusal
+    /// so hosts written before this method keep compiling unchanged; such a
+    /// host simply cannot serve the SQLite-backed sources, and their scans
+    /// fail soft.
+    fn read_range(&self, path: &str, offset: u64, max_bytes: u32) -> Result<Vec<u8>, Refusal> {
+        let _ = (path, offset, max_bytes);
+        Err(Refusal::unsupported("this host has no bounded range read"))
+    }
 }
 
 #[cfg(feature = "entry")]
@@ -131,6 +177,9 @@ impl Host for RealHost {
     }
     fn read(&self, path: &str) -> Result<Vec<u8>, Refusal> {
         read_mounted_file(path)
+    }
+    fn read_range(&self, path: &str, offset: u64, max_bytes: u32) -> Result<Vec<u8>, Refusal> {
+        read_mounted_file_range(path, offset, max_bytes)
     }
 }
 
@@ -209,6 +258,9 @@ fn stem(name: &str) -> String {
 
 /// The whole scan, over any [`Host`]. Total: every path returns an output.
 pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
+    // `claude` and `codex` are the defaults; the SQLite-backed stores are
+    // scanned when asked for by name, so callers and dependents written
+    // against the two-source contract see exactly what they always did.
     let sources = match &input.sources {
         None => vec!["claude", "codex"],
         Some(named) => {
@@ -217,9 +269,11 @@ pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
                 match name.as_str() {
                     "claude" => sources.push("claude"),
                     "codex" => sources.push("codex"),
+                    "opencode" => sources.push("opencode"),
+                    "devin" => sources.push("devin"),
                     other => {
                         return Err(Refusal::unsupported(format!(
-                            "unknown source `{other}`; this scanner knows `claude` and `codex`"
+                            "unknown source `{other}`; this scanner knows `claude`, `codex`, `opencode`, and `devin`"
                         )))
                     }
                 }
@@ -244,6 +298,12 @@ pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
         read_budget_exhausted: false,
     };
     let mut candidates: Vec<Candidate> = Vec::new();
+    // Sessions from the SQLite-backed stores, fully described at listing
+    // time; filtered and merged with the file-backed picks at the end.
+    let mut extra: Vec<Session> = Vec::new();
+    // Devin databases found by listing, opened for metadata only after the
+    // age cutoff has pruned them.
+    let mut devin_cands: Vec<DevinCandidate> = Vec::new();
     let mut dir_lists = 0usize;
 
     // A listing whose store directory is absent means the source is not on
@@ -375,6 +435,67 @@ pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
                     }
                 }
             }
+            "opencode" => {
+                // ~/.local/share/opencode/opencode.db — one SQLite file
+                // holding every session; each row of its `session` table is
+                // one session, reported as `opencode.db#<id>`.
+                let Some(root) = list(&mut out, OPENCODE_MOUNT, "") else {
+                    out.missing_sources.push("opencode");
+                    continue;
+                };
+                let Some(db) =
+                    root.entries.iter().find(|e| e.name == OPENCODE_DB && e.kind == "file")
+                else {
+                    if root.entries.iter().any(|e| e.name == OPENCODE_DB && e.kind == "symlink") {
+                        out.skipped.symlinked += 1;
+                    }
+                    out.missing_sources.push("opencode");
+                    continue;
+                };
+                let wal_unread = has_live_wal(&root, OPENCODE_DB);
+                out.scanned_files += 1;
+                let file = sqlite::MountedFile { host, path: OPENCODE_DB.to_string() };
+                match sqlite::Sqlite::open(&file, OPENCODE_SCAN_PAGE_BUDGET) {
+                    Err(_) => out.skipped.malformed += 1,
+                    Ok(mut reader) => {
+                        match opencode_sessions(&mut reader, wal_unread, db.size) {
+                            Ok((sessions, malformed)) => {
+                                out.skipped.malformed += malformed;
+                                extra.extend(sessions);
+                            }
+                            Err(_) => out.skipped.malformed += 1,
+                        }
+                        if reader.budget_exhausted {
+                            out.scan_truncated = true;
+                        }
+                    }
+                }
+            }
+            "devin" => {
+                // Devin's per-session ACP message databases: one `<uuid>.db`
+                // SQLite file per session in the mount root. Listing names
+                // the candidates; each survivor of the age cutoff is opened
+                // below for its `meta` table (title, message count).
+                let Some(root) = list(&mut out, DEVIN_MOUNT, "") else {
+                    out.missing_sources.push("devin");
+                    continue;
+                };
+                for entry in &root.entries {
+                    if entry.kind == "symlink" {
+                        out.skipped.symlinked += 1;
+                        continue;
+                    }
+                    if entry.kind != "file" || !entry.name.ends_with(".db") {
+                        continue;
+                    }
+                    devin_cands.push(DevinCandidate {
+                        name: entry.name.clone(),
+                        mtime_ms: entry.mtime_ms,
+                        size_bytes: entry.size,
+                        wal_unread: has_live_wal(&root, &entry.name),
+                    });
+                }
+            }
             _ => unreachable!("sources were validated above"),
         }
     }
@@ -382,11 +503,58 @@ pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
     // The age cutoff: `now` is the caller's clock, or the newest thing seen.
     let now_ms = input
         .now_ms
-        .or_else(|| candidates.iter().map(|c| c.mtime_ms).max())
+        .or_else(|| {
+            candidates
+                .iter()
+                .map(|c| c.mtime_ms)
+                .chain(extra.iter().map(|s| s.mtime_ms))
+                .chain(devin_cands.iter().map(|c| c.mtime_ms))
+                .max()
+        })
         .unwrap_or(0);
     let cutoff_ms = now_ms - (max_age_days * MS_PER_DAY) as i64;
     candidates.retain(|c| c.mtime_ms >= cutoff_ms);
     candidates.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms).then(a.path.cmp(&b.path)));
+
+    // Prune the SQLite-backed sessions by the same cutoff and cwd filter. A
+    // Devin session's cwd is not recorded locally, so a cwd filter excludes
+    // Devin rather than guessing — the same posture as an unreadable Codex
+    // candidate's.
+    extra.retain(|s| s.mtime_ms >= cutoff_ms);
+    if let Some(filter) = input.cwd_filter.as_deref() {
+        extra.retain(|s| match &s.cwd {
+            Some(cwd) => cwd.contains(filter) || dashed(cwd).contains(&dashed(filter)),
+            None => false,
+        });
+        devin_cands.clear();
+    }
+    devin_cands.retain(|c| c.mtime_ms >= cutoff_ms);
+    devin_cands.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms).then(a.name.cmp(&b.name)));
+    devin_cands.truncate(MAX_DEVIN_DBS.min(limit));
+    for cand in &devin_cands {
+        out.scanned_files += 1;
+        let file = sqlite::MountedFile { host, path: cand.name.clone() };
+        let meta = sqlite::Sqlite::open(&file, DEVIN_META_PAGE_BUDGET)
+            .and_then(|mut reader| devin_meta(&mut reader));
+        let (title, record_count, metadata_truncated) = match meta {
+            Ok((title, count)) => (title, count, false),
+            // The listing still describes the session; say the rest is unknown.
+            Err(_) => (None, None, true),
+        };
+        extra.push(Session {
+            source: "devin",
+            session_id: cand.name.strip_suffix(".db").unwrap_or(&cand.name).to_string(),
+            path: cand.name.clone(),
+            cwd: None,
+            project_dir: None,
+            mtime_ms: cand.mtime_ms,
+            size_bytes: cand.size_bytes,
+            record_count,
+            metadata_truncated,
+            title,
+            wal_unread: cand.wal_unread,
+        });
+    }
 
     let dashed_filter = input.cwd_filter.as_deref().map(dashed);
     let mut reads = 0usize;
@@ -436,6 +604,8 @@ pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
                     size_bytes: candidate.size_bytes,
                     record_count: Some(record_count),
                     metadata_truncated: false,
+                    title: None,
+                    wal_unread: false,
                 });
             }
             Err(refusal) if refusal.code == RefusalCode::FileTooLarge => {
@@ -457,6 +627,8 @@ pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
                     size_bytes: candidate.size_bytes,
                     record_count: None,
                     metadata_truncated: true,
+                    title: None,
+                    wal_unread: false,
                 });
             }
             Err(_) => {
@@ -465,7 +637,137 @@ pub fn scan(host: &dyn Host, input: &Input) -> Result<Output, Refusal> {
         }
     }
 
+    // Merge the SQLite-backed sessions with the file-backed picks: one
+    // newest-first list, bounded by the same limit.
+    if !extra.is_empty() {
+        out.sessions.extend(extra);
+        out.sessions
+            .sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms).then(a.path.cmp(&b.path)));
+        out.sessions.truncate(limit);
+    }
+
     Ok(out)
+}
+
+/// One Devin database the listing pass found, before it is opened.
+struct DevinCandidate {
+    name: String,
+    mtime_ms: i64,
+    size_bytes: u64,
+    wal_unread: bool,
+}
+
+/// True when `<db_name>-wal` sits beside a database with bytes in it: rows
+/// not yet checkpointed may exist that the reader cannot see.
+fn has_live_wal(listing: &MountDirListing, db_name: &str) -> bool {
+    let wal_name = format!("{db_name}-wal");
+    listing
+        .entries
+        .iter()
+        .any(|e| e.name == wal_name && e.kind == "file" && e.size > 0)
+}
+
+/// Every row of an opencode database's `session` table as a [`Session`],
+/// plus how many rows were skipped as malformed. Column positions come from
+/// the table's own `CREATE TABLE` statement — drizzle orders columns by
+/// migration history, so the order is derived, never assumed.
+fn opencode_sessions(
+    reader: &mut sqlite::Sqlite,
+    wal_unread: bool,
+    db_size: u64,
+) -> Result<(Vec<Session>, usize), Refusal> {
+    let master = reader.master()?;
+    let table = master
+        .iter()
+        .find(|e| e.kind == "table" && e.name == "session")
+        .ok_or_else(|| Refusal::unsupported("the opencode database has no session table"))?;
+    let column = |name: &str| table.columns.iter().position(|c| c == name);
+    let (Some(id_at), Some(dir_at), Some(updated_at)) =
+        (column("id"), column("directory"), column("time_updated"))
+    else {
+        return Err(Refusal::unsupported(
+            "the opencode session table is missing expected columns",
+        ));
+    };
+    let title_at = column("title");
+
+    let mut sessions = Vec::new();
+    let mut malformed = 0usize;
+    let rootpage = table.rootpage;
+    let outcome = reader.scan_table(rootpage, OPENCODE_ROW_CAP, &mut |_rowid, values| {
+        let id = values.get(id_at).and_then(sqlite::Value::as_str);
+        let mtime = values.get(updated_at).and_then(sqlite::Value::as_int);
+        let (Some(id), Some(mtime)) = (id, mtime) else {
+            malformed += 1;
+            return true;
+        };
+        let cwd = values
+            .get(dir_at)
+            .and_then(sqlite::Value::as_str)
+            .map(str::to_string);
+        let title = title_at
+            .and_then(|at| values.get(at))
+            .and_then(sqlite::Value::as_str)
+            .map(str::to_string);
+        sessions.push(Session {
+            source: "opencode",
+            session_id: id.to_string(),
+            path: format!("{OPENCODE_DB}#{id}"),
+            cwd,
+            project_dir: None,
+            mtime_ms: mtime,
+            size_bytes: db_size,
+            record_count: None,
+            metadata_truncated: false,
+            title,
+            wal_unread,
+        });
+        true
+    });
+    match outcome {
+        Ok(()) => {}
+        // An exhausted budget keeps what was gathered; the caller marks the
+        // scan truncated. Anything else is real corruption.
+        Err(_) if reader.budget_exhausted => {}
+        Err(refusal) => return Err(refusal),
+    }
+    Ok((sessions, malformed))
+}
+
+/// A Devin database's `meta` table: the session title (from the `info`
+/// JSON) and its recorded message count.
+fn devin_meta(reader: &mut sqlite::Sqlite) -> Result<(Option<String>, Option<usize>), Refusal> {
+    let master = reader.master()?;
+    let table = master
+        .iter()
+        .find(|e| e.kind == "table" && e.name == "meta")
+        .ok_or_else(|| Refusal::unsupported("the devin database has no meta table"))?;
+    let column = |name: &str| table.columns.iter().position(|c| c == name);
+    let (Some(key_at), Some(value_at)) = (column("key"), column("value")) else {
+        return Err(Refusal::unsupported("the devin meta table is missing expected columns"));
+    };
+    let mut title = None;
+    let mut count = None;
+    reader.scan_table(table.rootpage, 65_536, &mut |_rowid, values| {
+        let key = values.get(key_at).and_then(sqlite::Value::as_str);
+        let value = values.get(value_at).and_then(sqlite::Value::as_str);
+        let (Some(key), Some(value)) = (key, value) else {
+            return true;
+        };
+        match key {
+            "message_count" => count = value.parse::<usize>().ok(),
+            "info" => {
+                title = serde_json::from_str::<serde_json::Value>(value)
+                    .ok()
+                    .and_then(|info| {
+                        info.get("title").and_then(|t| t.as_str()).map(str::to_string)
+                    });
+            }
+            _ => {}
+        }
+        true
+    })?;
+    Ok((title, count))
 }
 
 /// Directory names in a listing, counting symlinks as skipped.

@@ -1,0 +1,112 @@
+{
+  "manifest_version": 1,
+  "name": "repo_map",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Map the structure of this repository or codebase: an outline of files and their functions, classes, and symbols, with definition lookup and reference counts. Use it when asked what a repo contains, where a function or class or symbol is defined, or how often a name is used. The extraction is a heuristic line-based outline — def/class, fn/struct/trait/impl, defmodule/defp, func/type patterns over Python, TypeScript, JavaScript, Rust, Elixir, Go, and Ruby — not a real parse. Read-only and bounded: a fixed skip list (.git, node_modules, _build, deps, target, .elixir_ls, dist, build), a 256 KB per-file bound (larger files are listed with null symbols and counted oversized), capped files and symbols per file, and honest truncation flags.",
+  "artifact": {
+    "path": "repo_map.wasm",
+    "digest": "sha256:7c446e06210a908d53699dbfa453b793208b96a3f81bd408688edcc092624eda"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Subtree to map, relative to the workspace root. The whole workspace when omitted."
+        },
+        "symbol": {
+          "type": "string",
+          "description": "Exact symbol name to look up. Alone: every file and line where a symbol with that name is defined. With count_references: per-file whole-word use counts instead."
+        },
+        "count_references": {
+          "type": "boolean",
+          "description": "With symbol: count whole-word references per file (definition lines excluded) instead of listing definitions."
+        },
+        "max_files": {
+          "type": "integer",
+          "description": "Most source files to visit. Default 500, capped at 2000."
+        },
+        "max_symbols_per_file": {
+          "type": "integer",
+          "description": "Most symbols to report per file. Default 100, capped at 400."
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "description": "Outline mode: one entry per source file.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "language": { "type": "string" },
+              "symbols": {
+                "type": ["array", "null"],
+                "description": "Null when the file was over the per-file byte bound.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string" },
+                    "name": { "type": "string" },
+                    "line": { "type": "integer" },
+                    "parent": { "type": "string" }
+                  }
+                }
+              },
+              "symbols_truncated": { "type": "boolean" }
+            }
+          }
+        },
+        "definitions": {
+          "type": "array",
+          "description": "Definition-lookup mode: every site defining exactly the named symbol.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "kind": { "type": "string" },
+              "line": { "type": "integer" },
+              "parent": { "type": "string" }
+            }
+          }
+        },
+        "references": {
+          "type": "array",
+          "description": "Reference mode: per-file whole-word use counts, definitions excluded.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "count": { "type": "integer" }
+            }
+          }
+        },
+        "total": { "type": "integer" },
+        "symbol": { "type": "string" },
+        "files_seen": { "type": "integer" },
+        "files_parsed": { "type": "integer" },
+        "oversized": { "type": "integer" },
+        "unreadable": { "type": "integer" },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [
+      { "path": "${workspace}", "readonly": true }
+    ],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 256
+  }
+}

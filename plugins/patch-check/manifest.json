@@ -1,0 +1,116 @@
+{
+  "manifest_version": 1,
+  "name": "patch_check",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Check whether a unified diff or patch still applies to a file's current content, and where it drifts. Use it before claiming a diff applies cleanly: it validates each hunk against the text you pass in, reports the line each hunk lands on, the signed drift when a hunk placed off its declared position, and why a hunk failed (context_not_found or ambiguous, quoting the first mismatching context line). Pure computation with no file, network, or environment access — both the diff and the file content arrive as input. One file per call; optionally returns a bounded preview of the post-application content.",
+  "artifact": {
+    "path": "patch_check.wasm",
+    "digest": "sha256:3fb2903334721854ee84a3a9ba4cf8dbf93a42b9eb7122026b4ecaf4fa060c3f"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "diff": {
+          "type": "string",
+          "description": "The unified diff to check: one file, one or more @@ hunks. A diff naming multiple files is refused."
+        },
+        "content": {
+          "type": "string",
+          "description": "The file's current text, checked as-is."
+        },
+        "fuzz": {
+          "type": "integer",
+          "description": "Max line-offset drift searched when exact placement fails. Default 200, capped at 1000."
+        },
+        "whitespace_lenient": {
+          "type": "boolean",
+          "description": "When true, context lines match ignoring trailing whitespace. Default false."
+        },
+        "include_preview": {
+          "type": "boolean",
+          "description": "When true and every hunk applies, return the post-application content. Default false."
+        },
+        "max_preview_chars": {
+          "type": "integer",
+          "description": "Character ceiling for the preview; longer previews are elided in the middle with a '[N chars elided]' marker. Default 20000, capped at 100000."
+        }
+      },
+      "required": ["diff", "content"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "object",
+          "properties": {
+            "applies": {
+              "type": "boolean",
+              "description": "True when every hunk placed."
+            },
+            "hunks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "index": { "type": "integer" },
+                  "applies": { "type": "boolean" },
+                  "at_line": {
+                    "type": "integer",
+                    "description": "Where the hunk's old side sits, 1-based in the current content."
+                  },
+                  "drift_lines": {
+                    "type": "integer",
+                    "description": "Signed line offset from the declared position, present only when the hunk placed off it."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": ["context_not_found", "ambiguous"],
+                    "description": "Why the hunk did not place."
+                  },
+                  "mismatch": {
+                    "type": "string",
+                    "description": "The first old-side line that no longer matches, bounded to 200 characters."
+                  }
+                }
+              }
+            },
+            "applied_hunks": { "type": "integer" },
+            "failed_hunks": { "type": "integer" },
+            "preview": {
+              "type": "string",
+              "description": "The post-application content, present only when include_preview was set and every hunk applies."
+            },
+            "preview_truncated": {
+              "type": "boolean",
+              "description": "True when the preview was elided in the middle past max_preview_chars."
+            }
+          }
+        },
+        "refusal": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["code", "reason"]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 128
+  },
+  "price_msats": null,
+  "license": "Apache-2.0"
+}

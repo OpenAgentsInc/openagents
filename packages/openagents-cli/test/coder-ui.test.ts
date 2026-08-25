@@ -1006,7 +1006,7 @@ describe("where a running child is shown", () => {
       registerChild(registry);
     });
 
-    const heading = rows.find((row) => row.includes("children"));
+    const heading = rows.find((row) => row.includes("subagents"));
     expect(heading).toBeDefined();
     expect(heading).toContain("1 working");
 
@@ -1047,7 +1047,7 @@ describe("where a running child is shown", () => {
       registerChild(registry);
     }, 80);
 
-    expect(rows.some((row) => row.includes("children"))).toBe(false);
+    expect(rows.some((row) => row.includes("subagents"))).toBe(false);
 
     const delegateRow = rows.findIndex((row) => row.includes("delegate"));
     expect(delegateRow).toBeGreaterThan(0);

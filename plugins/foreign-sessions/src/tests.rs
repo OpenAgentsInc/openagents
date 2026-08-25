@@ -30,6 +30,9 @@ impl FakeHost {
     fn file(&mut self, path: &str, bytes: &str) {
         self.files.insert(path.to_string(), bytes.as_bytes().to_vec());
     }
+    fn bytes(&mut self, path: &str, bytes: Vec<u8>) {
+        self.files.insert(path.to_string(), bytes);
+    }
 }
 
 impl Host for FakeHost {
@@ -52,6 +55,17 @@ impl Host for FakeHost {
             .get(path)
             .cloned()
             .ok_or_else(|| Refusal::new(RefusalCode::MountDenied, "no declared mount contains the path"))
+    }
+    fn read_range(&self, path: &str, offset: u64, max_bytes: u32) -> Result<Vec<u8>, Refusal> {
+        if self.unreadable.iter().any(|p| p == path) {
+            return Err(Refusal::new(RefusalCode::FileUnreadable, "io failure"));
+        }
+        let bytes = self.files.get(path).ok_or_else(|| {
+            Refusal::new(RefusalCode::MountDenied, "no declared mount contains the path")
+        })?;
+        let start = (offset as usize).min(bytes.len());
+        let end = start.saturating_add(max_bytes as usize).min(bytes.len());
+        Ok(bytes[start..end].to_vec())
     }
 }
 

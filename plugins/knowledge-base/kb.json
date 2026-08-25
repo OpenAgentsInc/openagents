@@ -1,0 +1,662 @@
+{
+ "version": 1,
+ "entries": [
+  {
+   "kind": "stance",
+   "id": "earning-bitcoin",
+   "title": "Earning bitcoin or money on OpenAgents",
+   "questions": [
+    "how can I earn bitcoin with this system",
+    "how do I make money here",
+    "can I get paid sats for work",
+    "how do payouts and rewards work",
+    "monetize my agent or plugin"
+   ],
+   "state": "built and specified, deliberately parked; on the near-to-medium-term roadmap",
+   "answer": "Earning is real history here, not vapor: the network ran a full plugin economy in 2024 (per-use sats pricing, an agent store with revenue sharing, episodes 048-102), later paid sats bounties for merged work, proved Lightning MPP settlement with public receipts, and built forum tipping end to end (Bolt 12 and LNURL destinations, settled-tip ranking). All of it is deliberately parked right now: tipping is disabled in the interface, the plugin manifest's pricing fields are reserved and empty, and no payout lane is live. The honest answer today is that there is nothing you can do yet to earn - and that the rails exist, the history is on the forum, and re-enabling the economy is on the near-to-medium-term roadmap.",
+   "sources": [
+    "forum board artanis (Bitcoin accounting and rewards)",
+    "docs/forum-bitcoin-tips.md",
+    "docs/2026-08-24-triage-and-plugin-model-assessment.md section 4"
+   ],
+   "date": "2026-08-25"
+  },
+  {
+   "kind": "stance",
+   "id": "threads",
+   "title": "Threads: the unit of agent work",
+   "questions": [
+    "what is a thread",
+    "how do coder sessions work",
+    "what is an inference grant",
+    "where do my coder transcripts go"
+   ],
+   "state": "live",
+   "answer": "A thread is the unit of agent work: opening one (POST /api/v1/threads) returns a budgeted inference grant, the grant is the bearer for the OpenAI-compatible inference proxy, and the session reports its transcript back as append-only thread events that the web /threads pages render live. Accounts hold a bounded number of open threads; a local Ollama session still records a transcript-only thread so everything rehydrates from the server.",
+   "sources": [
+    "docs/2026-08-23-thread-primitive-audit.md",
+    "priv/docs/cli-api.md"
+   ],
+   "date": "2026-08-25"
+  },
+  {
+   "kind": "stance",
+   "id": "tipping",
+   "title": "Forum tipping status",
+   "questions": [
+    "can I tip a post",
+    "why is tipping disabled",
+    "how do forum tips work"
+   ],
+   "state": "built, currently disabled",
+   "answer": "Forum tipping is fully built - recipients attach a Bolt 12 offer, LNURL, or on-chain destination they control, the forum never holds keys, and settled tips feed topic ranking - but the payment service is currently disabled, so the tip controls are hidden and any attempt answers that tipping is not enabled yet. It returns when the payment service does.",
+   "sources": [
+    "docs/forum-bitcoin-tips.md"
+   ],
+   "date": "2026-08-25"
+  },
+  {
+   "kind": "stance",
+   "id": "plugins",
+   "title": "The plugin and capability system",
+   "questions": [
+    "how do plugins work",
+    "what are capabilities",
+    "can I write a plugin for the coder",
+    "how does the coder discover tools"
+   ],
+   "state": "live",
+   "answer": "A capability is a WASM module plus a manifest: content-addressed by SHA-256 digest, sandboxed with declared read-only mounts and no network, typed input and output schemas, loaded from a digest-pinned catalog with auto-approval. Discovery is the harness's job: every prompt is scored against the catalog, clear matches auto-load so the model simply sees the right tool, and the capability tool remains for explicit search. Authoring one is a Rust function on the owned PDK, a manifest, and a checked-in digest.",
+   "sources": [
+    "plugins/README.md",
+    "docs/2026-08-24-triage-and-plugin-model-assessment.md",
+    "docs/2026-08-25-plugin-harvest-targets.md"
+   ],
+   "date": "2026-08-25"
+  },
+  {
+   "kind": "stance",
+   "id": "coder-tiers",
+   "title": "Coder tiers, not model names",
+   "questions": [
+    "which model does the coder use",
+    "what is coder auto or coder pro",
+    "how do I switch models in the coder"
+   ],
+   "state": "live",
+   "answer": "The coder never shows vendor model names: a session is OpenAgents Coder, and what varies is the tier - Coder Auto (the server picks the lane per call), Coder Flash, Coder Pro, and Coder Local (a local model server answers). Shift+tab cycles the tier; tab cycles reasoning effort. Vendor identifiers survive only in records and exports.",
+   "sources": [
+    "INVARIANTS.md, Coder Model Naming"
+   ],
+   "date": "2026-08-25"
+  },
+  {
+   "kind": "doc",
+   "title": "API tokens",
+   "source": "priv/docs/api-tokens.md",
+   "headings": [
+    "Creating a token",
+    "Using a token",
+    "Revoke a token",
+    "Understand the scope"
+   ],
+   "summary": "Tokens authenticate programmatic access to the REST API. Manage them at [API tokens](/settings/api-tokens).",
+   "tags": [
+    "api",
+    "tokens"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Assignees",
+   "source": "priv/docs/assignees.md",
+   "headings": [
+    "Assigning",
+    "Unassigning",
+    "A current limitation"
+   ],
+   "summary": "An assignee is the person responsible for an issue. See `/:owner/:repo/assignees`.",
+   "tags": [
+    "assignees"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Browsing code",
+   "source": "priv/docs/browsing-code.md",
+   "headings": [
+    "Files",
+    "What is public",
+    "Size limits"
+   ],
+   "summary": "Open a repository that you can access at `/:owner/:repo`. Start from [Repositories](/repositories) when you do not know the exact path.",
+   "tags": [
+    "browsing",
+    "code"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Changelog",
+   "source": "priv/docs/changelog.md",
+   "headings": [
+    "Two layers",
+    "Verifying an entry",
+    "What is not published"
+   ],
+   "summary": "[The changelog](/changelog) lists every change to the application, in two layers.",
+   "tags": [
+    "changelog"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Claim a legacy identity",
+   "source": "priv/docs/claim-legacy-identity.md",
+   "headings": [
+    "Find your legacy identity",
+    "Submit the claim",
+    "Through the API"
+   ],
+   "summary": "Posts ported from the previous forum keep their original attribution: the actor reference they were written under and the display name it carried. A claim links your account to one of those legacy identities. After an operator approves the claim, every post written under that identity attributes to your account.",
+   "tags": [
+    "claim",
+    "legacy",
+    "identity"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Call the API with the OpenAgents CLI",
+   "source": "priv/docs/cli-api.md",
+   "headings": [
+    "Before you begin",
+    "Address a route",
+    "Select a method and body",
+    "Work with issues",
+    "Work with projects",
+    "Use output in scripts",
+    "Forum endpoints",
+    "Related documentation"
+   ],
+   "summary": "The `openagents api` command sends an authenticated request to any OpenAgents API route and writes the response body as JSON. Use it for Issues, Projects, and other routes that do not have a named CLI command.",
+   "tags": [
+    "cli",
+    "api"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "OpenAgents CLI command reference",
+   "source": "priv/docs/cli-command-reference.md",
+   "headings": [
+    "Use global flags",
+    "Run authentication commands",
+    "Create a repository",
+    "Import a repository",
+    "List repositories",
+    "View a repository",
+    "Clone a repository",
+    "Delete a repository",
+    "Forum commands",
+    "Search the forum",
+    "Moderate the forum",
+    "Claim a legacy forum identity"
+   ],
+   "summary": "The `openagents` command manages authentication and hosted repositories. It also sends authenticated requests to OpenAgents API routes that do not have a named command yet.",
+   "tags": [
+    "cli",
+    "command",
+    "reference"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Clone, push, and pull",
+   "source": "priv/docs/clone-push-pull.md",
+   "headings": [
+    "Clone with the CLI",
+    "Clone with Git",
+    "Push and pull",
+    "Infer a repository from origin",
+    "Review authentication safety",
+    "Next steps"
+   ],
+   "summary": "OpenAgents serves Git smart HTTP at the HTTPS clone URL returned by the repository API and web interface. Standard Git performs clone, fetch, push, and pull operations.",
+   "tags": [
+    "clone",
+    "push",
+    "pull"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Commits",
+   "source": "priv/docs/commits.md",
+   "headings": [
+    "What a commit page shows",
+    "Trailers",
+    "Deploy history"
+   ],
+   "summary": "`/:repo/commit/:sha` shows one commit: its message, its author, and the files it changed.",
+   "tags": [
+    "commits"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Create a repository",
+   "source": "priv/docs/create-repository.md",
+   "headings": [
+    "Create a repository in the browser",
+    "Create a repository with the CLI",
+    "Attach an existing local project",
+    "Push the first commit",
+    "Follow repository naming rules",
+    "Create an organization repository",
+    "Next steps"
+   ],
+   "summary": "Create an empty OpenAgents repository in the browser or with the CLI. If the code already exists on GitHub, use a [one-time GitHub import](/docs/import-github) instead.",
+   "tags": [
+    "create",
+    "repository"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Creating issues",
+   "source": "priv/docs/creating-issues.md",
+   "headings": [
+    "Required fields",
+    "Setting labels and a milestone at creation",
+    "Numbering",
+    "Do-not-build review"
+   ],
+   "summary": "Open the new-issue form at `/:owner/:repo/issues/new`.",
+   "tags": [
+    "creating",
+    "issues"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Delete a repository",
+   "source": "priv/docs/delete-repository.md",
+   "headings": [
+    "Delete from the website",
+    "Delete with the CLI",
+    "Delete with the REST API"
+   ],
+   "summary": "You can permanently delete a repository you own from the website, REST API, or CLI. Maintainers, contributors, and viewers cannot delete a repository.",
+   "tags": [
+    "delete",
+    "repository"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Do-not-build register",
+   "source": "priv/docs/do-not-build-register.md",
+   "headings": [
+    "What each entry records",
+    "How screening works",
+    "Reconsider a decision",
+    "Initial decisions"
+   ],
+   "summary": "The do-not-build register records product and architecture directions that OpenAgents retired, deferred, rejected, or superseded. It keeps agents and maintainers from repeatedly proposing work whose replacement already exists.",
+   "tags": [
+    "not",
+    "build",
+    "register"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Boards, topics, and posts",
+   "source": "priv/docs/forum.md",
+   "headings": [
+    "Where the old forum went",
+    "Reading",
+    "Posting",
+    "Through the API"
+   ],
+   "summary": "The forum is the discussion surface at [/forum](/forum): boards, each holding topics, and each topic a series of posts. It replaces the previous OpenAgents forum, and every board, topic, and post from that forum moved here.",
+   "tags": [
+    "forum"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Import a GitHub repository",
+   "source": "priv/docs/import-github.md",
+   "headings": [
+    "Check the prerequisites",
+    "Import in the browser",
+    "Import with an installed CLI",
+    "Import once with npx",
+    "Import a large repository",
+    "Verify an import",
+    "Understand what the import copies",
+    "Work after the import",
+    "Next steps"
+   ],
+   "summary": "An import copies one accepted GitHub snapshot into a new OpenAgents repository. It is a one-time copy, not a mirror. Later changes do not synchronize in either direction.",
+   "tags": [
+    "import",
+    "github"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Install the OpenAgents CLI",
+   "source": "priv/docs/install-cli.md",
+   "headings": [
+    "Install globally with npm",
+    "Run one command with npx",
+    "Sign in",
+    "Use a token without a browser",
+    "Select an API profile",
+    "Configure Git authentication",
+    "Next steps"
+   ],
+   "summary": "The npm package is `@openagentsinc/cli`. It provides the `openagents` command and requires Node.js 20 or later.",
+   "tags": [
+    "install",
+    "cli"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Issue tracking",
+   "source": "priv/docs/issues.md",
+   "headings": [
+    "Filtering by state",
+    "What an issue holds",
+    "Comments",
+    "Through the API"
+   ],
+   "summary": "An issue is a unit of work in a repository. Browse them at `/:owner/:repo/issues`.",
+   "tags": [
+    "issues"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Labels",
+   "source": "priv/docs/labels.md",
+   "headings": [
+    "Creating a label",
+    "Applying labels",
+    "Deleting a label",
+    "Names with spaces"
+   ],
+   "summary": "Labels classify issues. Manage them at `/:owner/:repo/labels`.",
+   "tags": [
+    "labels"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Leaderboard",
+   "source": "priv/docs/leaderboard.md",
+   "headings": [
+    "What is shown",
+    "Opting out",
+    "Updates"
+   ],
+   "summary": "[The leaderboard](/leaderboard) ranks contributors by tokens spent through the application.",
+   "tags": [
+    "leaderboard"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Merging stacks",
+   "source": "priv/docs/merging-stacks.md",
+   "headings": [
+    "Merge a prefix in one operation",
+    "Merge one layer asynchronously",
+    "Automatic restack after a partial merge",
+    "What atomic means here",
+    "Next steps"
+   ],
+   "summary": "A stack merges bottom-first. You can land the whole stack or any contiguous prefix of it — layers 1 and 2 while layer 3 is still in review — but never a layer whose foundations have not landed.",
+   "tags": [
+    "merging",
+    "stacks"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Milestones",
+   "source": "priv/docs/milestones.md",
+   "headings": [
+    "Creating a milestone",
+    "Progress",
+    "Closing a milestone"
+   ],
+   "summary": "A milestone groups issues toward a target. Manage them at `/:owner/:repo/milestones`.",
+   "tags": [
+    "milestones"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Models and pricing",
+   "source": "priv/docs/models.md",
+   "headings": [
+    "What each column tells you",
+    "Reading the basis",
+    "Ceilings",
+    "Reading the catalog from the CLI"
+   ],
+   "summary": "[The models page](/models) lists every model this deployment serves, what each one charges per million tokens, and where those rates came from. Read it before you open a thread: a thread pins one model for its whole life, and the grant that pays for it meters against that model's rates.",
+   "tags": [
+    "models"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "The OpenAgents CLI",
+   "source": "priv/docs/openagents-cli.md",
+   "headings": [
+    "What the CLI does",
+    "Choose how to run the CLI",
+    "Follow a common terminal workflow",
+    "Next steps"
+   ],
+   "summary": "`openagents` is the OpenAgents command-line interface, distributed on npm as `@openagentsinc/cli`. It signs you in, configures Git authentication, manages [repositories](/docs/repositories) from a terminal, and calls implemented API routes such as Issues and Projects.",
+   "tags": [
+    "openagents",
+    "cli"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Project boards",
+   "source": "priv/docs/projects.md",
+   "headings": [
+    "The description",
+    "Discussion and activity",
+    "The board",
+    "Fields",
+    "Through the API"
+   ],
+   "summary": "A project is a board of issues. Browse them at `/:owner/:repo/projects`.",
+   "tags": [
+    "projects"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Proposing and merging changes",
+   "source": "priv/docs/pull-requests.md",
+   "headings": [
+    "What a pull request holds",
+    "The review diff",
+    "Create one through the API",
+    "Merging",
+    "Next steps"
+   ],
+   "summary": "A pull request proposes merging one branch into another. Browse a repository's pull requests at `/:owner/:repo/pulls`, and open one to review its changes at `/:owner/:repo/pulls/:number`.",
+   "tags": [
+    "pull",
+    "requests"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Repository hosting",
+   "source": "priv/docs/repositories.md",
+   "headings": [
+    "What you can do",
+    "Understand namespaces and access",
+    "Understand visibility and credentials",
+    "Manage repositories in the browser",
+    "Next steps"
+   ],
+   "summary": "OpenAgents hosts Git repositories and serves them through Git smart HTTP. You can create, import, browse, and delete repositories in the browser, and you can do the same work from a terminal with the [OpenAgents CLI](/docs/openagents-cli).",
+   "tags": [
+    "repositories"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "REST API",
+   "source": "priv/docs/rest-api.md",
+   "headings": [
+    "Authenticate",
+    "Repositories",
+    "Issues and comments",
+    "Pull requests and stacks",
+    "Issue prerequisites",
+    "The OpenAgents extension namespace",
+    "Issue progress",
+    "Reputation attestations",
+    "Labels",
+    "Assignees and milestones",
+    "Projects",
+    "Choose a client"
+   ],
+   "summary": "OpenAgents serves a bounded GitHub-shaped API under `/api/v1`. The paths make familiar repository tooling easier to adapt, but OpenAgents does not implement the complete GitHub API.",
+   "tags": [
+    "rest",
+    "api"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Signing in",
+   "source": "priv/docs/signing-in.md",
+   "headings": [
+    "How it works",
+    "What is stored",
+    "Signing out",
+    "Sign in from the CLI"
+   ],
+   "summary": "Identity comes from GitHub. There is no separate OpenAgents password.",
+   "tags": [
+    "signing"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Rebase and restructure a stack",
+   "source": "priv/docs/stack-actions.md",
+   "headings": [
+    "Rebase the stack",
+    "Remove the top layer",
+    "Grow the stack",
+    "Dissolve the stack",
+    "Next steps"
+   ],
+   "summary": "A stack stays useful only while its branches stay coherent. These actions keep them that way, and every one of them runs on the server as a durable operation rather than as a sequence of client-side pushes that can be interrupted halfway.",
+   "tags": [
+    "stack",
+    "actions"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Stacked pull requests",
+   "source": "priv/docs/stacked-pull-requests.md",
+   "headings": [
+    "Why stack",
+    "The shape of a stack",
+    "The stack map",
+    "Layer and cumulative review",
+    "Create a stack",
+    "Next steps"
+   ],
+   "summary": "A stack is an ordered series of dependent pull requests that merge bottom-first into one trunk branch. Each layer's branch is based on the layer below it, so a large change ships as several small reviews without losing the dependency structure between them.",
+   "tags": [
+    "stacked",
+    "pull",
+    "requests"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Stacks API",
+   "source": "priv/docs/stacks-api.md",
+   "headings": [
+    "Routes",
+    "The stack payload",
+    "Idempotency",
+    "Optimistic concurrency",
+    "Operations",
+    "Worked example",
+    "Next steps"
+   ],
+   "summary": "The stack surface lives under `/api/v1` beside the rest of the [REST API](/docs/rest-api). Reads are public on a public repository; writes require an `oa_pat_` bearer token with `forge:write` scope and an `Idempotency-Key` header.",
+   "tags": [
+    "stacks",
+    "api"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Status API",
+   "source": "priv/docs/status-api.md",
+   "headings": [
+    "Shape",
+    "Disclosure",
+    "Polling",
+    "Related"
+   ],
+   "summary": "[`/api/status`](/api/status) returns the same projection the [status page](/status) renders, as JSON.",
+   "tags": [
+    "status",
+    "api"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Status",
+   "source": "priv/docs/status.md",
+   "headings": [
+    "What it shows",
+    "Content-free by design",
+    "The API"
+   ],
+   "summary": "[Status](/status) reports whether the system is healthy, without disclosing its internals.",
+   "tags": [
+    "status"
+   ]
+  },
+  {
+   "kind": "doc",
+   "title": "Welcome",
+   "source": "priv/docs/welcome.md",
+   "headings": [
+    "What is here now",
+    "What is not here yet",
+    "Compatibility"
+   ],
+   "summary": "OpenAgents is a software forge with an agent layer on top of it. This documentation covers the parts you can use today.",
+   "tags": [
+    "welcome"
+   ]
+  }
+ ]
+}

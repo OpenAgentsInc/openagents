@@ -102,6 +102,7 @@ import {
   discoverPluginCatalog,
   matchCapabilities,
 } from "./coder-capability.js";
+import { knowledgeHits, knowledgeNote } from "./coder-knowledge.js";
 import { runForeignResume } from "./coder-foreign-resume.js";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -2514,7 +2515,27 @@ const coderCommand = Command.make(
       // outlives the process.
       const plugins: LoadedPlugin[] = [];
       const catalog = discoverPluginCatalog(fileURLToPath(import.meta.url));
+      // Turn-scoped visibility (the owner's decision, 2026-08-25): a tool the
+      // current message does not need is not shown to the model. A plugin the
+      // reader loaded by hand (`/plugin load`) is pinned for the session; one
+      // the harness or the model brought in stays declared only while it is
+      // warm — matched by retrieval or invoked within the last two turns —
+      // and then leaves the tool list. The instance itself stays cached in
+      // `plugins`, so coming back is free.
+      let turn = 0;
+      const pinnedNames = new Set<string>();
+      const warmUntil = new Map<string, number>();
+      const warm = (name: string): void => {
+        warmUntil.set(name, turn + 2);
+      };
+      const visiblePlugins = (): LoadedPlugin[] =>
+        plugins.filter(
+          (plugin) =>
+            pinnedNames.has(plugin.manifest.name) ||
+            (warmUntil.get(plugin.manifest.name) ?? -1) >= turn,
+        );
       const onSelect = (outcome: LoadedPlugin, manifestFile: string) => {
+        warm(outcome.manifest.name);
         // Reloading a name replaces it: a demo iterates on one plugin, and
         // two tools with one name would be a declaration the model cannot
         // tell apart.
@@ -2559,13 +2580,27 @@ const coderCommand = Command.make(
           openagentsTool(),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
           capability,
-          ...plugins.map((plugin) => pluginTool(plugin)),
+          ...visiblePlugins().map((plugin) => {
+            const tool = pluginTool(plugin);
+            // Using a tool keeps it visible: the warmth window restarts on
+            // every invocation, so a follow-up still finds it declared.
+            return {
+              ...tool,
+              run: (args: Record<string, unknown>, signal: AbortSignal) => {
+                warm(plugin.manifest.name);
+                return tool.run(args, signal);
+              },
+            };
+          }),
         ];
         session.declareTools(tools);
       };
       declareTools();
 
-      const loadPlugin = (manifestPath: string): string => {
+      // `pin` distinguishes who asked: the reader's `/plugin load` pins the
+      // tool for the whole session, while harness retrieval loads unpinned
+      // and lets the warmth window govern visibility.
+      const loadPlugin = (manifestPath: string, pin = true): string => {
         const manifestFile = resolvePath(process.cwd(), manifestPath);
         const outcome = loadPluginFromManifest(manifestFile);
         const described = describeLoad(outcome);
@@ -2585,7 +2620,33 @@ const coderCommand = Command.make(
           return described;
         }
         onSelect(outcome, manifestFile);
+        if (pin) pinnedNames.add(outcome.manifest.name);
         return described;
+      };
+
+      // The knowledge-base rail (OpenAgentsInc/openagents#49): the corpus
+      // plugin is consulted directly by the harness on every message and is
+      // never declared as a tool — its answers arrive as attached context.
+      // Loaded lazily and kept out of `plugins` on purpose.
+      let knowledgeBase: LoadedPlugin | undefined;
+      const knowledgeBaseNote = async (prompt: string): Promise<string | undefined> => {
+        if (knowledgeBase === undefined) {
+          const entry = catalog.find((candidate) => candidate.name === "knowledge_base");
+          if (entry === undefined) return undefined;
+          const outcome = loadPluginFromManifest(entry.manifestPath);
+          if (isRefusal(outcome)) return undefined;
+          knowledgeBase = outcome;
+        }
+        try {
+          const packet = new TextEncoder().encode(JSON.stringify({ query: prompt, limit: 3 }));
+          const answered = await invokePlugin(knowledgeBase, packet);
+          if (isRefusal(answered)) return undefined;
+          const envelope: unknown = JSON.parse(new TextDecoder().decode(answered));
+          return knowledgeNote(knowledgeHits(envelope));
+        } catch {
+          // The rail degrades to silence, never to a broken turn.
+          return undefined;
+        }
       };
 
       // Retrieval is the harness's job (OpenAgentsInc/openagents#42): score
@@ -2593,39 +2654,55 @@ const coderCommand = Command.make(
       // matches so the model simply sees the right tool, and note a weaker
       // match for the model to load itself. Nothing matched costs nothing.
       const capabilityRetrieval = async (prompt: string): Promise<string | undefined> => {
-        const matches = matchCapabilities(catalog, prompt);
+        // Each incoming message opens a turn; the warmth window that governs
+        // which plugin tools the model sees is measured in these.
+        turn += 1;
+
+        const notes: string[] = [];
+        const fromKnowledge = await knowledgeBaseNote(prompt);
+        if (fromKnowledge !== undefined) notes.push(fromKnowledge);
+
+        // The knowledge base is a rail, not a tool: it never materializes.
+        const matches = matchCapabilities(catalog, prompt).filter(
+          (candidate) => candidate.entry.name !== "knowledge_base",
+        );
         const held = new Set(plugins.map((plugin) => plugin.manifest.name));
 
         const materialized: string[] = [];
         for (const match of matches.filter((candidate) => candidate.hits >= 2).slice(0, 2)) {
           if (held.has(match.entry.name)) {
+            warm(match.entry.name);
             materialized.push(match.entry.name);
             continue;
           }
-          const described = loadPlugin(match.entry.manifestPath);
+          const described = loadPlugin(match.entry.manifestPath, false);
           if (described.startsWith("Loaded plugin")) materialized.push(match.entry.name);
         }
+        // Re-declared after the warmth window moved: this turn's tool list is
+        // what matched this message, what is pinned, and what was just used —
+        // not everything ever loaded.
+        declareTools();
 
         if (materialized.length > 0) {
           const names = materialized.map((name) => `\`${name}\``).join(", ");
-          return (
+          notes.push(
             `[Attached by the harness: installed capabilities matched this request, and ` +
-            `${names} ${materialized.length === 1 ? "is" : "are"} loaded and available as ` +
-            `${materialized.length === 1 ? "a tool" : "tools"} right now. Prefer ` +
-            `${materialized.length === 1 ? "it" : "them"} over scripting the same thing.]`
+              `${names} ${materialized.length === 1 ? "is" : "are"} loaded and available as ` +
+              `${materialized.length === 1 ? "a tool" : "tools"} right now. Prefer ` +
+              `${materialized.length === 1 ? "it" : "them"} over scripting the same thing.]`,
           );
+        } else {
+          const near = matches.slice(0, 2);
+          if (near.length > 0) {
+            const names = near.map((candidate) => `\`${candidate.entry.name}\``).join(", ");
+            notes.push(
+              `[Attached by the harness: ${names} in the installed capability catalog may ` +
+                `cover this. Load one with the capability tool, name set exactly, if it fits.]`,
+            );
+          }
         }
 
-        const near = matches.slice(0, 2);
-        if (near.length > 0) {
-          const names = near.map((candidate) => `\`${candidate.entry.name}\``).join(", ");
-          return (
-            `[Attached by the harness: ${names} in the installed capability catalog may ` +
-            `cover this. Load one with the capability tool, name set exactly, if it fits.]`
-          );
-        }
-
-        return undefined;
+        return notes.length === 0 ? undefined : notes.join("\n\n");
       };
 
       const locateForeignSessionsManifest = (): string | undefined => {

@@ -1,0 +1,97 @@
+{
+  "manifest_version": 1,
+  "name": "repo_tree",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "List the files and directory tree of this repository or workspace, honoring gitignore, with fuzzy file name lookup. Tree mode (the default) walks the workspace depth-first and returns entries with path, kind, and size, applying root and nested .gitignore files through a documented subset: comments and blanks skipped, trailing-slash directory patterns, leading-slash anchoring, `*` within a segment, `**` across segments, and no negation (`!` lines are counted as ignored_negations). Pass query to get fuzzy file-name matches instead of the tree: a case-insensitive subsequence match against each file path, ranked by match tightness. `.git` is always skipped. Read-only and bounded: depth, entry, and listing ceilings apply, and truncation is reported honestly.",
+  "artifact": {
+    "path": "repo_tree.wasm",
+    "digest": "sha256:bde68d4e422be5e2069c756fa6c95a78a5a8f73129939add560c54969e4a8a46"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Subtree to walk, relative to the workspace root. The root when omitted."
+        },
+        "max_depth": {
+          "type": "integer",
+          "description": "Deepest entry level to return. Default 4 (8 in query mode), capped at 8."
+        },
+        "max_entries": {
+          "type": "integer",
+          "description": "Most tree entries to return. Default 200, capped at 500."
+        },
+        "query": {
+          "type": "string",
+          "description": "Fuzzy file-name lookup: a case-insensitive subsequence matched against each file path (e.g. `authcontroller` matches `lib/auth_controller.ex`). When present, matches are returned instead of the tree."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Most query matches to return. Default 10, capped at 25."
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "description": "Tree mode: the entries, depth-first.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "kind": { "type": "string", "enum": ["file", "dir"] },
+              "size": { "type": "integer" }
+            }
+          }
+        },
+        "total_seen": {
+          "type": "integer",
+          "description": "Tree mode: entries examined before the walk finished or stopped."
+        },
+        "ignored_negations": {
+          "type": "integer",
+          "description": "Tree mode: `!` gitignore lines the subset ignored rather than honored."
+        },
+        "skipped_gitignored": {
+          "type": "integer",
+          "description": "Tree mode: entries the gitignore rules dropped; a skipped directory counts once and is never walked."
+        },
+        "matches": {
+          "type": "array",
+          "description": "Query mode: the ranked matches.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "size": { "type": "integer" }
+            }
+          }
+        },
+        "searched": {
+          "type": "integer",
+          "description": "Query mode: files tested against the query."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True when a ceiling cut the walk or the match list short."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [{ "path": "${workspace}", "readonly": true }],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 128
+  }
+}

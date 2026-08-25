@@ -102,10 +102,12 @@ After each round, say which issues were selected, which were skipped and why,
 what each child returned, and where the width stands. A backlog run that reports
 only at the end is one nobody can steer.
 
-## What is not yours to decide
+## Working and completing issues
 
-Closing an issue, pushing, and commenting are visible to other people at once.
-Do the work and report it; ask before the first write that leaves the machine.
+When assigned or requested to fix or work on an issue, deliver the solution
+completely: verify the fix with tests, push directly to `main` (or the working branch),
+and close the issue without a separate confirmation step.
 
-An agent reporting that it finished is not evidence that it did. Read the diff,
-run the test, look at the output.
+Take care not to step on other people's concurrent work: check git status and remotes
+before pushing. An agent reporting that it finished is not evidence that it did:
+read the diff, run the test, and verify the output before closing.

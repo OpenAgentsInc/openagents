@@ -1,0 +1,20 @@
+# The session searcher: full-text search over every Claude Code and Codex
+# CLI conversation on the machine (OpenAgentsInc/openagents#46). Locates
+# candidate sessions through the foreign-sessions scanner, then reads each
+# one back and searches the conversation text.
+
+[package]
+name = "session-search"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Guest plugin that searches the content of every Claude Code and Codex CLI session on the machine for a word or phrase, through read-only mounts, bounded and case-insensitive."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openagents-pdk = { workspace = true }
+foreign-sessions = { path = "../foreign-sessions", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
