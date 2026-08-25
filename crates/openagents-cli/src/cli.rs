@@ -33,6 +33,8 @@ pub enum Commands {
     Computer(ComputerArgs),
     /// Forum boards and topics
     Forum(ForumArgs),
+    /// Account-level system memory and knowledge management
+    Memory(MemoryArgs),
     /// Generic API route invocation
     Api(ApiArgs),
     /// Trace inspection and session export
@@ -193,12 +195,19 @@ pub struct BoxArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum BoxAction {
-    List,
+    List {
+        #[arg(long, default_value = "main")]
+        conversation: String,
+    },
     Create {
+        #[arg(long, default_value = "main")]
+        conversation: String,
         #[arg(long)]
-        name: Option<String>,
+        label: Option<String>,
     },
     Exec {
+        #[arg(long, default_value = "main")]
+        conversation: String,
         #[arg(long)]
         box_id: String,
         #[arg(long)]
@@ -236,10 +245,30 @@ pub enum ForumAction {
 }
 
 #[derive(Args, Debug)]
+pub struct MemoryArgs {
+    #[command(subcommand)]
+    pub action: MemoryAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MemoryAction {
+    List {
+        #[arg(long)]
+        bucket: Option<String>,
+    },
+    Add {
+        #[arg(long)]
+        body: String,
+        #[arg(long)]
+        bucket: Option<String>,
+    },
+}
+
+#[derive(Args, Debug)]
 pub struct ApiArgs {
-    #[arg(help = "HTTP method", default_value = "GET")]
+    #[arg(help = "HTTP method (e.g. GET, POST, DELETE)", default_value = "GET")]
     pub method: String,
-    #[arg(help = "API endpoint path")]
+    #[arg(help = "API endpoint path (e.g. /api/v1/user)", default_value = "/")]
     pub path: String,
 }
 
@@ -324,48 +353,75 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
                     let list = tracker.list_issues(&r).await.map_err(|e| e.to_string())?;
                     for item in list {
-                        println!("#{}	{}	[{}]", item.number, item.title, item.state);
+                        println!("#{}\t{}\t[{}]", item.number, item.title, item.state);
                     }
                 }
                 IssueAction::View { number, repo } => {
                     let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
-                    if let Some(item) = tracker.get_issue(&r, number).await? {
-                        println!("#{} {}
-State: {}
-Author: {:?}", item.number, item.title, item.state, item.author);
+                    if let Some(item) = tracker.get_issue(&r, number).await.map_err(|e| e.to_string())? {
+                        println!("#{} {}\nState: {}\nAuthor: {:?}", item.number, item.title, item.state, item.author);
                     }
                 }
-                IssueAction::Create { title, body: _, repo } => {
-                    println!("Created issue {} in {:?}", title, repo);
+                IssueAction::Create { title, body, repo } => {
+                    let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
+                    if let Some(created) = tracker.create_issue(&r, &title, body.as_deref()).await.map_err(|e| e.to_string())? {
+                        println!("Created issue #{} in {}", created.number, r);
+                    }
                 }
                 IssueAction::Close { number, repo } => {
-                    println!("Closed issue #{} in {:?}", number, repo);
+                    let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
+                    if tracker.close_issue(&r, number).await.map_err(|e| e.to_string())? {
+                        println!("Closed issue #{} in {}", number, r);
+                    }
                 }
-                IssueAction::Comment { number, body: _, repo } => {
-                    println!("Commented on #{} in {:?}", number, repo);
+                IssueAction::Comment { number, body, repo } => {
+                    let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
+                    if tracker.comment_issue(&r, number, &body).await.map_err(|e| e.to_string())? {
+                        println!("Commented on #{} in {}", number, r);
+                    }
                 }
             }
         }
-        Commands::Project(project) => match project.action {
-            ProjectAction::List { repo } => println!("Listing projects in {:?}", repo),
-            ProjectAction::View { number, repo } => println!("Viewing project #{} in {:?}", number, repo),
-        },
+        Commands::Project(project) => {
+            let tracker = crate::tracker::TrackerClient::new("https://openagents.com/api/v1", token);
+            match project.action {
+                ProjectAction::List { repo } => {
+                    let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
+                    let list = tracker.list_projects(&r).await.map_err(|e| e.to_string())?;
+                    for p in list {
+                        println!("#{}\t{}\t[{}]", p.number, p.title, p.state);
+                    }
+                }
+                ProjectAction::View { number, repo } => {
+                    println!("Viewing project #{} in {:?}", number, repo);
+                }
+            }
+        }
         Commands::Repo(repo) => {
             let repo_client = crate::repo::RepoClient::new("https://openagents.com/api/v1", token);
             match repo.action {
                 RepoAction::List => {
-                    for r in repo_client.list_repos() {
-                        println!("{}	(branch: {})", r.slug, r.default_branch);
+                    let repos = repo_client.list_repos().await.map_err(|e| e.to_string())?;
+                    for r in repos {
+                        println!("{}\t(branch: {})", r.slug, r.default_branch);
                     }
                 }
                 RepoAction::View { slug } => println!("Viewing repository {}", slug),
-                RepoAction::Create { name } => println!("Created repository {}", name),
-                RepoAction::Clone { slug } => println!("Cloned repository {}", slug),
+                RepoAction::Create { name } => {
+                    if repo_client.create_repo(&name, false).await.map_err(|e| e.to_string())? {
+                        println!("Created repository {}", name);
+                    }
+                }
+                RepoAction::Clone { slug } => {
+                    if crate::repo::RepoClient::clone_repo(&slug, None).await.map_err(|e| e.to_string())? {
+                        println!("Cloned repository {}", slug);
+                    }
+                }
             }
         }
         Commands::Coder(coder) => {
             if coder.delegate {
-                crate::delegate::run_delegation(coder, token).await.map_err(|e| e.to_string())?;
+                crate::delegate::run_delegation(coder, token).await?;
             } else if coder.headless {
                 let prompt = coder.prompt.unwrap_or_else(|| "Analyze workspace and run tests".to_string());
                 println!("Executing coder prompt headlessly: {}", prompt);
@@ -379,19 +435,27 @@ Author: {:?}", item.number, item.title, item.state, item.author);
                 }).await.map_err(|e| e.to_string())?;
                 println!("\n\nTurn result:\n{}", result);
             } else {
-                crate::interactive::run_tui(coder, token).await.map_err(|e| e.to_string())?;
+                crate::interactive::run_tui(coder, token).await?;
             }
         }
         Commands::Box(b) => {
             let box_client = crate::box_client::BoxClient::new("https://openagents.com/api/v1", token);
             match b.action {
-                BoxAction::List => {
-                    for bx in box_client.list_boxes() {
-                        println!("{}	{}	[{}]", bx.id, bx.name, bx.status);
+                BoxAction::List { conversation } => {
+                    let boxes = box_client.list_boxes(&conversation).await.map_err(|e| e.to_string())?;
+                    for bx in boxes {
+                        println!("{}\t{}\t[{}]", bx.box_id, bx.label.unwrap_or_default(), bx.state);
                     }
                 }
-                BoxAction::Create { name } => println!("Created box {:?}", name),
-                BoxAction::Exec { box_id, command } => println!("Executed in {}: {}", box_id, command),
+                BoxAction::Create { conversation, label } => {
+                    if let Some(bx) = box_client.create_box(&conversation, label.as_deref()).await.map_err(|e| e.to_string())? {
+                        println!("Created box: {}", bx.box_id);
+                    }
+                }
+                BoxAction::Exec { conversation, box_id, command } => {
+                    let res = box_client.execute_command(&conversation, &box_id, &command).await.map_err(|e| e.to_string())?;
+                    println!("Exit: {}\nStdout: {}\nStderr: {}", res.exit_code, res.stdout, res.stderr);
+                }
             }
         }
         Commands::Computer(comp) => match comp.action {
@@ -404,14 +468,37 @@ Author: {:?}", item.number, item.title, item.state, item.author);
             ComputerAction::Up => println!("Computer agent daemon launched."),
         },
         Commands::Forum(forum) => {
-            let client = crate::forum::ForumClient::new("https://openagents.com/api/v1");
+            let client = crate::forum::ForumClient::new("https://openagents.com/api/v1", token);
             match forum.action {
                 ForumAction::Boards => {
-                    for b in client.list_boards() {
-                        println!("{}	{}	- {}", b.id, b.name, b.description);
+                    let boards = client.list_boards().await.map_err(|e| e.to_string())?;
+                    for b in boards {
+                        println!("{}\t{}\t- {}", b.id, b.name, b.description);
                     }
                 }
-                ForumAction::Topics { board } => println!("Listing topics in board: {:?}", board),
+                ForumAction::Topics { board } => {
+                    let b = board.unwrap_or_else(|| "general".to_string());
+                    let topics = client.list_topics(&b).await.map_err(|e| e.to_string())?;
+                    for t in topics {
+                        println!("{}\t{}", t.id, t.title);
+                    }
+                }
+            }
+        }
+        Commands::Memory(mem) => {
+            let client = crate::memory_client::MemoryClient::new("https://openagents.com/api/v1", token);
+            match mem.action {
+                MemoryAction::List { bucket } => {
+                    let records = client.list_memories(bucket.as_deref()).await.map_err(|e| e.to_string())?;
+                    for r in records {
+                        println!("{}\t[{}]\t{}", r.id, r.bucket, r.body);
+                    }
+                }
+                MemoryAction::Add { body, bucket } => {
+                    if let Some(r) = client.add_memory(&body, bucket.as_deref()).await.map_err(|e| e.to_string())? {
+                        println!("Added memory: {} [{}]", r.id, r.bucket);
+                    }
+                }
             }
         }
         Commands::Api(api) => {
@@ -422,7 +509,7 @@ Author: {:?}", item.number, item.title, item.state, item.author);
         Commands::Trace(trace) => match trace.action {
             TraceAction::List => {
                 for s in crate::trace::TraceStore::scan_foreign_sessions() {
-                    println!("{}	{}	({} steps)", s.session_id, s.agent_name, s.step_count);
+                    println!("{}\t{}\t({} steps)", s.session_id, s.agent_name, s.step_count);
                 }
             }
             TraceAction::Show { id } => println!("Viewing trace session {}", id),
