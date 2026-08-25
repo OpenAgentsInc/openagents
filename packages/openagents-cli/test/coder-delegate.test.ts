@@ -314,10 +314,10 @@ describe("fleet rendering", () => {
       agent: "opencode",
       model: "fake/model",
       cwd: "/tmp",
-      background: true,
-    },
-    1000,
-  );
+        background: true,
+      },
+      Date.now(),
+    );
   registry.start(task.id, new AbortController());
   registry.recordToolUse(task.id, { toolName: "bash", target: "pnpm test" });
   registry.recordTokens(task.id, { input: 8000, output: 214 });
