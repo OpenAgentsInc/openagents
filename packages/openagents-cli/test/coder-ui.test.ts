@@ -138,15 +138,35 @@ describe("runCoderUi", () => {
     expect(rows.join("\n")).not.toContain("connected:Here");
   });
 
-  it("shows the tool name, its arguments, and its outcome", async () => {
+  it("shows the tool, its call, and its outcome, on two rows", async () => {
     const { rows } = await drive([
       { type: "tool_call", callId: "c1", name: "repo_grep", arguments: '{"pattern":"x"}' },
       { type: "tool_result", callId: "c1", output: '{"matches":[]}', error: undefined },
     ]);
-    const text = rows.join("\n");
-    expect(text).toContain("repo_grep");
-    expect(text).toContain('{"pattern":"x"}');
-    expect(text).toContain('{"matches":[]}');
+
+    // The call joins the row that names it. It used to sit below as raw JSON,
+    // which cost a row per call and read as punctuation rather than as the
+    // command it is.
+    const named = rows.find((row) => row.includes("repo_grep")) ?? "";
+    expect(named).toContain("repo_grep x");
+    expect(named).not.toContain('{"pattern"');
+
+    expect(rows.join("\n")).toContain('{"matches":[]}');
+  });
+
+  it("shows an argument vector as the command line it is", async () => {
+    const { rows } = await drive([
+      {
+        type: "tool_call",
+        callId: "c1",
+        name: "openagents",
+        arguments: '{"args":["issue","view","212","-R","OpenAgentsInc/openagents.com"]}',
+      },
+      { type: "tool_result", callId: "c1", output: "#212 Rename the API", error: undefined },
+    ]);
+
+    const named = rows.find((row) => row.includes("openagents")) ?? "";
+    expect(named).toContain("openagents issue view 212 -R OpenAgentsInc/openagents.com");
   });
 
   it("renders assistant Markdown rather than its source", async () => {

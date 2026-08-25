@@ -36,6 +36,7 @@
  */
 
 import { readChildTranscript } from "./coder-child-transcript.js";
+import { summarizeToolCall } from "./coder-tool-summary.js";
 import { activityPhrase, fleetRows, latestActivities, taskActivity } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
@@ -504,7 +505,16 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           : tool.status === "failed"
             ? `${RED}✗${RESET}`
             : `${GREEN}✓${RESET}`;
-      const rows = [`${mark} ${BOLD}${tool.name}${RESET}`];
+      // The call on the row that names it, in the shape a person would have
+      // typed. It used to sit below as raw JSON, which cost a row per call and
+      // read as punctuation; `ctrl+o` still shows the arguments whole.
+      const summary = clip(
+        summarizeToolCall(tool.arguments),
+        Math.max(8, width - tool.name.length - 4),
+      );
+      const rows = [
+        `${mark} ${BOLD}${tool.name}${RESET}` + (summary.length === 0 ? "" : ` ${DIM}${summary}${RESET}`),
+      ];
 
       if (tool.name === "delegate" && tool.status === "running") {
         // Working children first when there are more than fit: a finished child
@@ -557,8 +567,6 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       }
 
       if (tool.name !== "delegate" || tool.status !== "running") {
-        const args = clip(tool.arguments, Math.max(8, width - 4));
-        if (args.length > 0) rows.push(`${DIM}${args}${RESET}`);
         const outcome =
           tool.error !== undefined
             ? `${RED}${clip(tool.error, Math.max(8, width - 4))}${RESET}`
