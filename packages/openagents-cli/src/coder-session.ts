@@ -765,6 +765,8 @@ export class CoderSession {
           "  shift+tab                   change how hard it thinks",
           "  ctrl+o                      expand a tool call",
           "  ctrl+x                      stop the children",
+          "  →                           move into the children column",
+          "  ↑↓ · enter · ←              in the column: select · open · leave",
           "  pgup / pgdn                 scroll the transcript",
           "  ctrl+c                      stop · ctrl+d  quit",
         ].join("\n"),

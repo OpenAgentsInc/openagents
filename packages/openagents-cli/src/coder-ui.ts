@@ -35,6 +35,7 @@
  * own job instead.
  */
 
+import { readChildTranscript } from "./coder-child-transcript.js";
 import { activityPhrase, fleetRows, latestActivities, taskActivity } from "./coder-fleet.js";
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
@@ -83,6 +84,8 @@ const ALT_SCROLL_OFF = "\x1b[?1007l";
 
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
+/** Reverse video, for the sidebar's selector bar. */
+const REVERSE = "\x1b[7m";
 const ITALIC = "\x1b[3m";
 const RESET = "\x1b[0m";
 const CYAN = "\x1b[36m";
@@ -137,6 +140,9 @@ const PREVIEW_ROWS = 3;
  */
 const SIDEBAR_WIDTH = 34;
 const SIDEBAR_MINIMUM_TERMINAL = 100;
+
+/** How many rows of one tool result the child screen shows. */
+const CHILD_OUTPUT_ROWS = 12;
 /** Width of the role gutter, so every entry's text starts in one column. */
 /**
  * Width of the marker column.
@@ -338,7 +344,25 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
    * screen over it rather than a turn in it, because switching a skill off is
    * a change to what the next turn carries, not something to say to the model.
    */
-  let screen: "chat" | "skills" = "chat";
+  let screen: "chat" | "skills" | "child" = "chat";
+
+  /**
+   * Which half of the chat screen has the arrow keys.
+   *
+   * The composer, until the reader presses right. The sidebar is a list and
+   * the composer is a field, and the two want the same four keys, so one of
+   * them holds them at a time and the other shows that it does not.
+   */
+  let focus: "composer" | "sidebar" = "composer";
+  /** The selected child, as an index into the sidebar's own order. */
+  let sidebarRow = 0;
+  /** The child whose transcript fills the screen, while one does. */
+  let childId: string | undefined;
+  /** Scroll position within that transcript, or the end when undefined. */
+  let childAnchor: number | undefined;
+  /** How many rows the child screen can show, for paging it. */
+  let childViewport = 1;
+  let childLines = 0;
   /** The row `/skills` acts on. */
   let skillRow = 0;
   /**
@@ -623,6 +647,16 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
      * viewport at the moment the reader most wanted to see what the parent
      * had said.
      */
+    /**
+     * The order the column shows children in, and the order the selector moves
+     * through. One function, because a selector that walks a different order
+     * than the one on screen selects the wrong child.
+     */
+    const sidebarOrder = (tasks: ReadonlyArray<CoderTask>): ReadonlyArray<CoderTask> => [
+      ...tasks.filter((task) => task.status === "running" || task.status === "pending"),
+      ...tasks.filter((task) => task.status !== "running" && task.status !== "pending"),
+    ];
+
     const sidebarLines = (
       tasks: ReadonlyArray<CoderTask>,
       height: number,
@@ -637,14 +671,14 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           ? `${BOLD}children${RESET}`
           : `${BOLD}children${RESET} ${DIM}${String(running)} working${RESET}`;
 
-      const rows: string[] = [heading, ""];
+      const rows: string[] = [
+        heading,
+        focus === "sidebar" ? `${DIM}↑↓ select · enter opens · ← back${RESET}` : "",
+      ];
 
       // Working children first. A finished one has already been reported on
       // the transcript, so it is the one to drop when the column runs out.
-      const ordered = [
-        ...tasks.filter((task) => task.status === "running" || task.status === "pending"),
-        ...tasks.filter((task) => task.status !== "running" && task.status !== "pending"),
-      ];
+      const ordered = sidebarOrder(tasks);
 
       const built = fleetRows(ordered, inner);
 
@@ -656,7 +690,16 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         if (rows.length + 2 > height) break;
 
         const color = fleetColor(row.status);
-        rows.push(`${color}${row.mark}${RESET} ${truncate(task.description, inner - 2)}`);
+        // The selector bar. Only while the column holds the keys, because a
+        // highlight on a list that does not answer them is a lie about where
+        // typing goes.
+        const selected = focus === "sidebar" && index === sidebarRow;
+        const name = truncate(task.description, inner - 2);
+        rows.push(
+          selected
+            ? `${REVERSE}${color}${row.mark}${RESET}${REVERSE} ${name}${RESET}`
+            : `${color}${row.mark}${RESET} ${name}`,
+        );
 
         const activities = latestActivities([task], PREVIEW_ROWS);
 
@@ -683,6 +726,79 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return rows;
     };
 
+    /**
+     * One child's transcript, filling the screen.
+     *
+     * A child reports one paragraph when it finishes, and until then the fleet
+     * row says only what tool it is on. This is the rest of it: every event the
+     * harness wrote, read from the file it is still appending to, so a reader
+     * can watch a child work instead of waiting for its summary.
+     */
+    const childScreenLines = (task: CoderTask, width: number): ReadonlyArray<string> => {
+      const rows: string[] = [];
+      const body = Math.max(20, width - 4);
+
+      rows.push(
+        `${BOLD}${task.description}${RESET} ${DIM}${task.agent} · ${task.model} · ${task.status}${RESET}`,
+        "",
+      );
+
+      const entries = readChildTranscript(task.transcriptPath);
+
+      if (entries.length === 0) {
+        rows.push(
+          task.transcriptPath === undefined
+            ? `${DIM}This child has not started writing yet.${RESET}`
+            : `${DIM}Nothing written yet.${RESET}`,
+        );
+      }
+
+      for (const entry of entries) {
+        switch (entry.kind) {
+          case "started":
+            rows.push(`${DIM}started in ${entry.cwd} on ${entry.model}${RESET}`, "");
+            break;
+
+          case "tool":
+            rows.push(
+              `${YELLOW}▸${RESET} ${BOLD}${entry.name}${RESET}` +
+                (entry.target === undefined ? "" : ` ${DIM}${truncate(entry.target, body - 6)}${RESET}`),
+            );
+            break;
+
+          case "output":
+            // Bounded per result. A child that cats a large file must not push
+            // everything it did before that off the top of the screen.
+            for (const line of entry.text.split("\n").slice(0, CHILD_OUTPUT_ROWS)) {
+              rows.push(`  ${DIM}${truncate(line, body - 2)}${RESET}`);
+            }
+            if (entry.text.split("\n").length > CHILD_OUTPUT_ROWS) {
+              rows.push(`  ${DIM}…${RESET}`);
+            }
+            break;
+
+          case "text":
+            rows.push("", ...wrapStyled(entry.text, body, ""), "");
+            break;
+
+          case "error":
+            rows.push(...wrapStyled(entry.text, body, RED));
+            break;
+        }
+      }
+
+      // The answer, once there is one. It is what the parent was given, and a
+      // reader who opened the child came for exactly this.
+      if (task.result !== undefined && task.result.length > 0) {
+        rows.push("", `${GREEN}result${RESET}`, ...wrapStyled(task.result, body, ""));
+      }
+      if (task.error !== undefined) {
+        rows.push("", `${RED}failed${RESET}`, ...wrapStyled(task.error, body, RED));
+      }
+
+      return rows.map((row) => `  ${row}`);
+    };
+
     const render = () => {
       if (closed) return;
       const snapshot = session.snapshot();
@@ -705,6 +821,41 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         paint(rows, rows.length, 1);
         return;
       }
+      // One child, filling the screen. Left or escape returns to the chat, and
+      // the chat is untouched underneath: this is a screen over it, not a
+      // place the session went.
+      if (screen === "child") {
+        const task = snapshot.tasks.find((candidate) => candidate.id === childId);
+
+        if (task === undefined) {
+          // The child was cleared while its transcript was open.
+          screen = "chat";
+        } else {
+          const room = Math.max(1, height - 2);
+          const lines = childScreenLines(task, width);
+          childLines = lines.length;
+          childViewport = room;
+
+          const last = Math.max(0, lines.length - room);
+          const from = childAnchor === undefined ? last : Math.min(childAnchor, last);
+
+          const rows: string[] = [];
+          for (let row = 0; row < room; row += 1) rows.push(lines[from + row] ?? "");
+
+          rows.push(
+            `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`,
+            hints(
+              [{ text: "↑↓ scroll" }, { text: "← back" }, { text: "esc back" }],
+              `${DIM}${task.description}${RESET}`,
+              width,
+            ),
+          );
+
+          paint(rows, rows.length, 1);
+          return;
+        }
+      }
+
       const transcriptHeight = Math.max(1, height - STATUS_ROWS - COMPOSER_ROWS - SPACER_ROWS);
 
       // The column appears when there is something to put in it and room to
@@ -803,6 +954,15 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // model, and budget stay here so the transcript and any running work are
       // read first and the bottom chrome is the last thing the eye reaches.
       rows.push(`  ${justify(activity, where, inner)}`);
+
+      if (focus === "sidebar") {
+        // On the selected child, because a cursor left blinking in a composer
+        // that is not taking keys says the wrong thing about where typing goes.
+        const heading = 2;
+        const selectedRow = Math.min(transcriptHeight, heading + sidebarRow * 3 + 1);
+        paint(rows, selectedRow, transcriptWidth + 2);
+        return;
+      }
 
       paint(
         rows,
@@ -1006,6 +1166,55 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           continue;
         }
 
+        // The child screen takes the keyboard while it is up, for the same
+        // reason the skills screen does: a stray letter must not fall through
+        // into a composer the reader cannot see.
+        if (screen === "child") {
+          if (char === "\x1b") {
+            const sequence = matchEscapeSequence(text, index);
+            if (sequence === undefined) {
+              pendingEscape = text.slice(index);
+              break;
+            }
+            index += sequence.length;
+
+            const page = Math.max(1, childViewport - 1);
+            const scroll = (by: number) => {
+              const last = Math.max(0, childLines - childViewport);
+              const from = childAnchor ?? last;
+              const next = Math.min(last, Math.max(0, from + by));
+              childAnchor = next >= last ? undefined : next;
+            };
+
+            if (sequence === "\x1b" || sequence === "\x1b[D" || sequence === "\x1bOD") {
+              // Back to the chat, and back into the column it was opened from,
+              // so a reader stepping through children does not have to press
+              // right again between each one.
+              screen = "chat";
+              focus = "sidebar";
+              childAnchor = undefined;
+              painted = [];
+            } else if (sequence === "\x1b[A" || sequence === "\x1bOA") scroll(-1);
+            else if (sequence === "\x1b[B" || sequence === "\x1bOB") scroll(1);
+            else if (sequence === "\x1b[5~") scroll(-page);
+            else if (sequence === "\x1b[6~") scroll(page);
+            else continue;
+
+            render();
+            continue;
+          }
+
+          index += 1;
+          if (char === "\x03" || char === "\x04") {
+            screen = "chat";
+            focus = "composer";
+            childAnchor = undefined;
+            painted = [];
+            render();
+          }
+          continue;
+        }
+
         // The skills screen takes the keyboard while it is up. Only the keys it
         // names do anything: a stray letter must not fall through into the
         // composer of a screen the reader cannot see.
@@ -1103,6 +1312,35 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             continue;
           }
 
+          // The column, when there is one. Right hands it the arrow keys;
+          // left hands them back. Both are no-ops when no children are
+          // running, so the keys never disappear into a column that is not on
+          // screen.
+          const children = sidebarOrder(session.snapshot().tasks);
+          const columnOpen =
+            children.length > 0 && (stdout.columns ?? 80) >= SIDEBAR_MINIMUM_TERMINAL;
+
+          if (focus === "composer" && columnOpen && (sequence === "\x1b[C" || sequence === "\x1bOC")) {
+            focus = "sidebar";
+            sidebarRow = Math.min(sidebarRow, children.length - 1);
+            render();
+            continue;
+          }
+
+          if (focus === "sidebar") {
+            if (sequence === "\x1b[D" || sequence === "\x1bOD" || sequence === "\x1b") {
+              focus = "composer";
+            } else if (sequence === "\x1b[A" || sequence === "\x1bOA") {
+              sidebarRow = Math.max(0, sidebarRow - 1);
+            } else if (sequence === "\x1b[B" || sequence === "\x1bOB") {
+              sidebarRow = Math.min(Math.max(0, children.length - 1), sidebarRow + 1);
+            } else {
+              continue;
+            }
+            render();
+            continue;
+          }
+
           const page = Math.max(1, viewport - 1);
           if (sequence === "\x1b[5~") scrollBy(-page);
           else if (sequence === "\x1b[6~") scrollBy(page);
@@ -1115,10 +1353,33 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           continue;
         }
 
+        // Typing is always typing. A reader who starts a sentence while the
+        // column has the keys means to type it, not to lose it, so the
+        // character brings the composer back rather than being swallowed.
+        if (focus === "sidebar" && char >= " " && char !== "\x7f") {
+          focus = "composer";
+        }
+
         if (char === "\r" || char === "\n") {
           index += 1;
           // Swallow a CRLF pair so a paste does not submit twice.
           if (char === "\r" && text[index] === "\n") index += 1;
+
+          // Enter belongs to whatever holds the arrow keys. In the column it
+          // opens the selected child rather than sending the composer, which
+          // would send a line the reader was not looking at.
+          if (focus === "sidebar") {
+            const selected = sidebarOrder(session.snapshot().tasks)[sidebarRow];
+            if (selected !== undefined) {
+              childId = selected.id;
+              childAnchor = undefined;
+              screen = "child";
+              painted = [];
+              render();
+            }
+            continue;
+          }
+
           // Always. A turn already running is not a reason to drop what was
           // typed: an interface command runs at once, and anything else is
           // queued by the session and sent when the turn ends. Ignoring the key

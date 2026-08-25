@@ -1066,3 +1066,139 @@ describe("where a running child is shown", () => {
     expect(rows.join("\n")).not.toContain(" → ");
   });
 });
+
+describe("inspecting a child from the column", () => {
+  /** Drive the interface, sending keys between paints, and return each frame. */
+  const driveKeys = async (
+    record: (registry: CoderTaskRegistry) => void,
+    steps: ReadonlyArray<ReadonlyArray<string>>,
+  ): Promise<ReadonlyArray<ReadonlyArray<string>>> => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    stdout.columns = 120;
+    const registry = new CoderTaskRegistry();
+    const session = new CoderSession(
+      {
+        model: "scripted",
+        async *reply(_prompt: string, signal: AbortSignal) {
+          yield { type: "tool_call", callId: "c1", name: "delegate", arguments: "{}" };
+          await new Promise<void>((resolve) => {
+            if (signal.aborted) return resolve();
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        },
+      },
+      "repo",
+      "main",
+      { registry, fleet: { submit: (): Promise<never> => new Promise(() => {}) }, label: "fake" },
+    );
+
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const turn = session.submit("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    record(registry);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const frames: ReadonlyArray<string>[] = [];
+    for (const keys of steps) {
+      stdout.written = "";
+      for (const key of keys) stdin.emit("data", key);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      frames.push(screen(stdout.written));
+    }
+
+    // Back to a state that can quit, whatever the steps left behind: the
+    // child screen and the column both take ctrl+d as "return", and ctrl+d
+    // only exits from an empty composer.
+    stdin.emit("data", "\x04");
+    stdin.emit("data", "\x7f".repeat(40));
+    stdin.emit("data", "\x04");
+    await running;
+    session.interrupt();
+    await turn;
+    return frames;
+  };
+
+  const two = (registry: CoderTaskRegistry) => {
+    for (const [id, description] of [
+      ["d1", "audit open_router"],
+      ["d2", "audit vercel_gateway"],
+    ] as const) {
+      const task = registry.register({
+        id,
+        description,
+        prompt: "x",
+        agent: "openagents",
+        model: "ox-alpha",
+        cwd: "/tmp",
+        background: true,
+      });
+      registry.start(task.id, new AbortController());
+    }
+  };
+
+  it("hands the arrow keys to the column on right, and back on left", async () => {
+    const [before, inside, back] = await drillKeys();
+
+    // Nothing says the column is live until it is.
+    expect(before.join("\n")).not.toContain("enter opens");
+    expect(inside.join("\n")).toContain("enter opens");
+    expect(back.join("\n")).not.toContain("enter opens");
+  });
+
+  it("moves the selector without moving the transcript", async () => {
+    const frames = await driveKeys(two, [
+      ["\x1b[C"],
+      ["\x1b[B"],
+    ]);
+
+    // Down in the column selects the second child. It must not scroll the
+    // conversation, which is what down does when the composer has the keys.
+    const moved = frames[1] ?? [];
+    expect(moved.join("\n")).toContain("audit vercel_gateway");
+  });
+
+  it("opens the selected child on enter, filling the screen", async () => {
+    const frames = await driveKeys(two, [["\x1b[C"], ["\x1b[B"], ["\r"]]);
+    const opened = (frames[2] ?? []).join("\n");
+
+    expect(opened).toContain("audit vercel_gateway");
+    expect(opened).toContain("↑↓ scroll");
+    // The conversation is not underneath it: this is a screen, not a pane.
+    expect(opened).not.toContain("│");
+  });
+
+  it("returns from a child to the column it was opened from", async () => {
+    // Stepping through children should not need a press of right between each.
+    const frames = await driveKeys(two, [["\x1b[C"], ["\r"], ["\x1b[D"]]);
+    const returned = (frames[2] ?? []).join("\n");
+
+    expect(returned).toContain("enter opens");
+    expect(returned).toContain("│");
+  });
+
+  it("gives the keys back to the composer when the reader types", async () => {
+    // A sentence started while the column has the keys is a sentence, not a
+    // set of shortcuts to swallow.
+    const frames = await driveKeys(two, [["\x1b[C"], ["h", "i"]]);
+    const typed = (frames[1] ?? []).join("\n");
+
+    expect(typed).toContain("› hi");
+  });
+
+  it("ignores right when there is no column to move into", async () => {
+    const frames = await driveKeys(
+      () => undefined,
+      [["\x1b[C"]],
+    );
+
+    expect((frames[0] ?? []).join("\n")).not.toContain("enter opens");
+  });
+
+  const drillKeys = async () =>
+    driveKeys(two, [[], ["\x1b[C"], ["\x1b[D"]]);
+});
