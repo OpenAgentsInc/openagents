@@ -738,6 +738,22 @@ describe("the thread's durable transcript", () => {
     });
   });
 
+  it("yields the turn's usage so the session's export can carry it", async () => {
+    stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
+    const source = await open();
+    source.useTools([withTool(async () => "README.md\nsrc")]);
+
+    const received = await chunks(source, "what is in this repo?");
+
+    // One usage chunk, at the end of the turn, summing both model calls —
+    // the same report the local lane yields, so the ATIF export's step
+    // metrics and final totals hold on every lane.
+    const usage = received.filter((chunk) => chunk.type === "usage");
+    expect(usage).toEqual([
+      { type: "usage", promptTokens: 100, completionTokens: 16, calls: 2 },
+    ]);
+  });
+
   it("records a failed tool as one event carrying its error", async () => {
     stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
     const source = await open();

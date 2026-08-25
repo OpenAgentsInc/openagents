@@ -585,6 +585,18 @@ export class ThreadReplySource implements ReplySource {
         }
         if (signal.aborted || calls.length === 0) {
           if (assistant.length > 0) this.transcript.push({ role: "assistant", content: assistant });
+          // The turn's cost reaches the session too, not only the durable
+          // transcript: the closing entry carries it into the ATIF export,
+          // where a benchmark computes cost per outcome from the trajectory
+          // alone. Same shape and place as the local lane's report.
+          if (this.turnUsage.calls > 0) {
+            yield {
+              type: "usage",
+              promptTokens: this.turnUsage.promptTokens,
+              completionTokens: this.turnUsage.completionTokens,
+              calls: this.turnUsage.calls,
+            };
+          }
           this.recordAnswer(turnText, turnToolCalls, signal.aborted);
           return;
         }
