@@ -36,3 +36,6 @@ export * from "./memory.js";
 export * from "./measurement.js";
 export * from "./owner-profile.js";
 export * from "./graph-memory-store.js";
+export * from "./engram.js";
+export * from "./consolidation.js";
+export * from "./subagent-memory.js";

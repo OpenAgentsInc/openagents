@@ -141,7 +141,7 @@ describe("openThread", () => {
     expect(source.threadId).toBe(THREAD_ID);
     expect(source.model).toBe("gpt-5.6-luna");
     expect(calls[0]?.method).toBe("POST");
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v3/threads`);
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/threads`);
     expect(calls[0]?.authorization).toBe(`Bearer ${ACCOUNT_TOKEN}`);
     expect(calls[0]?.body).toEqual({ objective: "coder in repo on main", reasoning: "high" });
   });
@@ -206,7 +206,7 @@ describe("openThread", () => {
   it("carries the server's typed refusal when the account holds its last thread", async () => {
     const sentence =
       "This account holds 8 open threads and the configured maximum is 8. " +
-      "Revoke a thread with DELETE /api/v3/threads/{thread_id} before opening another.";
+      "Revoke a thread with DELETE /api/v1/threads/{thread_id} before opening another.";
     stub({
       create: json(429, {
         message: sentence,
@@ -633,7 +633,7 @@ describe("ThreadReplySource", () => {
     expect(failure).toBeInstanceOf(ThreadUnavailable);
     expect(failure).toMatchObject({
       code: "grant_revoked",
-      message: "This thread was revoked. Start a new session to open another.",
+      message: "This thread is no longer live. Start a new session to open another.",
     });
   });
 
@@ -653,7 +653,7 @@ describe("ThreadReplySource", () => {
     await (await open()).revoke();
 
     const removal = calls.find((call) => call.method === "DELETE");
-    expect(removal?.url).toBe(`${ORIGIN}/api/v3/threads/${THREAD_ID}`);
+    expect(removal?.url).toBe(`${ORIGIN}/api/v1/threads/${THREAD_ID}`);
     expect(removal?.authorization).toBe(`Bearer ${ACCOUNT_TOKEN}`);
   });
 

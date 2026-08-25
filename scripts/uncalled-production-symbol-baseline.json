@@ -1774,12 +1774,40 @@
   ],
   "allowed": [
     {
+      "ref": "packages/agent-experience-memory/src/consolidation.ts#consolidateEpisodes",
+      "reason": "Background consolidation loop for agent memory, issue openagents.com#224: clusters episodes and synthesises lessons. Landed with its suites ahead of the loop that runs it, which is what #224 builds."
+    },
+    {
+      "ref": "packages/agent-experience-memory/src/consolidation.ts#promoteHeuristicToPattern",
+      "reason": "The promotion half of the same consolidation loop, issue openagents.com#224. Called once #224 has a scheduler to call it from."
+    },
+    {
+      "ref": "packages/agent-experience-memory/src/engram.ts#signSupersedingEngram",
+      "reason": "Supersession signing from the formal engram schema, issue openagents.com#221. The schema and its redaction invariants land before the relay sync adapter in #222 writes through them."
+    },
+    {
+      "ref": "packages/agent-experience-memory/src/engram.ts#verifySupersessionChain",
+      "reason": "The verification half of the same schema, issue openagents.com#221. Read by the deterministic projection worker in #223, which is not built yet."
+    },
+    {
       "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.applyDeletePlan",
       "reason": "Owner deletion half of the published graph-memory SDK contract: the typed, receipted delete plan every store layer implements. Its caller was the deleted Electron owner-lifecycle surface; hosted Sarah graph memory (openagents#9189) is the surviving composition root that owes owners a deletion path."
     },
     {
       "ref": "packages/agent-experience-memory/src/graph-memory-store.ts#GraphMemoryStoreInterface.exportArchive",
       "reason": "Owner data-portability half of the published graph-memory SDK contract, implemented by every store layer and paired with the live importArchive. Its caller was the deleted Electron owner-lifecycle surface; hosted Sarah graph memory (openagents#9189) is the surviving composition root that owes owners an export path."
+    },
+    {
+      "ref": "packages/agent-experience-memory/src/subagent-memory.ts#buildSubagentMemoryContext",
+      "reason": "Scoped memory inheritance for delegated children, issue openagents.com#226: the bootstrap heuristics a child is given. Its caller is the coder's delegate path, which #226 changes."
+    },
+    {
+      "ref": "packages/agent-experience-memory/src/subagent-memory.ts#harvestSubagentOutcome",
+      "reason": "Child engram harvest, issue openagents.com#227: what a finished child contributes back to the parent ledger. Called by the delegate path #227 builds."
+    },
+    {
+      "ref": "packages/agent-experience-memory/src/subagent-memory.ts#ledgerEntriesAsHeuristics",
+      "reason": "The parent-ledger reintegration half of the same harvest, issue openagents.com#227."
     },
     {
       "ref": "packages/agent-surface/src/index.ts#projectSafeMessageChain",
@@ -1802,6 +1830,10 @@
       "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
     },
     {
+      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workSnapshotRead",
+      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
+    },
+    {
       "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityCommit",
       "reason": "Published generated SDK method; TypeScript All Work clients will call it when they adopt the v0.2 signed Workroom client used by Omegas installed Rust consumer."
     },
@@ -1816,10 +1848,6 @@
     {
       "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityPublish",
       "reason": "Published generated SDK method; TypeScript All Work clients will call it when they adopt the v0.2 signed Workroom publication flow used by Omegas installed Rust consumer."
-    },
-    {
-      "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workSnapshotRead",
-      "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
     },
     {
       "ref": "packages/all-work-contract/src/client.generated.ts#makeAllWorkClient",
@@ -1854,12 +1882,12 @@
       "reason": "Intentional operator provisioning API; the installed Omega bootstrap will call it when non-human organization grant provisioning moves out of its current conformance fixture."
     },
     {
-      "ref": "packages/all-work-contract/src/planning-authority.ts#inMemoryPlanningStateStoreLayer",
-      "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
-    },
-    {
       "ref": "packages/all-work-contract/src/planning-authority.ts#PlanningAuthorityLive",
       "reason": "Published composable Effect layer; downstream All Work hosts will provide it when they adopt the planning authority outside the repository reference process."
+    },
+    {
+      "ref": "packages/all-work-contract/src/planning-authority.ts#inMemoryPlanningStateStoreLayer",
+      "reason": "Intentional in-memory adapter for downstream All Work SDK consumers; package and integration conformance suites call it instead of production persistence."
     },
     {
       "ref": "packages/all-work-contract/src/repository-claim-authority.ts#inMemoryRepositoryClaimStateStoreLayer",
@@ -1888,6 +1916,18 @@
     {
       "ref": "packages/apple-fm-runtime/src/supervisor.ts#AppleFmSupervisor.ensureStarted",
       "reason": "Idempotent start seam of the neutral Apple FM runtime, which apps/pylon/packages/runtime re-exports wholesale (export * as AppleFmNeutralRuntime). The deleted Electron apple-fm host was the in-repo caller; the sibling members status/refresh/runTurn/stop stay and would be unusable without a start."
+    },
+    {
+      "ref": "packages/assurance-spec/src/admission.ts#assuranceReviewSetDigest",
+      "reason": "Digests the review set an admission decision is bound to, so a later run can prove the reviewed bytes did not change. Its only production caller was the deleted run-mvp-assurance.ts (#9325). It is needed again by the replacement assurance runner that admits the surviving Omega Full Auto spec."
+    },
+    {
+      "ref": "packages/assurance-spec/src/full-gate.ts#parseVitePlusTestSummary",
+      "reason": "Parses a vite-plus test summary into the full-gate pass/fail counts an assurance receipt records. Its only production caller was the deleted run-mvp-assurance.ts (#9325). The replacement assurance runner for the surviving admitted specs is the successor caller."
+    },
+    {
+      "ref": "packages/assurance-spec/src/manifest.ts#compileAssuranceManifest",
+      "reason": "Compiles an AssuranceSpec into its obligation manifest. Its only in-repo production caller was packages/assurance-spec/scripts/run-mvp-assurance.ts, which was hard-wired to pnpm --dir apps/openagents-desktop run verify and was deleted with the Electron app (#9325). The kit still compiles manifests for the surviving admitted specs; the successor caller is the replacement assurance runner for specs/omega/full-auto.assurance-spec.md."
     },
     {
       "ref": "packages/behavior-contracts/src/market-swap-compare.ts#marketSwapCompareContractRegistry",
@@ -1942,6 +1982,10 @@
       "reason": "Published forensic contract API; OFR-004 and OFR-008 will call it from append-only claim revision and Omega review when those issues land."
     },
     {
+      "ref": "packages/forensic-contract/src/coldcard-generator.ts#LIBNGU_INITIAL_YASMARANG_STATE",
+      "reason": "Published pinned libngu initial state; the native forensic worker vector builder will use it for admitted vulnerable and mutation reproductions."
+    },
+    {
       "ref": "packages/forensic-contract/src/coldcard-generator.ts#admitColdcardGeneratorEvidence",
       "reason": "Published generator-evidence admission gate for OFR-015; the forensic evaluator route will call it once golden vectors are sourced independently of our own reproduction and a throughput measurement exists from an admitted OpenAgents Cloud worker. It currently refuses the checked-in corpus, which is the honest state."
     },
@@ -1956,10 +2000,6 @@
     {
       "ref": "packages/forensic-contract/src/coldcard-generator.ts#evaluateColdcardGeneratorVector",
       "reason": "Published frozen-vector evaluator; the native forensic worker route will call it for vulnerable, fixed, and mutation suites on admitted OpenAgents Cloud workers."
-    },
-    {
-      "ref": "packages/forensic-contract/src/coldcard-generator.ts#LIBNGU_INITIAL_YASMARANG_STATE",
-      "reason": "Published pinned libngu initial state; the native forensic worker vector builder will use it for admitted vulnerable and mutation reproductions."
     },
     {
       "ref": "packages/forensic-contract/src/coldcard-generator.ts#reproduceColdcardOwnedFixture",
@@ -2019,23 +2059,23 @@
     },
     {
       "ref": "packages/mkt-swp-compare/src/reservation.ts#detectReservationForks",
-      "reason": "Reservation fork detection (openagents#9318 §3); SWAP-0 (openagents#9315) runs it over ingested quotes and feeds the forks into compareTableView when the widget shell lands."
+      "reason": "Reservation fork detection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) runs it over ingested quotes and feeds the forks into compareTableView when the widget shell lands."
     },
     {
       "ref": "packages/mkt-swp-compare/src/reservation.ts#observeReservations",
-      "reason": "Reservation observation projection (openagents#9318 §3); SWAP-0 (openagents#9315) calls it on quote ingestion before fork detection when the widget shell lands."
+      "reason": "Reservation observation projection (openagents#9318 \u00a73); SWAP-0 (openagents#9315) calls it on quote ingestion before fork detection when the widget shell lands."
     },
     {
       "ref": "packages/mkt-swp-compare/src/selection.ts#orderAcceptance",
-      "reason": "Indicative-quote acceptance discipline (openagents#9318 §2); SWAP-0 (openagents#9315) drives it from provider Status ingestion after order creation."
+      "reason": "Indicative-quote acceptance discipline (openagents#9318 \u00a72); SWAP-0 (openagents#9315) drives it from provider Status ingestion after order creation."
     },
     {
       "ref": "packages/mkt-swp-compare/src/selection.ts#selectOrder",
-      "reason": "Order selection discipline (openagents#9318 §7); SWAP-0 (openagents#9315) calls it when the user selects a quote in the comparison table."
+      "reason": "Order selection discipline (openagents#9318 \u00a77); SWAP-0 (openagents#9315) calls it when the user selects a quote in the comparison table."
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#custodialMintCustody",
-      "reason": "Seeded custodial mint-route fixture (openagents#9318 §5) for the comparison corpus until immortal#14 lands a second live provider; SWAP-0 demo seeding consumes it."
+      "reason": "Seeded custodial mint-route fixture (openagents#9318 \u00a75) for the comparison corpus until immortal#14 lands a second live provider; SWAP-0 demo seeding consumes it."
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#testFirmHardQuote",
@@ -2043,7 +2083,7 @@
     },
     {
       "ref": "packages/mkt-swp-compare/src/testkit.ts#testVerifyReport",
-      "reason": "Seeded engine verify-report fixture (openagents#9318 §6); SWAP-0 demo seeding consumes it until the engine binding lands behind the SWAP-0 boundary."
+      "reason": "Seeded engine verify-report fixture (openagents#9318 \u00a76); SWAP-0 demo seeding consumes it until the engine binding lands behind the SWAP-0 boundary."
     },
     {
       "ref": "packages/mkt-swp-compare/src/view.ts#compareTableView",
@@ -2059,11 +2099,11 @@
     },
     {
       "ref": "packages/mkt-swp-destination/src/qr.ts#acceptScannedText",
-      "reason": "QR scan intake routing through the shared destination parser (openagents#9317 §8); SWAP-0 (openagents#9315) mounts the scanner in the swap widget shell and becomes its production caller."
+      "reason": "QR scan intake routing through the shared destination parser (openagents#9317 \u00a78); SWAP-0 (openagents#9315) mounts the scanner in the swap widget shell and becomes its production caller."
     },
     {
       "ref": "packages/mkt-swp-destination/src/qr.ts#qrUnavailable",
-      "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 §8); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
+      "reason": "Default no-camera capability for hosts without a scanner (openagents#9317 \u00a78); SWAP-0 (openagents#9315) provides it where the widget shell has no camera probe."
     },
     {
       "ref": "packages/mkt-swp-destination/src/resolve.ts#resolveDeferredDestination",
@@ -2119,27 +2159,23 @@
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#feePanelView",
-      "reason": "Render-ready rate/fee panel view model for openagents#9316 §5; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready rate/fee panel view model for openagents#9316 \u00a75; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#limitsView",
-      "reason": "Render-ready pre-typed limits view for openagents#9316 §4; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready pre-typed limits view for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#pairSelectorView",
-      "reason": "Render-ready pair selector view with pre-selection reachability for openagents#9316 §1; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready pair selector view with pre-selection reachability for openagents#9316 \u00a71; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-pair/src/view.ts#primaryActionView",
-      "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 §4; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
+      "reason": "Render-ready primary-action gate view (single most proximate refusal) for openagents#9316 \u00a74; SWAP-0 (openagents#9315) mounts the pair component in the swap widget shell and renders this view."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/export.ts#EXPORT_SENSITIVITY_KEY",
       "reason": "Typed sensitivity-notice key surfaces must present alongside the history export download (openagents#9320 audit follow-up); SWAP-0/SWAP-7 (openagents#9315/#9322) mount the History surface and render it next to the export action."
-    },
-    {
-      "ref": "packages/mkt-swp-session-store/src/export.ts#importRefusalKeyOf",
-      "reason": "Producer binding every HistoryImportError.reason to its swap-i18n catalog key (openagents#9320 audit follow-up: the refusal keys previously had no producer); SWAP-0/SWAP-7 (openagents#9315/#9322) render import refusals through it."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/export.ts#exportPrivateHistory",
@@ -2150,16 +2186,20 @@
       "reason": "History import for openagents#9320 (the escape hatch Boltz never shipped); SWAP-0/SWAP-7 (openagents#9315/#9322) mount the History surface and wire the import file picker as its production caller."
     },
     {
+      "ref": "packages/mkt-swp-session-store/src/export.ts#importRefusalKeyOf",
+      "reason": "Producer binding every HistoryImportError.reason to its swap-i18n catalog key (openagents#9320 audit follow-up: the refusal keys previously had no producer); SWAP-0/SWAP-7 (openagents#9315/#9322) render import refusals through it."
+    },
+    {
       "ref": "packages/mkt-swp-session-store/src/history.ts#HISTORY_EMPTY_KEY",
       "reason": "Empty-state message key for the History surface (openagents#9320); SWAP-0 (openagents#9315) renders the History list in the swap shell and becomes its production caller."
     },
     {
-      "ref": "packages/mkt-swp-session-store/src/history.ts#historyRows",
-      "reason": "Actionability-first History view model for openagents#9320; SWAP-0 (openagents#9315) renders the History list in the swap shell and becomes its production caller."
-    },
-    {
       "ref": "packages/mkt-swp-session-store/src/history.ts#RELOAD_GUARD_KEY",
       "reason": "Reload-guard prompt key for openagents#9320; SWAP-0 (openagents#9315) wires the navigation guard in the swap shell and becomes its production caller."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/history.ts#historyRows",
+      "reason": "Actionability-first History view model for openagents#9320; SWAP-0 (openagents#9315) renders the History list in the swap shell and becomes its production caller."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/resume.ts#planResume",
@@ -2168,10 +2208,6 @@
     {
       "ref": "packages/mkt-swp-session-store/src/resume.ts#reloadGuard",
       "reason": "Irreversible-effect navigation-guard verdict for openagents#9320; SWAP-0 (openagents#9315) wires it to beforeunload in the swap shell."
-    },
-    {
-      "ref": "packages/mkt-swp-session-store/src/store.ts#openSessionStore",
-      "reason": "Session-store constructor for openagents#9320; SWAP-0 (openagents#9315) opens the store at swap-shell boot over the browser storage binding and becomes its production caller."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.appendSignedRecord",
@@ -2192,6 +2228,10 @@
     {
       "ref": "packages/mkt-swp-session-store/src/store.ts#SessionStore.recordEffectResult",
       "reason": "Durable effect-result recording for openagents#9320; the SWAP-0 (openagents#9315) engine boundary records wallet/broadcast results to close the idempotency window."
+    },
+    {
+      "ref": "packages/mkt-swp-session-store/src/store.ts#openSessionStore",
+      "reason": "Session-store constructor for openagents#9320; SWAP-0 (openagents#9315) opens the store at swap-shell boot over the browser storage binding and becomes its production caller."
     },
     {
       "ref": "packages/mkt-swp-session-store/src/testkit.ts#CrashingKv.survivingKv",
@@ -2294,12 +2334,12 @@
       "reason": "Published generated relay configuration catalog; openagents.com issue #9310 will use the pinned recipient-rate environment name in local market diagnostics."
     },
     {
-      "ref": "packages/nip-mkt/src/generated.ts#MKT_KIND_DEFINITIONS",
-      "reason": "Published generated kind metadata for downstream NIP-MKT clients; openagents.com issue #9310 will use publication and enforcement scope when presenting discovery and negotiation records."
-    },
-    {
       "ref": "packages/nip-mkt/src/generated.ts#MKT_KINDS",
       "reason": "Published generated kind catalog for downstream NIP-MKT clients; openagents.com issue #9310 will use it when building discovery and negotiation filters."
+    },
+    {
+      "ref": "packages/nip-mkt/src/generated.ts#MKT_KIND_DEFINITIONS",
+      "reason": "Published generated kind metadata for downstream NIP-MKT clients; openagents.com issue #9310 will use publication and enforcement scope when presenting discovery and negotiation records."
     },
     {
       "ref": "packages/nip-mkt/src/generated.ts#OPAQUE_TRANSPORT",
@@ -2363,15 +2403,15 @@
     },
     {
       "ref": "packages/omega-effectd/scripts/full-auto-control-client.ts#buildFullAutoPolicyOptions",
-      "reason": "Published Full Auto control client shipped under the package's ./scripts/* export. Omega (github.com/OpenAgentsInc/omega, pinned by pack:digest, never a workspace path) is the surviving caller; docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps the control server and its client until the framed protocol replaces them."
+      "reason": "Published Full Auto control client shipped under the package's ./scripts/* export. Omega (github.com/OpenAgentsInc/omega, pinned by pack:digest, never a workspace path) is the surviving caller; docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps the control server and its client until the framed protocol replaces them."
     },
     {
       "ref": "packages/omega-effectd/scripts/full-auto-control-client.ts#readControlConnection",
-      "reason": "Published Full Auto control client connection reader (./scripts/* export). The deleted Electron full-auto CLI was its in-repo caller; Omega's packaged omega-effectd is the surviving caller per docs/omega/2026-07-24-full-auto-port-audit.md §8.1."
+      "reason": "Published Full Auto control client connection reader (./scripts/* export). The deleted Electron full-auto CLI was its in-repo caller; Omega's packaged omega-effectd is the surviving caller per docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-churn.ts#buildFullAutoTurnAction",
-      "reason": "Full Auto turn-action classifier in the ./engine/* published surface. Its Schema is already consumed by full-auto-run-registry; the constructor's caller was the deleted Electron main process, and Omega GPUI becomes the fourth caller of the ported engine (docs/omega/2026-07-24-full-auto-port-audit.md §7.2)."
+      "reason": "Full Auto turn-action classifier in the ./engine/* published surface. Its Schema is already consumed by full-auto-run-registry; the constructor's caller was the deleted Electron main process, and Omega GPUI becomes the fourth caller of the ported engine (docs/omega/2026-07-24-full-auto-port-audit.md \u00a77.2)."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-churn.ts#detectFullAutoChurn",
@@ -2383,23 +2423,23 @@
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-control-server.ts#isFullAutoControlEnabled",
-      "reason": "Env gate for the Full Auto loopback control API. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 explicitly keeps the control server and contract in omega-effectd until the framed protocol replaces them; the deleted Electron main process was the in-repo starter."
+      "reason": "Env gate for the Full Auto loopback control API. docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 explicitly keeps the control server and contract in omega-effectd until the framed protocol replaces them; the deleted Electron main process was the in-repo starter."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-control-server.ts#startFullAutoControlServer",
-      "reason": "The OpenAPI-documented Full Auto loopback control server. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps it in omega-effectd until the framed protocol supersedes it; its FullAutoControlCapabilities type is already consumed by the live protocol/server.ts and full-auto-run-actions.ts."
+      "reason": "The OpenAPI-documented Full Auto loopback control server. docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps it in omega-effectd until the framed protocol supersedes it; its FullAutoControlCapabilities type is already consumed by the live protocol/server.ts and full-auto-run-actions.ts."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-lane.ts#fullAutoPrompt",
-      "reason": "Lane prompt builder in the published ./engine/* surface. The deleted Electron codex runtime was its in-repo caller; Omega dispatches admitted provider turns through the same ported lane (docs/omega/2026-07-24-full-auto-port-audit.md §7.1)."
+      "reason": "Lane prompt builder in the published ./engine/* surface. The deleted Electron codex runtime was its in-repo caller; Omega dispatches admitted provider turns through the same ported lane (docs/omega/2026-07-24-full-auto-port-audit.md \u00a77.1)."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-mission.ts#appendFullAutoQueuedInstruction",
-      "reason": "Mission queued-instruction appender; docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps mission/verification/completion in omega-effectd. The module's compile/render functions are already live in protocol/server.ts; only the queued-instruction path lost its Electron caller."
+      "reason": "Mission queued-instruction appender; docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps mission/verification/completion in omega-effectd. The module's compile/render functions are already live in protocol/server.ts; only the queued-instruction path lost its Electron caller."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-plan.ts#advanceFullAutoPlanFromTurn",
-      "reason": "Full Auto plan advancement from a turn transcript, in the published ./engine/* surface. The deleted Electron main process was the in-repo caller; Omega GPUI becomes the fourth caller of the same ported action surface (docs/omega/2026-07-24-full-auto-port-audit.md §7.2)."
+      "reason": "Full Auto plan advancement from a turn transcript, in the published ./engine/* surface. The deleted Electron main process was the in-repo caller; Omega GPUI becomes the fourth caller of the same ported action surface (docs/omega/2026-07-24-full-auto-port-audit.md \u00a77.2)."
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-plan.ts#makeFullAutoPlan",
@@ -2411,7 +2451,7 @@
     },
     {
       "ref": "packages/omega-effectd/src/engine/full-auto-routing.ts#makeFullAutoRoutingLaneGate",
-      "reason": "Fail-closed routing lane gate. docs/omega/2026-07-24-full-auto-port-audit.md §8.1 keeps full-auto-routing and readiness in omega-effectd; the module's policy validator and lane-gate type are already consumed by the live control server, readiness, and capacity modules."
+      "reason": "Fail-closed routing lane gate. docs/omega/2026-07-24-full-auto-port-audit.md \u00a78.1 keeps full-auto-routing and readiness in omega-effectd; the module's policy validator and lane-gate type are already consumed by the live control server, readiness, and capacity modules."
     },
     {
       "ref": "packages/portable-session-contract/src/ide13-model.ts#checkIdePortableModel",
@@ -2432,18 +2472,6 @@
     {
       "ref": "packages/sovereign-identity/src/machinery/retire.ts#ReadOnlyLegacyPlaintextGuardInterface.deleteFile",
       "reason": "Fail-closed half of the read-only legacy-plaintext guard: it exists to REFUSE deleting a protected legacy file while verification is active. Its sibling writeFile is unflagged only because .writeFile collides with common production dot-accesses; dropping the delete refusal would leave the guard able to block writes but not deletions."
-    },
-    {
-      "ref": "packages/assurance-spec/src/manifest.ts#compileAssuranceManifest",
-      "reason": "Compiles an AssuranceSpec into its obligation manifest. Its only in-repo production caller was packages/assurance-spec/scripts/run-mvp-assurance.ts, which was hard-wired to pnpm --dir apps/openagents-desktop run verify and was deleted with the Electron app (#9325). The kit still compiles manifests for the surviving admitted specs; the successor caller is the replacement assurance runner for specs/omega/full-auto.assurance-spec.md."
-    },
-    {
-      "ref": "packages/assurance-spec/src/admission.ts#assuranceReviewSetDigest",
-      "reason": "Digests the review set an admission decision is bound to, so a later run can prove the reviewed bytes did not change. Its only production caller was the deleted run-mvp-assurance.ts (#9325). It is needed again by the replacement assurance runner that admits the surviving Omega Full Auto spec."
-    },
-    {
-      "ref": "packages/assurance-spec/src/full-gate.ts#parseVitePlusTestSummary",
-      "reason": "Parses a vite-plus test summary into the full-gate pass/fail counts an assurance receipt records. Its only production caller was the deleted run-mvp-assurance.ts (#9325). The replacement assurance runner for the surviving admitted specs is the successor caller."
     }
   ]
 }

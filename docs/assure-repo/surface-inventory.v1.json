@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:59b3aac646bddcbc39932e2474e2720da8c7ced4b3591d31a65725d1ec4f97df",
+  "sourceDigest": "sha256:0f196ae412fa4a0b3d7028db3535205a6051cd8c714835d7baf61e7fab70c6b5",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1533,7 +1533,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/agent-experience-memory (6 tracked test files)"
+          "ref": "packages/agent-experience-memory (9 tracked test files)"
         }
       ],
       "obligation": {
