@@ -3,7 +3,8 @@ import { appendFileSync } from "node:fs";
 import { accumulate, frames, parse, parseArguments } from "./coder-thread.js";
 import type { ChildGrant } from "./coder-child-gateway.js";
 import type { DelegateEvent, DelegateHarness } from "./coder-delegate.js";
-import { boundedResult } from "./coder-thread.js";
+import { budgetedResult } from "./coder-tool-budget.js";
+import { toolFamilyOf } from "./coder-tool-families.js";
 import type { CoderTool } from "./coder-tools.js";
 import { shellTool } from "./coder-tools.js";
 import { Redacted } from "effect";
@@ -234,7 +235,7 @@ export class SelfHarness implements DelegateHarness {
         transcript.push({
           role: "tool",
           tool_call_id: call.id,
-          content: boundedResult(output),
+          content: budgetedResult(output, toolFamilyOf(this.model)),
         });
         record({ type: "tool_result", callId: call.id, output });
       }

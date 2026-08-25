@@ -61,6 +61,7 @@
 import { Redacted } from "effect";
 
 import type { ChildGrant } from "./coder-child-gateway.js";
+import { budgetedResult, describeBudget, toolResultBudget } from "./coder-tool-budget.js";
 import { declaredDescription, toolFamilyOf } from "./coder-tool-families.js";
 import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
@@ -80,18 +81,16 @@ import { THREADS_PATH } from "./constants.js";
  */
 const MAX_TOOL_STEPS = 100;
 
-/** How much of one tool's output is kept on the transcript. */
-const TOOL_RESULT_KEPT = 4_000;
-
 /**
  * How much of one tool's output reaches the durable `tool.ran` event.
  *
- * A separate figure from `TOOL_RESULT_KEPT`, because they answer different
- * questions. The 4,000 above is a context-budget decision made against a
- * model's window: it is re-sent on every round of the turn. This one bounds a
- * record written once, so it is set where every result a real session has
- * produced fits whole — the largest measured was 8.4 KB — and only a
- * pathological dump is cut, kept at both ends the same way.
+ * A separate figure from the model-facing budget in `coder-tool-budget.ts`,
+ * because they answer different questions. That one is a context-budget
+ * decision made against a model's window, per family: it is re-sent on every
+ * round of the turn. This one bounds a record written once, so it is set where
+ * every result a real session has produced fits whole — the largest measured
+ * was 8.4 KB — and only a pathological dump is cut, kept at both ends the same
+ * way.
  */
 const EVENT_RESULT_KEPT = 64_000;
 
@@ -100,15 +99,8 @@ const bounded = (output: string, keep: number): string => {
   if (output.length <= keep) return output;
   const half = Math.floor(keep / 2);
   const cut = output.length - keep;
-  return `${output.slice(0, half)}\n\n[${String(cut)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
+  return `${output.slice(0, half)}\n\n[${String(cut)} of ${String(output.length)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
 };
-
-/**
- * A tool result as the model transcript carries it. Exported for the replay in
- * `coder-resume.ts`, which must feed a resumed model exactly what the live
- * loop would have.
- */
-export const boundedResult = (output: string): string => bounded(output, TOOL_RESULT_KEPT);
 
 /** What the thread may still spend, as the server last reported it. */
 export interface ThreadBudget {
@@ -500,6 +492,8 @@ export class ThreadReplySource implements ReplySource {
       `System message sent with every turn:\n\n${systemPrompt(this.tools, THREAD_LANE, this.standing)}`,
       "",
       declarations,
+      "",
+      describeBudget(toolResultBudget(toolFamilyOf(this.model))),
     ].join("\n");
   }
 
@@ -752,11 +746,12 @@ export class ThreadReplySource implements ReplySource {
         : { error: bounded(failure, EVENT_RESULT_KEPT) }),
     });
 
-    // Bounded on the way toward the model, not on the way to the reader or the
+    // Budgeted on the way toward the model, not on the way to the reader or the
     // record: this is what goes back on every round after, and a session that
     // re-sends everything it has already read spends its wall clock on reading
-    // it again. The `tool.ran` event above kept the fuller copy.
-    results.set(call.id, boundedResult(output));
+    // it again. The allowance is this model family's, and a cut result says so.
+    // The `tool.ran` event above kept the fuller copy.
+    results.set(call.id, budgetedResult(output, toolFamilyOf(this.model)));
   }
 
   /**

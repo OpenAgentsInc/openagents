@@ -227,8 +227,21 @@ function report(
   return [header, "", ...lines].join("\n");
 }
 
+/**
+ * A child's answer, cut to what the parent is shown.
+ *
+ * The cut says its own size. A child that reported ten findings and was shown
+ * as three reads, to the model holding the report, exactly like a child that
+ * found three.
+ */
 function clip(text: string, limit: number): string {
-  return text.length <= limit ? text : `${text.slice(0, limit)}\n…[truncated]`;
+  if (text.length <= limit) return text;
+  const cut = text.length - limit;
+  return (
+    `${text.slice(0, limit)}\n` +
+    `…[${String(cut)} of ${String(text.length)} characters cut from the end of this child's ` +
+    "answer; ask the child again for the part you need, or give it a narrower task]"
+  );
 }
 
 /**
@@ -437,6 +450,7 @@ export function openagentsTool(): CoderTool {
           stdio: ["ignore", "pipe", "pipe"],
         });
         let output = "";
+        let dropped = 0;
         let done = false;
 
         const finish = (text: string) => {
@@ -461,7 +475,11 @@ export function openagentsTool(): CoderTool {
         signal.addEventListener("abort", onAbort, { once: true });
 
         const collect = (chunk: Buffer) => {
-          if (output.length < CLI_OUTPUT_LIMIT) output += chunk.toString("utf8");
+          const text = chunk.toString("utf8");
+          // Past the cap the text is counted, not dropped unrecorded: a listing
+          // the model was handed half of reads like a whole listing.
+          if (output.length < CLI_OUTPUT_LIMIT) output += text;
+          else dropped += text.length;
         };
         child.stdout.on("data", collect);
         child.stderr.on("data", collect);
@@ -478,9 +496,11 @@ export function openagentsTool(): CoderTool {
           const advice = args.includes("--json")
             ? "drop --json and read the plain output, or ask for one record"
             : "narrow it with a flag such as --limit, --label, or --state";
+          const kept = Math.min(output.length, CLI_OUTPUT_LIMIT);
+          const cut = output.length - kept + dropped;
           const bounded =
-            output.length > CLI_OUTPUT_LIMIT
-              ? `${output.slice(0, CLI_OUTPUT_LIMIT)}\n\n[The output was cut off here. Run it again and ${advice}; what you have above is incomplete and must not be summarized as if it were the whole answer.]`
+            cut > 0
+              ? `${output.slice(0, CLI_OUTPUT_LIMIT)}\n\n[The command printed ${String(kept + cut)} characters and this tool holds ${String(CLI_OUTPUT_LIMIT)}, so ${String(cut)} were cut off here. Run it again and ${advice}; what you have above is incomplete and must not be summarized as if it were the whole answer.]`
               : output;
           const body = bounded.trim();
           // The exit code is reported on failure because it is what the CLI

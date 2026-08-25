@@ -378,7 +378,7 @@ describe("replayEntries", () => {
 
 describe("replayWire", () => {
   it("rebuilds the messages in the shape the live loop holds", () => {
-    expect(replayWire(FIXTURE)).toEqual([
+    expect(replayWire(FIXTURE, "default")).toEqual([
       { role: "user", content: "standing context\n\n---\n\nwhat is in mix.exs?" },
       {
         role: "assistant",
@@ -411,7 +411,7 @@ describe("replayWire", () => {
   });
 
   it("keeps the recorded arguments as the raw JSON string", () => {
-    const wire = replayWire(FIXTURE);
+    const wire = replayWire(FIXTURE, "default");
     const call = wire[1];
     expect(call?.role === "assistant" && call.tool_calls?.[0]?.function.arguments).toBe(
       `{"command":"cat mix.exs"}`,
@@ -419,29 +419,52 @@ describe("replayWire", () => {
   });
 
   it("keeps reasoning off the wire, as the live loop does", () => {
-    const wire = replayWire(FIXTURE);
+    const wire = replayWire(FIXTURE, "default");
     expect(wire.some((message) => message.content.includes("before answering"))).toBe(false);
   });
 
-  it("bounds a stored tool result to the live loop's wire figure", () => {
-    const wire = replayWire([
-      {
-        id: 1,
-        eventType: "tool.ran",
-        payload: {
-          call_id: "call-1",
-          tool: "shell",
-          arguments: "{}",
-          status: "succeeded",
-          output: "x".repeat(10_000),
+  it("budgets a stored tool result by the resumed session's model family", () => {
+    const wire = replayWire(
+      [
+        {
+          id: 1,
+          eventType: "tool.ran",
+          payload: {
+            call_id: "call-1",
+            tool: "shell",
+            arguments: "{}",
+            status: "succeeded",
+            output: "x".repeat(10_000),
+          },
+          emittedAt: undefined,
         },
-        emittedAt: undefined,
-      },
-    ]);
+      ],
+      "gemini",
+    );
     const result = wire[1];
     expect(result?.role).toBe("tool");
     expect(result?.content).toContain("characters omitted from the middle");
-    expect(result?.content.length ?? 0).toBeLessThan(5_000);
+    expect(result?.content).toContain("for the gemini model family");
+    // The same event replayed for a hosted lane keeps more of it, because the
+    // budget is the family's and not the record's.
+    const hosted = replayWire(
+      [
+        {
+          id: 1,
+          eventType: "tool.ran",
+          payload: {
+            call_id: "call-1",
+            tool: "shell",
+            arguments: "{}",
+            status: "succeeded",
+            output: "x".repeat(10_000),
+          },
+          emittedAt: undefined,
+        },
+      ],
+      "default",
+    );
+    expect((hosted[1]?.content.length ?? 0) > (result?.content.length ?? 0)).toBe(true);
   });
 });
 
@@ -533,7 +556,7 @@ describe("remintThread", () => {
     };
 
     const source = await remintThread({ origin: ORIGIN, token: TOKEN, threadId: THREAD_ID });
-    const replayed = replayWire(FIXTURE);
+    const replayed = replayWire(FIXTURE, "default");
     source.preload(replayed);
     source.useTranscript(sink);
 

@@ -64,6 +64,19 @@ describe("delegateTool", () => {
     expect(delegation.registry.list()).toHaveLength(3);
   });
 
+  it("says how much of a long child answer was cut, rather than ending it silently", async () => {
+    const answer = "finding. ".repeat(1_000);
+    const output = await delegateTool(delegationOf(harness(answer))).run(
+      { prompt: "report everything" },
+      new AbortController().signal,
+    );
+
+    // A child shown as three findings, having reported ten, reads to the model
+    // holding the report exactly like a child that found three.
+    expect(output).toContain(`of ${String(answer.trim().length)} characters cut from the end`);
+    expect(output).toContain("ask the child again for the part you need");
+  });
+
   it("tells each child of a fan-out which one it is", async () => {
     const prompts: string[] = [];
     const delegation = delegationOf({

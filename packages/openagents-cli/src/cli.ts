@@ -87,6 +87,7 @@ import {
   resumableThreads,
   type ThreadSummary,
 } from "./coder-resume.js";
+import { toolFamilyOf } from "./coder-tool-families.js";
 import { openLocalThread, threadAnnouncement, threadSyncWanted } from "./coder-local-thread.js";
 import { ThreadTranscriptWriter } from "./coder-transcript.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
@@ -2156,7 +2157,7 @@ const coderCommand = Command.make(
               // The replayed history reaches the model transcript and the
               // interface, never the transcript writer: the server already
               // holds these events, and a resume must not post them twice.
-              source.preload(replayWire(events));
+              source.preload(replayWire(events, toolFamilyOf(source.model)));
               return { source, entries: replayEntries(events) };
             },
             catch: (cause) => coderRefusal(endpoint.origin, cause, "coder.thread.resume"),

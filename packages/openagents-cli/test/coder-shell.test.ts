@@ -105,4 +105,16 @@ describe("running a command", () => {
   it("asks for a command rather than running nothing", async () => {
     await expect(run("   ")).resolves.toContain("`command` is required");
   });
+
+  it("says how much of an oversized output was cut, rather than ending mid-line", async () => {
+    // 100,000 characters against a 30,000-character hold. What the collector
+    // refuses is counted, so the notice can name the whole size: a result that
+    // stops without saying so is read as the whole of it.
+    const output = await run("yes wwwwwwwwwwwwwwwwwww | head -n 5000", 30);
+
+    expect(output).toContain("The command printed 100000 characters");
+    expect(output).toContain("this tool holds 30000");
+    expect(output).toContain("70000 were cut from the end");
+    expect(output).toContain("must not be read as the whole of it");
+  });
 });

@@ -69,6 +69,14 @@ export interface ShellResult {
   readonly output: string;
   readonly code: number | undefined;
   readonly timedOut: boolean;
+  /**
+   * Characters the collector refused to hold, once the output passed the cap.
+   *
+   * Counted rather than discarded unrecorded: the reader of this result is a
+   * model, and a `git log` it was handed half of reads exactly like a whole
+   * one. The count is what lets the notice say how much is missing.
+   */
+  readonly dropped: number;
 }
 
 /**
@@ -96,6 +104,7 @@ export async function runShell(
     });
 
     let output = "";
+    let dropped = 0;
     let settled = false;
     const finish = (result: ShellResult) => {
       if (settled) return;
@@ -107,17 +116,22 @@ export async function runShell(
 
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      finish({ output, code: undefined, timedOut: true });
+      finish({ output, code: undefined, timedOut: true, dropped });
     }, timeoutMs);
 
     const onAbort = () => {
       child.kill("SIGKILL");
-      finish({ output, code: undefined, timedOut: false });
+      finish({ output, code: undefined, timedOut: false, dropped });
     };
     options.signal.addEventListener("abort", onAbort, { once: true });
 
     const collect = (chunk: Buffer) => {
-      if (output.length < OUTPUT_LIMIT) output += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      // Past the cap the text is counted rather than kept. Counting it is the
+      // whole difference between a result that says what is missing and one
+      // that quietly ends mid-file.
+      if (output.length < OUTPUT_LIMIT) output += text;
+      else dropped += text.length;
     };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
@@ -127,19 +141,22 @@ export async function runShell(
         output: `The command could not be started: ${cause.message}`,
         code: undefined,
         timedOut: false,
+        dropped: 0,
       });
     });
     child.on("close", (code) => {
-      finish({ output, code: code ?? undefined, timedOut: false });
+      finish({ output, code: code ?? undefined, timedOut: false, dropped });
     });
   });
 }
 
 /** What the model is shown for one run. */
 export const renderShell = (result: ShellResult, timeoutMs: number): string => {
+  const kept = Math.min(result.output.length, OUTPUT_LIMIT);
+  const cut = result.output.length - kept + result.dropped;
   const bounded =
-    result.output.length > OUTPUT_LIMIT
-      ? `${result.output.slice(0, OUTPUT_LIMIT)}\n\n[truncated; narrow the command or write to a file and read part of it]`
+    cut > 0
+      ? `${result.output.slice(0, OUTPUT_LIMIT)}\n\n[The command printed ${String(kept + cut)} characters and this tool holds ${String(OUTPUT_LIMIT)}, so ${String(cut)} were cut from the end. What you have stops mid-output and must not be read as the whole of it: narrow the command, or write it to a file and read the part you need.]`
       : result.output;
   const body = bounded.trim();
 

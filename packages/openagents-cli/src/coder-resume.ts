@@ -38,7 +38,9 @@
 import { createInterface } from "node:readline";
 
 import type { CoderEntry } from "./coder-session.js";
-import { boundedResult, ThreadUnavailable, type WireMessage } from "./coder-thread.js";
+import { budgetedResult } from "./coder-tool-budget.js";
+import type { ToolFamily } from "./coder-tool-families.js";
+import { ThreadUnavailable, type WireMessage } from "./coder-thread.js";
 import { THREADS_PATH } from "./constants.js";
 
 /** The server's listing cap. Pages are read at exactly this size. */
@@ -268,10 +270,11 @@ export function replayEntries(events: ReadonlyArray<ThreadEvent>): ReadonlyArray
  * what reached the wire. `tool.ran` becomes the standard chat exchange: an
  * assistant message carrying the call in `tool_calls`, with the arguments as
  * the raw JSON string the record kept, then a `tool` message named by
- * `tool_call_id` with the result bounded by the same figure the live loop
- * uses, because this transcript is re-sent on every round and the bound is a
- * context-budget decision, not a property of the record. `turn.assistant` is
- * the turn's whole answer. `turn.reasoning` is deliberately absent: the live
+ * `tool_call_id` with the result budgeted by the same allowance the live loop
+ * uses, which is why the resumed session's model family has to be passed in:
+ * this transcript is re-sent on every round and the bound is a context-budget
+ * decision against that family's window, not a property of the record.
+ * `turn.assistant` is the turn's whole answer. `turn.reasoning` is deliberately absent: the live
  * loop never puts a thought on the wire.
  *
  * One call per assistant message, not one per round: the record does not
@@ -282,7 +285,10 @@ export function replayEntries(events: ReadonlyArray<ThreadEvent>): ReadonlyArray
  * `tool_calls` message is answered before the next assistant message, and
  * this shape keeps that invariant per call.
  */
-export function replayWire(events: ReadonlyArray<ThreadEvent>): ReadonlyArray<WireMessage> {
+export function replayWire(
+  events: ReadonlyArray<ThreadEvent>,
+  family: ToolFamily,
+): ReadonlyArray<WireMessage> {
   const messages: WireMessage[] = [];
 
   for (const event of events) {
@@ -315,7 +321,7 @@ export function replayWire(events: ReadonlyArray<ThreadEvent>): ReadonlyArray<Wi
       messages.push({
         role: "tool",
         tool_call_id: callId,
-        content: boundedResult(outcome),
+        content: budgetedResult(outcome, family),
       });
     } else if (event.eventType === "turn.assistant") {
       const said = text(payload["text"]);

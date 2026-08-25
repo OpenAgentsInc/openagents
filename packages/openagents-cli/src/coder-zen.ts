@@ -4,7 +4,9 @@ import { join } from "node:path";
 
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import { systemPrompt } from "./coder-system.js";
-import { accumulate, boundedResult, frames, parse, parseArguments } from "./coder-thread.js";
+import { budgetedResult } from "./coder-tool-budget.js";
+import { toolFamilyOf } from "./coder-tool-families.js";
+import { accumulate, frames, parse, parseArguments } from "./coder-thread.js";
 import type { CoderTool } from "./coder-tools.js";
 
 /**
@@ -254,7 +256,7 @@ export class ZenReplySource implements ReplySource {
         this.transcript.push({
           role: "tool",
           tool_call_id: call.id,
-          content: boundedResult(output),
+          content: budgetedResult(output, toolFamilyOf(this.model)),
         });
         yield { type: "tool_result", callId: call.id, output, error: undefined };
       }

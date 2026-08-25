@@ -8,6 +8,7 @@ import {
   ThreadUnavailable,
 } from "../src/coder-thread.js";
 import { Redacted } from "effect";
+import { toolResultBudget } from "../src/coder-tool-budget.js";
 import { shellTool } from "../src/coder-tools.js";
 import { ThreadTranscriptWriter } from "../src/coder-transcript.js";
 
@@ -560,14 +561,18 @@ describe("ThreadReplySource", () => {
     expect(messages[1]?.["tool_calls"]).toHaveLength(1);
   });
 
-  it("bounds a tool result on the wire while the record keeps the fuller copy", async () => {
+  /** One turn that calls a tool returning 10,000 characters, on one model. */
+  const dumped = async (model: string) => {
     const round = [
       `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"shell","arguments":"{}"}}]}}]}`,
       `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
       `data: [DONE]`,
       "",
     ].join("\n\n");
-    const calls = stub({ proxy: [sse([round]), sse([LIVE_SSE])] });
+    const calls = stub({
+      create: json(201, { ...CREATED, grant: { ...CREATED.grant, model } }),
+      proxy: [sse([round]), sse([LIVE_SSE])],
+    });
     const source = await open();
     const sink = recorder();
     source.useTranscript(sink);
@@ -578,13 +583,34 @@ describe("ThreadReplySource", () => {
     const spends = calls.filter((call) => call.url.endsWith("/api/inference/proxy"));
     const messages = spends[1]?.body["messages"] as Array<Record<string, unknown>>;
     const result = messages.find((message) => message["role"] === "tool");
-    const wire = result?.["content"] as string;
-    // The 4,000-char context budget still holds on the way to the model...
-    expect(wire.length).toBeLessThan(4_200);
-    expect(wire).toContain("characters omitted");
+    return { wire: result?.["content"] as string, sink };
+  };
+
+  it("budgets a tool result on the wire while the record keeps the fuller copy", async () => {
+    const { wire, sink } = await dumped("gpt-5.6-luna");
+
+    // The context budget for this model's family holds on the way to the
+    // model, and the notice for what it cut is part of what is sent...
+    const budget = toolResultBudget("default");
+    expect(wire.length).toBeLessThan(budget.characters + 800);
+    expect(wire).toContain(`${String(10_000 - budget.characters)} of 10000 characters omitted`);
     // ...while the durable event keeps the result whole, as before.
     const ran = sink.events.find((event) => event.eventType === "tool.ran");
     expect(ran?.payload["output"]).toBe("x".repeat(10_000));
+  });
+
+  it("budgets the same result differently on a model of another family", async () => {
+    const hosted = await dumped("gpt-5.6-luna");
+    const gemini = await dumped("gemini-3.7-flash");
+
+    // Same tool, same output, two allowances — and each result says which
+    // family's budget cut it and by how much.
+    expect(gemini.wire.length).toBeLessThan(hosted.wire.length);
+    expect(hosted.wire).toContain("for the default model family");
+    expect(gemini.wire).toContain("for the gemini model family");
+    expect(gemini.wire).toContain(
+      `${String(10_000 - toolResultBudget("gemini").characters)} of 10000 characters omitted`,
+    );
   });
 
   it("drops the calls past the step limit and asks for an answer without tools", async () => {

@@ -18,6 +18,7 @@ import type {
   ToolCall as OllamaToolCall,
 } from "ollama";
 
+import { budgetedResult } from "./coder-tool-budget.js";
 import { declaredDescription } from "./coder-tool-families.js";
 import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
@@ -40,34 +41,22 @@ const DEFAULT_HOST = "http://127.0.0.1:11434";
 const MAX_TOOL_STEPS = 100;
 
 /**
- * How much of one tool's output is kept on the transcript.
- *
- * The reader sees all of it; this is only what goes back to the model on every
- * round after. A session that read the issue boards accumulated 82 KB of tool
- * output and re-sent it 25 times, which is where its wall clock went: 91% of
- * everything sent each round was output the model had already read.
- *
- * Generous enough that a normal command survives whole, and the head and the
- * tail are what a long one is read for anyway.
- */
-const TOOL_RESULT_KEPT = 4_000;
-
-/**
  * How much of one tool's output reaches the durable `tool.ran` event.
  *
- * The same figure the thread lane uses, for the same reason: the 4,000 above
- * is a context-budget decision re-spent on every round, and this bounds a
- * record written once, so it is set where every result a real session has
- * produced fits whole.
+ * What the model is fed is bounded elsewhere and differently: this lane's
+ * results are budgeted for the `local` family in `coder-tool-budget.ts`,
+ * because they are re-sent on every round and a local model's window is a
+ * fraction of a hosted one. This figure bounds a record written once, so it is
+ * set where every result a real session has produced fits whole.
  */
 const EVENT_RESULT_KEPT = 64_000;
 
 /** A long tool result, kept at both ends. */
-const bounded = (output: string, keep = TOOL_RESULT_KEPT): string => {
+const bounded = (output: string, keep: number): string => {
   if (output.length <= keep) return output;
   const half = Math.floor(keep / 2);
   const cut = output.length - keep;
-  return `${output.slice(0, half)}\n\n[${String(cut)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
+  return `${output.slice(0, half)}\n\n[${String(cut)} of ${String(output.length)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
 };
 
 /**
@@ -643,6 +632,12 @@ export class OllamaReplySource implements ReplySource {
         : { error: bounded(failure, EVENT_RESULT_KEPT) }),
     });
 
-    this.transcript.push({ role: "tool", content: bounded(output), tool_name: name });
+    // Budgeted for the local family: a small window and slow generation make
+    // every re-sent character expensive in wall clock (coder-tool-budget.ts).
+    this.transcript.push({
+      role: "tool",
+      content: budgetedResult(output, "local"),
+      tool_name: name,
+    });
   }
 }
