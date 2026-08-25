@@ -938,15 +938,19 @@ async function postJson(
 }
 
 // #4864 provider discovery fields, included only for Pylons that have
-// declared the NIP-90 provider lane (the go-online path adds
-// PYLON_NIP90_PROVIDER_CAPABILITY_REF). Consent semantics: a provider
-// that goes online IS announcing publicly — its provider loop publishes
-// NIP-89 handler info signed with this same pubkey on these same relays.
-// Carrying pubkey + relay refs + lane refs into the worker registry adds
-// discoverability for stranger buyers, not exposure. The relay refs are
-// the values this Pylon actually listens on (relaysFromEnv), never a
-// worker-side constant, so the #4863 relay-domain cutover follows the
-// provider configuration automatically.
+// declared the NIP-90 provider lane. Consent semantics: a provider that
+// declared that lane IS announcing publicly, so carrying pubkey + relay
+// refs + lane refs into the worker registry adds discoverability for
+// stranger buyers, not exposure. The relay refs are the values this Pylon
+// actually listens on (relaysFromEnv), never a worker-side constant, so
+// the #4863 relay-domain cutover follows the provider configuration
+// automatically.
+//
+// Inert since 2026-07-14. `21e82ce829` retired the provider loop, and no
+// code path adds PYLON_NIP90_PROVIDER_CAPABILITY_REF to a runtime's
+// capability refs any more, so this returns {} in production. It is kept
+// as the port source for issue #30, whose revival needs an owner-approved
+// design. See `apps/pylon/docs/nip90-provider-loop.md`.
 export function providerDiscoveryFields(
   state: PylonLocalState,
   env: NodeJS.ProcessEnv = process.env,

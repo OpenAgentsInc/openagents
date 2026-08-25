@@ -5,14 +5,18 @@
  * `presence.ts`'s heartbeat needs exactly these four symbols to publish
  * provider-discovery fields (`PYLON_NIP90_PROVIDER_CAPABILITY_REF`,
  * `providerNip90LaneRefs`, `relaysFromEnv`) and their supporting constant
- * (`OPENAGENTS_MARKET_RELAY_URL`). The rest of `provider-nip90.ts` — job
- * request/result handling, the labor-market bridge, and the Apple FM client
- * used to *serve* NIP-90 work — depends on `wallet.ts`, `labor-market.ts`,
- * and `@openagentsinc/pylon-runtime` and stays in `apps/pylon`. This module
- * depends only on the public `@openagentsinc/nip90` job-kind constants, so
- * it is a clean leaf for presence to sit on top of. `apps/pylon`'s
- * `provider-nip90.ts` re-exports these symbols (rather than redefining them)
- * so there is a single source of truth.
+ * (`OPENAGENTS_MARKET_RELAY_URL`). This module depends only on the public
+ * `@openagentsinc/nip90` job-kind constants, so it is a clean leaf for
+ * presence to sit on top of.
+ *
+ * The serving half is gone. `apps/pylon/src/provider-nip90.ts`, which used
+ * to re-export these symbols and handle job requests and results, was
+ * deleted on 2026-07-14 by `21e82ce829` ("retire money sites and wallet
+ * authority"), so this file is now the only definition. Nothing adds
+ * `PYLON_NIP90_PROVIDER_CAPABILITY_REF` to a runtime's capability refs any
+ * more, which means `providerDiscoveryFields` returns nothing in practice.
+ * These refs are kept as the port source for issue #30. See
+ * `apps/pylon/docs/nip90-provider-loop.md`.
  */
 import {
   KIND_JOB_LABOR_CODE_TASK,

@@ -634,82 +634,40 @@ node --import tsx apps/pylon/scripts/multi-session-run.ts \
   --concurrency 2
 ```
 
-## NIP-90 Provider Loop
+## Provider lane (retired market loop)
 
-GO ONLINE for the NIP-90 provider lane is persisted through the provider
-command:
+The NIP-90 and NIP-LBR provider loop was deleted on 2026-07-14 by commit
+`21e82ce829` (`feat(vp1): retire money sites and wallet authority`). `pylon
+provider once`, `pylon provider approve-labor`, `pnpm run provider:serve`,
+`pnpm run smoke:nip90-provider`, and the `pylon wallet` family no longer exist.
+The provider command offers exactly two subcommands:
 
 ```sh
 pylon provider go-online
-pylon provider approve-labor --approved-by-ref operator.public.<ref> --job-type code_task
-pylon provider once
 pylon provider go-offline
-pnpm run smoke:nip90-provider
 ```
 
-`go-online` marks the local runtime online, adds
-`capability.public.pylon.nip90.text_inference.v0.3` and
-`capability.public.pylon.labor.local_agent.v0.3`, and records the relay and
-admission policy that the OpenTUI background loop will use. Labor jobs require
-an explicit first-run operator approval record from `provider approve-labor`
-before they execute on a machine. `provider once` is the headless smoke path
-for one relay loop iteration. The default dashboard starts the same loop
-automatically only when the persisted lifecycle is `online` or
-`assignment-ready`. Own-capacity dispatch includes local active
-`assignment run-no-spend` runners in `load.coding.<service>.busy`, so a
-machine with two active Codex assignments reports those slots as busy instead
-of advertising them as still available.
+`go-online` is local bookkeeping: it marks the runtime lifecycle online, probes
+Claude, Codex, and Apple Foundation Models readiness, records the resulting
+capability and blocker refs, and reports per-account coding capacity as
+quantities. Own-capacity dispatch counts local active `assignment
+run-no-spend` runners as busy, so a machine with two live Codex assignments
+reports those slots as busy rather than available. The command opens no socket,
+publishes no Nostr event, quotes no job, and earns nothing. `go-offline`
+reverses the lifecycle.
 
-The provider loop subscribes to the scoped OpenAgents market relay by default,
-publishes NIP-89 handler info, admits public kind `5050` text-inference
-requests and OpenAgents labor kinds `5934` code task, `5935` review, and
-`5936` document work, then publishes NIP-90 `7000` feedback plus result kinds
-`6050` or `6934`-`6936`. Text inference executes the local Apple FM runtime.
-Labor jobs execute through the contributor's configured local agent path
-(`codex`, `opencode`, or `claude`) inside a bounded workspace and return
-public-safe artifact refs. It uses the shared `@openagentsinc/nip90` package,
-which re-exports the local `nostr-effect` protocol helpers.
+The protocol package `packages/nip90` survived and grew, and the earning half
+was revived offline as `openagents provider settle`, which decides what a
+verified job earned against an NIP-LBR closeout receipt and pays nothing
+(`payout_rail: "not_connected"`, `custody: "none"`). Reviving the rest needs an
+owner-approved design and invariant change; `scripts/vp1-retired-money-surface-guard.mjs`
+enforces that meanwhile.
 
-Environment controls:
+For the full record of what was removed, what survived, and what a revival
+needs, see `docs/nip90-provider-loop.md`, `docs/labor-market-provider-loop.md`,
+and issue [#30](https://openagents.com/OpenAgentsInc/openagents/issues/30).
 
-- `PYLON_NIP90_RELAYS`: comma-separated relay URLs. Defaults to
-  the configured public Nostr relay (default `wss://nos.lol`).
-- `PYLON_NIP90_PRICE_MSATS`: price floor and requested invoice amount.
-  defaults to `1000`.
-- `PYLON_NIP90_REQUEST_TTL_SECONDS`: request age limit. Defaults to one year.
-- `PYLON_NIP90_MAX_INFLIGHT`: total local inflight admission leases. Defaults
-  to `1`.
-- `PYLON_NIP90_PER_BUYER_MAX_INFLIGHT`: per-buyer inflight leases. Defaults
-  to `1`.
-- `PYLON_LABOR_AGENT`: optional local labor agent selector: `codex`,
-  `opencode`, or `claude_code`. If unset, Pylon detects `codex`, then
-  `opencode`, then `claude`.
-- `PYLON_LABOR_AGENT_COMMAND`: optional explicit local command prefix for
-  advanced operators. Pylon appends the generated public-safe labor prompt.
-
-Wallet boundary: the loop may put a raw BOLT 11 invoice into Nostr relay
-events because NIP-90 payment-required/result tags require it, but local state,
-ledger records, OpenAgents API payloads, logs, and issue evidence must only
-carry public-safe receipt refs, amounts, event ids, and readiness refs. See
-`docs/nip90-provider-loop.md`.
-
-Legacy Spark/Breez migration boundary: `pylon wallet migrate-spark` is a
-preflight-first compatibility path for old v0.2.x balances. It reports missing
-Breez/Spark credential material as an actionable blocker and only proceeds with
-explicit local consent. `pylon wallet send --rail spark --confirm-send` is the
-direct Spark spend/withdraw path for credited Spark wallet funds. It is separate
-from accepted-work payout authority and emits public-safe refs only. Users must
-never paste a 12-word mnemonic, raw invoice, Lightning Address, API key, or Spark
-storage path into GitHub, support threads, logs, or issue comments. See
-`docs/legacy-spark-wallet-migration.md`.
-
-Labor boundary: Pylon rejects labor requests that carry provider-auth-shaped
-material, requests outside the bounded workspace, or a policy ref other than
-`provider.compliant_usage_labor.v1`. The contributor's own local provider
-accounts or API budgets stay on the contributor machine. OpenAgents pays for
-accepted work output only and never resells, proxies, brokers, or transfers
-provider credentials, sessions, account access, or consumer subscription
-capacity.
+## Runtime
 
 The runtime includes:
 
