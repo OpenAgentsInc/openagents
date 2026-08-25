@@ -43,9 +43,6 @@ impl Host for FakeHost {
         }
         Ok(bytes.clone())
     }
-}
-
-impl RangeHost for FakeHost {
     fn read_range(&self, path: &str, offset: u64, max_bytes: u32) -> Result<Vec<u8>, Refusal> {
         let bytes = self
             .files

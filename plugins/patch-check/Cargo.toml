@@ -1,0 +1,14 @@
+[package]
+name = "patch-check"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Guest plugin for the OpenAgents coder: validate a unified diff against a file's current content — placement, drift, and an optional preview — as pure computation on the owned PDK."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openagents-pdk = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

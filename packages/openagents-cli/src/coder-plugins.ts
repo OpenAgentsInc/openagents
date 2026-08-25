@@ -23,8 +23,9 @@
  *   inspection, before instantiation, so the sandbox is a property of what
  *   was loaded rather than a hope about what it does.
  * - **Mounts are read-only and confined.** A declared mount resolves to a
- *   real directory at load (relative to the manifest, absolute, or
- *   `~`-expanded); at invocation the engine's `read_file` and `list_dir`
+ *   real directory at load (relative to the manifest, absolute,
+ *   `~`-expanded, or the literal `${workspace}`, which is the process
+ *   working directory); at invocation the engine's `read_file` and `list_dir`
  *   imports canonicalize every path, refuse absolute paths, `..` escapes,
  *   and symlinks, bound the bytes per file, and bound the entries per
  *   listing.
@@ -60,9 +61,11 @@ export interface PluginMount {
   /**
    * Directory path. Relative paths resolve against the manifest's
    * directory; absolute paths are taken as-is; a leading `~/` (or a bare
-   * `~`) expands to the invoking user's home directory. Whatever the form,
-   * the root must exist and be a directory at load, or the plugin refuses
-   * to load.
+   * `~`) expands to the invoking user's home directory; the literal
+   * `${workspace}` resolves to the process working directory at load time
+   * (the parameterized workspace mount, OpenAgentsInc/openagents#44).
+   * Whatever the form, the root must exist and be a directory at load, or
+   * the plugin refuses to load.
    */
   readonly path: string;
   /** Only `true` is accepted; a writable mount is refused, not downgraded. */
@@ -165,7 +168,12 @@ export function loadPluginFromManifest(
   const manifestDir = dirname(manifestPath);
   const mounts: string[] = [];
   for (const mount of manifest.capabilities.mounts) {
-    const declared = resolve(manifestDir, expandMountPath(mount.path));
+    // The parameterized workspace mount (OpenAgentsInc/openagents#44): the
+    // literal `${workspace}` resolves to the process working directory at
+    // load time, so a checked-in manifest can grant "the repository the
+    // coder is standing in" without naming a machine-specific path.
+    const expanded = mount.path === "${workspace}" ? process.cwd() : expandMountPath(mount.path);
+    const declared = resolve(manifestDir, expanded);
     let root: string;
     try {
       root = realpathSync(declared);

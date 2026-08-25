@@ -34,6 +34,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "git-facts"
+version = "0.1.0"
+dependencies = [
+ "openagents-pdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "git-lost-work"
 version = "0.1.0"
 dependencies = [
@@ -48,6 +57,15 @@ name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+
+[[package]]
+name = "knowledge-base"
+version = "0.1.0"
+dependencies = [
+ "openagents-pdk",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "memchr"
@@ -68,6 +86,15 @@ dependencies = [
 name = "openagents-pdk"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "patch-check"
+version = "0.1.0"
+dependencies = [
+ "openagents-pdk",
  "serde",
  "serde_json",
 ]
@@ -95,6 +122,24 @@ name = "read-conversation"
 version = "0.1.0"
 dependencies = [
  "foreign-sessions",
+ "openagents-pdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "repo-map"
+version = "0.1.0"
+dependencies = [
+ "openagents-pdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "repo-tree"
+version = "0.1.0"
+dependencies = [
  "openagents-pdk",
  "serde",
  "serde_json",
@@ -141,6 +186,16 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "session-search"
+version = "0.1.0"
+dependencies = [
+ "foreign-sessions",
+ "openagents-pdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

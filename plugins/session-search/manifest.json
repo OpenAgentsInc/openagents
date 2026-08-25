@@ -1,0 +1,108 @@
+{
+  "manifest_version": 1,
+  "name": "session_search",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Search all Claude Code and Codex conversations and sessions on this machine for a word, error, or phrase. Use it when asked where something was discussed, which session mentioned an error message, a file, a decision, or a topic, or to grep across past conversations and chat history. Case-insensitive, newest sessions first, matching only what people actually said — thinking and tool payloads are not searched. Read-only and bounded: each hit returns its role and a small window of surrounding context, oversized session files are searched from their tail and marked, and the output says when the session budget cut the search short. It never resumes, continues, or writes anything.",
+  "artifact": {
+    "path": "session_search.wasm",
+    "digest": "sha256:969e241ef5eb40b3a064d4d1abec8dc716a63f9be6dd0f4d92c76aad94001611"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The word or phrase to search for, matched case-insensitively. Required and must be non-empty."
+        },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["claude", "codex"] },
+          "description": "Which stores to search. Both when omitted."
+        },
+        "cwd_filter": {
+          "type": "string",
+          "description": "Only search sessions whose working directory contains this substring."
+        },
+        "max_age_days": {
+          "type": "number",
+          "description": "Only search sessions modified within this many days. Default 90."
+        },
+        "max_sessions": {
+          "type": "integer",
+          "description": "Most sessions to search, newest first. Default 20, capped at 40."
+        },
+        "max_hits_per_session": {
+          "type": "integer",
+          "description": "Most hits reported per session. Default 3, capped at 10."
+        },
+        "context_chars": {
+          "type": "integer",
+          "description": "Characters kept around each hit. Default 240, capped at 1000."
+        },
+        "now_ms": {
+          "type": "integer",
+          "description": "Current time in milliseconds since the Unix epoch, for the recency window. The sandbox has no clock; when omitted, the newest session's own timestamp stands in."
+        }
+      },
+      "required": ["query"]
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" },
+        "sessions_searched": { "type": "integer" },
+        "sessions_matched": { "type": "integer" },
+        "matches": {
+          "type": "array",
+          "description": "Matching sessions, newest first.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" },
+              "session_id": { "type": "string" },
+              "path": { "type": "string" },
+              "cwd": { "type": "string" },
+              "mtime_ms": { "type": "integer" },
+              "tail_only": {
+                "type": "boolean",
+                "description": "True when the file exceeded the whole-read bound, so only its tail was searched."
+              },
+              "hits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "role": { "type": "string" },
+                    "context": { "type": "string" }
+                  }
+                }
+              },
+              "hits_total": { "type": "integer" }
+            }
+          }
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True when the session budget or the scanner's bounds cut the candidate list short."
+        },
+        "skipped_unreadable": { "type": "integer" }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [
+      { "path": "~/.claude", "readonly": true },
+      { "path": "~/.codex", "readonly": true }
+    ],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 128
+  }
+}

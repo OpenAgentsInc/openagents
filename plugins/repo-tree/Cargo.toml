@@ -1,0 +1,14 @@
+[package]
+name = "repo-tree"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Guest plugin that lists the workspace's file tree honoring a documented gitignore subset, with a fuzzy file-name lookup mode, read-only and bounded."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openagents-pdk = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

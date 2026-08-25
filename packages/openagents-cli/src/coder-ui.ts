@@ -706,8 +706,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
       const heading =
         running === 0
-          ? `${BOLD}children${RESET}`
-          : `${BOLD}children${RESET} ${DIM}${String(running)} working${RESET}`;
+          ? `${BOLD}subagents${RESET}`
+          : `${BOLD}subagents${RESET} ${DIM}${String(running)} working${RESET}`;
 
       const rows: string[] = [
         heading,
