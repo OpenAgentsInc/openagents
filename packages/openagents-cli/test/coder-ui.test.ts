@@ -958,6 +958,72 @@ describe("the chrome under the composer", () => {
   });
 });
 
+describe("the splash before the first message", () => {
+  /** Open a fresh session, send nothing, and read what it painted. */
+  const openFresh = async (columns = 100, rows = 24) => {
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
+    stdout.columns = columns;
+    stdout.rows = rows;
+    const session = new CoderSession(source([]), "repo", "main");
+    const running = runCoderUi(session, {
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const painted = screen(stdout.written);
+    stdin.emit("data", "\x04");
+    await running;
+    return painted;
+  };
+
+  it("greets an empty session with the wordmark, a frame, and the binary field", async () => {
+    const rows = await openFresh();
+    const joined = rows.join("\n");
+
+    // The wordmark, its frame, and the field of digits around it. The hint
+    // says what to do next without repeating what the status line says.
+    expect(joined).toContain("██████╗");
+    expect(joined).toContain("┌");
+    expect(joined).toContain("└");
+    expect(joined).toMatch(/[01]{20}/);
+    expect(joined).toContain("type a prompt below to begin");
+  });
+
+  it("is gone the moment the first entry exists, and stays gone", async () => {
+    const { rows } = await drive([{ type: "text", value: "hello" }]);
+    const joined = rows.join("\n");
+
+    // The splash is only what an empty transcript looks like, so a transcript
+    // with anything in it must show no row of it.
+    expect(joined).toContain("hello");
+    expect(joined).not.toContain("██");
+    expect(joined).not.toContain("type a prompt below to begin");
+    expect(joined).not.toMatch(/[01]{20}/);
+  });
+
+  it("paints the same frame every time the same empty state renders", async () => {
+    // Same snapshot and same size mean the same rows: the texture is seeded
+    // from cell positions, so nothing in the frame depends on time or chance.
+    const first = await openFresh();
+    const second = await openFresh();
+    expect(second).toEqual(first);
+  });
+
+  it("falls back on a narrow terminal and never emits a row past the edge", async () => {
+    const rows = await openFresh(40);
+    const joined = rows.join("\n");
+
+    // Too narrow for the wordmark, so the word is spelled out in the same
+    // frame — and no row may be wider than the terminal, which would wrap it.
+    expect(joined).not.toContain("██████╗");
+    expect(joined).toContain("C O D E R");
+    for (const row of rows) {
+      expect([...row].length).toBeLessThanOrEqual(40);
+    }
+  });
+});
+
 describe("where a running child is shown", () => {
   /** A session with a running delegate tool call, at a given terminal width. */
   const driveDelegated = async (

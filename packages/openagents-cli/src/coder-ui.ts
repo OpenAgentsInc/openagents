@@ -286,6 +286,123 @@ function truncate(text: string, width: number): string {
 }
 
 /**
+ * The face the splash writes CODER in, drawn by hand in block glyphs.
+ *
+ * Hand-drawn because this interface renders with no dependencies, and a figlet
+ * package to say one word would be the first. Six rows, because shorter art
+ * stops reading as a wordmark and taller art crowds a small terminal.
+ */
+const SPLASH_WORD = [
+  " ██████╗ ██████╗ ██████╗ ███████╗██████╗ ",
+  "██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗",
+  "██║     ██║   ██║██║  ██║█████╗  ██████╔╝",
+  "██║     ██║   ██║██║  ██║██╔══╝  ██╔══██╗",
+  "╚██████╗╚██████╔╝██████╔╝███████╗██║  ██║",
+  " ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝",
+];
+
+/** What the splash asks for. The status line already names the workspace. */
+const SPLASH_HINT = "type a prompt below to begin";
+
+/**
+ * One cell of the splash's binary texture.
+ *
+ * Seeded from the cell's own position rather than from a random source, so the
+ * same viewport always shows the same field. The paint loop diffs rows against
+ * the last frame, and texture that shifted on every repaint would rewrite the
+ * whole block each time and read as static rather than as a backdrop.
+ */
+function splashBit(row: number, column: number): string {
+  // Two multiply-xor rounds, because one leaves the low bits of neighbouring
+  // columns correlated and the field visibly striped.
+  let hash = (Math.imul(row + 1, 2654435761) ^ Math.imul(column + 1, 0x9e3779b9)) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b) >>> 0;
+  return ((hash ^ (hash >>> 16)) & 1) === 0 ? "0" : "1";
+}
+
+/** A full row of that texture, one digit per column. */
+function splashTexture(row: number, width: number): string {
+  let cells = "";
+  for (let column = 0; column < width; column += 1) cells += splashBit(row, column);
+  return cells;
+}
+
+/**
+ * What the transcript's viewport shows before the first entry exists.
+ *
+ * A session opens onto nothing — no banner, by the note at the bottom of this
+ * file — and nineteen blank rows read as a program that has not started. The
+ * splash is not state and not a lifecycle: it is only what an empty transcript
+ * looks like, so the first entry replaces it the way any frame replaces the
+ * one before, and it never comes back. Same size in, same rows out, because
+ * the renderer repaints on state changes and resize and nothing else.
+ *
+ * Each size gets the largest rendering that fits whole: the wordmark in a
+ * frame with the binary field, a one-line box, or the bare word. Nothing here
+ * may emit a row wider than the viewport — the terminal would wrap it, which
+ * shifts every row below and leaves text nothing will erase.
+ */
+function splashLines(width: number, height: number): ReadonlyArray<string> {
+  const wordWidth = [...(SPLASH_WORD[0] ?? "")].length;
+
+  /** Wrap inner rows in the frame and center the block in the viewport. */
+  const framed = (inner: ReadonlyArray<string>, innerWidth: number): ReadonlyArray<string> => {
+    const rows = [
+      `${DIM}┌${"─".repeat(innerWidth)}┐${RESET}`,
+      ...inner,
+      `${DIM}└${"─".repeat(innerWidth)}┘${RESET}`,
+    ];
+    const left = " ".repeat(Math.max(0, Math.floor((width - innerWidth - 2) / 2)));
+    const above = Math.max(0, Math.floor((height - rows.length) / 2));
+    return [...Array.from({ length: above }, () => ""), ...rows.map((row) => left + row)];
+  };
+
+  /** A framed row holding centered content, given the content's visible width. */
+  const padded = (innerWidth: number, visible: number, styled: string): string => {
+    const leftPad = Math.max(0, Math.floor((innerWidth - visible) / 2));
+    const rightPad = Math.max(0, innerWidth - visible - leftPad);
+    return `${DIM}│${RESET}${" ".repeat(leftPad)}${styled}${" ".repeat(rightPad)}${DIM}│${RESET}`;
+  };
+
+  /** A framed row of the binary field, edge to edge. */
+  const texture = (row: number, innerWidth: number): string =>
+    `${DIM}│${splashTexture(row, innerWidth)}│${RESET}`;
+
+  // Four columns of air either side of the wordmark, so the letters do not
+  // touch the field above them. Height needs the six rows of the word plus the
+  // frame, the texture, the air, and the hint.
+  const fullInner = wordWidth + 8;
+  if (width >= fullInner + 2 && height >= SPLASH_WORD.length + 7) {
+    const inner: string[] = [texture(0, fullInner), padded(fullInner, 0, "")];
+    for (const line of SPLASH_WORD) {
+      inner.push(padded(fullInner, wordWidth, `${CYAN}${line}${RESET}`));
+    }
+    inner.push(padded(fullInner, 0, ""));
+    inner.push(padded(fullInner, SPLASH_HINT.length, `${DIM}${SPLASH_HINT}${RESET}`));
+    inner.push(texture(1, fullInner));
+    return framed(inner, fullInner);
+  }
+
+  // Too narrow or too short for the wordmark: the word spelled out in the same
+  // frame, three rows tall, which fits down to a seventeen-column terminal.
+  const compactInner = 15;
+  if (width >= compactInner + 2 && height >= 5) {
+    const word = "C O D E R";
+    return framed(
+      [
+        texture(0, compactInner),
+        padded(compactInner, [...word].length, `${CYAN}${BOLD}${word}${RESET}`),
+        texture(1, compactInner),
+      ],
+      compactInner,
+    );
+  }
+
+  // A viewport with no room for a frame at all still says whose screen it is.
+  return [truncate("CODER", Math.max(1, width))];
+}
+
+/**
  * Match a complete escape sequence at `index`, or return undefined when the
  * bytes so far could still be the start of one. Covers CSI (`\x1b[…final`),
  * SS3 (`\x1bO…`), and the `\x1b[…~` forms that carry PageUp and PageDown.
@@ -928,7 +1045,15 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const sidebar = snapshot.tasks.length > 0 && width >= SIDEBAR_MINIMUM_TERMINAL;
       const transcriptWidth = sidebar ? width - SIDEBAR_WIDTH - 1 : width;
 
-      const lines = transcriptLines(snapshot, transcriptWidth, sidebar);
+      // Before the first entry exists there is no conversation to draw, so
+      // the viewport shows the splash instead of nothing. Gated on the entries
+      // rather than on what they render to: a transcript whose entries all
+      // settled empty is a conversation that happened, and greeting it again
+      // would say that it had not.
+      const lines =
+        snapshot.entries.length === 0
+          ? splashLines(transcriptWidth, transcriptHeight)
+          : transcriptLines(snapshot, transcriptWidth, sidebar);
       lineCount = lines.length;
       viewport = transcriptHeight;
 
