@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, openSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -31,28 +31,30 @@ export const findSiteCheckout = (
   from: string = process.cwd(),
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined => {
-  const named = env["OPENAGENTS_COM_PATH"];
-  if (named !== undefined && isSiteCheckout(named)) return resolve(named);
+  const named = env.OPENAGENTS_COM_PATH;
+  if (named !== undefined && siteAppRoot(named)) return named;
 
-  for (let path = resolve(from); ; path = dirname(path)) {
-    if (isSiteCheckout(path)) return path;
-    if (dirname(path) === path) break;
+  let at = resolve(from);
+  for (;;) {
+    if (siteAppRoot(at)) return at;
+    const up = dirname(at);
+    if (up === at) break;
+    at = up;
   }
 
-  const beside = join(homedir(), "work", "openagents.com");
-  return isSiteCheckout(beside) ? beside : undefined;
+  // A conventional checkout in the home workspace, when the session was
+  // started outside both repositories.
+  const common = join(homedir(), "work", "openagents.com");
+  return siteAppRoot(common) ? common : undefined;
 };
 
-/**
- * Whether this directory is the Phoenix application rather than some other Mix
- * project. Read from `mix.exs`, because a directory named `openagents.com` that
- * is not the app would fail later and less clearly.
- */
-const isSiteCheckout = (path: string): boolean => {
-  const manifest = join(path, "mix.exs");
-  if (!existsSync(manifest)) return false;
+/** True when a directory is the root of the `openagents.com` Phoenix application. */
+const siteAppRoot = (path: string): boolean => {
+  const mix = join(path, "mix.exs");
+  if (!existsSync(mix)) return false;
   try {
-    return /app:\s*:openagents\b/.test(readFileSync(manifest, "utf8"));
+    const contents = readFileSync(mix, "utf8");
+    return contents.includes("app: :openagents") && existsSync(join(path, "lib", "openagents_web"));
   } catch {
     return false;
   }
@@ -80,6 +82,60 @@ const health = async (origin: string, timeoutMs = 1_500): Promise<Health> => {
 export const devServerReady = async (origin: string): Promise<boolean> =>
   (await health(origin)) === "ok";
 
+/** Extract the port number from a target origin URL, default 4000 for standard local dev. */
+export const originPort = (origin: string): number | undefined => {
+  try {
+    const url = new URL(origin);
+    if (url.port) return Number.parseInt(url.port, 10);
+    if (url.protocol === "http:") return 80;
+    if (url.protocol === "https:") return 443;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Find all PIDs listening on a given TCP port. */
+export const listeningPids = (port: number): number[] => {
+  try {
+    const stdout = execFileSync("lsof", ["-ti", `tcp:${port}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((pid) => Number.parseInt(pid, 10))
+      .filter((pid) => !Number.isNaN(pid) && pid !== process.pid);
+  } catch {
+    return [];
+  }
+};
+
+/** Kill processes that occupy a port when they are unresponsive to health checks. */
+export const killPortOccupants = (port: number): number[] => {
+  const pids = listeningPids(port);
+  for (const pid of pids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Process may already be dead or owned by another user.
+    }
+  }
+  // Brief pause before SIGKILL for stubborn hung processes
+  if (pids.length > 0) {
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Ignored
+      }
+    }
+  }
+  return pids;
+};
+
 const run = (command: string, args: readonly string[], cwd: string, log: number) =>
   new Promise<number>((settle) => {
     const child = spawn(command, args, {
@@ -101,9 +157,10 @@ export interface DevServerStart {
  * Bring a development server up at this origin, or report why not.
  *
  * Already serving is success and starts nothing. Otherwise it starts one in the
- * checkout it finds, migrates when the server says its database is behind, and
- * waits for `/healthz` to answer — a first boot compiles, so the wait is long
- * and says so rather than looking like a hang.
+ * checkout it finds, cleans up any unresponsive process occupying the port,
+ * migrates when the server says its database is behind, and waits for `/healthz`
+ * to answer — a first boot compiles, so the wait is long and says so rather
+ * than looking like a hang.
  */
 export const startDevServer = async (
   origin: string,
@@ -134,6 +191,16 @@ export const startDevServer = async (
 
   const logPath = devServerLog();
   const log = openSync(logPath, "a");
+
+  // If health check failed ("down"), check if an unresponsive process is already
+  // squatting on the target port and holding locks or preventing binding.
+  const port = originPort(origin);
+  if (port !== undefined) {
+    const killed = killPortOccupants(port);
+    if (killed.length > 0) {
+      notice(`Terminated unresponsive process (${killed.join(", ")}) on port ${port}.`);
+    }
+  }
 
   // A server that is up but refusing every request because its database is
   // behind is one migration away from working, and running it is what a person

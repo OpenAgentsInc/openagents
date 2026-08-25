@@ -97,3 +97,14 @@ describe("starting one", () => {
     expect(said).toEqual([]);
   });
 });
+
+describe("port occupant detection and cleanup", () => {
+  it("resolves the port correctly from origin urls", async () => {
+    const { originPort } = await import("../src/coder-dev-server.js");
+    expect(originPort("http://localhost:4000")).toBe(4000);
+    expect(originPort("http://127.0.0.1:8080/")).toBe(8080);
+    expect(originPort("http://localhost")).toBe(80);
+    expect(originPort("https://localhost")).toBe(443);
+    expect(originPort("invalid-url")).toBeUndefined();
+  });
+});
