@@ -27,6 +27,7 @@ import {
   renderShell,
   runShell,
 } from "./coder-shell.js";
+import { CHILD_LANES, describeChildLane } from "./coder-delegate.js";
 import { catalogEntry, renderSkill, type CoderSkill } from "./coder-skills.js";
 import { describePrompt, MAX_DELEGATE_COUNT } from "./coder-delegate.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
@@ -78,7 +79,16 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
       `${String(MAX_DELEGATE_COUNT)} children.` +
       (models.length === 0
         ? ""
-        : ` Children run on ${delegation.label} unless \`model\` names another: ${models.join(", ")}.`),
+        : ` Children run on ${delegation.label} unless \`model\` names another lane.\n\n` +
+          // Named in full, because the enum alone reads as a list of models and
+          // it is not one: two of these lanes are the same model under
+          // different harnesses, and a session that could not tell described
+          // one of them as a "fast preview / experimental" model it is not.
+          "A lane is a harness and a model together. The harness runs the child and gives it " +
+          "its tools; the model is what answers. Choosing a lane chooses both:\n" +
+          CHILD_LANES.filter((lane) => models.includes(lane.name))
+            .map((lane) => `- ${describeChildLane(lane)}`)
+            .join("\n")),
     parameters: {
       type: "object",
       properties: {
@@ -105,9 +115,11 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
                 type: "string",
                 enum: [...models],
                 description:
-                  "Which model the children run on. Defaults to " +
-                  `${delegation.label}. Straightforward engineering suits a fast model; ` +
-                  "work whose shape is the question suits a stronger one.",
+                  "Which lane the children run on — a harness and a model together, not a " +
+                  `model on its own. Defaults to ${delegation.label}. The tool's own ` +
+                  "description says what each lane is; two of them are the same model under " +
+                  "different harnesses, so pick by what the work needs and whose credential " +
+                  "should pay.",
               },
             }),
       },

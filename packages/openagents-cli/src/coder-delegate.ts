@@ -566,10 +566,74 @@ export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
 /**
  * Every lane a `delegate` call may name, by the name a caller would use.
  *
- * Devin is here because it brings its own credentials rather than spending this
- * session's grant. Offered as an enum so a call chooses from what exists rather
- * than from what it remembers.
+ * The enum is the names; `CHILD_LANES` is what each one is. Offered as an enum
+ * so a call chooses from what exists rather than from what it remembers.
  */
+/**
+ * What each lane actually is: who runs the child, and what answers it.
+ *
+ * The two are independent and the enum reads as one list, which is how a
+ * session came to describe `opencode/x-preview-f-free` as a "fast preview /
+ * experimental" model. It is not. It is **the same model as `ox-alpha`** —
+ * opencode's own normalization maps `x-preview-f` to `ox-alpha` — reached
+ * through a different harness on a different credential. A caller choosing
+ * between them is choosing who runs the child, not which model thinks.
+ *
+ * So each lane says both, and says who pays.
+ */
+export interface ChildLane {
+  /** The name a `delegate` call passes as `model`. */
+  readonly name: string;
+  /** What runs the child and gives it its tools. */
+  readonly harness: string;
+  /** What answers. */
+  readonly model: string;
+  /** Where that model is served from, and whose credential pays for it. */
+  readonly served: string;
+  readonly bestFor: string;
+}
+
+export const CHILD_LANES: ReadonlyArray<ChildLane> = [
+  {
+    name: "ox-alpha",
+    harness: "openagents (this process, one `shell` tool)",
+    model: "Ox Alpha",
+    served: "the OpenAgents inference proxy, routed to OpenRouter `stealth/ox-alpha`, on this session's thread grant",
+    bestFor: "work whose shape is the question: design, architecture, an open-ended refactor",
+  },
+  {
+    name: "opencode/x-preview-f-free",
+    harness: "opencode (a separate CLI on this machine, its own tools)",
+    // Named as the same model on purpose. The difference between this lane and
+    // the one above is the harness and the credential, and a description that
+    // implies two models sends a caller here for the wrong reason.
+    model: "Ox Alpha — the same model as `ox-alpha`, under opencode's name for it",
+    served: "OpenCode Zen, on this machine's opencode credential",
+    bestFor: "the same work as `ox-alpha`, when you want opencode's harness and tools instead of ours",
+  },
+  {
+    name: "gemini",
+    harness: "opencode (a separate CLI on this machine, its own tools)",
+    model: "Gemini 3.7 Flash",
+    served: "OpenCode Zen, on this machine's opencode credential",
+    bestFor: "fast, straightforward coding and analysis",
+  },
+  {
+    name: "devin",
+    harness: "devin (the Devin CLI, its own tools)",
+    // Devin picks its own model from its own configuration and print mode does
+    // not report which, so naming one here would be inventing it.
+    model: "Devin's own, not reported",
+    served: "Devin, on its own credentials — it spends nothing of this account's",
+    bestFor: "straightforward engineering with a clear shape: a named fix, a test, a migration",
+  },
+];
+
+/** One lane as a line a model can read. */
+export const describeChildLane = (lane: ChildLane): string =>
+  `\`${lane.name}\` — harness: ${lane.harness}; model: ${lane.model}; served by ${lane.served}. ` +
+  `Best for ${lane.bestFor}.`;
+
 export const CHILD_MODELS: ReadonlyArray<string> = [
   // Deduplicated: `ox-alpha` and `openagents` are two names for one lane, and
   // offering both in the enum would read as two choices.

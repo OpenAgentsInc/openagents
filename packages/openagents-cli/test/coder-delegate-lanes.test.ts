@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHILD_MODELS,
+  CHILD_LANES,
+  type ChildLane,
   childLaneName,
+  describeChildLane,
   resolveChildLane,
   SELF_CHILD_LANE,
   selfChildLane,
@@ -94,5 +97,75 @@ describe("choosing a lane in the tool call", () => {
 
     expect(output).toContain("no `gpt-9` lane");
     expect(output).toContain("ox-alpha");
+  });
+});
+
+describe("saying what a lane is", () => {
+  const lane = (name: string) => CHILD_LANES.find((entry) => entry.name === name);
+
+  it("names a harness and a model for every lane a call can pick", () => {
+    // The enum reads as a list of models and is not one. A session that could
+    // not tell described `opencode/x-preview-f-free` as a "fast preview /
+    // experimental" model, which it is not: it is Ox Alpha.
+    for (const name of CHILD_MODELS) {
+      const resolved = resolveChildLane(name);
+      expect(resolved).toBeDefined();
+      // `openagents` and `ox-alpha` are two names for one lane, described once.
+      const described = lane(name) ?? lane("ox-alpha");
+      expect(described?.harness).toBeTruthy();
+      expect(described?.model).toBeTruthy();
+      expect(described?.served).toBeTruthy();
+    }
+  });
+
+  it("says the two Ox Alpha lanes are the same model, differing in harness", () => {
+    const ours = lane("ox-alpha");
+    const theirs = lane("opencode/x-preview-f-free");
+
+    expect(ours?.model).toContain("Ox Alpha");
+    expect(theirs?.model).toContain("Ox Alpha");
+    expect(theirs?.model).toContain("same model");
+
+    // What actually differs.
+    expect(ours?.harness).toContain("openagents");
+    expect(theirs?.harness).toContain("opencode");
+    expect(ours?.served).toContain("OpenRouter");
+    expect(theirs?.served).toContain("OpenCode Zen");
+  });
+
+  it("does not call the opencode lane fast or experimental", () => {
+    const theirs = describeChildLane(lane("opencode/x-preview-f-free") as ChildLane);
+    expect(theirs).not.toMatch(/experimental|preview tier|lightweight/i);
+  });
+
+  it("says which harness the Gemini lane runs on, since the name does not", () => {
+    const gemini = lane("gemini");
+    expect(gemini?.harness).toContain("opencode");
+    expect(gemini?.model).toContain("Gemini 3.7 Flash");
+  });
+
+  it("says Devin is a harness that brings its own model and credential", () => {
+    const devin = lane("devin");
+    expect(devin?.harness).toContain("Devin CLI");
+    expect(devin?.served).toContain("its own credentials");
+  });
+
+  it("puts every offered lane's description in front of the model", () => {
+    const registry = new CoderTaskRegistry();
+    const fleet = { submit: () => Promise.resolve({ taskId: "t", status: "completed" } as never) };
+    const { description } = delegateTool({
+      registry,
+      fleet,
+      label: "openagents (ox-alpha)",
+      models: CHILD_MODELS,
+      fleetFor: () => ({ fleet, label: "x" }),
+    } as unknown as CoderDelegation);
+
+    for (const entry of CHILD_LANES) {
+      if (!CHILD_MODELS.includes(entry.name)) continue;
+      expect(description).toContain(entry.harness);
+      expect(description).toContain(entry.model);
+    }
+    expect(description).toContain("A lane is a harness and a model together");
   });
 });

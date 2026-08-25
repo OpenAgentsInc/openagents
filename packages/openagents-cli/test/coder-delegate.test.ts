@@ -316,7 +316,11 @@ describe("fleet rendering", () => {
       cwd: "/tmp",
         background: true,
       },
-      Date.now(),
+      // A fixed start, because the completion below is a fixed instant too and
+      // the pair is what makes the duration deterministic. Started at
+      // `Date.now()` and completed at epoch 4000, the child finished
+      // fifty-six years before it began and the duration clamped to zero.
+      1_000,
     );
   registry.start(task.id, new AbortController());
   registry.recordToolUse(task.id, { toolName: "bash", target: "pnpm test" });
