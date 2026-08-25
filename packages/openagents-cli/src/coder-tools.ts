@@ -539,7 +539,10 @@ export function shellTool(cwd: string): CoderTool {
       "printed. Use it for anything you would type at a terminal: reading files, listing " +
       "directories, searching, git, running builds and tests. For the `openagents` CLI use the " +
       "`openagents` tool instead — it carries the list of commands, so running it through here " +
-      "costs a turn finding out what exists. Prefer it over `delegate` for " +
+      "costs a turn finding out what exists. When an installed capability covers the task — " +
+      "the `capability` tool names what is installed — load and call it instead of scripting " +
+      "the same thing here: it is sandboxed, bounded, and returns structured output. " +
+      "Prefer it over `delegate` for " +
       "single commands -- a child agent is for work worth a whole agent, not for one line of " +
       "output. Both output streams come back together with the exit code. There is no terminal, " +
       "so a command that would prompt gets end-of-file instead of waiting; pass a flag that " +

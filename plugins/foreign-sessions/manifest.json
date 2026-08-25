@@ -3,7 +3,7 @@
   "name": "foreign_sessions",
   "version": "0.1.0",
   "author": "OpenAgents",
-  "description": "Discover recent Claude Code and Codex CLI sessions from their local state directories, mounted read-only: for each session its source, id, working directory, modification time, size, and record count. Metadata only \u2014 it never reads whole conversations back, never writes, and cannot resume anything. Use it when asked what foreign coding-agent sessions exist on this machine, optionally filtered to a working directory.",
+  "description": "Discover recent Claude Code and Codex CLI sessions from their local state directories, mounted read-only: for each session its source, id, working directory, modification time, size, and record count. Metadata only \u2014 it never reads whole conversations back, never writes, and cannot resume anything. Use it when asked what foreign coding-agent sessions exist on this machine, optionally filtered to a working directory. To read a conversation's content back, load the read_conversation capability instead.",
   "artifact": {
     "path": "foreign_sessions.wasm",
     "digest": "sha256:5ba9c4265b7a18dbb1c1c175e10a0ffcff5b7d124c766536b582c6e33bde84bb"

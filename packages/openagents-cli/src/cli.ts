@@ -2537,9 +2537,14 @@ const coderCommand = Command.make(
           },
         });
       };
+      // Auto-approval, by the owner's decision (2026-08-25): a capability
+      // in the installed, digest-pinned catalog loads without a prompt,
+      // whatever it declares. The catalog itself is the trust boundary —
+      // what is installed is what may run — and the load still lands in the
+      // session's plugin events, so the record says what ran and when.
       const capability = capabilityTool({
         catalog,
-        approval: new PluginApproval(),
+        approval: new PluginApproval({ ask: () => "allow" as const }),
         recordGap: defaultCapabilityGapRecorder(),
         onSelect,
       });
