@@ -617,10 +617,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
                 ? DIM
                 : YELLOW;
 
-      // A reply still arriving pulses; a finished one is solid. The dot is the
-      // only thing in this column because it is the only thing the colour and
-      // the styling do not already say.
-      const glyph = entry.settled ? "●" : pulse ? "●" : "○";
+      // Follow Claude Code message markers: ⏺ for settled assistant/user turns, pulse ⏺/○ when streaming.
+      const glyph = entry.settled ? "⏺" : pulse ? "⏺" : "○";
       const head = `  ${color}${glyph}${RESET} `;
       const continuation = " ".repeat(GUTTER);
       const rows = entryRows(entry, width, tasks);
@@ -671,17 +669,13 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           : tool.status === "failed"
             ? `${RED}✗${RESET}`
             : `${GREEN}✓${RESET}`;
-      // The call on the row that names it, in the shape a person would have
-      // typed. It used to sit below as raw JSON, which cost a row per call and
-      // read as punctuation; `ctrl+o` still shows the arguments whole.
+      // Format tool header following Claude Code UI conventions: Tool(summary)
       const summary = clip(
-        summarizeToolCall(tool.arguments),
-        Math.max(8, width - tool.name.length - 4),
+        summarizeToolCall(tool.arguments, tool.name),
+        Math.max(8, width - tool.name.length - 6),
       );
-      const rows = [
-        `${mark} ${BOLD}${tool.name}${RESET}` +
-          (summary.length === 0 ? "" : ` ${DIM}${summary}${RESET}`),
-      ];
+      const headerText = summary.length === 0 ? tool.name : `${tool.name}(${summary})`;
+      const rows = [`${mark} ${BOLD}${headerText}${RESET}`];
 
       if (tool.name === "delegate" && tool.status === "running") {
         // Working children first when there are more than fit: a finished child
@@ -727,7 +721,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           // as one JSON document split over a blank line.
           const lines = tool.output.split("\n");
           for (const [index, line] of lines.entries()) {
-            const marker = index === 0 ? `${DIM}→${RESET} ` : "  ";
+            const marker = index === 0 ? `${DIM}⎿ ${RESET}` : "  ";
             rows.push(`${marker}${DIM}${truncate(line, Math.max(4, width - 2))}${RESET}`);
           }
         }
@@ -739,9 +733,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           tool.error !== undefined
             ? `${RED}${clip(tool.error, Math.max(8, width - 4))}${RESET}`
             : tool.output !== undefined
-              ? `${DIM}→ ${clip(tool.output, Math.max(8, width - 6))}${RESET}`
+              ? `${DIM}⎿ ${clip(tool.output, Math.max(8, width - 6))}${RESET}`
               : tool.status === "running" && tool.name !== "delegate"
-                ? `${DIM}→ running…${RESET}`
+                ? `${DIM}⎿ running…${RESET}`
                 : "";
         if (outcome.length > 0) rows.push(outcome);
       }

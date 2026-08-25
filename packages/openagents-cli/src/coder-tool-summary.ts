@@ -1,26 +1,25 @@
 /**
  * A tool call in one line, for the row that names it.
  *
- * A collapsed call took three rows: the tool's name, its arguments as raw
- * JSON, and its result. The middle row is the one nobody reads as JSON —
- * `{"args":["issue","view","212","-R","OpenAgentsInc/openagents.com"]}` is a
- * command line wearing a costume, and eight of them in a row is a screen of
- * punctuation with the answers pushed off the bottom.
- *
- * So the call joins the row that names it, in the shape a person would have
- * typed: `openagents issue view 212 -R OpenAgentsInc/openagents.com`. The raw
- * arguments are still there under `ctrl+o`, which is what expanding a call is
- * for.
- *
- * Nothing here invents a summary it cannot make. A tool whose arguments have no
- * obvious subject falls back to the JSON, clipped by the caller, which is what
- * the row showed before.
+ * Formats tool calls and userFacingNames closely mirroring Claude Code's
+ * UI conventions (e.g. `Bash(command)`, `Read(file_path)`, `Edit(file_path)`, `delegate(description)`).
  */
 
 /** Fields worth showing whole, in the order a tool would mean them. */
-const SUBJECTS = ["command", "path", "file", "pattern", "query", "name"] as const;
+const SUBJECTS = ["command", "path", "file_path", "file", "pattern", "query", "name", "description"] as const;
 
-export const summarizeToolCall = (args: string): string => {
+/**
+ * Format a tool call with CC-aligned semantics:
+ * If toolName is provided, produces `ToolName(summary)` or `ToolName` if empty.
+ * If called with 1 argument for backwards compatibility, produces `summary`.
+ */
+export function formatToolUseHeader(toolName: string, args: string): string {
+  const summary = summarizeToolCall(args, toolName);
+  if (!summary) return toolName;
+  return `${toolName}(${summary})`;
+}
+
+export const summarizeToolCall = (args: string, toolName?: string): string => {
   const trimmed = args.trim();
   if (trimmed.length === 0) return "";
 
@@ -35,6 +34,13 @@ export const summarizeToolCall = (args: string): string => {
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return trimmed;
   const record = parsed as Record<string, unknown>;
+
+  // Special case: openagents / delegate / bash / file tools
+  if (toolName === "delegate" || record["prompt"] !== undefined) {
+    if (typeof record["description"] === "string" && record["description"].length > 0) {
+      return record["description"];
+    }
+  }
 
   // An argument vector, which is the case this exists for: the `openagents`
   // tool takes the command line as a list, and joining it back is the whole

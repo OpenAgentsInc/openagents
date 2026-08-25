@@ -161,9 +161,9 @@ describe("runCoderUi", () => {
     stdin.emit("data", "\x04");
     await running;
 
-    const bullets = rows.filter((row) => row.trimStart().startsWith("\u25cf"));
+    const bullets = rows.filter((row) => row.trimStart().startsWith("⏺"));
     expect(bullets.length).toBeGreaterThan(0);
-    expect(bullets.every((row) => row.replace("\u25cf", "").trim().length > 0)).toBe(true);
+    expect(bullets.every((row) => row.replace("⏺", "").trim().length > 0)).toBe(true);
   });
 
   it("shows the tool, its call, and its outcome, on two rows", async () => {
@@ -176,7 +176,7 @@ describe("runCoderUi", () => {
     // which cost a row per call and read as punctuation rather than as the
     // command it is.
     const named = rows.find((row) => row.includes("repo_grep")) ?? "";
-    expect(named).toContain("repo_grep x");
+    expect(named).toContain("repo_grep(x)");
     expect(named).not.toContain('{"pattern"');
 
     expect(rows.join("\n")).toContain('{"matches":[]}');
@@ -194,7 +194,7 @@ describe("runCoderUi", () => {
     ]);
 
     const named = rows.find((row) => row.includes("openagents")) ?? "";
-    expect(named).toContain("openagents issue view 212 -R OpenAgentsInc/openagents.com");
+    expect(named).toContain("openagents(issue view 212 -R OpenAgentsInc/openagents.com)");
   });
 
   it("renders assistant Markdown rather than its source", async () => {
@@ -858,7 +858,7 @@ describe("the transcript's marker column", () => {
 
     // Five words of chrome per turn — `you`, `think`, `coder`, `note`, `tool` —
     // said what the styling already said.
-    expect(painted).toContain("● an answer");
+    expect(painted).toContain("⏺ an answer");
     expect(painted).not.toMatch(/\bcoder\s+an answer/);
     expect(painted).not.toMatch(/^\s*you\s/m);
   });
@@ -895,7 +895,7 @@ describe("the transcript's marker column", () => {
     stdin.emit("data", "\x04");
     await running;
 
-    expect(stdout.written).toContain("●");
+    expect(stdout.written).toContain("⏺");
   });
 
   it("keeps the scroll marker in the same voice as the rest of the bar", async () => {
