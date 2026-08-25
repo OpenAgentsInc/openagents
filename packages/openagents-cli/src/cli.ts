@@ -104,7 +104,6 @@ import {
   matchCapabilities,
 } from "./coder-capability.js";
 import { knowledgeHits, knowledgeNote } from "./coder-knowledge.js";
-import { memoryRecallNote, rememberTool } from "./coder-recall.js";
 import { runForeignResume } from "./coder-foreign-resume.js";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -2604,12 +2603,6 @@ const coderCommand = Command.make(
         recordGap: defaultCapabilityGapRecorder(),
         onSelect,
       });
-      // The session's read/write handle on the local engram ledger
-      // (OpenAgentsInc/openagents#51). The `remember` tool writes the user
-      // bucket through it, and the retrieval rail below recalls from it on
-      // every message; the delegate fleet holds its own handle on the same
-      // append-only ledger, so the two never disagree about what is written.
-      const recallMemory = new CoderMemory({ projectScope: `project:${process.cwd()}` });
       let declareTools: () => void;
       declareTools = () => {
         const active = skills.active();
@@ -2623,7 +2616,6 @@ const coderCommand = Command.make(
           // being asked for. Re-declaration per turn is what makes the tool
           // appear the turn after `/goal` sets one.
           ...(goalStore.getGoal() === undefined ? [] : [goalTool(goalStore)]),
-          rememberTool(recallMemory),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
           capability,
           ...visiblePlugins().map((plugin) => {
@@ -2707,16 +2699,6 @@ const coderCommand = Command.make(
         const notes: string[] = [];
         const fromKnowledge = await knowledgeBaseNote(prompt);
         if (fromKnowledge !== undefined) notes.push(fromKnowledge);
-
-        // Memory rides the same rail (OpenAgentsInc/openagents#51): the live
-        // engram ledger is ranked against this message and what clears the
-        // floor arrives as attached context — no tool call needed to recall.
-        try {
-          const fromMemory = memoryRecallNote(recallMemory.recallable(), prompt, Date.now());
-          if (fromMemory !== undefined) notes.push(fromMemory);
-        } catch {
-          // The rail degrades to silence, never to a broken turn.
-        }
 
         // The knowledge base is a rail, not a tool: it never materializes.
         const matches = matchCapabilities(catalog, prompt).filter(

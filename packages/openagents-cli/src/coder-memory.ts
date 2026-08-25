@@ -41,8 +41,6 @@ import {
 } from "./memory/index.js";
 import { Schema as S } from "effect";
 
-import type { RecallableMemory } from "./coder-recall.js";
-
 /**
  * The coder's own memory: a local, append-only ledger of signed engrams.
  *
@@ -386,67 +384,6 @@ export class CoderMemory implements CoderDelegationMemory {
   /** The live value for one slug, or undefined when absent or tombstoned. */
   recall(slug: string): string | undefined {
     return projectedValue(this.projection(), slug);
-  }
-
-  /**
-   * Store one fact the reader explicitly asked to have remembered — the user
-   * bucket's write path (OpenAgentsInc/openagents#51). The slug derives from
-   * the content, so remembering the same sentence twice supersedes the prior
-   * event under its slug rather than forking the chain into refusal. The
-   * value still passes the redaction guard inside `record`; a hard-unsafe
-   * fact stores nothing and this returns undefined.
-   */
-  remember(fact: string): EngramEvent | undefined {
-    try {
-      const trimmed = fact.trim().slice(0, 1000);
-      if (trimmed.length === 0) return undefined;
-      const slug = `user/${engramContentDigest(trimmed).slice("sha256:".length, "sha256:".length + 12)}`;
-      if (this.chains().has(slug)) return this.correct(slug, trimmed);
-      return this.record(slug, trimmed, "user-note");
-    } catch {
-      // Memory must never break a turn; a fact that could not be written is
-      // reported as undefined and the tool says so in words.
-      return undefined;
-    }
-  }
-
-  /**
-   * Everything the retrieval rail may surface, live values only: the user
-   * bucket (slugs under `user/`, explicitly asked for) and the learned bucket
-   * (slugs under `heuristic/`, what consolidation distilled, each carrying its
-   * slug and supporting episode slugs as provenance so a wrong learning can be
-   * superseded by name). Harvest episodes stay out — they are raw material,
-   * not conclusions. Never throws: an empty, missing, corrupt, or unreadable
-   * ledger is simply no memories.
-   */
-  recallable(): ReadonlyArray<RecallableMemory> {
-    try {
-      const memories: Array<RecallableMemory> = [];
-      for (const { body, createdAtMs } of this.living()) {
-        if (body.value === null) continue;
-        if (body.slug.startsWith("user/")) {
-          memories.push({
-            bucket: "user",
-            ref: body.slug,
-            text: body.value,
-            recordedAtMs: createdAtMs,
-          });
-        } else if (body.slug.startsWith("heuristic/")) {
-          memories.push({
-            bucket: "learned",
-            ref: body.slug,
-            text: body.value,
-            recordedAtMs: createdAtMs,
-            confidence: confidenceOf(body.openagents.entityId),
-            provenance: [...body.openagents.derivedFromSlugs],
-          });
-        }
-      }
-      return memories;
-    } catch {
-      // The rail degrades to silence, never to a broken turn.
-      return [];
-    }
   }
 
   /**
