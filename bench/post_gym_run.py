@@ -48,6 +48,7 @@ def main() -> int:
     trials = []
     input_tokens = 0
     output_tokens = 0
+    duration_seconds = 0.0
     agent_version = None
     model = None
     for trial_dir in sorted(job_dir.iterdir()):
@@ -56,6 +57,14 @@ def main() -> int:
             continue
         trial = json.loads(trial_result.read_text())
         trials.append(trial)
+        execution = trial.get("agent_execution") or {}
+        started = execution.get("started_at")
+        finished = execution.get("finished_at")
+        if started and finished:
+            from datetime import datetime
+
+            span = datetime.fromisoformat(finished.replace("Z", "+00:00")) - datetime.fromisoformat(started.replace("Z", "+00:00"))
+            duration_seconds += span.total_seconds()
         trajectory_path = trial_dir / "agent" / "trajectory.json"
         if trajectory_path.exists():
             trajectory = json.loads(trajectory_path.read_text())
@@ -98,6 +107,7 @@ def main() -> int:
         "tasks_passed": tasks_passed,
         "input_tokens": input_tokens or None,
         "output_tokens": output_tokens or None,
+        "duration_seconds": int(duration_seconds) or None,
         "recipe_digest": recipe_digest,
         "report": {
             "job_id": result.get("id"),
