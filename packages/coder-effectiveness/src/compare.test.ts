@@ -221,4 +221,18 @@ describe("rendering", () => {
     expect(text).toContain("Trend — tb2-cross-section on the proxy lane");
     expect(text).toContain("worse");
   });
+
+  test("prints each row's own figures, not only the movement between them", () => {
+    // #34's acceptance clause asks to see two comparable rows. A trend printed
+    // as deltas alone says something moved without saying what it moved from.
+    const first = row("priced-lane", "proxy", "2026-08-25T10:00:00.000Z");
+    const second = row("regressed-lane", "proxy", "2026-08-25T11:00:00.000Z");
+
+    const text = renderComparison(compareRuns([first, second]));
+
+    expect(text).toContain("2026-08-25T10:00:00.000Z");
+    expect(text).toContain("2026-08-25T11:00:00.000Z");
+    expect(text).toContain(`job ${String(first.jobId)}`);
+    expect(text).toContain(`job ${String(second.jobId)}`);
+  });
 });

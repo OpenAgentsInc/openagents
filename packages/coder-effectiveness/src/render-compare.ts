@@ -62,6 +62,18 @@ const renderLaneComparison = (comparison: LaneComparison): ReadonlyArray<string>
 const renderTrend = (trend: LaneTrend): ReadonlyArray<string> => {
   const lines: Array<string> = [];
   lines.push(`Trend — ${trend.suite} on the ${trend.lane} lane, ${String(trend.rows.length)} runs`);
+
+  // The rows themselves before the deltas between them. A trend printed as
+  // deltas alone reads as movement without saying what moved, and the thing
+  // #34's acceptance clause asks to see is the rows.
+  for (const row of trend.rows) {
+    lines.push(
+      `  ${row.recordedAt}  ${pct(row.successRate).padStart(7)} success  ${usd(row.costPerAcceptedOutcomeUsd).padStart(9)}/accepted  ${String(row.accepted)}/${String(row.graded)} graded  ${row.gateStatus ?? "ungated"}`,
+    );
+    lines.push(`    ${row.models.join(", ") || "model unknown"} · job ${row.jobId ?? "unknown"}`);
+  }
+  lines.push("");
+
   for (const step of trend.steps) {
     lines.push(`  ${step.from.recordedAt} → ${step.to.recordedAt}`);
     lines.push(deltaLine("Δ cost per accepted", step.costDelta, 4, true));
