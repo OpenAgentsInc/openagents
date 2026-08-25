@@ -28,6 +28,11 @@ PYTHONPATH=bench OPENAGENTS_TOKEN=... harbor run \
 `POST /api/v3/gym/runs`. Post only runs whose verifier actually ran: a
 score is a claim, and a crashed grader is not a grade.
 
+If the dev server binds loopback only (another session started it
+without `PHX_LISTEN_ALL`), bridge instead of fighting over the port: run
+a forwarder from `0.0.0.0:4001` to `127.0.0.1:4000` and point the
+adapter at it with `OPENAGENTS_CODER_API_URL=http://host.docker.internal:4001`.
+
 Known constraint on Apple Silicon: Terminal-Bench task images are amd64,
 and under qemu emulation the verifier's `uv`/`pytest` segfaults after the
 agent phase completes. Enable Docker Desktop's Rosetta emulation
