@@ -135,22 +135,34 @@ export interface CostResult {
   readonly reason: string;
 }
 
-/** The local lane runs on hardware you own; no per-token rate applies. */
-const isLocalLaneModel = (modelId: string): boolean =>
-  modelId.startsWith("ollama:") || modelId.startsWith("ollama/");
+/**
+ * Whether this trial ran on a lane that bills no metered tokens.
+ *
+ * The lane the run was executed on is the authority, and it is passed in
+ * because it is a fact the run records rather than something to be guessed at.
+ * The `ollama:` prefix is kept as a secondary signal for a caller pricing one
+ * trial with no lane in hand, but it was never a good primary one: the coder's
+ * own ATIF export writes the bare model name, so an id read from a trajectory
+ * carries no prefix to spot and a whole local run priced as `unknown_model` —
+ * which reads as a gap in the rate catalog rather than as a lane that has no
+ * rates to be in it.
+ */
+const isUnmetered = (modelId: string, lane: string | null): boolean =>
+  lane === "local" || modelId.startsWith("ollama:") || modelId.startsWith("ollama/");
 
 /**
  * Price one trial's usage against a rate catalog.
  *
- * Unknown stays unknown. A model with no rate, a local lane with no per-token
- * rate at all, or usage missing either token dimension all return `usd: null`
- * with a disposition that names the reason. Nothing here falls back to a
- * conservative default rate: this function measures, it does not charge.
+ * Unknown stays unknown. A model with no rate, a lane with no per-token rate at
+ * all, or usage missing either token dimension all return `usd: null` with a
+ * disposition that names the reason. Nothing here falls back to a conservative
+ * default rate: this function measures, it does not charge.
  */
 export const priceUsage = (
   modelId: string | null,
   usage: UsageForCost,
   catalog: Readonly<Record<string, ModelRateRow>> = CODER_RATE_CATALOG,
+  lane: string | null = null,
 ): CostResult => {
   if (modelId === null || modelId === "") {
     return {
@@ -160,12 +172,12 @@ export const priceUsage = (
       reason: "the trial records no model id, so no rate can be selected",
     };
   }
-  if (isLocalLaneModel(modelId)) {
+  if (isUnmetered(modelId, lane)) {
     return {
       usd: null,
       disposition: "unmetered_local_lane",
       rateBasis: null,
-      reason: `${modelId} runs on the local lane, which bills no metered tokens, so it has no per-token cost`,
+      reason: `${modelId} ran on the local lane, which bills no metered tokens, so it has no per-token cost`,
     };
   }
   const row = catalog[modelId];

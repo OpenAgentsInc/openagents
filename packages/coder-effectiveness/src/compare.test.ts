@@ -89,9 +89,29 @@ describe("lane against lane", () => {
     const comparison = compareRuns([proxy, local]).laneComparisons[0]!;
 
     expect(comparison.baselineLane).toBe("proxy");
-    const lane = comparison.lanes.find((entry) => entry.lane === "local")!;
-    expect(lane.costDelta?.direction).toBe("worse");
     expect(comparison.lanes.find((entry) => entry.lane === "proxy")!.costDelta).toBeNull();
+    // Success rate compares across any two lanes; it is measured the same way
+    // on both sides whatever either one costs.
+    expect(
+      comparison.lanes.find((entry) => entry.lane === "local")!.successRateDelta?.direction,
+    ).toBe("worse");
+  });
+
+  test("refuses a cost delta against the local lane, which bills no metered tokens", () => {
+    // This is the lane comparison #34 actually asks for — house models through
+    // the proxy against a local model — and its cost delta is permanently
+    // unstatable in one direction. Saying so is the point: a blank cell here
+    // reads as "the same", and a zero would read as "free".
+    const proxy = row("priced-lane", "proxy", "2026-08-25T10:00:00.000Z");
+    const local = row("regressed-lane", "local", "2026-08-25T10:05:00.000Z");
+
+    const lane = compareRuns([proxy, local]).laneComparisons[0]!.lanes.find(
+      (entry) => entry.lane === "local",
+    )!;
+
+    expect(lane.costDelta?.direction).toBe("unpriced");
+    expect(lane.costDelta?.absolute).toBeNull();
+    expect(lane.costDelta?.reason).toContain("cost_unknown");
   });
 
   test("honours an explicit baseline lane", () => {
@@ -101,8 +121,9 @@ describe("lane against lane", () => {
     const comparison = compareRuns([proxy, local], { baselineLane: "local" }).laneComparisons[0]!;
 
     expect(comparison.baselineLane).toBe("local");
+    expect(comparison.lanes.find((entry) => entry.lane === "local")!.costDelta).toBeNull();
     expect(comparison.lanes.find((entry) => entry.lane === "proxy")!.costDelta?.direction).toBe(
-      "better",
+      "unpriced",
     );
   });
 

@@ -135,6 +135,7 @@ export const summarizeRun = (
         cachedInputTokens: trial.cachedInputTokens,
       },
       catalog,
+      run.lane,
     );
     if (cost.usd === null) {
       unpricedTrials += 1;

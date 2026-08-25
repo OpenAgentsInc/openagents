@@ -221,12 +221,20 @@ describe("cost per accepted outcome", () => {
  * the run you most want to know the lane of.
  */
 describe("a trial with no trajectory", () => {
-  test("recovers the model from Harbor's own trial config", () => {
+  test("recovers the model spelled the way the coder's own export spells it", () => {
     const result = report("timed-out-lane", "local");
 
-    expect(result.models).toEqual(["ollama:qwen3.8:27b-mtp-q8_0"]);
-    // Harbor spells it `ollama/…`; the catalog id the adapter sends is
-    // `ollama:…`, and a recovered id has to price like a read one.
+    // Harbor spells it `ollama/qwen3.8:…`; the coder's ATIF export writes the
+    // bare name. A run that mixed a completed trial with a killed one would
+    // otherwise report two models where there is one, and the run digest would
+    // pin the pair.
+    expect(result.models).toEqual(["qwen3.8:27b-mtp-q8_0"]);
+  });
+
+  test("prices a bare local-lane id off the lane, not off a prefix in the id", () => {
+    // Nothing in `qwen3.8:27b-mtp-q8_0` says it ran locally. The run does.
+    const result = report("timed-out-lane", "local");
+
     expect(result.perTrial[0]!.disposition).toBe("unmetered_local_lane");
     expect(result.perTrial[0]!.disposition).not.toBe("unknown_model");
   });

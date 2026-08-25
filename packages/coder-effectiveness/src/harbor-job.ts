@@ -140,12 +140,19 @@ const readTrial = (dirName: string, trialDir: string, trialResult: unknown): Tri
  * and price as `unknown_model` for a reason that has nothing to do with pricing.
  *
  * Harbor records the model on every trial before the agent starts, spelled the
- * way its `--model` flag takes it. The adapter maps that spelling onto the
- * coder's catalog id, and this repeats that mapping so a recovered id prices
- * the same as one read from a trajectory. It is a second copy of a two-line
- * rule; the alternative is a model pin that disappears precisely when it
- * matters. Keep it in step with `_catalog_model` in
- * `bench/adapters/openagents_coder.py`.
+ * way its `--model` flag takes it: `<provider>/<name>`. The id has to come back
+ * spelled the way the CODER spells it, not the way Harbor does, because a run
+ * mixing completed and killed trials would otherwise report two models where
+ * there is one — and the report would list them, the digest would pin them, and
+ * a lane comparison would treat the pair as a confounder. The coder's ATIF
+ * export records the bare name (`qwen3.8:27b-mtp-q8_0`), so that is what a
+ * recovered id is.
+ *
+ * Note that this deliberately does NOT reproduce the adapter's `ollama:` local
+ * prefix. That prefix is how the adapter tells the CLI which lane to use; it
+ * never reaches the trajectory, so adding it here would invent a spelling
+ * nothing else in the run uses. Whether the lane bills metered tokens is a fact
+ * about the lane, and the lane is on the run — see `priceUsage`.
  */
 const modelFromTrialConfig = (trialConfig: unknown): string | null => {
   // The trial's own `config.json` holds the agent block at the top level; the
@@ -157,10 +164,8 @@ const modelFromTrialConfig = (trialConfig: unknown): string | null => {
   if (spelled === null) return null;
   const separator = spelled.indexOf("/");
   if (separator === -1) return spelled;
-  const provider = spelled.slice(0, separator);
   const name = spelled.slice(separator + 1);
-  if (provider === "ollama") return `ollama:${name}`;
-  return name === "" ? provider : name;
+  return name === "" ? spelled.slice(0, separator) : name;
 };
 
 /**
