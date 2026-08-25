@@ -110,6 +110,7 @@ import { fileURLToPath } from "node:url";
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection, standingContext } from "./coder-skills.js";
 import { startDevServer } from "./coder-dev-server.js";
+import { ResponsesReplySource } from "./coder-responses.js";
 import { TIER_MODELS, tierForModel, tierUnavailable, type CoderTierId } from "./coder-tiers.js";
 import { ZenReplySource, zenCredential } from "./coder-zen.js";
 import { describeWorkspace } from "./coder-workspace.js";
@@ -1934,9 +1935,11 @@ const coderCommand = Command.make(
       // session at a server on this machine. A deploy can take half an hour,
       // and iterating against a server nobody has deployed to yet is the
       // difference between a change being testable now and after lunch.
+      // `--dev` picks the local profile; an explicit `--api-url` beside it
+      // still wins, so a session can point at a server on another port.
       const endpoint = yield* resolveApiEndpoint(
         dev
-          ? { profile: Option.some("local" as Profile), apiUrl: Option.none() }
+          ? { ...endpointOverrides(flags), profile: Option.some("local" as Profile) }
           : endpointOverrides(flags),
       );
 
@@ -2209,7 +2212,7 @@ const coderCommand = Command.make(
       const thread =
         resumed !== undefined
           ? resumed.source
-          : Option.isSome(stored) && !wantsOllama && !wantsZen && !resume
+          : Option.isSome(stored) && !wantsOllama && !wantsZen && !resume && !dev
             ? yield* Effect.tryPromise({
                 try: () =>
                   openThread({
@@ -2250,10 +2253,21 @@ const coderCommand = Command.make(
             })
           : undefined;
 
+      // The dev lane answers from the OpenResponses surface on the dev
+      // server rather than a grant-bearing thread: today that is the
+      // acknowledgement stub, and the point is that this loop is built
+      // against the event grammar before a model stands behind it.
+      const responsesSource = dev
+        ? new ResponsesReplySource({
+            origin: endpoint.origin,
+            ...(Option.isSome(stored) ? { token: Redacted.value(stored.value.token) } : {}),
+          })
+        : undefined;
+
       const source: ReplySource =
         wantsZen && zenAsked !== undefined && zenKey !== undefined
           ? new ZenReplySource({ model: zenAsked, key: zenKey })
-          : (ollamaSource ?? thread ?? new DummyReplySource());
+          : (responsesSource ?? ollamaSource ?? thread ?? new DummyReplySource());
 
       // The local lane reports by default (OpenAgentsInc/openagents#39): with
       // a credential and the switch not off, it opens a transcript-only
@@ -2603,7 +2617,9 @@ const coderCommand = Command.make(
         session.notice(`This session cannot delegate: ${childThread.reason}`);
       }
 
-      if (Option.isNone(stored) && !offline && !wantsOllama && !wantsZen) {
+      // Not on the dev lane: its replies come from the responses surface,
+      // with or without a credential, so the stand-in sentence would be false.
+      if (Option.isNone(stored) && !offline && !wantsOllama && !wantsZen && !dev) {
         session.notice(
           "No stored credential, so replies come from the built-in stand-in. " +
             `Run \`${loginCommandFor(endpoint)}\` to reach a real model.`,
