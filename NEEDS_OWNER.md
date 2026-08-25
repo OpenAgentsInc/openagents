@@ -1,5 +1,16 @@
 # NEEDS-OWNER
 
+> **The owner does not read this file. Put owner asks in the workspace root
+> `NEEDS_OWNER.md` (`AtlantisPleb/workspace`), which they read on GitHub.**
+>
+> An ask written here reaches nobody. That is not hypothetical: the rail
+> decision blocking issue #29 sat in this file while the issue read as waiting
+> on the owner, and nothing was surfacing it — this file had carried no owner
+> entry since July. Anything below is history.
+>
+> Write the ask at the workspace root, then commit and push that file in the
+> same session. An edit the owner cannot see on GitHub has not been delivered.
+
 ## RESOLVED — SARAH-CW-05 owner appeal identity npub (#9229, 2026-07-24)
 
 Community workroom arbitration code is in the `packages/sarah` community-
