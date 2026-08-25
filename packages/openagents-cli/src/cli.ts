@@ -117,6 +117,7 @@ import { ResponsesReplySource } from "./coder-responses.js";
 import { TIER_MODELS, tierForModel, tierUnavailable, type CoderTierId } from "./coder-tiers.js";
 import { ZenReplySource, zenCredential } from "./coder-zen.js";
 import { describeWorkspace } from "./coder-workspace.js";
+import { makeBoxCommand } from "./box-command.js";
 import { ComputerClient } from "./computer-client.js";
 import { ComputerUp } from "./computer-up.js";
 import {
@@ -4207,6 +4208,8 @@ const traceCommand = makeTraceCommand(rootCommand);
 
 const providerCommand = makeProviderCommand(rootCommand);
 
+const boxCommand = makeBoxCommand(rootCommand);
+
 // The deploy command group: named operator deployment commands over the
 // operator-only fleet promotion API from OpenAgentsInc/openagents.com#57.
 // It consumes only that API — never `/admin/forge`, SSH, or an internal RPC —
@@ -4586,6 +4589,7 @@ export const openagentsCommand = rootCommand.pipe(
   Command.withSubcommands([
     apiCommand,
     authCommand,
+    boxCommand,
     coderCommand,
     delegateCommand,
     computerCommand,

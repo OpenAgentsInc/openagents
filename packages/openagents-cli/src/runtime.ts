@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Layer } from "effect";
 
 import { apiTransportNodeLayer, networkPolicyLiveLayer } from "./api-transport.js";
+import { boxClientLayer } from "./box-client.js";
 import { browserLauncherLayer } from "./browser-launcher.js";
 import { computerConfigurationLayer } from "./computer-config.js";
 import { computerClientLayer } from "./computer-client.js";
@@ -37,6 +38,7 @@ const fleetLayer = fleetClientLayer.pipe(Layer.provide(transportLayer));
 const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
 const issueLayer = issueClientLayer.pipe(Layer.provide(transportLayer));
 const projectLayer = projectClientLayer.pipe(Layer.provide(transportLayer));
+const boxClient = boxClientLayer.pipe(Layer.provide(transportLayer));
 const computerClient = computerClientLayer.pipe(Layer.provide(transportLayer));
 const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
 const pendingAuthorizationLayer = pendingDeviceAuthorizationStoreLayer.pipe(
@@ -85,6 +87,7 @@ export const runtimeLayer = Layer.mergeAll(
   issueLayer,
   projectLayer,
   deviceLayer,
+  boxClient,
   computerClient,
   browserLayer,
   computerConfiguration,
