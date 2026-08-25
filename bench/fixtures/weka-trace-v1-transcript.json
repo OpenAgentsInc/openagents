@@ -1,0 +1,10 @@
+{
+  "format": "weka-trace-v1",
+  "thread_id": "transcript-001",
+  "event_count": 3,
+  "events": [
+    { "id": 1, "event_type": "turn.user",      "emitted_at": "2026-08-25T00:00:00Z", "role": "user",      "block_count": 2, "blocks": ["a1", "a2"] },
+    { "id": 2, "event_type": "turn.assistant", "emitted_at": "2026-08-25T00:00:01Z", "role": "assistant", "block_count": 1, "blocks": ["b1"] },
+    { "id": 3, "event_type": "turn.user",      "emitted_at": "2026-08-25T00:00:02Z", "role": "user",      "block_count": 1, "blocks": ["c1"] }
+  ]
+}

@@ -33,7 +33,25 @@ from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_templat
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-_TARBALL = Path(__file__).resolve().parent.parent / "openagentsinc-cli-0.3.5.tgz"
+def _find_tarball() -> Path:
+    """The packed CLI, whatever version it is.
+
+    Pinning the version here meant a version bump silently broke every graded
+    run: the adapter looked for a tarball nobody packs any more and every trial
+    errored in install with a message about the old number. The pack step
+    produces exactly one tarball, so find it rather than predict its name; if
+    there are several, take the newest, because that is the one just built.
+    """
+    bench = Path(__file__).resolve().parent.parent
+    candidates = sorted(
+        bench.glob("openagentsinc-cli-*.tgz"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else bench / "openagentsinc-cli-<version>.tgz"
+
+
+_TARBALL = _find_tarball()
 _REMOTE_TARBALL = "/installed-agent/openagents-cli.tgz"
 _DEFAULT_API_URL = "http://host.docker.internal:4000"
 _EXPORT_DIR = "$HOME/.openagents/exports"

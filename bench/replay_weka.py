@@ -132,9 +132,25 @@ def _blocks_for_event(ev: Dict[str, Any]) -> List[Any]:
     return _get(ev, _HASH_KEYS) or []
 
 
-def _analyze_session(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _analyze_session(events: List[Dict[str, Any]], context: str = "accumulate") -> Dict[str, Any]:
+    """Per-turn prefix reuse for one session.
+
+    Two corpora shapes exist and they mean different things by a turn's block
+    list, so the model is explicit rather than guessed:
+
+    - `accumulate` (the default, and what `weka-trace-v1` exports): each event
+      carries only its OWN new content. The request context at turn N is
+      everything the session has said up to and including N, so the re-sent
+      prefix is the accumulation of turns 1..N-1. This is where the reuse
+      lives, and reading each event's list as if it were the whole context
+      reports zero reuse for a session that is almost entirely prefix.
+    - `explicit`: each turn's list already IS the full context sent for that
+      request, repeats included. Used by corpora that record requests rather
+      than transcripts.
+    """
     indexed = sorted(enumerate(events), key=lambda x: (_sortable_time(_get(x[1], _TIME_KEYS)), x[0]))
     seen: set = set()
+    carried: List[Any] = []
     turns: List[Dict[str, Any]] = []
     total, repeated, new = 0, 0, 0
     first_total, last_total = 0, 0
@@ -142,10 +158,20 @@ def _analyze_session(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         raw = _blocks_for_event(ev)
         if not isinstance(raw, list):
             raise ValueError("turn block list is not an array")
-        keys = [_canon(b) for b in raw if _canon(b) is not None]
-        n_total = len(keys)
-        n_repeated = sum(1 for k in keys if k in seen)
-        n_new = n_total - n_repeated
+        own = [_canon(b) for b in raw if _canon(b) is not None]
+        if context == "accumulate":
+            # The request carries everything said so far, then this turn's own
+            # blocks. The prefix is exactly what was carried in.
+            n_repeated = len(carried)
+            keys = carried + own
+            n_total = len(keys)
+            n_new = len(own)
+            carried = keys
+        else:
+            keys = own
+            n_total = len(keys)
+            n_repeated = sum(1 for k in keys if k in seen)
+            n_new = n_total - n_repeated
         seen.update(keys)
         total += n_total
         repeated += n_repeated
@@ -272,7 +298,7 @@ def _build_output(results: List[Dict[str, Any]], corpus: Dict[str, Any]) -> Dict
     return {"files": results, "corpus": corpus}
 
 
-def process_paths(paths: List[Path]) -> Tuple[List[Dict[str, Any]], List[str]]:
+def process_paths(paths: List[Path], context: str = "accumulate") -> Tuple[List[Dict[str, Any]], List[str]]:
     results: List[Dict[str, Any]] = []
     errors: List[str] = []
     for p in paths:
@@ -289,7 +315,7 @@ def process_paths(paths: List[Path]) -> Tuple[List[Dict[str, Any]], List[str]]:
                         "turns": a["turns"],
                         "summary": a["summary"],
                     }
-                    for sid, a in ((sid, _analyze_session(ev)) for sid, ev in sessions)
+                    for sid, a in ((sid, _analyze_session(ev, context)) for sid, ev in sessions)
                 ]
                 file_docs.append({"document_index": i, "sessions": analyzed})
             results.append({"path": str(p), "documents": file_docs})
@@ -306,9 +332,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("traces", nargs="+", type=Path, help="weka-trace-v1 JSON files")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON output")
+    parser.add_argument(
+        "--context",
+        choices=("accumulate", "explicit"),
+        default="accumulate",
+        help=(
+            "how a turn's block list relates to the request context. "
+            "accumulate (default, and what weka-trace-v1 exports): each event "
+            "carries its own new content and the request re-sends everything "
+            "before it. explicit: each turn's list is already the whole "
+            "context, repeats included."
+        ),
+    )
     arguments = parser.parse_args(argv)
 
-    results, errors = process_paths(arguments.traces)
+    results, errors = process_paths(arguments.traces, arguments.context)
     all_sessions = [
         s for r in results for d in r.get("documents", []) for s in d["sessions"]
     ]
