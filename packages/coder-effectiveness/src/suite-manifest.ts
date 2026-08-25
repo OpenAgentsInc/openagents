@@ -43,12 +43,6 @@
 import { createHash } from "node:crypto";
 import { Schema as S } from "effect";
 
-/**
- * `score` is a suite whose result may be published. `smoke` is one that may
- * not, declared at the manifest rather than inferred, for a suite that exists
- * to be fast — a pre-push check over three tasks, say. A smoke manifest is
- * smoke even when every one of its tasks ran.
- */
 export const SUITE_MANIFEST_SCHEMA = "openagents.effectiveness_suite.v1";
 
 /**
@@ -118,6 +112,15 @@ export type SuiteTask = typeof SuiteTaskSchema.Type;
 export const SuiteManifestSchema = S.Struct({
   schema: S.Literal(SUITE_MANIFEST_SCHEMA),
   id: S.String,
+  /**
+   * `score` is a suite whose result may be published. `smoke` is one that may
+   * not — a liveness check, or a suite whose tasks have no environment yet.
+   *
+   * Declared here rather than inferred, because a suite that exists to be fast
+   * is fast forever and should not have to prove it every run. A `smoke`
+   * manifest stays smoke even when every one of its tasks ran; a `score`
+   * manifest can still produce a smoke run, when the run did not cover it.
+   */
   tier: S.Literals(["score", "smoke"]),
   description: S.String,
   tasks: S.Array(SuiteTaskSchema),
