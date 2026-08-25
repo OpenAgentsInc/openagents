@@ -1,21 +1,10 @@
 import { Effect, Redacted } from "effect";
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  pushDelegated,
-  redactSecret,
-  validateRefspec,
-} from "../src/delegation-push.js";
+import { pushDelegated, redactSecret, validateRefspec } from "../src/delegation-push.js";
 
 const CANARY = "oa_assignment_canary_12345";
 
@@ -67,9 +56,7 @@ describe("delegated push refspec validation", () => {
       Effect.runPromise(validateRefspec("refs/heads/feature-1", "feature-1")),
     ).resolves.toBeUndefined();
     await expect(
-      Effect.runPromise(
-        validateRefspec("refs/heads/feature-1:refs/heads/feature-1", "feature-1"),
-      ),
+      Effect.runPromise(validateRefspec("refs/heads/feature-1:refs/heads/feature-1", "feature-1")),
     ).resolves.toBeUndefined();
     await expect(
       Effect.runPromise(validateRefspec("feature-1:feature-1", "feature-1")),
@@ -77,49 +64,41 @@ describe("delegated push refspec validation", () => {
   });
 
   it("refuses an unauthorized branch, a mismatched src:dst, and invalid forms", async () => {
-    await expect(
-      Effect.runPromise(validateRefspec("main", "feature-1")),
-    ).rejects.toThrow(/not the assigned branch/);
+    await expect(Effect.runPromise(validateRefspec("main", "feature-1"))).rejects.toThrow(
+      /not the assigned branch/,
+    );
     await expect(
       Effect.runPromise(validateRefspec("refs/heads/main", "feature-1")),
     ).rejects.toThrow(/not the assigned branch/);
     await expect(
-      Effect.runPromise(
-        validateRefspec("refs/heads/feature-1:refs/heads/main", "feature-1"),
-      ),
+      Effect.runPromise(validateRefspec("refs/heads/feature-1:refs/heads/main", "feature-1")),
     ).rejects.toThrow(/not the assigned branch/);
-    await expect(
-      Effect.runPromise(validateRefspec("refs/tags/v1", "feature-1")),
-    ).rejects.toThrow(/not the assigned branch/);
-    await expect(
-      Effect.runPromise(validateRefspec("", "feature-1")),
-    ).rejects.toThrow(/empty/);
-    await expect(
-      Effect.runPromise(validateRefspec("+feature-1", "feature-1")),
-    ).rejects.toThrow(/Force or option/);
-    await expect(
-      Effect.runPromise(validateRefspec("feature-1:", "feature-1")),
-    ).rejects.toThrow(/empty destination/);
+    await expect(Effect.runPromise(validateRefspec("refs/tags/v1", "feature-1"))).rejects.toThrow(
+      /not the assigned branch/,
+    );
+    await expect(Effect.runPromise(validateRefspec("", "feature-1"))).rejects.toThrow(/empty/);
+    await expect(Effect.runPromise(validateRefspec("+feature-1", "feature-1"))).rejects.toThrow(
+      /Force or option/,
+    );
+    await expect(Effect.runPromise(validateRefspec("feature-1:", "feature-1"))).rejects.toThrow(
+      /empty destination/,
+    );
   });
 
   it("refuses a multi-ref push", async () => {
-    await expect(
-      Effect.runPromise(validateRefspec("feature-1 main", "feature-1")),
-    ).rejects.toThrow(/Multi-ref/);
-    await expect(
-      Effect.runPromise(validateRefspec("feature-1,main", "feature-1")),
-    ).rejects.toThrow(/Multi-ref/);
+    await expect(Effect.runPromise(validateRefspec("feature-1 main", "feature-1"))).rejects.toThrow(
+      /Multi-ref/,
+    );
+    await expect(Effect.runPromise(validateRefspec("feature-1,main", "feature-1"))).rejects.toThrow(
+      /Multi-ref/,
+    );
   });
 });
 
 describe("delegated push credential redaction", () => {
   it("redacts known credential patterns", () => {
-    expect(redactSecret("token oa_assignment_canary_12345 here")).not.toContain(
-      CANARY,
-    );
-    expect(redactSecret("token oa_assignment_canary_12345 here")).toContain(
-      "[REDACTED]",
-    );
+    expect(redactSecret("token oa_assignment_canary_12345 here")).not.toContain(CANARY);
+    expect(redactSecret("token oa_assignment_canary_12345 here")).toContain("[REDACTED]");
     const auth = redactSecret("Authorization: Bearer abc.def");
     expect(auth).not.toContain("abc.def");
     expect(auth).toContain("[REDACTED]");
@@ -133,10 +112,7 @@ describe("delegated push lifecycle", () => {
 
   const cleanupTemp = (): void => {
     for (const name of readdirSync(tmpdir())) {
-      if (
-        name.startsWith("oa-delegation-push-") ||
-        name.startsWith("oa-delegation-test-root-")
-      ) {
+      if (name.startsWith("oa-delegation-push-") || name.startsWith("oa-delegation-test-root-")) {
         try {
           rmSync(join(tmpdir(), name), { recursive: true, force: true });
         } catch {
@@ -254,9 +230,7 @@ describe("delegated push lifecycle", () => {
     expect(message).toContain("git push failed");
     expect(message).not.toContain(CANARY);
     expect(message).toContain("[REDACTED]");
-    expect(
-      readdirSync(tmpdir()).some((n) => n.startsWith("oa-delegation-push-")),
-    ).toBe(false);
+    expect(readdirSync(tmpdir()).some((n) => n.startsWith("oa-delegation-push-"))).toBe(false);
   });
 });
 

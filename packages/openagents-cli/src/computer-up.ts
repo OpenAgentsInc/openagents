@@ -159,8 +159,7 @@ export const computerUpLayer = Layer.effect(
           branch = asString(payload.assignment_branch);
         } else if (typeof raw === "object" && raw !== null) {
           const cred = recordValue(raw);
-          const candidate =
-            cred.token ?? cred.value ?? cred.password ?? cred.access_token;
+          const candidate = cred.token ?? cred.value ?? cred.password ?? cred.access_token;
           token = asString(candidate);
           repository = asString(cred.repository ?? payload.assignment_repository);
           branch = asString(cred.branch ?? payload.assignment_branch);
@@ -422,9 +421,7 @@ export const computerUpLayer = Layer.effect(
             roots: config.roots,
             curatedExecute: config.curatedExecute ?? [],
             env: environment,
-            ...(forgeCredentials !== undefined
-              ? { forgeCredentials, forgeOrigin: origin }
-              : {}),
+            ...(forgeCredentials !== undefined ? { forgeCredentials, forgeOrigin: origin } : {}),
             timeoutMs: numberField(
               payload,
               ["timeout_ms", "timeout"],

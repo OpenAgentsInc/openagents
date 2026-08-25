@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplyChunk } from "../src/coder-session.js";
-import { openThread, resolveProxyUrl, ThreadReplySource, ThreadUnavailable } from "../src/coder-thread.js";
+import {
+  openThread,
+  resolveProxyUrl,
+  ThreadReplySource,
+  ThreadUnavailable,
+} from "../src/coder-thread.js";
 import { Redacted } from "effect";
 import { shellTool } from "../src/coder-tools.js";
 import { ThreadTranscriptWriter } from "../src/coder-transcript.js";
@@ -789,9 +794,7 @@ describe("the thread's durable transcript", () => {
     // the same report the local lane yields, so the ATIF export's step
     // metrics and final totals hold on every lane.
     const usage = received.filter((chunk) => chunk.type === "usage");
-    expect(usage).toEqual([
-      { type: "usage", promptTokens: 100, completionTokens: 16, calls: 2 },
-    ]);
+    expect(usage).toEqual([{ type: "usage", promptTokens: 100, completionTokens: 16, calls: 2 }]);
   });
 
   it("records a failed tool as one event carrying its error", async () => {
@@ -1103,7 +1106,10 @@ describe("ThreadReplySource toolDefinitions", () => {
 describe("resolveProxyUrl", () => {
   it("resolves the grant's path against the client's origin", () => {
     expect(
-      resolveProxyUrl("http://localhost:4000/api/inference/proxy", "http://host.docker.internal:4000"),
+      resolveProxyUrl(
+        "http://localhost:4000/api/inference/proxy",
+        "http://host.docker.internal:4000",
+      ),
     ).toBe("http://host.docker.internal:4000/api/inference/proxy");
   });
 

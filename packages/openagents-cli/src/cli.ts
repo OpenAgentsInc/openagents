@@ -87,6 +87,7 @@ import {
   resumableThreads,
   type ThreadSummary,
 } from "./coder-resume.js";
+import { openLocalThread, threadAnnouncement, threadSyncWanted } from "./coder-local-thread.js";
 import { ThreadTranscriptWriter } from "./coder-transcript.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
 import {
@@ -2238,20 +2239,51 @@ const coderCommand = Command.make(
             : undefined;
 
       // A `--model ollama:<name>` session answers from the local Ollama server,
-      // so it takes neither a thread nor the stand-in.
+      // so it takes neither a grant-bearing thread nor the stand-in. Held in a
+      // name of its own because the local lane still records: the transcript
+      // writer below attaches to it when the session opens a transcript-only
+      // thread.
+      const ollamaSource =
+        wantsOllama && ollamaName !== undefined
+          ? new OllamaReplySource({
+              model: ollamaName,
+              // The standard Ollama env var, honored so a session in a
+              // container can reach the Ollama server on its host —
+              // 127.0.0.1 inside a container is the container.
+              ...(process.env["OLLAMA_HOST"] ? { host: process.env["OLLAMA_HOST"] } : {}),
+              ...(Option.isSome(reasoning) ? { reasoning: reasoning.value } : {}),
+            })
+          : undefined;
+
       const source: ReplySource =
         wantsZen && zenAsked !== undefined && zenKey !== undefined
           ? new ZenReplySource({ model: zenAsked, key: zenKey })
-          : wantsOllama && ollamaName !== undefined
-            ? new OllamaReplySource({
-                model: ollamaName,
-                // The standard Ollama env var, honored so a session in a
-                // container can reach the Ollama server on its host —
-                // 127.0.0.1 inside a container is the container.
-                ...(process.env["OLLAMA_HOST"] ? { host: process.env["OLLAMA_HOST"] } : {}),
-                ...(Option.isSome(reasoning) ? { reasoning: reasoning.value } : {}),
-              })
-            : (thread ?? new DummyReplySource());
+          : (ollamaSource ?? thread ?? new DummyReplySource());
+
+      // The local lane reports by default (OpenAgentsInc/openagents#39): with
+      // a credential and the switch not off, it opens a transcript-only
+      // thread — lane "local", the vendor model string, no grant expected or
+      // used — so the session's record lands on the server while inference
+      // stays entirely local. `--offline` already ends with no credential
+      // here, so it is the flag that turns this off; OPENAGENTS_THREAD_SYNC=off
+      // is the env switch. `openLocalThread` never throws: no reachable
+      // server degrades silently to local-only.
+      const localThread =
+        ollamaSource !== undefined &&
+        ollamaName !== undefined &&
+        Option.isSome(stored) &&
+        threadSyncWanted(process.env)
+          ? yield* Effect.promise(() =>
+              openLocalThread({
+                origin: endpoint.origin,
+                token: Redacted.value(stored.value.token),
+                objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+                repository: workspace.repository,
+                model: `ollama:${ollamaName}`,
+                reasoning: Option.getOrUndefined(reasoning),
+              }),
+            )
+          : undefined;
 
       // Children get their own thread on their own model. The conversation
       // stays on the model it opened with, and a fan-out spends a budget the
@@ -2306,24 +2338,38 @@ const coderCommand = Command.make(
       // so both interfaces open showing the conversation being continued.
       if (resumed !== undefined) session.restore(resumed.entries);
 
-      // The thread lane writes its transcript to the server as the turn loop
-      // runs — `POST /api/v1/threads/{id}/events`, on the account token that
-      // opened the thread. The server copy is the only durable copy; the
-      // offline, Ollama, and stand-in lanes keep no record and attach nothing.
-      // A failed post never reaches the turn loop: the writer queues, retries,
-      // and says so once on the status line.
+      // The thread and local lanes write their transcript to the server as
+      // the turn loop runs — `POST /api/v1/threads/{id}/events`, on the
+      // account token that opened the thread. The server copy is the only
+      // durable copy; the offline and stand-in lanes keep no record and
+      // attach nothing. A failed post never reaches the turn loop: the
+      // writer queues, retries, and says so once on the status line.
+      const transcriptThreadId = thread?.threadId ?? localThread?.threadId;
       const transcript =
-        thread !== undefined && Option.isSome(stored)
+        transcriptThreadId !== undefined && Option.isSome(stored)
           ? new ThreadTranscriptWriter({
               origin: endpoint.origin,
-              threadId: thread.threadId,
+              threadId: transcriptThreadId,
               token: Redacted.value(stored.value.token),
               onTrouble: (message) => {
                 session.notice(message);
               },
             })
           : undefined;
-      if (transcript !== undefined) thread?.useTranscript(transcript);
+      if (transcript !== undefined) {
+        thread?.useTranscript(transcript);
+        ollamaSource?.useTranscript(transcript);
+      }
+
+      // The machine-readable announcement (OpenAgentsInc/openagents#38): in
+      // plain mode a session with a server thread — either lane — names it
+      // once on stderr, so a harness that captured the output can link the
+      // session to its record. Exactly this shape: the Gym adapter parses it
+      // with `\[oa:thread ([0-9a-fA-F-]{36})\]`. Absent when offline, which
+      // is not an error.
+      if (plain && transcriptThreadId !== undefined) {
+        process.stderr.write(`${threadAnnouncement(transcriptThreadId)}\n`);
+      }
 
       // The model is told what it can do rather than the reader being asked to
       // remember a slash command. A turn that needs three agents asks for them

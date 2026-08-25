@@ -12,13 +12,15 @@ import { DevinHarness, type DelegateEvent } from "../src/coder-delegate.js";
  * stdio, replying to `initialize`, `session/new`, and `session/prompt`, and
  * sending whatever `session/update` notifications the test asks for.
  */
-const fakeAgent = (options: {
-  readonly updates?: ReadonlyArray<Record<string, unknown>>;
-  readonly answer?: string;
-  readonly failPrompt?: string;
-  readonly hang?: boolean;
-  readonly recordArgsTo?: string;
-} = {}): string => {
+const fakeAgent = (
+  options: {
+    readonly updates?: ReadonlyArray<Record<string, unknown>>;
+    readonly answer?: string;
+    readonly failPrompt?: string;
+    readonly hang?: boolean;
+    readonly recordArgsTo?: string;
+  } = {},
+): string => {
   const directory = mkdtempSync(join(tmpdir(), "devin-acp-"));
   const script = join(directory, "agent.mjs");
 
@@ -78,7 +80,10 @@ const collect = async (
 ): Promise<ReadonlyArray<DelegateEvent>> => {
   const events: DelegateEvent[] = [];
   const transcriptPath = join(mkdtempSync(join(tmpdir(), "devin-t-")), "child.jsonl");
-  for await (const event of harness.run({ prompt: "do the thing", cwd, transcriptPath }, new AbortController().signal)) {
+  for await (const event of harness.run(
+    { prompt: "do the thing", cwd, transcriptPath },
+    new AbortController().signal,
+  )) {
     events.push(event);
   }
   return events;

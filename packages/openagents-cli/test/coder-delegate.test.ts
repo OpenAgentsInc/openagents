@@ -362,14 +362,14 @@ describe("fleet rendering", () => {
       agent: "opencode",
       model: "fake/model",
       cwd: "/tmp",
-        background: true,
-      },
-      // A fixed start, because the completion below is a fixed instant too and
-      // the pair is what makes the duration deterministic. Started at
-      // `Date.now()` and completed at epoch 4000, the child finished
-      // fifty-six years before it began and the duration clamped to zero.
-      1_000,
-    );
+      background: true,
+    },
+    // A fixed start, because the completion below is a fixed instant too and
+    // the pair is what makes the duration deterministic. Started at
+    // `Date.now()` and completed at epoch 4000, the child finished
+    // fifty-six years before it began and the duration clamped to zero.
+    1_000,
+  );
   registry.start(task.id, new AbortController());
   registry.recordToolUse(task.id, { toolName: "bash", target: "pnpm test" });
   registry.recordTokens(task.id, { input: 8000, output: 214 });
@@ -553,7 +553,12 @@ describe("retrying a child whose provider dropped", () => {
           yield { type: "session", sessionId: options.session };
         }
         for (let index = 0; index < (options.toolsBeforeFailing ?? 0); index += 1) {
-          yield { type: "tool", callId: `c${String(seen)}-${String(index)}`, name: "read", target: "f" };
+          yield {
+            type: "tool",
+            callId: `c${String(seen)}-${String(index)}`,
+            name: "read",
+            target: "f",
+          };
         }
         if (seen <= failures) {
           yield { type: "error", message };

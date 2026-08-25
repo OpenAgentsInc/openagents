@@ -45,47 +45,48 @@ const toCanonical = (value: string, branch: string): string | undefined => {
   return undefined;
 };
 
-export const validateRefspec = Effect.fn("DelegationPush.validateRefspec")(
-  function* (refspec: string, branch: string) {
-    if (refspec === "") {
-      return yield* new InputError({ message: "The refspec is empty." });
-    }
-    if (/[\s,]/u.test(refspec)) {
+export const validateRefspec = Effect.fn("DelegationPush.validateRefspec")(function* (
+  refspec: string,
+  branch: string,
+) {
+  if (refspec === "") {
+    return yield* new InputError({ message: "The refspec is empty." });
+  }
+  if (/[\s,]/u.test(refspec)) {
+    return yield* new InputError({
+      message: `Multi-ref push is not allowed: ${redactSecret(refspec)}`,
+    });
+  }
+  if (refspec.startsWith("+") || refspec.startsWith("-")) {
+    return yield* new InputError({
+      message: `Force or option refspecs are not allowed: ${redactSecret(refspec)}`,
+    });
+  }
+  const target = canonicalBranch(branch);
+  const colon = refspec.indexOf(":");
+  if (colon >= 0) {
+    const src = refspec.slice(0, colon);
+    const dst = refspec.slice(colon + 1);
+    if (dst === "") {
       return yield* new InputError({
-        message: `Multi-ref push is not allowed: ${redactSecret(refspec)}`,
+        message: `A refspec with an empty destination is not allowed: ${redactSecret(refspec)}`,
       });
     }
-    if (refspec.startsWith("+") || refspec.startsWith("-")) {
-      return yield* new InputError({
-        message: `Force or option refspecs are not allowed: ${redactSecret(refspec)}`,
-      });
-    }
-    const target = canonicalBranch(branch);
-    const colon = refspec.indexOf(":");
-    if (colon >= 0) {
-      const src = refspec.slice(0, colon);
-      const dst = refspec.slice(colon + 1);
-      if (dst === "") {
-        return yield* new InputError({
-          message: `A refspec with an empty destination is not allowed: ${redactSecret(refspec)}`,
-        });
-      }
-      const srcCanonical = toCanonical(src, branch);
-      const dstCanonical = toCanonical(dst, branch);
-      if (srcCanonical === undefined || dstCanonical === undefined || srcCanonical !== dstCanonical) {
-        return yield* new InputError({
-          message: `Refspec ${redactSecret(refspec)} is not the assigned branch ${target}.`,
-        });
-      }
-      return;
-    }
-    if (toCanonical(refspec, branch) === undefined) {
+    const srcCanonical = toCanonical(src, branch);
+    const dstCanonical = toCanonical(dst, branch);
+    if (srcCanonical === undefined || dstCanonical === undefined || srcCanonical !== dstCanonical) {
       return yield* new InputError({
         message: `Refspec ${redactSecret(refspec)} is not the assigned branch ${target}.`,
       });
     }
-  },
-);
+    return;
+  }
+  if (toCanonical(refspec, branch) === undefined) {
+    return yield* new InputError({
+      message: `Refspec ${redactSecret(refspec)} is not the assigned branch ${target}.`,
+    });
+  }
+});
 
 const getRemoteUrl = (
   directory: string,
@@ -114,9 +115,7 @@ const getRemoteUrl = (
     catch: (cause) =>
       new GitExecutionError({
         operation: "git remote get-url",
-        message: redactSecret(
-          cause instanceof Error ? cause.message : String(cause),
-        ),
+        message: redactSecret(cause instanceof Error ? cause.message : String(cause)),
       }),
   });
 
@@ -137,11 +136,7 @@ const runGit = (
           stdio: ["ignore", "pipe", "pipe"],
         });
         child.on("error", (cause) =>
-          reject(
-            new Error(
-              `git ${operation} could not start: ${redactSecret(cause.message)}`,
-            ),
-          ),
+          reject(new Error(`git ${operation} could not start: ${redactSecret(cause.message)}`)),
         );
         child.stderr.on("data", (chunk: Buffer) => {
           if (stderr.length < 16_384) {
@@ -158,9 +153,7 @@ const runGit = (
     catch: (cause) =>
       new GitExecutionError({
         operation: `git ${operation}`,
-        message: redactSecret(
-          cause instanceof Error ? cause.message : String(cause),
-        ),
+        message: redactSecret(cause instanceof Error ? cause.message : String(cause)),
       }),
   });
 

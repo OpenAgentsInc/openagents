@@ -23,6 +23,7 @@ import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import { LOCAL_LANE, systemPrompt } from "./coder-system.js";
 import type { CoderTool } from "./coder-tools.js";
+import type { TranscriptSink } from "./coder-transcript.js";
 
 const DEFAULT_HOST = "http://127.0.0.1:11434";
 
@@ -51,11 +52,21 @@ const MAX_TOOL_STEPS = 100;
  */
 const TOOL_RESULT_KEPT = 4_000;
 
+/**
+ * How much of one tool's output reaches the durable `tool.ran` event.
+ *
+ * The same figure the thread lane uses, for the same reason: the 4,000 above
+ * is a context-budget decision re-spent on every round, and this bounds a
+ * record written once, so it is set where every result a real session has
+ * produced fits whole.
+ */
+const EVENT_RESULT_KEPT = 64_000;
+
 /** A long tool result, kept at both ends. */
-const bounded = (output: string): string => {
-  if (output.length <= TOOL_RESULT_KEPT) return output;
-  const half = Math.floor(TOOL_RESULT_KEPT / 2);
-  const cut = output.length - TOOL_RESULT_KEPT;
+const bounded = (output: string, keep = TOOL_RESULT_KEPT): string => {
+  if (output.length <= keep) return output;
+  const half = Math.floor(keep / 2);
+  const cut = output.length - keep;
   return `${output.slice(0, half)}\n\n[${String(cut)} characters omitted from the middle; run it again more narrowly if you need them]\n\n${output.slice(-half)}`;
 };
 
@@ -223,6 +234,14 @@ export class OllamaReplySource implements ReplySource {
    * the difference between steering a model and waiting one out.
    */
   private steered: string[] = [];
+  /**
+   * Where the turn loop writes the durable transcript, when the session has
+   * one. The local lane opens a transcript-only thread when it holds an
+   * api-url and a token (coder-local-thread.ts); a session without either
+   * attaches nothing and every call below is a no-op through optional
+   * chaining. Inference never touches it — only the record travels.
+   */
+  private sink: TranscriptSink | undefined;
   private reasoningLevel: string;
   /** What the turn in flight has spent, so it is reported however it ends. */
   private spentIn = 0;
@@ -270,6 +289,19 @@ export class OllamaReplySource implements ReplySource {
 
   useTools(tools: ReadonlyArray<CoderTool>): void {
     this.tools = tools;
+  }
+
+  /**
+   * Attach the writer that puts this session's turns on the server.
+   *
+   * The same vocabulary the thread lane records — `turn.user`,
+   * `turn.reasoning`, `tool.ran`, `turn.assistant` — so `/threads/:id`, the
+   * export, and a resume read a local session exactly as they read a hosted
+   * one. Set after construction because the writer needs the thread's id,
+   * which does not exist until the transcript-only thread is opened.
+   */
+  useTranscript(sink: TranscriptSink): void {
+    this.sink = sink;
   }
 
   /**
@@ -378,6 +410,7 @@ export class OllamaReplySource implements ReplySource {
     }
 
     this.transcript.push({ role: "user", content: prompt });
+    this.sink?.record("turn.user", { text: prompt });
 
     // A turn is a loop, not a single call: the model may answer, or it may ask
     // for tools and then answer once it has seen what they returned. The
@@ -386,8 +419,16 @@ export class OllamaReplySource implements ReplySource {
     this.spentOut = 0;
     this.calls = 0;
 
+    /** The answer so far, across rounds, for the one `turn.assistant` event. */
+    let turnText = "";
+    /** How many tools this turn ran, reported on `turn.assistant`. */
+    let turnToolCalls = 0;
+
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        this.recordAnswer(turnText, turnToolCalls, true);
+        return;
+      }
 
       // Anything the reader said since the last step joins here, before the
       // model is asked again. It reads as an ordinary turn in the conversation,
@@ -395,6 +436,9 @@ export class OllamaReplySource implements ReplySource {
       const steered = this.steered.splice(0);
       for (const said of steered) {
         this.transcript.push({ role: "user", content: said });
+        // Steered mid-turn rather than asked between turns, and the record
+        // says so, or a replay would show a question the answer ignores.
+        this.sink?.record("turn.user", { text: said, steered: true });
       }
       // The interface dims a steered message until this says it was read.
       if (steered.length > 0) yield { type: "steered", texts: steered };
@@ -479,7 +523,21 @@ export class OllamaReplySource implements ReplySource {
         signal.removeEventListener("abort", onAbort);
       }
 
-      if (signal.aborted) return;
+      // One event per block, whole, never deltas: the record is what was
+      // thought, not the pieces it arrived in.
+      if (reasoning.length > 0) this.sink?.record("turn.reasoning", { text: reasoning });
+
+      // Whatever the model said belongs to the thread even when the turn was
+      // interrupted, or the next turn answers a question it cannot see it
+      // half-answered.
+      if (assistant.length > 0) {
+        turnText = turnText.length === 0 ? assistant : `${turnText}\n\n${assistant}`;
+      }
+
+      if (signal.aborted) {
+        this.recordAnswer(turnText, turnToolCalls, true);
+        return;
+      }
 
       // Whatever the model said before asking is kept with the calls, and so is
       // what it thought. Reasoning is part of the turn, not decoration on it: a
@@ -494,14 +552,45 @@ export class OllamaReplySource implements ReplySource {
         ...(calls.length === 0 ? {} : { tool_calls: calls }),
       });
 
-      if (calls.length === 0) return;
+      if (calls.length === 0) {
+        this.recordAnswer(turnText, turnToolCalls, false);
+        return;
+      }
+      turnToolCalls += calls.length;
 
       // Concurrently. A model asking for two tools in one turn is saying they do
       // not depend on each other, and running them in order anyway makes a fan-out
       // to two models cost the sum of both.
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        this.recordAnswer(turnText, turnToolCalls, true);
+        return;
+      }
       yield* merge(calls.map((call) => this.invoke(call, signal)));
     }
+  }
+
+  /**
+   * Record the turn's answer, with what it cost.
+   *
+   * One event per turn, whatever the turn took to get there, the same shape
+   * the thread lane records. An interrupted turn is recorded too, marked as
+   * such, because whatever streamed before Escape was said and the next
+   * reader of this thread will be answered against it.
+   */
+  private recordAnswer(text: string, toolCalls: number, interrupted: boolean): void {
+    if (this.sink === undefined) return;
+    if (text.length === 0 && this.calls === 0) return;
+    this.sink.record("turn.assistant", {
+      text,
+      usage: {
+        prompt_tokens: this.spentIn,
+        completion_tokens: this.spentOut,
+        total_tokens: this.spentIn + this.spentOut,
+        calls: this.calls,
+      },
+      tool_calls: toolCalls,
+      ...(interrupted ? { interrupted: true } : {}),
+    });
   }
 
   /**
@@ -540,6 +629,19 @@ export class OllamaReplySource implements ReplySource {
     }
 
     yield { type: "tool_result", callId, output, error: failure };
+
+    // Call and result are one fact, so they are one event — the thread lane's
+    // shape exactly, bounded far above the model-wire bound so the record
+    // keeps what the model was fed a cut of.
+    this.sink?.record("tool.ran", {
+      call_id: callId,
+      tool: name,
+      arguments: bounded(JSON.stringify(args, undefined, 2), EVENT_RESULT_KEPT),
+      status: failure === undefined ? "succeeded" : "failed",
+      ...(failure === undefined
+        ? { output: bounded(output, EVENT_RESULT_KEPT) }
+        : { error: bounded(failure, EVENT_RESULT_KEPT) }),
+    });
 
     this.transcript.push({ role: "tool", content: bounded(output), tool_name: name });
   }

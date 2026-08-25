@@ -576,3 +576,121 @@ describe("which lane a session opens on", () => {
     ]);
   });
 });
+
+const recorder = () => {
+  const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+  return {
+    events,
+    record(eventType: string, payload: Record<string, unknown>) {
+      events.push({ eventType, payload });
+    },
+  };
+};
+
+describe("the local lane's durable transcript", () => {
+  const ROUNDS = [
+    [
+      chunk({ thinking: "Delegate it." }),
+      chunk({
+        content: "",
+        tool_calls: [{ function: { name: "delegate", arguments: { prompt: "say PONG" } } }],
+      }),
+      { message: {}, done: true, prompt_eval_count: 100, eval_count: 10 },
+    ],
+    [
+      {
+        message: { content: "They said PONG." },
+        done: true,
+        prompt_eval_count: 200,
+        eval_count: 20,
+      },
+    ],
+  ] as never;
+
+  it("records the turn in order: what was asked, the reasoning, each tool run, the answer", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { source } = sourceWith(ROUNDS);
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([delegate(calls)]);
+
+    await collect(source, "delegate this");
+
+    // The thread lane's vocabulary exactly, so `/threads/:id`, the export,
+    // and a resume read a local session as they read a hosted one.
+    expect(sink.events.map((event) => event.eventType)).toEqual([
+      "turn.user",
+      "turn.reasoning",
+      "tool.ran",
+      "turn.assistant",
+    ]);
+    expect(sink.events[0]?.payload).toEqual({ text: "delegate this" });
+    expect(sink.events[1]?.payload).toEqual({ text: "Delegate it." });
+    expect(sink.events[2]?.payload).toEqual({
+      call_id: "delegate-1",
+      tool: "delegate",
+      arguments: JSON.stringify({ prompt: "say PONG" }, undefined, 2),
+      status: "succeeded",
+      output: "child 1 said PONG",
+    });
+  });
+
+  it("records the answer with the turn's summed usage and its call count", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { source } = sourceWith(ROUNDS);
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([delegate(calls)]);
+
+    await collect(source, "delegate this");
+
+    const answer = sink.events.find((event) => event.eventType === "turn.assistant");
+    // Two model calls in one turn: the record holds their sum with the
+    // count, not the last round's figures presented as the turn's.
+    expect(answer?.payload).toEqual({
+      text: "They said PONG.",
+      usage: { prompt_tokens: 300, completion_tokens: 30, total_tokens: 330, calls: 2 },
+      tool_calls: 1,
+    });
+  });
+
+  it("records a failed tool as one event carrying its error", async () => {
+    const { source } = sourceWith(ROUNDS);
+    const sink = recorder();
+    source.useTranscript(sink);
+    source.useTools([
+      {
+        name: "delegate",
+        description: "Run a prompt on child agents.",
+        parameters: { type: "object" },
+        run: () => Promise.reject(new Error("the fleet is full")),
+      },
+    ]);
+
+    await collect(source, "delegate this");
+
+    const ran = sink.events.find((event) => event.eventType === "tool.ran");
+    expect(ran?.payload).toMatchObject({
+      call_id: "delegate-1",
+      tool: "delegate",
+      status: "failed",
+      error: "the fleet is full",
+    });
+  });
+
+  it("records nothing when no thread is attached, exactly as before", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { source } = sourceWith(ROUNDS);
+    source.useTools([delegate(calls)]);
+
+    // A session without a token, api-url, or reachable server attaches no
+    // sink, and the turn loop must not know the difference.
+    const chunks = await collect(source, "delegate this");
+
+    expect(calls).toEqual([{ prompt: "say PONG" }]);
+    expect(chunks.filter((piece) => piece.type !== "usage").at(-1)).toEqual({
+      type: "text",
+      value: "They said PONG.",
+    });
+  });
+});
