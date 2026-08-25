@@ -380,6 +380,185 @@ export function parseClaudeEvent(line: string): DelegateEvent | undefined {
   return undefined;
 }
 
+/**
+ * Read one line of `codex exec --json` output.
+ *
+ * Codex's exec mode prints a JSONL event stream. The mapping is deliberately
+ * lossy: this fleet only needs to show that the child started, what it is
+ * doing, what it said, and how many tokens it used. We trust the `type`
+ * discriminator and fall back to common field names, so the parser survives
+ * minor shape changes. Anything that does not map cleanly is ignored.
+ *
+ * Mapped:
+ *   - `thread.started` (thread_id / id / session_id) -> `session`
+ *   - `turn.completed` (usage)                      -> `tokens`
+ *   - `item.started` / `item.completed` (text)      -> `text`
+ *   - `item.started` / `item.completed` (tool)      -> `tool`
+ *   - `error`                                       -> `error`
+ *
+ * Lossy:
+ *   - Item details and output are reduced to a target phrase or a text value.
+ *     Rich output, tool result objects, file content, and completion details
+ *     are dropped after the target or text is extracted.
+ *   - No separate `tool.completed` event exists in `DelegateEvent`, so tool
+ *     completion details are ignored.
+ *   - Unknown item types and turn lifecycle events are dropped.
+ */
+export function parseCodexEvent(line: string): DelegateEvent | undefined {
+  const trimmed = line.trim();
+  if (trimmed.length === 0 || !trimmed.startsWith("{")) return undefined;
+
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+
+  const type = stringField(event, "type");
+
+  if (type === "thread.started") {
+    const sessionId =
+      stringField(event, "thread_id") ??
+      stringField(event, "id") ??
+      stringField(event, "session_id");
+    if (sessionId !== undefined) return { type: "session", sessionId };
+    return undefined;
+  }
+
+  if (
+    type === "turn.completed" ||
+    type === "thread.completed" ||
+    type === "turn.finished" ||
+    type === "usage"
+  ) {
+    const usage = isRecord(event["usage"]) ? event["usage"] : undefined;
+    if (usage !== undefined) {
+      const input =
+        numberField(usage, "input_tokens") ??
+        numberField(usage, "input") ??
+        numberField(usage, "prompt_tokens");
+      const output =
+        numberField(usage, "output_tokens") ??
+        numberField(usage, "output") ??
+        numberField(usage, "completion_tokens");
+      if (input !== undefined && output !== undefined) {
+        return { type: "tokens", input, output };
+      }
+    }
+    return undefined;
+  }
+
+  if (type === "item.started" || type === "item.completed") {
+    const item = isRecord(event["item"]) ? event["item"] : event;
+    if (isRecord(item)) {
+      return parseCodexItem(item);
+    }
+    return undefined;
+  }
+
+  if (type === "error") {
+    return { type: "error", message: describeCodexError(event) };
+  }
+
+  return undefined;
+}
+
+/** The phrase a Codex item is working on, whether it is a tool or a file. */
+function codexToolTarget(input: Record<string, unknown>, item: Record<string, unknown>): string | undefined {
+  for (const key of [
+    "command",
+    "file_path",
+    "path",
+    "file",
+    "url",
+    "pattern",
+    "query",
+    "description",
+    "content",
+    "text",
+    "name",
+  ]) {
+    const value = stringField(input, key);
+    if (value !== undefined && value.length > 0) return value;
+  }
+  const itemFile = stringField(item, "file");
+  if (itemFile !== undefined && itemFile.length > 0) return itemFile;
+  return undefined;
+}
+
+/** The input object for a Codex tool item, wherever the arguments live. */
+function codexItemInput(item: Record<string, unknown>): Record<string, unknown> {
+  if (isRecord(item["arguments"])) return item["arguments"];
+  if (isRecord(item["input"])) return item["input"];
+  const fn = item["function"];
+  if (isRecord(fn) && isRecord(fn["arguments"])) return fn["arguments"];
+  const tool = item["tool"];
+  if (isRecord(tool) && isRecord(tool["input"])) return tool["input"];
+  const content = item["content"];
+  if (isRecord(content)) return content;
+  return {};
+}
+
+/** Read one Codex item (a tool, a message, or a file) into a fleet event. */
+function parseCodexItem(item: Record<string, unknown>): DelegateEvent | undefined {
+  const role = stringField(item, "role");
+  const itemType = stringField(item, "type") ?? "";
+  const isAssistant =
+    role === "assistant" || itemType === "assistant" || itemType === "message";
+
+  if (isAssistant) {
+    const content = item["content"];
+    if (typeof content === "string") return { type: "text", value: content };
+    if (isRecord(content)) {
+      const text = stringField(content, "text") ?? stringField(content, "content");
+      if (text !== undefined) return { type: "text", value: text };
+    }
+    const output = item["output"];
+    if (typeof output === "string") return { type: "text", value: output };
+    if (isRecord(output)) {
+      const text = stringField(output, "text") ?? stringField(output, "content");
+      if (text !== undefined) return { type: "text", value: text };
+    }
+  }
+
+  const isTool =
+    itemType === "function" ||
+    itemType === "tool" ||
+    itemType === "command" ||
+    itemType === "file" ||
+    item["function"] !== undefined ||
+    item["tool"] !== undefined;
+  if (isTool) {
+    const callId =
+      stringField(item, "id") ??
+      stringField(item, "item_id") ??
+      stringField(item, "call_id") ??
+      "codex_tool";
+    const name =
+      stringField(item, "name") ??
+      (isRecord(item["function"]) ? stringField(item["function"], "name") : undefined) ??
+      (isRecord(item["tool"]) ? stringField(item["tool"], "name") : undefined) ??
+      itemType;
+    const input = codexItemInput(item);
+    const target = codexToolTarget(input, item);
+    return { type: "tool", callId, name, target };
+  }
+
+  return undefined;
+}
+
+/** The sentence behind a Codex error event. */
+function describeCodexError(event: Record<string, unknown>): string {
+  const error = isRecord(event["error"]) ? event["error"] : {};
+  return (
+    stringField(event, "message") ??
+    stringField(error, "message") ??
+    stringField(event, "error") ??
+    "the child agent reported an error"
+  );
+}
+
 /** The phrase a Claude tool_use block is working on. */
 function claudeTarget(input: Record<string, unknown>): string | undefined {
   for (const key of [
@@ -876,6 +1055,197 @@ export class ClaudeCodeHarness implements DelegateHarness {
   }
 }
 
+/**
+ * How a Codex child is run.
+ */
+export interface CodexHarnessOptions {
+  /**
+   * The `codex exec --sandbox` policy for the child. Defaults to
+   * `workspace-write`: the checkout it was pointed at, and nothing outside it.
+   */
+  readonly sandbox?: string | undefined;
+  /** The binary. Defaults to `codex`. */
+  readonly command?: string | undefined;
+  /** The model name passed to `-m, --model`. If unset, the harness reports `not reported`. */
+  readonly model?: string | undefined;
+  /**
+   * The approval policy for unattended runs.
+   *
+   * Codex's exec mode can ask for approval before running commands. A
+   * delegated child has nobody to ask, so the default is `never`. Pass another
+   * value only when the caller's own policy requires it.
+   */
+  readonly permissionMode?: string | undefined;
+  /** Extra environment for the child. */
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+}
+
+/**
+ * Children run by the OpenAI `codex` CLI in `exec --json` mode.
+ *
+ * `codex exec --json` emits newline-delimited JSON events. This harness drives
+ * it like the others: it streams events, writes the raw transcript, supports
+ * resuming with `exec resume`, and can be stopped cleanly.
+ *
+ * It inherits the user's `codex` environment and credentials. It does not read,
+ * copy, or forward any Codex credentials from this process.
+ */
+export class CodexHarness implements DelegateHarness {
+  readonly agent = "codex";
+  private readonly options: CodexHarnessOptions;
+  private reportedModel: string | undefined;
+
+  constructor(options: CodexHarnessOptions = {}) {
+    this.options = options;
+  }
+
+  get model(): string {
+    return this.options.model ?? this.reportedModel ?? "not reported";
+  }
+
+  async *run(
+    input: {
+      readonly prompt: string;
+      readonly cwd: string;
+      readonly transcriptPath: string;
+      readonly resumeSessionId?: string | undefined;
+    },
+    signal: AbortSignal,
+  ): AsyncIterable<DelegateEvent> {
+    const command = this.options.command ?? "codex";
+
+    // `--json` puts Codex in newline-delimited event mode.
+    //
+    // Sandbox rather than approval mode: `codex exec` has no
+    // `--ask-for-approval`, and a delegated child has nobody to ask anyway, so
+    // what it needs is a stated boundary rather than a prompt. The default is
+    // `workspace-write` — the child may edit the checkout it was pointed at
+    // and nothing outside it — and a caller who wants a narrower or wider one
+    // passes it. Checked against `codex exec --help` rather than assumed.
+    const sandbox = this.options.sandbox ?? "workspace-write";
+    const args =
+      input.resumeSessionId === undefined
+        ? ["exec", "--json", "--sandbox", sandbox]
+        : ["exec", "resume", "--json", "--sandbox", sandbox];
+    if (this.options.model !== undefined) {
+      args.push("-m", this.options.model);
+    }
+    if (input.resumeSessionId === undefined) {
+      args.push(input.prompt);
+    } else {
+      args.push(input.resumeSessionId, input.prompt);
+    }
+
+    mkdirSync(dirname(input.transcriptPath), { recursive: true });
+    const transcript = createWriteStream(input.transcriptPath, { flags: "a" });
+
+    const child = spawn(command, args, {
+      cwd: input.cwd,
+      env: { ...process.env, ...this.options.env },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+
+    const queue: DelegateEvent[] = [];
+    let notify: (() => void) | undefined;
+    const wake = () => {
+      notify?.();
+      notify = undefined;
+    };
+
+    let stderr = "";
+    let stdout = "";
+    let pending = "";
+    let reported: string | undefined;
+    let exited = false;
+    let failure: string | undefined;
+
+    const onAbort = () => {
+      killTree(child, "SIGTERM");
+      const grace = setTimeout(() => killTree(child, "SIGKILL"), KILL_GRACE_MS);
+      grace.unref();
+      child.once("close", () => clearTimeout(grace));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      transcript.write(chunk);
+      stdout = `${stdout}${chunk}`.slice(-4000);
+      pending += chunk;
+      let newline = pending.indexOf("\n");
+      while (newline >= 0) {
+        const line = pending.slice(0, newline);
+        pending = pending.slice(newline + 1);
+        // If Codex reports which model is answering, use it for the lane label
+        // when the caller did not name one explicitly.
+        try {
+          const raw = JSON.parse(line) as Record<string, unknown>;
+          if (raw["type"] === "thread.started" && this.options.model === undefined) {
+            const maybe = stringField(raw, "model");
+            if (maybe !== undefined) this.reportedModel = maybe;
+          }
+        } catch {
+          // Not JSON; the line will be handled by parseCodexEvent below.
+        }
+        const event = parseCodexEvent(line);
+        if (event !== undefined) {
+          if (event.type === "error") reported = event.message;
+          queue.push(event);
+        }
+        newline = pending.indexOf("\n");
+      }
+      wake();
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      transcript.write(chunk);
+      stderr = `${stderr}${chunk}`.slice(-4000);
+    });
+
+    child.on("error", (cause: Error) => {
+      failure =
+        (cause as NodeJS.ErrnoException).code === "ENOENT"
+          ? `The \`${command}\` harness is not on the path.`
+          : cause.message;
+      exited = true;
+      wake();
+    });
+
+    child.on("close", (code) => {
+      const trailing = parseCodexEvent(pending);
+      if (trailing !== undefined) {
+        if (trailing.type === "error") reported = trailing.message;
+        queue.push(trailing);
+      }
+      if (failure === undefined && code !== 0 && !signal.aborted) {
+        failure = reported ?? describeExit(code, stderr, stdout);
+      }
+      exited = true;
+      wake();
+    });
+
+    try {
+      while (true) {
+        while (queue.length > 0) {
+          const event = queue.shift();
+          if (event !== undefined) yield event;
+        }
+        if (exited) break;
+        await new Promise<void>((resolve) => {
+          notify = resolve;
+        });
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      transcript.end();
+    }
+
+    if (failure !== undefined) throw new Error(failure);
+  }
+}
+
 export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
   // Ox Alpha, free and unlimited while it lasts. The slug says neither `ox`
   // nor `alpha`: opencode's own normalization maps `x-preview-f` to `ox-alpha`
@@ -917,6 +1287,7 @@ export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
   [SELF_CHILD_LANE]: SELF_CHILD_LANE,
   gemini: SELF_CHILD_LANE,
   claude: "claude",
+  codex: "codex",
 };
 
 /**
@@ -995,6 +1366,15 @@ export const CHILD_LANES: ReadonlyArray<ChildLane> = [
     served: "Anthropic via Claude Code, on this machine's Claude credentials",
     bestFor: "work that needs Claude's toolset and tolerates its own cost boundary",
   },
+  {
+    name: "codex",
+    harness: "codex (the OpenAI Codex CLI, its own tools)",
+    // Codex exec may report a model in `thread.started`; the harness only
+    // advertises one the caller asked for.
+    model: "not reported",
+    served: "OpenAI, on this machine's Codex credentials",
+    bestFor: "work that needs the Codex agent and tolerates its own cost boundary",
+  },
 ];
 
 /** One lane as a line a model can read. */
@@ -1026,6 +1406,7 @@ export const resolveChildLane = (name: string): string | undefined => {
   if (asked.length === 0) return undefined;
   if (/^claude(:.+)?$/.test(asked)) return asked;
   if (/^devin(:.+)?$/.test(asked)) return asked;
+  if (/^codex(:.+)?$/.test(asked)) return asked;
   const aliased = CHILD_LANE_ALIASES[asked];
   if (aliased !== undefined) return aliased;
   return FREE_CHILD_MODELS.includes(asked) ? asked : undefined;

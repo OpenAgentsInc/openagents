@@ -40,6 +40,7 @@ import {
   ClaudeCodeHarness,
   DelegateFleet,
   DevinHarness,
+  CodexHarness,
   describePrompt,
   firstAvailableChildModel,
   OpencodeHarness,
@@ -1726,12 +1727,16 @@ async function buildDelegation(options: {
           )
         : /^devin(:.+)?$/.test(choice)
           ? new DevinHarness(choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {})
-          : new OpencodeHarness({
-              model: choice,
-              ...(command === undefined ? {} : { command }),
-              ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
-              autoApprove: options.autoApprove,
-            });
+          : /^codex(:.+)?$/.test(choice)
+            ? new CodexHarness(
+                choice.startsWith("codex:") ? { model: choice.slice(6) } : {},
+              )
+            : new OpencodeHarness({
+                model: choice,
+                ...(command === undefined ? {} : { command }),
+                ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
+                autoApprove: options.autoApprove,
+              });
 
     return {
       fleet: new DelegateFleet(registry, harness, {
@@ -1780,6 +1785,15 @@ async function buildDelegation(options: {
   if (askedFor !== undefined && /^devin(:(.+))?$/.test(askedFor)) {
     const mode = /^devin:(.+)$/.exec(askedFor)?.[1];
     const lane = laneFor(mode === undefined ? "devin" : `devin:${mode}`);
+    return {
+      delegation: { registry, ...lane, models: CHILD_MODELS, fleetFor },
+      close: () => Promise.resolve(),
+    };
+  }
+
+  if (askedFor !== undefined && /^codex(:(.+))?$/.test(askedFor)) {
+    const model = /^codex:(.+)$/.exec(askedFor)?.[1];
+    const lane = laneFor(model === undefined ? "codex" : `codex:${model}`);
     return {
       delegation: { registry, ...lane, models: CHILD_MODELS, fleetFor },
       close: () => Promise.resolve(),
