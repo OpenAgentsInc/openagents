@@ -57,6 +57,68 @@ export const coderTierLabel = (modelId: string | undefined): string => {
   return tier === undefined ? "Coder" : LABELS[tier];
 };
 
+/** One lane of the served catalog, as much of it as a tier decision needs. */
+interface ServedLane {
+  readonly id: string;
+  readonly available: boolean;
+}
+
+/**
+ * Why this tier cannot open a thread on this deployment, or `undefined` if it
+ * can.
+ *
+ * A tier is a friendlier name than a vendor id, which makes it a better place
+ * to hide a dead lane — the reader who used to see `gemini-3.7-flash` fail
+ * could at least search for it, while a reader who sees `Coder Flash` fail has
+ * been told nothing. So the tier a reader picks is checked against what the
+ * server says it can answer, the same catalog and the same `available` reading
+ * that `chooseBackend` already applies to the model a session opens with. The
+ * refusal names tiers only, because the invariant does not lapse when the news
+ * is bad.
+ *
+ * `undefined` for `served` means the catalog could not be read — an older
+ * server, an unreachable one, a resumed session that never asked. That is not
+ * the same as "serves nothing", so the tier is allowed and the turn reports
+ * the truth. `Coder Local` is never refused here: it answers from this machine
+ * rather than this deployment, and its own discovery says so when no local
+ * server is running.
+ *
+ * Availability is the only claim made. No tier is described as cheaper or
+ * dearer than another: the catalog declares a rate for some lanes and none for
+ * others, and a tier label that implied a price the server never quoted would
+ * be a worse lie than the vendor name it replaced.
+ */
+export const tierUnavailable = (
+  served: ReadonlyArray<ServedLane> | undefined,
+  tier: CoderTierId,
+): string | undefined => {
+  if (served === undefined || tier === "local") return undefined;
+
+  const answering = (id: string): boolean =>
+    served.some((lane) => lane.id === id && lane.available);
+
+  // Auto is openable whenever anything is, because it names no model and lets
+  // the server pick the lane per call.
+  const openable: CoderTierId[] = [];
+  if (served.some((lane) => lane.available)) openable.push("auto");
+  if (answering(TIER_MODELS.flash)) openable.push("flash");
+  if (answering(TIER_MODELS.pro)) openable.push("pro");
+
+  if (openable.includes(tier)) return undefined;
+
+  // A reason clause, not a sentence: the caller that reports this already
+  // names the tier that could not be had, and saying it twice reads as a
+  // stutter. It still names the tiers that *can* answer, because a refusal
+  // that leaves the reader guessing which way to press shift+tab has only
+  // half done the job.
+  return openable.length === 0
+    ? `no lane on this deployment has a configured provider credential. ` +
+        `${tierLabel("local")} still runs on this machine.`
+    : `this deployment is not serving that lane right now. ` +
+        `Available: ${openable.map(tierLabel).join(", ")}, and ` +
+        `${tierLabel("local")} on this machine.`;
+};
+
 /** Shift+Tab's orbit: Auto → Flash → Pro → Local → Auto. */
 export const nextTier = (tier: CoderTierId): CoderTierId => {
   switch (tier) {

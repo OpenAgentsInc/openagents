@@ -2521,5 +2521,20 @@ renders as the bare product name `Coder`, never as its id.
   the reasoning level. A fresh `openagents coder` session with no `--model`
   runs as `Coder Auto`: its thread is opened unpinned and the inference proxy
   request names no model, so the server selects the lane per call.
+- A tier is checked against what the server says it can answer before a thread
+  opens on it. `tierUnavailable` reads the same `/api/v1/models` catalog and
+  the same `availability` field that `chooseBackend` applies to the model a
+  session opens with, so shift+tab cannot strand a reader on a lane the
+  deployment cannot serve. A refused tier keeps the session on the tier that
+  was answering and names the tiers that can answer. The rename is why this
+  matters: a reader who saw a vendor id fail could search for it, and a reader
+  who sees `Coder Flash` fail has been told nothing. Where the catalog could
+  not be read the tier is allowed, because "could not ask" is not "serves
+  nothing"; `Coder Local` is never refused here, since it answers from the
+  reader's machine rather than the deployment.
+- Availability is the only claim a tier makes. No tier is presented as cheaper
+  or dearer than another: the catalog declares a rate for some lanes and none
+  for others, and a tier label implying a price the server never quoted would
+  be a worse lie than the vendor name it replaced.
 - Held by `packages/openagents-cli/test/coder-tiers.test.ts`. Issue
   OpenAgentsInc/openagents#40.

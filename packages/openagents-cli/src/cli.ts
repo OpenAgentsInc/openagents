@@ -55,12 +55,7 @@ import type { ReplySource } from "./coder-session.js";
 import { CoderSession, DummyReplySource } from "./coder-session.js";
 import { CoderTaskRegistry } from "./coder-tasks.js";
 import { runCoderUi } from "./coder-ui.js";
-import {
-  backendIds,
-  chooseBackend,
-  fetchServedCatalog,
-  refuseBackend,
-} from "./coder-backends.js";
+import { backendIds, chooseBackend, fetchServedCatalog, refuseBackend } from "./coder-backends.js";
 import {
   discoverOllamaModel,
   isOllamaModelFlag,
@@ -115,7 +110,7 @@ import { fileURLToPath } from "node:url";
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection, standingContext } from "./coder-skills.js";
 import { startDevServer } from "./coder-dev-server.js";
-import { TIER_MODELS, tierForModel, type CoderTierId } from "./coder-tiers.js";
+import { TIER_MODELS, tierForModel, tierUnavailable, type CoderTierId } from "./coder-tiers.js";
 import { ZenReplySource, zenCredential } from "./coder-zen.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
@@ -1727,15 +1722,11 @@ async function buildDelegation(options: {
         // different agent under the name the caller asked for.
         new SelfHarness({ grant: nonNullGrant(options.grant) })
       : /^claude(:.+)?$/.test(choice)
-        ? new ClaudeCodeHarness(
-            choice.startsWith("claude:") ? { model: choice.slice(7) } : {},
-          )
+        ? new ClaudeCodeHarness(choice.startsWith("claude:") ? { model: choice.slice(7) } : {})
         : /^devin(:.+)?$/.test(choice)
           ? new DevinHarness(choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {})
           : /^codex(:.+)?$/.test(choice)
-            ? new CodexHarness(
-                choice.startsWith("codex:") ? { model: choice.slice(6) } : {},
-              )
+            ? new CodexHarness(choice.startsWith("codex:") ? { model: choice.slice(6) } : {})
             : new OpencodeHarness({
                 model: choice,
                 ...(command === undefined ? {} : { command }),
@@ -2341,6 +2332,14 @@ const coderCommand = Command.make(
         : async (tier: CoderTierId, history: ReadonlyArray<unknown>): Promise<ReplySource> => {
             const accountToken = Redacted.value(stored.value.token);
             const carried = history as ReadonlyArray<WireMessage>;
+            // A tier this deployment cannot answer is refused before a thread
+            // is opened on it. Throwing here is what keeps the session on the
+            // tier that was answering: `applyPendingTier` catches it, says
+            // why, and does not switch. Opening the thread anyway would spend
+            // the switch to reach a lane that fails at its first turn, under a
+            // friendly name that tells the reader nothing.
+            const unavailable = tierUnavailable(served, tier);
+            if (unavailable !== undefined) throw new Error(unavailable);
             if (tier === "local") {
               const name = await discoverOllamaModel(process.env["OLLAMA_HOST"] ?? undefined);
               if (name === undefined) {
@@ -2563,9 +2562,7 @@ const coderCommand = Command.make(
 
       const foreignSessionsManifest = locateForeignSessionsManifest();
 
-      const runForeignSessionResume = async (
-        selection: number | undefined,
-      ): Promise<string> => {
+      const runForeignSessionResume = async (selection: number | undefined): Promise<string> => {
         if (foreignSessionsManifest === undefined) {
           return (
             "The foreign session scanner is not available from this installation. " +
@@ -2592,10 +2589,7 @@ const coderCommand = Command.make(
             );
           }
         };
-        return runForeignResume(
-          { now_ms: Date.now(), cwd: process.cwd(), selection },
-          invoke,
-        );
+        return runForeignResume({ now_ms: Date.now(), cwd: process.cwd(), selection }, invoke);
       };
 
       // Only when there is really no way to run a child. A refused child
