@@ -166,7 +166,8 @@ export function mimeTypeForImage(filePath: string): string {
 }
 
 /**
- * Replace `[Image #N]` references with Markdown image tags or text descriptions.
+ * Replace `[Image #N]` references with clean file path references for model submission.
+ * Avoids redundant repetition like `![filename](path)` by formatting as `[Image: path]`.
  */
 export function expandImageRefsForModel(
   input: string,
@@ -188,7 +189,7 @@ export function expandImageRefsForModel(
     const id = parseInt(match[1] ?? "0", 10);
     const entry = getEntry(id);
     if (entry !== undefined) {
-      const replacement = `![${entry.filename}](${entry.path})`;
+      const replacement = `[Image: ${entry.path}]`;
       expanded =
         expanded.slice(0, match.index) +
         replacement +

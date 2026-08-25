@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   asImageFilePath,
   expandImageRefsForModel,
-  formatImageRef,
   mimeTypeForImage,
   parseDroppedImagePaths,
   removeOuterQuotes,
@@ -86,7 +85,7 @@ describe("coder-image utilities", () => {
     }
   });
 
-  it("expands image references and prompt text for model submission", () => {
+  it("expands image references cleanly without duplicate filenames", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openagents-img-test-"));
     const img = path.join(tmpDir, "chart.png");
     fs.writeFileSync(img, "fake chart");
@@ -110,7 +109,7 @@ describe("coder-image utilities", () => {
       const expanded = expandComposerPrompt(composer, pastedText, pastedImages);
 
       expect(expanded).toBe(
-        `Please analyze ![chart.png](${img}) and read pasted multi\nline text.`,
+        `Please analyze [Image: ${img}] and read pasted multi\nline text.`,
       );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
