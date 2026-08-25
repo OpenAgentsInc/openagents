@@ -6,7 +6,10 @@
  * - Supports `/goal <objective>`, `/goal status`, `/goal clear`, `/goal pause`, `/goal resume`.
  * - Easter egg: `/goooooal` with arbitrary repeated `o`s resolves to `/goal`.
  * - Tracks status, token budget, tokens used, elapsed time, and turn progression.
- * - Exposes `goal` tool to the agent model (`get`, `update`, `complete`, `block`).
+ * - Exposes `goal` tool to the agent model for reporting state changes
+ *   (`complete`, `block`, `pause`, `resume`). Reading the goal is not an
+ *   action: the active objective rides every outgoing turn via the
+ *   continuation prompts below, so the model already holds it.
  * - Generates continuation prompts and budget exhaustion prompts for multi-turn alignment.
  */
 
@@ -211,19 +214,29 @@ export function goalBudgetExhaustedPrompt(goal: PersistentGoal): string {
   ].join("\n");
 }
 
-/** Model tool allowing the agent to inspect or complete its goal */
+/**
+ * Model tool for reporting goal state changes.
+ *
+ * There is deliberately no `get`: the goal's objective, status, and remaining
+ * budget already ride every outgoing turn, so reading state the model holds
+ * would only spend a tool round rediscovering it
+ * (OpenAgentsInc/openagents#60). What remains are the genuine model
+ * decisions — reporting that the goal finished, hit a wall, or should pause
+ * or resume.
+ */
 export function goalTool(goalStore: GoalStore): CoderTool {
   return {
     name: "goal",
     description:
-      "Inspect, update, or complete the active persistent task goal for this session. " +
-      "Call this with action='get' to inspect current goal status & budget, or action='complete'/'block' to update status.",
+      "Report a state change on the active persistent task goal for this session. " +
+      "The goal's objective, status, and budget already accompany each turn; " +
+      "call this with action='complete' when the goal is done and verified, or 'block'/'pause'/'resume' to update its status.",
     parameters: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["get", "complete", "block", "pause", "resume"],
+          enum: ["complete", "block", "pause", "resume"],
           description: "The goal operation to perform.",
         },
         notes: {
@@ -234,23 +247,8 @@ export function goalTool(goalStore: GoalStore): CoderTool {
       required: ["action"],
     },
     async run(args: Record<string, unknown>): Promise<string> {
-      const action = String(args.action || "get");
+      const action = String(args.action ?? "");
       const current = goalStore.getGoal();
-
-      if (action === "get") {
-        if (current === undefined) {
-          return JSON.stringify({ active: false, message: "No active goal set." });
-        }
-        return JSON.stringify({
-          active: true,
-          id: current.id,
-          objective: current.objective,
-          status: current.status,
-          tokensUsed: current.tokensUsed,
-          tokenBudget: current.tokenBudget,
-          timeUsedSeconds: current.timeUsedSeconds,
-        });
-      }
 
       if (current === undefined) {
         return "Refusal: No active goal to update.";

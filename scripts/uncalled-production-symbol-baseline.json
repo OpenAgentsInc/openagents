@@ -2443,14 +2443,6 @@
     {
       "ref": "packages/sovereign-identity/src/machinery/retire.ts#ReadOnlyLegacyPlaintextGuardInterface.deleteFile",
       "reason": "Fail-closed half of the read-only legacy-plaintext guard: it exists to REFUSE deleting a protected legacy file while verification is active. Its sibling writeFile is unflagged only because .writeFile collides with common production dot-accesses; dropping the delete refusal would leave the guard able to block writes but not deletions."
-    },
-    {
-      "ref": "packages/openagents-cli/src/coder-goals.ts#goalBudgetExhaustedPrompt",
-      "reason": "Goal prompt helper for autonomous turn continuation when token budget is exhausted; used by goal test suite and future autonomous loop."
-    },
-    {
-      "ref": "packages/openagents-cli/src/coder-goals.ts#goalContinuationPrompt",
-      "reason": "Goal prompt helper for autonomous turn continuation toward active goal; used by goal test suite and future autonomous loop."
     }
   ]
 }

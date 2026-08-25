@@ -28,6 +28,8 @@ import type { CoderTask, CoderTaskId, CoderTaskRegistry } from "./coder-tasks.js
 import type { CoderTool } from "./coder-tools.js";
 import {
   formatGoalNotice,
+  goalBudgetExhaustedPrompt,
+  goalContinuationPrompt,
   isGoalSlashCommand,
   parseGoalSlashCommand,
   type GoalStore,
@@ -1154,7 +1156,23 @@ export class CoderSession {
         this.source.useContext !== undefined
           ? prompt
           : `${this.standing}\n\n---\n\n${prompt}`;
-      const outgoing = attached === undefined ? sent : `${sent}\n\n${attached}`;
+      const withAttached = attached === undefined ? sent : `${sent}\n\n${attached}`;
+
+      // The goal is standing state, so it rides the turn rather than waiting
+      // for the model to ask: an active objective goes out with every prompt,
+      // and a spent budget goes out as the instruction to wind down. Any other
+      // status — paused, completed, blocked — has nothing for the model to act
+      // on, and injects nothing.
+      const goal = this.goalStore?.getGoal();
+      const goalNote =
+        goal === undefined
+          ? undefined
+          : goal.status === "active"
+            ? goalContinuationPrompt(goal)
+            : goal.status === "budget_limited"
+              ? goalBudgetExhaustedPrompt(goal)
+              : undefined;
+      const outgoing = goalNote === undefined ? withAttached : `${withAttached}\n\n${goalNote}`;
 
       for await (const chunk of this.source.reply(outgoing, controller.signal)) {
         if (controller.signal.aborted) break;

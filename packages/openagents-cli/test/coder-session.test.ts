@@ -681,3 +681,78 @@ describe("the /goal command in CoderSession", () => {
     expect(session.snapshot().goal).toBeUndefined();
   });
 });
+
+describe("goal injection into the outgoing turn", () => {
+  /** A source that records the prompts it was actually handed. */
+  const recording = (sent: string[]): ReplySource => ({
+    model: "scripted",
+    async *reply(prompt) {
+      sent.push(prompt);
+      yield { type: "text", value: "ok" } as const;
+    },
+  });
+
+  const withStore = (sent: string[], store: InMemoryGoalStore): CoderSession =>
+    new CoderSession(
+      recording(sent),
+      "repo",
+      "main",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+  it("puts the active goal's objective on the prompt without being asked", async () => {
+    const sent: string[] = [];
+    const store = new InMemoryGoalStore();
+    store.setGoal("Ship the goal injection path", 50000);
+    const session = withStore(sent, store);
+
+    await session.submit("hi");
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("hi");
+    expect(sent[0]).toContain("Continue working toward the active task goal.");
+    expect(sent[0]).toContain("Ship the goal injection path");
+    expect(sent[0]).toContain("Token budget remaining: 50,000 tokens");
+  });
+
+  it("sends the prompt untouched when no goal is set", async () => {
+    const sent: string[] = [];
+    const session = withStore(sent, new InMemoryGoalStore());
+
+    await session.submit("hi");
+
+    expect(sent).toEqual(["hi"]);
+  });
+
+  it("injects the wind-down prompt when the budget is exhausted", async () => {
+    const sent: string[] = [];
+    const store = new InMemoryGoalStore();
+    store.setGoal("Ship the goal injection path", 1000);
+    store.addUsage(1500, 5);
+    expect(store.getGoal()?.status).toBe("budget_limited");
+    const session = withStore(sent, store);
+
+    await session.submit("continue");
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("reached its configured token budget");
+    expect(sent[0]).toContain("Ship the goal injection path");
+  });
+
+  it("injects nothing for a paused goal", async () => {
+    const sent: string[] = [];
+    const store = new InMemoryGoalStore();
+    store.setGoal("Ship the goal injection path");
+    store.updateStatus("paused");
+    const session = withStore(sent, store);
+
+    await session.submit("hi");
+
+    expect(sent).toEqual(["hi"]);
+  });
+});

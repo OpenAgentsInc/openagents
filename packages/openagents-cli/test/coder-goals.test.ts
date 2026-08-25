@@ -78,10 +78,6 @@ describe("InMemoryGoalStore and goalTool", () => {
 
     // Tool interactions
     const tool = goalTool(store);
-    const getRes = JSON.parse(await tool.run({ action: "get" }, new AbortController().signal));
-    expect(getRes.active).toBe(true);
-    expect(getRes.status).toBe("budget_limited");
-
     const completeRes = await tool.run({ action: "complete" }, new AbortController().signal);
     expect(completeRes).toContain("marked as completed");
     expect(store.getGoal()?.status).toBe("completed");
@@ -89,6 +85,25 @@ describe("InMemoryGoalStore and goalTool", () => {
     // Clear
     expect(store.clearGoal()).toBe(true);
     expect(store.getGoal()).toBeUndefined();
+  });
+
+  it("no longer offers or accepts a get action", async () => {
+    // Reading the goal stopped being an action (issue #60): the objective
+    // rides every outgoing turn, so the tool keeps only the state changes the
+    // model genuinely decides.
+    const store = new InMemoryGoalStore();
+    store.setGoal("Write test suite");
+    const tool = goalTool(store);
+
+    const parameters = tool.parameters as {
+      properties: { action: { enum: string[] } };
+    };
+    expect(parameters.properties.action.enum).toEqual(["complete", "block", "pause", "resume"]);
+    expect(tool.description).not.toContain("'get'");
+
+    const rejected = await tool.run({ action: "get" }, new AbortController().signal);
+    expect(rejected).toContain("Unknown action");
+    expect(store.getGoal()?.status).toBe("active");
   });
 });
 

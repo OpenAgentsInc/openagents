@@ -2582,7 +2582,12 @@ const coderCommand = Command.make(
           shellTool(process.cwd()),
           ...(active.length === 0 ? [] : [skillTool(active)]),
           openagentsTool(),
-          goalTool(goalStore),
+          // The goal tool follows the goal: a session with no goal declares
+          // nothing about goals, and the objective itself reaches the model by
+          // riding the outgoing turn (OpenAgentsInc/openagents#60), not by
+          // being asked for. Re-declaration per turn is what makes the tool
+          // appear the turn after `/goal` sets one.
+          ...(goalStore.getGoal() === undefined ? [] : [goalTool(goalStore)]),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
           capability,
           ...visiblePlugins().map((plugin) => {
