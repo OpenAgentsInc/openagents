@@ -1,0 +1,38 @@
+{
+  "version": "weka-trace-v1",
+  "session_id": "demo-001",
+  "salt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "block_size": 64,
+  "events": [
+    {
+      "t": 0.0,
+      "modality": "user",
+      "hash_ids": [
+        "abc1",
+        "abc2"
+      ]
+    },
+    {
+      "t": 1.0,
+      "modality": "assistant",
+      "hash_ids": [
+        "abc1",
+        "abc2",
+        "abc3",
+        "abc4"
+      ]
+    },
+    {
+      "t": 2.0,
+      "modality": "user",
+      "hash_ids": [
+        "abc1",
+        "abc2",
+        "abc3",
+        "abc4",
+        "abc5",
+        "abc6"
+      ]
+    }
+  ]
+}
