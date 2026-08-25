@@ -196,7 +196,7 @@ describe("runCoderUi", () => {
     expect(rows.join("\n")).not.toContain("shared with");
   });
 
-  describe("switching backend with tab", () => {
+  describe("switching backend with shift+tab", () => {
     const driveSwitchable = async (keys: ReadonlyArray<string>) => {
       const stdin = new FakeIn();
       const stdout = new FakeOut();
@@ -219,7 +219,7 @@ describe("runCoderUi", () => {
     };
 
     it("moves to the next backend and says so", async () => {
-      const { session, rows } = await driveSwitchable(["\t"]);
+      const { session, rows } = await driveSwitchable(["\x1b[Z"]);
 
       const expected = CODER_BACKENDS[1]?.label ?? "";
       expect(session.snapshot().model).toBe(expected);
@@ -227,14 +227,15 @@ describe("runCoderUi", () => {
     });
 
     it("wraps around, so every backend is reachable from one key", async () => {
-      const { session } = await driveSwitchable(CODER_BACKENDS.map(() => "\t"));
+      const { session } = await driveSwitchable(CODER_BACKENDS.map(() => "\x1b[Z"));
       expect(session.snapshot().model).toBe(CODER_BACKENDS[0]?.label);
     });
 
-    it("does not leave a tab in the composer", async () => {
-      const { rows } = await driveSwitchable(["\t"]);
+    it("does not leave a stray byte in the composer", async () => {
+      const { rows } = await driveSwitchable(["\x1b[Z"]);
       const composer = rows.find((row) => row.includes(">")) ?? "";
       expect(composer).not.toContain("\t");
+      expect(composer).not.toContain("[Z");
     });
   });
 
@@ -722,7 +723,7 @@ describe("changing how hard the model thinks", () => {
     await running;
   });
 
-  it("cycles it on shift+tab, in both spellings", async () => {
+  it("cycles it on tab, in both spellings", async () => {
     const stdin = new FakeIn();
     const stdout = new FakeOut();
     const session = new CoderSession(thinking(), "repo", "main");
@@ -731,17 +732,17 @@ describe("changing how hard the model thinks", () => {
       stdout: stdout as unknown as NodeJS.WriteStream,
     });
 
-    // The classic back-tab.
-    stdin.emit("data", "\x1b[Z");
+    // The plain byte.
+    stdin.emit("data", "\t");
     expect(session.snapshot().reasoning).toBe("low");
 
-    // And the one the keyboard protocol reports.
-    stdin.emit("data", "\x1b[9;2u");
+    // And the one the keyboard protocol reports as a bare tab.
+    stdin.emit("data", "\x1b[9u");
     expect(session.snapshot().reasoning).toBe("medium");
 
     // Four presses left four notes, three of which were no longer true.
-    stdin.emit("data", "\x1b[Z");
-    stdin.emit("data", "\x1b[Z");
+    stdin.emit("data", "\t");
+    stdin.emit("data", "\t");
     const notes = session
       .snapshot()
       .entries.filter((entry) => entry.text.startsWith("Reasoning set to"))
@@ -797,7 +798,7 @@ describe("quitting with the keyboard protocol on", () => {
     }
   });
 
-  it("leaves an ordinary tab meaning tab", async () => {
+  it("keeps the model still on a bare tab, now that shift+tab moves it", async () => {
     const stdin = new FakeIn();
     const stdout = new FakeOut();
     const session = new CoderSession(switchable([]), "repo", "main");
@@ -808,8 +809,13 @@ describe("quitting with the keyboard protocol on", () => {
 
     const before = session.snapshot().model;
     stdin.emit("data", "\x1b[9u");
+    expect(session.snapshot().model).toBe(before);
+
+    stdin.emit("data", "\x1b[Z");
     expect(session.snapshot().model).not.toBe(before);
 
+    // The tab landed in the composer, and ctrl+d only quits an empty line.
+    stdin.emit("data", "\x7f");
     stdin.emit("data", "\x04");
     await running;
   });

@@ -20,6 +20,7 @@
  */
 
 import type { DelegationOutcome, DelegationRequest } from "./coder-delegate.js";
+import { nextTier, tierLabel, type CoderTierId } from "./coder-tiers.js";
 import { parseDelegateCommand } from "./coder-delegate.js";
 import { exportTrajectory } from "./coder-export.js";
 import { VERSION } from "./version.js";
@@ -306,6 +307,13 @@ export interface ReplySource {
    */
   cycleBackend?(): string;
   /**
+   * The wire transcript so far, for a tier switch to carry to the next source.
+   *
+   * Optional: a source that keeps no transcript hands the next tier a fresh
+   * conversation, which is the honest floor.
+   */
+  history?(): ReadonlyArray<unknown>;
+  /**
    * How hard the model is asked to think, and what else it could be asked.
    *
    * A source that cannot vary it reports the level it is fixed at and offers no
@@ -495,6 +503,12 @@ export class CoderSession {
    * replayed history, so the first new turn must not pay for it again.
    */
   private restored = false;
+  /** The tier this session answers as, when tier switching is wired. */
+  private tier: CoderTierId | undefined;
+  /** A tier chosen but not yet built; applied before the next turn. */
+  private pendingTier: CoderTierId | undefined;
+  /** The last tool set declared, re-declared to a source a tier switch builds. */
+  private lastTools: ReadonlyArray<CoderTool> | undefined;
   /** Plugin loads and refusals, in the order they happened. */
   private readonly pluginEvents: CoderPluginEvent[] = [];
   /**
@@ -504,7 +518,7 @@ export class CoderSession {
   private readonly pluginTools = new Map<string, CoderPluginProvenance>();
 
   constructor(
-    private readonly source: ReplySource,
+    private source: ReplySource,
     private readonly repository: string,
     private readonly branch: string,
     private readonly delegation?: CoderDelegation,
@@ -524,7 +538,22 @@ export class CoderSession {
      * took their clipboard is a suite that changed the machine it was checking.
      */
     private readonly exports?: { readonly directory: string },
+    /**
+     * How this session moves between Coder tiers, when it can.
+     *
+     * `build` returns the source that answers as `tier`, already holding the
+     * carried conversation. Absent, shift+tab falls back to the source's own
+     * `cycleBackend`, which is the local lane cycling its own models.
+     */
+    private readonly tiers?: {
+      readonly initial: CoderTierId;
+      build(
+        tier: CoderTierId,
+        history: ReadonlyArray<unknown>,
+      ): Promise<ReplySource>;
+    },
   ) {
+    this.tier = tiers?.initial;
     // A child reporting progress has to reach the renderer, and the renderer
     // subscribes to the session rather than to the registry, so the session
     // forwards. Without this the fleet block only moved when a chat chunk
@@ -560,7 +589,12 @@ export class CoderSession {
       running: this.controller !== undefined,
       repository: this.repository,
       branch: this.branch,
-      model: this.source.model,
+      model:
+        this.pendingTier !== undefined
+          ? tierLabel(this.pendingTier)
+          : this.tier !== undefined
+            ? tierLabel(this.tier)
+            : this.source.model,
       reasoning: this.source.reasoning?.level,
       turns: this.turnCount,
       budget: this.source.budget,
@@ -664,6 +698,79 @@ export class CoderSession {
     const level = this.source.cycleReasoning();
     this.notice(`Reasoning set to ${level}.`, "reasoning");
     return { changed: true, level };
+  }
+
+  /**
+   * Declare the session's tools, and remember them.
+
+   * Remembered because a tier switch builds a fresh source mid-session, and a
+   * source that was never told the tools would answer a fan-out request by
+   * saying it cannot.
+   */
+  declareTools(tools: ReadonlyArray<CoderTool>): void {
+    this.lastTools = tools;
+    this.source.useTools?.(tools);
+  }
+
+  /**
+   * Move to the next Coder tier: Auto, Flash, Pro, Local, and around again.
+   *
+   * The label flips at once and the switch itself is lazy: the next turn
+   * builds the tier's source, carrying the conversation over. Chosen mid-turn,
+   * the running turn finishes on the source that accepted it.
+   */
+  cycleTier(): { readonly switched: boolean; readonly label: string | undefined } {
+    if (this.tiers === undefined || this.tier === undefined) return this.cycleBackend();
+    const to = nextTier(this.pendingTier ?? this.tier);
+    this.pendingTier = to;
+    this.notice(
+      this.controller !== undefined
+        ? `Switching to ${tierLabel(to)} on the next turn.`
+        : `Switching to ${tierLabel(to)}.`,
+      "model",
+    );
+    this.emit();
+    return { switched: true, label: tierLabel(to) };
+  }
+
+  /** Whether shift+tab has anywhere to go. */
+  get canCycleTier(): boolean {
+    return this.tiers !== undefined || this.canCycleBackend;
+  }
+
+  /**
+   * Build and install the tier chosen since the last turn, if any.
+   *
+   * A build that fails keeps the session on the tier that was answering, and
+   * says why rather than switching silently or failing the turn.
+   */
+  private async applyPendingTier(): Promise<void> {
+    if (this.tiers === undefined || this.pendingTier === undefined) return;
+    const wanted = this.pendingTier;
+    this.pendingTier = undefined;
+    if (wanted === this.tier) return;
+    try {
+      const history = this.source.history?.() ?? [];
+      const next = await this.tiers.build(wanted, history);
+      const previous = this.source as { revoke?: () => Promise<void> };
+      this.source = next;
+      this.tier = wanted;
+      if (this.lastTools !== undefined) next.useTools?.(this.lastTools);
+      if (this.standing !== undefined && this.standing.length > 0) {
+        next.useContext?.(this.standing);
+      }
+      // The thread the old source held is closed in the background; a switch
+      // must not spend the reader's next turn waiting on a revocation.
+      void Promise.resolve(previous.revoke?.()).catch(() => undefined);
+      this.notice(`Now answering as ${tierLabel(wanted)}.`, "model");
+    } catch (cause) {
+      this.notice(
+        `${tierLabel(wanted)} is not available: ` +
+          (cause instanceof Error ? cause.message : String(cause)),
+        "model",
+      );
+    }
+    this.emit();
   }
 
   cycleBackend(): { readonly switched: boolean; readonly label: string | undefined } {
@@ -786,8 +893,8 @@ export class CoderSession {
           "  enter                       send · steer a running turn",
           "  shift+enter                 queue for when the turn ends",
           "  esc                         interrupt the reply · clear the composer",
-          "  tab                         switch model",
-          "  shift+tab                   change how hard it thinks",
+          "  shift+tab                   switch Coder tier (Auto, Flash, Pro, Local)",
+          "  tab                         change how hard it thinks",
           "  ctrl+o                      expand a tool call",
           "  ctrl+x                      stop the children",
           "  →                           move into the children column",
@@ -843,7 +950,7 @@ export class CoderSession {
           "  enter        send, or steer a running turn",
           "  shift+enter  queue for when the turn ends",
           "  esc          interrupt the reply",
-          "  tab          switch model · shift+tab  change thinking",
+          "  shift+tab    switch tier · tab  change thinking",
           "  ctrl+o       expand a tool call · ctrl+x  stop children",
           "  pgup/pgdn    scroll · ctrl+d  quit",
         ].join("\n"),
@@ -934,6 +1041,8 @@ export class CoderSession {
     this.emit();
 
     try {
+      await this.applyPendingTier();
+
       // The reader's entry above keeps what they typed; the model receives the
       // standing context ahead of it on the first turn only.
       const sent =

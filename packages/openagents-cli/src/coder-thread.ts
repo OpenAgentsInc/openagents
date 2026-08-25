@@ -67,6 +67,7 @@ import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import type { CoderTool } from "./coder-tools.js";
 import { systemPrompt, THREAD_LANE } from "./coder-system.js";
+import { coderTierLabel, tierLabel } from "./coder-tiers.js";
 import type { TranscriptSink } from "./coder-transcript.js";
 import { THREADS_PATH } from "./constants.js";
 
@@ -219,6 +220,7 @@ export async function openThread(options: ThreadOptions): Promise<ThreadReplySou
     grantToken: Redacted.make(token),
     proxyUrl: resolveProxyUrl(url, options.origin),
     model,
+    auto: options.model === undefined,
     budget: budgetOf(record(grant["limits"]), record(grant["limits"])),
   });
 }
@@ -315,6 +317,9 @@ export async function remintThread(options: ResumeGrantOptions): Promise<ThreadR
     grantToken: Redacted.make(token),
     proxyUrl: resolveProxyUrl(url, options.origin),
     model,
+    // A resumed thread continues on the model its grant pins; the tier it
+    // shows is the pinned model's tier rather than a remembered "auto".
+    auto: false,
     budget: budgetOf(record(grant["remaining"]), record(grant["limits"])),
   });
 }
@@ -326,6 +331,12 @@ interface SourceState {
   readonly grantToken: Redacted.Redacted<string>;
   readonly proxyUrl: string;
   readonly model: string;
+  /**
+   * Opened without naming a model, so the server picks the lane. The proxy
+   * body then names none either: a grant pinned to the server default with no
+   * model in the body is the shape the server answers by choosing.
+   */
+  readonly auto: boolean;
   readonly budget: ThreadBudget;
 }
 
@@ -416,7 +427,23 @@ export class ThreadReplySource implements ReplySource {
    * reply on screen.
    */
   get model(): string {
+    return this.state.auto ? tierLabel("auto") : coderTierLabel(this.state.model);
+  }
+
+  /** The vendor id the grant pins, for records; never rendered. */
+  get modelId(): string {
     return this.state.model;
+  }
+
+  /**
+   * The wire transcript so far, without the system anchor.
+   *
+   * A tier switch hands this to the source that continues the conversation;
+   * the next source composes its own anchor, so handing it two would read as
+   * the reader having typed one.
+   */
+  history(): ReadonlyArray<WireMessage> {
+    return this.transcript.filter((message) => message.role !== "system");
   }
 
   /** What is left to spend, in the width a status line has for it. */
@@ -466,7 +493,9 @@ export class ThreadReplySource implements ReplySource {
    */
   /** The tools as declared, in the shape ATIF records them. */
   toolDefinitions(): ReadonlyArray<Record<string, unknown>> {
-    const family = toolFamilyOf(this.model);
+    // The family follows the vendor id: the label is a Coder tier and
+    // deliberately says nothing about which family answers.
+    const family = toolFamilyOf(this.modelId);
     return this.tools.map((tool) => ({
       type: "function",
       function: {
@@ -493,7 +522,7 @@ export class ThreadReplySource implements ReplySource {
       "",
       declarations,
       "",
-      describeBudget(toolResultBudget(toolFamilyOf(this.model))),
+      describeBudget(toolResultBudget(toolFamilyOf(this.modelId))),
     ].join("\n");
   }
 
@@ -751,7 +780,7 @@ export class ThreadReplySource implements ReplySource {
     // re-sends everything it has already read spends its wall clock on reading
     // it again. The allowance is this model family's, and a cut result says so.
     // The `tool.ran` event above kept the fuller copy.
-    results.set(call.id, budgetedResult(output, toolFamilyOf(this.model)));
+    results.set(call.id, budgetedResult(output, toolFamilyOf(this.modelId)));
   }
 
   /**
@@ -810,7 +839,7 @@ export class ThreadReplySource implements ReplySource {
           accept: "text/event-stream, application/json",
         },
         body: JSON.stringify({
-          model: this.state.model,
+          ...(this.state.auto ? {} : { model: this.state.model }),
           stream: true,
           messages: this.transcript,
           ...(this.tools.length === 0 || this.mustAnswer
@@ -823,7 +852,7 @@ export class ThreadReplySource implements ReplySource {
                   type: "function",
                   function: {
                     name: tool.name,
-                    description: declaredDescription(tool, toolFamilyOf(this.model)),
+                    description: declaredDescription(tool, toolFamilyOf(this.modelId)),
                     parameters: tool.parameters,
                   },
                 })),

@@ -33,30 +33,23 @@ export interface CoderBackend {
   readonly label: string;
 }
 
+// Labels are Coder tiers, never vendor names: the invariant is that a vendor
+// model name does not render (INVARIANTS.md "Coder Model Naming"). The ids
+// stay vendor ids — they are what the API takes, not what a reader sees.
 export const CODER_BACKENDS: readonly CoderBackend[] = [
-  { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
-  { id: "ox-alpha", label: "Ox Alpha" },
-  { id: "gpt-5.6-luna", label: "Luna" },
+  { id: "gemini-3.7-flash", label: "Coder Flash" },
+  { id: "ox-alpha", label: "Coder" },
+  { id: "gpt-5.6-luna", label: "Coder Pro" },
 ];
 
 /**
  * The backend a coder session leads with when nobody names one.
  *
- * Gemini 3.7 Flash: fast, a million tokens of context, and steady enough to
- * hold a conversation. Delegated children run on Ox Alpha instead — it is
- * built for sustained agentic coding, which is what a child is given, and
- * where it stalls the cost is one child rather than the conversation.
- *
- * A *preference*, not an answer. Where a deployment does not serve it,
- * `chooseBackend` falls to the server's own default rather than opening a
- * thread on a name the catalog will refuse.
+ * A *preference*, not an answer: `chooseBackend` falls to the server's own
+ * default where a deployment does not serve it. A session that names nothing
+ * at all does not use this — it opens unpinned, as Coder Auto.
  */
 export const DEFAULT_CODER_BACKEND = "gemini-3.7-flash";
-
-export const defaultBackendId = (): string =>
-  CODER_BACKENDS.some((backend) => backend.id === DEFAULT_CODER_BACKEND)
-    ? DEFAULT_CODER_BACKEND
-    : (CODER_BACKENDS[0]?.id ?? "");
 
 /** Every id, for a flag's error message and its accepted values. */
 export const backendIds = (): readonly string[] => CODER_BACKENDS.map((backend) => backend.id);

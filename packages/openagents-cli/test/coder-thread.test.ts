@@ -145,7 +145,10 @@ describe("openThread", () => {
     });
 
     expect(source.threadId).toBe(THREAD_ID);
-    expect(source.model).toBe("gpt-5.6-luna");
+    // Opened without naming a model: the session is Coder Auto, and the
+    // vendor id the grant pinned survives only as modelId.
+    expect(source.model).toBe("Coder Auto");
+    expect(source.modelId).toBe("gpt-5.6-luna");
     expect(calls[0]?.method).toBe("POST");
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/threads`);
     expect(calls[0]?.authorization).toBe(`Bearer ${ACCOUNT_TOKEN}`);
@@ -1115,6 +1118,7 @@ describe("ThreadReplySource toolDefinitions", () => {
       grantToken: Redacted.make(GRANT_TOKEN),
       proxyUrl: `${ORIGIN}/api/inference/proxy`,
       model: "gemini-3.7-flash",
+      auto: false,
       budget: { calls: 256, totalTokens: 1_000_000, costMicrousd: 2_000_000 },
     });
     source.useTools([shellTool(process.cwd())]);

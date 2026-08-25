@@ -541,7 +541,9 @@ describe("remintThread", () => {
     expect(calls[0]?.method).toBe("POST");
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/threads/${THREAD_ID}/grants`);
     expect(source.threadId).toBe(THREAD_ID);
-    expect(source.model).toBe("gpt-5.6-luna");
+    // The label is the Coder tier; the vendor id survives only as modelId.
+    expect(source.model).toBe("Coder Pro");
+    expect(source.modelId).toBe("gpt-5.6-luna");
     // A fresh grant has spent nothing, so the budget opens at its ceilings.
     expect(source.budget).toContain("256 calls");
   });

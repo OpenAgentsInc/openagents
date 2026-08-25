@@ -2500,3 +2500,26 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture
   daemon, hub reset, connection-pool saturation, secrets locations) are in
   `docs/khala-sync/RUNBOOK.md`.
+
+## Coder Model Naming
+
+The coder never shows a vendor model name. What a reader sees — the status
+line, the fleet rows, the resume picker, switch notices, the `/help` text —
+is "OpenAgents Coder" and its tiers: `Coder Auto` (the server picks the
+lane), `Coder Flash` (the fast tier), `Coder Pro` (the strong tier),
+`Coder Local` (a local model server answers). A model outside the tier map
+renders as the bare product name `Coder`, never as its id.
+
+- The tier-to-model map lives in exactly one module,
+  `packages/openagents-cli/src/coder-tiers.ts`. Display code holds no vendor
+  strings.
+- `ReplySource.model` is the tier label; `ReplySource.modelId` carries the
+  vendor id for records and exports, which are allowed to name what a reader
+  could run again. The split is the enforcement seam: rendering reads
+  `model`, records read `modelId`.
+- Shift+Tab cycles the tier (Auto → Flash → Pro → Local → Auto); Tab cycles
+  the reasoning level. A fresh `openagents coder` session with no `--model`
+  runs as `Coder Auto`: its thread is opened unpinned and the inference proxy
+  request names no model, so the server selects the lane per call.
+- Held by `packages/openagents-cli/test/coder-tiers.test.ts`. Issue
+  OpenAgentsInc/openagents#40.

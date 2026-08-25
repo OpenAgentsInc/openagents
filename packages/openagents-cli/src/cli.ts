@@ -58,7 +58,6 @@ import { runCoderUi } from "./coder-ui.js";
 import {
   backendIds,
   chooseBackend,
-  defaultBackendId,
   fetchServedCatalog,
   refuseBackend,
 } from "./coder-backends.js";
@@ -74,6 +73,7 @@ import {
   remintThread,
   ThreadUnavailable,
   type ThreadReplySource,
+  type WireMessage,
 } from "./coder-thread.js";
 import {
   assertResumable,
@@ -115,6 +115,7 @@ import { fileURLToPath } from "node:url";
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection, standingContext } from "./coder-skills.js";
 import { startDevServer } from "./coder-dev-server.js";
+import { TIER_MODELS, tierForModel, type CoderTierId } from "./coder-tiers.js";
 import { ZenReplySource, zenCredential } from "./coder-zen.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { ComputerClient } from "./computer-client.js";
@@ -2228,10 +2229,10 @@ const coderCommand = Command.make(
                     // records it on the thread, and `--resume` filters on it
                     // rather than parsing the objective back.
                     repository: workspace.repository,
-                    // What the server said it serves, having been asked. The
-                    // static fallback is for a server too old to publish a
-                    // catalog, which is the only case where `chosen` is absent.
-                    model: chosen?.id ?? named ?? defaultBackendId(),
+                    // Pinned only when the reader named a model. Named
+                    // nothing, the thread opens unpinned — Coder Auto — and
+                    // the server picks the lane for every call.
+                    ...(named === undefined ? {} : { model: chosen?.id ?? named }),
                     reasoning: Option.getOrUndefined(reasoning),
                   }),
                 // The server's own code and sentence, which is what turns a ninth
@@ -2329,12 +2330,98 @@ const coderCommand = Command.make(
       );
 
       const skills = loadSkillSelection();
+
+      // How this session moves between Coder tiers (shift+tab). Granted tiers
+      // open a fresh thread carrying the conversation; Coder Local answers
+      // from the local Ollama server and still records when it can. Absent a
+      // stored credential there is nothing to build with, and the key falls
+      // back to whatever the source itself can cycle.
+      const buildTier = Option.isNone(stored)
+        ? undefined
+        : async (tier: CoderTierId, history: ReadonlyArray<unknown>): Promise<ReplySource> => {
+            const accountToken = Redacted.value(stored.value.token);
+            const carried = history as ReadonlyArray<WireMessage>;
+            if (tier === "local") {
+              const name = await discoverOllamaModel(process.env["OLLAMA_HOST"] ?? undefined);
+              if (name === undefined) {
+                throw new Error(
+                  "no local model server answered. Start Ollama with a model pulled, or set OLLAMA_HOST.",
+                );
+              }
+              const local = new OllamaReplySource({
+                model: name,
+                ...(process.env["OLLAMA_HOST"] ? { host: process.env["OLLAMA_HOST"] } : {}),
+                ...(Option.isSome(reasoning) ? { reasoning: reasoning.value } : {}),
+              });
+              local.preload(carried);
+              if (threadSyncWanted(process.env)) {
+                const recorded = await openLocalThread({
+                  origin: endpoint.origin,
+                  token: accountToken,
+                  objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+                  repository: workspace.repository,
+                  model: `ollama:${name}`,
+                  reasoning: Option.getOrUndefined(reasoning),
+                });
+                if (recorded?.threadId !== undefined) {
+                  local.useTranscript(
+                    new ThreadTranscriptWriter({
+                      origin: endpoint.origin,
+                      threadId: recorded.threadId,
+                      token: accountToken,
+                      onTrouble: (message) => {
+                        session.notice(message);
+                      },
+                    }),
+                  );
+                }
+              }
+              return local;
+            }
+            const opened = await openThread({
+              origin: endpoint.origin,
+              token: accountToken,
+              objective: `openagents coder in ${workspace.repository} on ${workspace.branch}`,
+              repository: workspace.repository,
+              ...(tier === "auto" ? {} : { model: TIER_MODELS[tier] }),
+              reasoning: Option.getOrUndefined(reasoning),
+            });
+            opened.preload(carried);
+            opened.useTranscript(
+              new ThreadTranscriptWriter({
+                origin: endpoint.origin,
+                threadId: opened.threadId,
+                token: accountToken,
+                onTrouble: (message) => {
+                  session.notice(message);
+                },
+              }),
+            );
+            return opened;
+          };
+
+      // The tier this session opens as: Local on the Ollama lane, Auto when
+      // nothing was named, the named model's tier when it has one. A model
+      // outside the tier map leaves tier switching off rather than mislabeled.
+      const initialTier: CoderTierId | undefined =
+        ollamaSource !== undefined
+          ? "local"
+          : thread !== undefined
+            ? named === undefined
+              ? "auto"
+              : tierForModel(thread.modelId)
+            : undefined;
+
       const session = new CoderSession(
         source,
         workspace.repository,
         workspace.branch,
         setup?.delegation,
         standingContext(skills.active(), process.cwd()),
+        undefined,
+        buildTier !== undefined && initialTier !== undefined
+          ? { initial: initialTier, build: buildTier }
+          : undefined,
       );
 
       // The resumed thread's history goes on the session before anything new,
@@ -2432,7 +2519,7 @@ const coderCommand = Command.make(
           capability,
           ...plugins.map((plugin) => pluginTool(plugin)),
         ];
-        source.useTools?.(tools);
+        session.declareTools(tools);
       };
       declareTools();
 
@@ -2609,7 +2696,7 @@ const coderCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Open a terminal coding session on a thread of its own, or continue one with --resume. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. The session can delegate: ask it to split work and it runs child coding agents on a thread of their own pinned to Ox Alpha, or launch a fan-out yourself with `/delegate [<n>x] <prompt>`, and the interface shows the fleet",
+    "Open a terminal coding session on a thread of its own, or continue one with --resume. Replies come from the thread's grant through the inference proxy, so nothing typed here reaches /chat; --offline answers from a built-in stand-in instead. The session can delegate: ask it to split work and it runs child coding agents on a thread of their own, or launch a fan-out yourself with `/delegate [<n>x] <prompt>`, and the interface shows the fleet",
   ),
 );
 

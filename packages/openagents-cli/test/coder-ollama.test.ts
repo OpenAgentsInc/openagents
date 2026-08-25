@@ -560,15 +560,13 @@ describe("what goes back to the model each round", () => {
 });
 
 describe("which lane a session opens on", () => {
-  it("leads with Gemini 3.7 Flash when nobody names a backend", async () => {
-    const { defaultBackendId, CODER_BACKENDS } = await import("../src/coder-backends.js");
+  it("keeps the catalog mirroring the server's enum in its own order", async () => {
+    const { CODER_BACKENDS } = await import("../src/coder-backends.js");
 
-    // Local used to be the default whenever a machine happened to be running
-    // Ollama, which made the session's model a property of the laptop rather
-    // than a choice.
-    expect(defaultBackendId()).toBe("gemini-3.7-flash");
-    // And the list still mirrors the server's enum in its own order: a
-    // preference is named, not expressed by reordering an agreement.
+    // A session that names nothing opens unpinned — Coder Auto — so there is
+    // no client-side default to assert any more. The list still mirrors the
+    // server's enum in its own order: a preference is named, not expressed by
+    // reordering an agreement.
     expect(CODER_BACKENDS.map((backend) => backend.id)).toEqual([
       "gemini-3.7-flash",
       "ox-alpha",

@@ -24,9 +24,11 @@ import { merge } from "./coder-merge.js";
 import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import { LOCAL_LANE, systemPrompt } from "./coder-system.js";
 import type { CoderTool } from "./coder-tools.js";
+import { tierLabel } from "./coder-tiers.js";
 import type { TranscriptSink } from "./coder-transcript.js";
 
 const DEFAULT_HOST = "http://127.0.0.1:11434";
+
 
 /**
  * How many rounds of tool calls one turn may take before it has to answer.
@@ -215,6 +217,8 @@ export class OllamaReplySource implements ReplySource {
   private readonly host: string;
   private readonly modelName: string;
   private readonly transcript: WireMessage[] = [];
+  /** Carried-over turns from a tier switch, spliced in after the anchor. */
+  private seeded: ReadonlyArray<WireMessage> = [];
   private tools: ReadonlyArray<CoderTool> = [];
   /**
    * Messages that arrived mid-turn, waiting for the next step of it.
@@ -239,7 +243,31 @@ export class OllamaReplySource implements ReplySource {
   private callCount = 0;
 
   get model(): string {
-    return `Ollama ${this.modelName}`;
+    return tierLabel("local");
+  }
+
+  /** The wire transcript so far, without the system anchor. */
+  history(): ReadonlyArray<WireMessage> {
+    return this.transcript.filter((message) => message.role !== "system");
+  }
+
+  /**
+   * Seed the transcript with the conversation a tier switch carries over.
+   *
+   * Held aside until the first turn composes the system anchor, so the anchor
+   * still leads and the carried turns follow it in order. Only plain user and
+   * assistant text carries: the thread lane's tool-call structures are another
+   * wire shape, and a local model rereads the words, not the plumbing.
+   */
+  preload(messages: ReadonlyArray<{ readonly role: string; readonly content?: unknown }>): void {
+    this.seeded = messages
+      .filter(
+        (message): message is { role: "user" | "assistant"; content: string } =>
+          (message.role === "user" || message.role === "assistant") &&
+          typeof message.content === "string" &&
+          message.content.length > 0,
+      )
+      .map((message) => ({ role: message.role, content: message.content }));
   }
 
   /**
@@ -396,6 +424,8 @@ export class OllamaReplySource implements ReplySource {
         role: "system",
         content: systemPrompt(this.tools, LOCAL_LANE, this.standing),
       });
+      this.transcript.push(...this.seeded);
+      this.seeded = [];
     }
 
     this.transcript.push({ role: "user", content: prompt });

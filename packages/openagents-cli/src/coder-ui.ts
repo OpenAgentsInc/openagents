@@ -41,6 +41,7 @@ import { activityRows, fleetRows, latestActivities, taskActivity } from "./coder
 import { renderMarkdown, visibleWidth, wrapStyled } from "./coder-markdown.js";
 import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./coder-session.js";
 import type { CoderTask, CoderTaskStatus } from "./coder-tasks.js";
+import { coderTierLabel } from "./coder-tiers.js";
 import { RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import type { SkillSelection } from "./coder-skills.js";
 
@@ -778,7 +779,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const body = Math.max(20, width - 4);
 
       rows.push(
-        `${BOLD}${task.description}${RESET} ${DIM}${task.agent} · ${task.model} · ${task.status}${RESET}`,
+        `${BOLD}${task.description}${RESET} ${DIM}${task.agent} · ${coderTierLabel(task.model)} · ${task.status}${RESET}`,
         "",
       );
 
@@ -795,7 +796,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       for (const entry of entries) {
         switch (entry.kind) {
           case "started":
-            rows.push(`${DIM}started in ${entry.cwd} on ${entry.model}${RESET}`, "");
+            rows.push(`${DIM}started in ${entry.cwd} on ${coderTierLabel(entry.model)}${RESET}`, "");
             break;
 
           case "tool":
@@ -1363,10 +1364,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             continue;
           }
           // Shift+tab, in both spellings: the classic back-tab and the one the
-          // keyboard protocol reports. Tab moves the model, shift+tab moves how
-          // hard it is asked to think.
+          // keyboard protocol reports. Shift+tab moves the Coder tier; tab
+          // moves how hard the model is asked to think.
           if (sequence === "\x1b[Z" || sequence === "\x1b[9;2u") {
-            session.cycleReasoning();
+            session.cycleTier();
             dirty = true;
             continue;
           }
@@ -1491,8 +1492,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
         // Tab is a printable character to the run scanner below, so it has to
         // be claimed here or it lands in the composer as literal whitespace.
-        if (char === "\t" && session.canCycleBackend) {
-          session.cycleBackend();
+        if (char === "\t" && session.canCycleReasoning) {
+          session.cycleReasoning();
           dirty = false;
           index += 1;
           continue;
