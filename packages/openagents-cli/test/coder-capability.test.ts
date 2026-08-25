@@ -39,7 +39,12 @@ const baseCatalog: ReadonlyArray<PluginCatalogEntry> = [
 ];
 
 describe("capabilityTool", () => {
-  it("declares one standing tool whose description does not grow with the catalog", () => {
+  it("declares one standing tool that names the catalog, capped rather than unbounded", () => {
+    // The description deliberately carries the installed names and first
+    // sentences: a model that has never heard what is installed answered
+    // "read that conversation back" with an improvised shell script while
+    // the capability sat unused. The growth is capped, not zero — past the
+    // cap, the rest ride behind `query`.
     const bigCatalog = Array.from({ length: 20 }, (_unused, index) => ({
       ...baseCatalog[0],
       name: `demo_${String(index)}`,
@@ -55,7 +60,10 @@ describe("capabilityTool", () => {
     expect(Object.keys(properties)).toContain("query");
     expect(Object.keys(properties)).toContain("name");
     expect(tool.description).toMatch(/No semantic embedding is available/);
-    expect(tool.description).not.toMatch(/demo_/);
+    expect(tool.description).toContain("demo_0");
+    expect(tool.description).toContain("demo_11");
+    expect(tool.description).not.toContain("demo_12");
+    expect(tool.description).toContain("and 8 more");
     expect(tool.parameters["additionalProperties"]).toBe(false);
   });
 

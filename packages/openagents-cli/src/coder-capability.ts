@@ -144,6 +144,9 @@ function catalogDescription(catalog: ReadonlyArray<PluginCatalogEntry>): string 
  * Those appear only after a search with `query` returns the catalog and an
  * exact-name call with `name` loads the chosen plugin.
  */
+/** Most capabilities the standing summary names; the rest ride behind `query`. */
+const SUMMARY_CAP = 12;
+
 /** A description's first sentence, for the one-line standing summary. */
 const firstSentence = (text: string): string => {
   const at = text.indexOf(". ");
@@ -156,13 +159,16 @@ export function capabilityTool(options: CapabilityOptions): CoderTool {
   // description: a model that has never heard what is installed answers
   // "read that conversation back" with an improvised shell script, and the
   // sandboxed, bounded capability sits unused. One tool, but an honest one.
+  const shown = catalog.slice(0, SUMMARY_CAP);
+  const beyond = catalog.length - shown.length;
   const summary =
     catalog.length === 0
       ? ""
       : "Installed: " +
-        catalog
+        shown
           .map((entry) => `\`${entry.name}\` (${firstSentence(entry.description)})`)
           .join("; ") +
+        (beyond > 0 ? `; and ${String(beyond)} more via \`query\`` : "") +
         ". When one of these covers the work, load and call it instead of improvising a script: it is sandboxed, bounded, and returns structured output. ";
   return {
     name: "capability",
