@@ -90,14 +90,18 @@ import { ThreadTranscriptWriter } from "./coder-transcript.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
 import {
   describeLoad,
+  invokePlugin,
   isRefusal,
   loadPluginFromManifest,
   pluginIdentity,
   pluginTool,
   type LoadedPlugin,
 } from "./coder-plugins.js";
+import { runForeignResume } from "./coder-foreign-resume.js";
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolve as resolvePath } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { rebuild, RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
 import { loadSkillSelection, standingContext } from "./coder-skills.js";
@@ -2374,6 +2378,58 @@ const coderCommand = Command.make(
         return described;
       };
 
+      const locateForeignSessionsManifest = (): string | undefined => {
+        let here = dirname(fileURLToPath(import.meta.url));
+        while (true) {
+          const candidate = join(here, "plugins/foreign-sessions/manifest.json");
+          if (existsSync(candidate)) {
+            return candidate;
+          }
+          const parent = dirname(here);
+          if (parent === here) {
+            return undefined;
+          }
+          here = parent;
+        }
+      };
+
+      const foreignSessionsManifest = locateForeignSessionsManifest();
+
+      const runForeignSessionResume = async (
+        selection: number | undefined,
+      ): Promise<string> => {
+        if (foreignSessionsManifest === undefined) {
+          return (
+            "The foreign session scanner is not available from this installation. " +
+            "It lives at plugins/foreign-sessions/manifest.json in the repository."
+          );
+        }
+        const loaded = loadPluginFromManifest(foreignSessionsManifest);
+        if (isRefusal(loaded)) {
+          return `Could not load the foreign session scanner (${loaded.code}): ${loaded.reason}`;
+        }
+        const invoke = async (input: Record<string, unknown>): Promise<unknown> => {
+          const packet = new TextEncoder().encode(JSON.stringify(input));
+          const outcome = await invokePlugin(loaded, packet);
+          if (isRefusal(outcome)) {
+            return { refusal: { code: outcome.code, reason: outcome.reason } };
+          }
+          try {
+            return JSON.parse(new TextDecoder().decode(outcome));
+          } catch (cause) {
+            throw new Error(
+              `the scanner output is not valid JSON: ${
+                cause instanceof Error ? cause.message : String(cause)
+              }`,
+            );
+          }
+        };
+        return runForeignResume(
+          { now_ms: Date.now(), cwd: process.cwd(), selection },
+          invoke,
+        );
+      };
+
       // Only when there is really no way to run a child. A refused child
       // thread is not that: `buildDelegation` prefers a free harness model over
       // the account's grant anyway, so the grant lane failing is the normal
@@ -2411,6 +2467,7 @@ const coderCommand = Command.make(
                 stdout: process.stdout,
                 skills,
                 onSkillsChanged: declareTools,
+                resume: runForeignSessionResume,
                 loadPlugin,
               })
             : await runCoderPlain(session, {
@@ -2418,6 +2475,7 @@ const coderCommand = Command.make(
                 stdout: process.stdout,
                 prompt: oneShot,
                 skills,
+                resume: runForeignSessionResume,
                 loadPlugin,
               });
         } finally {

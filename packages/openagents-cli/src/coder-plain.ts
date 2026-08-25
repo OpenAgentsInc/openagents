@@ -30,6 +30,13 @@ export interface CoderPlainOptions {
   /** The workspace's skills, so `/skills` can report them. */
   readonly skills?: SkillSelection | undefined;
   /**
+   * Pick and describe a foreign coding-agent session to resume.
+   *
+   * For `/resume` and `/resume <number>`. The caller loads the foreign-sessions
+   * plugin and invokes it; this mode only asks for the result and writes it.
+   */
+  readonly resume?: ((selection: number | undefined) => Promise<string>) | undefined;
+  /**
    * Load a WASM plugin from a manifest path and say what happened.
    *
    * Experimental, for `/plugin load <manifest>`. The caller owns the plugin
@@ -128,6 +135,17 @@ export async function runCoderPlain(
               : options.loadPlugin(path)
         }\n`,
       );
+      return;
+    }
+
+    const resumeMatch = /^\/resume(?:\s+(\d+))?\s*$/.exec(line.trim());
+    if (resumeMatch !== null) {
+      const selection = resumeMatch[1] === undefined ? undefined : Number(resumeMatch[1]);
+      const text =
+        options.resume === undefined
+          ? "This session cannot resume foreign sessions."
+          : await options.resume(selection).catch(() => "The foreign session scan failed unexpectedly.");
+      stdout.write(`\n${text}\n`);
       return;
     }
 

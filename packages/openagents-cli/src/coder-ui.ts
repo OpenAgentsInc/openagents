@@ -177,6 +177,14 @@ export interface CoderUiOptions {
   /** Re-declare the tools after a skill is switched. */
   readonly onSkillsChanged?: (() => void) | undefined;
   /**
+   * Pick and describe a foreign coding-agent session to resume.
+   *
+   * For `/resume` and `/resume <number>`. The caller loads the foreign-sessions
+   * plugin and invokes it; this interface only asks for the result and shows it
+   * as a notice.
+   */
+  readonly resume?: ((selection: number | undefined) => Promise<string>) | undefined;
+  /**
    * Load a WASM plugin from a manifest path and say what happened.
    *
    * Experimental, for `/plugin load <manifest>`. The caller owns the plugin
@@ -1107,6 +1115,28 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
               ? "This session cannot load plugins."
               : options.loadPlugin(path),
         );
+        render();
+        return;
+      }
+
+      // `/resume` lists recent foreign coding-agent sessions or describes one.
+      const resumeMatch = /^\/resume(?:\s+(\d+))?\s*$/.exec(prompt.trim());
+      if (resumeMatch !== null) {
+        const selection = resumeMatch[1] === undefined ? undefined : Number(resumeMatch[1]);
+        if (options.resume === undefined) {
+          session.notice("This session cannot resume foreign sessions.");
+        } else {
+          void options
+            .resume(selection)
+            .then((text) => {
+              session.notice(text);
+              render();
+            })
+            .catch(() => {
+              session.notice("The foreign session scan failed unexpectedly.");
+              render();
+            });
+        }
         render();
         return;
       }
