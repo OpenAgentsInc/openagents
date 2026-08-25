@@ -13,7 +13,7 @@
 
 [workspace]
 resolver = "2"
-members = ["pdk", "word-stats", "file-stats", "dir-stats", "foreign-sessions"]
+members = ["pdk", "word-stats", "file-stats", "dir-stats", "foreign-sessions", "git-lost-work"]
 
 [workspace.package]
 edition = "2021"

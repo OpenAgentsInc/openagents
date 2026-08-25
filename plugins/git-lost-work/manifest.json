@@ -1,0 +1,98 @@
+{
+  "manifest_version": 1,
+  "name": "git_lost_work",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Scan a mounted .git directory for unreachable commits and stash entries. It reads HEAD, loose refs, packed-refs, reflogs, and loose objects directly. It does not shell out to git, write anything, or parse packfiles. Use it when asked what commits or stashes may have been lost from a local git repository.",
+  "artifact": {
+    "path": "git_lost_work.wasm",
+    "digest": "sha256:366760578cb1d83ab49a0819150308014401972907a44c89618e74de3a906c36"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "max_lost_commits": {
+          "type": "integer",
+          "description": "Maximum number of lost commits to report. Default 50, capped at 100."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "object",
+          "properties": {
+            "head": {
+              "type": "object",
+              "properties": {
+                "branch": { "type": ["string", "null"] },
+                "sha": { "type": ["string", "null"] }
+              }
+            },
+            "stash_entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "selector": { "type": "string" },
+                  "sha": { "type": "string" },
+                  "message": { "type": ["string", "null"] },
+                  "timestamp": { "type": "integer" }
+                }
+              }
+            },
+            "lost_commits": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "sha": { "type": "string" },
+                  "action": { "type": ["string", "null"] },
+                  "timestamp": { "type": "integer" },
+                  "packed": { "type": "boolean" },
+                  "subject": { "type": ["string", "null"] },
+                  "author": { "type": ["string", "null"] },
+                  "author_date": { "type": ["integer", "null"] }
+                }
+              }
+            },
+            "summary": {
+              "type": "object",
+              "properties": {
+                "total_lost_candidates": { "type": "integer" },
+                "stashes_count": { "type": "integer" }
+              }
+            }
+          }
+        },
+        "refusal": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["code", "reason"]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [
+      { "path": ".", "readonly": true }
+    ],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 128
+  },
+  "price_msats": null,
+  "license": "Apache-2.0"
+}

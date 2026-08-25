@@ -39,3 +39,25 @@ agent phase completes. Enable Docker Desktop's Rosetta emulation
 (Settings → General → "Use Rosetta for x86_64/amd64 emulation"), use a
 cloud environment (`--env daytona` and peers), or run on amd64 hardware
 for scored runs. The agent phase itself runs fine under qemu.
+
+## Suite runner
+
+`bench/run-suite.sh` runs a suite file through Harbor and posts the result.
+
+```sh
+bench/run-suite.sh <suite-file> --model <harbor-model> [options]
+```
+
+Examples:
+
+```sh
+bench/run-suite.sh bench/suites/tb2-cross-section.txt \
+  --model openai/gpt-5.6-luna --lane proxy --n-concurrent 2
+
+bench/run-suite.sh bench/suites/tb2-cross-section.txt \
+  --model ollama/qwen3.8:27b-mtp-q8_0 --lane local --dry-run
+```
+
+Options include `--lane`, `--api-url`, `--jobs-dir`, `--n-concurrent`,
+`--timeout-multiplier`, and `--dry-run`. Set `OPENAGENTS_TOKEN` unless the
+model starts with `ollama/`.
