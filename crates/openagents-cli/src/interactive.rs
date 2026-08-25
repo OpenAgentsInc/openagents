@@ -12,7 +12,7 @@ use ratatui::Terminal;
 use std::io::stdout;
 use std::time::Duration;
 
-pub async fn run_tui(args: CoderArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_tui(args: CoderArgs, _token: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting interactive Coder session...");
     if !atty_is_terminal() {
         println!("Non-interactive terminal detected. Running basic prompt mode.");

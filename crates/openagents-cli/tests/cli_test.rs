@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
-
-
-
-
+    use openagents_cli::runtime::{CoderRuntimeSession, Lane};
+    use openagents_cli::delegate::DelegationSupervisor;
+    use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
 
     use openagents_cli::auth::CredentialStore;
     use openagents_cli::identity::IdentityStore;
@@ -14,7 +13,6 @@ mod tests {
     use openagents_cli::forum::ForumClient;
     use openagents_cli::api_passthrough::ApiPassthroughClient;
     use openagents_cli::trace::TraceStore;
-
 
     #[test]
     fn test_auth_and_credential_store_issue_74() {
@@ -79,5 +77,34 @@ mod tests {
         assert_eq!(sessions.len(), 2);
         let redacted = TraceStore::redact_trace("Bearer oa_pat_998877 secret");
         assert!(redacted.contains("[REDACTED_PAT]"));
+    }
+
+    #[tokio::test]
+    async fn test_live_inference_loop_issue_83() {
+        let tools = HarnessToolRegistry::new(None);
+        let mut session = CoderRuntimeSession::new(Lane::OxAlpha, None, None, tools);
+        let res = session.execute_turn("hello", |_| {}).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_real_tool_execution_issue_84() {
+        let registry = HarnessToolRegistry::new(None);
+        let call = ToolCall {
+            id: "call_shell_1".to_string(),
+            name: "shell".to_string(),
+            arguments: serde_json::json!({"command": "echo test_output_123"}),
+        };
+        let out = registry.execute_tool(&call).await;
+        assert!(!out.is_error);
+        assert!(out.output.contains("test_output_123"));
+    }
+
+    #[tokio::test]
+    async fn test_real_multi_lane_delegation_issue_85() {
+        let supervisor = DelegationSupervisor::new(1, "ox-alpha", None);
+        let results = supervisor.dispatch("test task").await;
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
     }
 }

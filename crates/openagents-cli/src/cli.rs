@@ -322,7 +322,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             match issue.action {
                 IssueAction::List { repo } => {
                     let r = repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
-                    let list = tracker.list_issues(&r).await?;
+                    let list = tracker.list_issues(&r).await.map_err(|e| e.to_string())?;
                     for item in list {
                         println!("#{}	{}	[{}]", item.number, item.title, item.state);
                     }
@@ -365,11 +365,21 @@ Author: {:?}", item.number, item.title, item.state, item.author);
         }
         Commands::Coder(coder) => {
             if coder.delegate {
-                crate::delegate::run_delegation(coder).await?;
+                crate::delegate::run_delegation(coder, token).await.map_err(|e| e.to_string())?;
             } else if coder.headless {
-                println!("Executing coder prompt headlessly: {:?}", coder.prompt);
+                let prompt = coder.prompt.unwrap_or_else(|| "Analyze workspace and run tests".to_string());
+                println!("Executing coder prompt headlessly: {}", prompt);
+                let tools = crate::tools::HarnessToolRegistry::new(None);
+                let lane = crate::runtime::Lane::from_str(&coder.lane.unwrap_or_else(|| "ox-alpha".to_string()));
+                let mut runtime = crate::runtime::CoderRuntimeSession::new(lane, None, token, tools);
+                let result = runtime.execute_turn(&prompt, |chunk| {
+                    print!("{}", chunk);
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                }).await.map_err(|e| e.to_string())?;
+                println!("\n\nTurn result:\n{}", result);
             } else {
-                crate::interactive::run_tui(coder).await?;
+                crate::interactive::run_tui(coder, token).await.map_err(|e| e.to_string())?;
             }
         }
         Commands::Box(b) => {
@@ -406,7 +416,7 @@ Author: {:?}", item.number, item.title, item.state, item.author);
         }
         Commands::Api(api) => {
             let client = crate::api_passthrough::ApiPassthroughClient::new("https://openagents.com/api/v1", token);
-            let res = client.execute_request(&api.method, &api.path, None).await?;
+            let res = client.execute_request(&api.method, &api.path, None).await.map_err(|e| e.to_string())?;
             println!("{}", serde_json::to_string_pretty(&res)?);
         }
         Commands::Trace(trace) => match trace.action {
