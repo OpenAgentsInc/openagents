@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { basename } from "node:path";
+import { resolve } from "node:path";
 
 export interface CoderWorkspace {
   readonly repository: string;
@@ -17,7 +17,7 @@ export interface CoderWorkspace {
 
 export function describeWorkspace(cwd: string = process.cwd()): CoderWorkspace {
   return {
-    repository: basename(cwd),
+    repository: resolve(cwd),
     branch: git(["rev-parse", "--abbrev-ref", "HEAD"], cwd) ?? "no branch",
   };
 }
