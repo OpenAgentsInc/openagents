@@ -5,9 +5,50 @@ per run. Issue
 [#34](https://openagents.com/OpenAgentsInc/openagents/issues/34) asks for
 results that append here with receipts; this directory is that store.
 
-It is empty of rows. Every row must come from a real Harbor run, and no run has
-been recorded yet. A seeded or example row would be a fabricated measurement
-sitting in the file that the trend line reads.
+Every row must come from a real Harbor run. There are no seeded or example
+rows: a fabricated measurement sitting in the file the trend line reads would
+be worse than an empty file.
+
+## What is in here
+
+`tb2-quick.jsonl` holds three runs of the two-task `tb2-quick` suite on the
+local Ollama lane, executed on 2026-08-25 through the real `openagents coder`
+against real models, one trial at a time.
+
+| Recorded    | Model                  | Accepted | Success | Wall clock | Gate       |
+| ----------- | ---------------------- | -------- | ------- | ---------- | ---------- |
+| `22:57:20Z` | `qwen3.8:27b-mtp-q8_0` | 1 of 2   | 50.0%   | 1395.8s    | passed     |
+| `23:27:15Z` | `qwen3.8:27b-mtp-q8_0` | 1 of 2   | 50.0%   | 1395.8s    | passed     |
+| `23:33:52Z` | `qwen3:0.6b`           | 0 of 2   | 0.0%    | 143.9s     | **failed** |
+
+The first two are the same run twice: same suite digest, same run digest, same
+model, same CLI version, and the same outcome on both tasks —
+`openssl-selfsigned-cert` accepted, `regex-log` rejected on an agent timeout.
+That is what a comparable pair looks like, and the trend between them reads
+`unchanged`.
+
+**The third row is a deliberate regression, and it is in the file on purpose.**
+The lane was degraded to a much smaller model and nothing else changed. The
+floor caught it — `success_rate>=0.500` breached at 0.000, gate failed, the
+report exited 1 — and the trend shows `-100.0% worse` with `model also varies`
+named as the confounder, which is exactly right: the model change _is_ the
+regression.
+
+It stays recorded rather than being cleaned up afterwards. It is a real graded
+run of a real configuration, it says which model produced it, and a store whose
+chain skips the runs somebody would rather not have in the trend is the thing
+the receipts exist to prevent.
+
+Note what the third row does to cost. The degraded lane is nearly ten times
+faster per run and accepts nothing, so cost per accepted outcome moves from
+"one accepted outcome for this much work" to undefined — `no_accepted_outcomes`,
+not zero and not infinity. An agent that gets cheaper per attempt while
+accepting less is the regression this metric exists to catch, and it is the one
+a per-attempt average would report as an improvement.
+
+All three rows report cost as `null`. The local lane bills no metered tokens,
+so there is no per-token rate to apply — `unmetered_local_lane`, which is not
+the same as free. No run has yet been recorded on a priced lane.
 
 ## Appending a run
 

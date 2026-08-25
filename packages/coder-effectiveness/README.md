@@ -291,6 +291,19 @@ temporary store, with the clock injected.
 pnpm --dir packages/coder-effectiveness test
 ```
 
+## What has actually been run
+
+Three live runs of `tb2-quick` on the local Ollama lane, through the real
+`openagents coder` against real models, one trial at a time. Two consecutive
+runs produced identical comparable rows and passed the gate; a third with the
+lane degraded to a smaller model failed the success floor and exited 1. See
+`bench-results/README.md` for the rows.
+
+Nothing has been run on a priced lane, so no cost-per-accepted-outcome figure
+in this repository has ever been a number — every recorded row reports
+`unmetered_local_lane`. The 20-task `coder-effectiveness-v1` suite has not been
+run at all; `tb2-quick` is two of its tasks.
+
 ## Rate catalog
 
 `src/pricing.ts` pins a snapshot of the forge catalog rates, following the
@@ -317,8 +330,3 @@ leaves unpriced stays unpriced here — that omission is the signal.
   [#36](https://openagents.com/OpenAgentsInc/openagents/issues/36) lands the
   per-model-family seam, the token-economy delta it measures is readable from
   this suite's rows without a change here.
-- **Two consecutive scheduled runs and a caught live regression.** Issue #34's
-  acceptance needs real Harbor runs on amd64 hardware. The store and the
-  comparison now hold the rows those runs will produce, and the fixture cases
-  prove the trend reads a regression as a rise in cost per accepted outcome —
-  but a fixture is not a schedule, and no real run has been recorded.
