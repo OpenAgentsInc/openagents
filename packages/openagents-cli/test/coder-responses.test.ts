@@ -56,7 +56,11 @@ describe("ResponsesReplySource", () => {
     const chunks = await collect(source);
 
     expect(calls[0]?.url).toBe("http://localhost:4000/api/v1/responses");
-    expect(calls[0]?.body).toEqual({ input: "hello", stream: true });
+    // The conversation is client-held: the input is the item history.
+    expect(calls[0]?.body).toEqual({
+      input: [{ role: "user", content: "hello" }],
+      stream: true,
+    });
     // Both named: the pipeline negotiates on json, the answer is SSE.
     expect(calls[0]?.accept).toContain("application/json");
     const text = chunks
@@ -77,5 +81,69 @@ describe("ResponsesReplySource", () => {
     const source = new ResponsesReplySource({ origin: "http://localhost:4000" });
 
     await expect(collect(source)).rejects.toThrow("http://localhost:4000 answered HTTP 503");
+  });
+});
+
+// The agentic loop over the surface: the model asks for a tool, the client
+// runs it, replays the output, and the next call answers in text.
+describe("ResponsesReplySource tools", () => {
+  const callStream = [
+    'event: response.output_item.added\ndata: {"type":"response.output_item.added","sequence_number":0}\n\n',
+    'event: response.output_item.done\ndata: {"type":"response.output_item.done","sequence_number":1,"output_index":1,"item":{"type":"function_call","call_id":"call_1","name":"read_conversation","arguments":"{\\"max_turns\\":4}","status":"completed"}}\n\n',
+    'event: response.completed\ndata: {"type":"response.completed","sequence_number":2}\n\n',
+  ];
+  const answerStream = [
+    'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","sequence_number":0,"delta":"Four turns, read."}\n\n',
+    'event: response.completed\ndata: {"type":"response.completed","sequence_number":1}\n\n',
+  ];
+
+  it("runs the requested tool and continues to the text answer", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const streams = [callStream, answerStream];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_target: URL | string, init?: RequestInit) => {
+        bodies.push(
+          JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Record<string, unknown>,
+        );
+        return sse(streams.shift() ?? []);
+      }),
+    );
+
+    const ran: Array<Record<string, unknown>> = [];
+    const source = new ResponsesReplySource({ origin: "http://localhost:4000" });
+    source.useTools([
+      {
+        name: "read_conversation",
+        description: "Read a conversation back.",
+        parameters: { type: "object" },
+        run: (args) => {
+          ran.push(args);
+          return Promise.resolve("four turns of text");
+        },
+      },
+    ]);
+
+    const chunks = await collect(source);
+
+    // The tool ran with the model's arguments.
+    expect(ran).toEqual([{ max_turns: 4 }]);
+    // The call and its result both rendered, then the answer.
+    expect(chunks.map((chunk) => chunk.type)).toEqual([
+      "tool_call",
+      "tool_result",
+      "text",
+      "usage",
+    ]);
+    // The second request replayed the call and its output as items.
+    const replayed = bodies[1]?.["input"] as Array<Record<string, unknown>>;
+    expect(replayed.at(-2)).toMatchObject({ type: "function_call", call_id: "call_1" });
+    expect(replayed.at(-1)).toMatchObject({
+      type: "function_call_output",
+      call_id: "call_1",
+      output: "four turns of text",
+    });
+    // And declared the tools both times.
+    expect(bodies[0]?.["tools"]).toBeDefined();
   });
 });
