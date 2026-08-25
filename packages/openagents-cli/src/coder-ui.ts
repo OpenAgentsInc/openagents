@@ -43,6 +43,14 @@ import type { CoderEntry, CoderSession, CoderSnapshot, CoderToolCall } from "./c
 import type { CoderTask, CoderTaskStatus } from "./coder-tasks.js";
 import { coderTierLabel } from "./coder-tiers.js";
 import { RELOAD_EXIT_CODE, sourceCheckout } from "./coder-reload.js";
+import {
+  backspaceComposer,
+  expandPastedTextRefs,
+  formatPastedTextRef,
+  getPastedTextRefNumLines,
+  type PastedTextContent,
+  shouldCollapsePaste,
+} from "./coder-paste.js";
 import type { SkillSelection } from "./coder-skills.js";
 
 const ALT_SCREEN_ON = "\x1b[?1049h";
@@ -407,6 +415,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
   let pendingEscape = "";
   /** A paste whose end has not arrived yet. */
   let pendingPaste = "";
+  const pastedContents = new Map<number, PastedTextContent>();
+  let nextPasteId = 1;
   let escapeTimer: NodeJS.Timeout | undefined;
 
   const write = (text: string) => {
@@ -1055,8 +1065,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
     };
 
     const submit = (mode: "steer" | "queue" = "steer") => {
-      const prompt = composer;
+      const prompt = expandPastedTextRefs(composer, pastedContents);
       composer = "";
+      pastedContents.clear();
       anchor = undefined;
       // Only when a turn actually begins. Resetting on every submission made
       // `/export` mid-turn put the elapsed clock back to zero, which reads as
@@ -1180,7 +1191,10 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // reader looking at a settled reply with no way to tell whether the key
       // did anything, which reads as the key not working.
       if (session.interrupt()) session.notice("Interrupted.");
-      else composer = "";
+      else {
+        composer = "";
+        pastedContents.clear();
+      }
       render();
     };
 
@@ -1226,7 +1240,15 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
             pendingPaste = text.slice(index);
             break;
           }
-          composer += text.slice(from, to);
+          const pastedText = text.slice(from, to);
+          if (shouldCollapsePaste(pastedText)) {
+            const pasteId = nextPasteId++;
+            pastedContents.set(pasteId, { id: pasteId, content: pastedText });
+            const numLines = getPastedTextRefNumLines(pastedText);
+            composer += formatPastedTextRef(pasteId, numLines);
+          } else {
+            composer += pastedText;
+          }
           index = to + PASTE_END.length;
           dirty = true;
           continue;
@@ -1506,7 +1528,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         }
 
         if (char === "\x7f" || char === "\b") {
-          composer = composer.slice(0, -1);
+          composer = backspaceComposer(composer);
           dirty = true;
           index += 1;
           continue;
@@ -1514,6 +1536,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
 
         if (char === "\x15") {
           composer = "";
+          pastedContents.clear();
           dirty = true;
           index += 1;
           continue;
