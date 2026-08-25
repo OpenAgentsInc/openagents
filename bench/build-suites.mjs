@@ -332,9 +332,13 @@ const main = () => {
       "smoke",
       "smoke",
       "The fast lane: two quick Terminal-Bench tasks for checking that the harness, the adapter, and the lane are alive. Declared smoke, so its result is never a published score however completely it runs.",
-      TB2_CROSS_SECTION.filter(
-        (name) => name === "regex-log" || name === "fix-code-vulnerability",
-      ).map((name) => registryTask(datasets, "terminal-bench@2.0", name, "quick-shaped", true)),
+      // Named outright rather than filtered out of the cross-section: a filter
+      // that matched nothing would quietly build an empty suite, and
+      // `pinFor` throwing on a name the registry does not hold is the failure
+      // mode this script should have.
+      ["regex-log", "fix-code-vulnerability"].map((name) =>
+        registryTask(datasets, "terminal-bench@2.0", name, "quick-shaped", true),
+      ),
     ),
     check,
   );
