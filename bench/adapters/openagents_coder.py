@@ -58,7 +58,7 @@ class OpenAgentsCoder(BaseInstalledAgent):
     @property
     def _token(self) -> str:
         token = os.environ.get("OPENAGENTS_TOKEN", "")
-        if not token:
+        if not token and not self._local_lane:
             raise ValueError(
                 "OPENAGENTS_TOKEN is not set. The coder's thread lane needs a "
                 "chat:account token for the server at OPENAGENTS_CODER_API_URL."
@@ -70,7 +70,17 @@ class OpenAgentsCoder(BaseInstalledAgent):
         if not self.model_name:
             return None
         # Harbor spells models provider/name; the catalog id is the name.
-        return self.model_name.split("/", 1)[-1]
+        # An `ollama/<name>` model selects the coder's local lane instead:
+        # the CLI's `--model ollama:<name>` shape, answered by an Ollama
+        # server the container reaches on its host.
+        provider, _, name = self.model_name.partition("/")
+        if provider == "ollama":
+            return f"ollama:{name}"
+        return name or provider
+
+    @property
+    def _local_lane(self) -> bool:
+        return bool(self.model_name) and self.model_name.startswith("ollama/")
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
@@ -136,8 +146,14 @@ class OpenAgentsCoder(BaseInstalledAgent):
             "exit $status"
         )
 
+        env = {"OPENAGENTS_TOKEN": self._token}
+        if self._local_lane:
+            env["OLLAMA_HOST"] = os.environ.get(
+                "OPENAGENTS_CODER_OLLAMA_HOST", "http://host.docker.internal:11434"
+            )
+
         await self.exec_as_agent(
             environment,
             command=command,
-            env={"OPENAGENTS_TOKEN": self._token},
+            env=env,
         )

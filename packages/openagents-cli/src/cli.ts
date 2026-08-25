@@ -1965,7 +1965,7 @@ const coderCommand = Command.make(
       // coder without asking for one.
       const localModel =
         local && named === undefined && !offline && !resume
-          ? yield* Effect.promise(() => discoverOllamaModel())
+          ? yield* Effect.promise(() => discoverOllamaModel(process.env["OLLAMA_HOST"] || undefined))
           : undefined;
 
       if (local && named === undefined && localModel === undefined && !offline && !resume) {
@@ -2016,7 +2016,11 @@ const coderCommand = Command.make(
       // already a real name and needs no round trip.
       const resolved =
         wantsOllama && askedFor !== undefined && named !== undefined
-          ? yield* Effect.promise(() => resolveOllamaModel(askedFor))
+          ? yield* Effect.promise(() =>
+              // Same OLLAMA_HOST honor as the reply source below: resolution
+              // must ask the server the session will actually talk to.
+              resolveOllamaModel(askedFor, process.env["OLLAMA_HOST"] || undefined),
+            )
           : undefined;
 
       if (resolved !== undefined && resolved.model === undefined) {
@@ -2194,6 +2198,10 @@ const coderCommand = Command.make(
           : wantsOllama && ollamaName !== undefined
             ? new OllamaReplySource({
                 model: ollamaName,
+                // The standard Ollama env var, honored so a session in a
+                // container can reach the Ollama server on its host —
+                // 127.0.0.1 inside a container is the container.
+                ...(process.env["OLLAMA_HOST"] ? { host: process.env["OLLAMA_HOST"] } : {}),
                 ...(Option.isSome(reasoning) ? { reasoning: reasoning.value } : {}),
               })
             : (thread ?? new DummyReplySource());
