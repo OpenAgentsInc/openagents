@@ -1,5 +1,7 @@
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Redacted } from "effect";
 import * as Context from "effect/Context";
+
+import type { ForgeCredentials } from "./delegation-push.js";
 
 import {
   ComputerChannel,
@@ -138,6 +140,35 @@ export const computerUpLayer = Layer.effect(
         outcome: string,
         detail: string,
       ) => journal(journalService, requestId, request, decision, outcome, detail);
+      const recordValue = (value: unknown): Record<string, unknown> =>
+        typeof value === "object" && value !== null && !Array.isArray(value)
+          ? { ...(value as Record<string, unknown>) }
+          : {};
+      const asString = (value: unknown): string | undefined =>
+        typeof value === "string" && value !== "" ? value : undefined;
+      const extractForgeCredentials = (
+        payload: Record<string, unknown>,
+      ): ForgeCredentials | undefined => {
+        const raw = payload.assignment_credential ?? payload.forge_credentials;
+        let token: string | undefined;
+        let repository: string | undefined;
+        let branch: string | undefined;
+        if (typeof raw === "string") {
+          token = raw;
+          repository = asString(payload.assignment_repository);
+          branch = asString(payload.assignment_branch);
+        } else if (typeof raw === "object" && raw !== null) {
+          const cred = recordValue(raw);
+          const candidate =
+            cred.token ?? cred.value ?? cred.password ?? cred.access_token;
+          token = asString(candidate);
+          repository = asString(cred.repository ?? payload.assignment_repository);
+          branch = asString(cred.branch ?? payload.assignment_branch);
+        }
+        if (token === undefined || repository === undefined || branch === undefined)
+          return undefined;
+        return { token: Redacted.make(token), repository, branch };
+      };
       const handlers: ComputerChannelHandlers = {
         onProbe: async (requestId) => {
           const request = { argv: ["<probe>"], cwd: config.roots[0] ?? "" };
@@ -266,7 +297,16 @@ export const computerUpLayer = Layer.effect(
           const cwd = typeof payload.cwd === "string" ? resolve(payload.cwd) : "";
           const request = { argv: ["<agent>", agentId.slice(0, 64)], cwd };
           append(requestId, request, "received", "pending", "ACP delegation received");
-          if (
+          const forgeCredentials = extractForgeCredentials(payload);
+          if (forgeCredentials !== undefined) {
+            append(
+              requestId,
+              request,
+              "credentials_delivered",
+              "configured",
+              "scoped forge credentials configured for delegated push",
+            );
+          } else if (
             Object.hasOwn(payload, "assignment_credential") ||
             Object.hasOwn(payload, "forge_credentials")
           ) {
@@ -274,8 +314,8 @@ export const computerUpLayer = Layer.effect(
               requestId,
               request,
               "credentials_delivered",
-              "not_used",
-              "scoped forge credentials delivered; not used by this ACP delegation",
+              "incomplete",
+              "scoped forge credentials delivered but missing repository or branch",
             );
           }
           if (Option.isNone(agentProcess)) {
@@ -382,6 +422,9 @@ export const computerUpLayer = Layer.effect(
             roots: config.roots,
             curatedExecute: config.curatedExecute ?? [],
             env: environment,
+            ...(forgeCredentials !== undefined
+              ? { forgeCredentials, forgeOrigin: origin }
+              : {}),
             timeoutMs: numberField(
               payload,
               ["timeout_ms", "timeout"],

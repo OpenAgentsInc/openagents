@@ -6,6 +6,7 @@ import { StringDecoder } from "node:string_decoder";
 
 import type { AgentConfigEntry } from "./computer-config.js";
 import { defaultCuratedExecute, type Tier, withinRoot } from "./computer-policy.js";
+import { pushDelegated, type ForgeCredentials } from "./delegation-push.js";
 import { VERSION } from "./version.js";
 
 export type AgentCatalogSource = "local" | "configured" | "remote";
@@ -216,6 +217,8 @@ export interface AgentDelegationRequest {
   readonly onChunk: (text: string) => void;
   readonly onSession: (sessionId: string) => void;
   readonly onPermission: (allowed: boolean, detail: string) => void;
+  readonly forgeOrigin?: string;
+  readonly forgeCredentials?: ForgeCredentials;
 }
 
 export interface AgentDelegationOutcome {
@@ -322,6 +325,35 @@ export const startAgentDelegation = (
         ? { outcome: { outcome: "cancelled" } }
         : { outcome: { outcome: "selected", optionId: String(record(option).optionId ?? "") } };
     });
+    const forgeCredentials = request.forgeCredentials;
+    const forgeOrigin = request.forgeOrigin;
+    if (forgeCredentials !== undefined && forgeOrigin !== undefined) {
+      process.onRequest("git/push", async (rawParams: unknown) => {
+        const params = record(rawParams);
+        const refspec = firstString(params, ["refspec"]);
+        const remote = firstString(params, ["remote"]) ?? "origin";
+        if (refspec === undefined) {
+          return { ok: false, error: "delegated push requires a refspec" };
+        }
+        try {
+          await Effect.runPromise(
+            pushDelegated({
+              directory: request.cwd,
+              remote,
+              refspec,
+              repository: forgeCredentials.repository,
+              branch: forgeCredentials.branch,
+              credential: forgeCredentials.token,
+              origin: forgeOrigin,
+            }),
+          );
+          return { ok: true };
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          return { ok: false, error: scrub(message) };
+        }
+      });
+    }
     const initialized = record(
       await process.request("initialize", {
         protocolVersion: 1,

@@ -752,6 +752,8 @@ describe("Computer channel", () => {
         prompt: "delegate",
         cwd: "/workspace",
         assignment_credential: "forge-secret",
+        assignment_repository: "owner/repo",
+        assignment_branch: "feature-1",
         env: { FORGE_TOKEN: "forge-secret" },
       },
       {
@@ -772,8 +774,8 @@ describe("Computer channel", () => {
     expect(terminal).toContainEqual(
       expect.objectContaining({
         decision: "credentials_delivered",
-        outcome: "not_used",
-        detail: "scoped forge credentials delivered; not used by this ACP delegation",
+        outcome: "configured",
+        detail: "scoped forge credentials configured for delegated push",
       }),
     );
   });
