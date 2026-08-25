@@ -302,3 +302,59 @@ describe("what a session is told without asking", () => {
     expect(standingContext([], "/Users/x/work/something")).toBeUndefined();
   });
 });
+
+describe("finding the other OpenAgents repository", () => {
+  const workspace = () => {
+    const root = mkdtempSync(join(tmpdir(), "oa-work-"));
+    for (const name of ["openagents", "openagents.com"]) {
+      mkdirSync(join(root, name, ".git"), { recursive: true });
+    }
+    return root;
+  };
+
+  it("says where the sibling is, and how to reach it", () => {
+    // The gap this closes: a session was told the two repositories exist and
+    // not where the other one was. It guessed the path right, ran
+    // `git grep <pattern> ../openagents`, and git refused it for being outside
+    // the repository — then fell back to grepping the workspace root, which
+    // holds every read-only reference clone, and spent the tool's whole
+    // 120-second budget before being stopped.
+    const root = workspace();
+    const standing = standingContext([], join(root, "openagents.com")) ?? "";
+
+    expect(standing).toContain(join(root, "openagents"));
+    expect(standing).toContain("cd ");
+    expect(standing).toContain("outside the repository");
+  });
+
+  it("warns off the workspace root by name", () => {
+    const root = workspace();
+    const standing = standingContext([], join(root, "openagents")) ?? "";
+
+    expect(standing).toContain(join(root, "openagents.com"));
+    expect(standing).toContain(`Do not search \`${root}\``);
+  });
+
+  it("says nothing about a sibling that is not checked out", () => {
+    // Worse than no instruction: one telling the reader to `cd` somewhere that
+    // does not exist.
+    const root = mkdtempSync(join(tmpdir(), "oa-lone-"));
+    mkdirSync(join(root, "openagents.com", ".git"), { recursive: true });
+
+    const standing = standingContext([], join(root, "openagents.com")) ?? "";
+
+    expect(standing).toContain("Two repositories carry");
+    expect(standing).not.toContain("cd ");
+    expect(standing).not.toContain("Do not search");
+  });
+
+  it("says nothing about a sibling for a directory that is neither", () => {
+    const root = workspace();
+    mkdirSync(join(root, "openagents-notes"), { recursive: true });
+
+    const standing = standingContext([], join(root, "openagents-notes")) ?? "";
+
+    expect(standing).toContain("Two repositories carry");
+    expect(standing).not.toContain("cd ");
+  });
+});

@@ -18,9 +18,9 @@
  * server's. A tool description reaches both.
  */
 
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -325,7 +325,8 @@ export const standingContext = (
  */
 const openAgentsWorkspace = (cwd: string): string | undefined => {
   if (!/openagents/i.test(cwd)) return undefined;
-  return [
+
+  const lines = [
     `This session is working in ${cwd}, which is part of OpenAgents. Two repositories carry`,
     "most of the work, and they are easy to confuse:",
     "",
@@ -337,5 +338,48 @@ const openAgentsWorkspace = (cwd: string): string | undefined => {
     "",
     "They are separate repositories with separate issue lists, so name the one you mean when you",
     "read or write issues, and do not assume the current directory is the one being asked about.",
-  ].join("\n");
+  ];
+
+  // Where the other one is, when it is checked out beside this one.
+  //
+  // Naming the two repositories without saying where the other one lives sent
+  // a session looking for a CLI constant in the wrong tree: it guessed the
+  // sibling path correctly, ran `git grep <pattern> ../openagents` — which git
+  // refuses, because the path is outside the repository it is standing in —
+  // and then fell back to grepping the whole workspace root, which holds every
+  // read-only reference clone and took the tool's whole 120-second budget
+  // before being stopped.
+  const sibling = siblingCheckout(cwd);
+
+  if (sibling !== undefined) {
+    lines.push(
+      "",
+      `The other one is checked out at \`${sibling.path}\`. To search or read it, change`,
+      `directory first — \`cd ${sibling.path} && git grep …\`. \`git grep\` refuses a path`,
+      "outside the repository it is run in, and it is the one command most likely to be reached",
+      "for here.",
+      "",
+      `Do not search \`${dirname(sibling.path)}\` itself. It is the workspace root, and it holds`,
+      "large read-only clones of other people's repositories; a recursive grep there does not",
+      "finish. Search one repository at a time.",
+    );
+  }
+
+  return lines.join("\n");
+};
+
+/**
+ * The other OpenAgents repository, if it is checked out beside this one.
+ *
+ * Checked rather than assumed: a machine with only one of the two would
+ * otherwise be told to `cd` somewhere that does not exist, which is a worse
+ * instruction than none.
+ */
+const siblingCheckout = (cwd: string): { readonly name: string; readonly path: string } | undefined => {
+  const here = basename(cwd);
+  const other = here === "openagents.com" ? "openagents" : here === "openagents" ? "openagents.com" : undefined;
+  if (other === undefined) return undefined;
+
+  const path = join(dirname(cwd), other);
+  return existsSync(join(path, ".git")) ? { name: other, path } : undefined;
 };
