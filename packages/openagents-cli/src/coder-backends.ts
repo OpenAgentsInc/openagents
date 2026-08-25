@@ -32,17 +32,22 @@ export interface CoderBackend {
 }
 
 export const CODER_BACKENDS: readonly CoderBackend[] = [
-  { id: "ox-alpha", label: "Ox Alpha" },
   { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
+  { id: "ox-alpha", label: "Ox Alpha" },
+  { id: "gpt-5.6-luna", label: "Luna" },
 ];
 
 /**
  * The backend a coder session leads with when nobody names one.
  *
- * A *preference*, not an answer. A coder turn is a long one with tools in it,
- * and this build leads with the fast model for that — but only where the server
- * actually serves it. Where it does not, `chooseBackend` falls to the server's
- * own default rather than opening a thread on a name the catalog will refuse.
+ * Gemini 3.7 Flash: fast, a million tokens of context, and steady enough to
+ * hold a conversation. Delegated children run on Ox Alpha instead — it is
+ * built for sustained agentic coding, which is what a child is given, and
+ * where it stalls the cost is one child rather than the conversation.
+ *
+ * A *preference*, not an answer. Where a deployment does not serve it,
+ * `chooseBackend` falls to the server's own default rather than opening a
+ * thread on a name the catalog will refuse.
  */
 export const DEFAULT_CODER_BACKEND = "gemini-3.7-flash";
 

@@ -17,6 +17,20 @@ import {
 import { ApiTransport } from "./api-transport.js";
 import { BrowserLauncher } from "./browser-launcher.js";
 import type { ChildGrant } from "./coder-child-gateway.js";
+import { SelfHarness } from "./coder-self-harness.js";
+
+/**
+ * The grant, where the caller has already established there is one.
+ *
+ * `laneFor` is only reached for the self lane through `fleetFor`, which refuses
+ * that lane without a grant, so this cannot be nothing — but the type does not
+ * know that, and inventing an empty grant to satisfy it would send a child at
+ * the proxy with no authority.
+ */
+const nonNullGrant = (grant: ChildGrant | undefined): ChildGrant => {
+  if (grant === undefined) throw new Error("The self lane needs the children's grant.");
+  return grant;
+};
 import { startChildGateway } from "./coder-child-gateway.js";
 import { writeChildHarnessConfig } from "./coder-child-config.js";
 import type { DelegationOutcome } from "./coder-delegate.js";
@@ -29,6 +43,7 @@ import {
   firstAvailableChildModel,
   OpencodeHarness,
   resolveChildLane,
+  selfChildLane,
 } from "./coder-delegate.js";
 import { fleetPlainLines } from "./coder-fleet.js";
 import { runCoderPlain } from "./coder-plain.js";
@@ -1686,14 +1701,19 @@ async function buildDelegation(options: {
   // or silently fell back, and one that was asked exactly this said so rather
   // than guess.
   const laneFor = (choice: string) => {
-    const harness = /^devin(:.+)?$/.test(choice)
-      ? new DevinHarness(choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {})
-      : new OpencodeHarness({
-          model: choice,
-          ...(command === undefined ? {} : { command }),
-          ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
-          autoApprove: options.autoApprove,
-        });
+    const harness = selfChildLane(choice)
+      ? // The self lane needs the grant, and a session without one cannot take
+        // it. `fleetFor` refuses the lane rather than falling through to a
+        // different agent under the name the caller asked for.
+        new SelfHarness({ grant: nonNullGrant(options.grant) })
+      : /^devin(:.+)?$/.test(choice)
+        ? new DevinHarness(choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {})
+        : new OpencodeHarness({
+            model: choice,
+            ...(command === undefined ? {} : { command }),
+            ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
+            autoApprove: options.autoApprove,
+          });
 
     return {
       fleet: new DelegateFleet(registry, harness, {
@@ -1710,6 +1730,10 @@ async function buildDelegation(options: {
   const fleetFor = (choice: string) => {
     const lane = resolveChildLane(choice);
     if (lane === undefined) return undefined;
+    // The self lane spends the children's grant. Without one there is nothing
+    // to spend, and answering with a different agent under the name the caller
+    // asked for would be worse than saying no.
+    if (selfChildLane(lane) && options.grant === undefined) return undefined;
     const existing = lanes.get(lane);
     if (existing !== undefined) return existing;
     const built = laneFor(lane);
@@ -1742,6 +1766,31 @@ async function buildDelegation(options: {
   // and expires under a console that outlives it; the harness's own catalog
   // costs nothing and needs no credential from us. The grant stays as the
   // fallback for a machine whose harness lists none of them.
+  // Self first. A child run by this process is the same loop the parent runs,
+  // on the grant the server minted for children and pinned to Ox Alpha — no
+  // second agent to install, no second credential, and the model is the one the
+  // conversation asked for rather than whichever one that install happened to
+  // have. `opencode` is the fallback for a session with no grant to spend, and
+  // for a reader who names a lane.
+  if ((named === undefined || named.trim().length === 0) && options.grant !== undefined) {
+    const harness = new SelfHarness({ grant: options.grant });
+    const fleet = new DelegateFleet(registry, harness, {
+      maxConcurrent: Math.max(1, options.concurrency),
+      cwd: options.cwd,
+    });
+
+    return {
+      delegation: {
+        registry,
+        fleet,
+        label: `${harness.agent} (${childLaneName(harness.model)})`,
+        models: CHILD_MODELS,
+        fleetFor,
+      },
+      close: () => Promise.resolve(),
+    };
+  }
+
   const free =
     named === undefined || named.trim().length === 0
       ? await firstAvailableChildModel(command ?? "opencode")
@@ -2319,15 +2368,6 @@ const coderCommand = Command.make(
         );
       }
 
-      // A grant pins the model the proxy will use, and the thread route takes
-      // no model parameter, so a named backend cannot reach this turn. Saying
-      // nothing would leave a reader with a flag that appeared to work.
-      if (thread !== undefined && Option.isSome(model) && !wantsOllama && !wantsZen) {
-        session.notice(
-          `This thread's grant pins ${thread.model}. \`--model\` names a chat API ` +
-            "backend, which the inference proxy does not route to, so it had no effect.",
-        );
-      }
 
       // With --resume the positional argument named the thread, not a prompt.
       const oneShot = resume ? undefined : Option.getOrUndefined(prompt);

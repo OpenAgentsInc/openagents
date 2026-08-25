@@ -31,7 +31,7 @@ describe("coder backends", () => {
   it("publishes ids the chat API's own enum lists", () => {
     // These are the values `POST /api/v3/chat/turns` accepts as `model`, so a
     // change here without the matching server change is a refusal at runtime.
-    expect(backendIds()).toEqual(["ox-alpha", "gemini-3.7-flash"]);
+    expect(backendIds()).toEqual(["gemini-3.7-flash", "ox-alpha", "gpt-5.6-luna"]);
   });
 });
 
@@ -43,31 +43,29 @@ describe("choosing a backend from what the server serves", () => {
   });
 
   it("leads with the preferred backend where the server serves it", () => {
-    const chosen = chooseBackend([
-      model("gpt-5.6-luna", true, true),
-      model("gemini-3.7-flash", true),
-    ]);
+    const chosen = chooseBackend([model("ox-alpha", true, true), model("gemini-3.7-flash", true)]);
     expect(chosen?.id).toBe("gemini-3.7-flash");
   });
 
   it("falls to the server's own default when the preference is not served", () => {
     // The case that sent every session into a 422: no deployment served a model
     // by that id, and the client named it anyway.
-    const chosen = chooseBackend([model("gpt-5.6-luna", true, true), model("ox-alpha", false)]);
-    expect(chosen?.id).toBe("gpt-5.6-luna");
+    // Ox Alpha is what a session falls to when Gemini is not served here.
+    const chosen = chooseBackend([model("ox-alpha", true, true), model("gemini-3.7-flash", false)]);
+    expect(chosen?.id).toBe("ox-alpha");
   });
 
   it("falls past an unavailable default to something that can answer", () => {
-    const chosen = chooseBackend([model("gpt-5.6-luna", false, true), model("ox-alpha", true)]);
-    expect(chosen?.id).toBe("ox-alpha");
+    const chosen = chooseBackend([model("gpt-5.6-luna", false, true), model("gemini-x", true)]);
+    expect(chosen?.id).toBe("gemini-x");
   });
 
   it("honours an explicitly named model over the preference", () => {
     const chosen = chooseBackend(
-      [model("gpt-5.6-luna", true, true), model("gemini-3.7-flash", true)],
-      "gpt-5.6-luna",
+      [model("gpt-5.6-luna", true, true), model("ox-alpha", true)],
+      "ox-alpha",
     );
-    expect(chosen?.id).toBe("gpt-5.6-luna");
+    expect(chosen?.id).toBe("ox-alpha");
   });
 
   it("chooses nothing when no model has a configured credential", () => {

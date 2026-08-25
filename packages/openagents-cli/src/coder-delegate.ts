@@ -546,8 +546,23 @@ export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
  *
  * A slug still resolves to itself, so nothing that already worked stops.
  */
+/**
+ * The lane run by this process, on the account's own thread grant.
+ *
+ * Named rather than aliased to a harness slug, because it is not a model this
+ * or any harness offers — it is the parent's own loop, smaller, on the grant
+ * the server minted for children.
+ */
+export const SELF_CHILD_LANE = "openagents";
+
 export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
-  "ox-alpha": "opencode/x-preview-f-free",
+  // `ox-alpha` means the self-hosted lane now. It is the same model either
+  // way — the server routes the child's grant to OpenRouter's
+  // `stealth/ox-alpha` — and running it here costs no second agent, no second
+  // credential, and no second idea of what a coding agent is. The opencode
+  // route to the same model is still reachable, by its own slug.
+  "ox-alpha": SELF_CHILD_LANE,
+  [SELF_CHILD_LANE]: SELF_CHILD_LANE,
   gemini: "opencode/gemini-3.7-flash",
 };
 
@@ -559,7 +574,9 @@ export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
  * than from what it remembers.
  */
 export const CHILD_MODELS: ReadonlyArray<string> = [
-  ...Object.keys(CHILD_LANE_ALIASES),
+  // Deduplicated: `ox-alpha` and `openagents` are two names for one lane, and
+  // offering both in the enum would read as two choices.
+  ...new Set(Object.keys(CHILD_LANE_ALIASES)),
   ...FREE_CHILD_MODELS,
   "devin",
 ];
@@ -582,6 +599,9 @@ export const resolveChildLane = (name: string): string | undefined => {
   if (aliased !== undefined) return aliased;
   return FREE_CHILD_MODELS.includes(asked) ? asked : undefined;
 };
+
+/** Whether this resolved lane is the one this process runs itself. */
+export const selfChildLane = (lane: string): boolean => lane === SELF_CHILD_LANE;
 
 /**
  * The first preferred model the harness offers, or undefined when it lists none.

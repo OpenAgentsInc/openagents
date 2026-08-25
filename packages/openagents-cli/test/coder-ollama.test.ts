@@ -568,6 +568,10 @@ describe("which lane a session opens on", () => {
     expect(defaultBackendId()).toBe("gemini-3.7-flash");
     // And the list still mirrors the server's enum in its own order: a
     // preference is named, not expressed by reordering an agreement.
-    expect(CODER_BACKENDS.map((backend) => backend.id)).toEqual(["ox-alpha", "gemini-3.7-flash"]);
+    expect(CODER_BACKENDS.map((backend) => backend.id)).toEqual([
+      "gemini-3.7-flash",
+      "ox-alpha",
+      "gpt-5.6-luna",
+    ]);
   });
 });
