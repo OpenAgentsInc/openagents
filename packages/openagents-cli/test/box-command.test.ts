@@ -186,4 +186,161 @@ describe("openagents box CLI commands", () => {
     const human = written[0]!.document.human;
     expect(human.some((line) => line.includes("Stopped Box bx_test123"))).toBe(true);
   });
+
+  // The server nests the read one level down, under `output.output`. Reading
+  // the envelope's `output` as text made `box runs output` print an empty
+  // line against production while every record was durable server-side.
+  it("renders the nested run output envelope the server sends", async () => {
+    const { layer, written } = harness((req) => {
+      if (req.path === "/api/v1/user") {
+        return Effect.succeed({
+          status: 200,
+          body: { conversation_id: "conv-123" },
+        });
+      }
+      if (req.path === "/api/v1/conversations/conv-123/boxes/bx_test123/runs/run-9/output") {
+        return Effect.succeed({
+          status: 200,
+          body: {
+            run_id: "run-9",
+            output: {
+              output: "cloned openagents.com at 40dbd832\n",
+              offset: 0,
+              next_offset: 34,
+              output_base_offset: 0,
+              truncated: false,
+            },
+          },
+        });
+      }
+      return Effect.succeed({ status: 404, body: {} });
+    });
+
+    await Effect.runPromise(
+      runCliWith(["box", "runs", "output", "bx_test123", "run-9"]).pipe(Effect.provide(layer)),
+    );
+
+    expect(written.length).toBe(1);
+    const human = written[0]!.document.human;
+    expect(human.some((line) => line.includes("cloned openagents.com at 40dbd832"))).toBe(true);
+    expect(human.some((line) => line.includes("EARLIER OUTPUT DROPPED"))).toBe(false);
+    expect(written[0]!.document.value).toMatchObject({
+      run_id: "run-9",
+      next_offset: 34,
+      truncated: false,
+    });
+  });
+
+  it("reports output the box dropped before the requested offset", async () => {
+    const { layer, written } = harness((req) => {
+      if (req.path === "/api/v1/user") {
+        return Effect.succeed({
+          status: 200,
+          body: { conversation_id: "conv-123" },
+        });
+      }
+      if (
+        req.path === "/api/v1/conversations/conv-123/boxes/bx_test123/runs/run-9/output?offset=10"
+      ) {
+        return Effect.succeed({
+          status: 200,
+          body: {
+            run_id: "run-9",
+            output: {
+              output: "resumed\n",
+              offset: 10,
+              next_offset: 4108,
+              output_base_offset: 4100,
+              truncated: true,
+            },
+          },
+        });
+      }
+      return Effect.succeed({ status: 404, body: {} });
+    });
+
+    await Effect.runPromise(
+      runCliWith([
+        "box",
+        "runs",
+        "output",
+        "bx_test123",
+        "run-9",
+        "--offset",
+        "10",
+      ]).pipe(Effect.provide(layer)),
+    );
+
+    const human = written[0]!.document.human;
+    expect(human.some((line) => line.includes("EARLIER OUTPUT DROPPED"))).toBe(true);
+    expect(human.some((line) => line.includes("resumed"))).toBe(true);
+  });
+
+  // Kept so a deployment still answering the older flat shape keeps working
+  // while the fix rolls out.
+  it("still renders a flat run output body", async () => {
+    const { layer, written } = harness((req) => {
+      if (req.path === "/api/v1/user") {
+        return Effect.succeed({
+          status: 200,
+          body: { conversation_id: "conv-123" },
+        });
+      }
+      if (req.path === "/api/v1/conversations/conv-123/boxes/bx_test123/runs/run-9/output") {
+        return Effect.succeed({
+          status: 200,
+          body: { run_id: "run-9", output: "flat body output\n" },
+        });
+      }
+      return Effect.succeed({ status: 404, body: {} });
+    });
+
+    await Effect.runPromise(
+      runCliWith(["box", "runs", "output", "bx_test123", "run-9"]).pipe(Effect.provide(layer)),
+    );
+
+    const human = written[0]!.document.human;
+    expect(human.some((line) => line.includes("flat body output"))).toBe(true);
+  });
+
+  // Production's `GET /api/v1/user` answers the forge identity and no
+  // conversation, so the refusal has to point at the flag that works rather
+  // than at an account state the caller cannot change.
+  it("names --conversation when the deployment reports no conversation", async () => {
+    const { layer } = harness((req) => {
+      if (req.path === "/api/v1/user") {
+        return Effect.succeed({
+          status: 200,
+          body: { id: 1, login: "operator", namespaces: [] },
+        });
+      }
+      return Effect.succeed({ status: 404, body: {} });
+    });
+
+    // `Effect.flip` turns the refusal into the success value, so a run that
+    // wrongly succeeded rejects the promise and fails the test.
+    const failure = await Effect.runPromise(
+      runCliWith(["box", "list"]).pipe(Effect.provide(layer), Effect.flip),
+    );
+
+    expect(JSON.stringify(failure)).toContain("--conversation");
+  });
+
+  it("skips the conversation probe when --conversation is given", async () => {
+    const seen: Array<string> = [];
+    const { layer, written } = harness((req) => {
+      seen.push(req.path);
+      if (req.path === "/api/v1/conversations/conv-explicit/boxes") {
+        return Effect.succeed({ status: 200, body: { boxes: [] } });
+      }
+      return Effect.succeed({ status: 404, body: {} });
+    });
+
+    await Effect.runPromise(
+      runCliWith(["box", "list", "--conversation", "conv-explicit"]).pipe(Effect.provide(layer)),
+    );
+
+    expect(seen).toEqual(["/api/v1/conversations/conv-explicit/boxes"]);
+    expect(written.length).toBe(1);
+  });
 });

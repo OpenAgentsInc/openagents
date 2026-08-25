@@ -13,7 +13,7 @@ import { ApiTransport } from "./api-transport.js";
 import { API_VERSION_PATH } from "./constants.js";
 import { ApiError, type CliError } from "./errors.js";
 import type { AuthenticatedApi } from "./repository-client.js";
-import { asRecord, asRows, asText, makeTrackerRequest } from "./tracker-request.js";
+import { asNumber, asRecord, asRows, asText, makeTrackerRequest } from "./tracker-request.js";
 
 export interface BoxRecord {
   readonly box_id: string;
@@ -119,6 +119,15 @@ export interface BoxRunViewInput extends AuthenticatedApi {
   readonly runId: string;
 }
 
+export interface BoxRunOutput {
+  readonly run_id: string;
+  readonly output: string;
+  /** The offset to pass to the next read to resume where this one stopped. */
+  readonly next_offset: number;
+  /** True when the box dropped bytes before the requested offset. */
+  readonly truncated: boolean;
+}
+
 export interface BoxRunOutputInput extends AuthenticatedApi {
   readonly conversationId?: string;
   readonly boxId: string;
@@ -154,7 +163,7 @@ export interface BoxClientInterface {
   readonly startRun: (input: BoxRunCreateInput) => Effect.Effect<BoxRunRecord, CliError>;
   readonly listRuns: (input: BoxRunListInput) => Effect.Effect<ReadonlyArray<BoxRunRecord>, CliError>;
   readonly viewRun: (input: BoxRunViewInput) => Effect.Effect<BoxRunRecord, CliError>;
-  readonly runOutput: (input: BoxRunOutputInput) => Effect.Effect<{ run_id: string; output: string }, CliError>;
+  readonly runOutput: (input: BoxRunOutputInput) => Effect.Effect<BoxRunOutput, CliError>;
   readonly cancelRun: (input: BoxRunCancelInput) => Effect.Effect<BoxRunRecord, CliError>;
   readonly fanout: (input: BoxFanoutInput) => Effect.Effect<BoxFanoutPlan, CliError>;
   readonly viewFanout: (input: BoxFanoutViewInput) => Effect.Effect<BoxFanoutPlan, CliError>;
@@ -170,6 +179,14 @@ export const boxClientLayer = Layer.effect(
     const transport = yield* ApiTransport;
     const request = makeTrackerRequest(transport);
 
+    // No deployed endpoint resolves the account's conversation yet. `GET
+    // /api/v1/user` answers the forge identity and never carries a
+    // `conversation_id`, and it sits behind `forge:write` rather than the
+    // `box:control` scope a box token carries, so this probe fails twice over
+    // against production. The probe stays because a deployment that grows the
+    // field should start working without a client release, but the refusal
+    // now names the flag that actually gets the caller unblocked instead of
+    // claiming the account has no conversation.
     const resolveConversationId = Effect.fn("BoxClient.resolveConversationId")(function* (
       input: AuthenticatedApi,
     ) {
@@ -187,7 +204,9 @@ export const boxClientLayer = Layer.effect(
       return yield* new ApiError({
         operation: "resolve user conversation",
         status: response.status,
-        message: "Could not find an active conversation for this account.",
+        message:
+          "This deployment does not report a conversation for the account. " +
+          "Pass --conversation <conversation_id> to name the conversation to use.",
       });
     });
 
@@ -410,10 +429,19 @@ export const boxClientLayer = Layer.effect(
         path: `${API_VERSION_PATH}/conversations/${encodeURIComponent(convId)}/boxes/${encodeURIComponent(input.boxId)}/runs/${encodeURIComponent(input.runId)}/output${query}`,
         acceptedStatuses: [200],
       });
+      // The server nests the read under `output`: the envelope is
+      // `{"run_id": …, "output": {"output": …, "next_offset": …, "truncated": …}}`,
+      // so reading the envelope's `output` as text yielded an empty string and
+      // `box runs output` printed nothing. Read the nested record, and fall
+      // back to a bare string for any older deployment still answering flat.
       const res = asRecord(body);
+      const nested = asRecord(res["output"]);
+      const flat = asText(res["output"]);
       return {
         run_id: asText(res["run_id"]) ?? input.runId,
-        output: asText(res["output"]) ?? "",
+        output: flat ?? asText(nested["output"]) ?? "",
+        next_offset: asNumber(nested["next_offset"]) ?? input.offset ?? 0,
+        truncated: nested["truncated"] === true,
       };
     });
 

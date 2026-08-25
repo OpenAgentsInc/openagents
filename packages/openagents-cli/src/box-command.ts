@@ -385,7 +385,13 @@ export const makeBoxCommand = <R>(root: Effect.Effect<SharedFlags, never, R>) =>
         yield* output.write(
           {
             value: result,
-            human: [result.output],
+            human: [
+              // The box keeps a bounded log, so a read that starts before the
+              // retained window silently begins mid-stream. Say so rather than
+              // letting the gap read as the run's first line.
+              ...(result.truncated ? ["[EARLIER OUTPUT DROPPED BY THE BOX]"] : []),
+              result.output.trimEnd(),
+            ],
           },
           outputMode(flags.json),
         );
