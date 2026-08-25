@@ -143,7 +143,8 @@ machine-readable list; also the fallback if a future Harbor version
 changes `-i` semantics):
 
 ```sh
-grep -v '^#' bench/suites/tb2-cross-section.txt | while read -r task; do
+python3 -c 'import json;[print(t["id"]) for t in json.load(open("bench/suites/tb2-cross-section.suite.json"))["tasks"]]' |
+  while read -r task; do
   [ -z "$task" ] && continue
   PYTHONPATH=bench OPENAGENTS_TOKEN=... harbor run \
     --dataset terminal-bench@2.0 \

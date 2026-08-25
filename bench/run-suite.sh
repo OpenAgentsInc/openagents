@@ -63,7 +63,7 @@ Examples:
   bench/run-suite.sh bench/suites/tb2-cross-section.suite.json \
     --model openai/gpt-5.6-luna --lane proxy --n-concurrent 2
 
-  bench/run-suite.sh bench/suites/local-llm.txt \
+  bench/run-suite.sh bench/suites/tb2-quick.suite.json \
     --model ollama/qwen3.8:27b-mtp-q8_0 --lane local --dry-run
 EOF
 }
