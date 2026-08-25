@@ -1,0 +1,135 @@
+{
+  "manifest_version": 1,
+  "name": "code_search",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Search the code in this repository or workspace for a literal string or a regex pattern — grep for where a function, symbol, error message, config key, or route is handled, defined, used, or mentioned, and answer questions like `where is X handled?`. Matches are grouped per file with line numbers and bounded context lines. Traversal honors gitignore through the same documented subset as repo_tree (no negation; `!` lines are counted), and `.git` is always skipped. Regex support is a documented subset: `.`, character classes with ranges and negation, `\\d`/`\\w`/`\\s`, `*`/`+`/`?` on single atoms, `^`/`$` line anchors, and `|` alternation; groups and counted repetition are refused with a reason. Read-only, deterministic, and bounded: ceilings on files scanned, matches returned per file and in total, and context lines, with truncation reported honestly — files considered, scanned, and unscanned, matches dropped, and binary, oversized, and unreadable files counted, never hidden.",
+  "artifact": {
+    "path": "code_search.wasm",
+    "digest": "sha256:c562bca39422833cfe39f0f46eac882d1849b2f6db8a4f630c7bde39b3ffcf42"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "What to search for. Required and must be non-empty. A literal substring unless `regex` is true."
+        },
+        "regex": {
+          "type": "boolean",
+          "description": "Treat `pattern` as a regex in the documented subset. Literal when omitted or false. A pattern outside the subset is refused with a reason, never silently misread."
+        },
+        "path": {
+          "type": "string",
+          "description": "Subtree to search, relative to the workspace root. The root when omitted. Ancestor gitignores still apply."
+        },
+        "case_sensitive": {
+          "type": "boolean",
+          "description": "Match case exactly. Default true; false folds ASCII case on both sides."
+        },
+        "max_files": {
+          "type": "integer",
+          "description": "Most files whose bytes are searched. Default 300, capped at 2000."
+        },
+        "max_matches": {
+          "type": "integer",
+          "description": "Most matches returned across all files. Default 20, capped at 100."
+        },
+        "max_matches_per_file": {
+          "type": "integer",
+          "description": "Most matches returned per file. Default 5, capped at 20."
+        },
+        "context_lines": {
+          "type": "integer",
+          "description": "Context lines kept on each side of a match. Default 2, capped at 5."
+        }
+      },
+      "required": ["pattern"]
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "description": "Matching files in walk order, each with its matches grouped.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "matches": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "line": { "type": "integer", "description": "1-based line number." },
+                    "text": { "type": "string" },
+                    "before": { "type": "array", "items": { "type": "string" } },
+                    "after": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              },
+              "matches_total": {
+                "type": "integer",
+                "description": "Every matching line in the file, counted even when the match ceilings returned fewer."
+              }
+            }
+          }
+        },
+        "files_considered": {
+          "type": "integer",
+          "description": "Candidate files the walk produced (gitignored files excluded)."
+        },
+        "files_scanned": {
+          "type": "integer",
+          "description": "Files whose bytes were searched."
+        },
+        "files_unscanned": {
+          "type": "integer",
+          "description": "Considered files never searched because the file or match budget stopped the scan first."
+        },
+        "files_matched": { "type": "integer" },
+        "matches_returned": { "type": "integer" },
+        "matches_dropped": {
+          "type": "integer",
+          "description": "Matching lines found in scanned files but dropped by the per-file or total match ceiling."
+        },
+        "skipped_gitignored": {
+          "type": "integer",
+          "description": "Entries the gitignore rules dropped; a skipped directory counts once and is never walked."
+        },
+        "ignored_negations": {
+          "type": "integer",
+          "description": "`!` gitignore lines the subset ignored rather than honored."
+        },
+        "skipped_binary": {
+          "type": "integer",
+          "description": "Files skipped because a NUL byte marked them binary."
+        },
+        "skipped_oversized": {
+          "type": "integer",
+          "description": "Files past the per-file byte bound, never read."
+        },
+        "skipped_unreadable": {
+          "type": "integer",
+          "description": "Files the host refused to read for any reason but size."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True exactly when something was dropped: files unscanned, matches dropped, or the walk cut short."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [{ "path": "${workspace}", "readonly": true }],
+    "hosts": [],
+    "timeout_ms": 10000,
+    "memory_max_mib": 128
+  }
+}

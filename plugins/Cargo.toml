@@ -25,6 +25,7 @@ members = [
   "repo-map",
   "git-facts",
   "session-search",
+  "code-search",
   "patch-check",
   "knowledge-base",
 ]
