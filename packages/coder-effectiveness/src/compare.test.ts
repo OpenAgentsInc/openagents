@@ -191,6 +191,21 @@ describe("what a comparison will not fold together", () => {
     expect(comparison.isolatedGroups).toBe(1);
   });
 
+  test("does not call a group isolated when it is the trend printed above", () => {
+    // Two runs, one lane: no lane comparison is possible and none is wanted.
+    // Counting the group as isolated told a reader that the trend they had
+    // just read had been left out of the report they were reading.
+    const first = row("priced-lane", "local", "2026-08-25T10:00:00.000Z");
+    const second = row("regressed-lane", "local", "2026-08-25T11:00:00.000Z");
+
+    const comparison = compareRuns([first, second]);
+
+    expect(comparison.trends).toHaveLength(1);
+    expect(comparison.laneComparisons).toEqual([]);
+    expect(comparison.isolatedGroups).toBe(0);
+    expect(renderComparison(comparison)).not.toContain("left out");
+  });
+
   test("flags a lane comparison whose CLI version also varies", () => {
     const proxy = row("priced-lane", "proxy", "2026-08-25T10:00:00.000Z");
     const local: BenchResultRow = {

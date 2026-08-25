@@ -107,15 +107,23 @@ export const compareRuns = (
 
   for (const group of groups) {
     const latestByLane = latestPerLane(group);
-    if (latestByLane.length < 2) {
-      isolatedGroups += 1;
-    } else {
+    if (latestByLane.length >= 2) {
       laneComparisons.push(laneComparisonOf(latestByLane, options.baselineLane));
     }
 
+    let trendsFromGroup = 0;
     for (const laneRows of groupBy(group, (row) => row.lane)) {
       if (laneRows.length < 2) continue;
       trends.push(trendOf(laneRows));
+      trendsFromGroup += 1;
+    }
+
+    // Isolated means this group produced nothing — no lane comparison AND no
+    // trend. A group with several runs on a single lane is not isolated: it is
+    // the trend printed above, and counting it here made the report tell a
+    // reader that the thing they had just read had been left out.
+    if (latestByLane.length < 2 && trendsFromGroup === 0) {
+      isolatedGroups += 1;
     }
   }
 
