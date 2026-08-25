@@ -51,12 +51,6 @@ interface Call {
   readonly args: string;
 }
 
-/**
- * Rounds of tool calls one turn may take before it must answer. A backstop
- * against a loop, not a budget; the reader can stop a turn at any time.
- */
-const MAX_TOOL_ROUNDS = 24;
-
 export class ResponsesReplySource implements ReplySource {
   private readonly items: Item[] = [];
   private tools: ReadonlyArray<CoderTool> = [];
@@ -89,7 +83,7 @@ export class ResponsesReplySource implements ReplySource {
     this.items.push({ role: "user", content: prompt });
     let calls = 0;
 
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    for (;;) {
       calls += 1;
       const { text, requested } = yield* this.once(signal);
       if (text !== "") this.items.push({ role: "assistant", content: text });
@@ -121,11 +115,6 @@ export class ResponsesReplySource implements ReplySource {
       }
     }
 
-    yield {
-      type: "text",
-      value: `\n\nStopped after ${String(MAX_TOOL_ROUNDS)} rounds of tool calls without an answer.`,
-    };
-    yield { type: "usage", calls };
   }
 
   /**
