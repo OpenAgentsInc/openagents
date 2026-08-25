@@ -233,12 +233,28 @@ which tier of evidence it verified.
 
 ## 6. Transport
 
-Distribution rides the engram sync seam and nothing else. The remaining
-project-15 piece — the real Nostr transport behind `EngramTransport`, built
-on `nostr-effect` — is the same transport system memories use. No second
-channel, no separate poll, no HTTP side door: a system memory is an
-`EngramEvent`, `publish` enqueues it, `drain` delivers it, `fetch` retrieves
-it by filter.
+**Superseded, 2026-08-25, by the owner's decision.** Distribution does not
+ride a Nostr relay. The project-15 Nostr transport is dropped from the
+roadmap, and the centralized cloud path carries system memories instead: the
+openagents.com Phoenix/Postgres server that already owns accounts, threads,
+thread events, and grants, with the CLI, web, and API as its clients. The
+same decision governs user and learned memories (#51), and the build issue
+that would have delivered relay distribution (#63) is closed as not planned.
+
+What survives the substitution is the rule this section exists to state:
+**one channel, whatever it is.** No second channel, no separate poll, no
+side door. Read the rest of this section with the server sync in the place
+the relay held — the sections it constrains (admission, privacy tiers,
+recall caps, the knowledge-base line) are transport-agnostic and stand as
+written. The paragraphs below are kept as the superseded design rather than
+deleted, because the decisions on top of the seam still describe what the
+cloud path has to provide.
+
+The superseded design read: distribution rides the engram sync seam and
+nothing else; the real Nostr transport behind `EngramTransport`, built on
+`nostr-effect`, is the same transport system memories use; a system memory
+is an `EngramEvent`, `publish` enqueues it, `drain` delivers it, `fetch`
+retrieves it by filter.
 
 Decisions on top of that seam:
 
