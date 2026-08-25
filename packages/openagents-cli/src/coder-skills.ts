@@ -31,19 +31,14 @@ import { fileURLToPath } from "node:url";
  * ordinary skills otherwise: they appear in the catalog, and `/skills` switches
  * them off like any other.
  */
-const SKILL_DIRECTORIES = (
-  cwd: string,
-  home: string,
-  builtIn: string,
-): ReadonlyArray<string> => [
+const SKILL_DIRECTORIES = (cwd: string, home: string, builtIn: string): ReadonlyArray<string> => [
   join(cwd, ".agents", "skills"),
   join(home, ".agents", "skills"),
   builtIn,
 ];
 
 /** The skills packaged with this CLI, beside the compiled output. */
-const builtInSkills = (): string =>
-  join(dirname(fileURLToPath(import.meta.url)), "..", "skills");
+const builtInSkills = (): string => join(dirname(fileURLToPath(import.meta.url)), "..", "skills");
 
 /** How much of one skill body is handed back. */
 const BODY_LIMIT = 32_000;
@@ -331,7 +326,7 @@ const openAgentsWorkspace = (cwd: string): string | undefined => {
     "most of the work, and they are easy to confuse:",
     "",
     "- **`openagents.com`** is the web application: a Phoenix and Elixir codebase serving the",
-    "  site, the forge, and the `/api/v3` API. Its issues are the site's issues.",
+    "  site, the forge, and the `/api/v1` API. Its issues are the site's issues.",
     "- **`openagents`** is the monorepo: the `openagents` CLI lives in",
     "  `packages/openagents-cli`, alongside the other packages. Its issues are the CLI's and the",
     "  monorepo's.",
@@ -375,9 +370,12 @@ const openAgentsWorkspace = (cwd: string): string | undefined => {
  * otherwise be told to `cd` somewhere that does not exist, which is a worse
  * instruction than none.
  */
-const siblingCheckout = (cwd: string): { readonly name: string; readonly path: string } | undefined => {
+const siblingCheckout = (
+  cwd: string,
+): { readonly name: string; readonly path: string } | undefined => {
   const here = basename(cwd);
-  const other = here === "openagents.com" ? "openagents" : here === "openagents" ? "openagents.com" : undefined;
+  const other =
+    here === "openagents.com" ? "openagents" : here === "openagents" ? "openagents.com" : undefined;
   if (other === undefined) return undefined;
 
   const path = join(dirname(cwd), other);

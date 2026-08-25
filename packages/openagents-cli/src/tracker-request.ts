@@ -1,7 +1,7 @@
 /**
  * The request seam the issue and project clients share.
  *
- * Both talk to the same `/api/v3` routes behind the same unified error
+ * Both talk to the same `/api/v1` routes behind the same unified error
  * envelope from issue #82, so the transport call, the accepted-status check,
  * and the failure translation live once rather than twice.
  */
@@ -9,6 +9,7 @@
 import { Effect } from "effect";
 
 import type { ApiTransportInterface, HttpMethod } from "./api-transport.js";
+import { API_VERSION_PATH } from "./constants.js";
 import { ApiError } from "./errors.js";
 import type { AuthenticatedApi } from "./repository-client.js";
 
@@ -100,4 +101,4 @@ export type TrackerRequest = ReturnType<typeof makeTrackerRequest>;
 
 /** The path prefix every repository-scoped tracker route shares. */
 export const repositoryPath = (owner: string, repo: string): string =>
-  `/api/v3/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  `${API_VERSION_PATH}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;

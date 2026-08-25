@@ -8,11 +8,11 @@ auto: true
 
 ## Which lane
 
-| The work | Use |
-| --- | --- |
-| One command, one answer | `shell` |
-| The same thing to N independent parts | `delegate` |
-| A backlog of issues | the method below |
+| The work                              | Use              |
+| ------------------------------------- | ---------------- |
+| One command, one answer               | `shell`          |
+| The same thing to N independent parts | `delegate`       |
+| A backlog of issues                   | the method below |
 
 Run a single command yourself. Starting an agent to run `pwd` costs minutes and
 real money and hands back an answer nobody watched being produced.

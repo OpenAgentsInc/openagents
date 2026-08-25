@@ -1,7 +1,7 @@
 /**
  * The backends `openagents coder` can send a turn to.
  *
- * The server owns the real list and publishes it at `GET /api/v3/models`, and a
+ * The server owns the real list and publishes it at `GET /api/v1/models`, and a
  * session that can reach the server reads it from there — see
  * `fetchServedCatalog` below. The list in this file is the fallback for a
  * session that cannot: `--offline`, or no stored credential.
@@ -18,11 +18,13 @@
  * so this list is what the flag validates against and what the status line
  * names, nothing more.
  *
- * The `id` is what `POST /api/v3/threads` takes as `model`. The `label` is what
+ * The `id` is what `POST /api/v1/threads` takes as `model`. The `label` is what
  * a person reads in the status bar, where the whole line is competing for a
  * narrow terminal; a model the server serves and this file has never heard of
  * is labelled with its own id.
  */
+
+import { API_VERSION_PATH } from "./constants.js";
 
 export interface CoderBackend {
   /** The value the chat API takes as `model`. Matches the server's enum. */
@@ -59,7 +61,7 @@ export const defaultBackendId = (): string =>
 /** Every id, for a flag's error message and its accepted values. */
 export const backendIds = (): readonly string[] => CODER_BACKENDS.map((backend) => backend.id);
 
-/** One model as the server publishes it at `GET /api/v3/models`. */
+/** One model as the server publishes it at `GET /api/v1/models`. */
 export interface ServedModel {
   readonly id: string;
   /** Served here *and* its provider credential configured. */
@@ -81,7 +83,7 @@ export const fetchServedCatalog = async (
   signal?: AbortSignal,
 ): Promise<readonly ServedModel[] | undefined> => {
   try {
-    const response = await fetch(new URL("/api/v3/models", api.origin), {
+    const response = await fetch(new URL(`${API_VERSION_PATH}/models`, api.origin), {
       headers: { authorization: `Bearer ${api.token}`, accept: "application/json" },
       signal: signal ?? AbortSignal.timeout(5_000),
     });

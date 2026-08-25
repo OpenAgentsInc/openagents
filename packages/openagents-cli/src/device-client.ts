@@ -2,6 +2,7 @@ import { Duration, Effect, Layer, Option, Redacted, Schedule, Schema } from "eff
 import * as Context from "effect/Context";
 
 import { ApiTransport } from "./api-transport.js";
+import { API_VERSION_PATH } from "./constants.js";
 import { ApiError, ContractError, type CliError } from "./errors.js";
 
 export const DeviceAuthorization = Schema.Struct({
@@ -55,7 +56,7 @@ export const deviceClientLayer = Layer.effect(
       const response = yield* transport.request({
         origin,
         method: "POST",
-        path: "/api/v3/device/authorizations",
+        path: `${API_VERSION_PATH}/device/authorizations`,
         // The server decides the default scope set. Asking for none keeps that
         // decision on the server; asking names exactly what the approval page
         // must show the person approving it.
@@ -89,7 +90,7 @@ export const deviceClientLayer = Layer.effect(
         .request({
           origin,
           method: "POST",
-          path: "/api/v3/device/authorizations/token",
+          path: `${API_VERSION_PATH}/device/authorizations/token`,
           body: { device_code: authorization.device_code },
         })
         .pipe(

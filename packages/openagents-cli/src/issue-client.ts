@@ -2,7 +2,7 @@
  * The issue API client.
  *
  * The routes it calls answer with the GitHub-compatible shapes this
- * repository publishes at `GET /api/v3`, so the client keeps the server's
+ * repository publishes at `GET /api/v1`, so the client keeps the server's
  * bodies intact and adds only what a terminal caller cannot do for itself:
  * paging a list that has no `per_page` parameter, and reporting a rejected
  * write by the field the server named.

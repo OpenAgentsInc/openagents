@@ -71,7 +71,7 @@ describe("ThreadTranscriptWriter", () => {
     expect(wire.calls).toHaveLength(1);
     const call = wire.calls[0];
     expect(call?.method).toBe("POST");
-    expect(call?.url).toBe(`${ORIGIN}/api/v3/threads/${THREAD_ID}/events`);
+    expect(call?.url).toBe(`${ORIGIN}/api/v1/threads/${THREAD_ID}/events`);
     expect(call?.authorization).toBe(`Bearer ${TOKEN}`);
     expect(call?.body).toEqual({
       event_type: "turn.user",

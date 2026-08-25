@@ -740,10 +740,7 @@ const loginResumeFlag = Flag.boolean("resume").pipe(
  * and a hint that omits it sends the reader around a loop that never signs
  * them in.
  */
-const loginCommandFor = (endpoint: {
-  readonly origin: string;
-  readonly profile: string;
-}): string =>
+const loginCommandFor = (endpoint: { readonly origin: string; readonly profile: string }): string =>
   endpoint.profile === "production"
     ? "openagents auth login"
     : endpoint.profile === "custom"
@@ -1537,7 +1534,7 @@ const coderReasoningFlag = Flag.choice("reasoning", [
 );
 // `--model` can name an `ollama:<model>` local model or a chat API backend.
 // For a chat API backend a thread's grant still pins its own model and
-// `POST /api/v3/threads` publishes no model parameter, so naming one cannot
+// `POST /api/v1/threads` publishes no model parameter, so naming one cannot
 // change which model answers. For `ollama:<model>` the local Ollama server is
 // used directly and the named model is the one that runs.
 const coderModelFlag = Flag.string("model").pipe(
@@ -1965,7 +1962,9 @@ const coderCommand = Command.make(
       // coder without asking for one.
       const localModel =
         local && named === undefined && !offline && !resume
-          ? yield* Effect.promise(() => discoverOllamaModel(process.env["OLLAMA_HOST"] || undefined))
+          ? yield* Effect.promise(() =>
+              discoverOllamaModel(process.env["OLLAMA_HOST"] || undefined),
+            )
           : undefined;
 
       if (local && named === undefined && localModel === undefined && !offline && !resume) {
@@ -1980,7 +1979,8 @@ const coderCommand = Command.make(
       // opencode already holds here. It is how a session runs on Ox Alpha,
       // which is free there and which no deployment serves.
       const wantsZen = named !== undefined && /^opencode:/.test(named);
-      const zenAsked = wantsZen && named !== undefined ? named.slice("opencode:".length) : undefined;
+      const zenAsked =
+        wantsZen && named !== undefined ? named.slice("opencode:".length) : undefined;
 
       const wantsOllama = named === undefined ? localModel !== undefined : isOllamaModelFlag(named);
       const zenKey = wantsZen ? zenCredential() : undefined;
@@ -2260,7 +2260,7 @@ const coderCommand = Command.make(
       if (resumed !== undefined) session.restore(resumed.entries);
 
       // The thread lane writes its transcript to the server as the turn loop
-      // runs — `POST /api/v3/threads/{id}/events`, on the account token that
+      // runs — `POST /api/v1/threads/{id}/events`, on the account token that
       // opened the thread. The server copy is the only durable copy; the
       // offline, Ollama, and stand-in lanes keep no record and attach nothing.
       // A failed post never reaches the turn loop: the writer queues, retries,
@@ -2376,7 +2376,6 @@ const coderCommand = Command.make(
         );
       }
 
-
       // With --resume the positional argument named the thread, not a prompt.
       const oneShot = resume ? undefined : Option.getOrUndefined(prompt);
       const interactive = terminal.interactive && !plain && !flags.json && oneShot === undefined;
@@ -2407,8 +2406,13 @@ const coderCommand = Command.make(
           // Flush before revoking: revoking makes the thread terminal, and a
           // terminal thread refuses the events that are still queued.
           if (transcript !== undefined) await transcript.close();
-          if (thread !== undefined) await thread.revoke();
-          if (childThread?.kind === "opened") await childThread.thread.revoke();
+          // The thread outlives the session. It used to be revoked here, which
+          // made `--resume` impossible by construction — every past session's
+          // thread was already terminal — and put "This thread was revoked" in
+          // front of anything that touched one again: a delegated child still
+          // running, a second window, a resumed session. A thread is durable;
+          // ending a session is not a reason to destroy it. `DELETE
+          // /threads/{id}` is still there for a reader who means it.
           if (setup !== undefined) await setup.close();
         }
       });
@@ -2600,7 +2604,7 @@ const delegateCommand = Command.make(
           // The thread's slot goes back even on the failure path: an account
           // holds eight, and a script that delegates in a loop would otherwise
           // be refused on its ninth run.
-          if (thread !== undefined) await thread.revoke();
+          // Left open, for the same reason as above.
         }
       });
 

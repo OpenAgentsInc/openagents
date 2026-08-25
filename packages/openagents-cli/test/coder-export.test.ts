@@ -181,9 +181,7 @@ describe("exporting a conversation as ATIF", () => {
       entry({ role: "you", text: "a real question" }),
     ]);
 
-    expect(document["steps"]).toEqual([
-      expect.objectContaining({ message: "a real question" }),
-    ]);
+    expect(document["steps"]).toEqual([expect.objectContaining({ message: "a real question" })]);
   });
 
   it("leaves out the empty entry the interface opens for the caret", () => {
@@ -194,7 +192,6 @@ describe("exporting a conversation as ATIF", () => {
 
     expect(document["steps"]).toHaveLength(1);
   });
-
 
   it("records what a turn cost, and how many calls that was", () => {
     const { document } = write([
@@ -225,7 +222,6 @@ describe("exporting a conversation as ATIF", () => {
     // A total of 0 on a session that never measured would be a measurement.
     expect(document["final_metrics"]).toEqual({ total_steps: 1 });
   });
-
 
   it("takes the clipboard only when asked to", () => {
     const directory = mkdtempSync(join(tmpdir(), "coder-export-"));

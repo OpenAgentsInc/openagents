@@ -87,10 +87,7 @@ describe("running a command", () => {
     const directory = mkdtempSync(join(tmpdir(), "coder-shell-"));
     writeFileSync(join(directory, "marker.txt"), "here");
 
-    const output = await shellTool(directory).run(
-      { command: "ls" },
-      new AbortController().signal,
-    );
+    const output = await shellTool(directory).run({ command: "ls" }, new AbortController().signal);
 
     expect(output).toContain("marker.txt");
   });

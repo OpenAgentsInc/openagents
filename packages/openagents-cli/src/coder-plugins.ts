@@ -173,7 +173,10 @@ export function loadPluginFromManifest(
         return refuse("mount_invalid", `mount \`${mount.path}\` is not a directory`);
       }
     } catch {
-      return refuse("mount_invalid", `mount \`${mount.path}\` does not resolve to a readable directory`);
+      return refuse(
+        "mount_invalid",
+        `mount \`${mount.path}\` does not resolve to a readable directory`,
+      );
     }
     mounts.push(root);
   }
@@ -202,9 +205,7 @@ export function loadPluginFromManifest(
 
   // Every import must be granted by a declared capability. Mounts grant
   // exactly two: the read_file and list_dir capability imports.
-  const granted = new Set(
-    mounts.length > 0 ? ["openagents.read_file", "openagents.list_dir"] : [],
-  );
+  const granted = new Set(mounts.length > 0 ? ["openagents.read_file", "openagents.list_dir"] : []);
   const undeclared = shape.imports.filter((name) => !granted.has(name));
   if (undeclared.length > 0) {
     const grantHint =

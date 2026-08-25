@@ -454,7 +454,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return out;
     };
 
-    const renderEntry = (entry: CoderEntry, width: number, tasks: ReadonlyArray<CoderTask>): ReadonlyArray<string> => {
+    const renderEntry = (
+      entry: CoderEntry,
+      width: number,
+      tasks: ReadonlyArray<CoderTask>,
+    ): ReadonlyArray<string> => {
       const color =
         entry.role === "you"
           ? CYAN
@@ -481,7 +485,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       });
     };
 
-    const entryRows = (entry: CoderEntry, width: number, tasks: ReadonlyArray<CoderTask>): ReadonlyArray<string> => {
+    const entryRows = (
+      entry: CoderEntry,
+      width: number,
+      tasks: ReadonlyArray<CoderTask>,
+    ): ReadonlyArray<string> => {
       if (entry.role === "tool" && entry.tool !== undefined) {
         return toolRows(entry.tool, width, expanded.has(entry.tool.callId), tasks);
       }
@@ -504,7 +512,12 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       return wrapStyled(entry.text, width, entry.role === "notice" ? DIM : "");
     };
 
-    const toolRows = (tool: CoderToolCall, width: number, open: boolean, tasks: ReadonlyArray<CoderTask>): ReadonlyArray<string> => {
+    const toolRows = (
+      tool: CoderToolCall,
+      width: number,
+      open: boolean,
+      tasks: ReadonlyArray<CoderTask>,
+    ): ReadonlyArray<string> => {
       const mark =
         tool.status === "running"
           ? `${YELLOW}◐${RESET}`
@@ -519,7 +532,8 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         Math.max(8, width - tool.name.length - 4),
       );
       const rows = [
-        `${mark} ${BOLD}${tool.name}${RESET}` + (summary.length === 0 ? "" : ` ${DIM}${summary}${RESET}`),
+        `${mark} ${BOLD}${tool.name}${RESET}` +
+          (summary.length === 0 ? "" : ` ${DIM}${summary}${RESET}`),
       ];
 
       if (tool.name === "delegate" && tool.status === "running") {
@@ -776,7 +790,9 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           case "tool":
             rows.push(
               `${YELLOW}▸${RESET} ${BOLD}${entry.name}${RESET}` +
-                (entry.target === undefined ? "" : ` ${DIM}${truncate(entry.target, body - 6)}${RESET}`),
+                (entry.target === undefined
+                  ? ""
+                  : ` ${DIM}${truncate(entry.target, body - 6)}${RESET}`),
             );
             break;
 
@@ -978,11 +994,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
         return;
       }
 
-      paint(
-        rows,
-        transcriptHeight + 3,
-        4 + [...visible].length + 1,
-      );
+      paint(rows, transcriptHeight + 3, 4 + [...visible].length + 1);
     };
 
     /**
@@ -1334,7 +1346,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
           const columnOpen =
             children.length > 0 && (stdout.columns ?? 80) >= SIDEBAR_MINIMUM_TERMINAL;
 
-          if (focus === "composer" && columnOpen && (sequence === "\x1b[C" || sequence === "\x1bOC")) {
+          if (
+            focus === "composer" &&
+            columnOpen &&
+            (sequence === "\x1b[C" || sequence === "\x1bOC")
+          ) {
             focus = "sidebar";
             sidebarRow = Math.min(sidebarRow, children.length - 1);
             render();

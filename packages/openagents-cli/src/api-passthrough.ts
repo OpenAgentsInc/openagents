@@ -1,13 +1,14 @@
 import { Effect, Option } from "effect";
 
 import type { HttpMethod } from "./api-transport.js";
+import { API_BASE_PATH } from "./constants.js";
 import { InputError } from "./errors.js";
 
 /**
  * Every OpenAgents API route lives under this prefix. A passthrough path
  * without a leading slash resolves under it.
  */
-export const API_BASE_PATH = "/api/v3/";
+export { API_BASE_PATH };
 
 /**
  * The methods `openagents api` accepts. The transport supports more, but a
@@ -30,8 +31,8 @@ const leavesOrigin = (candidate: string, origin: string) =>
 /**
  * Turns a caller-supplied path into an origin-relative request path.
  *
- * A path without a leading slash resolves under `/api/v3/`, so
- * `repos/OWNER/REPO/issues` and `/api/v3/repos/OWNER/REPO/issues` name the same
+ * A path without a leading slash resolves under `/api/v1/`, so
+ * `repos/OWNER/REPO/issues` and `/api/v1/repos/OWNER/REPO/issues` name the same
  * route. An absolute path must stay under `/api/`, because this command talks
  * to the API rather than to the website. A complete URL is accepted only when
  * it matches the configured origin.

@@ -81,7 +81,7 @@ describe("openagents api", () => {
     expect(harnessed.requests).toHaveLength(1);
     expect(harnessed.requests[0]?.origin).toBe("http://localhost:4000");
     expect(harnessed.requests[0]?.method).toBe("GET");
-    expect(harnessed.requests[0]?.path).toBe("/api/v3/repos/octavia/project/issues");
+    expect(harnessed.requests[0]?.path).toBe("/api/v1/repos/octavia/project/issues");
     expect(Redacted.value(harnessed.requests[0]?.token ?? Redacted.make(""))).toBe(
       "oa_pat_fixture",
     );
@@ -113,16 +113,16 @@ describe("openagents api", () => {
   it("accepts an absolute API path and a relative path as the same route", async () => {
     const harnessed = harness({ token: "oa_pat_fixture" });
     await run(harnessed, ["api", "repos/octavia/project/issues"]);
-    await run(harnessed, ["api", "/api/v3/repos/octavia/project/issues"]);
+    await run(harnessed, ["api", "/api/v1/repos/octavia/project/issues"]);
     expect(harnessed.requests.map((request) => request.path)).toEqual([
-      "/api/v3/repos/octavia/project/issues",
-      "/api/v3/repos/octavia/project/issues",
+      "/api/v1/repos/octavia/project/issues",
+      "/api/v1/repos/octavia/project/issues",
     ]);
   });
 
   it("refuses a path that leaves the configured origin", async () => {
     const harnessed = harness({ token: "oa_pat_fixture" });
-    const failure = await failureOf(harnessed, ["api", "https://openagents.com/api/v3/user"]);
+    const failure = await failureOf(harnessed, ["api", "https://openagents.com/api/v1/user"]);
     expect(failure._tag).toBe("OpenAgentsCli.InputError");
     expect(failure.message).toContain("leaves the configured API origin");
     expect(harnessed.requests).toHaveLength(0);
@@ -232,7 +232,7 @@ describe("openagents api", () => {
     });
     const failure = await failureOf(harnessed, ["api", "repos/octavia/project/issues/9999"]);
     expect(failure._tag).toBe("OpenAgentsCli.ApiError");
-    expect(failure.message).toContain("HTTP 404 for GET /api/v3/repos/octavia/project/issues/9999");
+    expect(failure.message).toContain("HTTP 404 for GET /api/v1/repos/octavia/project/issues/9999");
     expect(failure.message).toContain("Not Found");
     if (failure._tag === "OpenAgentsCli.ApiError") {
       expect(failure.status).toBe(404);
@@ -353,7 +353,7 @@ describe("openagents api against a loopback server", () => {
       expect(result.code).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual({ number: 41 });
       expect(server.received[0]?.method).toBe("POST");
-      expect(server.received[0]?.url).toBe("/api/v3/repos/octavia/project/issues");
+      expect(server.received[0]?.url).toBe("/api/v1/repos/octavia/project/issues");
       expect(server.received[0]?.headers.authorization).toBe("Bearer oa_pat_loopback-fixture");
       expect(JSON.parse(server.received[0]?.body ?? "")).toEqual({
         title: "From stdin",
@@ -381,7 +381,7 @@ describe("openagents api against a loopback server", () => {
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("Not Found");
       expect(result.stderr).toContain("Request id: request-loopback");
-      expect(result.stderr).toContain("HTTP 404 for GET /api/v3/repos/octavia/project/issues/9999");
+      expect(result.stderr).toContain("HTTP 404 for GET /api/v1/repos/octavia/project/issues/9999");
     } finally {
       await server.close();
     }

@@ -38,7 +38,7 @@ const targetBody = (status: string, overrides: Record<string, unknown> = {}) => 
   error_code: null,
   promoted_at: "2026-08-24T00:00:00Z",
   updated_at: "2026-08-24T00:00:00Z",
-  status_url: `http://localhost:4000/api/v3/admin/forge/targets/${targetId}`,
+  status_url: `http://localhost:4000/api/v1/admin/forge/targets/${targetId}`,
   ...overrides,
 });
 
@@ -111,7 +111,7 @@ describe("deploy commands", () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0]?.method).toBe("POST");
-    expect(requests[0]?.path).toBe("/api/v3/admin/forge/targets");
+    expect(requests[0]?.path).toBe("/api/v1/admin/forge/targets");
     expect(requests[0]?.body).toEqual({
       repo: "openagents.com",
       sha: fullSha,
@@ -247,8 +247,8 @@ describe("deploy commands", () => {
     await run(["--json", ...promoteArgv(["--wait", "--idempotency-key", "release-key-0002"])]);
 
     expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-      "POST /api/v3/admin/forge/targets",
-      `GET /api/v3/admin/forge/targets/${targetId}`,
+      "POST /api/v1/admin/forge/targets",
+      `GET /api/v1/admin/forge/targets/${targetId}`,
     ]);
     const value = written[0]?.document.value as Record<string, unknown>;
     expect(value["outcome"]).toBe("live");
@@ -341,7 +341,7 @@ describe("deploy commands", () => {
 
     await run(["--json", "deploy", "view", targetId]);
 
-    expect(requests[0]?.path).toBe(`/api/v3/admin/forge/targets/${targetId}`);
+    expect(requests[0]?.path).toBe(`/api/v1/admin/forge/targets/${targetId}`);
     const value = written[0]?.document.value as Record<string, unknown>;
     expect(value["outcome"]).toBe("pending");
     expect(value["terminal"]).toBe(false);
@@ -361,7 +361,7 @@ describe("deploy commands", () => {
 
     await run(["--json", "deploy", "list", "--repo", "openagents.com", "--limit", "5"]);
 
-    expect(requests[0]?.path).toBe("/api/v3/admin/forge/targets?repo=openagents.com&limit=5");
+    expect(requests[0]?.path).toBe("/api/v1/admin/forge/targets?repo=openagents.com&limit=5");
     expect(written[0]?.document.value).toEqual({
       repo: "openagents.com",
       targets: [targetBody("live")],

@@ -29,7 +29,7 @@ describe("coder backends", () => {
   });
 
   it("publishes ids the chat API's own enum lists", () => {
-    // These are the values `POST /api/v3/chat/turns` accepts as `model`, so a
+    // These are the values `POST /api/v1/chat/turns` accepts as `model`, so a
     // change here without the matching server change is a refusal at runtime.
     expect(backendIds()).toEqual(["gemini-3.7-flash", "ox-alpha", "gpt-5.6-luna"]);
   });
@@ -97,7 +97,10 @@ describe("refusing a named backend", () => {
   });
 
   it("says so plainly when the deployment can run nothing", () => {
-    const refusal = refuseBackend([{ id: "ox-alpha", available: false, isDefault: true }], "ox-alpha");
+    const refusal = refuseBackend(
+      [{ id: "ox-alpha", available: false, isDefault: true }],
+      "ox-alpha",
+    );
     expect(refusal).toContain("no model with a configured credential");
   });
 });
@@ -122,7 +125,7 @@ describe("reading the published catalog", () => {
   it("reads ids and availability from the server's own shape", async () => {
     const served = await withFetch(
       (url) => {
-        expect(url).toBe("http://localhost:4000/api/v3/models");
+        expect(url).toBe("http://localhost:4000/api/v1/models");
         return new Response(
           JSON.stringify({
             default: "gpt-5.6-luna",

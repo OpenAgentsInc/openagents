@@ -81,7 +81,7 @@ describe("repository client", () => {
       }).pipe(Effect.provide(layer)),
     );
     expect(user.login).toBe("octavia");
-    expect(requests[0]?.path).toBe("/api/v3/user");
+    expect(requests[0]?.path).toBe("/api/v1/user");
   });
 
   it("creates a personal repository with the Phoenix API contract", async () => {
@@ -106,7 +106,7 @@ describe("repository client", () => {
 
     expect(repository.full_name).toBe("octavia/project");
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.path).toBe("/api/v3/user/repos");
+    expect(requests[0]?.path).toBe("/api/v1/user/repos");
     expect(requests[0]?.body).toEqual({ name: "project", private: true });
     expect(requests[0]?.headers?.["idempotency-key"]).toBeTypeOf("string");
   });
@@ -131,7 +131,7 @@ describe("repository client", () => {
         });
       }).pipe(Effect.provide(layer)),
     );
-    expect(requests[0]?.path).toBe("/api/v3/orgs/acme/repos");
+    expect(requests[0]?.path).toBe("/api/v1/orgs/acme/repos");
   });
 
   it("reports repository provisioning progress before completion", async () => {
@@ -225,7 +225,7 @@ describe("repository client", () => {
     const layer = layerFromHandler((input) =>
       Effect.sync(() => {
         requests.push(input);
-        return input.path.startsWith("/api/v3/user/repos")
+        return input.path.startsWith("/api/v1/user/repos")
           ? { status: 200, body: { repositories: [repositoryFixture()], next_cursor: "next" } }
           : { status: 200, body: repositoryFixture() };
       }),
@@ -253,7 +253,7 @@ describe("repository client", () => {
     expect(result.list.repositories).toHaveLength(1);
     expect(result.list.nextCursor).toBe("next");
     expect(requests[0]?.path).toBe(
-      "/api/v3/user/repos?per_page=12&after=cursor+value&namespace=octavia",
+      "/api/v1/user/repos?per_page=12&after=cursor+value&namespace=octavia",
     );
     expect(result.view.full_name).toBe("octavia/project");
   });
@@ -281,7 +281,7 @@ describe("repository client", () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0]?.method).toBe("DELETE");
-    expect(requests[0]?.path).toBe("/api/v3/repos/octavia/project");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project");
   });
 
   it("routes GitHub imports to the selected personal or organization namespace", async () => {
@@ -321,8 +321,8 @@ describe("repository client", () => {
       }).pipe(Effect.provide(layer)),
     );
     expect(requests.map((request) => request.path)).toEqual([
-      "/api/v3/user/repos/imports",
-      "/api/v3/orgs/acme/repos/imports",
+      "/api/v1/user/repos/imports",
+      "/api/v1/orgs/acme/repos/imports",
     ]);
     expect(requests[0]?.body).toEqual({
       source: { provider: "github", repository: "octavia/project" },

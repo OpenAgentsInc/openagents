@@ -20,7 +20,6 @@ describe("the openagents tool", () => {
     await expect(run(["--version"])).resolves.toContain("openagents v");
   });
 
-
   it("carries the command tree, so a session need not go looking for one", async () => {
     const { description } = openagentsTool();
 

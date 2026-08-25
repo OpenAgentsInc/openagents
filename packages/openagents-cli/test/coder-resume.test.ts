@@ -220,7 +220,7 @@ describe("listThreads", () => {
 
     const threads = await listThreads({ origin: ORIGIN, token: TOKEN, fetch: transport });
 
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v3/threads?limit=50`);
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/threads?limit=50`);
     expect(calls[0]?.authorization).toBe(`Bearer ${TOKEN}`);
     expect(threads).toHaveLength(1);
     expect(threads[0]?.repository).toBe("openagents");
@@ -301,9 +301,9 @@ describe("fetchAllEvents", () => {
     expect(events).toHaveLength(120);
     expect(events.map((event) => event.id)).toEqual(all.map((event) => event.id));
     expect(urls).toEqual([
-      `${ORIGIN}/api/v3/threads/${THREAD_ID}/events?limit=50`,
-      `${ORIGIN}/api/v3/threads/${THREAD_ID}/events?limit=50&after=50`,
-      `${ORIGIN}/api/v3/threads/${THREAD_ID}/events?limit=50&after=100`,
+      `${ORIGIN}/api/v1/threads/${THREAD_ID}/events?limit=50`,
+      `${ORIGIN}/api/v1/threads/${THREAD_ID}/events?limit=50&after=50`,
+      `${ORIGIN}/api/v1/threads/${THREAD_ID}/events?limit=50&after=100`,
     ]);
   });
 
@@ -452,7 +452,7 @@ const sse = (frames: ReadonlyArray<string>) =>
   });
 
 describe("remintThread", () => {
-  // The same `minted_view` shape `POST /api/v3/threads` returns for a grant at
+  // The same `minted_view` shape `POST /api/v1/threads` returns for a grant at
   // minting: token, url, model, expires_at, limits — and no `remaining`,
   // because a freshly minted grant has spent nothing.
   const REMINTED = {
@@ -516,7 +516,7 @@ describe("remintThread", () => {
     const source = await remintThread({ origin: ORIGIN, token: TOKEN, threadId: THREAD_ID });
 
     expect(calls[0]?.method).toBe("POST");
-    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v3/threads/${THREAD_ID}/grants`);
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/threads/${THREAD_ID}/grants`);
     expect(source.threadId).toBe(THREAD_ID);
     expect(source.model).toBe("gpt-5.6-luna");
     // A fresh grant has spent nothing, so the budget opens at its ceilings.

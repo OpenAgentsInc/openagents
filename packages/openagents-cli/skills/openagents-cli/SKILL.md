@@ -88,7 +88,7 @@ issue.
 
 `openagents api <path>` sends an authenticated request to any API route and
 writes the body as JSON. A path without a leading slash resolves under
-`/api/v3/`. Use it when no named command covers what you need — several routes
+`/api/v1/`. Use it when no named command covers what you need — several routes
 have no command of their own.
 
 ## Two cautions

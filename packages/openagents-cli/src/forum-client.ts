@@ -17,6 +17,7 @@ import { Effect, Layer, Redacted } from "effect";
 import * as Context from "effect/Context";
 
 import { ApiTransport, type ApiRequest } from "./api-transport.js";
+import { API_VERSION_PATH } from "./constants.js";
 import { ApiError, type CliError } from "./errors.js";
 
 /** An origin and the token that authorizes a request against it. */
@@ -137,13 +138,17 @@ export const forumClientLayer = Layer.effect(
       request,
 
       boards: (input) =>
-        request("list forum boards", { ...input, method: "GET", path: "/api/v3/forum" }),
+        request("list forum boards", {
+          ...input,
+          method: "GET",
+          path: `${API_VERSION_PATH}/forum`,
+        }),
 
       topics: (input) =>
         request("list forum topics", {
           ...input,
           method: "GET",
-          path: `/api/v3/forum/topics?forum=${encodeURIComponent(input.board)}${
+          path: `${API_VERSION_PATH}/forum/topics?forum=${encodeURIComponent(input.board)}${
             input.page === undefined ? "" : `&page=${input.page}`
           }`,
         }),
@@ -152,7 +157,7 @@ export const forumClientLayer = Layer.effect(
         request("read a forum topic", {
           ...input,
           method: "GET",
-          path: `/api/v3/forum/topics/${encodeURIComponent(input.id)}${
+          path: `${API_VERSION_PATH}/forum/topics/${encodeURIComponent(input.id)}${
             input.page === undefined ? "" : `?page=${input.page}`
           }`,
         }),
@@ -161,7 +166,7 @@ export const forumClientLayer = Layer.effect(
         request("create a forum topic", {
           ...input,
           method: "POST",
-          path: "/api/v3/forum/topics",
+          path: `${API_VERSION_PATH}/forum/topics`,
           body: { forum: input.board, title: input.title, body_text: input.bodyText },
         }),
 
@@ -169,7 +174,7 @@ export const forumClientLayer = Layer.effect(
         request("reply to a forum topic", {
           ...input,
           method: "POST",
-          path: `/api/v3/forum/topics/${encodeURIComponent(input.topicId)}/posts`,
+          path: `${API_VERSION_PATH}/forum/topics/${encodeURIComponent(input.topicId)}/posts`,
           body: { body_text: input.bodyText },
         }),
 
@@ -177,12 +182,16 @@ export const forumClientLayer = Layer.effect(
         request("claim a legacy forum identity", {
           ...input,
           method: "POST",
-          path: "/api/v3/forum/claims",
+          path: `${API_VERSION_PATH}/forum/claims`,
           body: { actor_ref: input.actorRef },
         }),
 
       claims: (input) =>
-        request("list identity claims", { ...input, method: "GET", path: "/api/v3/forum/claims" }),
+        request("list identity claims", {
+          ...input,
+          method: "GET",
+          path: `${API_VERSION_PATH}/forum/claims`,
+        }),
     };
   }),
 );

@@ -56,7 +56,9 @@ describe("discovering skills", () => {
     const root = workspace({ "house-style": SKILL });
     mkdirSync(join(root, ".agents", "skills", "empty"), { recursive: true });
 
-    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS).map((skill) => skill.name)).toEqual(["house-style"]);
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS).map((skill) => skill.name)).toEqual([
+      "house-style",
+    ]);
   });
 
   it("skips a skill missing a name or a description", () => {
@@ -67,9 +69,10 @@ describe("discovering skills", () => {
     });
 
     // One cannot be asked for and the other gives nothing to choose on.
-    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS).map((skill) => skill.name)).toEqual(["house-style"]);
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS).map((skill) => skill.name)).toEqual([
+      "house-style",
+    ]);
   });
-
 
   it("reads a description written as a folded block, not the block marker", () => {
     const root = workspace({
@@ -93,16 +96,25 @@ describe("discovering skills", () => {
 
   it("keeps the line breaks of a literal block", () => {
     const root = workspace({
-      literal: ["---", "name: literal", "description: |", "  One.", "  Two.", "---", "", "Body."].join(
-        "\n",
-      ),
+      literal: [
+        "---",
+        "name: literal",
+        "description: |",
+        "  One.",
+        "  Two.",
+        "---",
+        "",
+        "Body.",
+      ].join("\n"),
     });
 
     expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS)[0]?.description).toBe("One.\nTwo.");
   });
 
   it("is empty for a repository with no skills directory", () => {
-    expect(discoverSkills(mkdtempSync(join(tmpdir(), "coder-skills-")), EMPTY_HOME, NO_BUILT_INS)).toEqual([]);
+    expect(
+      discoverSkills(mkdtempSync(join(tmpdir(), "coder-skills-")), EMPTY_HOME, NO_BUILT_INS),
+    ).toEqual([]);
   });
 
   it("strips the quotes from a quoted description", () => {
@@ -110,7 +122,9 @@ describe("discovering skills", () => {
       quoted: '---\nname: quoted\ndescription: "Quoted, with a comma."\n---\n\nBody.',
     });
 
-    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS)[0]?.description).toBe("Quoted, with a comma.");
+    expect(discoverSkills(root, EMPTY_HOME, NO_BUILT_INS)[0]?.description).toBe(
+      "Quoted, with a comma.",
+    );
   });
 });
 
@@ -127,9 +141,9 @@ describe("the skill tool", () => {
   });
 
   it("offers only the names it found, so a model cannot ask for another", () => {
-    expect((tool.parameters["properties"] as Record<string, { enum: string[] }>)["name"]?.enum).toEqual([
-      "house-style",
-    ]);
+    expect(
+      (tool.parameters["properties"] as Record<string, { enum: string[] }>)["name"]?.enum,
+    ).toEqual(["house-style"]);
   });
 
   it("hands back the body when asked", async () => {
@@ -182,7 +196,11 @@ describe("choosing which skills the model is offered", () => {
 
     loadSkillSelection(root, where, NO_BUILT_INS).toggle("beta");
 
-    expect(loadSkillSelection(root, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual(["alpha"]);
+    expect(
+      loadSkillSelection(root, where, NO_BUILT_INS)
+        .active()
+        .map((skill) => skill.name),
+    ).toEqual(["alpha"]);
   });
 
   it("switches one back on", () => {
@@ -192,10 +210,11 @@ describe("choosing which skills the model is offered", () => {
     loadSkillSelection(root, where, NO_BUILT_INS).toggle("beta");
     loadSkillSelection(root, where, NO_BUILT_INS).toggle("beta");
 
-    expect(loadSkillSelection(root, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual([
-      "alpha",
-      "beta",
-    ]);
+    expect(
+      loadSkillSelection(root, where, NO_BUILT_INS)
+        .active()
+        .map((skill) => skill.name),
+    ).toEqual(["alpha", "beta"]);
   });
 
   it("keeps the choice to the workspace it was made in", () => {
@@ -206,10 +225,11 @@ describe("choosing which skills the model is offered", () => {
     loadSkillSelection(one, where, NO_BUILT_INS).toggle("alpha");
 
     // A skill switched off for one repository is not switched off everywhere.
-    expect(loadSkillSelection(other, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual([
-      "alpha",
-      "beta",
-    ]);
+    expect(
+      loadSkillSelection(other, where, NO_BUILT_INS)
+        .active()
+        .map((skill) => skill.name),
+    ).toEqual(["alpha", "beta"]);
   });
 
   it("offers a skill added after the choice was made", () => {
@@ -224,10 +244,11 @@ describe("choosing which skills the model is offered", () => {
     );
 
     // Off is what is recorded, so something nobody has ruled on is on.
-    expect(loadSkillSelection(root, where, NO_BUILT_INS).active().map((skill) => skill.name)).toEqual([
-      "beta",
-      "gamma",
-    ]);
+    expect(
+      loadSkillSelection(root, where, NO_BUILT_INS)
+        .active()
+        .map((skill) => skill.name),
+    ).toEqual(["beta", "gamma"]);
   });
 });
 
@@ -268,14 +289,22 @@ describe("what a session is told without asking", () => {
   const NORMAL = "---\nname: other\ndescription: Something else.\n---\n\nRead me on request.";
 
   it("marks a skill that loads itself", () => {
-    const found = discoverSkills(workspace({ method: AUTO, other: NORMAL }), EMPTY_HOME, NO_BUILT_INS);
+    const found = discoverSkills(
+      workspace({ method: AUTO, other: NORMAL }),
+      EMPTY_HOME,
+      NO_BUILT_INS,
+    );
 
     expect(found.find((skill) => skill.name === "method")?.auto).toBe(true);
     expect(found.find((skill) => skill.name === "other")?.auto).toBe(false);
   });
 
   it("carries an auto-loaded body and leaves the rest in the catalog", () => {
-    const found = discoverSkills(workspace({ method: AUTO, other: NORMAL }), EMPTY_HOME, NO_BUILT_INS);
+    const found = discoverSkills(
+      workspace({ method: AUTO, other: NORMAL }),
+      EMPTY_HOME,
+      NO_BUILT_INS,
+    );
 
     const standing = standingContext(found, "/somewhere/else") ?? "";
     expect(standing).toContain("Work this way.");

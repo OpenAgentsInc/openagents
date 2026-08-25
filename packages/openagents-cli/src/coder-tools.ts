@@ -367,7 +367,9 @@ const commandTree = (entry: string): string | undefined => {
     if (block === null) continue;
     const names = [...(block[1] ?? "").matchAll(/'([a-z][a-z0-9-]*):/g)].map((found) => found[1]);
     if (names.length === 0) continue;
-    lines.push(owner.length === 0 ? `openagents ${names.join(" | ")}` : `  ${owner} ${names.join(" | ")}`);
+    lines.push(
+      owner.length === 0 ? `openagents ${names.join(" | ")}` : `  ${owner} ${names.join(" | ")}`,
+    );
   }
   return lines.length === 0 ? undefined : lines.join("\n");
 };
@@ -419,7 +421,7 @@ export function openagentsTool(): CoderTool {
         ? rawArgs["args"].filter((word): word is string => typeof word === "string")
         : [];
       if (args.length === 0) {
-        return "No command was run: `args` is required, such as [\"--help\"].";
+        return 'No command was run: `args` is required, such as ["--help"].';
       }
 
       const refusal = refusalFor(args);
@@ -447,7 +449,9 @@ export function openagentsTool(): CoderTool {
 
         const timer = setTimeout(() => {
           child.kill("SIGKILL");
-          finish(`The command did not finish within ${String(CLI_TIMEOUT_MS / 1000)}s.\n\n${output}`);
+          finish(
+            `The command did not finish within ${String(CLI_TIMEOUT_MS / 1000)}s.\n\n${output}`,
+          );
         }, CLI_TIMEOUT_MS);
 
         const onAbort = () => {
@@ -552,7 +556,8 @@ export function shellTool(cwd: string): CoderTool {
       const refusal = shellRefusalFor(command);
       if (refusal !== undefined) return refusal;
 
-      const asked = typeof args["timeout_seconds"] === "number" ? args["timeout_seconds"] : undefined;
+      const asked =
+        typeof args["timeout_seconds"] === "number" ? args["timeout_seconds"] : undefined;
       const timeoutMs = Math.min(
         asked === undefined ? DEFAULT_TIMEOUT_MS : Math.max(1, Math.trunc(asked)) * 1000,
         MAXIMUM_TIMEOUT_MS,

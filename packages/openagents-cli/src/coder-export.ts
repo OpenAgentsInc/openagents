@@ -82,7 +82,10 @@ const sumMetrics = (
   const measured = entries.filter((entry) => entry.metrics !== undefined);
   if (measured.length === 0) return {};
   return {
-    total_prompt_tokens: measured.reduce((sum, entry) => sum + (entry.metrics?.promptTokens ?? 0), 0),
+    total_prompt_tokens: measured.reduce(
+      (sum, entry) => sum + (entry.metrics?.promptTokens ?? 0),
+      0,
+    ),
     total_completion_tokens: measured.reduce(
       (sum, entry) => sum + (entry.metrics?.completionTokens ?? 0),
       0,

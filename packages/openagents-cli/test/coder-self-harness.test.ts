@@ -94,7 +94,10 @@ describe("a child this process runs itself", () => {
     // A child that fans out is a fan-out nobody asked for, and a child that
     // stops without saying so is reported to the parent as having succeeded.
     const sent = stub([sse([`data: [DONE]`])]);
-    const harness = new SelfHarness({ grant: GRANT, tools: (cwd) => [tool(`in-${cwd}`, async () => "")] });
+    const harness = new SelfHarness({
+      grant: GRANT,
+      tools: (cwd) => [tool(`in-${cwd}`, async () => "")],
+    });
 
     await drain(harness, "do it", scratch());
 
@@ -166,11 +169,17 @@ describe("a child this process runs itself", () => {
       sse([`data: {"choices":[{"delta":{"content":"/repo"}}]}`, `data: [DONE]`]),
     ]);
     const path = scratch();
-    const harness = new SelfHarness({ grant: GRANT, tools: () => [tool("shell", async () => "/repo")] });
+    const harness = new SelfHarness({
+      grant: GRANT,
+      tools: () => [tool("shell", async () => "/repo")],
+    });
 
     await drain(harness, "where", path);
 
-    const lines = readFileSync(path, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const lines = readFileSync(path, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
     expect(lines.map((line: { type: string }) => line.type)).toEqual([
       "session",
       "tool",
@@ -188,7 +197,10 @@ describe("a child this process runs itself", () => {
       // The provider drops. The fleet retries with the session it was given.
       sse([`data: {"choices":[{"delta":{"content":"carried on"}}]}`, `data: [DONE]`]),
     ]);
-    const harness = new SelfHarness({ grant: GRANT, tools: () => [tool("shell", async () => "ok")] });
+    const harness = new SelfHarness({
+      grant: GRANT,
+      tools: () => [tool("shell", async () => "ok")],
+    });
     const path = scratch();
 
     const first = await drain(harness, "long task", path);
@@ -200,6 +212,8 @@ describe("a child this process runs itself", () => {
     stub([new Response("no", { status: 403 })]);
     const harness = new SelfHarness({ grant: GRANT, tools: () => [] });
 
-    await expect(drain(harness, "go", scratch())).rejects.toThrow(/refused the child's call \(403\)/);
+    await expect(drain(harness, "go", scratch())).rejects.toThrow(
+      /refused the child's call \(403\)/,
+    );
   });
 });

@@ -5,8 +5,8 @@
  * 2026-08-24: bare `--resume` shows a picker over recent threads filtered to
  * the current repository, `--resume <id>` names one directly, `--resume
  * --last` continues the most recent without asking, and `--all` drops the
- * repository filter. `GET /api/v3/threads` is the picker's list and
- * `GET /api/v3/threads/{id}/events` is the transcript it replays, paged
+ * repository filter. `GET /api/v1/threads` is the picker's list and
+ * `GET /api/v1/threads/{id}/events` is the transcript it replays, paged
  * through the `after` cursor because the listing caps at fifty and a working
  * session passes fifty events inside an hour.
  *
@@ -27,7 +27,7 @@
  * the server's own; posting them again would double the record.
  *
  * The repository filter prefers the thread's own field. Since
- * openagents.com #210, `POST /api/v3/threads` records a structured
+ * openagents.com #210, `POST /api/v1/threads` records a structured
  * `repository` and every thread view returns it, so a summary takes that
  * first. Threads opened before the field existed carry none, so the objective
  * sentence this CLI composes (`openagents coder in <repo> on <branch>`) is
@@ -39,13 +39,12 @@ import { createInterface } from "node:readline";
 
 import type { CoderEntry } from "./coder-session.js";
 import { boundedResult, ThreadUnavailable, type WireMessage } from "./coder-thread.js";
-
-const THREADS_PATH = "/api/v3/threads";
+import { THREADS_PATH } from "./constants.js";
 
 /** The server's listing cap. Pages are read at exactly this size. */
 const PAGE_LIMIT = 50;
 
-/** One thread as `GET /api/v3/threads` reports it. */
+/** One thread as `GET /api/v1/threads` reports it. */
 export interface ThreadSummary {
   readonly id: string;
   readonly status: string;
@@ -60,7 +59,7 @@ export interface ThreadSummary {
   readonly branch: string | undefined;
 }
 
-/** One event as `GET /api/v3/threads/{id}/events` reports it. */
+/** One event as `GET /api/v1/threads/{id}/events` reports it. */
 export interface ThreadEvent {
   /** The cursor: a client continues from the last id it read. */
   readonly id: number;

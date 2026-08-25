@@ -117,9 +117,7 @@ export class SelfHarness implements DelegateHarness {
     const tools = this.toolsFor(input.cwd);
 
     const resumed =
-      input.resumeSessionId === undefined
-        ? undefined
-        : this.sessions.get(input.resumeSessionId);
+      input.resumeSessionId === undefined ? undefined : this.sessions.get(input.resumeSessionId);
 
     const sessionId = input.resumeSessionId ?? this.mintSession();
     const transcript: WireMessage[] = resumed ?? [

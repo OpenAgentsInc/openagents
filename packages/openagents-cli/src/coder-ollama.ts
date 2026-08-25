@@ -12,7 +12,11 @@
  */
 
 import { Ollama } from "ollama";
-import type { Message as OllamaMessage, Tool as OllamaTool, ToolCall as OllamaToolCall } from "ollama";
+import type {
+  Message as OllamaMessage,
+  Tool as OllamaTool,
+  ToolCall as OllamaToolCall,
+} from "ollama";
 
 import { declaredDescription } from "./coder-tool-families.js";
 import { merge } from "./coder-merge.js";
@@ -137,10 +141,7 @@ export const discoverOllamaModel = async (
  * Shared by discovery and by resolution, so the two cannot disagree about what
  * is on the machine.
  */
-const installedModels = async (
-  host: string,
-  timeoutMs: number,
-): Promise<ReadonlyArray<string>> => {
+const installedModels = async (host: string, timeoutMs: number): Promise<ReadonlyArray<string>> => {
   try {
     const response = await fetch(new URL("/api/tags", host), {
       signal: AbortSignal.timeout(timeoutMs),
@@ -357,7 +358,12 @@ export class OllamaReplySource implements ReplySource {
     try {
       yield* this.rounds(prompt, signal);
     } finally {
-      yield { type: "usage", promptTokens: this.spentIn, completionTokens: this.spentOut, calls: this.calls };
+      yield {
+        type: "usage",
+        promptTokens: this.spentIn,
+        completionTokens: this.spentOut,
+        calls: this.calls,
+      };
     }
   }
 
@@ -496,8 +502,6 @@ export class OllamaReplySource implements ReplySource {
       if (signal.aborted) return;
       yield* merge(calls.map((call) => this.invoke(call, signal)));
     }
-
-
   }
 
   /**

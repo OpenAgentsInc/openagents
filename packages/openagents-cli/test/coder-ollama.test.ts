@@ -134,8 +134,6 @@ describe("an ollama turn that calls a tool", () => {
     expect(messages.at(-1)).toMatchObject({ content: "child 1 said PONG", tool_name: "delegate" });
   });
 
-
-
   it("keeps the turn's reasoning on the transcript it sends back", async () => {
     const { source, stub } = sourceWith([
       [
@@ -346,7 +344,10 @@ describe("what a local session tells the model about itself", () => {
 describe("finding a local model to default to", () => {
   const serve = (body: unknown, status = 200) =>
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      }),
     );
 
   afterEach(() => {

@@ -123,7 +123,11 @@ export async function runShell(
     child.stderr.on("data", collect);
 
     child.on("error", (cause) => {
-      finish({ output: `The command could not be started: ${cause.message}`, code: undefined, timedOut: false });
+      finish({
+        output: `The command could not be started: ${cause.message}`,
+        code: undefined,
+        timedOut: false,
+      });
     });
     child.on("close", (code) => {
       finish({ output, code: code ?? undefined, timedOut: false });

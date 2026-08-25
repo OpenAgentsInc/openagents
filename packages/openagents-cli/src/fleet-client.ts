@@ -2,7 +2,7 @@
  * The operator fleet promotion client.
  *
  * It speaks only the operator API from OpenAgentsInc/openagents.com#57 —
- * `POST/GET /api/v3/admin/forge/targets` — behind the same `/api/v3` error
+ * `POST/GET /api/v1/admin/forge/targets` — behind the same `/api/v1` error
  * envelope every other command family reads. It never touches `/admin/forge`,
  * SSH, or any internal RPC, and it adds only what a terminal caller cannot do
  * for itself: an idempotent re-send after a failed transport, and bounded
@@ -13,12 +13,13 @@ import { Clock, Duration, Effect, Layer } from "effect";
 import * as Context from "effect/Context";
 
 import { ApiTransport } from "./api-transport.js";
+import { FLEET_TARGETS_PATH } from "./constants.js";
 import { ApiError, DeploymentWaitTimeout, type CliError } from "./errors.js";
 import type { AuthenticatedApi } from "./repository-client.js";
 import { asRecord, asText, makeTrackerRequest, trackerErrorDetails } from "./tracker-request.js";
 
 /** The one route family from OpenAgentsInc/openagents.com#57. */
-export const FLEET_TARGETS_PATH = "/api/v3/admin/forge/targets";
+export { FLEET_TARGETS_PATH };
 
 /** The privileged scope the server requires; `forge:write` cannot promote. */
 export const OPERATOR_SCOPE = "deployments:promote";

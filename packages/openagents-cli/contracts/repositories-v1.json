@@ -9,24 +9,24 @@
   "idempotency": {
     "header": "Idempotency-Key",
     "required_for": [
-      "POST /api/v3/user/repos",
-      "POST /api/v3/orgs/{org}/repos",
-      "POST /api/v3/user/repos/imports",
-      "POST /api/v3/orgs/{org}/repos/imports"
+      "POST /api/v1/user/repos",
+      "POST /api/v1/orgs/{org}/repos",
+      "POST /api/v1/user/repos/imports",
+      "POST /api/v1/orgs/{org}/repos/imports"
     ]
   },
   "endpoints": {
-    "get_authenticated_user": "GET /api/v3/user",
-    "create_user_repository": "POST /api/v3/user/repos",
-    "create_organization_repository": "POST /api/v3/orgs/{org}/repos",
-    "import_user_repository": "POST /api/v3/user/repos/imports",
-    "import_organization_repository": "POST /api/v3/orgs/{org}/repos/imports",
-    "list_repositories": "GET /api/v3/user/repos",
-    "get_repository": "GET /api/v3/repos/{owner}/{repo}",
-    "delete_repository": "DELETE /api/v3/repos/{owner}/{repo}",
-    "get_repository_import": "GET /api/v3/repository-imports/{id}",
-    "create_device_authorization": "POST /api/v3/device/authorizations",
-    "poll_device_authorization": "POST /api/v3/device/authorizations/token"
+    "get_authenticated_user": "GET /api/v1/user",
+    "create_user_repository": "POST /api/v1/user/repos",
+    "create_organization_repository": "POST /api/v1/orgs/{org}/repos",
+    "import_user_repository": "POST /api/v1/user/repos/imports",
+    "import_organization_repository": "POST /api/v1/orgs/{org}/repos/imports",
+    "list_repositories": "GET /api/v1/user/repos",
+    "get_repository": "GET /api/v1/repos/{owner}/{repo}",
+    "delete_repository": "DELETE /api/v1/repos/{owner}/{repo}",
+    "get_repository_import": "GET /api/v1/repository-imports/{id}",
+    "create_device_authorization": "POST /api/v1/device/authorizations",
+    "poll_device_authorization": "POST /api/v1/device/authorizations/token"
   },
   "authenticated_user": {
     "required": ["id", "login", "namespaces", "token_expires_at"],

@@ -42,10 +42,7 @@ const DIR_STATS_WASM = fileURLToPath(
  */
 const stage = (mutateManifest?: (manifest: Record<string, unknown>) => void): string => {
   const dir = mkdtempSync(join(tmpdir(), "plugin-listdir-"));
-  const manifest = JSON.parse(readFileSync(DIR_STATS_MANIFEST, "utf8")) as Record<
-    string,
-    unknown
-  >;
+  const manifest = JSON.parse(readFileSync(DIR_STATS_MANIFEST, "utf8")) as Record<string, unknown>;
   mutateManifest?.(manifest);
   writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
   copyFileSync(DIR_STATS_WASM, join(dir, "dir_stats.wasm"));

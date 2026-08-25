@@ -101,9 +101,7 @@ describe("finding the credential", () => {
 
 describe("answering a turn", () => {
   it("calls Zen with the slug and the borrowed key", async () => {
-    const sent = stub([
-      sse([`data: {"choices":[{"delta":{"content":"Hi"}}]}`, `data: [DONE]`]),
-    ]);
+    const sent = stub([sse([`data: {"choices":[{"delta":{"content":"Hi"}}]}`, `data: [DONE]`])]);
     const source = new ZenReplySource({ model: "ox-alpha", key: "secret-key" });
 
     expect(textOf(await chunks(source, "hello"))).toBe("Hi");

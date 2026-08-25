@@ -130,7 +130,7 @@ describe("issue client", () => {
     );
 
     expect(requests[0]?.method).toBe("PATCH");
-    expect(requests[0]?.path).toBe("/api/v3/repos/octavia/project/issues/155");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/issues/155");
     expect(requests[0]?.body).toEqual({ state: "closed" });
     expect(Object.keys(requests[0]?.body as Record<string, unknown>)).not.toContain("body");
   });
@@ -155,9 +155,9 @@ describe("issue client", () => {
     );
 
     expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-      "GET /api/v3/repos/octavia/project/issues/129/dependencies",
-      "POST /api/v3/repos/octavia/project/issues/129/dependencies",
-      "DELETE /api/v3/repos/octavia/project/issues/129/dependencies/81",
+      "GET /api/v1/repos/octavia/project/issues/129/dependencies",
+      "POST /api/v1/repos/octavia/project/issues/129/dependencies",
+      "DELETE /api/v1/repos/octavia/project/issues/129/dependencies/81",
     ]);
     expect(requests[1]?.body).toEqual({ blocked_by: [80, 81] });
     expect(requests[2]?.body).toBeUndefined();
@@ -177,7 +177,7 @@ describe("issue client", () => {
                 message: "Validation Failed",
                 code: "validation_failed",
                 status: 422,
-                documentation_url: "http://localhost:4000/api/v3",
+                documentation_url: "http://localhost:4000/api/v1",
                 request_id: "request-1",
                 errors: { blocked_by: ["Issue #99999 does not exist in this repository"] },
               },

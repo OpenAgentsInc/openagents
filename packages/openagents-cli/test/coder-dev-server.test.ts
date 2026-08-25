@@ -8,7 +8,10 @@ import { devServerReady, findSiteCheckout, startDevServer } from "../src/coder-d
 /** A directory tree with a Phoenix `mix.exs` at its root. */
 const siteCheckout = () => {
   const root = mkdtempSync(join(tmpdir(), "oa-site-"));
-  writeFileSync(join(root, "mix.exs"), "def project do\n  [app: :openagents, version: \"0.1.0\"]\nend\n");
+  writeFileSync(
+    join(root, "mix.exs"),
+    'def project do\n  [app: :openagents, version: "0.1.0"]\nend\n',
+  );
   mkdirSync(join(root, "lib", "openagents_web"), { recursive: true });
   return root;
 };
@@ -33,9 +36,9 @@ describe("finding the checkout to start a server from", () => {
     const root = siteCheckout();
     // Falls through to the search rather than starting `mix` somewhere that
     // will fail a minute later and less clearly.
-    expect(findSiteCheckout(root, { OPENAGENTS_COM_PATH: mkdtempSync(join(tmpdir(), "oa-not-")) })).toBe(
-      root,
-    );
+    expect(
+      findSiteCheckout(root, { OPENAGENTS_COM_PATH: mkdtempSync(join(tmpdir(), "oa-not-")) }),
+    ).toBe(root);
   });
 
   it("does not take a Mix project that is some other application", () => {
@@ -59,7 +62,12 @@ describe("readiness", () => {
   it("does not count a server whose database is behind as ready", async () => {
     // Phoenix answers this as its own debug page, so it is a live server that
     // cannot serve yet — neither ready nor absent.
-    stub(() => new Response("<html>Phoenix.Ecto.PendingMigrationError at GET /healthz</html>", { status: 500 }));
+    stub(
+      () =>
+        new Response("<html>Phoenix.Ecto.PendingMigrationError at GET /healthz</html>", {
+          status: 500,
+        }),
+    );
     expect(await devServerReady("http://localhost:4000")).toBe(false);
   });
 

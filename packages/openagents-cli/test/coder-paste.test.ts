@@ -4,19 +4,42 @@ import { CoderSession, type ReplySource } from "../src/coder-session.js";
 import { runCoderUi } from "../src/coder-ui.js";
 
 class FakeOut extends EventEmitter {
-  columns = 100; rows = 24; written = "";
-  write(t: string) { this.written += t; return true; }
+  columns = 100;
+  rows = 24;
+  written = "";
+  write(t: string) {
+    this.written += t;
+    return true;
+  }
 }
 class FakeIn extends EventEmitter {
   isTTY = true;
-  setRawMode(){return this;} resume(){return this;} pause(){return this;} setEncoding(){return this;}
+  setRawMode() {
+    return this;
+  }
+  resume() {
+    return this;
+  }
+  pause() {
+    return this;
+  }
+  setEncoding() {
+    return this;
+  }
 }
 
 describe("pasting", () => {
   it("keeps a multi-line paste as one message", async () => {
     const sent: string[] = [];
-    const src: ReplySource = { model: "m", async *reply(p: string) { sent.push(p); yield { type: "text", value: "ok" } as const; } };
-    const stdin = new FakeIn(); const stdout = new FakeOut();
+    const src: ReplySource = {
+      model: "m",
+      async *reply(p: string) {
+        sent.push(p);
+        yield { type: "text", value: "ok" } as const;
+      },
+    };
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
     const session = new CoderSession(src, "repo", "main");
     const running = runCoderUi(session, { stdin: stdin as never, stdout: stdout as never });
 
@@ -27,13 +50,21 @@ describe("pasting", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(sent).toEqual(["line one\nline two\nline three"]);
-    stdin.emit("data", "\x04"); await running;
+    stdin.emit("data", "\x04");
+    await running;
   });
 
   it("holds a paste whose end has not arrived", async () => {
     const sent: string[] = [];
-    const src: ReplySource = { model: "m", async *reply(p: string) { sent.push(p); yield { type: "text", value: "ok" } as const; } };
-    const stdin = new FakeIn(); const stdout = new FakeOut();
+    const src: ReplySource = {
+      model: "m",
+      async *reply(p: string) {
+        sent.push(p);
+        yield { type: "text", value: "ok" } as const;
+      },
+    };
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
     const session = new CoderSession(src, "repo", "main");
     const running = runCoderUi(session, { stdin: stdin as never, stdout: stdout as never });
 
@@ -44,12 +75,19 @@ describe("pasting", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(sent).toEqual(["first\nsecond"]);
-    stdin.emit("data", "\x04"); await running;
+    stdin.emit("data", "\x04");
+    await running;
   });
 
   it("shows a paste as a blob rather than as its last line", async () => {
-    const src: ReplySource = { model: "m", async *reply() { yield { type: "text", value: "ok" } as const; } };
-    const stdin = new FakeIn(); const stdout = new FakeOut();
+    const src: ReplySource = {
+      model: "m",
+      async *reply() {
+        yield { type: "text", value: "ok" } as const;
+      },
+    };
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
     const session = new CoderSession(src, "repo", "main");
     const running = runCoderUi(session, { stdin: stdin as never, stdout: stdout as never });
 
@@ -65,12 +103,19 @@ describe("pasting", () => {
     // Ctrl+D quits only an empty composer, which is why escape comes first.
     stdin.emit("data", ESC);
     await new Promise((r) => setTimeout(r, 60));
-    stdin.emit("data", "\x04"); await running;
+    stdin.emit("data", "\x04");
+    await running;
   });
 
   it("asks the terminal to bracket pastes, and stops asking on the way out", async () => {
-    const src: ReplySource = { model: "m", async *reply() { yield { type: "text", value: "ok" } as const; } };
-    const stdin = new FakeIn(); const stdout = new FakeOut();
+    const src: ReplySource = {
+      model: "m",
+      async *reply() {
+        yield { type: "text", value: "ok" } as const;
+      },
+    };
+    const stdin = new FakeIn();
+    const stdout = new FakeOut();
     const session = new CoderSession(src, "repo", "main");
     const running = runCoderUi(session, { stdin: stdin as never, stdout: stdout as never });
 
@@ -79,9 +124,9 @@ describe("pasting", () => {
     // in it is an enter.
     expect(stdout.written).toContain(`${ESC}[?2004h`);
 
-    stdin.emit("data", "\x04"); await running;
+    stdin.emit("data", "\x04");
+    await running;
 
     expect(stdout.written).toContain(`${ESC}[?2004l`);
   });
-
 });

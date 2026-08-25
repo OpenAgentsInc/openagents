@@ -1,7 +1,7 @@
 /**
  * The thread's durable transcript, written as the turn loop runs.
  *
- * `POST /api/v3/threads/{id}/events` is append-only and the server's copy is
+ * `POST /api/v1/threads/{id}/events` is append-only and the server's copy is
  * the only copy: this process keeps no file of its own, so what lands here is
  * what `--resume`, the export, and every other machine reading the thread will
  * ever see. The vocabulary is the one decided in the openagents.com audit of
@@ -19,7 +19,7 @@
  * throwing into the loop that called it.
  */
 
-const THREADS_PATH = "/api/v3/threads";
+import { THREADS_PATH } from "./constants.js";
 
 /**
  * How many consecutive failed posts before the reader is told once.

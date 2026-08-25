@@ -63,11 +63,11 @@ describe("device authorization client", () => {
     const result = await Effect.runPromise(program);
     expect(Redacted.value(result.token)).toBe("oa_pat_fixture");
     expect(result.requests[0]).toEqual({
-      path: "/api/v3/device/authorizations",
+      path: "/api/v1/device/authorizations",
       body: {},
     });
     expect(result.requests[1]).toEqual({
-      path: "/api/v3/device/authorizations/token",
+      path: "/api/v1/device/authorizations/token",
       body: { device_code: "secret-device-code" },
     });
   });

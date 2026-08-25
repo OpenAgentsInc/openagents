@@ -23,7 +23,7 @@ const targetFixture = (status: string, overrides: Record<string, unknown> = {}) 
   promoted_at: "2026-08-24T00:00:00Z",
   updated_at: "2026-08-24T00:00:00Z",
   status_url:
-    "http://localhost:4000/api/v3/admin/forge/targets/0d4e8a70-0000-4000-8000-000000000001",
+    "http://localhost:4000/api/v1/admin/forge/targets/0d4e8a70-0000-4000-8000-000000000001",
   ...overrides,
 });
 
@@ -62,7 +62,7 @@ describe("fleet client", () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0]?.method).toBe("POST");
-    expect(requests[0]?.path).toBe("/api/v3/admin/forge/targets");
+    expect(requests[0]?.path).toBe("/api/v1/admin/forge/targets");
     expect(requests[0]?.body).toEqual({
       repo: "openagents.com",
       sha: "a".repeat(40),
@@ -298,6 +298,6 @@ describe("fleet client", () => {
     );
 
     expect(requests[0]?.method).toBe("GET");
-    expect(requests[0]?.path).toBe("/api/v3/admin/forge/targets?repo=openagents.com&limit=5");
+    expect(requests[0]?.path).toBe("/api/v1/admin/forge/targets?repo=openagents.com&limit=5");
   });
 });

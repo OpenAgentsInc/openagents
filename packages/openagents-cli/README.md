@@ -153,8 +153,8 @@ openagents api -X PATCH -f state=closed repos/OWNER/REPO/issues/41
 openagents api repos/OWNER/REPO/issues | jq '.[].title'
 ```
 
-A path without a leading slash resolves under the API base `/api/v3/`, so
-`repos/OWNER/REPO/issues` and `/api/v3/repos/OWNER/REPO/issues` name the same
+A path without a leading slash resolves under the API base `/api/v1/`, so
+`repos/OWNER/REPO/issues` and `/api/v1/repos/OWNER/REPO/issues` name the same
 route. An absolute path must start with `/api/`, and a complete URL must match
 the API origin you selected. The CLI refuses a path that would leave that
 origin.
@@ -359,7 +359,7 @@ Projects are repository-scoped, so every project command takes the same
 ## Deploy the fleet (operators)
 
 The `deploy` commands drive the operator-only fleet promotion API
-(`/api/v3/admin/forge/targets`). They require an API token holding the
+(`/api/v1/admin/forge/targets`). They require an API token holding the
 privileged `deployments:promote` scope, and the server additionally checks
 that the account is a current operator on every request. `forge:write` cannot
 promote, and neither can a Git credential or a browser session.

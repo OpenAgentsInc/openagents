@@ -1171,10 +1171,7 @@ describe("inspecting a child from the column", () => {
   });
 
   it("moves the selector without moving the transcript", async () => {
-    const frames = await driveKeys(two, [
-      ["\x1b[C"],
-      ["\x1b[B"],
-    ]);
+    const frames = await driveKeys(two, [["\x1b[C"], ["\x1b[B"]]);
 
     // Down in the column selects the second child. It must not scroll the
     // conversation, which is what down does when the composer has the keys.
@@ -1211,14 +1208,10 @@ describe("inspecting a child from the column", () => {
   });
 
   it("ignores right when there is no column to move into", async () => {
-    const frames = await driveKeys(
-      () => undefined,
-      [["\x1b[C"]],
-    );
+    const frames = await driveKeys(() => undefined, [["\x1b[C"]]);
 
     expect((frames[0] ?? []).join("\n")).not.toContain("enter opens");
   });
 
-  const drillKeys = async () =>
-    driveKeys(two, [[], ["\x1b[C"], ["\x1b[D"]]);
+  const drillKeys = async () => driveKeys(two, [[], ["\x1b[C"], ["\x1b[D"]]);
 });

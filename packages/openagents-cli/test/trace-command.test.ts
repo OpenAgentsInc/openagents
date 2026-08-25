@@ -179,7 +179,7 @@ describe("openagents trace", () => {
     const { fail } = harness();
     const error = await fail(["trace", "upload", path]);
     expect(error).toMatchObject({ _tag: "OpenAgentsCli.TraceUploadUnsupported" });
-    expect(String((error as { message: string }).message)).toContain("POST /api/v3/traces");
+    expect(String((error as { message: string }).message)).toContain("POST /api/v1/traces");
   });
 
   it("still validates the local path before refusing an upload", async () => {

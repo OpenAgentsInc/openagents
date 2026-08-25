@@ -18,7 +18,10 @@ describe("steering a running turn", () => {
         // Round 0 asks for a tool and waits, so a steer can arrive mid-turn.
         const pieces =
           mine === 0
-            ? [chunk({ content: "", tool_calls: [{ function: { name: "t", arguments: {} } }] }), chunk({}, true)]
+            ? [
+                chunk({ content: "", tool_calls: [{ function: { name: "t", arguments: {} } }] }),
+                chunk({}, true),
+              ]
             : [chunk({ content: "done" }, true)];
         return Object.assign(
           (async function* () {

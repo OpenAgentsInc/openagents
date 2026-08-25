@@ -28,8 +28,8 @@ describe("passthrough path resolution", () => {
 
   it("keeps an absolute API path unchanged", async () => {
     await expect(
-      Effect.runPromise(resolveApiPath(origin, "/api/v3/repos/octavia/project/issues")),
-    ).resolves.toBe("/api/v3/repos/octavia/project/issues");
+      Effect.runPromise(resolveApiPath(origin, "/api/v1/repos/octavia/project/issues")),
+    ).resolves.toBe("/api/v1/repos/octavia/project/issues");
   });
 
   it("preserves a query string in both forms", async () => {
@@ -37,20 +37,20 @@ describe("passthrough path resolution", () => {
       Effect.runPromise(resolveApiPath(origin, "repos/octavia/project/issues?state=closed")),
     ).resolves.toBe(`${API_BASE_PATH}repos/octavia/project/issues?state=closed`);
     await expect(
-      Effect.runPromise(resolveApiPath(origin, "/api/v3/labels?per_page=5")),
-    ).resolves.toBe("/api/v3/labels?per_page=5");
+      Effect.runPromise(resolveApiPath(origin, "/api/v1/labels?per_page=5")),
+    ).resolves.toBe("/api/v1/labels?per_page=5");
   });
 
   it("accepts a complete URL on the configured origin", async () => {
-    await expect(Effect.runPromise(resolveApiPath(origin, `${origin}/api/v3/user`))).resolves.toBe(
-      "/api/v3/user",
+    await expect(Effect.runPromise(resolveApiPath(origin, `${origin}/api/v1/user`))).resolves.toBe(
+      "/api/v1/user",
     );
   });
 
   it.each([
-    "https://openagents.com/api/v3/user",
-    "//openagents.com/api/v3/user",
-    "http://127.0.0.1:5000/api/v3/user",
+    "https://openagents.com/api/v1/user",
+    "//openagents.com/api/v1/user",
+    "http://127.0.0.1:5000/api/v1/user",
   ])("refuses %s because it leaves the configured origin", async (path) => {
     expect(await failureText(resolveApiPath(origin, path))).toContain("leaves the configured");
   });

@@ -86,7 +86,7 @@ describe("issue and project commands", () => {
 
     await run(["--json", "issue", "list", "--limit", "40"]);
 
-    expect(requests[0]?.path.startsWith("/api/v3/repos/octavia/project/issues?")).toBe(true);
+    expect(requests[0]?.path.startsWith("/api/v1/repos/octavia/project/issues?")).toBe(true);
     expect(requests).toHaveLength(2);
     const value = written[0]?.document.value as {
       readonly pagination: Record<string, unknown>;
@@ -111,7 +111,7 @@ describe("issue and project commands", () => {
 
     await run(["issue", "list", "-R", "OpenAgentsInc/openagents.com"]);
 
-    expect(requests[0]?.path.startsWith("/api/v3/repos/OpenAgentsInc/openagents.com/issues?")).toBe(
+    expect(requests[0]?.path.startsWith("/api/v1/repos/OpenAgentsInc/openagents.com/issues?")).toBe(
       true,
     );
   });
@@ -130,8 +130,8 @@ describe("issue and project commands", () => {
     await run(["issue", "close", "#155", "--comment", "why"]);
 
     expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-      "POST /api/v3/repos/octavia/project/issues/155/comments",
-      "PATCH /api/v3/repos/octavia/project/issues/155",
+      "POST /api/v1/repos/octavia/project/issues/155/comments",
+      "PATCH /api/v1/repos/octavia/project/issues/155",
     ]);
     expect(requests[0]?.body).toEqual({ body: "why" });
     expect(requests[1]?.body).toEqual({ state: "closed" });
@@ -184,8 +184,8 @@ describe("issue and project commands", () => {
     await run(["--json", "issue", "deps", "129", "--add", "#80", "--remove", "81"]);
 
     expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-      "POST /api/v3/repos/octavia/project/issues/129/dependencies",
-      "DELETE /api/v3/repos/octavia/project/issues/129/dependencies/81",
+      "POST /api/v1/repos/octavia/project/issues/129/dependencies",
+      "DELETE /api/v1/repos/octavia/project/issues/129/dependencies/81",
     ]);
     expect(written[0]?.mode).toBe("json");
     expect(written[0]?.document.value).toEqual(graph);
@@ -213,7 +213,7 @@ describe("issue and project commands", () => {
 
     await run(["--json", "project", "list"]);
 
-    expect(requests[0]?.path).toBe("/api/v3/repos/octavia/project/projectsV2");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/projectsV2");
     expect(written[0]?.document.value).toEqual({
       projects: [{ number: 1, title: "Roadmap", state: "open", archived: false }],
     });
@@ -230,7 +230,7 @@ describe("issue and project commands", () => {
 
     await run(["project", "item-add", "2", "--issue", "#155"]);
 
-    expect(requests[0]?.path).toBe("/api/v3/repos/octavia/project/projectsV2/2/items");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/projectsV2/2/items");
     expect(requests[0]?.body).toEqual({ issue_number: 155 });
   });
 });

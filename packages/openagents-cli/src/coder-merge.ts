@@ -10,9 +10,7 @@
  * Order within one stream is preserved, because a tool call and its result are
  * a sequence. Order between streams is arrival order, which is the point.
  */
-export async function* merge<T>(
-  streams: ReadonlyArray<AsyncIterable<T>>,
-): AsyncIterable<T> {
+export async function* merge<T>(streams: ReadonlyArray<AsyncIterable<T>>): AsyncIterable<T> {
   if (streams.length === 0) return;
   if (streams.length === 1) {
     yield* streams[0] as AsyncIterable<T>;

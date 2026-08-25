@@ -2,19 +2,19 @@
  * A reply source backed by a thread of the caller's own, and the grant that
  * thread mints.
  *
- * `openagents coder` used to submit through `POST /api/v3/chat/turns` and poll
- * `GET /api/v3/chat/events`. That was the only route a user token could reach a
+ * `openagents coder` used to submit through `POST /api/v1/chat/turns` and poll
+ * `GET /api/v1/chat/events`. That was the only route a user token could reach a
  * model through, and the server records one conversation per account, so every
  * prompt a person typed in a terminal landed in the same conversation `/chat`
  * reads, contended for the one streaming slot that conversation admits, and
  * became provider context for the next question asked in the browser. This
  * replaces both paths.
  *
- * `POST /api/v3/threads` opens a thread and returns a grant. The grant is the
+ * `POST /api/v1/threads` opens a thread and returns a grant. The grant is the
  * bearer for `POST /api/inference/proxy`, an OpenAI-compatible
  * `/chat/completions` surface that meters against the thread's own budget and
  * keeps the provider credential on the server, so the CLI still holds no
- * provider key. `DELETE /api/v3/threads/{id}` revokes the thread on exit, which
+ * provider key. `DELETE /api/v1/threads/{id}` revokes the thread on exit, which
  * matters because an account may hold only eight open threads at once and a
  * closed terminal would otherwise hold a slot until its authority was spent.
  *
@@ -67,8 +67,7 @@ import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import type { CoderTool } from "./coder-tools.js";
 import { systemPrompt, THREAD_LANE } from "./coder-system.js";
 import type { TranscriptSink } from "./coder-transcript.js";
-
-const THREADS_PATH = "/api/v3/threads";
+import { THREADS_PATH } from "./constants.js";
 
 /**
  * How many rounds of tool calls one turn may take before it has to answer.
@@ -247,9 +246,9 @@ export interface ResumeGrantOptions {
  * it revokes every active grant naming the thread, bumps the thread's
  * generation, and mints fresh authority against the same thread — the grant
  * lineage a resume is supposed to continue. This client asks for that at
- * `POST /api/v3/threads/{id}/grants`.
+ * `POST /api/v1/threads/{id}/grants`.
  *
- * Today the server publishes no such route. `GET /api/v3/threads/{id}` reports
+ * Today the server publishes no such route. `GET /api/v1/threads/{id}` reports
  * the grant's status and limits but never its token — the plaintext exists
  * exactly once, at minting — so there is no other honest way to spend an
  * existing thread. A 404 here is therefore the server saying it cannot yet
@@ -289,8 +288,8 @@ export async function remintThread(options: ResumeGrantOptions): Promise<ThreadR
     throw new ThreadUnavailable(
       "grant_unavailable",
       "This server cannot hand back authority for an existing thread: " +
-        "GET /api/v3/threads/{id} reports the grant without its token, and " +
-        "POST /api/v3/threads/{id}/grants is not there to re-mint one. " +
+        "GET /api/v1/threads/{id} reports the grant without its token, and " +
+        "POST /api/v1/threads/{id}/grants is not there to re-mint one. " +
         "The transcript is readable, but new turns cannot spend this thread " +
         "until the server can re-grant it.",
       response.status,
@@ -835,7 +834,8 @@ export class ThreadReplySource implements ReplySource {
       if (response.status >= 200 && response.status < 300) return response;
 
       const refusal = await proxyRefusal(response);
-      const transient = response.status === 502 || response.status === 503 || response.status === 504;
+      const transient =
+        response.status === 502 || response.status === 503 || response.status === 504;
       if (!transient || attempt >= attempts) throw refusal;
 
       // Short and fixed. The failure is on the provider's side and a reader is
@@ -849,7 +849,6 @@ export class ThreadReplySource implements ReplySource {
     const response = await this.callProxy(signal);
     if (response === undefined || signal.aborted) return;
     if (response.body === null) return;
-
 
     /** Tool call fragments by their wire index, assembled as frames arrive. */
     const calls = new Map<number, { id: string; name: string; args: string }>();
@@ -1030,12 +1029,16 @@ async function proxyRefusal(response: Response): Promise<ThreadUnavailable> {
   const code = string(error["code"]) ?? `http_${response.status}`;
 
   const sentences: Record<string, string> = {
-    grant_revoked: "This thread was revoked. Start a new session to open another.",
+    // Only reachable when someone deliberately revoked this thread — a session
+    // no longer does it on the way out. The sentence says what to do rather
+    // than naming a lifecycle the reader did not ask about.
+    grant_revoked: "This thread is no longer live. Start a new session to open another.",
     // Not a sentence about a clock. A thread's authority has no deadline —
     // this reaches a caller only where the deployment minted one that does,
     // and it says what the reader can act on rather than naming an expiry a
     // coder session cannot have.
-    grant_expired: "This thread's authority is no longer live. Start a new session to open another.",
+    grant_expired:
+      "This thread's authority is no longer live. Start a new session to open another.",
     grant_exhausted: "This thread spent its budget. Start a new session to open another.",
     grant_budget_reached: "This thread reached its budget ceiling and cannot buy another call.",
     invalid_grant: "The inference proxy did not recognize this thread's grant.",
@@ -1127,7 +1130,6 @@ export const resolveProxyUrl = (grantUrl: string, origin: string): string => {
 };
 
 function record(value: unknown): Record<string, unknown> {
-
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};

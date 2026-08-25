@@ -7,6 +7,7 @@ export * from "./computer-config.js";
 export * from "./computer-journal.js";
 export * from "./computer-policy.js";
 export * from "./computer-probe.js";
+export * from "./constants.js";
 export * from "./credential-store.js";
 export * from "./device-authorization-store.js";
 export * from "./endpoint.js";

@@ -45,10 +45,7 @@ const WORD_STATS_MANIFEST = fileURLToPath(
  */
 const stage = (mutateManifest?: (manifest: Record<string, unknown>) => void): string => {
   const dir = mkdtempSync(join(tmpdir(), "plugin-mount-"));
-  const manifest = JSON.parse(readFileSync(FILE_STATS_MANIFEST, "utf8")) as Record<
-    string,
-    unknown
-  >;
+  const manifest = JSON.parse(readFileSync(FILE_STATS_MANIFEST, "utf8")) as Record<string, unknown>;
   mutateManifest?.(manifest);
   writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
   copyFileSync(FILE_STATS_WASM, join(dir, "file_stats.wasm"));
@@ -70,10 +67,7 @@ const statPath = async (
   const packet = new TextEncoder().encode(JSON.stringify({ path }));
   const outcome = await invokePlugin(plugin, packet);
   if (isRefusal(outcome)) throw new Error(`${outcome.code}: ${outcome.reason}`);
-  return JSON.parse(new TextDecoder().decode(outcome)) as Record<
-    string,
-    Record<string, unknown>
-  >;
+  return JSON.parse(new TextDecoder().decode(outcome)) as Record<string, Record<string, unknown>>;
 };
 
 describe("read-only mounts", () => {

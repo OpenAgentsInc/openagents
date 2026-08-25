@@ -188,7 +188,8 @@ export class ZenReplySource implements ReplySource {
         if (payload === undefined) continue;
 
         const usage = payload["usage"];
-        if (typeof usage === "object" && usage !== null) this.spend(usage as Record<string, unknown>);
+        if (typeof usage === "object" && usage !== null)
+          this.spend(usage as Record<string, unknown>);
 
         const choices = payload["choices"];
         if (!Array.isArray(choices)) continue;

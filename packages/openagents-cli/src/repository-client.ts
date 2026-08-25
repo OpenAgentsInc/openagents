@@ -13,6 +13,7 @@ import {
   repositoryFromAcceptedImport,
 } from "./api-contract.js";
 import { ApiTransport } from "./api-transport.js";
+import { API_VERSION_PATH } from "./constants.js";
 import {
   ApiError,
   ContractError,
@@ -271,7 +272,7 @@ export const repositoryClientLayer = Layer.effect(
       const poll = request("read repository provisioning state", {
         ...input,
         method: "GET",
-        path: `/api/v3/repos/${encoded(input.owner)}/${encoded(input.repo)}`,
+        path: `${API_VERSION_PATH}/repos/${encoded(input.owner)}/${encoded(input.repo)}`,
         acceptedStatuses: [200],
       }).pipe(
         Effect.flatMap((value) => decode("read repository provisioning state", Repository, value)),
@@ -326,7 +327,9 @@ export const repositoryClientLayer = Layer.effect(
         ...(input.defaultBranch === undefined ? {} : { default_branch: input.defaultBranch }),
       };
       const path =
-        owner === undefined ? "/api/v3/user/repos" : `/api/v3/orgs/${encoded(owner)}/repos`;
+        owner === undefined
+          ? `${API_VERSION_PATH}/user/repos`
+          : `${API_VERSION_PATH}/orgs/${encoded(owner)}/repos`;
       const value = yield* retryMutation(
         request("create repository", {
           ...input,
@@ -356,7 +359,7 @@ export const repositoryClientLayer = Layer.effect(
       const responseBody = yield* request("read authenticated user", {
         ...input,
         method: "GET",
-        path: "/api/v3/user",
+        path: `${API_VERSION_PATH}/user`,
         acceptedStatuses: [200],
       });
       return yield* decode("read authenticated user", AuthenticatedUser, responseBody);
@@ -374,7 +377,7 @@ export const repositoryClientLayer = Layer.effect(
       const responseBody = yield* request("list repositories", {
         ...input,
         method: "GET",
-        path: `/api/v3/user/repos?${parameters.toString()}`,
+        path: `${API_VERSION_PATH}/user/repos?${parameters.toString()}`,
         acceptedStatuses: [200],
       });
       const pageResponse = yield* decode("list repositories", RepositoryListResponse, responseBody);
@@ -392,7 +395,7 @@ export const repositoryClientLayer = Layer.effect(
       const value = yield* request("view repository", {
         ...input,
         method: "GET",
-        path: `/api/v3/repos/${encoded(owner)}/${encoded(repo)}`,
+        path: `${API_VERSION_PATH}/repos/${encoded(owner)}/${encoded(repo)}`,
         acceptedStatuses: [200],
       });
       return yield* decode("view repository", RepositoryResponse, value);
@@ -406,7 +409,7 @@ export const repositoryClientLayer = Layer.effect(
       yield* request("delete repository", {
         ...input,
         method: "DELETE",
-        path: `/api/v3/repos/${encoded(owner)}/${encoded(repo)}`,
+        path: `${API_VERSION_PATH}/repos/${encoded(owner)}/${encoded(repo)}`,
         acceptedStatuses: [204],
       });
     });
@@ -417,7 +420,7 @@ export const repositoryClientLayer = Layer.effect(
       const value = yield* request("read repository import", {
         ...input,
         method: "GET",
-        path: `/api/v3/repository-imports/${encoded(input.importId)}`,
+        path: `${API_VERSION_PATH}/repository-imports/${encoded(input.importId)}`,
         acceptedStatuses: [200],
       });
       return yield* decode("read repository import", RepositoryImportStatusResponse, value);
@@ -517,8 +520,8 @@ export const repositoryClientLayer = Layer.effect(
       };
       const path =
         owner === undefined
-          ? "/api/v3/user/repos/imports"
-          : `/api/v3/orgs/${encoded(owner)}/repos/imports`;
+          ? `${API_VERSION_PATH}/user/repos/imports`
+          : `${API_VERSION_PATH}/orgs/${encoded(owner)}/repos/imports`;
       const value = yield* retryMutation(
         request("import repository", {
           ...input,

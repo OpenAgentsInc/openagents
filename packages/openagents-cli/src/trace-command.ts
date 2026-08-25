@@ -19,6 +19,7 @@ import { Effect } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import { InputError, TraceUploadUnsupported } from "./errors.js";
+import { API_VERSION_PATH } from "./constants.js";
 import { Output, type OutputMode } from "./output.js";
 import {
   defaultDiscoveryBounds,
@@ -42,7 +43,7 @@ const outputMode = (json: boolean): OutputMode => (json ? "json" : "human");
 /** The server half `trace upload` is waiting for. One place, one sentence. */
 export const TRACE_INGEST_ROUTE_GAP =
   "openagents.com has no trace ingest route yet. Upload needs the server half first: " +
-  "POST /api/v3/traces accepting an ATIF v1.7 document with owner_only default visibility. " +
+  `POST ${API_VERSION_PATH}/traces accepting an ATIF v1.7 document with owner_only default visibility. ` +
   "Until that route exists, this command refuses rather than pretending to upload.";
 
 const listPathFlag = Flag.string("path").pipe(

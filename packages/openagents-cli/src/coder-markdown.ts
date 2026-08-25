@@ -212,7 +212,6 @@ function tableRows(lines: ReadonlyArray<string>, width: number): ReadonlyArray<s
   // that contains a code span too wide.
   const plain = (text: string) => visibleWidth(styled(text, ""));
 
-
   const widths: number[] = [];
   for (let column = 0; column < columns; column += 1) {
     const widest = cells.reduce(
@@ -243,9 +242,7 @@ function tableRows(lines: ReadonlyArray<string>, width: number): ReadonlyArray<s
       .trimEnd();
 
   const out = [line(headings, BOLD)];
-  out.push(
-    `${DIM}${widths.map((room) => "─".repeat(room)).join("─".repeat(gap))}${RESET}`,
-  );
+  out.push(`${DIM}${widths.map((room) => "─".repeat(room)).join("─".repeat(gap))}${RESET}`);
   for (const row of cells) out.push(line(row, ""));
   return out;
 }
