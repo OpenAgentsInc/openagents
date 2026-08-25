@@ -8,7 +8,10 @@ const sse = (frames: ReadonlyArray<string>) =>
     new ReadableStream<Uint8Array>({
       start(controller) {
         const encoder = new TextEncoder();
-        for (const frame of frames) controller.enqueue(encoder.encode(frame));
+        for (let i = 0; i < frames.length; i += 1) {
+          const frame = frames[i];
+          if (frame !== undefined) controller.enqueue(encoder.encode(frame));
+        }
         controller.close();
       },
     }),
@@ -76,11 +79,90 @@ describe("ResponsesReplySource", () => {
     expect(source.modelId).toBe("openagents-coder");
   });
 
-  it("reports a refusal with the origin and the status", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 503 })));
-    const source = new ResponsesReplySource({ origin: "http://localhost:4000" });
+  it("reports a refusal with the origin and the status when retries exhaust", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount += 1;
+        return new Response("no", { status: 503 });
+      }),
+    );
+    const source = new ResponsesReplySource({
+      origin: "http://localhost:4000",
+      retryDelaysMs: [1, 1, 1],
+    });
 
     await expect(collect(source)).rejects.toThrow("http://localhost:4000 answered HTTP 503");
+    expect(callCount).toBe(4);
+  });
+
+  it("does not retry 4xx errors", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount += 1;
+        return new Response("bad request", { status: 400 });
+      }),
+    );
+    const source = new ResponsesReplySource({
+      origin: "http://localhost:4000",
+      retryDelaysMs: [1, 1, 1],
+    });
+
+    await expect(collect(source)).rejects.toThrow("http://localhost:4000 answered HTTP 400");
+    expect(callCount).toBe(1);
+  });
+
+  it("retries transient 5xx server errors and succeeds when server recovers", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount += 1;
+        if (callCount < 3) {
+          return new Response("server down briefly", { status: 500 });
+        }
+        return sse(STREAM);
+      }),
+    );
+
+    const source = new ResponsesReplySource({
+      origin: "http://localhost:4000",
+      retryDelaysMs: [1, 1, 1],
+    });
+    const chunks = await collect(source);
+    expect(callCount).toBe(3);
+    const text = chunks
+      .map((chunk) => (chunk.type === "text" ? chunk.value : ""))
+      .join("");
+    expect(text).toBe("Acknowledged.");
+  });
+
+  it("retries fetch network reachability failures and recovers", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          throw new TypeError("fetch failed: ECONNREFUSED");
+        }
+        return sse(STREAM);
+      }),
+    );
+
+    const source = new ResponsesReplySource({
+      origin: "http://localhost:4000",
+      retryDelaysMs: [1, 1, 1],
+    });
+    const chunks = await collect(source);
+    expect(callCount).toBe(2);
+    const text = chunks
+      .map((chunk) => (chunk.type === "text" ? chunk.value : ""))
+      .join("");
+    expect(text).toBe("Acknowledged.");
   });
 });
 

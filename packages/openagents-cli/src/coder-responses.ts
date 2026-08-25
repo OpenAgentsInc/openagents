@@ -21,11 +21,16 @@ import type { ReplyChunk, ReplySource } from "./coder-session.js";
 import { tierLabel } from "./coder-tiers.js";
 import type { CoderTool } from "./coder-tools.js";
 
+/** Default backoff ladder for transient responses API failures (5xx or network drops). */
+const DEFAULT_RETRY_DELAYS_MS: ReadonlyArray<number> = [250, 500, 1000, 2000];
+
 export interface ResponsesOptions {
   /** The API origin, such as `http://localhost:4000`. */
   readonly origin: string;
   /** The account bearer, sent when held; the surface also answers without one. */
   readonly token?: string | undefined;
+  /** Retry backoff delays in milliseconds for testing or custom ladders. */
+  readonly retryDelaysMs?: ReadonlyArray<number> | undefined;
 }
 
 /** One conversation item, in the OpenResponses input shape. */
@@ -56,8 +61,11 @@ export class ResponsesReplySource implements ReplySource {
   private readonly items: Item[] = [];
   private tools: ReadonlyArray<CoderTool> = [];
   private standing: string | undefined;
+  private readonly retryDelaysMs: ReadonlyArray<number>;
 
-  constructor(private readonly options: ResponsesOptions) {}
+  constructor(private readonly options: ResponsesOptions) {
+    this.retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
+  }
 
   /** The dev lane defers to the server, which is what Coder Auto names. */
   get model(): string {
@@ -120,48 +128,88 @@ export class ResponsesReplySource implements ReplySource {
     yield { type: "usage", calls };
   }
 
+  /**
+   * Request POST /api/v1/responses with exponential backoff retries for transient failures.
+   */
+  private async request(signal: AbortSignal): Promise<Response> {
+    const attempts = this.retryDelaysMs.length + 1;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      let response: Response | undefined;
+      let error: unknown;
+
+      try {
+        response = await fetch(new URL("/api/v1/responses", this.options.origin), {
+          method: "POST",
+          headers: {
+            ...(this.options.token === undefined
+              ? {}
+              : { authorization: `Bearer ${this.options.token}` }),
+            "content-type": "application/json",
+            // Both named: the pipeline negotiates on json, the answer is SSE.
+            accept: "text/event-stream, application/json",
+          },
+          body: JSON.stringify({
+            input: this.items,
+            stream: true,
+            ...(this.standing === undefined ? {} : { instructions: this.standing }),
+            ...(this.tools.length === 0
+              ? {}
+              : {
+                  tools: this.tools.map((tool) => ({
+                    type: "function",
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                  })),
+                }),
+          }),
+          signal,
+        });
+      } catch (cause) {
+        if (signal.aborted) throw cause;
+        error = cause;
+      }
+
+      if (response !== undefined && response.ok && response.body !== null) {
+        return response;
+      }
+
+      const status = response?.status;
+      const isTransient =
+        error !== undefined || (status !== undefined && status >= 500 && status < 600);
+
+      if (!isTransient || attempt === attempts - 1) {
+        if (response !== undefined) {
+          throw new Error(
+            `The responses API at ${this.options.origin} answered HTTP ${String(response.status)}.`,
+          );
+        }
+        throw new Error(
+          `The responses API at ${this.options.origin} could not be reached: ${String(error)}`,
+        );
+      }
+
+      const delayMs = this.retryDelaysMs[attempt] ?? 1000;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      if (signal.aborted) {
+        throw new Error("Aborted");
+      }
+    }
+
+    throw new Error(`The responses API at ${this.options.origin} request failed.`);
+  }
+
   /** One request: stream the events, yield what renders, return the rest. */
   private async *once(
     signal: AbortSignal,
   ): AsyncGenerator<ReplyChunk, { text: string; requested: Call[] }> {
-    const response = await fetch(new URL("/api/v1/responses", this.options.origin), {
-      method: "POST",
-      headers: {
-        ...(this.options.token === undefined
-          ? {}
-          : { authorization: `Bearer ${this.options.token}` }),
-        "content-type": "application/json",
-        // Both named: the pipeline negotiates on json, the answer is SSE.
-        accept: "text/event-stream, application/json",
-      },
-      body: JSON.stringify({
-        input: this.items,
-        stream: true,
-        ...(this.standing === undefined ? {} : { instructions: this.standing }),
-        ...(this.tools.length === 0
-          ? {}
-          : {
-              tools: this.tools.map((tool) => ({
-                type: "function",
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.parameters,
-              })),
-            }),
-      }),
-      signal,
-    });
-
-    if (!response.ok || response.body === null) {
-      throw new Error(
-        `The responses API at ${this.options.origin} answered HTTP ${String(response.status)}.`,
-      );
-    }
+    const response = await this.request(signal);
 
     let text = "";
     const requested: Call[] = [];
 
-    for await (const data of frames(response.body, signal)) {
+    for await (const data of frames(response.body!, signal)) {
       const event = parse(data);
       if (event === undefined) continue;
 
