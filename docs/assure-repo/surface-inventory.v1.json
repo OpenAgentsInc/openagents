@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:b29ca5df314ce71b161140ac0f9b8d900edcbfe5ad21165b24043797912a4669",
+  "sourceDigest": "sha256:ac9610f30ed5ae651dfa7394b5a6003af5ae955e5a0a056a6672065c342597ef",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1952,7 +1952,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/coder-effectiveness (7 tracked test files)"
+          "ref": "packages/coder-effectiveness (8 tracked test files)"
         }
       ],
       "obligation": {
