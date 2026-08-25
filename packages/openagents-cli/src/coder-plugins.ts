@@ -228,7 +228,7 @@ export function loadPluginFromManifest(
   return { manifest, wasm, digest, mounts };
 }
 
-function validateManifest(value: unknown): PluginManifest | PluginRefusal {
+export function validateManifest(value: unknown): PluginManifest | PluginRefusal {
   const bad = (what: string): PluginRefusal =>
     refuse("manifest_invalid", `the manifest is missing or mistypes ${what}`);
 
@@ -468,4 +468,54 @@ export function describeLoad(outcome: LoadedPlugin | PluginRefusal): string {
     `${String(manifest.capabilities.timeout_ms)}ms bound). The \`${manifest.name}\` tool is ` +
     "declared to the model for this session. Experimental."
   );
+}
+
+/**
+ * Plugin capability approval.
+ *
+ * The host has three fixed tiers:
+ * - pure compute (no mounts and no declared hosts) is allowed without asking;
+ * - read-only mounts are asked once and then cached for the same verified
+ *   digest and declared capabilities;
+ * - network hosts or writable mounts are asked every time, with no cache.
+ *
+ * If no approver is configured, any tier that needs an operator refuses. This
+ * is the safe default: an unattended session must not grant high-surface
+ * capabilities without an explicit operator. An interactive caller can supply
+ * an approver that prompts.
+ */
+export interface PluginApprovalRequest {
+  readonly name: string;
+  readonly digest: string;
+  readonly capabilities: {
+    readonly mounts: ReadonlyArray<{ readonly path: string; readonly readonly: boolean }>;
+    readonly hosts: ReadonlyArray<unknown>;
+  };
+}
+
+export interface PluginApprover {
+  ask(request: PluginApprovalRequest): "allow" | "refuse" | Promise<"allow" | "refuse">;
+}
+
+export class PluginApproval {
+  private readonly approved = new Set<string>();
+  constructor(private readonly approver?: PluginApprover) {}
+  async check(request: PluginApprovalRequest): Promise<"approved" | PluginRefusal> {
+    const hasHosts = request.capabilities.hosts.length > 0;
+    const hasWritableMounts = request.capabilities.mounts.some((mount) => !mount.readonly);
+    const hasMounts = request.capabilities.mounts.length > 0;
+    if (!hasMounts && !hasHosts) return "approved";
+    const askEveryTime = hasHosts || hasWritableMounts;
+    const key = `${request.digest}:${JSON.stringify(request.capabilities)}`;
+    if (!askEveryTime && this.approved.has(key)) return "approved";
+    if (this.approver === undefined) {
+      return refuse("approval_unavailable", "No approver is configured for this capability tier.");
+    }
+    const answer = await this.approver.ask(request);
+    if (answer !== "allow") {
+      return refuse("approval_refused", "The operator refused this capability.");
+    }
+    if (!askEveryTime) this.approved.add(key);
+    return "approved";
+  }
 }

@@ -47,7 +47,9 @@ export interface PluginRefusal {
     | "timeout"
     | "cancelled"
     | "trap"
-    | "bad_packet";
+    | "bad_packet"
+    | "approval_unavailable"
+    | "approval_refused";
   readonly reason: string;
 }
 

@@ -95,8 +95,14 @@ import {
   loadPluginFromManifest,
   pluginIdentity,
   pluginTool,
+  PluginApproval,
   type LoadedPlugin,
 } from "./coder-plugins.js";
+import {
+  capabilityTool,
+  defaultCapabilityGapRecorder,
+  discoverPluginCatalog,
+} from "./coder-capability.js";
 import { runForeignResume } from "./coder-foreign-resume.js";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -2320,13 +2326,47 @@ const coderCommand = Command.make(
       // plugin materializes one tool for the rest of this session and nothing
       // outlives the process.
       const plugins: LoadedPlugin[] = [];
-      const declareTools = () => {
+      const catalog = discoverPluginCatalog(fileURLToPath(import.meta.url));
+      const onSelect = (outcome: LoadedPlugin, manifestFile: string) => {
+        // Reloading a name replaces it: a demo iterates on one plugin, and
+        // two tools with one name would be a declaration the model cannot
+        // tell apart.
+        const at = plugins.findIndex((held) => held.manifest.name === outcome.manifest.name);
+        if (at >= 0) plugins.splice(at, 1);
+        plugins.push(outcome);
+        declareTools();
+        const identity = pluginIdentity(outcome);
+        session.recordPluginEvent({
+          message: describeLoad(outcome),
+          event: "plugin_loaded",
+          plugin: {
+            name: identity.name,
+            version: identity.version,
+            artifactDigest: identity.artifactDigest,
+            bytes: identity.bytes,
+            abi: identity.abi,
+            timeoutMs: identity.timeoutMs,
+            capabilities: identity.capabilities,
+            manifestPath: manifestFile,
+            toolName: identity.toolName,
+          },
+        });
+      };
+      const capability = capabilityTool({
+        catalog,
+        approval: new PluginApproval(),
+        recordGap: defaultCapabilityGapRecorder(),
+        onSelect,
+      });
+      let declareTools: () => void;
+      declareTools = () => {
         const active = skills.active();
         const tools = [
           shellTool(process.cwd()),
           ...(active.length === 0 ? [] : [skillTool(active)]),
           openagentsTool(),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
+          capability,
           ...plugins.map((plugin) => pluginTool(plugin)),
         ];
         source.useTools?.(tools);
@@ -2352,29 +2392,7 @@ const coderCommand = Command.make(
           });
           return described;
         }
-        // Reloading a name replaces it: a demo iterates on one plugin, and
-        // two tools with one name would be a declaration the model cannot
-        // tell apart.
-        const at = plugins.findIndex((held) => held.manifest.name === outcome.manifest.name);
-        if (at >= 0) plugins.splice(at, 1);
-        plugins.push(outcome);
-        declareTools();
-        const identity = pluginIdentity(outcome);
-        session.recordPluginEvent({
-          message: described,
-          event: "plugin_loaded",
-          plugin: {
-            name: identity.name,
-            version: identity.version,
-            artifactDigest: identity.artifactDigest,
-            bytes: identity.bytes,
-            abi: identity.abi,
-            timeoutMs: identity.timeoutMs,
-            capabilities: identity.capabilities,
-            manifestPath: manifestFile,
-            toolName: identity.toolName,
-          },
-        });
+        onSelect(outcome, manifestFile);
         return described;
       };
 
