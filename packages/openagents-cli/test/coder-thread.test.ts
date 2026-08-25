@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplyChunk } from "../src/coder-session.js";
-import { openThread, resolveProxyUrl, ThreadUnavailable, type ThreadReplySource } from "../src/coder-thread.js";
+import { openThread, resolveProxyUrl, ThreadReplySource, ThreadUnavailable } from "../src/coder-thread.js";
+import { Redacted } from "effect";
+import { shellTool } from "../src/coder-tools.js";
 import { ThreadTranscriptWriter } from "../src/coder-transcript.js";
 
 const ORIGIN = "https://openagents.test";
@@ -1041,6 +1043,29 @@ describe("the session's anchor on the thread lane", () => {
     expect(shown).toContain("`openagents coder`");
     expect(shown).toContain("Workspace facts.");
     expect(shown).not.toContain("composed by the server");
+  });
+});
+
+describe("ThreadReplySource toolDefinitions", () => {
+  it("carries the gemini family emphasis on the shell tool", () => {
+    const source = new ThreadReplySource({
+      origin: ORIGIN,
+      accountToken: ACCOUNT_TOKEN,
+      threadId: THREAD_ID,
+      grantToken: Redacted.make(GRANT_TOKEN),
+      proxyUrl: `${ORIGIN}/api/inference/proxy`,
+      model: "gemini-3.7-flash",
+      budget: { calls: 256, totalTokens: 1_000_000, costMicrousd: 2_000_000 },
+    });
+    source.useTools([shellTool(process.cwd())]);
+
+    const defs = source.toolDefinitions() as ReadonlyArray<{
+      function: { name: string; description: string };
+    }>;
+    const shell = defs.find((tool) => tool.function.name === "shell");
+    expect(shell).toBeDefined();
+    expect(shell?.function.description).toContain("batch independent commands into ONE call");
+    expect(shell?.function.description).toContain("offset/limit ranged reads");
   });
 });
 

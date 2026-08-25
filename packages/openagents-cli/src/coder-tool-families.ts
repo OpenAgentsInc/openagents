@@ -50,7 +50,9 @@ const emphasis: Partial<Record<ToolFamily, Partial<Record<string, string>>>> = {
       " IMPORTANT: batch independent commands into ONE call joined with && — " +
       "each separate call replays the whole conversation to the model, so ten " +
       "one-line calls cost several times what one composite call costs. Never " +
-      "run one small inspection per call.",
+      "run one small inspection per call. Read only the region you need; prefer " +
+      "offset/limit ranged reads or summaries over whole-file dumps, which are " +
+      "token-inefficient.",
   },
   local: {
     shell:
