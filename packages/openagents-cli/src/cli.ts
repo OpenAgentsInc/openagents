@@ -115,6 +115,7 @@ import { loadSkillSelection, standingContext } from "./coder-skills.js";
 import { startDevServer } from "./coder-dev-server.js";
 import { ResponsesReplySource } from "./coder-responses.js";
 import { TIER_MODELS, tierForModel, tierUnavailable, type CoderTierId } from "./coder-tiers.js";
+import { rememberTool } from "./coder-remember.js";
 import { ZenReplySource, zenCredential } from "./coder-zen.js";
 import { describeWorkspace } from "./coder-workspace.js";
 import { makeBoxCommand } from "./box-command.js";
@@ -154,6 +155,7 @@ import { GitRunner } from "./git-runner.js";
 import { makeIdentityCommand } from "./identity-command.js";
 import { IssueClient } from "./issue-client.js";
 import { runGitCredentialHelper } from "./git-credential-helper.js";
+import { makeMemoryCommand } from "./memory-command.js";
 import { Output, type OutputMode } from "./output.js";
 import { ProjectClient } from "./project-client.js";
 import { makeProviderCommand } from "./provider-command.js";
@@ -2616,6 +2618,18 @@ const coderCommand = Command.make(
           // being asked for. Re-declaration per turn is what makes the tool
           // appear the turn after `/goal` sets one.
           ...(goalStore.getGoal() === undefined ? [] : [goalTool(goalStore)]),
+          // The write half of the cloud memory rail
+          // (OpenAgentsInc/openagents#51). Declared on every session,
+          // including one with no credential: the tool refuses in a sentence
+          // the model can repeat, which is what the reader needs to hear, and
+          // a session that simply lacked the tool would answer that it cannot
+          // remember anything. Recall needs nothing here — the server attaches
+          // the account's memories inside `POST /api/v1/responses`.
+          rememberTool({
+            origin: endpoint.origin,
+            ...(Option.isNone(stored) ? {} : { token: Redacted.value(stored.value.token) }),
+            ...(transcriptThreadId === undefined ? {} : { sourceRef: transcriptThreadId }),
+          }),
           ...(setup === undefined ? [] : [delegateTool(setup.delegation)]),
           capability,
           ...visiblePlugins().map((plugin) => {
@@ -4243,6 +4257,8 @@ const providerCommand = makeProviderCommand(rootCommand);
 
 const boxCommand = makeBoxCommand(rootCommand);
 
+const memoryCommand = makeMemoryCommand(rootCommand);
+
 // The deploy command group: named operator deployment commands over the
 // operator-only fleet promotion API from OpenAgentsInc/openagents.com#57.
 // It consumes only that API — never `/admin/forge`, SSH, or an internal RPC —
@@ -4630,6 +4646,7 @@ export const openagentsCommand = rootCommand.pipe(
     forumCommand,
     identityCommand,
     issueCommand,
+    memoryCommand,
     projectCommand,
     providerCommand,
     repoCommand,
