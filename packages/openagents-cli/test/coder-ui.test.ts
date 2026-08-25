@@ -245,7 +245,7 @@ describe("runCoderUi", () => {
     Object.defineProperty(metered, "budget", { get: () => "255 calls · 1.0M tok · $2.00" });
 
     const { rows } = await drive([{ type: "text", value: "hi" }], "go", metered);
-    const status = rows.find((row) => row.includes("repo · main"));
+    const status = rows.find((row) => row.includes("repo · ⎇ main"));
 
     expect(status).toContain("scripted · 255 calls · 1.0M tok · $2.00");
   });
@@ -894,7 +894,7 @@ describe("the chrome under the composer", () => {
     // The keys used to have a row of their own under the status line. They are
     // in `/help` now, which is where a reader looks for them once rather than
     // past them always.
-    expect(bottom.some((row) => row.includes("ready") || row.includes("working"))).toBe(true);
+    expect(bottom.some((row) => row.includes("repo · ⎇ main") || row.includes("working"))).toBe(true);
     expect(rows.join("\n")).not.toContain("enter to send");
     expect(rows.join("\n")).not.toContain("ctrl+d to quit");
   });
@@ -927,7 +927,7 @@ describe("the chrome under the composer", () => {
 
     // Losing the second row lost the scroll indicator with it, and a still
     // transcript with nothing saying why reads as a stopped session.
-    expect(rows.join("\n")).toContain("ready");
+    expect(rows.join("\n")).toContain("repo · ⎇ main");
   });
 });
 
@@ -1020,8 +1020,8 @@ describe("where a running child is shown", () => {
     expect(rows[at + 1] ?? "").toContain("Initializing");
 
     // The session status lives at the bottom and does not repeat the fleet.
-    const bottom = rows.filter((row) => row.includes("repo · main")).at(-1) ?? "";
-    expect(bottom).toContain("repo · main");
+    const bottom = rows.filter((row) => row.includes("repo · ⎇ main")).at(-1) ?? "";
+    expect(bottom).toContain("repo · ⎇ main");
     expect(bottom).not.toContain("1 agent");
   });
 

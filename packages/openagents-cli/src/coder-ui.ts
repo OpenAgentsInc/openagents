@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 /**
  * The full-screen interface for `openagents coder`.
  *
@@ -952,34 +953,66 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       const rule = `${DIM}${"─".repeat(Math.max(0, width))}${RESET}`;
       const inner = Math.max(10, width - 4);
 
-      // The elapsed time and nothing else. This said `streaming` until the
-      // reply source became the inference proxy, which builds the whole body
-      // and sends it once: a turn that shows one block after four silent
-      // seconds was never streaming, and the status line must not say it was.
-      const chatActivity = snapshot.running
-        ? `${YELLOW}●${RESET} working… ${DIM}(${elapsed(runningSince, Date.now())})${RESET}`
-        : `${DIM}○ ready${RESET}`;
-      const scrolled = anchor === undefined ? "" : `${DIM} · scrolled ↑${String(above)}${RESET}`;
-      const activity = chatActivity + scrolled;
-      // Dropped from the left as the terminal narrows, because that is the
-      // order of what a reader cannot recover elsewhere: they can see which
-      // checkout they are in, they can ask git for the branch, and nothing on
-      // screen but this says which model answers or what the thread has left.
-      const facts = [snapshot.repository, snapshot.branch, snapshot.model];
-      if (snapshot.reasoning !== undefined) facts.push(`thinking ${snapshot.reasoning}`);
-      if (snapshot.budget !== undefined) facts.push(snapshot.budget);
+      // Status line left side:
+      // - Directory (replacing home directory with ~)
+      // - Branch (with branch icon if present and not "no branch")
+      // - Active state / scrolled indicator (no "ready" indicator when idle)
+      const home = homedir();
+      const formattedRepo =
+        snapshot.repository === home
+          ? "~"
+          : snapshot.repository.startsWith(`${home}/`)
+            ? `~${snapshot.repository.slice(home.length)}`
+            : snapshot.repository;
+      const formattedBranch =
+        snapshot.branch === "no branch" || snapshot.branch.length === 0
+          ? snapshot.branch
+          : `⎇ ${snapshot.branch}`;
+
+      const leftParts: string[] = [];
+      if (formattedRepo.length > 0) leftParts.push(formattedRepo);
+      if (formattedBranch.length > 0) leftParts.push(formattedBranch);
+      if (snapshot.running) {
+        leftParts.push(`${YELLOW}●${RESET} ${DIM}working… (${elapsed(runningSince, Date.now())})${RESET}`);
+      }
+      if (anchor !== undefined) {
+        leftParts.push(`${DIM}scrolled ↑${String(above)}${RESET}`);
+      }
+
+      // Status line right side:
+      // Model, reasoning, budget, goal.
+      const rightParts = [snapshot.model];
+      if (snapshot.reasoning !== undefined) rightParts.push(`thinking ${snapshot.reasoning}`);
+      if (snapshot.budget !== undefined) rightParts.push(snapshot.budget);
       if (snapshot.goal !== undefined && snapshot.goal.status === "active") {
         const goalSnippet = snapshot.goal.objective.length > 25
           ? snapshot.goal.objective.slice(0, 22) + "…"
           : snapshot.goal.objective;
-        facts.push(`goal: "${goalSnippet}"`);
+        rightParts.push(`goal: "${goalSnippet}"`);
       }
-      let where = "";
-      for (let from = 0; from < facts.length; from += 1) {
-        const candidate = `${DIM}${facts.slice(from).join(" · ")}${RESET}`;
-        if (visibleWidth(activity) + visibleWidth(candidate) + 2 > inner) continue;
-        where = candidate;
-        break;
+
+      let chosenLeft = "";
+      let chosenRight = "";
+      for (let leftFrom = 0; leftFrom <= leftParts.length; leftFrom += 1) {
+        const leftCandidate =
+          leftParts.slice(leftFrom).length > 0
+            ? `${DIM}${leftParts.slice(leftFrom).join(" · ")}${RESET}`
+            : "";
+        let matched = false;
+        for (let rightFrom = 0; rightFrom < rightParts.length; rightFrom += 1) {
+          const rightCandidate = `${DIM}${rightParts.slice(rightFrom).join(" · ")}${RESET}`;
+          const used =
+            visibleWidth(leftCandidate) +
+            visibleWidth(rightCandidate) +
+            (leftCandidate.length > 0 && rightCandidate.length > 0 ? 2 : 0);
+          if (used <= inner) {
+            chosenLeft = leftCandidate;
+            chosenRight = rightCandidate;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
       }
       // A blank row, then the composer. The keys used to live on a second row
       // under it; they are in `/help` now, which is where a reader looks for
@@ -1012,7 +1045,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       // The status line sits under the composer. Main agent state, workspace,
       // model, and budget stay here so the transcript and any running work are
       // read first and the bottom chrome is the last thing the eye reaches.
-      rows.push(`  ${justify(activity, where, inner)}`);
+      rows.push(`  ${justify(chosenLeft, chosenRight, inner)}`);
 
       if (focus === "sidebar") {
         // On the selected child, because a cursor left blinking in a composer
