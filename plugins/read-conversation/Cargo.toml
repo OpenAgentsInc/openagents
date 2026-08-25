@@ -1,0 +1,19 @@
+# The conversation reader: the content half the metadata-only scanner
+# deliberately left out (OpenAgentsInc/openagents#41). Locates one foreign
+# session through the scanner and reads its conversation back, bounded.
+
+[package]
+name = "read-conversation"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Guest plugin that reads one Claude Code or Codex conversation back as ordered turns, through read-only mounts, bounded by turn and character ceilings."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openagents-pdk = { workspace = true }
+foreign-sessions = { path = "../foreign-sessions", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }

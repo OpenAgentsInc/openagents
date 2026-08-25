@@ -190,6 +190,22 @@ pub fn read_mounted_file(path: &str) -> Result<Vec<u8>, Refusal> {
     imp::read_mounted_file(path)
 }
 
+/// Read a bounded range of a mounted file, for files past the whole-file
+/// bound.
+///
+/// Same confinement as [`read_mounted_file`]; the difference is the answer.
+/// A whole-file read of an oversized file is refused, while a range read
+/// answers with up to `max_bytes` bytes from `offset` — the host clamps
+/// `max_bytes` to its per-read bound, and a range past the end answers with
+/// what remains, empty included.
+pub fn read_mounted_file_range(
+    path: &str,
+    offset: u64,
+    max_bytes: u32,
+) -> Result<Vec<u8>, Refusal> {
+    imp::read_mounted_file_range(path, offset, max_bytes)
+}
+
 /// One entry of a mounted directory listing, as the host reports it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct MountDirEntry {
@@ -268,6 +284,10 @@ mod imp {
         /// payload is the JSON encoding of a listing. Present only when the
         /// manifest declares mounts.
         fn list_dir(mount_index: u32, path_ptr: *const u8, path_len: u32) -> u64;
+        /// Host capability import: read up to `max_bytes` bytes of a mounted
+        /// file starting at `offset`. Same answer-packet shape and the same
+        /// confinement as `read_file`, without the whole-file size refusal.
+        fn read_file_range(path_ptr: *const u8, path_len: u32, offset: u64, max_bytes: u32) -> u64;
     }
 
     /// Unpack a host answer word into the packet slice it points at.
@@ -285,6 +305,16 @@ mod imp {
         let packet = unsafe { host_packet(packed) }?;
         parse_host_packet(packet)
     }
+    pub fn read_mounted_file_range(
+        path: &str,
+        offset: u64,
+        max_bytes: u32,
+    ) -> Result<Vec<u8>, Refusal> {
+        let packed =
+            unsafe { read_file_range(path.as_ptr(), path.len() as u32, offset, max_bytes) };
+        let packet = unsafe { host_packet(packed) }?;
+        parse_host_packet(packet)
+    }
 
     pub fn list_mounted_dir(mount_index: u32, path: &str) -> Result<MountDirListing, Refusal> {
         let packed = unsafe { list_dir(mount_index, path.as_ptr(), path.len() as u32) };
@@ -297,6 +327,15 @@ mod imp {
 mod imp {
     use super::{MountDirListing, Refusal};
 
+    pub fn read_mounted_file_range(
+        _path: &str,
+        _offset: u64,
+        _max_bytes: u32,
+    ) -> Result<Vec<u8>, Refusal> {
+        Err(Refusal::unsupported(
+            "mounted reads exist only inside the WASM sandbox",
+        ))
+    }
     pub fn read_mounted_file(_path: &str) -> Result<Vec<u8>, Refusal> {
         Err(Refusal::unsupported(
             "read_mounted_file is a host capability import; it exists only inside the WASM host",

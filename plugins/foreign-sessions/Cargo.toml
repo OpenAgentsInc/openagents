@@ -15,3 +15,8 @@ crate-type = ["cdylib", "rlib"]
 openagents-pdk = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[features]
+default = ["entry"]
+# The packet-v0 exports. Off for library consumers, on for the artifact.
+entry = []

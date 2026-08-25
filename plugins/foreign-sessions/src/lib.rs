@@ -18,9 +18,9 @@
 //! runs against `now_ms` when the caller provides it, and otherwise
 //! against the newest mtime the scan observed.
 
-use openagents_pdk::{
-    list_mounted_dir, plugin_entry, read_mounted_file, MountDirListing, Refusal, RefusalCode,
-};
+#[cfg(feature = "entry")]
+use openagents_pdk::plugin_entry;
+use openagents_pdk::{list_mounted_dir, read_mounted_file, MountDirListing, Refusal, RefusalCode};
 use serde::{Deserialize, Serialize};
 
 /// Mount indices, fixed by the order `manifest.json` declares the mounts.
@@ -121,8 +121,10 @@ pub trait Host {
     fn read(&self, path: &str) -> Result<Vec<u8>, Refusal>;
 }
 
+#[cfg(feature = "entry")]
 struct RealHost;
 
+#[cfg(feature = "entry")]
 impl Host for RealHost {
     fn list(&self, mount_index: u32, path: &str) -> Result<MountDirListing, Refusal> {
         list_mounted_dir(mount_index, path)
@@ -479,10 +481,17 @@ fn dirs_of<'l>(listing: &'l MountDirListing, skipped: &mut Skipped) -> Vec<&'l s
     dirs
 }
 
+// The packet entry is feature-gated so another guest crate can depend on
+// the scan logic as a library: `plugin_entry!` emits the `handle_packet`
+// and `packet_alloc` exports, and two copies of those cannot link into one
+// module. The artifact build keeps the default feature; a library consumer
+// turns it off.
+#[cfg(feature = "entry")]
 fn handle(input: Input) -> Result<Output, Refusal> {
     scan(&RealHost, &input)
 }
 
+#[cfg(feature = "entry")]
 plugin_entry!(handle);
 
 #[cfg(test)]

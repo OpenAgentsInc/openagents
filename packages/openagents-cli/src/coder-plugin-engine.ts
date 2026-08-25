@@ -126,7 +126,7 @@ export interface PluginEngine {
  */
 const INVOKE_WORKER = `
 const { parentPort, workerData } = require("node:worker_threads");
-const { lstatSync, readdirSync, readFileSync, realpathSync } = require("node:fs");
+const { lstatSync, readdirSync, readFileSync, realpathSync , openSync, readSync, closeSync } = require("node:fs");
 const { isAbsolute, join, resolve, sep } = require("node:path");
 (async () => {
   const { wasm, input, entry, alloc, mounts, mountFileLimit, mountDirEntryLimit } = workerData;
@@ -147,7 +147,7 @@ const { isAbsolute, join, resolve, sep } = require("node:path");
       return packet;
     };
 
-    const readMounted = (path) => {
+    const readMounted = (path, range) => {
       if (isAbsolute(path)) {
         return refusalPacket("mount_denied", "absolute paths are refused; mounted paths are relative to a declared mount root");
       }
@@ -181,11 +181,35 @@ const { isAbsolute, join, resolve, sep } = require("node:path");
         if (real !== root && !real.startsWith(root + sep)) {
           return refusalPacket("mount_denied", "the path resolves outside the mount root");
         }
-        if (stat.size > mountFileLimit) {
-          return refusalPacket("file_too_large", "the file is " + String(stat.size) + " bytes; the per-file bound is " + String(mountFileLimit));
+        if (range === undefined) {
+          if (stat.size > mountFileLimit) {
+            return refusalPacket("file_too_large", "the file is " + String(stat.size) + " bytes; the per-file bound is " + String(mountFileLimit));
+          }
+          try {
+            return okPacket(readFileSync(candidate));
+          } catch (cause) {
+            return refusalPacket("file_unreadable", String((cause && cause.message) || cause));
+          }
         }
+        // A range read has no whole-file refusal: the answer is bounded by
+        // construction. The length is clamped to the same per-read bound,
+        // and a range past the end answers with what remains, empty included.
+        const offset = Math.min(Math.max(0, range.offset), stat.size);
+        const length = Math.min(Math.max(0, range.maxBytes), mountFileLimit, stat.size - offset);
         try {
-          return okPacket(readFileSync(candidate));
+          const buffer = Buffer.alloc(length);
+          const fd = openSync(candidate, "r");
+          try {
+            let filled = 0;
+            while (filled < length) {
+              const got = readSync(fd, buffer, filled, length - filled, offset + filled);
+              if (got <= 0) break;
+              filled += got;
+            }
+            return okPacket(buffer.subarray(0, filled));
+          } finally {
+            closeSync(fd);
+          }
         } catch (cause) {
           return refusalPacket("file_unreadable", String((cause && cause.message) || cause));
         }
@@ -286,6 +310,21 @@ const { isAbsolute, join, resolve, sep } = require("node:path");
                 let packet;
                 try {
                   packet = readMounted(guestPath(pathPtr, pathLen));
+                } catch (cause) {
+                  packet = refusalPacket("file_unreadable", String((cause && cause.message) || cause));
+                }
+                return answerGuest(packet);
+              },
+              // The bounded range read: same confinement, no whole-file
+              // refusal. The offset crosses the boundary as a wasm i64, so
+              // it arrives here as a BigInt.
+              read_file_range: (pathPtr, pathLen, offset, maxBytes) => {
+                let packet;
+                try {
+                  packet = readMounted(guestPath(pathPtr, pathLen), {
+                    offset: Number(offset),
+                    maxBytes: maxBytes,
+                  });
                 } catch (cause) {
                   packet = refusalPacket("file_unreadable", String((cause && cause.message) || cause));
                 }

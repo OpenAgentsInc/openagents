@@ -205,12 +205,16 @@ export function loadPluginFromManifest(
 
   // Every import must be granted by a declared capability. Mounts grant
   // exactly two: the read_file and list_dir capability imports.
-  const granted = new Set(mounts.length > 0 ? ["openagents.read_file", "openagents.list_dir"] : []);
+  const granted = new Set(
+    mounts.length > 0
+      ? ["openagents.read_file", "openagents.read_file_range", "openagents.list_dir"]
+      : [],
+  );
   const undeclared = shape.imports.filter((name) => !granted.has(name));
   if (undeclared.length > 0) {
     const grantHint =
       mounts.length > 0
-        ? "the declared mounts grant only `openagents.read_file` and `openagents.list_dir`"
+        ? "the declared mounts grant only `openagents.read_file`, `openagents.read_file_range`, and `openagents.list_dir`"
         : "the manifest declares no capabilities, so the module may import nothing";
     return refuse(
       "imports_undeclared",

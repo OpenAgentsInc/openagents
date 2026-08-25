@@ -25,6 +25,14 @@ OpenAgentsInc/openagents#26 and
   discovers recent Claude Code and Codex CLI sessions from `~/.claude` and
   `~/.codex` mounted read-only, metadata only. The scanner half of
   OpenAgentsInc/openagents.com#198.
+- `read-conversation/` — the content half (OpenAgentsInc/openagents#41):
+  locates one session through the scanner's library and reads its
+  conversation back as ordered turns, bounded by turn and character
+  ceilings. The first plugin over `openagents.read_file_range`, the
+  bounded range import that reads the tail of a session file past the
+  whole-file bound. `foreign-sessions` gates its packet entry behind the
+  default `entry` feature so this crate can depend on the scan logic
+  without a duplicate-export link error.
 
 Each plugin's built `.wasm` artifact and its `sha256:` digest pin are
 checked in beside the source, so the CLI runs them without a Rust

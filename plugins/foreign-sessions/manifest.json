@@ -3,10 +3,10 @@
   "name": "foreign_sessions",
   "version": "0.1.0",
   "author": "OpenAgents",
-  "description": "Discover recent Claude Code and Codex CLI sessions from their local state directories, mounted read-only: for each session its source, id, working directory, modification time, size, and record count. Metadata only — it never reads whole conversations back, never writes, and cannot resume anything. Use it when asked what foreign coding-agent sessions exist on this machine, optionally filtered to a working directory.",
+  "description": "Discover recent Claude Code and Codex CLI sessions from their local state directories, mounted read-only: for each session its source, id, working directory, modification time, size, and record count. Metadata only \u2014 it never reads whole conversations back, never writes, and cannot resume anything. Use it when asked what foreign coding-agent sessions exist on this machine, optionally filtered to a working directory.",
   "artifact": {
     "path": "foreign_sessions.wasm",
-    "digest": "sha256:164eed5637ccadd11c1df698e22436cdeeb963194b7a765dd845a745fcf3854d"
+    "digest": "sha256:5ba9c4265b7a18dbb1c1c175e10a0ffcff5b7d124c766536b582c6e33bde84bb"
   },
   "abi": {
     "kind": "packet-v0",
@@ -19,7 +19,13 @@
       "properties": {
         "sources": {
           "type": "array",
-          "items": { "type": "string", "enum": ["claude", "codex"] },
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex"
+            ]
+          },
           "description": "Which stores to scan. Both when omitted."
         },
         "cwd_filter": {
@@ -53,49 +59,101 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "source": { "type": "string" },
-                  "session_id": { "type": "string" },
-                  "path": { "type": "string" },
-                  "cwd": { "type": "string" },
-                  "project_dir": { "type": "string" },
-                  "mtime_ms": { "type": "integer" },
-                  "size_bytes": { "type": "integer" },
-                  "record_count": { "type": "integer" },
-                  "metadata_truncated": { "type": "boolean" }
+                  "source": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "project_dir": {
+                    "type": "string"
+                  },
+                  "mtime_ms": {
+                    "type": "integer"
+                  },
+                  "size_bytes": {
+                    "type": "integer"
+                  },
+                  "record_count": {
+                    "type": "integer"
+                  },
+                  "metadata_truncated": {
+                    "type": "boolean"
+                  }
                 }
               }
             },
-            "scanned_dirs": { "type": "integer" },
-            "scanned_files": { "type": "integer" },
+            "scanned_dirs": {
+              "type": "integer"
+            },
+            "scanned_files": {
+              "type": "integer"
+            },
             "skipped": {
               "type": "object",
               "properties": {
-                "malformed": { "type": "integer" },
-                "unreadable": { "type": "integer" },
-                "symlinked": { "type": "integer" }
+                "malformed": {
+                  "type": "integer"
+                },
+                "unreadable": {
+                  "type": "integer"
+                },
+                "symlinked": {
+                  "type": "integer"
+                }
               }
             },
-            "oversized": { "type": "integer" },
-            "missing_sources": { "type": "array", "items": { "type": "string" } },
-            "scan_truncated": { "type": "boolean" },
-            "read_budget_exhausted": { "type": "boolean" }
+            "oversized": {
+              "type": "integer"
+            },
+            "missing_sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "scan_truncated": {
+              "type": "boolean"
+            },
+            "read_budget_exhausted": {
+              "type": "boolean"
+            }
           }
         },
         "refusal": {
           "type": "object",
           "properties": {
-            "code": { "type": "string" },
-            "reason": { "type": "string" }
+            "code": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
           },
-          "required": ["code", "reason"]
+          "required": [
+            "code",
+            "reason"
+          ]
         }
       }
     }
   },
   "capabilities": {
     "mounts": [
-      { "path": "~/.claude", "readonly": true },
-      { "path": "~/.codex", "readonly": true }
+      {
+        "path": "~/.claude",
+        "readonly": true
+      },
+      {
+        "path": "~/.codex",
+        "readonly": true
+      }
     ],
     "hosts": [],
     "timeout_ms": 10000,
