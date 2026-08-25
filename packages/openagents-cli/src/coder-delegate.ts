@@ -35,7 +35,7 @@ import { appendFileSync, createWriteStream, mkdirSync } from "node:fs";
 
 import { runDevinAcp } from "./coder-devin-acp.js";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { CoderTaskId, CoderTaskRegistry, CoderToolActivity } from "./coder-tasks.js";
 
 /** What the console asks for. One shape whether it wants one child or fifteen. */
@@ -225,6 +225,174 @@ export function parseOpencodeEvent(line: string): DelegateEvent | undefined {
  * which says nothing about the provider refusal, the missing credential, or the
  * unreachable endpoint that actually happened.
  */
+/**
+ * Read one line of `claude -p --output-format stream-json --verbose` output.
+ *
+ * Claude's stream-json is newline-delimited and shaped for its own SDK, not for
+ * this fleet. The mapping is deliberately lossy: this fleet only needs to show
+ * that the child started, what it is doing, what it said, and how many tokens
+ * it used. Everything else — `thinking` blocks, per-tool results, `rate_limit`
+ * events, cost in dollars, cache accounting, and message-level `usage` that
+ * does not carry a complete `input_tokens`/`output_tokens` pair — is ignored.
+ *
+ * Mapped:
+ *   - `system` `init`       -> `session` (session_id only)
+ *   - `assistant` text      -> `text`
+ *   - `assistant` tool_use  -> `tool` (callId, name, target from input)
+ *   - `result` usage        -> `tokens`
+ *   - `result` is_error     -> `error`
+ *   - `stream_event` text_delta -> `text`
+ *   - `stream_event` tool start -> `tool`
+ *   - `error`               -> `error`
+ *
+ * Not mapped:
+ *   - `thinking` blocks
+ *   - `user` tool_result messages
+ *   - `stream_event` thinking_delta / input_json_delta / message_stop
+ *   - `rate_limit_event`
+ *   - model, cost, and cache fields when the harness did not request a model
+ */
+export function parseClaudeEvent(line: string): DelegateEvent | undefined {
+  const trimmed = line.trim();
+  if (trimmed.length === 0 || !trimmed.startsWith("{")) return undefined;
+
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+
+  const type = stringField(event, "type");
+
+  if (type === "system" && stringField(event, "subtype") === "init") {
+    const sessionId = stringField(event, "session_id");
+    if (sessionId !== undefined) return { type: "session", sessionId };
+    return undefined;
+  }
+
+  if (type === "assistant") {
+    const message = isRecord(event["message"]) ? event["message"] : undefined;
+    const content = Array.isArray(message?.["content"]) ? (message["content"] as unknown[]) : undefined;
+    if (content !== undefined && content.length > 0) {
+      const first = isRecord(content[0]) ? content[0] : {};
+      const blockType = stringField(first, "type");
+      if (blockType === "text") {
+        const value = stringField(first, "text");
+        if (value !== undefined) return { type: "text", value };
+      }
+      if (blockType === "tool_use") {
+        const callId = stringField(first, "id") ?? "tool";
+        const name = stringField(first, "name") ?? "tool";
+        const input = isRecord(first["input"]) ? first["input"] : {};
+        return { type: "tool", callId, name, target: claudeTarget(input) };
+      }
+    }
+
+    const usage = isRecord(message?.["usage"]) ? message["usage"] : undefined;
+    if (usage !== undefined) {
+      const input = numberField(usage, "input_tokens");
+      const output = numberField(usage, "output_tokens");
+      if (input !== undefined && output !== undefined) return { type: "tokens", input, output };
+    }
+
+    return undefined;
+  }
+
+  if (type === "result") {
+    if (event["is_error"] === true) {
+      const message =
+        stringField(event, "error") ??
+        stringField(event, "result") ??
+        "the child agent reported an error";
+      return { type: "error", message };
+    }
+
+    const usage = isRecord(event["usage"]) ? event["usage"] : undefined;
+    if (usage !== undefined) {
+      const input = numberField(usage, "input_tokens");
+      const output = numberField(usage, "output_tokens");
+      if (input !== undefined && output !== undefined) return { type: "tokens", input, output };
+    }
+
+    const resultText = stringField(event, "result");
+    if (resultText !== undefined && resultText.length > 0) return { type: "text", value: resultText };
+
+    return undefined;
+  }
+
+  if (type === "stream_event") {
+    const inner = isRecord(event["event"]) ? event["event"] : {};
+    const eventType = stringField(inner, "type");
+
+    if (eventType === "content_block_delta") {
+      const delta = isRecord(inner["delta"]) ? inner["delta"] : {};
+      const deltaType = stringField(delta, "type");
+      if (deltaType === "text_delta") {
+        const value = stringField(delta, "text");
+        if (value !== undefined && value.length > 0) return { type: "text", value };
+      }
+    }
+
+    if (eventType === "content_block_start") {
+      const contentBlock = isRecord(inner["content_block"]) ? inner["content_block"] : {};
+      const blockType = stringField(contentBlock, "type");
+      if (blockType === "tool_use") {
+        const callId = stringField(contentBlock, "id") ?? "tool";
+        const name = stringField(contentBlock, "name") ?? "tool";
+        const input = isRecord(contentBlock["input"]) ? contentBlock["input"] : {};
+        return { type: "tool", callId, name, target: claudeTarget(input) };
+      }
+      if (blockType === "text") {
+        const value = stringField(contentBlock, "text");
+        if (value !== undefined && value.length > 0) return { type: "text", value };
+      }
+    }
+
+    if (eventType === "message_delta") {
+      const usage = isRecord(inner["usage"]) ? inner["usage"] : undefined;
+      if (usage !== undefined) {
+        const input = numberField(usage, "input_tokens");
+        const output = numberField(usage, "output_tokens");
+        if (input !== undefined && output !== undefined) return { type: "tokens", input, output };
+      }
+    }
+
+    return undefined;
+  }
+
+  if (type === "error") {
+    const message =
+      stringField(event, "message") ??
+      stringField(event, "error") ??
+      "the child agent reported an error";
+    return { type: "error", message };
+  }
+
+  return undefined;
+}
+
+/** The phrase a Claude tool_use block is working on. */
+function claudeTarget(input: Record<string, unknown>): string | undefined {
+  for (const key of [
+    "command",
+    "file_path",
+    "path",
+    "file",
+    "url",
+    "pattern",
+    "query",
+    "description",
+    "tool_use_id",
+    "content",
+    "text",
+  ]) {
+    const value = stringField(input, key);
+    if (value !== undefined && value.length > 0) return value;
+  }
+  return undefined;
+}
+
 function describeHarnessError(event: Record<string, unknown>): string {
   const error = isRecord(event["error"]) ? event["error"] : {};
   const data = isRecord(error["data"]) ? error["data"] : {};
@@ -486,6 +654,170 @@ const DEVIN_MODES: Readonly<Record<string, string>> = {
  * Resolved against what the harness actually lists, so a name that goes away
  * falls through to the next rather than failing a fan-out.
  */
+export interface ClaudeCodeHarnessOptions {
+  /** The binary. Defaults to `claude`. */
+  readonly command?: string | undefined;
+  /** The model name passed to `--model`. If unset, the harness reports `not reported`. */
+  readonly model?: string | undefined;
+  /** The permission mode. Defaults to `auto` for unattended runs. */
+  readonly permissionMode?: string | undefined;
+  /** A hard cap on turns. Defaults to 50. */
+  readonly maxTurns?: number | undefined;
+  /** Extra environment for the child. */
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+}
+
+/**
+ * Children run by the Claude Code CLI.
+ *
+ * Claude Code's `claude -p --output-format stream-json --verbose` is a one-shot
+ * headless mode that emits newline-delimited JSON events. This harness drives it
+ * the same way the fleet drives opencode and Devin: it streams events, writes
+ * the raw transcript, and can be stopped cleanly.
+ *
+ * It inherits the user's `claude` environment and credentials. It does not read,
+ * copy, or forward any Claude credentials from this process.
+ */
+export class ClaudeCodeHarness implements DelegateHarness {
+  readonly agent = "claude";
+  readonly model: string;
+
+  constructor(private readonly options: ClaudeCodeHarnessOptions = {}) {
+    // Claude's own configuration or the init event may choose the model. Only
+    // report one the caller explicitly passed.
+    this.model = options.model ?? "not reported";
+  }
+
+  async *run(
+    input: {
+      readonly prompt: string;
+      readonly cwd: string;
+      readonly transcriptPath: string;
+      readonly resumeSessionId?: string | undefined;
+    },
+    signal: AbortSignal,
+  ): AsyncIterable<DelegateEvent> {
+    const command = this.options.command ?? "claude";
+
+    // `--print` runs the prompt and exits. `--output-format stream-json`
+    // requires `--verbose`. `--permission-mode auto` keeps a delegated child
+    // from stopping to ask; `--max-turns` is a guard on runaway cost.
+    const args = [
+      "-p",
+      input.prompt,
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--permission-mode",
+      this.options.permissionMode ?? "auto",
+    ];
+    if (this.options.model !== undefined) {
+      args.push("--model", this.options.model);
+    }
+
+    // Claude Code print mode cannot resume an existing session by id, so a
+    // resumeSessionId is ignored rather than re-running the prompt on a fresh
+    // session and duplicating any work already done.
+    void input.resumeSessionId;
+
+    mkdirSync(dirname(input.transcriptPath), { recursive: true });
+    const transcript = createWriteStream(input.transcriptPath, { flags: "a" });
+
+    const child = spawn(command, args, {
+      cwd: input.cwd,
+      env: { ...process.env, ...this.options.env },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+
+    const queue: DelegateEvent[] = [];
+    let notify: (() => void) | undefined;
+    const wake = () => {
+      notify?.();
+      notify = undefined;
+    };
+
+    let stderr = "";
+    let stdout = "";
+    let pending = "";
+    let reported: string | undefined;
+    let exited = false;
+    let failure: string | undefined;
+
+    const onAbort = () => {
+      killTree(child, "SIGTERM");
+      const grace = setTimeout(() => killTree(child, "SIGKILL"), KILL_GRACE_MS);
+      grace.unref();
+      child.once("close", () => clearTimeout(grace));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      transcript.write(chunk);
+      stdout = `${stdout}${chunk}`.slice(-4000);
+      pending += chunk;
+      let newline = pending.indexOf("\n");
+      while (newline >= 0) {
+        const line = pending.slice(0, newline);
+        pending = pending.slice(newline + 1);
+        const event = parseClaudeEvent(line);
+        if (event !== undefined) {
+          if (event.type === "error") reported = event.message;
+          queue.push(event);
+        }
+        newline = pending.indexOf("\n");
+      }
+      wake();
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr = `${stderr}${chunk}`.slice(-4000);
+    });
+
+    child.on("error", (cause: Error) => {
+      failure =
+        (cause as NodeJS.ErrnoException).code === "ENOENT"
+          ? `The \`${command}\` harness is not on the path.`
+          : cause.message;
+      exited = true;
+      wake();
+    });
+
+    child.on("close", (code) => {
+      const trailing = parseClaudeEvent(pending);
+      if (trailing !== undefined) {
+        if (trailing.type === "error") reported = trailing.message;
+        queue.push(trailing);
+      }
+      if (failure === undefined && code !== 0 && !signal.aborted) {
+        failure = reported ?? describeExit(code, stderr, stdout);
+      }
+      exited = true;
+      wake();
+    });
+
+    try {
+      while (true) {
+        while (queue.length > 0) {
+          const event = queue.shift();
+          if (event !== undefined) yield event;
+        }
+        if (exited) break;
+        await new Promise<void>((resolve) => {
+          notify = resolve;
+        });
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      transcript.end();
+    }
+
+    if (failure !== undefined) throw new Error(failure);
+  }
+}
+
 export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
   // Ox Alpha, free and unlimited while it lasts. The slug says neither `ox`
   // nor `alpha`: opencode's own normalization maps `x-preview-f` to `ox-alpha`
@@ -526,6 +858,7 @@ export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
   "ox-alpha": SELF_CHILD_LANE,
   [SELF_CHILD_LANE]: SELF_CHILD_LANE,
   gemini: SELF_CHILD_LANE,
+  claude: "claude",
 };
 
 /**
@@ -594,6 +927,16 @@ export const CHILD_LANES: ReadonlyArray<ChildLane> = [
     served: "Devin, on its own credentials — it spends nothing of this account's",
     bestFor: "straightforward engineering with a clear shape: a named fix, a test, a migration",
   },
+  {
+    name: "claude",
+    harness: "claude (the Claude Code CLI, its own tools)",
+    // Claude Code picks its own model when none is passed, and this lane does
+    // not require one. The init event may report a model, but the harness only
+    // advertises one the caller asked for.
+    model: "not reported",
+    served: "Anthropic via Claude Code, on this machine's Claude credentials",
+    bestFor: "work that needs Claude's toolset and tolerates its own cost boundary",
+  },
 ];
 
 /** One lane as a line a model can read. */
@@ -607,6 +950,7 @@ export const CHILD_MODELS: ReadonlyArray<string> = [
   ...new Set(Object.keys(CHILD_LANE_ALIASES)),
   ...FREE_CHILD_MODELS,
   "devin",
+  "claude",
 ];
 
 /**
@@ -622,6 +966,7 @@ export const childLaneName = (lane: string): string =>
 export const resolveChildLane = (name: string): string | undefined => {
   const asked = name.trim();
   if (asked.length === 0) return undefined;
+  if (/^claude(:.+)?$/.test(asked)) return asked;
   if (/^devin(:.+)?$/.test(asked)) return asked;
   const aliased = CHILD_LANE_ALIASES[asked];
   if (aliased !== undefined) return aliased;

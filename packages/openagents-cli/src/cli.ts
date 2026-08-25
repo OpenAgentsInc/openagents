@@ -37,6 +37,7 @@ import type { DelegationOutcome } from "./coder-delegate.js";
 import {
   CHILD_MODELS,
   childLaneName,
+  ClaudeCodeHarness,
   DelegateFleet,
   DevinHarness,
   describePrompt,
@@ -1709,14 +1710,18 @@ async function buildDelegation(options: {
         // it. `fleetFor` refuses the lane rather than falling through to a
         // different agent under the name the caller asked for.
         new SelfHarness({ grant: nonNullGrant(options.grant) })
-      : /^devin(:.+)?$/.test(choice)
-        ? new DevinHarness(choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {})
-        : new OpencodeHarness({
-            model: choice,
-            ...(command === undefined ? {} : { command }),
-            ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
-            autoApprove: options.autoApprove,
-          });
+      : /^claude(:.+)?$/.test(choice)
+        ? new ClaudeCodeHarness(
+            choice.startsWith("claude:") ? { model: choice.slice(7) } : {},
+          )
+        : /^devin(:.+)?$/.test(choice)
+          ? new DevinHarness(choice.startsWith("devin:") ? { permissionMode: choice.slice(6) } : {})
+          : new OpencodeHarness({
+              model: choice,
+              ...(command === undefined ? {} : { command }),
+              ...(namedConfig === undefined ? {} : { configPath: namedConfig }),
+              autoApprove: options.autoApprove,
+            });
 
     return {
       fleet: new DelegateFleet(registry, harness, {
@@ -1752,6 +1757,15 @@ async function buildDelegation(options: {
   // An alias on the flag too, so `--child-model ox-alpha` means what it says
   // and the skill that documents it is not documenting a thing that fails.
   const askedFor = named === undefined ? undefined : resolveChildLane(named);
+
+  if (askedFor !== undefined && /^claude(:(.+))?$/.test(askedFor)) {
+    const model = /^claude:(.+)$/.exec(askedFor)?.[1];
+    const lane = laneFor(model === undefined ? "claude" : `claude:${model}`);
+    return {
+      delegation: { registry, ...lane, models: CHILD_MODELS, fleetFor },
+      close: () => Promise.resolve(),
+    };
+  }
 
   if (askedFor !== undefined && /^devin(:(.+))?$/.test(askedFor)) {
     const mode = /^devin:(.+)$/.exec(askedFor)?.[1];
