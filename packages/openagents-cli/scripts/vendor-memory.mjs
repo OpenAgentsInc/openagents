@@ -46,6 +46,7 @@ export const VENDORED = [
       ["./internal/sha256.js", "./sha256.js"],
     ],
   ],
+  ["agent-experience-memory/src/sync.ts", "sync.ts", []],
   [
     "agent-experience-memory/src/consolidation.ts",
     "consolidation.ts",
@@ -87,6 +88,7 @@ export * from "./engram.js";
 export * from "./consolidation.js";
 export * from "./subagent-memory.js";
 export * from "./projection.js";
+export * from "./sync.js";
 `;
 
 export const writeAll = () => {

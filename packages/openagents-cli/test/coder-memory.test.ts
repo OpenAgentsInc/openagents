@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CoderMemory } from "../src/coder-memory.js";
+import { MemoryTransport } from "../src/memory/index.js";
 import { DelegateFleet, type DelegateEvent, type DelegateHarness } from "../src/coder-delegate.js";
 import { CoderTaskRegistry } from "../src/coder-tasks.js";
 
@@ -230,5 +231,45 @@ describe("the dreaming pass", () => {
       .bodies()
       .filter((body) => body.slug.startsWith("heuristic/"));
     expect(distilled.length).toBeGreaterThan(0);
+  });
+});
+
+describe("memory sync", () => {
+  it("queues every recorded engram and delivers it on flush", async () => {
+    const dir = freshDir();
+    const memory = memoryAt(dir);
+    memory.record("note/one", "a finding worth keeping", "note-1");
+
+    // Local-first: the engram is readable before anything is delivered.
+    expect(memory.recall("note/one")).toBe("a finding worth keeping");
+    expect(memory.syncStatus().pending).toBe(1);
+    expect(memory.syncStatus().delivered).toBe(0);
+
+    await memory.flush();
+    expect(memory.syncStatus()).toMatchObject({ pending: 0, delivered: 1 });
+  });
+
+  it("keeps working when the transport is down, and loses nothing", async () => {
+    const dir = freshDir();
+    const transport = new MemoryTransport();
+    transport.reachable = false;
+    const memory = new CoderMemory({
+      directory: dir,
+      projectScope: "project:test",
+      now: () => 1_756_000_000_000,
+      dreamThreshold: Number.POSITIVE_INFINITY,
+      transport,
+    });
+
+    memory.record("note/one", "recorded while the relay was gone", "note-1");
+    expect(memory.recall("note/one")).toBe("recorded while the relay was gone");
+    await memory.flush();
+    expect(memory.syncStatus().pending).toBe(1);
+    expect(memory.syncStatus().lastFailure?.reason).toBe("unreachable");
+
+    transport.reachable = true;
+    await memory.flush();
+    expect(memory.syncStatus()).toMatchObject({ pending: 0, delivered: 1 });
+    expect(transport.stored()).toHaveLength(1);
   });
 });

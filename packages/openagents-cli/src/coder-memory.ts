@@ -21,6 +21,8 @@ import {
   ledgerEntriesAsHeuristics,
   promoteHeuristicToPattern,
   signSupersedingEngram,
+  EngramSyncQueue,
+  MemoryTransport,
   project,
   projectedValue,
   projectionMatches,
@@ -29,8 +31,10 @@ import {
   HarvestedLedgerEntry,
   type EngramEvent,
   type EngramBody,
+  type EngramTransport,
   type ParentHeuristic,
   type Projection,
+  type SyncStatus,
 } from "./memory/index.js";
 import { Schema as S } from "effect";
 
@@ -69,6 +73,12 @@ export interface CoderMemoryOptions {
   readonly projectScope?: string;
   /** Epoch-milliseconds clock, injectable for tests. */
   readonly now?: () => number;
+  /**
+   * Where engrams are mirrored. Defaults to an in-process transport, which
+   * keeps the seam exercised without a relay; a real Nostr transport drops in
+   * here without any caller changing (#222).
+   */
+  readonly transport?: EngramTransport;
   /**
    * New harvests needed before the harvest path schedules a dream.
    * `Infinity` turns the automatic pass off, leaving `dream` explicit.
@@ -117,6 +127,7 @@ export class CoderMemory implements CoderDelegationMemory {
   private readonly dreamThreshold: number;
   private key: Buffer | undefined;
   private cachedProjection: Projection | undefined;
+  private readonly sync: EngramSyncQueue;
 
   constructor(options: CoderMemoryOptions = {}) {
     this.directory = options.directory ?? join(homedir(), ".openagents", "memory");
@@ -125,6 +136,26 @@ export class CoderMemory implements CoderDelegationMemory {
     this.projectScope = sanitizeScope(options.projectScope ?? `project:${process.cwd()}`);
     this.now = options.now ?? Date.now;
     this.dreamThreshold = options.dreamThreshold ?? DREAM_THRESHOLD;
+    this.sync = new EngramSyncQueue(options.transport ?? new MemoryTransport());
+  }
+
+  /**
+   * What sync is holding. A session can say it is behind rather than leaving
+   * a reader to infer it from silence.
+   */
+  syncStatus(): SyncStatus {
+    return this.sync.status();
+  }
+
+  /**
+   * Hand everything queued to the transport.
+   *
+   * Called between turns, never inside one: the local ledger is already
+   * authoritative by the time this runs, so a transport that is down costs
+   * latency and nothing else.
+   */
+  async flush(): Promise<number> {
+    return this.sync.drain();
   }
 
   /** The local signing key, created on first use. */
@@ -180,6 +211,8 @@ export class CoderMemory implements CoderDelegationMemory {
     );
     appendFileSync(this.ledgerPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
     this.cachedProjection = undefined;
+    // Local-first: the engram is on disk and readable now. Sync catches up.
+    this.sync.publish(event);
     return event;
   }
 
@@ -203,6 +236,8 @@ export class CoderMemory implements CoderDelegationMemory {
       sign,
     );
     appendFileSync(this.ledgerPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    this.cachedProjection = undefined;
+    this.sync.publish(event);
     return event;
   }
 
