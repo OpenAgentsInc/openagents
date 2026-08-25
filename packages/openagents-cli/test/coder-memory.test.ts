@@ -23,6 +23,15 @@ afterEach(() => {
 const memoryAt = (dir: string, nowMs = 1_756_000_000_000): CoderMemory =>
   new CoderMemory({ directory: dir, projectScope: "project:test", now: () => nowMs });
 
+/** A memory that never dreams on its own, so a test can drive the pass itself. */
+const sleeplessMemoryAt = (dir: string, nowMs = 1_756_000_000_000): CoderMemory =>
+  new CoderMemory({
+    directory: dir,
+    projectScope: "project:test",
+    now: () => nowMs,
+    dreamThreshold: Number.POSITIVE_INFINITY,
+  });
+
 describe("CoderMemory ledger", () => {
   it("records an engram and reads it back verified", () => {
     const dir = freshDir();
@@ -144,5 +153,82 @@ describe("fleet wiring", () => {
     });
     const outcome = await fleet.submit({ prompt: "plain task", description: "test" });
     expect(outcome.status).toBe("completed");
+  });
+});
+
+describe("the dreaming pass", () => {
+  const relatedFindings = [
+    "The build needs pnpm because npm leaves catalog protocol versions in the tarball",
+    "The build needs pnpm pack because npm pack leaves catalog protocol versions unresolved",
+    "Use pnpm for the build; npm leaves catalog protocol versions in place",
+  ];
+
+  it("writes a synthesized heuristic back to the ledger as its own engram", () => {
+    const dir = freshDir();
+    const memory = sleeplessMemoryAt(dir);
+    relatedFindings.forEach((finding, index) => memory.harvest(`child-${String(index)}`, finding));
+
+    const result = memory.dream();
+    expect(result.written).toBeGreaterThan(0);
+
+    // A fresh reader sees the distilled heuristic without consolidating again.
+    const distilled = memoryAt(dir)
+      .bodies()
+      .filter((body) => body.slug.startsWith("heuristic/"));
+    expect(distilled.length).toBe(result.written);
+  });
+
+  it("is idempotent: dreaming the same episodes twice writes nothing new", () => {
+    const dir = freshDir();
+    const memory = sleeplessMemoryAt(dir);
+    relatedFindings.forEach((finding, index) => memory.harvest(`child-${String(index)}`, finding));
+
+    memory.dream();
+    const second = memory.dream();
+    expect(second.written).toBe(0);
+    expect(second.superseded).toBe(0);
+    expect(second.unchanged).toBeGreaterThan(0);
+  });
+
+  it("carries the distilled heuristic into a child's inherited block", () => {
+    const dir = freshDir();
+    const memory = memoryAt(dir);
+    relatedFindings.forEach((finding, index) => memory.harvest(`child-${String(index)}`, finding));
+    memory.dream();
+
+    const block = memoryAt(dir).inherit("set up the build");
+    expect(block).toContain("[inherited parent memory — advisory only]");
+    expect(block).toContain("pnpm");
+  });
+
+  it("recall does not consolidate: heuristics read what dreaming wrote", () => {
+    const dir = freshDir();
+    const memory = sleeplessMemoryAt(dir);
+    relatedFindings.forEach((finding, index) => memory.harvest(`child-${String(index)}`, finding));
+
+    // Before any dream, recall offers the raw harvest only.
+    const beforeDream = memoryAt(dir)
+      .heuristics()
+      .filter((heuristic) => heuristic.ref.startsWith("heuristic/"));
+    expect(beforeDream).toHaveLength(0);
+
+    memory.dream();
+    const afterDream = memoryAt(dir)
+      .heuristics()
+      .filter((heuristic) => heuristic.ref.startsWith("heuristic/"));
+    expect(afterDream.length).toBeGreaterThan(0);
+    // The confidence stamped at dream time survives the round trip.
+    expect(afterDream[0]?.confidence).toBeGreaterThan(0);
+  });
+
+  it("dreams on its own once enough has been harvested", () => {
+    const dir = freshDir();
+    const memory = memoryAt(dir);
+    relatedFindings.forEach((finding, index) => memory.harvest(`child-${String(index)}`, finding));
+    // No explicit dream() call: the harvest path scheduled one.
+    const distilled = memoryAt(dir)
+      .bodies()
+      .filter((body) => body.slug.startsWith("heuristic/"));
+    expect(distilled.length).toBeGreaterThan(0);
   });
 });

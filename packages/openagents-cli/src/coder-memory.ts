@@ -65,9 +65,39 @@ export interface CoderMemoryOptions {
   readonly projectScope?: string;
   /** Epoch-milliseconds clock, injectable for tests. */
   readonly now?: () => number;
+  /**
+   * New harvests needed before the harvest path schedules a dream.
+   * `Infinity` turns the automatic pass off, leaving `dream` explicit.
+   */
+  readonly dreamThreshold?: number;
 }
 
 const OWNER_SCOPE = "owner:local";
+
+/** New harvests needed before a dream is worth running. */
+const DREAM_THRESHOLD = 2;
+/** How many episodes one standing heuristic is assumed to account for. */
+const DREAM_EPISODES_PER_HEURISTIC = 2;
+
+/**
+ * A cluster's identity: its supporting episode refs, order-independent.
+ * Two syntheses over the same episodes are the same claim, however the
+ * clusterer happened to order them.
+ */
+const clusterKey = (refs: ReadonlyArray<string>): string => [...refs].sort().join("|");
+
+/**
+ * The confidence stamped into a heuristic engram's entity id as
+ * `<synthId>#<confidence>`. The companion schema has no numeric field, and the
+ * value itself is the heuristic sentence, so the figure rides the identity
+ * rather than being recomputed on read.
+ */
+const confidenceOf = (entityId: string): number => {
+  const marked = entityId.lastIndexOf("#");
+  if (marked < 0) return 0.5;
+  const parsed = Number(entityId.slice(marked + 1));
+  return Number.isFinite(parsed) ? parsed : 0.5;
+};
 
 const sanitizeScope = (value: string): string => {
   const cleaned = value.replace(/[^A-Za-z0-9._:/-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "");
@@ -80,6 +110,7 @@ export class CoderMemory implements CoderDelegationMemory {
   private readonly keyPath: string;
   private readonly projectScope: string;
   private readonly now: () => number;
+  private readonly dreamThreshold: number;
   private key: Buffer | undefined;
 
   constructor(options: CoderMemoryOptions = {}) {
@@ -88,6 +119,7 @@ export class CoderMemory implements CoderDelegationMemory {
     this.keyPath = join(this.directory, "signing-key");
     this.projectScope = sanitizeScope(options.projectScope ?? `project:${process.cwd()}`);
     this.now = options.now ?? Date.now;
+    this.dreamThreshold = options.dreamThreshold ?? DREAM_THRESHOLD;
   }
 
   /** The local signing key, created on first use. */
@@ -117,7 +149,12 @@ export class CoderMemory implements CoderDelegationMemory {
    * Guard, build, sign, and append one engram. Returns the event, or undefined
    * when the value is hard-unsafe (credential-shaped material never persists).
    */
-  record(slug: string, value: string | null, entityId: string): EngramEvent | undefined {
+  record(
+    slug: string,
+    value: string | null,
+    entityId: string,
+    derivedFromSlugs: ReadonlyArray<string> = [],
+  ): EngramEvent | undefined {
     const verdict = guardEngramContent(value);
     if (!verdict.storable) return undefined;
     const body = buildEngramBody(slug, verdict.redacted, {
@@ -126,7 +163,7 @@ export class CoderMemory implements CoderDelegationMemory {
       contentDigest: engramContentDigest(verdict.redacted),
       sourceEventRefs: [],
       relations: [],
-      derivedFromSlugs: [],
+      derivedFromSlugs: [...derivedFromSlugs],
     });
     const { pubkey, sign } = this.signer();
     const event = buildEngramEvent(
@@ -241,14 +278,41 @@ export class CoderMemory implements CoderDelegationMemory {
   }
 
   /**
-   * The parent's heuristics: harvested findings at the harvest confidence
-   * floor, plus what one dreaming pass distills from them — clusters of
-   * related findings synthesized and, where support is strong enough,
-   * promoted through the reviewed pattern layer at higher confidence.
+   * The parent's heuristics: what dreaming has already distilled, read back
+   * from the ledger, plus the raw harvested findings underneath them.
+   *
+   * Recall does not consolidate. A dream is a background pass whose output is
+   * itself an engram (see `dream`), so a recall reads what was distilled
+   * rather than re-deriving it on every delegation.
    */
   heuristics(): ReadonlyArray<ParentHeuristic> {
+    const distilled: Array<ParentHeuristic> = [];
+    for (const { body } of this.living()) {
+      if (!body.slug.startsWith("heuristic/") || body.value === null) continue;
+      distilled.push({
+        ref: body.slug,
+        text: body.value,
+        confidence: confidenceOf(body.openagents.entityId),
+      });
+    }
+    return [...distilled, ...ledgerEntriesAsHeuristics(this.entries())];
+  }
+
+  /**
+   * One dream cycle: cluster the harvested episodes, synthesize a heuristic
+   * per cluster, and write each one back as its own engram.
+   *
+   * This is the offline half of the memory (issue #224). It runs between
+   * turns rather than inside one, and it is idempotent: a synthesis whose
+   * cluster and wording are unchanged rewrites nothing. Where a cluster
+   * reaches a *different* conclusion than the heuristic already standing over
+   * it, the old engram is superseded rather than edited — the correction
+   * references what it replaces, and both survive in the ledger.
+   */
+  dream(): Readonly<{ written: number; superseded: number; unchanged: number }> {
     const entries = this.entries();
-    const base = ledgerEntriesAsHeuristics(entries);
+    if (entries.length === 0) return { written: 0, superseded: 0, unchanged: 0 };
+
     const consolidated = consolidateEpisodes({
       ownerScope: OWNER_SCOPE,
       projectScope: this.projectScope,
@@ -259,18 +323,57 @@ export class CoderMemory implements CoderDelegationMemory {
       })),
       nowMs: this.now(),
     });
-    const promoted = consolidated.heuristics.map((heuristic): ParentHeuristic => {
+
+    // What already stands, by the cluster it was distilled from.
+    const standing = new Map<string, { slug: string; text: string }>();
+    for (const { body } of this.living()) {
+      if (!body.slug.startsWith("heuristic/") || body.value === null) continue;
+      standing.set(clusterKey(body.openagents.derivedFromSlugs), {
+        slug: body.slug,
+        text: body.value,
+      });
+    }
+
+    let written = 0;
+    let superseded = 0;
+    let unchanged = 0;
+    for (const heuristic of consolidated.heuristics) {
       const pattern = promoteHeuristicToPattern(
         heuristic,
         "delegating a coding task like the ones this heuristic came from",
       );
-      return {
-        ref: pattern.patternRef,
-        text: heuristic.heuristic,
-        confidence: heuristic.confidence,
-      };
-    });
-    return [...promoted, ...base];
+      const support = [...heuristic.sourceRefs];
+      const key = clusterKey(support);
+      const prior = standing.get(key);
+      if (prior !== undefined) {
+        if (prior.text === heuristic.heuristic) {
+          unchanged += 1;
+          continue;
+        }
+        // The same episodes now say something else. Supersede, do not edit.
+        if (this.correct(prior.slug, heuristic.heuristic) !== undefined) superseded += 1;
+        continue;
+      }
+      const slug = `heuristic/${pattern.patternRef.slice("pattern:".length, "pattern:".length + 12)}`;
+      const entityId = `${heuristic.synthId}#${heuristic.confidence.toFixed(3)}`;
+      if (this.record(slug, heuristic.heuristic, entityId, support) !== undefined) written += 1;
+    }
+    return { written, superseded, unchanged };
+  }
+
+  /**
+   * Dream when enough has been learned since the last one to be worth it.
+   *
+   * Called after a harvest, so the pass runs while the session is between
+   * delegations rather than on a clock. Cheap when there is nothing new: the
+   * count comes from the ledger that was just read.
+   */
+  private dreamIfDue(): void {
+    const harvested = this.entries().length;
+    if (harvested === 0) return;
+    const distilled = this.living().filter(({ body }) => body.slug.startsWith("heuristic/")).length;
+    if (harvested - distilled * DREAM_EPISODES_PER_HEURISTIC < this.dreamThreshold) return;
+    this.dream();
   }
 
   inherit(taskText: string): string {
@@ -300,6 +403,7 @@ export class CoderMemory implements CoderDelegationMemory {
       for (const entry of harvested.entries) {
         this.record(`harvest/${entry.digest.slice(7, 19)}`, entry.finding, entry.childId);
       }
+      this.dreamIfDue();
     } catch {
       // Memory must never break a delegation.
     }
