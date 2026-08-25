@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "fixture-suite-5",
+  "tier": "score",
+  "description": "The four tasks the priced-lane fixture ran, plus one it did not, so a complete-looking run classifies as the partial run it is.",
+  "tasks": [
+    {
+      "id": "build-cmake",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "build-cmake"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "fix-git",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-git"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "parse-log",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "parse-log"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "port-forward",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "port-forward"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "never-run",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "never-run"
+      },
+      "environmentProven": true
+    }
+  ]
+}

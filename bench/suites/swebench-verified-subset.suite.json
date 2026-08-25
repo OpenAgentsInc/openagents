@@ -1,0 +1,104 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "swebench-verified-subset",
+  "tier": "score",
+  "description": "The bounded public subset issue #34 asks for: eight swebench-verified@1.0 instances, one per repository, so no single project's idioms dominate the score.",
+  "tasks": [
+    {
+      "id": "astropy__astropy-12907",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/astropy__astropy-12907"
+      },
+      "environmentProven": true,
+      "rationale": "astropy: table and unit handling in a large scientific codebase"
+    },
+    {
+      "id": "django__django-10097",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/django__django-10097"
+      },
+      "environmentProven": true,
+      "rationale": "Django: the framework half of the benchmark, wide blast radius per change"
+    },
+    {
+      "id": "matplotlib__matplotlib-13989",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/matplotlib__matplotlib-13989"
+      },
+      "environmentProven": true,
+      "rationale": "matplotlib: rendering state, where the test is the only oracle"
+    },
+    {
+      "id": "pydata__xarray-2905",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/pydata__xarray-2905"
+      },
+      "environmentProven": true,
+      "rationale": "xarray: array semantics over pandas and numpy, dtype-sensitive"
+    },
+    {
+      "id": "pytest-dev__pytest-10051",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/pytest-dev__pytest-10051"
+      },
+      "environmentProven": true,
+      "rationale": "pytest: the test runner itself, so a fix has to be reentrant"
+    },
+    {
+      "id": "scikit-learn__scikit-learn-10297",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/scikit-learn__scikit-learn-10297"
+      },
+      "environmentProven": true,
+      "rationale": "scikit-learn: estimator API conformance, contract-shaped"
+    },
+    {
+      "id": "sphinx-doc__sphinx-10323",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/sphinx-doc__sphinx-10323"
+      },
+      "environmentProven": true,
+      "rationale": "Sphinx: documentation tooling, heavy on configuration surface"
+    },
+    {
+      "id": "sympy__sympy-11618",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/sympy__sympy-11618"
+      },
+      "environmentProven": true,
+      "rationale": "SymPy: symbolic evaluation, where a plausible-looking fix is usually wrong"
+    }
+  ]
+}

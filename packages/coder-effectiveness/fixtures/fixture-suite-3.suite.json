@@ -1,0 +1,41 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "fixture-suite-3",
+  "tier": "score",
+  "description": "The three tasks the unpriced-lane, mixed-lane, and crashed-verifier fixture jobs ran.",
+  "tasks": [
+    {
+      "id": "build-cmake",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "build-cmake"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "fix-git",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-git"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "parse-log",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "parse-log"
+      },
+      "environmentProven": true
+    }
+  ]
+}

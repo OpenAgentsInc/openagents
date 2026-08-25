@@ -23,6 +23,15 @@
  * being read next to its reason, which is the whole failure this suite exists
  * to prevent. The disposition and the coverage travel with every row so a later
  * reader can tell "we did not measure this" from "this cost nothing".
+ *
+ * THIS FILE IS WHERE "A SMOKE RUN IS NEVER A PUBLISHED SCORE" IS ENFORCED.
+ * Publishing, here, means exactly one thing: reaching this store, which is what
+ * the trend and the lane comparison read and what a status panel would read
+ * after them. So the check belongs at the door rather than in the renderer.
+ * {@link appendResultRow} takes a {@link RunClassification} and refuses two
+ * shapes outright — a run that did not cover its suite, and a run that declined
+ * to name a suite at all. Neither refusal can be flagged past, because a flag
+ * that turned them off would be the feature the rule exists to prevent.
  */
 
 import { createHash } from "node:crypto";
@@ -35,9 +44,19 @@ import type {
   EffectivenessReport,
 } from "./effectiveness.ts";
 import type { RateBasis } from "./pricing.ts";
+import type { RunClassification } from "./suite-manifest.ts";
 import type { CriterionVerdict, ThresholdGate } from "./thresholds.ts";
 
-export const BENCH_RESULT_SCHEMA = "openagents.bench_result.v1";
+/**
+ * Bumped from v1 when the suite pin became mandatory. A v1 row carried no
+ * `suiteId` or `suiteDigest`, so nothing in it says which pinned task list it
+ * measured — readable as history, not comparable to a v2 row, and
+ * {@link readResultRows} says so by name rather than by silently coercing it.
+ */
+export const BENCH_RESULT_SCHEMA = "openagents.bench_result.v2";
+
+/** The v1 rows this store used to write, kept only to name them in an error. */
+const BENCH_RESULT_SCHEMA_V1 = "openagents.bench_result.v1";
 
 /**
  * One graded run, flattened to the columns a trend or a lane comparison reads.
@@ -62,6 +81,16 @@ export interface BenchResultRow {
    */
   readonly suiteKey: string;
   readonly jobId: string | null;
+
+  /** The manifest this run claimed, and the digest over its pinned tasks. */
+  readonly suiteId: string;
+  readonly suiteDigest: string;
+  /**
+   * Always `score` in a stored row: the store refuses anything else. It is
+   * written down anyway so a reader of the file never has to know that rule to
+   * trust what the rows are.
+   */
+  readonly tier: "score";
 
   readonly models: ReadonlyArray<string>;
   readonly agentVersions: ReadonlyArray<string>;
@@ -115,10 +144,19 @@ export interface AppendOptions {
  * comparison varies. The rate catalog version is in, because a cost figure
  * computed from one catalog and a cost figure computed from another are not the
  * same measurement even when the tasks match.
+ *
+ * The manifest's suite digest is in too, and it is the stronger half. The task
+ * names alone say a run touched `regex-log`; the suite digest says which
+ * `regex-log` — which dataset, at which commit — so two rows that agree here
+ * agree about the work and not merely about its labels.
  */
-export const suiteKeyOf = (report: EffectivenessReport): string => {
+export const suiteKeyOf = (
+  report: EffectivenessReport,
+  classification: RunClassification,
+): string => {
   const source = JSON.stringify({
     suite: report.suite,
+    suiteDigest: classification.suiteDigest,
     tasks: report.perTrial.map((trial) => trial.task).toSorted(),
     rateCatalogVersion: report.rateCatalogVersion,
   });
@@ -129,6 +167,7 @@ export const suiteKeyOf = (report: EffectivenessReport): string => {
 export const buildResultRow = (
   report: EffectivenessReport,
   gate: ThresholdGate | null,
+  classification: RunClassification,
   previousReceipt: string | null,
   options: AppendOptions,
 ): BenchResultRow => {
@@ -139,8 +178,12 @@ export const buildResultRow = (
     suite: report.suite,
     lane: report.lane,
     runDigest: report.runDigest,
-    suiteKey: suiteKeyOf(report),
+    suiteKey: suiteKeyOf(report, classification),
     jobId: report.jobId,
+
+    suiteId: classification.suiteId,
+    suiteDigest: classification.suiteDigest,
+    tier: "score",
 
     models: report.models,
     agentVersions: report.agentVersions,
@@ -260,7 +303,14 @@ export const readResultRows = (storePath: string): ReadonlyArray<BenchResultRow>
     } catch {
       throw new Error(`${storePath} line ${String(index + 1)} is not JSON`);
     }
-    const row = parsed as BenchResultRow;
+    // Deliberately widened: a row on disk can carry any schema string, and the
+    // point of the next two checks is to find out which.
+    const row = parsed as { schema: string } as BenchResultRow;
+    if ((row.schema as string) === BENCH_RESULT_SCHEMA_V1) {
+      throw new Error(
+        `${storePath} line ${String(index + 1)} is a ${BENCH_RESULT_SCHEMA_V1} row, written before a run had to name the suite manifest it covered. It carries no suite digest, so nothing in it says which pinned task list it measured and it cannot be compared to a ${BENCH_RESULT_SCHEMA} row. Move it to an archive file rather than migrating it: a digest cannot be invented for a run that never recorded one.`,
+      );
+    }
     if (row.schema !== BENCH_RESULT_SCHEMA) {
       throw new Error(
         `${storePath} line ${String(index + 1)} has schema ${String(row.schema)}, expected ${BENCH_RESULT_SCHEMA}`,
@@ -270,7 +320,7 @@ export const readResultRows = (storePath: string): ReadonlyArray<BenchResultRow>
   });
 };
 
-export type AppendRefusal = "duplicate_job" | "chain_broken";
+export type AppendRefusal = "duplicate_job" | "chain_broken" | "smoke_run" | "unclassified_run";
 
 export type AppendResult =
   | { readonly appended: true; readonly row: BenchResultRow }
@@ -279,9 +329,16 @@ export type AppendResult =
 /**
  * Append one graded run to a store.
  *
- * Two refusals, both returned rather than thrown, because both are ordinary
+ * Four refusals, all returned rather than thrown, because all four are ordinary
  * operator situations rather than programming errors:
  *
+ * - `unclassified_run` — the run named no suite manifest, so nothing says what
+ *   it was supposed to cover. A row whose task list is only "whatever ran" can
+ *   be compared to a later row that ran less, and the trend would read the
+ *   difference as the coder changing.
+ * - `smoke_run` — the run did not cover the suite it named, or the suite says
+ *   it is a fast lane. Either way the number is over a different set of work
+ *   than the suite's other rows, and this is the door it does not get through.
  * - `duplicate_job` — this Harbor job is already in the store. Re-scoring a job
  *   with a different thresholds file is a useful thing to do and a second row
  *   is not what it produces; two rows for one execution would double-count it
@@ -289,13 +346,34 @@ export type AppendResult =
  * - `chain_broken` — the existing store does not verify, so appending to it
  *   would extend a history that has already been rewritten and bury the break
  *   one row deeper.
+ *
+ * The order matters: the two classification refusals are checked before the
+ * file is read at all, so a smoke run cannot even learn the store's head
+ * receipt, and a caller cannot get most of the way through an append and then
+ * be tempted to finish it.
  */
 export const appendResultRow = (
   storePath: string,
   report: EffectivenessReport,
   gate: ThresholdGate | null,
+  classification: RunClassification | null,
   options: AppendOptions,
 ): AppendResult => {
+  if (classification === null) {
+    return {
+      appended: false,
+      refusal: "unclassified_run",
+      reason: `this run named no suite manifest, so nothing records which pinned task list it was supposed to cover; pass --suite-manifest to record a run in ${storePath}`,
+    };
+  }
+  if (classification.tier !== "score") {
+    return {
+      appended: false,
+      refusal: "smoke_run",
+      reason: `this is a smoke run and a smoke run is never a published score, so it was not recorded in ${storePath}: ${classification.smokeReasons.map((reason) => reason.detail).join("; ")}`,
+    };
+  }
+
   const rows = readResultRows(storePath);
   const verdict = verifyResultChain(rows);
   if (!verdict.ok) {
@@ -313,7 +391,7 @@ export const appendResultRow = (
     };
   }
 
-  const row = buildResultRow(report, gate, verdict.head, options);
+  const row = buildResultRow(report, gate, classification, verdict.head, options);
   mkdirSync(dirname(storePath), { recursive: true });
   appendFileSync(storePath, `${JSON.stringify(row)}\n`, "utf8");
   return { appended: true, row };

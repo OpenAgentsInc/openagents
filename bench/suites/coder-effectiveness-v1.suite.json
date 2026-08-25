@@ -1,0 +1,236 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "coder-effectiveness-v1",
+  "tier": "score",
+  "description": "Issue #34's headline suite: the twelve-task Terminal-Bench cross-section plus the eight-instance swebench-verified subset. The owned closed-issue tasks join it once their environments are proven; until then a score suite cannot hold them.",
+  "tasks": [
+    {
+      "id": "git-leak-recovery",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "git-leak-recovery"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "sanitize-git-repo",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "sanitize-git-repo"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "merge-diff-arc-agi-task",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "merge-diff-arc-agi-task"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "build-cython-ext",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "build-cython-ext"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "sqlite-with-gcov",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "sqlite-with-gcov"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "fix-code-vulnerability",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-code-vulnerability"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "regex-log",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "regex-log"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "count-dataset-tokens",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "count-dataset-tokens"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "password-recovery",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "password-recovery"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "openssl-selfsigned-cert",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "openssl-selfsigned-cert"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "nginx-request-logging",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "nginx-request-logging"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "schemelike-metacircular-eval",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "schemelike-metacircular-eval"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "astropy__astropy-12907",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/astropy__astropy-12907"
+      },
+      "environmentProven": true,
+      "rationale": "astropy: table and unit handling in a large scientific codebase"
+    },
+    {
+      "id": "django__django-10097",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/django__django-10097"
+      },
+      "environmentProven": true,
+      "rationale": "Django: the framework half of the benchmark, wide blast radius per change"
+    },
+    {
+      "id": "matplotlib__matplotlib-13989",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/matplotlib__matplotlib-13989"
+      },
+      "environmentProven": true,
+      "rationale": "matplotlib: rendering state, where the test is the only oracle"
+    },
+    {
+      "id": "pydata__xarray-2905",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/pydata__xarray-2905"
+      },
+      "environmentProven": true,
+      "rationale": "xarray: array semantics over pandas and numpy, dtype-sensitive"
+    },
+    {
+      "id": "pytest-dev__pytest-10051",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/pytest-dev__pytest-10051"
+      },
+      "environmentProven": true,
+      "rationale": "pytest: the test runner itself, so a fix has to be reentrant"
+    },
+    {
+      "id": "scikit-learn__scikit-learn-10297",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/scikit-learn__scikit-learn-10297"
+      },
+      "environmentProven": true,
+      "rationale": "scikit-learn: estimator API conformance, contract-shaped"
+    },
+    {
+      "id": "sphinx-doc__sphinx-10323",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/sphinx-doc__sphinx-10323"
+      },
+      "environmentProven": true,
+      "rationale": "Sphinx: documentation tooling, heavy on configuration surface"
+    },
+    {
+      "id": "sympy__sympy-11618",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "swebench-verified@1.0",
+        "gitUrl": "https://github.com/laude-institute/harbor-datasets.git",
+        "commit": "86723674f04e4209ac479d0fb75d9d9f44b4377e",
+        "path": "datasets/swebench-verified/sympy__sympy-11618"
+      },
+      "environmentProven": true,
+      "rationale": "SymPy: symbolic evaluation, where a plausible-looking fix is usually wrong"
+    }
+  ]
+}

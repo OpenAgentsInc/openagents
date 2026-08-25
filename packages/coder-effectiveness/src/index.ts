@@ -47,6 +47,19 @@ export {
   verifyResultChain,
 } from "./results-store.ts";
 export {
+  classifyRun,
+  parseSuiteManifest,
+  type RunClassification,
+  type RunTier,
+  type SmokeReason,
+  SUITE_MANIFEST_SCHEMA,
+  type SuiteManifest,
+  type SuiteTask,
+  type SuiteTaskPin,
+  suiteDigestOf,
+  taskDigestOf,
+} from "./suite-manifest.ts";
+export {
   type EffectivenessThresholds,
   evaluateThresholds,
   parseThresholds,

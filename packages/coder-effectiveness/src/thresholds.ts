@@ -17,11 +17,18 @@
  * the thresholds file opts in with `acceptPlaceholderRates: true` — which is
  * a reasonable thing to do for a relative regression check, and an unreasonable
  * thing to do quietly.
+ *
+ * The third verdict is also where the smoke rule reaches the gate. A run that
+ * did not cover its suite gets a `run_tier=score` criterion that is
+ * `unverifiable` and has no passing branch at all, so a fast run cannot exit 0
+ * through a thresholds file however generous the floors in it are. See
+ * `suite-manifest.ts` for why that is a criterion rather than a warning.
  */
 
 import { Schema as S } from "effect";
 
 import type { EffectivenessReport } from "./effectiveness.ts";
+import type { RunClassification } from "./suite-manifest.ts";
 
 export const EffectivenessThresholdsSchema = S.Struct({
   /** Names this floor set, so a report can say what it was scored against. */
@@ -87,10 +94,19 @@ export interface ThresholdGate {
   readonly criteria: ReadonlyArray<ThresholdCriterion>;
 }
 
-/** Score a report against its floors. Pure. */
+/**
+ * Score a report against its floors. Pure.
+ *
+ * `classification` is what the run was measured to be against its suite
+ * manifest, or `null` when the run was scored without one. A `null`
+ * classification adds no criterion: printing a report about a job directory
+ * without naming a suite is a legitimate thing to do, and it is already
+ * incapable of being published — the results store refuses an unclassified row.
+ */
 export const evaluateThresholds = (
   report: EffectivenessReport,
   thresholds: EffectivenessThresholds,
+  classification: RunClassification | null = null,
 ): ThresholdGate => {
   const criteria: Array<ThresholdCriterion> = [
     gradedTrialsCriterion(report, thresholds),
@@ -99,6 +115,8 @@ export const evaluateThresholds = (
   ];
   const cost = costCriterion(report, thresholds);
   if (cost !== null) criteria.push(cost);
+  const tier = tierCriterion(classification);
+  if (tier !== null) criteria.push(tier);
 
   return {
     thresholdsId: thresholds.id,
@@ -108,6 +126,33 @@ export const evaluateThresholds = (
         ? "unverifiable"
         : "passed",
     criteria,
+  };
+};
+
+/**
+ * The smoke rule at the gate. `null` when the run carries no classification.
+ *
+ * A score run passes it, and that is the only passing branch: a smoke run is
+ * `unverifiable` and there is no threshold, no flag, and no floor value that
+ * turns it into a pass. That asymmetry is the point. Every other criterion here
+ * scores a measurement, and a measurement can legitimately be waived by an
+ * operator who sets the floor low enough. This one is not a measurement — it
+ * says the run is not the thing the floors describe — so waiving it would be
+ * waiving the question rather than the answer.
+ */
+const tierCriterion = (classification: RunClassification | null): ThresholdCriterion | null => {
+  if (classification === null) return null;
+  if (classification.tier === "score") {
+    return {
+      name: "run_tier=score",
+      verdict: "passed",
+      detail: `covered all ${String(classification.expected.length)} tasks pinned by suite ${classification.suiteId} (${classification.suiteDigest})`,
+    };
+  }
+  return {
+    name: "run_tier=score",
+    verdict: "unverifiable",
+    detail: `this run is a smoke run, not a score: ${classification.smokeReasons.map((reason) => reason.detail).join("; ")}`,
   };
 };
 

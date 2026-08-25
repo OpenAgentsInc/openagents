@@ -10,6 +10,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { summarizeRun } from "./effectiveness.ts";
 import { readHarborJob } from "./harbor-job.ts";
 import { CODER_RATE_CATALOG_VERSION } from "./pricing.ts";
+import { classifyRun, parseSuiteManifest } from "./suite-manifest.ts";
 import { type EffectivenessThresholds, evaluateThresholds, parseThresholds } from "./thresholds.ts";
 
 const fixture = (name: string): string =>
@@ -201,5 +202,105 @@ describe("evaluateThresholds", () => {
 
     expect(criterion(gate, "success_rate").verdict).toBe("unverifiable");
     expect(criterion(gate, "success_rate").detail).toContain("no verifier ran");
+  });
+});
+
+/**
+ * The smoke rule at the gate: the other half of the enforcement whose first
+ * half lives in `results-store.test.ts`. The two are independent on purpose —
+ * a CI step that only reads the exit code and one that only reads the store
+ * should each be unable to mistake a fast run for a score.
+ */
+/** A manifest over the named tasks, at the tier the case wants to test. */
+const tierManifest = (tier: "score" | "smoke", tasks: ReadonlyArray<string>) =>
+  parseSuiteManifest({
+    schema: "openagents.effectiveness_suite.v1",
+    id: "fixture-suite",
+    tier,
+    description: "the tasks the priced-lane fixture ran",
+    tasks: tasks.map((id) => ({
+      id,
+      pin: {
+        kind: "harbor-registry",
+        dataset: "terminal-bench@2.0",
+        gitUrl: "https://github.com/laude-institute/terminal-bench-2.git",
+        commit: "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        path: id,
+      },
+      environmentProven: true,
+    })),
+  });
+
+describe("the run tier criterion", () => {
+  const fullTasks = ["build-cmake", "fix-git", "parse-log", "port-forward"];
+
+  test("passes a run that covered every pinned task", () => {
+    const gate = evaluateThresholds(
+      report("priced-lane"),
+      floors(),
+      classifyRun(tierManifest("score", fullTasks), fullTasks),
+    );
+
+    expect(criterion(gate, "run_tier").verdict).toBe("passed");
+    expect(gate.status).toBe("passed");
+  });
+
+  test("cannot be passed by a run that covered part of the suite", () => {
+    const gate = evaluateThresholds(
+      report("priced-lane"),
+      floors(),
+      classifyRun(tierManifest("score", fullTasks), ["fix-git"]),
+    );
+
+    expect(criterion(gate, "run_tier").verdict).toBe("unverifiable");
+    expect(gate.status).toBe("unverifiable");
+  });
+
+  test("has no floor that turns a smoke run into a pass", () => {
+    // Every other criterion here can be waived by an operator willing to set a
+    // generous floor. This one is not a measurement, so waiving it would waive
+    // the question rather than the answer — and the floors below are as
+    // generous as the schema allows.
+    const gate = evaluateThresholds(
+      report("priced-lane"),
+      floors({ minGradedTrials: 0, minSuccessRate: 0, maxUngradedRatio: 1 }),
+      classifyRun(tierManifest("smoke", fullTasks), fullTasks),
+    );
+
+    expect(gate.criteria.filter((entry) => entry.verdict === "failed")).toEqual([]);
+    expect(criterion(gate, "run_tier").verdict).toBe("unverifiable");
+    expect(gate.status).toBe("unverifiable");
+  });
+
+  test("adds no criterion when the run named no suite, which is report-only mode", () => {
+    const gate = evaluateThresholds(report("priced-lane"), floors());
+
+    expect(gate.criteria.some((entry) => entry.name.includes("run_tier"))).toBe(false);
+    expect(gate.status).toBe("passed");
+  });
+
+  test("a measured breach still outranks a smoke classification", () => {
+    const gate = evaluateThresholds(
+      report("regressed-lane"),
+      floors({ minSuccessRate: 0.5 }),
+      classifyRun(tierManifest("score", fullTasks), ["fix-git"]),
+    );
+
+    expect(criterion(gate, "success_rate").verdict).toBe("failed");
+    expect(criterion(gate, "run_tier").verdict).toBe("unverifiable");
+    expect(gate.status).toBe("failed");
+  });
+});
+
+describe("the checked-in quick-suite floors", () => {
+  test("floor the run to its own size rather than to the cross-section's", () => {
+    const path = fileURLToPath(new URL("../thresholds/tb2-quick.json", import.meta.url));
+    const thresholds = parseThresholds(JSON.parse(readFileSync(path, "utf8")));
+
+    expect(thresholds.id).toBe("tb2-quick");
+    expect(thresholds.minGradedTrials).toBe(2);
+    // No dollar ceiling: the lane it runs on bills no metered tokens, and a
+    // ceiling that is unverifiable on every run is a gate nobody reads.
+    expect(thresholds.maxCostPerAcceptedOutcomeUsd).toBeUndefined();
   });
 });

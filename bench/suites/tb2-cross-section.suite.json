@@ -1,0 +1,140 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "tb2-cross-section",
+  "tier": "score",
+  "description": "Twelve Terminal-Bench 2.0 tasks across git forensics, builds, C extensions, coverage, security fixes, log parsing, tokenisation, certificates, web-server configuration, and an interpreter. Selection rationale in tb2-cross-section.md.",
+  "tasks": [
+    {
+      "id": "git-leak-recovery",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "git-leak-recovery"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "sanitize-git-repo",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "sanitize-git-repo"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "merge-diff-arc-agi-task",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "merge-diff-arc-agi-task"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "build-cython-ext",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "build-cython-ext"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "sqlite-with-gcov",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "sqlite-with-gcov"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "fix-code-vulnerability",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-code-vulnerability"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "regex-log",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "regex-log"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "count-dataset-tokens",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "count-dataset-tokens"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "password-recovery",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "password-recovery"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "openssl-selfsigned-cert",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "openssl-selfsigned-cert"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "nginx-request-logging",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "nginx-request-logging"
+      },
+      "environmentProven": true
+    },
+    {
+      "id": "schemelike-metacircular-eval",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "schemelike-metacircular-eval"
+      },
+      "environmentProven": true
+    }
+  ]
+}

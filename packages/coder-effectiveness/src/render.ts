@@ -9,6 +9,7 @@
 
 import type { EffectivenessReport } from "./effectiveness.ts";
 import { CODER_RATE_CATALOG_SOURCE_REF } from "./pricing.ts";
+import type { RunClassification } from "./suite-manifest.ts";
 import type { ThresholdGate } from "./thresholds.ts";
 
 const usd = (value: number): string => `$${value.toFixed(4)}`;
@@ -19,7 +20,37 @@ const rate = (value: number | null): string =>
 const count = (value: number | null): string =>
   value === null ? "unknown" : value.toLocaleString("en-US");
 
-export const renderReport = (report: EffectivenessReport, gate: ThresholdGate | null): string => {
+/**
+ * The suite pin, and the smoke verdict where there is one.
+ *
+ * A smoke run says so in the header rather than in a footnote, because the
+ * header is the part that gets pasted into an issue comment. Everything below
+ * it is arithmetic that is perfectly correct about a run that is not the suite.
+ */
+const tierLines = (classification: RunClassification | null): ReadonlyArray<string> => {
+  if (classification === null) {
+    return ["  suite pin       none — this run named no manifest, so it is a report, not a score"];
+  }
+  const lines = [
+    `  suite pin       ${classification.suiteId} (${classification.suiteDigest})`,
+    `  coverage        ${String(classification.ran.length)} of ${String(classification.expected.length)} pinned tasks ran`,
+  ];
+  if (classification.tier === "smoke") {
+    lines.push("  tier            SMOKE — this run is not a publishable score");
+    for (const reason of classification.smokeReasons) {
+      lines.push(`    ${reason.kind.padEnd(20)} ${reason.detail}`);
+    }
+  } else {
+    lines.push("  tier            score");
+  }
+  return lines;
+};
+
+export const renderReport = (
+  report: EffectivenessReport,
+  gate: ThresholdGate | null,
+  classification: RunClassification | null = null,
+): string => {
   const lines: Array<string> = [];
 
   lines.push(`Coder effectiveness — ${report.suite} on the ${report.lane} lane`);
@@ -29,6 +60,7 @@ export const renderReport = (report: EffectivenessReport, gate: ThresholdGate | 
   lines.push(`  cli version     ${report.agentVersions.join(", ") || "unknown"}`);
   lines.push(`  rate catalog    ${report.rateCatalogVersion}`);
   lines.push(`  rate source     ${CODER_RATE_CATALOG_SOURCE_REF}`);
+  lines.push(...tierLines(classification));
   lines.push("");
 
   lines.push("Outcomes");

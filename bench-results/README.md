@@ -13,12 +13,13 @@ sitting in the file that the trend line reads.
 
 ```sh
 # 1. Run the suite. Harbor grades the trials.
-bench/run-suite.sh bench/suites/tb2-cross-section.txt \
+bench/run-suite.sh bench/suites/tb2-cross-section.suite.json \
   --model openai/gpt-5.6-luna --jobs-dir /tmp/gym-jobs-run
 
 # 2. Score it and record it.
 pnpm run effectiveness:report -- /tmp/gym-jobs-run/<job-dir> \
   --suite tb2-cross-section --lane proxy \
+  --suite-manifest bench/suites/tb2-cross-section.suite.json \
   --thresholds packages/coder-effectiveness/thresholds/tb2-cross-section.json \
   --append bench-results/tb2-cross-section.jsonl
 ```
@@ -27,6 +28,25 @@ The report's exit code is unchanged by `--append`: `0` the gate passed, `1` a
 floor was breached, `2` the gate was unverifiable. A fourth code, `3`, means the
 run was scored but the store refused to record it, and it only ever replaces a
 `0`.
+
+## Only a full run of a named suite gets in
+
+`--suite-manifest` is not optional here. The store refuses two shapes outright,
+and neither refusal has a flag:
+
+- **`unclassified_run`** — the run named no manifest, so nothing records which
+  pinned task list it was supposed to cover. A row whose task list is only
+  "whatever ran" can be compared to a later row that ran less, and the trend
+  would read the difference as the coder changing.
+- **`smoke_run`** — the run did not cover every task the manifest pins, or the
+  manifest declares itself a fast lane. Either way the figures are over a
+  different set of work than the suite's other rows.
+
+That is how "a fast/smoke run is never a published score" is enforced rather
+than advised. Publishing means reaching this directory, and the coverage check
+reads the trial directories on disk, so a run cannot describe itself as
+complete when it is not. A refused run still prints its full report; it just
+does not become a row, and it exits `3`.
 
 ## Reading it
 
@@ -76,14 +96,16 @@ A comparison follows the same rule: a delta against an unpriced side is
 
 ## Row fields
 
-| Field                         | Meaning                                                                                                                                                                                  |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `runDigest`                   | The report's pin over suite, lane, tasks, CLI version, model, rates.                                                                                                                     |
-| `suiteKey`                    | The narrower pin two rows must share to be comparable: suite, sorted task list, rate catalog. Lane, model, and CLI version are excluded, because those are the axes a comparison varies. |
-| `jobId`                       | The Harbor job. A store refuses a job it already holds — re-scoring a run does not make it a second run.                                                                                 |
-| `costPerAcceptedOutcomeUsd`   | Total run cost over accepted outcomes, failures included, or `null`.                                                                                                                     |
-| `gateStatus`                  | `passed`, `failed`, `unverifiable`, or `null` when no thresholds file was given.                                                                                                         |
-| `previousReceipt` / `receipt` | The chain.                                                                                                                                                                               |
+| Field                         | Meaning                                                                                                                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `runDigest`                   | The report's pin over suite, lane, tasks, CLI version, model, rates.                                                                                                                                   |
+| `suiteKey`                    | The narrower pin two rows must share to be comparable: suite, suite digest, sorted task list, rate catalog. Lane, model, and CLI version are excluded, because those are the axes a comparison varies. |
+| `suiteId` / `suiteDigest`     | The manifest the run claimed, and the digest over its pinned tasks — dataset, git url, commit, and path per task, so the pin is over content and not over names.                                       |
+| `tier`                        | Always `score`. Written down anyway, so a reader of the file never has to know the store's refusal rule to trust what the rows are.                                                                    |
+| `jobId`                       | The Harbor job. A store refuses a job it already holds — re-scoring a run does not make it a second run.                                                                                               |
+| `costPerAcceptedOutcomeUsd`   | Total run cost over accepted outcomes, failures included, or `null`.                                                                                                                                   |
+| `gateStatus`                  | `passed`, `failed`, `unverifiable`, or `null` when no thresholds file was given.                                                                                                                       |
+| `previousReceipt` / `receipt` | The chain.                                                                                                                                                                                             |
 
 The full type is `BenchResultRow` in
 `packages/coder-effectiveness/src/results-store.ts`.

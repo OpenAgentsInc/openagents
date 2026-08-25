@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "smoke",
+  "tier": "smoke",
+  "description": "The fast lane: two quick Terminal-Bench tasks for checking that the harness, the adapter, and the lane are alive. Declared smoke, so its result is never a published score however completely it runs.",
+  "tasks": [
+    {
+      "id": "fix-code-vulnerability",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-code-vulnerability"
+      },
+      "environmentProven": true,
+      "rationale": "quick-shaped"
+    },
+    {
+      "id": "regex-log",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "regex-log"
+      },
+      "environmentProven": true,
+      "rationale": "quick-shaped"
+    }
+  ]
+}

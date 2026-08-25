@@ -1,0 +1,85 @@
+# Owned tasks: closed issues as graded work
+
+Issue [#34](https://openagents.com/OpenAgentsInc/openagents/issues/34) asks the
+effectiveness suite to draw on two sources: a bounded public subset, and "an
+owned set drawn from this tracker's closed issues with known accepted
+outcomes". The public half is
+`bench/suites/swebench-verified-subset.suite.json`, resolved from Harbor's
+registry. This directory is the owned half.
+
+## Where the tasks come from
+
+The forge records a closing reference on an issue as evidence, with the commit
+that closed it. `bench/build-suites.mjs --issues <closed.json>` reads a
+`openagents issue list --state closed --json` body and turns every issue that
+carries one into a task pinned to that commit:
+
+```json
+{
+  "id": "owned-issue-31",
+  "pin": {
+    "kind": "tracker-closed-issue",
+    "repo": "OpenAgentsInc/openagents",
+    "issue": 31,
+    "acceptedCommit": "cf1861c9cb..."
+  },
+  "environmentProven": false,
+  "rationale": "Adopt the proxy's reasoning and tool-call fidelity in the coder"
+}
+```
+
+The accepted outcome is a fact the tracker holds, not a judgement this tooling
+makes. That is the whole reason these are worth grading against: unlike a
+synthesised task, somebody already decided what "done" looked like and shipped
+it, and the diff is on record. An issue closed without a closing reference is
+skipped by number rather than guessed at — it may be perfectly well closed, but
+there is nothing to grade against.
+
+At the time of writing, six of the tracker's fifty-eight closed issues carry a
+closing-reference commit. All six land in `packages/openagents-cli`, and five of
+the six touch a test file in the same commit, which is the shape the verifier
+below needs.
+
+## What is not built yet
+
+**No container exists that can grade any of these.** The pin is real and the
+suite is real; the environment is not. Every owned task therefore carries
+`environmentProven: false`, and `parseSuiteManifest` refuses to let an unproven
+task into a `score`-tier suite — so `owned-closed-issues.suite.json` is
+`smoke`, and `coder-effectiveness-v1` holds the twenty proven public tasks and
+none of these.
+
+That refusal is the point rather than a limitation. A score suite that included
+a task nobody could run would report those trials as missing, and a missing
+trial reads as the coder failing rather than as an absent environment. The
+suite would get quietly worse the day the environment broke, for a reason that
+has nothing to do with the thing being measured.
+
+## The verifier these tasks want
+
+The construction is SWE-bench's, applied to our own history. For an issue whose
+closing commit touches both source and test files:
+
+1. Base the environment at the closing commit's **parent**, with the test-file
+   half of the closing commit applied and the source half left out. The test
+   then exists and fails.
+2. The instruction is the issue body, which is what a human coder was given.
+3. The verifier runs the touched test files. Pass means the agent made the
+   recorded test pass; it does not mean the agent reproduced the recorded diff,
+   and it should not.
+
+Two things have to be true before the first of these is `environmentProven`,
+and neither is cheap:
+
+- **The image.** `packages/openagents-cli` sits in a 117-package pnpm
+  workspace, so the environment is a repo snapshot plus an install, not a
+  `FROM node:22-slim` and a copy. Build time and image size are the open
+  question, and the answer decides whether the owned lane is run per release or
+  per week.
+- **The test half really failing at base.** A closing commit that only added a
+  test for behaviour that already worked is not a graded task at all — it is a
+  task that passes before the agent starts. Each candidate needs that checked
+  by running the test at the base commit, once, before it is admitted.
+
+Until both hold for a task, it stays here: pinned, described, and out of every
+published score.

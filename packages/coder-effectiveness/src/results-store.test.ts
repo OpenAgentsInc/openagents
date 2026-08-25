@@ -25,6 +25,12 @@ import {
   verifyResultChain,
   type BenchResultRow,
 } from "./results-store.ts";
+import {
+  classifyRun,
+  parseSuiteManifest,
+  SUITE_MANIFEST_SCHEMA,
+  type RunClassification,
+} from "./suite-manifest.ts";
 import { evaluateThresholds, parseThresholds } from "./thresholds.ts";
 
 const fixture = (name: string): string =>
@@ -37,6 +43,37 @@ const report = (name: string, lane = "proxy"): EffectivenessReport =>
       lane,
       rateCatalogVersion: CODER_RATE_CATALOG_VERSION,
     }),
+  );
+
+/**
+ * A manifest over exactly the tasks a fixture job ran, so the fixture reads as
+ * a complete score run. The store's smoke refusal has its own cases below; the
+ * rest of the file is about the chain, and a smoke classification there would
+ * only ever be measuring the refusal twice.
+ */
+const manifestFor = (name: string) =>
+  parseSuiteManifest({
+    schema: SUITE_MANIFEST_SCHEMA,
+    id: "fixture-suite",
+    tier: "score",
+    description: "the tasks this fixture job ran",
+    tasks: report(name).perTrial.map((trial) => ({
+      id: trial.task,
+      pin: {
+        kind: "harbor-registry",
+        dataset: "terminal-bench@2.0",
+        gitUrl: "https://github.com/laude-institute/terminal-bench-2.git",
+        commit: "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        path: trial.task,
+      },
+      environmentProven: true,
+    })),
+  });
+
+const scoreOf = (name: string): RunClassification =>
+  classifyRun(
+    manifestFor(name),
+    report(name).perTrial.map((trial) => trial.task),
   );
 
 const floors = parseThresholds(
@@ -61,7 +98,7 @@ afterEach(() => {
 });
 
 const append = (name: string, lane: string, recordedAt: string) =>
-  appendResultRow(store, report(name, lane), null, { recordedAt });
+  appendResultRow(store, report(name, lane), null, scoreOf(name), { recordedAt });
 
 const rows = (): ReadonlyArray<BenchResultRow> => readResultRows(store);
 
@@ -83,7 +120,7 @@ describe("appending a run", () => {
 
   test("creates the store directory rather than requiring it to exist", () => {
     const nested = join(directory, "does", "not", "exist", "suite.jsonl");
-    const result = appendResultRow(nested, report("priced-lane"), null, {
+    const result = appendResultRow(nested, report("priced-lane"), null, scoreOf("priced-lane"), {
       recordedAt: "2026-08-25T10:00:00.000Z",
     });
 
@@ -100,6 +137,7 @@ describe("appending a run", () => {
       store,
       report("priced-lane"),
       evaluateThresholds(report("priced-lane"), floors),
+      scoreOf("priced-lane"),
       {
         recordedAt: "2026-08-25T10:00:00.000Z",
       },
@@ -148,7 +186,98 @@ describe("what the store refuses", () => {
   test("throws on a row written under another schema", () => {
     writeFileSync(store, `${JSON.stringify({ schema: "something.else.v1" })}\n`, "utf8");
 
-    expect(() => readResultRows(store)).toThrow(/expected openagents\.bench_result\.v1/u);
+    expect(() => readResultRows(store)).toThrow(/expected openagents\.bench_result\.v2/u);
+  });
+
+  test("names a v1 row for what it is rather than reading it as a v2 one", () => {
+    writeFileSync(store, `${JSON.stringify({ schema: "openagents.bench_result.v1" })}\n`, "utf8");
+
+    expect(() => readResultRows(store)).toThrow(/carries no suite digest/u);
+  });
+});
+
+/**
+ * The structural half of "a fast/smoke run is never a published score".
+ *
+ * Publishing means reaching this file, because this file is what the trend and
+ * the lane comparison read. These cases are the enforcement — the gate's
+ * `run_tier` criterion in `thresholds.test.ts` is the other half, and neither
+ * relies on the other.
+ */
+describe("the smoke rule at the store door", () => {
+  test("refuses a run that covered only part of the suite it named", () => {
+    const partial = classifyRun(manifestFor("priced-lane"), ["fix-git"]);
+
+    const result = appendResultRow(store, report("priced-lane"), null, partial, {
+      recordedAt: "2026-08-25T10:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({ appended: false, refusal: "smoke_run" });
+    expect(readResultRows(store)).toEqual([]);
+  });
+
+  test("refuses a run of a suite that declares itself a fast lane", () => {
+    const declared = classifyRun(
+      parseSuiteManifest({ ...manifestFor("priced-lane"), tier: "smoke" }),
+      report("priced-lane").perTrial.map((trial) => trial.task),
+    );
+
+    const result = appendResultRow(store, report("priced-lane"), null, declared, {
+      recordedAt: "2026-08-25T10:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({ appended: false, refusal: "smoke_run" });
+  });
+
+  test("refuses a run that named no suite at all", () => {
+    // Naming the suite is what exposes whether you ran it, so declining to name
+    // one cannot be the cheap way past the coverage check.
+    const result = appendResultRow(store, report("priced-lane"), null, null, {
+      recordedAt: "2026-08-25T10:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({ appended: false, refusal: "unclassified_run" });
+  });
+
+  test("refuses a smoke run before it can even read the store", () => {
+    // Order matters: a smoke run must not learn the head receipt, so it cannot
+    // get most of the way through an append and be finished by hand.
+    writeFileSync(store, "{ not json\n", "utf8");
+    const partial = classifyRun(manifestFor("priced-lane"), ["fix-git"]);
+
+    const result = appendResultRow(store, report("priced-lane"), null, partial, {
+      recordedAt: "2026-08-25T10:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({ appended: false, refusal: "smoke_run" });
+  });
+
+  test("records the suite pin on a row it does accept", () => {
+    append("priced-lane", "proxy", "2026-08-25T10:00:00.000Z");
+
+    const row = rows()[0]!;
+    expect(row.tier).toBe("score");
+    expect(row.suiteId).toBe("fixture-suite");
+    expect(row.suiteDigest).toMatch(/^suite-manifest:[0-9a-f]{64}$/u);
+  });
+
+  test("gives two runs of one task list different suite keys under different pins", () => {
+    // The task names match; the dataset commit does not. Without the suite
+    // digest in the key these two would compare as the same measurement.
+    const moved = parseSuiteManifest({
+      ...manifestFor("priced-lane"),
+      tasks: manifestFor("priced-lane").tasks.map((task) =>
+        Object.assign({}, task, { pin: Object.assign({}, task.pin, { commit: "0".repeat(40) }) }),
+      ),
+    });
+    const movedRun = classifyRun(
+      moved,
+      report("priced-lane").perTrial.map((trial) => trial.task),
+    );
+
+    expect(suiteKeyOf(report("priced-lane"), movedRun)).not.toBe(
+      suiteKeyOf(report("priced-lane"), scoreOf("priced-lane")),
+    );
   });
 });
 
@@ -185,10 +314,10 @@ describe("the receipt chain", () => {
   });
 
   test("is stable across two builds of the same row", () => {
-    const first = buildResultRow(report("priced-lane"), null, null, {
+    const first = buildResultRow(report("priced-lane"), null, scoreOf("priced-lane"), null, {
       recordedAt: "2026-08-25T10:00:00.000Z",
     });
-    const second = buildResultRow(report("priced-lane"), null, null, {
+    const second = buildResultRow(report("priced-lane"), null, scoreOf("priced-lane"), null, {
       recordedAt: "2026-08-25T10:00:00.000Z",
     });
 
@@ -216,13 +345,15 @@ describe("what a row records", () => {
   });
 
   test("gives two runs of the same tasks the same suite key across different lanes", () => {
-    expect(suiteKeyOf(report("priced-lane", "proxy"))).toBe(
-      suiteKeyOf(report("regressed-lane", "local")),
+    expect(suiteKeyOf(report("priced-lane", "proxy"), scoreOf("priced-lane"))).toBe(
+      suiteKeyOf(report("regressed-lane", "local"), scoreOf("regressed-lane")),
     );
   });
 
   test("gives two runs of different task lists different suite keys", () => {
-    expect(suiteKeyOf(report("priced-lane"))).not.toBe(suiteKeyOf(report("unpriced-lane")));
+    expect(suiteKeyOf(report("priced-lane"), scoreOf("priced-lane"))).not.toBe(
+      suiteKeyOf(report("unpriced-lane"), scoreOf("unpriced-lane")),
+    );
   });
 
   test("gives two lanes of the same tasks different run digests", () => {

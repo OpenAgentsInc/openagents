@@ -30,6 +30,7 @@ import {
 } from "./pricing.ts";
 import { renderReport } from "./render.ts";
 import { appendResultRow } from "./results-store.ts";
+import { classifyRun, parseSuiteManifest, type RunClassification } from "./suite-manifest.ts";
 import { evaluateThresholds, parseThresholds, type ThresholdGate } from "./thresholds.ts";
 
 const USAGE = `Usage: coder-effectiveness report <job-dir> [options]
@@ -40,6 +41,12 @@ Arguments:
 
 Options:
   --suite <name>         Suite name recorded in the report. Default: terminal-bench@2.0
+  --suite-manifest <file>
+                         The suite manifest this run claims to have covered.
+                         Required by --append: a run that names no manifest has
+                         nothing to say which pinned task list it measured. A
+                         run that did not cover every pinned task is a smoke
+                         run, whatever it was called, and cannot be recorded.
   --lane <proxy|local>   Lane the run used. Default: proxy
   --thresholds <file>    JSON floors to score the run against. Without it the
                          report is printed and no gate runs.
@@ -69,6 +76,7 @@ const APPEND_REFUSED_EXIT = 3;
 interface Arguments {
   readonly jobDir: string;
   readonly suite: string;
+  readonly manifestPath: string | null;
   readonly lane: string;
   readonly thresholdsPath: string | null;
   readonly modelsPath: string | null;
@@ -80,6 +88,7 @@ interface Arguments {
 const parseArguments = (argv: ReadonlyArray<string>): Arguments | "help" => {
   let jobDir: string | null = null;
   let suite = "terminal-bench@2.0";
+  let manifestPath: string | null = null;
   let lane = "proxy";
   let thresholdsPath: string | null = null;
   let modelsPath: string | null = null;
@@ -96,6 +105,10 @@ const parseArguments = (argv: ReadonlyArray<string>): Arguments | "help" => {
     }
     if (argument === "--suite") {
       suite = expectValue(argv, (index += 1), "--suite");
+      continue;
+    }
+    if (argument === "--suite-manifest") {
+      manifestPath = expectValue(argv, (index += 1), "--suite-manifest");
       continue;
     }
     if (argument === "--lane") {
@@ -127,7 +140,7 @@ const parseArguments = (argv: ReadonlyArray<string>): Arguments | "help" => {
   if (lane !== "proxy" && lane !== "local") {
     throw new Error(`--lane must be proxy or local, got: ${lane}`);
   }
-  return { jobDir, suite, lane, thresholdsPath, modelsPath, appendPath, json };
+  return { jobDir, suite, manifestPath, lane, thresholdsPath, modelsPath, appendPath, json };
 };
 
 const expectValue = (argv: ReadonlyArray<string>, index: number, option: string): string => {
@@ -173,25 +186,34 @@ const main = (argv: ReadonlyArray<string>): number => {
     });
     const report = summarizeRun(run, catalog, catalogVersion);
 
+    const classification: RunClassification | null =
+      parsed.manifestPath === null
+        ? null
+        : classifyRun(
+            parseSuiteManifest(JSON.parse(readFileSync(parsed.manifestPath, "utf8"))),
+            run.trials.map((trial) => trial.task),
+          );
+
     const gate =
       parsed.thresholdsPath === null
         ? null
         : evaluateThresholds(
             report,
             parseThresholds(JSON.parse(readFileSync(parsed.thresholdsPath, "utf8"))),
+            classification,
           );
 
     const appended =
       parsed.appendPath === null
         ? null
-        : appendResultRow(parsed.appendPath, report, gate, {
+        : appendResultRow(parsed.appendPath, report, gate, classification, {
             recordedAt: new Date().toISOString(),
           });
 
     process.stdout.write(
       parsed.json
-        ? `${JSON.stringify({ report, gate, appended }, null, 2)}\n`
-        : renderReport(report, gate),
+        ? `${JSON.stringify({ report, classification, gate, appended }, null, 2)}\n`
+        : renderReport(report, gate, classification),
     );
     if (appended !== null && !parsed.json) {
       process.stdout.write(

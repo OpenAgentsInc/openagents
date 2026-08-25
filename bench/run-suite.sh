@@ -13,9 +13,20 @@ usage() {
 Usage: bench/run-suite.sh <suite-file> --model <harbor-model> [options]
 
 Arguments:
-  <suite-file>            Path to a suite file: one task name per line. Lines
-                          that are empty or start with # (after whitespace) are
-                          ignored.
+  <suite-file>            A suite manifest (*.suite.json) or a plain task list.
+
+                          Prefer the manifest. It pins each task by content —
+                          dataset, git url, commit, path — so the digest a run
+                          records means something, and it is what
+                          `coder-effectiveness report --suite-manifest` scores
+                          the run against. Every pinned task is included, so a
+                          run of a manifest is a full run or it is not that
+                          suite; the report says which.
+
+                          A plain task list is one task name per line, with
+                          empty lines and lines starting with # ignored. It
+                          still runs, and a run of one cannot be recorded as a
+                          score: nothing in it says what the suite was.
 
 Required options:
   --model <model>         Harbor model string, e.g. openai/gpt-5.6-luna,
@@ -241,12 +252,28 @@ fi
 # Normalize the suite file path to an absolute path.
 SUITE_FILE="$(cd "$(dirname "$SUITE_FILE")" && pwd)/$(basename "$SUITE_FILE")"
 
-# Parse tasks: strip comments, trim whitespace, drop blanks.
+# Parse tasks. A manifest carries them under .tasks[].id; a plain list is one
+# name per line with comments stripped.
 TASKS=()
-while IFS= read -r line; do
-  [ -n "$line" ] || continue
-  TASKS+=("$line")
-done < <(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$SUITE_FILE" | sed -n '/./p')
+case "$SUITE_FILE" in
+  *.suite.json)
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      TASKS+=("$line")
+    done < <(python3 -c '
+import json, sys
+manifest = json.load(open(sys.argv[1]))
+for task in manifest["tasks"]:
+    print(task["id"])
+' "$SUITE_FILE")
+    ;;
+  *)
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      TASKS+=("$line")
+    done < <(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$SUITE_FILE" | sed -n '/./p')
+    ;;
+esac
 
 if [ "${#TASKS[@]}" -eq 0 ]; then
   log "Suite file contains no tasks: $SUITE_FILE"
@@ -258,7 +285,7 @@ for task in "${TASKS[@]}"; do
   TASK_ARGS+=("-i" "$task")
 done
 
-SUITE_NAME="$(basename "$SUITE_FILE" .txt)"
+SUITE_NAME="$(basename "$(basename "$SUITE_FILE" .txt)" .suite.json)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
 # The catalog name the run registers under: Harbor spells models
@@ -459,3 +486,23 @@ if ! python3 "$BENCH_DIR/post_gym_run.py" "$JOB_DIR" --api-url "$API_URL" --lane
 fi
 
 log "Suite run complete: $SUITE_NAME"
+
+# Score it. Left as an instruction rather than run here: the report needs a
+# thresholds file and a store path, both of which are choices about what this
+# run is for, and running a gate the operator did not ask for would make a
+# suite run exit non-zero for reasons the runner did not decide.
+case "$SUITE_FILE" in
+  *.suite.json)
+    log "To score and record this run:"
+    log "  pnpm run effectiveness:report -- $(printf '%q' "$JOB_DIR") \\"
+    log "    --suite $(printf '%q' "$SUITE_NAME") --lane $(printf '%q' "$LANE") \\"
+    log "    --suite-manifest $(printf '%q' "$SUITE_FILE") \\"
+    log "    --thresholds packages/coder-effectiveness/thresholds/${SUITE_NAME}.json \\"
+    log "    --append bench-results/${SUITE_NAME}.jsonl"
+    ;;
+  *)
+    log "This run used a plain task list, so it carries no suite pin and cannot"
+    log "be recorded as a score. Re-run it against bench/suites/${SUITE_NAME}.suite.json"
+    log "to produce a recordable row."
+    ;;
+esac

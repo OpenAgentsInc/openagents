@@ -44,11 +44,25 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+/**
+ * The manifest a fixture job fully covers. Recording a run requires naming one,
+ * so every case that expects a row has to pass it; the cases that expect a
+ * refusal pass a different one, or none.
+ */
+const manifestFor = (job: string): string =>
+  fixture(
+    job === "priced-lane" || job === "regressed-lane"
+      ? "fixture-suite.suite.json"
+      : "fixture-suite-3.suite.json",
+  );
+
 const record = (job: string, lane: string) =>
   spawn(reportCli, [
     fixture(job),
     "--suite",
     "tb2-cross-section",
+    "--suite-manifest",
+    manifestFor(job),
     "--lane",
     lane,
     "--append",
@@ -93,7 +107,14 @@ describe("report --append", () => {
   });
 
   test("carries the append result into --json", () => {
-    const result = spawn(reportCli, [fixture("priced-lane"), "--append", store, "--json"]);
+    const result = spawn(reportCli, [
+      fixture("priced-lane"),
+      "--suite-manifest",
+      manifestFor("priced-lane"),
+      "--append",
+      store,
+      "--json",
+    ]);
     const parsed = JSON.parse(result.stdout) as {
       appended: { appended: boolean; row: { receipt: string } };
     };
@@ -101,6 +122,62 @@ describe("report --append", () => {
     expect(result.status).toBe(0);
     expect(parsed.appended.appended).toBe(true);
     expect(parsed.appended.row.receipt).toMatch(/^receipt:[0-9a-f]{64}$/u);
+  });
+});
+
+/**
+ * The smoke rule as an operator meets it: at the command line, with an exit
+ * code. The unit cases prove the refusals; these prove a scheduled job cannot
+ * route around them by leaving an argument off or by running fewer tasks.
+ */
+describe("report --append and the smoke rule", () => {
+  test("refuses to record a run that named no suite manifest", () => {
+    const result = spawn(reportCli, [fixture("priced-lane"), "--append", store]);
+
+    expect(result.status).toBe(3);
+    expect(result.stdout).toContain("unclassified_run");
+    expect(readResultRows(store)).toEqual([]);
+  });
+
+  test("refuses to record a run that covered part of the suite it named", () => {
+    // `crashed-verifier` ran three tasks; `fixture-suite` pins four. Nothing on
+    // the command line says so — the trial directories do.
+    const result = spawn(reportCli, [
+      fixture("crashed-verifier"),
+      "--suite-manifest",
+      fixture("fixture-suite.suite.json"),
+      "--append",
+      store,
+    ]);
+
+    expect(result.status).toBe(3);
+    expect(result.stdout).toContain("smoke_run");
+    expect(result.stdout).toContain("SMOKE");
+    expect(readResultRows(store)).toEqual([]);
+  });
+
+  test("cannot be talked into a passing gate by a partial run", () => {
+    // priced-lane clears every floor in this file. The only thing wrong with it
+    // is that the suite it names pins a fifth task it never ran — so 2, not 0.
+    const passing = spawn(reportCli, [
+      fixture("priced-lane"),
+      "--suite-manifest",
+      fixture("fixture-suite.suite.json"),
+      "--thresholds",
+      fixture("floors-fixture-scale-placeholder-ok.json"),
+    ]);
+    const partial = spawn(reportCli, [
+      fixture("priced-lane"),
+      "--suite-manifest",
+      fixture("fixture-suite-5.suite.json"),
+      "--thresholds",
+      fixture("floors-fixture-scale-placeholder-ok.json"),
+    ]);
+
+    expect(passing.status).toBe(0);
+    expect(partial.status).toBe(2);
+    expect(partial.stdout).toContain("run_tier=score");
+    expect(partial.stdout).toContain("never-run");
   });
 });
 

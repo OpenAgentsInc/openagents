@@ -7,6 +7,7 @@
  * runs.
  */
 
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -16,23 +17,35 @@ import { readHarborJob } from "./harbor-job.ts";
 import { CODER_RATE_CATALOG_VERSION } from "./pricing.ts";
 import { renderComparison } from "./render-compare.ts";
 import { buildResultRow, type BenchResultRow } from "./results-store.ts";
+import { classifyRun, parseSuiteManifest } from "./suite-manifest.ts";
 
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
 
-const row = (name: string, lane: string, recordedAt: string): BenchResultRow =>
-  buildResultRow(
-    summarizeRun(
-      readHarborJob(fixture(name), {
-        suite: "tb2-cross-section",
-        lane,
-        rateCatalogVersion: CODER_RATE_CATALOG_VERSION,
-      }),
-    ),
-    null,
-    null,
-    { recordedAt },
+/**
+ * Every stored row is a full score run of some suite — the store refuses
+ * anything else — so the rows these cases compare are built the same way, from
+ * a manifest over exactly the tasks the fixture job ran.
+ */
+const row = (name: string, lane: string, recordedAt: string): BenchResultRow => {
+  const report = summarizeRun(
+    readHarborJob(fixture(name), {
+      suite: "tb2-cross-section",
+      lane,
+      rateCatalogVersion: CODER_RATE_CATALOG_VERSION,
+    }),
   );
+  const tasks = report.perTrial.map((trial) => trial.task);
+  const manifest = parseSuiteManifest(
+    JSON.parse(
+      readFileSync(
+        fixture(tasks.length === 4 ? "fixture-suite.suite.json" : "fixture-suite-3.suite.json"),
+        "utf8",
+      ),
+    ),
+  );
+  return buildResultRow(report, null, classifyRun(manifest, tasks), null, { recordedAt });
+};
 
 describe("trend on one lane", () => {
   test("reads a regression between two consecutive runs as cost rising", () => {

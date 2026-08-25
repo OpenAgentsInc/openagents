@@ -1,0 +1,30 @@
+{
+  "$comment": [
+    "Floors for the tb2-quick suite (bench/suites/tb2-quick.suite.json), the",
+    "two-task score suite that exists to be run repeatedly on one machine.",
+    "minGradedTrials is 2, the whole suite. A quick suite that graded one of its",
+    "two tasks is not a quick suite that half passed: the missing trial means the",
+    "verifier crashed or the environment never came up, and either way the",
+    "success rate is over a denominator of one. The coverage check in the suite",
+    "manifest already makes a partial run a smoke run, so this floor is the",
+    "belt to that suspenders, and it costs nothing on a healthy run.",
+    "minSuccessRate is 0.5: with two tasks the only rates available are 0, 0.5,",
+    "and 1, so this floor says at least one task must be solved. It is the",
+    "regression floor, not a target — a lane that drops to solving neither task",
+    "is the failure this suite exists to catch, and a lane that solves one is",
+    "not evidence of health so much as evidence of not being broken.",
+    "maxUngradedRatio is 0 rather than a fraction, for the same reason as the",
+    "trial floor: with two trials the smallest non-zero ratio is a half, and a",
+    "suite that tolerated half its trials going ungraded would be reporting a",
+    "success rate over a single task while calling it a suite.",
+    "No maxCostPerAcceptedOutcomeUsd. The lane this suite is run on is local",
+    "Ollama, which bills no metered tokens, so a dollar ceiling here would be",
+    "unverifiable on every run and would make the gate exit 2 forever — which",
+    "is a gate nobody reads. When this suite is run through the proxy, score it",
+    "against a thresholds file that declares one."
+  ],
+  "id": "tb2-quick",
+  "minGradedTrials": 2,
+  "minSuccessRate": 0.5,
+  "maxUngradedRatio": 0
+}
