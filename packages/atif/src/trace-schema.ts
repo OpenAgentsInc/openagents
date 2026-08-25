@@ -51,6 +51,7 @@ export class AtifStepMetrics extends S.Class<AtifStepMetrics>('AtifStepMetrics')
     prompt_tokens: S.optionalKey(S.Number),
     completion_tokens: S.optionalKey(S.Number),
     cost_usd: S.optionalKey(S.Number),
+    extra: S.optionalKey(S.Record(S.String, S.Number)),
   },
 ) {}
 

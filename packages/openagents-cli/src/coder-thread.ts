@@ -393,7 +393,13 @@ export class ThreadReplySource implements ReplySource {
    */
   private sink: TranscriptSink | undefined;
   /** The running turn's token usage, accumulated across its model calls. */
-  private turnUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
+  private turnUsage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    calls: number;
+    cacheReadInputTokens?: number;
+  } = { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
   /** Set for the one round that must answer rather than call another tool. */
   private mustAnswer = false;
   /**
@@ -603,6 +609,9 @@ export class ThreadReplySource implements ReplySource {
               promptTokens: this.turnUsage.promptTokens,
               completionTokens: this.turnUsage.completionTokens,
               calls: this.turnUsage.calls,
+              ...(this.turnUsage.cacheReadInputTokens === undefined
+                ? {}
+                : { cacheReadInputTokens: this.turnUsage.cacheReadInputTokens }),
             };
           }
           this.recordAnswer(turnText, turnToolCalls, signal.aborted);
@@ -682,6 +691,9 @@ export class ThreadReplySource implements ReplySource {
         completion_tokens: this.turnUsage.completionTokens,
         total_tokens: this.turnUsage.totalTokens,
         calls: this.turnUsage.calls,
+        ...(this.turnUsage.cacheReadInputTokens === undefined
+          ? {}
+          : { cache_read_input_tokens: this.turnUsage.cacheReadInputTokens }),
       },
       tool_calls: toolCalls,
       ...(interrupted ? { interrupted: true } : {}),
@@ -914,11 +926,15 @@ export class ThreadReplySource implements ReplySource {
     // The same report feeds the turn's own tally, which `turn.assistant`
     // carries: a turn is several calls, and the record holds their sum with
     // the count rather than the last call's figures presented as the turn's.
+    const cache = optional(usage["cache_read_input_tokens"]);
     this.turnUsage = {
       promptTokens: this.turnUsage.promptTokens + number(usage["prompt_tokens"]),
       completionTokens: this.turnUsage.completionTokens + number(usage["completion_tokens"]),
       totalTokens: this.turnUsage.totalTokens + total,
       calls: this.turnUsage.calls + 1,
+      ...(cache === undefined
+        ? {}
+        : { cacheReadInputTokens: (this.turnUsage.cacheReadInputTokens ?? 0) + cache }),
     };
   }
 

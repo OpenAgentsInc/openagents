@@ -747,6 +747,37 @@ describe("the thread's durable transcript", () => {
     });
   });
 
+  it("records the cache read split when the server reports one", async () => {
+    const CACHE_SSE = [
+      `data: {"choices":[{"delta":{"content":"Hello"},"index":0}]}`,
+      `data: {"choices":[],"usage":{"completion_tokens":11,"prompt_tokens":12,"total_tokens":23,"cache_read_input_tokens":5}}`,
+      `data: [DONE]`,
+      "",
+    ].join("\n\n");
+    stub({ proxy: [sse([CACHE_SSE])] });
+    const source = await open();
+    const sink = recorder();
+    source.useTranscript(sink);
+
+    const received = await chunks(source, "hello");
+
+    const answer = sink.events.find((event) => event.eventType === "turn.assistant");
+    expect(answer?.payload).toEqual({
+      text: "Hello",
+      usage: {
+        prompt_tokens: 12,
+        completion_tokens: 11,
+        total_tokens: 23,
+        calls: 1,
+        cache_read_input_tokens: 5,
+      },
+      tool_calls: 0,
+    });
+    expect(received.filter((chunk) => chunk.type === "usage")).toEqual([
+      { type: "usage", promptTokens: 12, completionTokens: 11, calls: 1, cacheReadInputTokens: 5 },
+    ]);
+  });
+
   it("yields the turn's usage so the session's export can carry it", async () => {
     stub({ proxy: [sse([TOOL_ROUND]), sse([ANSWER_ROUND])] });
     const source = await open();

@@ -49,7 +49,7 @@ interface AtifStep {
   message: string;
   model_name?: string;
   reasoning_content?: string;
-  metrics?: { prompt_tokens?: number; completion_tokens?: number };
+  metrics?: { prompt_tokens?: number; completion_tokens?: number; extra?: Record<string, number> };
   llm_call_count?: number;
   tool_calls?: ReadonlyArray<{
     tool_call_id: string;
@@ -137,6 +137,9 @@ const metricsOf = (entry: CoderEntry): Partial<AtifStep> => {
     ...(metrics.completionTokens === undefined
       ? {}
       : { completion_tokens: metrics.completionTokens }),
+    ...(metrics.cacheReadInputTokens === undefined
+      ? {}
+      : { extra: { cache_read_input_tokens: metrics.cacheReadInputTokens } }),
   };
   return {
     ...(Object.keys(figures).length === 0 ? {} : { metrics: figures }),

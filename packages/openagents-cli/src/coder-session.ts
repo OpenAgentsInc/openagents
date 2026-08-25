@@ -48,6 +48,7 @@ export type ReplyChunk =
       readonly type: "usage";
       readonly promptTokens?: number | undefined;
       readonly completionTokens?: number | undefined;
+      readonly cacheReadInputTokens?: number | undefined;
       readonly calls?: number | undefined;
     }
   | {
@@ -162,6 +163,7 @@ const describeFailure = (cause: unknown): string => {
 export interface CoderMetrics {
   readonly promptTokens?: number | undefined;
   readonly completionTokens?: number | undefined;
+  readonly cacheReadInputTokens?: number | undefined;
   /** How many LLM calls the figures aggregate. */
   readonly calls?: number | undefined;
 }
@@ -1022,6 +1024,9 @@ export class CoderSession {
               promptTokens: chunk.promptTokens,
               completionTokens: chunk.completionTokens,
               calls: chunk.calls,
+              ...(chunk.cacheReadInputTokens === undefined
+                ? {}
+                : { cacheReadInputTokens: chunk.cacheReadInputTokens }),
             };
           }
         } else {

@@ -447,6 +447,33 @@ describe("a turn's cost", () => {
     const assistant = session.snapshot().entries.find((entry) => entry.role === "assistant");
     expect(assistant?.metrics).toEqual({ promptTokens: 12, completionTokens: 34, calls: 2 });
   });
+
+  it("lands with a cache read split when the source reports one", async () => {
+    const session = new CoderSession(
+      source([
+        { type: "text", value: "answer" },
+        {
+          type: "usage",
+          promptTokens: 12,
+          completionTokens: 34,
+          calls: 2,
+          cacheReadInputTokens: 5,
+        },
+      ]),
+      "repo",
+      "main",
+    );
+
+    await session.submit("go");
+
+    const assistant = session.snapshot().entries.find((entry) => entry.role === "assistant");
+    expect(assistant?.metrics).toEqual({
+      promptTokens: 12,
+      completionTokens: 34,
+      calls: 2,
+      cacheReadInputTokens: 5,
+    });
+  });
 });
 
 describe("notices that replace one another", () => {

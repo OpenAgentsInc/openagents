@@ -216,6 +216,44 @@ describe("exporting a conversation as ATIF", () => {
     });
   });
 
+  it("carries the cache read token split in step metrics extra", () => {
+    const { document } = write([
+      entry({
+        role: "assistant",
+        text: "answer",
+        metrics: {
+          promptTokens: 100,
+          completionTokens: 10,
+          cacheReadInputTokens: 25,
+          calls: 1,
+        },
+      }),
+    ]);
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    expect(steps[0]).toMatchObject({
+      metrics: {
+        prompt_tokens: 100,
+        completion_tokens: 10,
+        extra: { cache_read_input_tokens: 25 },
+      },
+      llm_call_count: 1,
+    });
+  });
+
+  it("omits the extra metrics block when no cache split was reported", () => {
+    const { document } = write([
+      entry({
+        role: "assistant",
+        text: "answer",
+        metrics: { promptTokens: 100, completionTokens: 10, calls: 1 },
+      }),
+    ]);
+
+    const steps = document["steps"] as ReadonlyArray<Record<string, unknown>>;
+    expect(steps[0]?.["metrics"]).toEqual({ prompt_tokens: 100, completion_tokens: 10 });
+  });
+
   it("reports no totals rather than zero when nothing measured any", () => {
     const { document } = write([entry({ role: "assistant", text: "answer" })]);
 
