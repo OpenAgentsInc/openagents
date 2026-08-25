@@ -6,11 +6,12 @@
  * directory. This command reads that directory and answers the question the
  * run was for.
  *
- *     bench/run-suite.sh bench/suites/tb2-cross-section.txt \
+ *     bench/run-suite.sh bench/suites/tb2-cross-section.suite.json \
  *       --model openai/gpt-5.6-luna --jobs-dir /tmp/gym-jobs-run
  *
  *     pnpm run effectiveness:report -- /tmp/gym-jobs-run/<job> \
  *       --suite tb2-cross-section --lane proxy \
+ *       --suite-manifest bench/suites/tb2-cross-section.suite.json \
  *       --thresholds packages/coder-effectiveness/thresholds/tb2-cross-section.json
  *
  * EXIT CODES. 0 the gate passed, 1 a floor was breached, 2 the gate could not

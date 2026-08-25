@@ -60,7 +60,7 @@ adapter reports each trial live, and finalizes through post_gym_run.py
 --run-id. A suite that fails before grading patches the run to abandoned.
 
 Examples:
-  bench/run-suite.sh bench/suites/tb2-cross-section.txt \
+  bench/run-suite.sh bench/suites/tb2-cross-section.suite.json \
     --model openai/gpt-5.6-luna --lane proxy --n-concurrent 2
 
   bench/run-suite.sh bench/suites/local-llm.txt \

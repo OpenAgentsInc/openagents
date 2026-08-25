@@ -56,12 +56,35 @@ bench/run-suite.sh <suite-file> --model <harbor-model> [options]
 Examples:
 
 ```sh
-bench/run-suite.sh bench/suites/tb2-cross-section.txt \
+bench/run-suite.sh bench/suites/tb2-cross-section.suite.json \
   --model openai/gpt-5.6-luna --lane proxy --n-concurrent 2
 
-bench/run-suite.sh bench/suites/tb2-cross-section.txt \
+bench/run-suite.sh bench/suites/tb2-cross-section.suite.json \
   --model ollama/qwen3.8:27b-mtp-q8_0 --lane local --dry-run
 ```
+
+## Suites
+
+`bench/suites/*.suite.json` are the pinned suites, regenerated from Harbor's
+registry and this tracker's closed issues by:
+
+```sh
+pnpm run effectiveness:suites -- \
+  --registry ../projects/repos/harbor/registry.json \
+  --issues <(openagents issue list -R OpenAgentsInc/openagents --state closed --limit 200 --json)
+```
+
+Add `--check` to rebuild and diff without writing, which is how a manifest is
+kept from drifting away from the registry it claims to pin.
+
+A manifest pins each task by content — dataset, git url, commit, path — rather
+than by name, and `coder-effectiveness report --suite-manifest` scores a run
+against it. A run that did not cover every pinned task is a smoke run and
+cannot be recorded, whatever it was invoked as; see
+`packages/coder-effectiveness/README.md`.
+
+The plain `.txt` lists still run. They carry no pin, so a run of one cannot be
+recorded as a score.
 
 Options include `--lane`, `--api-url`, `--jobs-dir`, `--n-concurrent`,
 `--timeout-multiplier`, and `--dry-run`. Set `OPENAGENTS_TOKEN` unless the

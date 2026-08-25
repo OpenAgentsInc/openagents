@@ -319,6 +319,3 @@ leaves unpriced stays unpriced here — that omission is the signal.
   comparison now hold the rows those runs will produce, and the fixture cases
   prove the trend reads a regression as a rise in cost per accepted outcome —
   but a fixture is not a schedule, and no real run has been recorded.
-- **The 20-30 task suite.** The floors point at
-  `bench/suites/tb2-cross-section.txt`, twelve tasks. The wider suite and the
-  owned set drawn from this tracker's closed issues are not built.
