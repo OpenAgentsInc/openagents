@@ -35,6 +35,10 @@ pub async fn find_agents() -> Result<Vec<Agent>, Box<dyn std::error::Error>> {
     let mut entries = tokio::fs::read_dir(&dir).await?;
     let mut found = Vec::new();
 
+    // Compute these once; many agents use npx or uvx, so avoid repeated calls.
+    let npm_root = npm_root().await;
+    let uv_tools = uv_tools().await;
+
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if !path.is_dir() {
@@ -52,7 +56,7 @@ pub async fn find_agents() -> Result<Vec<Agent>, Box<dyn std::error::Error>> {
             Err(_) => continue,
         };
 
-        if is_available(&agent).await {
+        if is_available(&agent, &npm_root, &uv_tools).await {
             found.push(Agent {
                 id: agent.id,
                 name: agent.name,
@@ -102,11 +106,12 @@ struct NpxUvx {
     args: Option<Vec<String>>,
 }
 
-async fn is_available(agent: &RegistryAgent) -> bool {
+async fn is_available(agent: &RegistryAgent, npm_root: &Option<String>, uv_tools: &Option<String>) -> bool {
     let Some(dist) = &agent.distribution else {
         return false;
     };
 
+    // Binary distribution for this platform.
     if let Some(binary) = &dist.binary {
         let platform = current_platform();
         if let Some(target) = binary.get(&platform) {
@@ -120,12 +125,23 @@ async fn is_available(agent: &RegistryAgent) -> bool {
         }
     }
 
-    if dist.npx.is_some() && has_command("npx").await {
+    // An executable named exactly like the agent id (e.g., `grok-build`).
+    if has_command(&agent.id).await {
         return true;
     }
 
-    if dist.uvx.is_some() && has_command("uvx").await {
-        return true;
+    // npx package installed globally.
+    if let Some(npx) = &dist.npx {
+        if npx_installed(&npx.package, npm_root).await {
+            return true;
+        }
+    }
+
+    // uvx package installed as a uv tool.
+    if let Some(uvx) = &dist.uvx {
+        if uvx_installed(&uvx.package, uv_tools).await {
+            return true;
+        }
     }
 
     false
@@ -157,6 +173,65 @@ async fn has_command(name: &str) -> bool {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+}
+
+async fn npm_root() -> Option<String> {
+    let output = tokio::process::Command::new("npm")
+        .args(["root", "-g"])
+        .output()
+        .await;
+    output
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+}
+
+async fn uv_tools() -> Option<String> {
+    let output = tokio::process::Command::new("uv")
+        .args(["tool", "list"])
+        .output()
+        .await;
+    output
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+}
+
+async fn npx_installed(package: &str, npm_root: &Option<String>) -> bool {
+    let Some(root) = npm_root else {
+        return false;
+    };
+    let package = package_dir(package);
+    let marker = Path::new(root)
+        .join("node_modules")
+        .join(package)
+        .join("package.json");
+    tokio::fs::metadata(&marker).await.map(|m| m.is_file()).unwrap_or(false)
+}
+
+async fn uvx_installed(package: &str, uv_tools: &Option<String>) -> bool {
+    let Some(list) = uv_tools else {
+        return false;
+    };
+    let package = package_dir(package);
+    list.lines().any(|line| {
+        line.split_whitespace().next() == Some(package)
+    })
+}
+
+fn package_dir(spec: &str) -> &str {
+    // Strip an `@<version>` suffix while preserving scoped package names.
+    // "@scope/pkg@1.0.0" -> "@scope/pkg", "pkg@1.0.0" -> "pkg".
+    spec.rsplit_once('@')
+        .and_then(|(left, right)| {
+            if right.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                Some(left)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(spec)
 }
 
 fn home_dir() -> Option<PathBuf> {
