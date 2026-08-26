@@ -32,6 +32,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "write the transcript to ~/.openagents/exports as an ATIF document",
     ),
     ("help", "list these commands and the keys"),
+    ("login", "log in with GitHub and store the token"),
     (
         "resume",
         "coding-agent sessions other tools left on this machine: /resume, /resume <number>",
@@ -65,7 +66,7 @@ pub fn names() -> Vec<&'static str> {
 
 /// Whether `name` is one this module runs.
 pub fn handles(name: &str) -> bool {
-    matches!(name, "clear" | "diff" | "export" | "help" | "resume" | "run")
+    matches!(name, "clear" | "diff" | "export" | "help" | "login" | "resume" | "run")
 }
 
 /// Run one `/` line. `line` still carries its leading slash.
@@ -86,6 +87,7 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) {
             ui.scroll_override = None;
         }
         "export" => crate::interactive::export(ui),
+        "login" => spawn_login(ui, tx),
         "diff" => spawn_diff(ui, arguments, tx, cwd),
         "run" => spawn_run(ui, &rest, tx, cwd),
         "resume" => spawn_resume(ui, &arguments, tx, cwd),
@@ -99,6 +101,18 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) {
 fn output(ui: &mut CoderUi, text: &str) {
     ui.entries.push(Entry::new(Role::Output, text));
     ui.scroll_override = None;
+}
+
+fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {
+    output(ui, "Opening GitHub login in your browser...");
+    let tx = tx.clone();
+    tokio::spawn(async move {
+        let text = match crate::interactive::do_login().await {
+            Ok(message) => message,
+            Err(error) => format!("Login failed: {error}"),
+        };
+        let _ = tx.send(Control::Output(text));
+    });
 }
 
 fn help() -> String {

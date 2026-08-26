@@ -227,19 +227,30 @@ async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
     tokio::io::AsyncBufReadExt::read_line(&mut stdin, &mut line).await?;
 
+    match do_login().await {
+        Ok(message) => {
+            println!("{message}");
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Start the GitHub device-authorization flow against the current endpoint,
+/// open the approval URL in the browser, poll for the token, and store it.
+pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
+    let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
     let client = DeviceClient::new(&endpoint.origin);
     let scopes: &[String] = &[];
     let auth = client.start(scopes).await?;
 
-    println!("Opening {} in your browser...", auth.verification_uri_complete);
     open_browser(&auth.verification_uri_complete);
-    println!("Waiting for approval...");
 
     let token = client.wait(&auth).await?;
+    let store = CredentialStore::for_origin(&endpoint.origin);
     let _ = store.store(&token)?;
-    println!("Authenticated.");
 
-    Ok(())
+    Ok(format!("Authenticated for {}.", endpoint.origin))
 }
 
 /// The columns the composer soft-wraps to: the frame's width less its border
