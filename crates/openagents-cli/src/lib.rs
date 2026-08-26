@@ -38,6 +38,7 @@ pub mod tools;
 pub mod trace;
 pub mod trace_client;
 pub mod tracker;
+pub mod trailing_args;
 pub mod tui;
 pub mod update;
 pub mod workspace;

@@ -1272,6 +1272,16 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(2);
     };
 
+    // `box exec`, `box run`, and `memory add` capture the rest of the line for
+    // something else, which is right, and which also captured `oa`'s own
+    // `--conversation` and sent the id to a remote shell without a word about
+    // the flag it was written for (#109). A trailing token that names a flag of
+    // the same subcommand is refused here, before an endpoint is resolved and
+    // before anything is sent anywhere.
+    if let Err(reason) = crate::trailing_args::check_command(&command) {
+        fail(&reason);
+    }
+
     let endpoint =
         match crate::auth::resolve_endpoint(cli.api_url.as_deref(), cli.profile.as_deref()) {
             Ok(endpoint) => endpoint,
