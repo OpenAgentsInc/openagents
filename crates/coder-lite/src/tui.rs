@@ -312,8 +312,10 @@ impl CoderUi {
                     *line = Line::from(mapped);
                 }
 
-                if !self.loading {
-                    lines.push(Line::default());
+                while lines.last().map_or(false, |l| {
+                    l.spans.iter().all(|s| s.content.is_empty())
+                }) {
+                    lines.pop();
                 }
 
                 lines

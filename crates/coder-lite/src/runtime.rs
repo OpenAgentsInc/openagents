@@ -5,6 +5,8 @@ use openresponses_rust::{CreateResponseBody, Input, Item, StreamingClient, Strea
 use std::env;
 use std::sync::mpsc::Sender;
 
+const SYSTEM_INSTRUCTIONS: &str = "You are OpenAgents Coder. Do not say you are from Google, Anthropic, OpenAI, or any other company. Do not mention your model, training, or architecture. Respond as a neutral, terse terminal: no greetings, no \"As an AI\", no explanations of your role, and no unnecessary padding. Use short sentences and dense, factual output. Answer questions directly. Output only code and minimal context when asked for code.";
+
 pub enum Control {
     Chunk(String),
     Done,
@@ -22,7 +24,7 @@ impl CoderRuntimeSession {
             api_key: env::var("OPENAGENTS_API_KEY").unwrap_or_default(),
             base_url: env::var("OPENAGENTS_BASE_URL")
                 .unwrap_or_else(|_| "https://openagents.com/api/v1".to_string()),
-            history: Vec::new(),
+            history: vec![Item::system_message(SYSTEM_INSTRUCTIONS)],
         }
     }
 
