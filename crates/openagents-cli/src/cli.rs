@@ -1,16 +1,37 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
+/// The shells `--completions` can write a script for.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
+    Sh,
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "oa", version = crate::VERSION, about = "OpenAgents Rust CLI", long_about = None)]
+#[command(args_conflicts_with_subcommands = false)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 
     #[arg(long, global = true, help = "Output as JSON")]
     pub json: bool,
 
     #[arg(short, long, global = true, help = "Verbose logging output")]
     pub verbose: bool,
+
+    #[arg(long, global = true, help = "Disable ANSI output")]
+    pub no_color: bool,
+
+    #[arg(
+        long,
+        value_enum,
+        help = "Print a shell completion script and exit",
+        value_name = "SHELL"
+    )]
+    pub completions: Option<CompletionShell>,
 
     #[arg(
         long,
@@ -41,6 +62,12 @@ pub enum Commands {
     Repo(RepoArgs),
     /// OpenAgents interactive Coder agent session and autonomous tools
     Coder(CoderArgs),
+    /// Run one prompt on many child coding agents at once and report each result
+    Delegate(DelegateArgs),
+    /// Operator deployment of the OpenAgents fleet
+    Deploy(DeployArgs),
+    /// Earn on verified work: decide what a leased job is owed
+    Provider(ProviderArgs),
     /// Box sandbox management and fanout execution
     Box(BoxArgs),
     /// Computer agent daemon and local policy probe
@@ -503,6 +530,216 @@ pub struct CoderArgs {
 
     #[arg(long, help = "Export conversation transcript to file")]
     pub export: Option<String>,
+
+    /// Line-oriented output with no cursor control, even on a terminal.
+    ///
+    /// The full-screen session draws over the scrollback and cannot be piped
+    /// or read back; `--plain` prints the prompt and the reply as lines, which
+    /// is what a transcript, a pipe, and a screen reader can all use.
+    #[arg(
+        long,
+        help = "Line-oriented output with no cursor control, even on a terminal"
+    )]
+    pub plain: bool,
+
+    /// Talk to a development server on this machine.
+    ///
+    /// Shorthand for `--api-url http://localhost:<port>`; the global flag
+    /// still wins when both are given, so this adds a default rather than a
+    /// second mechanism.
+    #[arg(long, help = "Talk to a development server on this machine")]
+    pub dev: bool,
+
+    #[arg(
+        long,
+        default_value_t = 4000,
+        help = "Port --dev talks to on this machine"
+    )]
+    pub dev_port: u16,
+}
+
+// ---------------------------------------------------------------------------
+// delegate
+// ---------------------------------------------------------------------------
+
+/// `oa delegate`.
+///
+/// The same fan-out `oa coder --delegate` runs, raised to a command of its own
+/// so the flags that configure a child are not buried under a coding session's
+/// flags. Every flag below is read by [`crate::delegate::run_delegation`]; the
+/// TypeScript command carries `--description` and the five `--child-*` flags
+/// for the same reason, and they mean the same things here.
+#[derive(Args, Debug)]
+pub struct DelegateArgs {
+    #[arg(help = "The task every child performs")]
+    pub prompt: Option<String>,
+
+    #[arg(long, default_value_t = 1, help = "How many children run this prompt")]
+    pub agents: usize,
+
+    #[arg(
+        long,
+        help = "Where children work. Defaults to the current directory"
+    )]
+    pub dir: Option<String>,
+
+    #[arg(
+        long,
+        help = "Three to five words naming the task. Defaults to the start of the prompt"
+    )]
+    pub description: Option<String>,
+
+    #[arg(long, help = "How many children may run at once. The rest queue")]
+    pub concurrency: Option<usize>,
+
+    #[arg(
+        long,
+        help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex)"
+    )]
+    pub lane: Option<String>,
+
+    #[arg(
+        long,
+        help = "Working directory each child gets: worktree (default, a detached git worktree of HEAD), directory, or none"
+    )]
+    pub isolation: Option<String>,
+
+    #[arg(long, help = "Leave the children's worktrees on disk so their work can be read")]
+    pub keep_workspaces: bool,
+
+    #[arg(
+        long,
+        help = "Run children on this model instead of the lane's own, as `provider/model`. Defaults to OPENAGENTS_DELEGATE_MODEL"
+    )]
+    pub child_model: Option<String>,
+
+    #[arg(
+        long,
+        help = "The harness that runs a child. Defaults to OPENAGENTS_DELEGATE_COMMAND, or the lane's own binary"
+    )]
+    pub child_command: Option<String>,
+
+    #[arg(
+        long,
+        help = "A harness config file for children, passed as OPENCODE_CONFIG. This is how a provider credential reaches a child without being stored by the CLI"
+    )]
+    pub child_config: Option<String>,
+
+    #[arg(
+        long,
+        help = "Make children ask before using a tool. A delegated child has nobody to ask, so this stops it at its first edit; it exists for a dry run over a directory you do not want touched"
+    )]
+    pub child_ask: bool,
+}
+
+// ---------------------------------------------------------------------------
+// deploy
+// ---------------------------------------------------------------------------
+
+#[derive(Args, Debug)]
+pub struct DeployArgs {
+    #[command(subcommand)]
+    pub action: DeployAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DeployAction {
+    /// Promote an exact pushed commit as the production fleet target (operator only)
+    Promote {
+        #[arg(
+            long,
+            help = "Canonical repository exactly as the server allows it, such as openagents.com"
+        )]
+        repo: Option<String>,
+        #[arg(
+            long,
+            help = "Full 40-character commit SHA; branch names and abbreviations are refused"
+        )]
+        sha: Option<String>,
+        #[arg(
+            long,
+            help = "Deployment environment, stated explicitly; the server admits production"
+        )]
+        environment: Option<String>,
+        #[arg(
+            long,
+            help = "Caller-generated idempotency key for controlled automation; omitted, the CLI generates one and reuses it across automatic retries. Never printed"
+        )]
+        idempotency_key: Option<String>,
+        #[arg(
+            long,
+            help = "Compare-and-set: refuse the promotion when the current target is no longer this ID"
+        )]
+        expected_current_target: Option<String>,
+        #[arg(
+            long,
+            help = "Poll the status resource with bounded backoff until the target reaches live, failed, reverted, or needs_rolling_replace"
+        )]
+        wait: bool,
+        #[arg(
+            long,
+            default_value_t = 1800,
+            help = "Seconds --wait polls before reporting a timeout (the target keeps running)"
+        )]
+        wait_timeout: u64,
+    },
+    /// Show one fleet target; --wait follows it to a terminal state
+    View {
+        #[arg(help = "Fleet target ID returned by deploy promote or deploy list")]
+        target_id: String,
+        #[arg(
+            long,
+            help = "Poll the status resource with bounded backoff until the target reaches live, failed, reverted, or needs_rolling_replace"
+        )]
+        wait: bool,
+        #[arg(
+            long,
+            default_value_t = 1800,
+            help = "Seconds --wait polls before reporting a timeout (the target keeps running)"
+        )]
+        wait_timeout: u64,
+    },
+    /// List recent fleet targets, newest first
+    List {
+        #[arg(
+            long,
+            help = "Canonical repository exactly as the server allows it, such as openagents.com"
+        )]
+        repo: Option<String>,
+        #[arg(long, help = "Return between 1 and 50 recent targets")]
+        limit: Option<u32>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// provider
+// ---------------------------------------------------------------------------
+
+#[derive(Args, Debug)]
+pub struct ProviderArgs {
+    #[command(subcommand)]
+    pub action: ProviderAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ProviderAction {
+    /// Decide what one leased job earned. Payment follows a NIP-LBR closeout
+    /// receipt that names a verification command, its evidence, and the
+    /// platform's own closeout; a lease, a submission, or time spent online
+    /// earns nothing. The decision accrues and never pays: no key is held and
+    /// no payout rail is connected.
+    Settle {
+        #[arg(
+            long,
+            help = "Path to the lease document the buyer granted for this job"
+        )]
+        lease: String,
+        #[arg(
+            long,
+            help = "Path to the NIP-LBR closeout receipt covering this job. Omit it to see what an unverified job earns."
+        )]
+        closeout: Option<String>,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -741,7 +978,50 @@ pub enum TraceAction {
     },
 }
 
+/// The completion script for one shell.
+///
+/// `sh` is not a shell clap generates for, and a POSIX shell has no completion
+/// protocol of its own; the TypeScript CLI offers it because its generator
+/// emits a bash-compatible script there, so this does the same rather than
+/// refusing a shell the other binary accepts.
+pub fn completion_script(shell: CompletionShell) -> String {
+    use clap::CommandFactory;
+    use clap_complete::{generate, Shell};
+    let generated = match shell {
+        CompletionShell::Bash | CompletionShell::Sh => Shell::Bash,
+        CompletionShell::Zsh => Shell::Zsh,
+        CompletionShell::Fish => Shell::Fish,
+    };
+    let mut command = Cli::command();
+    let mut buffer: Vec<u8> = Vec::new();
+    generate(generated, &mut command, "oa", &mut buffer);
+    String::from_utf8_lossy(&buffer).into_owned()
+}
+
 pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    crate::diag::set_verbose(cli.verbose);
+    crate::diag::set_color(!cli.no_color);
+
+    // `--completions` writes a script and stops. It reaches no endpoint and
+    // needs no token, so it is answered before either is resolved.
+    if let Some(shell) = cli.completions {
+        // Written through the handle rather than `print!` so a reader piping
+        // several thousand lines into `head` closes the pipe and gets nothing
+        // worse than a short script.
+        use std::io::Write;
+        let _ = std::io::stdout().write_all(completion_script(shell).as_bytes());
+        return Ok(());
+    }
+
+    let Some(command) = cli.command else {
+        // Without a subcommand there is nothing to do. Clap's own help goes to
+        // stdout on `--help`; a bare invocation is a usage error, so the same
+        // text goes to stderr and the status is the usage status.
+        use clap::CommandFactory;
+        let _ = Cli::command().print_help();
+        std::process::exit(2);
+    };
+
     let endpoint =
         match crate::auth::resolve_endpoint(cli.api_url.as_deref(), cli.profile.as_deref()) {
             Ok(endpoint) => endpoint,
@@ -749,63 +1029,53 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         };
     let cred_store = crate::auth::CredentialStore::for_origin(&endpoint.origin);
     let token = cred_store.get_token();
+    // Every client below is built against the selected endpoint. It used to be
+    // built against a literal production origin at each of seven call sites,
+    // which meant `--profile` and `--api-url` parsed and changed nothing for
+    // any command but `auth` and `repo`.
+    let api_base = format!("{}/api/v1", endpoint.origin);
 
-    match cli.command {
+    match command {
         Commands::Auth(auth) => run_auth(auth.action, &endpoint, &cred_store, cli.json).await,
         Commands::Identity(identity) => run_identity(identity.action, cli.json),
-        Commands::Issue(issue) => run_issue(issue.action, token, cli.json).await,
-        Commands::Project(project) => run_project(project.action, token, cli.json).await,
+        Commands::Issue(issue) => run_issue(issue.action, &api_base, token, cli.json).await,
+        Commands::Project(project) => {
+            run_project(project.action, &api_base, token, cli.json).await
+        }
         Commands::Repo(repo) => run_repo(repo.action, &endpoint, &cred_store, cli.json).await,
         Commands::Coder(coder) => {
-            if coder.delegate {
-                crate::delegate::run_delegation(coder, token).await?;
-            } else if coder.headless {
-                let prompt = coder.prompt.unwrap_or_else(|| "Analyze workspace and run tests".to_string());
-                println!("Executing coder prompt headlessly: {}", prompt);
-                let lane_name = coder.lane.unwrap_or_else(|| "ox-alpha".to_string());
-                // A headless session may start children. They run on the same
-                // lane and the same credential, and they do not get the tool
-                // themselves.
-                let tools = crate::tools::HarnessToolRegistry::with_delegation(
-                    None,
-                    crate::tools::DelegationGate {
-                        lane: lane_name.clone(),
-                        user_token: token.clone(),
-                        max_count: crate::delegate::MAX_DELEGATE_COUNT,
-                    },
-                );
-                let lane = crate::runtime::Lane::from_str(&lane_name);
-                let mut runtime = crate::runtime::CoderRuntimeSession::new(lane, None, token, tools);
-                let result = runtime.execute_turn(&prompt, |chunk| {
-                    print!("{}", chunk);
-                    use std::io::Write;
-                    let _ = std::io::stdout().flush();
-                }).await.map_err(|e| e.to_string());
-                // The thread is revoked whether the turn worked or not: a
-                // failed turn still opened one, and one left open holds its
-                // grant's remaining budget.
-                let revoked = runtime.close().await;
-                // A turn that could not reach a model is a failure, and says
-                // so in the shape every other refusal here uses.
-                let result = match result {
-                    Ok(result) => result,
-                    Err(error) => fail(&error),
-                };
-                println!("\n\nTurn result:\n{}", result);
-                if let Some(model) = &runtime.last_model {
-                    println!("Model: {model}");
-                }
-                if runtime.last_usage.reported() {
-                    println!("Usage: {}", runtime.last_usage.line());
-                }
-                if let Err(error) = revoked {
-                    eprintln!("oa: the thread was not revoked: {error}");
-                }
+            // The session talks to the selected endpoint like every other
+            // command. `--dev` names a server on this machine, and the global
+            // `--api-url`/`--profile` still wins when both are given.
+            let session_base = if cli.api_url.is_some() || cli.profile.is_some() {
+                api_base.clone()
+            } else if coder.dev {
+                format!("http://localhost:{}/api/v1", coder.dev_port)
             } else {
-                crate::interactive::run_tui(coder, token).await?;
+                api_base.clone()
+            };
+            if coder.delegate {
+                crate::delegate::run_delegation(
+                    crate::delegate::DelegationRequest::from_coder(coder),
+                    token,
+                )
+                .await?;
+            } else if coder.headless {
+                run_headless_coder(coder, &session_base, token).await?;
+            } else {
+                crate::interactive::run_tui(coder, session_base, token).await?;
             }
         }
-        Commands::Box(b) => run_box(b.action, token, cli.json).await,
+        Commands::Delegate(args) => {
+            crate::delegate::run_delegation(
+                crate::delegate::DelegationRequest::from_delegate(args),
+                token,
+            )
+            .await?;
+        }
+        Commands::Deploy(deploy) => run_deploy(deploy.action, &api_base, token, cli.json).await,
+        Commands::Provider(provider) => run_provider(provider.action, cli.json),
+        Commands::Box(b) => run_box(b.action, &api_base, token, cli.json).await,
         Commands::Computer(comp) => match comp.action {
             ComputerAction::Probe => {
                 let info = crate::computer::probe_host();
@@ -816,54 +1086,84 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             ComputerAction::Up => println!("Computer agent daemon launched."),
         },
         Commands::Forum(forum) => {
-            let client = crate::forum::ForumClient::new("https://openagents.com/api/v1", token);
+            let client = crate::forum::ForumClient::new(&api_base, token);
             match forum.action {
                 ForumAction::Boards => {
                     // A refusal ends the command. The version this replaces answered
                     // a non-2xx with two hardcoded boards, one of which the server
                     // has never served.
                     let boards = client.list_boards().await.unwrap_or_else(|e| fail(&e.to_string()));
-                    if boards.is_empty() {
-                        println!("No boards found.");
-                    }
-                    for b in boards {
-                        println!("{} — {} ({} topics)", b.slug, b.title, b.topic_count);
-                    }
+                    let human: Vec<String> = if boards.is_empty() {
+                        vec!["No boards found.".to_string()]
+                    } else {
+                        boards
+                            .iter()
+                            .map(|b| {
+                                format!("{} — {} ({} topics)", b.slug, b.title, b.topic_count)
+                            })
+                            .collect()
+                    };
+                    let value = serde_json::json!({
+                        "boards": boards
+                            .iter()
+                            .map(|b| serde_json::json!({
+                                "slug": b.slug,
+                                "title": b.title,
+                                "topic_count": b.topic_count,
+                            }))
+                            .collect::<Vec<_>>()
+                    });
+                    emit(cli.json, &value, &human);
                 }
                 ForumAction::Topics { board } => {
                     let topics = client
                         .list_topics(&board)
                         .await
                         .unwrap_or_else(|e| fail(&e.to_string()));
-                    if topics.is_empty() {
-                        println!("No topics found.");
-                    }
-                    for t in topics {
-                        println!("{} — {} ({} posts)", short_id(&t.id), t.title, t.posts_count);
-                    }
+                    let human: Vec<String> = if topics.is_empty() {
+                        vec!["No topics found.".to_string()]
+                    } else {
+                        topics
+                            .iter()
+                            .map(|t| {
+                                format!(
+                                    "{} — {} ({} posts)",
+                                    short_id(&t.id),
+                                    t.title,
+                                    t.posts_count
+                                )
+                            })
+                            .collect()
+                    };
+                    emit(cli.json, &forum_topics_value(&topics), &human);
                 }
                 ForumAction::Search { query } => {
                     let topics = client
                         .search_topics(&query)
                         .await
                         .unwrap_or_else(|e| fail(&e.to_string()));
-                    if topics.is_empty() {
-                        println!("No topics match.");
-                    }
-                    for t in topics {
-                        println!(
-                            "{} — {} — {}",
-                            short_id(&t.id),
-                            t.title,
-                            t.author.as_deref().unwrap_or("?")
-                        );
-                    }
+                    let human: Vec<String> = if topics.is_empty() {
+                        vec!["No topics match.".to_string()]
+                    } else {
+                        topics
+                            .iter()
+                            .map(|t| {
+                                format!(
+                                    "{} — {} — {}",
+                                    short_id(&t.id),
+                                    t.title,
+                                    t.author.as_deref().unwrap_or("?")
+                                )
+                            })
+                            .collect()
+                    };
+                    emit(cli.json, &forum_topics_value(&topics), &human);
                 }
             }
         }
-        Commands::Memory(mem) => run_memory(mem.action, token, cli.json).await,
+        Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
         Commands::Api(api) => {
-            let client = crate::api_passthrough::ApiPassthroughClient::new("https://openagents.com/api/v1", token);
+            let client = crate::api_passthrough::ApiPassthroughClient::new(&api_base, token);
             let res = client.execute_request(&api.method, &api.path, None).await.map_err(|e| e.to_string())?;
             println!("{}", serde_json::to_string_pretty(&res)?);
         }
@@ -1451,7 +1751,28 @@ fn home_directory() -> std::path::PathBuf {
 // tracker: issues, projects, milestones
 // ---------------------------------------------------------------------------
 
-const API_BASE: &str = "https://openagents.com/api/v1";
+/// The `--json` shape for a forum topic list.
+///
+/// The forum client parses the server's body into typed rows, so unlike the
+/// tracker there is no verbatim body to hand back; this rebuilds the fields it
+/// kept, which are the fields the human lines print.
+fn forum_topics_value(topics: &[crate::forum::ForumTopic]) -> serde_json::Value {
+    serde_json::json!({
+        "topics": topics
+            .iter()
+            .map(|t| serde_json::json!({
+                "id": t.id,
+                "slug": t.slug,
+                "title": t.title,
+                "state": t.state,
+                "author": t.author,
+                "created_at": t.created_at,
+                "updated_at": t.updated_at,
+                "posts_count": t.posts_count,
+            }))
+            .collect::<Vec<_>>()
+    })
+}
 
 /// Print the server's body verbatim under `--json`, or the human lines.
 fn emit(json: bool, value: &serde_json::Value, human: &[String]) {
@@ -1721,8 +2042,8 @@ fn parse_field_values(pairs: &[String]) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
-async fn run_issue(action: IssueAction, token: Option<String>, json: bool) {
-    let tracker = crate::tracker::TrackerClient::new(API_BASE, token);
+async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, json: bool) {
+    let tracker = crate::tracker::TrackerClient::new(api_base, token);
     match action {
         IssueAction::List {
             repo,
@@ -2034,8 +2355,8 @@ fn project_items_human(value: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-async fn run_project(action: ProjectAction, token: Option<String>, json: bool) {
-    let tracker = crate::tracker::TrackerClient::new(API_BASE, token);
+async fn run_project(action: ProjectAction, api_base: &str, token: Option<String>, json: bool) {
+    let tracker = crate::tracker::TrackerClient::new(api_base, token);
     match action {
         ProjectAction::List { repo, archived } => {
             let target = target_or_fail(repo);
@@ -2339,8 +2660,8 @@ fn to_value<T: serde::Serialize>(value: &T) -> serde_json::Value {
     serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
 }
 
-async fn run_box(action: BoxAction, token: Option<String>, json: bool) {
-    let client = crate::box_client::BoxClient::new(API_BASE, token);
+async fn run_box(action: BoxAction, api_base: &str, token: Option<String>, json: bool) {
+    let client = crate::box_client::BoxClient::new(api_base, token);
     match action {
         BoxAction::List { conversation } => {
             let id = or_fail(client.conversation_id(conversation.as_deref()).await);
@@ -2639,8 +2960,8 @@ fn memory_list_human(memories: &[crate::memory_client::MemoryRecord]) -> Vec<Str
     lines
 }
 
-async fn run_memory(action: MemoryAction, token: Option<String>, json: bool) {
-    let client = crate::memory_client::MemoryClient::new(API_BASE, token);
+async fn run_memory(action: MemoryAction, api_base: &str, token: Option<String>, json: bool) {
+    let client = crate::memory_client::MemoryClient::new(api_base, token);
     match action {
         MemoryAction::List {
             bucket,
@@ -3065,4 +3386,327 @@ fn run_trace(action: TraceAction) {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// deploy
+// ---------------------------------------------------------------------------
+
+/// `oa deploy`.
+///
+/// Every path here is a real call to `/api/v1/admin/forge/targets`. A refusal
+/// is the server's own, carried through with the command that obtains the
+/// privileged scope appended; nothing here invents a target, a state, or a
+/// list.
+async fn run_deploy(action: DeployAction, api_base: &str, token: Option<String>, json: bool) {
+    use crate::fleet;
+    let client = fleet::FleetClient::new(api_base, token);
+
+    match action {
+        DeployAction::List { repo, limit } => {
+            if let Some(limit) = limit {
+                if !(1..=50).contains(&limit) {
+                    fail("--limit must be between 1 and 50.");
+                }
+            }
+            let value = or_fail(client.list(repo.as_deref(), limit).await);
+            let targets = value
+                .get("targets")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let human: Vec<String> = if targets.is_empty() {
+                vec!["No fleet targets found.".to_string()]
+            } else {
+                targets.iter().map(fleet::target_row).collect()
+            };
+            emit(json, &value, &human);
+        }
+        DeployAction::View {
+            target_id,
+            wait,
+            wait_timeout,
+        } => {
+            if wait_timeout < 1 {
+                fail("--wait-timeout must be at least 1 second.");
+            }
+            if !wait {
+                // A bare view is a read: it reports the state and exits zero
+                // even for a failed target. Exit behaviour for terminal states
+                // belongs to `--wait`.
+                let target = or_fail(client.view(&target_id).await);
+                emit(
+                    json,
+                    &fleet::target_document("openagents.fleet_target.v1", &target, "pending", &[]),
+                    &fleet::target_human(&target),
+                );
+                return;
+            }
+            let target = or_fail(
+                client
+                    .wait(&target_id, std::time::Duration::from_secs(wait_timeout))
+                    .await,
+            );
+            let mut human = fleet::target_human(&target);
+            human.push(fleet::terminal_human(&target));
+            emit(
+                json,
+                &fleet::target_document("openagents.fleet_target.v1", &target, "pending", &[]),
+                &human,
+            );
+            conclude_fleet_target(&target);
+        }
+        DeployAction::Promote {
+            repo,
+            sha,
+            environment,
+            idempotency_key,
+            expected_current_target,
+            wait,
+            wait_timeout,
+        } => {
+            let Some(repo) = repo else {
+                fail(
+                    "Pass --repo with the canonical repository the server deploys, such as \
+                     --repo openagents.com.",
+                );
+            };
+            let Some(sha) = sha else {
+                fail("Pass --sha with the full 40-character commit SHA you reviewed.");
+            };
+            let sha = sha.trim().to_lowercase();
+            if !fleet::full_sha(&sha) {
+                fail(
+                    "--sha must be one full 40-character commit SHA. Branch names, tags, and \
+                     abbreviations are refused; print the exact reviewed value with: \
+                     git rev-parse HEAD",
+                );
+            }
+            let Some(environment) = environment else {
+                fail(
+                    "Pass --environment production explicitly. Production promotion never \
+                     assumes an environment.",
+                );
+            };
+            if wait_timeout < 1 {
+                fail("--wait-timeout must be at least 1 second.");
+            }
+            // Generated once and reused across automatic transport retries, so
+            // a re-send can never deploy twice. Never printed.
+            let key = idempotency_key.unwrap_or_else(idempotency_key_for_this_run);
+            let result = or_fail(
+                client
+                    .promote(&crate::fleet::PromoteInput {
+                        repo,
+                        sha,
+                        environment,
+                        idempotency_key: key,
+                        expected_current_target_id: expected_current_target,
+                    })
+                    .await,
+            );
+            let id = fleet::target_id(&result.target);
+            let extra = [
+                ("accepted", serde_json::Value::Bool(result.accepted)),
+                ("replayed", serde_json::Value::Bool(result.replayed)),
+            ];
+            if !wait {
+                let mut human = fleet::target_human(&result.target);
+                human.push(if result.replayed {
+                    "This idempotency key already named this promotion; the original target is \
+                     returned."
+                        .to_string()
+                } else {
+                    "Promotion accepted. Accepted means recorded, not live; the fleet deploys it \
+                     now."
+                        .to_string()
+                });
+                human.push(format!("Follow it with: oa deploy view {id} --wait"));
+                emit(
+                    json,
+                    &fleet::target_document(
+                        "openagents.fleet_promotion.v1",
+                        &result.target,
+                        "accepted",
+                        &extra,
+                    ),
+                    &human,
+                );
+                return;
+            }
+            let target = or_fail(
+                client
+                    .wait(&id, std::time::Duration::from_secs(wait_timeout))
+                    .await,
+            );
+            let mut human = fleet::target_human(&target);
+            human.push(fleet::terminal_human(&target));
+            emit(
+                json,
+                &fleet::target_document(
+                    "openagents.fleet_promotion.v1",
+                    &target,
+                    "accepted",
+                    &extra,
+                ),
+                &human,
+            );
+            conclude_fleet_target(&target);
+        }
+    }
+}
+
+/// Turn a terminal target into the command's exit behaviour, after the full
+/// document is already written.
+///
+/// `failed` and `reverted` are a deployment failure; `needs_rolling_replace`
+/// is its own condition; `live` succeeds.
+fn conclude_fleet_target(target: &serde_json::Value) {
+    let status = crate::fleet::target_status(target);
+    let id = crate::fleet::target_id(target);
+    match status.as_str() {
+        "failed" | "reverted" => {
+            let code = crate::fleet::failure_code(target)
+                .map(|code| format!(" ({code})"))
+                .unwrap_or_default();
+            fail(&format!(
+                "The fleet target {id} reached {status}{code}."
+            ));
+        }
+        "needs_rolling_replace" => fail(&format!(
+            "The fleet target {id} needs a rolling replacement before it can be live."
+        )),
+        _ => {}
+    }
+}
+
+/// An idempotency key for one promotion.
+///
+/// A UUID would need a dependency this crate does not carry. What the key has
+/// to be is unique per run and stable across this run's retries, so it is a
+/// hash over the clock, the process, and this binary's own address space,
+/// rendered in the UUID layout the server already accepts.
+fn idempotency_key_for_this_run() -> String {
+    use sha2::{Digest, Sha256};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let stack = &now as *const _ as usize;
+    let mut hasher = Sha256::new();
+    hasher.update(now.to_le_bytes());
+    hasher.update(std::process::id().to_le_bytes());
+    hasher.update(stack.to_le_bytes());
+    let digest = hasher.finalize();
+    let hex: String = digest.iter().take(16).map(|b| format!("{b:02x}")).collect();
+    format!(
+        "{}-{}-4{}-a{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[13..16],
+        &hex[17..20],
+        &hex[20..32]
+    )
+}
+
+// ---------------------------------------------------------------------------
+// provider
+// ---------------------------------------------------------------------------
+
+/// `oa provider settle`.
+///
+/// The whole decision is local: a lease document and, when one exists, the
+/// NIP-LBR closeout receipt that covers it. Nothing is fetched, because the
+/// claim and lease transport is not wired and a command that pretended to
+/// fetch a receipt would be inventing the one thing the gate exists to check.
+fn run_provider(action: ProviderAction, json: bool) {
+    match action {
+        ProviderAction::Settle { lease, closeout } => {
+            let lease_value = or_fail(crate::provider::read_json_file(&lease, "lease"));
+            let lease_doc = or_fail(crate::provider::decode_lease(&lease_value, &lease));
+            let closeout_doc = match closeout {
+                Some(path) => {
+                    let value = or_fail(crate::provider::read_json_file(&path, "closeout"));
+                    Some(or_fail(crate::provider::decode_closeout(&value, &path)))
+                }
+                None => None,
+            };
+            let decision = crate::provider::settle_lease(&lease_doc, closeout_doc.as_ref());
+            emit(json, &decision.to_json(), &decision.human());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// coder: headless
+// ---------------------------------------------------------------------------
+
+/// `oa coder --headless`.
+///
+/// Lifted out of the dispatch so `--export` is written here too. It used to be
+/// read only by the full-screen session, which meant a headless run that asked
+/// for a transcript got none and was told nothing.
+async fn run_headless_coder(
+    coder: CoderArgs,
+    api_base: &str,
+    token: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let prompt = coder
+        .prompt
+        .clone()
+        .unwrap_or_else(|| "Analyze workspace and run tests".to_string());
+    println!("Executing coder prompt headlessly: {}", prompt);
+    let lane_name = coder.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
+    // A headless session may start children. They run on the same lane and the
+    // same credential, and they do not get the tool themselves.
+    let tools = crate::tools::HarnessToolRegistry::with_delegation(
+        None,
+        crate::tools::DelegationGate {
+            lane: lane_name.clone(),
+            user_token: token.clone(),
+            max_count: crate::delegate::MAX_DELEGATE_COUNT,
+        },
+    );
+    let lane = crate::runtime::Lane::from_str(&lane_name);
+    let mut runtime = crate::runtime::CoderRuntimeSession::new(
+        lane,
+        Some(api_base.to_string()),
+        token,
+        tools,
+    );
+    let result = runtime
+        .execute_turn(&prompt, |chunk| {
+            print!("{}", chunk);
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+        })
+        .await
+        .map_err(|e| e.to_string());
+    // The thread is revoked whether the turn worked or not: a failed turn still
+    // opened one, and one left open holds its grant's remaining budget.
+    let revoked = runtime.close().await;
+    // A turn that could not reach a model is a failure, and says so in the
+    // shape every other refusal here uses.
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => fail(&error),
+    };
+    println!("\n\nTurn result:\n{}", result);
+    if let Some(model) = &runtime.last_model {
+        println!("Model: {model}");
+    }
+    if runtime.last_usage.reported() {
+        println!("Usage: {}", runtime.last_usage.line());
+    }
+    if let Err(error) = revoked {
+        eprintln!("oa: the thread was not revoked: {error}");
+    }
+
+    if let Some(path) = coder.export.as_deref() {
+        let transcript = crate::interactive::transcript_of(&prompt, &result);
+        std::fs::write(path, &transcript)
+            .map_err(|error| format!("could not write the transcript to {path}: {error}"))?;
+        println!("Transcript written to {path}");
+    }
+    Ok(())
 }
