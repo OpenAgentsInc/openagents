@@ -383,6 +383,7 @@ dependencies = [
  "futures",
  "openresponses-rust",
  "ratatui",
+ "ratatui-markdown",
  "tokio",
 ]
 
@@ -2010,6 +2011,16 @@ dependencies = [
  "strum",
  "unicode-segmentation",
  "unicode-truncate",
+ "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "ratatui-markdown"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e44e5c1fcb6b71a3e639b5218ea181ef42b8b05ae87ba4afdc962b48548079ab"
+dependencies = [
+ "ratatui",
  "unicode-width 0.2.0",
 ]
 

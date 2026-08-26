@@ -7,10 +7,86 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+use ratatui_markdown::markdown::MarkdownRenderer;
+use ratatui_markdown::theme::{CodeColors, Generation, RichTextTheme};
 
 const TEXT_COLOR: Color = Color::Rgb(255, 176, 0);
 const BACKGROUND_COLOR: Color = Color::Rgb(8, 6, 0);
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+#[derive(Debug, Clone, Copy)]
+struct CoderTheme;
+
+impl RichTextTheme for CoderTheme {
+    fn generation(&self) -> Generation {
+        Generation(1)
+    }
+    fn get_text_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_muted_text_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_primary_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_popup_selected_background(&self) -> Color {
+        BACKGROUND_COLOR
+    }
+    fn get_border_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_focused_border_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_secondary_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_info_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_json_key_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_json_string_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_json_number_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_json_bool_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_json_null_color(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_accent_yellow(&self) -> Color {
+        TEXT_COLOR
+    }
+    fn get_background_color(&self) -> Color {
+        BACKGROUND_COLOR
+    }
+    fn get_code_colors(&self) -> CodeColors {
+        CodeColors {
+            comment: TEXT_COLOR,
+            keyword: TEXT_COLOR,
+            string: TEXT_COLOR,
+            string_escape: TEXT_COLOR,
+            number: TEXT_COLOR,
+            constant: TEXT_COLOR,
+            function: TEXT_COLOR,
+            r#type: TEXT_COLOR,
+            variable: TEXT_COLOR,
+            property: TEXT_COLOR,
+            operator: TEXT_COLOR,
+            punctuation: TEXT_COLOR,
+            attribute: TEXT_COLOR,
+            tag: TEXT_COLOR,
+            label: TEXT_COLOR,
+            error: TEXT_COLOR,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Role {
@@ -45,8 +121,8 @@ pub struct CoderUi {
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    if width == 0 {
-        return vec![text.to_string()];
+    if width == 0 || text.is_empty() {
+        return Vec::new();
     }
     let mut lines = Vec::new();
     let mut current = String::new();
@@ -177,10 +253,7 @@ impl CoderUi {
 
         if self.loading {
             let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
-            all_lines.push(Line::from(vec![Span::styled(
-                format!("> {}", spinner),
-                style,
-            )]));
+            all_lines.push(Line::from(vec![Span::styled(spinner.to_string(), style)]));
         }
 
         let total = all_lines.len() as u16;
@@ -221,33 +294,60 @@ impl CoderUi {
     }
 
     fn render_entry(&self, entry: &Entry, width: usize) -> Vec<Line<'static>> {
-        let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+        match entry.role {
+            Role::Assistant if !entry.text.is_empty() => {
+                let renderer = MarkdownRenderer::new(width.max(1));
+                let blocks = renderer.parse(&entry.text);
+                let mut lines = renderer.render(&blocks, &CoderTheme);
 
-        let (first_prefix, marker, marker_space, rest_indent, first_body) = match entry.role {
-            Role::You => ("", ">", " ", "  ", width.saturating_sub(2)),
-            Role::Assistant => ("", "", "", "", width),
-            _ => ("  ", "⏺", " ", "     ", width.saturating_sub(4)),
-        };
+                for line in &mut lines {
+                    let mapped = line
+                        .spans
+                        .drain(..)
+                        .map(|span| {
+                            let style = span.style.fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+                            Span::styled(span.content.to_string(), style)
+                        })
+                        .collect::<Vec<_>>();
+                    *line = Line::from(mapped);
+                }
 
-        let chunks = wrap_text(&entry.text, first_body);
+                if !self.loading {
+                    lines.push(Line::default());
+                }
 
-        let mut lines = Vec::new();
-        for (i, chunk) in chunks.iter().enumerate() {
-            if i == 0 {
-                lines.push(Line::from(vec![
-                    Span::styled(first_prefix, text_style),
-                    Span::styled(marker, text_style),
-                    Span::styled(marker_space, text_style),
-                    Span::styled(chunk.clone(), text_style),
-                ]));
-            } else {
-                lines.push(Line::from(vec![
-                    Span::styled(rest_indent, text_style),
-                    Span::styled(chunk.clone(), text_style),
-                ]));
+                lines
+            }
+            _ => {
+                let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+
+                let (first_prefix, marker, marker_space, rest_indent, first_body) = match entry.role {
+                    Role::You => ("", ">", " ", "  ", width.saturating_sub(2)),
+                    Role::Assistant => ("", "", "", "", width),
+                    _ => ("  ", "⏺", " ", "     ", width.saturating_sub(4)),
+                };
+
+                let chunks = wrap_text(&entry.text, first_body);
+
+                let mut lines = Vec::new();
+                for (i, chunk) in chunks.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled(first_prefix, text_style),
+                            Span::styled(marker, text_style),
+                            Span::styled(marker_space, text_style),
+                            Span::styled(chunk.clone(), text_style),
+                        ]));
+                    } else {
+                        lines.push(Line::from(vec![
+                            Span::styled(rest_indent, text_style),
+                            Span::styled(chunk.clone(), text_style),
+                        ]));
+                    }
+                }
+                lines
             }
         }
-        lines
     }
 
     /// Calculate the scroll offset that keeps the viewport at the bottom
