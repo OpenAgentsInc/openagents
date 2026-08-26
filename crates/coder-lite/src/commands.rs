@@ -32,7 +32,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "write the transcript to ~/.openagents/exports as an ATIF document",
     ),
     ("help", "list these commands and the keys"),
-    ("login", "log in with GitHub and store the token"),
+    ("login", "sign in to OpenAgents and store the token"),
     (
         "logout",
         "end this session's thread and remove the stored token",
@@ -130,7 +130,7 @@ fn output(ui: &mut CoderUi, text: &str) {
 }
 
 fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {
-    output(ui, "Opening GitHub login in your browser...");
+    output(ui, "Opening the OpenAgents sign-in page in your browser...");
     let tx = tx.clone();
     tokio::spawn(async move {
         let text = match crate::interactive::do_login().await {

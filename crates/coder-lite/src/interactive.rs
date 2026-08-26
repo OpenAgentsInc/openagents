@@ -116,13 +116,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         } else {
             ui.entries.push(Entry::new(
                 Role::Notice,
-                "Stored token did not authenticate. Press Enter to log in with GitHub.",
+                "Stored token did not authenticate. Press Enter to sign in to OpenAgents.",
             ));
         }
     } else {
         ui.entries.push(Entry::new(
             Role::Notice,
-            "Press Enter to log in with GitHub.",
+            "Press Enter to sign in to OpenAgents.",
         ));
     }
 
@@ -221,7 +221,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 } else if text.trim().is_empty() || text.trim() == "/login" {
                     ui.entries.push(Entry::new(
                         Role::Notice,
-                        "Opening GitHub login in your browser...",
+                        "Opening the OpenAgents sign-in page in your browser...",
                     ));
                     match do_login().await {
                         Ok(message) => {
@@ -257,7 +257,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 } else {
                     ui.entries.push(Entry::new(
                         Role::Notice,
-                        "Press Enter to log in with GitHub.",
+                        "Press Enter to sign in to OpenAgents.",
                     ));
                 }
 
