@@ -14,14 +14,16 @@
 
 use std::env;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::process::Command;
 use tokio::time::{sleep, timeout};
 
 use coder_lite::interactive::SessionOptions;
 
-const DEV_BASE_URL: &str = "http://localhost:4000/api/v1";
+const DEV_BASE_URL: &str = "http://127.0.0.1:4000/api/v1";
 const DEV_API_KEY: &str = "fake";
 
 /// Every flag this binary reads. A flag listed here does what it says or the
@@ -32,7 +34,7 @@ coder-lite — the OpenAgents coder, in a terminal.
 Usage: coder-lite [options]
 
 Options:
-  --dev              Talk to a server on this machine at http://localhost:4000.
+  --dev              Talk to a server on this machine at http://127.0.0.1:4000.
                      Starts one from ../openagents.com if none is running, and
                      tolerates one that already is.
   --lane <name>      Which model answers. `auto` leaves it to the deployment;
@@ -70,12 +72,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // before the TUI and its tokio tasks start, so no other thread
                 // exists yet.
                 unsafe {
-                    if env::var("OPENAGENTS_BASE_URL").is_err() {
-                        env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
-                    }
-                    if env::var("OPENAGENTS_API_KEY").is_err() {
-                        env::set_var("OPENAGENTS_API_KEY", DEV_API_KEY);
-                    }
+                    env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
+                    env::set_var("OPENAGENTS_API_KEY", DEV_API_KEY);
                 }
             }
             options
@@ -157,10 +155,17 @@ async fn boot_dev_server() -> Result<(), Box<dyn std::error::Error>> {
     let repo = web_repo()?;
     eprintln!("starting dev server in {}", repo.display());
 
-    Command::new("sh")
+    let mut command = Command::new("sh");
+    command
         .arg("start_server.sh")
         .current_dir(&repo)
-        .spawn()?;
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // The server outlives this TUI; put it in its own group so the shell's
+    // exit and any terminal events do not take it down.
+    #[cfg(unix)]
+    command.process_group(0);
+    let _child = command.spawn()?;
 
     for _ in 0..60 {
         if is_dev_server_up().await {
@@ -173,9 +178,18 @@ async fn boot_dev_server() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn is_dev_server_up() -> bool {
-    timeout(Duration::from_secs(2), TcpStream::connect("127.0.0.1:4000"))
-        .await
-        .is_ok()
+    timeout(Duration::from_secs(2), async {
+        let mut stream = TcpStream::connect("127.0.0.1:4000").await.ok()?;
+        let request = "GET /api/v1/health HTTP/1.1\r\nHost: 127.0.0.1:4000\r\nConnection: close\r\n\r\n";
+        stream.write_all(request.as_bytes()).await.ok()?;
+        let mut buf = [0u8; 256];
+        let n = stream.read(&mut buf).await.ok()?;
+        let head = std::str::from_utf8(&buf[..n]).unwrap_or("");
+        Some(head.starts_with("HTTP/1.1 200") || head.contains(" 200 "))
+    })
+    .await
+    .unwrap_or(Some(false))
+    .unwrap_or(false)
 }
 
 fn web_repo() -> Result<PathBuf, Box<dyn std::error::Error>> {
