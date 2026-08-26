@@ -41,9 +41,21 @@ zeroize = "1"
 # desktop audio transport already uses, so no new TLS stack enters the tree.
 tungstenite = { version = "0.28", default-features = false, features = ["handshake", "rustls-tls-native-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# The WebAssembly host behind the `capability` tool. Cranelift compiles the
+# guest, `StoreLimits` enforces the manifest's memory ceiling, and epoch
+# interruption enforces its timeout against a guest that never returns. The
+# default feature set drags in the component model, GC, async fibers, and a
+# compilation cache this host has no use for; these four are what a
+# `packet-v0` core module needs.
+wasmtime = { version = "36", default-features = false, features = ["cranelift", "runtime", "std", "parallel-compilation"] }
 
 [dev-dependencies]
 tempfile = "3"
+# The sandbox tests need guests that misbehave on purpose -- one that grows
+# past the ceiling, one that never returns, one that imports a capability its
+# manifest never declared. None of those can be a checked-in artifact, so the
+# tests assemble them from WAT.
+wat = "1"
 bech32 = "0.11"
 # The Computer channel tests stand up a real Phoenix-shaped socket server, so
 # the client's framing, policy, journal, and backoff run against a live peer.

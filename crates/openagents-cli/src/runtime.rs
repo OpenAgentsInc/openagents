@@ -352,6 +352,16 @@ impl CoderRuntimeSession {
             );
         }
 
+        // Skill injection. The `skill` tool's catalog is names and
+        // descriptions only, so a body costs nothing until it is asked for.
+        // A skill marked `auto: true` in its front matter is the exception:
+        // it says how to approach the work, and a session needs the method
+        // before its first decision rather than after thinking to ask.
+        if let Some(context) = self.tools.standing_context() {
+            lines.push("".to_string());
+            lines.push(context);
+        }
+
         lines.join("\n")
     }
 

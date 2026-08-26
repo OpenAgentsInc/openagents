@@ -78,6 +78,8 @@ pub enum Commands {
     Memory(MemoryArgs),
     /// Generic API route invocation
     Api(crate::api_passthrough::ApiArgs),
+    /// Sandboxed WebAssembly capability plugins: catalog, digests, and runs
+    Plugin(crate::plugins::PluginArgs),
     /// Trace inspection and session export
     Trace(TraceArgs),
     /// Replace this binary with the release the channel names
@@ -1133,6 +1135,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
         Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
+        Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
         Commands::Trace(trace) => run_trace(trace.action),
         Commands::Update(update) => {
             crate::update::run(update.channel, update.version, update.check, update.force).await?;

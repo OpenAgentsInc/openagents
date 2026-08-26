@@ -25,6 +25,7 @@ pub mod forum;
 pub mod identity;
 pub mod interactive;
 pub mod memory_client;
+pub mod plugins;
 pub mod provider;
 pub mod repo;
 pub mod runtime;
