@@ -55,6 +55,16 @@ export interface IssueNumberInput extends AuthenticatedApi, RepositoryTarget {
   readonly number: number;
 }
 
+export interface MilestoneCreateInput extends AuthenticatedApi, RepositoryTarget {
+  readonly title: string;
+  readonly description?: string;
+  readonly dueOn?: string;
+}
+
+export interface MilestoneNumberInput extends AuthenticatedApi, RepositoryTarget {
+  readonly milestone: number;
+}
+
 interface IssueClientInterface {
   readonly list: (input: IssueListInput) => Effect.Effect<IssueListResult, CliError>;
   readonly view: (input: IssueNumberInput) => Effect.Effect<unknown, CliError>;
@@ -87,6 +97,22 @@ interface IssueClientInterface {
   readonly removeDependency: (
     input: IssueNumberInput & { readonly blockedBy: number },
   ) => Effect.Effect<unknown, CliError>;
+  readonly milestones: (
+    input: AuthenticatedApi & RepositoryTarget,
+  ) => Effect.Effect<unknown, CliError>;
+  readonly createMilestone: (input: MilestoneCreateInput) => Effect.Effect<unknown, CliError>;
+  readonly deleteMilestone: (input: MilestoneNumberInput) => Effect.Effect<unknown, CliError>;
+  /**
+   * Put an existing issue on a milestone, or take it off one.
+   *
+   * `milestone: null` is sent explicitly, because that is how the server is
+   * told to clear the field. Omitting the key would leave the milestone where
+   * it is and still answer 200, which is a "clear" that does nothing and
+   * reports success.
+   */
+  readonly setMilestone: (
+    input: IssueNumberInput & { readonly milestone: number | null },
+  ) => Effect.Effect<unknown, CliError>;
 }
 
 export class IssueClient extends Context.Service<IssueClient, IssueClientInterface>()(
@@ -97,6 +123,9 @@ const issuesPath = (input: RepositoryTarget) => `${repositoryPath(input.owner, i
 
 const issuePath = (input: RepositoryTarget & { readonly number: number }) =>
   `${issuesPath(input)}/${input.number}`;
+
+const milestonesPath = (input: RepositoryTarget) =>
+  `${repositoryPath(input.owner, input.repo)}/milestones`;
 
 const listQuery = (input: IssueListInput, page: number): string => {
   const parameters = new URLSearchParams({ state: input.state ?? "open", page: String(page) });
@@ -306,6 +335,51 @@ export const issueClientLayer = Layer.effect(
           token: input.token,
           method: "DELETE",
           path: `${issuePath(input)}/dependencies/${input.blockedBy}`,
+          acceptedStatuses: [200],
+        }),
+
+      milestones: (input) =>
+        request("list milestones", {
+          origin: input.origin,
+          token: input.token,
+          method: "GET",
+          path: milestonesPath(input),
+          acceptedStatuses: [200],
+        }),
+
+      createMilestone: (input) =>
+        request("create a milestone", {
+          origin: input.origin,
+          token: input.token,
+          method: "POST",
+          path: milestonesPath(input),
+          body: {
+            title: input.title,
+            ...(input.description === undefined ? {} : { description: input.description }),
+            ...(input.dueOn === undefined ? {} : { due_on: input.dueOn }),
+          },
+          acceptedStatuses: [201],
+        }),
+
+      // The route answers 204 with no body when the milestone is gone.
+      deleteMilestone: (input) =>
+        request("delete a milestone", {
+          origin: input.origin,
+          token: input.token,
+          method: "DELETE",
+          path: `${milestonesPath(input)}/${input.milestone}`,
+          acceptedStatuses: [200, 204],
+        }),
+
+      // Like `setState`, this sends the one field. A `PATCH` carrying `body`
+      // would replace the issue text.
+      setMilestone: (input) =>
+        request("set the milestone of an issue", {
+          origin: input.origin,
+          token: input.token,
+          method: "PATCH",
+          path: issuePath(input),
+          body: { milestone: input.milestone },
           acceptedStatuses: [200],
         }),
     });

@@ -523,6 +523,30 @@ impl TrackerClient {
         .await
     }
 
+    /// Put an existing issue on a milestone, or take it off one.
+    ///
+    /// `None` sends an explicit JSON `null`, which is how the server is told to
+    /// clear the field; omitting the key would leave the milestone where it is
+    /// and report success, which is the shape of "clear" that does nothing.
+    ///
+    /// Like [`Self::set_issue_state`], this sends only the one field. A `PATCH`
+    /// carrying `body` would replace the issue text.
+    pub async fn set_issue_milestone(
+        &self,
+        target: &RepoTarget,
+        number: u64,
+        milestone: Option<u64>,
+    ) -> Result<Value, ApiError> {
+        self.request(
+            "set the milestone of an issue",
+            "PATCH",
+            &Self::issue_path(target, number),
+            Some(json!({ "milestone": milestone })),
+            &[200],
+        )
+        .await
+    }
+
     pub async fn list_comments(&self, target: &RepoTarget, number: u64) -> Result<Value, ApiError> {
         self.request(
             "list issue comments",

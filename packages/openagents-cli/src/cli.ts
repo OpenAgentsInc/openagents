@@ -3914,6 +3914,200 @@ const issueDepsCommand = Command.make(
     }),
 ).pipe(Command.withDescription("Read, add, or remove the prerequisites of an issue"));
 
+/**
+ * The milestone surface, on both CLIs, because the API always had it and
+ * neither client reached it.
+ *
+ * `issue create --milestone` was the only write: an issue filed without one
+ * could never be given one, and a milestone could only be opened or removed in
+ * a browser, which made milestones useless to agents -- and agents file most of
+ * the issues here.
+ */
+const milestoneNumberArgument = Argument.string("milestone").pipe(
+  Argument.withDescription("Milestone number"),
+);
+
+const milestoneRow = (value: Record<string, unknown>): string =>
+  `${`#${String(value["number"] ?? "?")}`.padEnd(7)}${String(value["state"] ?? "").padEnd(8)}${String(
+    value["title"] ?? "",
+  )}`;
+
+/** One renderer, so `milestone list` and any other listing cannot disagree. */
+const milestoneListHuman = (value: unknown): ReadonlyArray<string> => {
+  const listed = rows(value, "milestones");
+  return listed.length === 0 ? ["No milestones found."] : listed.map(milestoneRow);
+};
+
+/**
+ * The listing, under two names.
+ *
+ * `oa issue milestones` is the name the Rust CLI already published, and
+ * `openagents milestone list` is where the write half lives. Both are the same
+ * handler, so the two cannot describe the same repository differently.
+ */
+const makeMilestoneListCommand = (name: "list" | "milestones") =>
+  Command.make(name, { repo: repositoryOverrideFlag }, ({ repo }) =>
+    Effect.gen(function* () {
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const value = yield* issues.milestones({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+      });
+      yield* output.write({ value, human: milestoneListHuman(value) }, outputMode(flags.json));
+    }),
+  ).pipe(Command.withDescription("List the milestones of a repository"));
+
+const milestoneListCommand = makeMilestoneListCommand("list");
+const issueMilestonesCommand = makeMilestoneListCommand("milestones");
+
+const milestoneTitleArgument = Argument.string("title").pipe(
+  Argument.withDescription("Milestone title"),
+);
+const milestoneDescriptionFlag = Flag.string("description").pipe(
+  Flag.optional,
+  Flag.withDescription("What the milestone is for"),
+);
+const milestoneDueOnFlag = Flag.string("due-on").pipe(
+  Flag.optional,
+  Flag.withDescription("Due date, as the server stores it"),
+);
+
+const milestoneCreateCommand = Command.make(
+  "create",
+  {
+    title: milestoneTitleArgument,
+    repo: repositoryOverrideFlag,
+    description: milestoneDescriptionFlag,
+    dueOn: milestoneDueOnFlag,
+  },
+  ({ description, dueOn, repo, title }) =>
+    Effect.gen(function* () {
+      if (title.trim() === "") {
+        return yield* new InputError({ message: "Pass the milestone title." });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const value = yield* issues.createMilestone({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        title,
+        ...(Option.isNone(description) ? {} : { description: description.value }),
+        ...(Option.isNone(dueOn) ? {} : { dueOn: dueOn.value }),
+      });
+      // The server assigns the number. Printing the one it returned is how the
+      // caller learns what to pass to `issue milestone --set`.
+      const created = record(value);
+      yield* output.write(
+        {
+          value,
+          human: [
+            `Opened milestone #${String(created["number"] ?? "?")} ${String(created["title"] ?? "")}`,
+          ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Open a new milestone"));
+
+const milestoneDeleteCommand = Command.make(
+  "delete",
+  { milestone: milestoneNumberArgument, repo: repositoryOverrideFlag },
+  ({ milestone, repo }) =>
+    Effect.gen(function* () {
+      const number = yield* parseTrackerNumber("A milestone number", milestone);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      // A 204 carries no body, so there is nothing to report but the number
+      // that was asked for and the fact that the server accepted it.
+      const value = yield* issues.deleteMilestone({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        milestone: number,
+      });
+      yield* output.write(
+        { value, human: [`Deleted milestone #${String(number)}.`] },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Delete a milestone"));
+
+const milestoneCommand = Command.make("milestone").pipe(
+  Command.withDescription("Repository milestones"),
+  Command.withSubcommands([milestoneListCommand, milestoneCreateCommand, milestoneDeleteCommand]),
+);
+
+const issueMilestoneSetFlag = Flag.string("set").pipe(
+  Flag.optional,
+  Flag.withDescription("Milestone number to put the issue on"),
+);
+const issueMilestoneClearFlag = Flag.boolean("clear").pipe(
+  Flag.withDescription("Take the issue off whatever milestone it is on"),
+);
+
+const issueMilestoneCommand = Command.make(
+  "milestone",
+  {
+    number: issueNumberArgument,
+    repo: repositoryOverrideFlag,
+    set: issueMilestoneSetFlag,
+    clear: issueMilestoneClearFlag,
+  },
+  ({ clear, number, repo, set }) =>
+    Effect.gen(function* () {
+      // Two ways to say what the milestone should become, and they disagree.
+      // Guessing which was meant is how an issue lands on a milestone the
+      // caller was trying to take it off.
+      if (Option.isSome(set) && clear) {
+        return yield* new InputError({ message: "Use either --set or --clear, not both." });
+      }
+      if (Option.isNone(set) && !clear) {
+        return yield* new InputError({
+          message:
+            "Say what the milestone should become: --set <number> to put the issue on one, or --clear to take it off.",
+        });
+      }
+      const issueNumber = yield* parseTrackerNumber("An issue number", number);
+      const milestone = Option.isNone(set)
+        ? null
+        : yield* parseTrackerNumber("A milestone number", set.value);
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const issues = yield* IssueClient;
+      const output = yield* Output;
+      const value = yield* issues.setMilestone({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: issueNumber,
+        milestone,
+      });
+      // Report what came BACK, not what was asked for. A server that accepted
+      // the request and stored something else is exactly what an echo hides.
+      const stored = record(value)["milestone"];
+      const human =
+        stored === null || stored === undefined
+          ? `Issue #${String(issueNumber)} is on no milestone.`
+          : `Issue #${String(issueNumber)} is on milestone #${String(
+              record(stored)["number"] ?? "?",
+            )} ${String(record(stored)["title"] ?? "")}`;
+      yield* output.write({ value, human: [human] }, outputMode(flags.json));
+    }),
+).pipe(Command.withDescription("Put an existing issue on a milestone, or take it off one"));
+
 const issueCommand = Command.make("issue").pipe(
   Command.withDescription("Read and write issues"),
   Command.withSubcommands([
@@ -3927,6 +4121,8 @@ const issueCommand = Command.make("issue").pipe(
     issueAssignRunCommand,
     issueUnassignRunCommand,
     issueDepsCommand,
+    issueMilestoneCommand,
+    issueMilestonesCommand,
   ]),
 );
 
@@ -4647,6 +4843,7 @@ export const openagentsCommand = rootCommand.pipe(
     identityCommand,
     issueCommand,
     memoryCommand,
+    milestoneCommand,
     projectCommand,
     providerCommand,
     repoCommand,

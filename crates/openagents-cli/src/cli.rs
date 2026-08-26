@@ -58,6 +58,8 @@ pub enum Commands {
     Issue(IssueArgs),
     /// OpenAgents project management
     Project(ProjectArgs),
+    /// Repository milestones
+    Milestone(MilestoneArgs),
     /// Repository tracking and operations
     Repo(RepoArgs),
     /// OpenAgents interactive Coder agent session and autonomous tools
@@ -309,6 +311,53 @@ pub enum IssueAction {
     },
     /// List the milestones of a repository
     Milestones {
+        #[arg(short = 'R', long, help = "Repository as owner/repo")]
+        repo: Option<String>,
+    },
+    /// Put an existing issue on a milestone, or take it off one
+    ///
+    /// `issue create --milestone` was the only way to attach one, so an issue
+    /// filed without a milestone could never be given one outside the browser.
+    Milestone {
+        #[arg(help = "Issue number")]
+        number: u64,
+        #[arg(long, value_name = "NUMBER", help = "Milestone number to put the issue on")]
+        set: Option<u64>,
+        #[arg(long, help = "Take the issue off whatever milestone it is on")]
+        clear: bool,
+        #[arg(short = 'R', long, help = "Repository as owner/repo")]
+        repo: Option<String>,
+    },
+}
+
+#[derive(Args, Debug)]
+pub struct MilestoneArgs {
+    #[command(subcommand)]
+    pub action: MilestoneAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MilestoneAction {
+    /// List the milestones of a repository
+    List {
+        #[arg(short = 'R', long, help = "Repository as owner/repo")]
+        repo: Option<String>,
+    },
+    /// Open a new milestone
+    Create {
+        #[arg(help = "Milestone title")]
+        title: String,
+        #[arg(long, help = "What the milestone is for")]
+        description: Option<String>,
+        #[arg(long, value_name = "DATE", help = "Due date, as the server stores it")]
+        due_on: Option<String>,
+        #[arg(short = 'R', long, help = "Repository as owner/repo")]
+        repo: Option<String>,
+    },
+    /// Delete a milestone
+    Delete {
+        #[arg(help = "Milestone number")]
+        number: u64,
         #[arg(short = 'R', long, help = "Repository as owner/repo")]
         repo: Option<String>,
     },
@@ -1021,6 +1070,9 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Issue(issue) => run_issue(issue.action, &api_base, token, cli.json).await,
         Commands::Project(project) => {
             run_project(project.action, &api_base, token, cli.json).await
+        }
+        Commands::Milestone(milestone) => {
+            run_milestone(milestone.action, &api_base, token, cli.json).await
         }
         Commands::Repo(repo) => run_repo(repo.action, &endpoint, &cred_store, cli.json).await,
         Commands::Coder(coder) => {
@@ -2251,26 +2303,130 @@ async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, j
         IssueAction::Milestones { repo } => {
             let target = target_or_fail(repo);
             let value = or_fail(tracker.list_milestones(&target).await);
-            let rows = value
-                .get("milestones")
-                .and_then(serde_json::Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let human: Vec<String> = if rows.is_empty() {
-                vec!["No milestones found.".to_string()]
-            } else {
-                rows.iter()
-                    .map(|row| {
-                        format!(
-                            "{}{}{}",
-                            pad(&format!("#{}", number_or_question(row, "number")), 7),
-                            pad(&field(row, "state"), 8),
-                            field(row, "title")
-                        )
-                    })
-                    .collect()
+            emit(json, &value, &milestone_listing(&value));
+        }
+        IssueAction::Milestone {
+            number,
+            set,
+            clear,
+            repo,
+        } => {
+            // Two ways to say what the milestone should become, and they
+            // disagree. Guessing which one was meant is how an issue ends up on
+            // a milestone the caller was trying to take it off.
+            let milestone = match (set, clear) {
+                (Some(_), true) => {
+                    fail("Use either --set or --clear, not both.");
+                }
+                (None, false) => {
+                    fail(
+                        "Say what the milestone should become: --set <number> to put the issue on one, or --clear to take it off.",
+                    );
+                }
+                (Some(number), false) => Some(number),
+                (None, true) => None,
             };
-            emit(json, &value, &human);
+            let target = target_or_fail(repo);
+            let value = or_fail(tracker.set_issue_milestone(&target, number, milestone).await);
+            // Report what came BACK, not what was asked for. A server that
+            // accepted the request and stored something else is the case a
+            // printed echo of the argument would hide.
+            let stored = value.get("milestone").and_then(|m| {
+                if m.is_null() {
+                    None
+                } else {
+                    Some(m)
+                }
+            });
+            let human = match stored {
+                Some(m) => format!(
+                    "Issue #{} is on milestone #{} {}",
+                    number,
+                    number_or_question(m, "number"),
+                    field(m, "title")
+                ),
+                None => format!("Issue #{} is on no milestone.", number),
+            };
+            emit(json, &value, &[human]);
+        }
+    }
+}
+
+/// The rows `milestone list` and `issue milestones` both print.
+///
+/// One renderer, so the two entry points cannot describe the same milestone
+/// differently.
+fn milestone_listing(value: &serde_json::Value) -> Vec<String> {
+    let rows = value
+        .get("milestones")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if rows.is_empty() {
+        return vec!["No milestones found.".to_string()];
+    }
+    rows.iter()
+        .map(|row| {
+            format!(
+                "{}{}{}",
+                pad(&format!("#{}", number_or_question(row, "number")), 7),
+                pad(&field(row, "state"), 8),
+                field(row, "title")
+            )
+        })
+        .collect()
+}
+
+/// `oa milestone`: the write half the API has always had and neither CLI reached.
+///
+/// `create` and `delete` existed on the client and were wired to nothing, so a
+/// milestone could only be opened or removed in a browser -- which made
+/// milestones useless to agents, and agents file most of the issues here.
+async fn run_milestone(
+    action: MilestoneAction,
+    api_base: &str,
+    token: Option<String>,
+    json: bool,
+) {
+    let tracker = crate::tracker::TrackerClient::new(api_base, token);
+    match action {
+        MilestoneAction::List { repo } => {
+            let target = target_or_fail(repo);
+            let value = or_fail(tracker.list_milestones(&target).await);
+            emit(json, &value, &milestone_listing(&value));
+        }
+        MilestoneAction::Create {
+            title,
+            description,
+            due_on,
+            repo,
+        } => {
+            let target = target_or_fail(repo);
+            let value = or_fail(
+                tracker
+                    .create_milestone(
+                        &target,
+                        &title,
+                        description.as_deref(),
+                        due_on.as_deref(),
+                    )
+                    .await,
+            );
+            // The server assigns the number. Printing the one it returned is
+            // the only way the caller learns what to pass to `--set`.
+            let human = format!(
+                "Opened milestone #{} {}",
+                number_or_question(&value, "number"),
+                field(&value, "title")
+            );
+            emit(json, &value, &[human]);
+        }
+        MilestoneAction::Delete { number, repo } => {
+            let target = target_or_fail(repo);
+            // A 204 carries no body, so there is nothing to report back but the
+            // number that was asked for and the fact that the server accepted it.
+            let value = or_fail(tracker.delete_milestone(&target, number).await);
+            emit(json, &value, &[format!("Deleted milestone #{}.", number)]);
         }
     }
 }

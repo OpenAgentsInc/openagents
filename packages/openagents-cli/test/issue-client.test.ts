@@ -198,3 +198,160 @@ describe("issue client", () => {
     );
   });
 });
+
+/**
+ * The milestone write half. The API has carried all of it since the milestone
+ * routes landed; neither CLI reached it, so a milestone could only be opened,
+ * removed, or attached to an existing issue in a browser.
+ *
+ * Every assertion here is on the REQUEST the client actually built -- method,
+ * path, and body -- because the bug being fixed is a route that was never
+ * called, not a response that was misread.
+ */
+describe("the milestone client", () => {
+  const captured = (
+    response: ApiResponse,
+  ): { readonly requests: Array<ApiRequest>; readonly layer: Layer.Layer<IssueClient> } => {
+    const requests: Array<ApiRequest> = [];
+    return {
+      requests,
+      layer: layerFromHandler((input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return response;
+        }),
+      ),
+    };
+  };
+
+  it("lists milestones from the repository route", async () => {
+    const { layer, requests } = captured({
+      status: 200,
+      body: { milestones: [{ number: 3, title: "Ship it", state: "open" }] },
+    });
+    const value = await Effect.runPromise(
+      Effect.gen(function* () {
+        const issues = yield* IssueClient;
+        return yield* issues.milestones(target);
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/milestones");
+    expect(value).toEqual({ milestones: [{ number: 3, title: "Ship it", state: "open" }] });
+  });
+
+  it("creates a milestone and reports the number the server assigned", async () => {
+    const { layer, requests } = captured({
+      status: 201,
+      body: { number: 7, title: "Ship it", state: "open" },
+    });
+    const value = await Effect.runPromise(
+      Effect.gen(function* () {
+        const issues = yield* IssueClient;
+        return yield* issues.createMilestone({
+          ...target,
+          title: "Ship it",
+          description: "the tail of #76",
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/milestones");
+    expect(requests[0]?.body).toEqual({ title: "Ship it", description: "the tail of #76" });
+    // The number is the server's, not one the CLI made up: it is what `issue
+    // milestone --set` has to be given.
+    expect((value as Record<string, unknown>)["number"]).toBe(7);
+  });
+
+  it("omits an unset description and due date rather than sending an empty one", async () => {
+    const { layer, requests } = captured({ status: 201, body: { number: 8, title: "Bare" } });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const issues = yield* IssueClient;
+        return yield* issues.createMilestone({ ...target, title: "Bare" });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(requests[0]?.body).toEqual({ title: "Bare" });
+  });
+
+  it("accepts the 204 a delete answers with", async () => {
+    const { layer, requests } = captured({ status: 204, body: undefined });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const issues = yield* IssueClient;
+        return yield* issues.deleteMilestone({ ...target, milestone: 7 });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(requests[0]?.method).toBe("DELETE");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/milestones/7");
+  });
+
+  it("puts an existing issue on a milestone, sending that field and no other", async () => {
+    const { layer, requests } = captured({
+      status: 200,
+      body: { number: 129, milestone: { number: 7, title: "Ship it" } },
+    });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const issues = yield* IssueClient;
+        return yield* issues.setMilestone({ ...target, number: 129, milestone: 7 });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/issues/129");
+    // A PATCH carrying `body` would replace the issue text.
+    expect(requests[0]?.body).toEqual({ milestone: 7 });
+  });
+
+  it("clears a milestone by sending an explicit null, not by omitting the key", async () => {
+    const { layer, requests } = captured({ status: 200, body: { number: 129, milestone: null } });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const issues = yield* IssueClient;
+        return yield* issues.setMilestone({ ...target, number: 129, milestone: null });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    // Omitting the key would leave the milestone where it is and still answer
+    // 200 -- a clear that does nothing and reports success.
+    expect(requests[0]?.body).toEqual({ milestone: null });
+    expect(Object.hasOwn(requests[0]?.body as object, "milestone")).toBe(true);
+  });
+
+  it("reports a rejected milestone number by the field the server named", async () => {
+    const failure = await Effect.runPromise(
+      Effect.gen(function* () {
+        const issues = yield* IssueClient;
+        return yield* issues.setMilestone({ ...target, number: 129, milestone: 99999 });
+      }).pipe(
+        Effect.provide(
+          layerFromHandler(() =>
+            Effect.succeed({
+              status: 422,
+              body: {
+                message: "Validation Failed",
+                code: "validation_failed",
+                status: 422,
+                documentation_url: "http://localhost:4000/api/v1",
+                request_id: "request-2",
+                errors: { milestone: ["Milestone #99999 does not exist in this repository"] },
+              },
+            }),
+          ),
+        ),
+        Effect.flip,
+      ),
+    );
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).status).toBe(422);
+    expect((failure as ApiError).message).toBe(
+      "Validation Failed (milestone: Milestone #99999 does not exist in this repository)",
+    );
+  });
+});

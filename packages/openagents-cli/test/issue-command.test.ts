@@ -199,6 +199,109 @@ describe("issue and project commands", () => {
     );
   });
 
+  it("puts an existing issue on a milestone from the command line", async () => {
+    const requests: Array<ApiRequest> = [];
+    const { run, written } = harness((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return {
+          status: 200,
+          body: { ...issueBody(129), milestone: { number: 7, title: "Ship it" } },
+        };
+      }),
+    );
+
+    await run(["issue", "milestone", "129", "--set", "7", "-R", "octavia/project"]);
+
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/issues/129");
+    expect(requests[0]?.body).toEqual({ milestone: 7 });
+    // The line names the milestone the server RETURNED, so a server that stored
+    // something other than what was asked for is visible instead of echoed over.
+    expect(written[0]?.document.human).toEqual(["Issue #129 is on milestone #7 Ship it"]);
+  });
+
+  it("says the issue is on no milestone when the server reports none", async () => {
+    const { run, written } = harness(() =>
+      Effect.succeed({ status: 200, body: { ...issueBody(129), milestone: null } }),
+    );
+
+    await run(["issue", "milestone", "129", "--clear", "-R", "octavia/project"]);
+
+    expect(written[0]?.document.human).toEqual(["Issue #129 is on no milestone."]);
+  });
+
+  it("refuses --set and --clear together instead of guessing which was meant", async () => {
+    const { run } = harness(() => Effect.succeed({ status: 200, body: {} }));
+
+    await expect(
+      run(["issue", "milestone", "129", "--set", "7", "--clear", "-R", "octavia/project"]),
+    ).rejects.toThrow(/either --set or --clear, not both/u);
+  });
+
+  it("refuses a milestone change that says nothing about what to change it to", async () => {
+    const { run } = harness(() => Effect.succeed({ status: 200, body: {} }));
+
+    await expect(run(["issue", "milestone", "129", "-R", "octavia/project"])).rejects.toThrow(
+      /--set <number> to put the issue on one, or --clear/u,
+    );
+  });
+
+  it("opens a milestone and reports the number the server assigned", async () => {
+    const requests: Array<ApiRequest> = [];
+    const { run, written } = harness((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return { status: 201, body: { number: 7, title: "Ship it", state: "open" } };
+      }),
+    );
+
+    await run(["milestone", "create", "Ship it", "-R", "octavia/project"]);
+
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/milestones");
+    expect(requests[0]?.body).toEqual({ title: "Ship it" });
+    expect(written[0]?.document.human).toEqual(["Opened milestone #7 Ship it"]);
+  });
+
+  it("deletes a milestone through the numbered route", async () => {
+    const requests: Array<ApiRequest> = [];
+    const { run, written } = harness((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return { status: 204, body: undefined };
+      }),
+    );
+
+    await run(["milestone", "delete", "7", "-R", "octavia/project"]);
+
+    expect(requests[0]?.method).toBe("DELETE");
+    expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/milestones/7");
+    expect(written[0]?.document.human).toEqual(["Deleted milestone #7."]);
+  });
+
+  it("lists milestones under both names, with one renderer behind them", async () => {
+    const body = { milestones: [{ number: 3, title: "Ship it", state: "open" }] };
+    const first = harness(() => Effect.succeed({ status: 200, body }));
+    await first.run(["milestone", "list", "-R", "octavia/project"]);
+
+    const second = harness(() => Effect.succeed({ status: 200, body }));
+    await second.run(["issue", "milestones", "-R", "octavia/project"]);
+
+    expect(first.written[0]?.document.human).toEqual(second.written[0]?.document.human);
+    expect(first.written[0]?.document.human).toEqual(["#3     open    Ship it"]);
+  });
+
+  it("says a repository has no milestones rather than printing an empty table", async () => {
+    const { run, written } = harness(() =>
+      Effect.succeed({ status: 200, body: { milestones: [] } }),
+    );
+
+    await run(["milestone", "list", "-R", "octavia/project"]);
+
+    expect(written[0]?.document.human).toEqual(["No milestones found."]);
+  });
+
   it("resolves projects through the repository-scoped route", async () => {
     const requests: Array<ApiRequest> = [];
     const { run, written } = harness((input) =>
