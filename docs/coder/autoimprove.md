@@ -84,9 +84,9 @@ plugins, `password-recovery` for file forensics.
 
 ### 2.3 Harness and runtime: what the coder is missing structurally
 
-The Claude Code teardown series (local working set, `docs/teardowns/cc/`,
-verifiable directly against `packages/openagents-cli/src/`) names the
-structural gaps in cost order:
+The Claude Code teardown series (`docs/teardowns/cc/`, verifiable directly
+against `packages/openagents-cli/src/`) names the structural gaps in cost
+order:
 
 - **No compaction.** The coder has per-result output caps and nothing else;
   long tasks pay quadratic transcript replay. `schemelike-metacircular-eval`
