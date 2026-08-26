@@ -989,6 +989,99 @@ fn offline_reaches_no_server_and_the_live_path_reaches_one() {
     );
 }
 
+// -------------------------------------------- `--headless` with no prompt
+
+/// A headless run with no prompt refuses, and opens no thread.
+///
+/// It used to substitute the literal `Analyze workspace and run tests`, open a
+/// thread, and spend the grant on an instruction nobody gave — one screen
+/// below where `--offline` refuses the identical omission by name. The exit
+/// code alone does not catch that: an invented turn can fail afterwards and
+/// exit non-zero too. What catches it is the server, which is never asked to
+/// open anything.
+#[test]
+fn headless_without_a_prompt_refuses_and_opens_no_thread() {
+    let server = RouteServer::start(coder_routes);
+    let origin = server.origin();
+
+    let base = origin.as_str();
+    for bare in [
+        vec!["--api-url", base, "coder", "--headless"],
+        // Whitespace is not a prompt either; it is the same omission with a
+        // space in it.
+        vec!["--api-url", base, "coder", "--headless", "   "],
+    ] {
+        let run = oa_env(&bare, &[("OPENAGENTS_TOKEN", "t")]);
+        // Asserted first, because it is the assertion that carries the test:
+        // an invented prompt that opens a thread and then fails would satisfy
+        // an exit code and nothing else.
+        let paths: Vec<String> = server.hits().into_iter().map(|hit| hit.path).collect();
+        assert!(
+            !paths.iter().any(|p| p == "/api/v1/threads"),
+            "{bare:?} still opened a thread: {paths:?}"
+        );
+        assert!(
+            !run.stdout.contains("Analyze workspace"),
+            "a prompt nobody gave was run anyway: {}",
+            run.stdout
+        );
+        assert_eq!(run.status, Some(2), "{bare:?} stdout: {}", run.stdout);
+        assert!(
+            run.stderr.contains("--headless") && run.stderr.contains("<prompt>"),
+            "the refusal did not say what is missing or how to give it: {}",
+            run.stderr
+        );
+    }
+
+    // The control, on the same fixture: with a prompt it does open one. Without
+    // this the assertion above would also pass against a binary that could not
+    // reach the server at all.
+    let given = oa_env(
+        &["--api-url", &origin, "coder", "--headless", "hello"],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert_eq!(given.status, Some(0), "stderr: {}", given.stderr);
+    let paths: Vec<String> = server.hits().into_iter().map(|hit| hit.path).collect();
+    assert!(
+        paths.iter().any(|p| p == "/api/v1/threads"),
+        "the fixture never opens a thread, so the test proves nothing: {paths:?}"
+    );
+}
+
+/// The same omission, refused the same way on both coder paths.
+///
+/// This is the defect stated as a property: `--offline` and `--headless` were
+/// two arms of one function handling one missing input two opposite ways, and
+/// the reader who forgot the prompt got a refusal or an invented instruction
+/// depending on which arm they were in.
+#[test]
+fn a_missing_prompt_is_refused_the_same_way_offline_and_headless() {
+    let dead = "http://127.0.0.1:1";
+    let offline = oa_env(
+        &["--api-url", dead, "coder", "--offline"],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    let headless = oa_env(
+        &["--api-url", dead, "coder", "--headless"],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert_eq!(offline.status, Some(2), "stdout: {}", offline.stdout);
+    assert_eq!(
+        headless.status,
+        Some(2),
+        "the headless path accepted a missing prompt: {} {}",
+        headless.stdout,
+        headless.stderr
+    );
+    for run in [&offline, &headless] {
+        assert!(
+            run.stderr.contains("<prompt>"),
+            "the refusal did not show the form that works: {}",
+            run.stderr
+        );
+    }
+}
+
 // ----------------------------------------------------------------- `--model`
 
 /// `--model` decides the id sent at thread open; without it the default lane's

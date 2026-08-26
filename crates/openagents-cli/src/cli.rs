@@ -4292,6 +4292,12 @@ fn run_offline_coder(coder: CoderArgs) {
 /// Lifted out of the dispatch so `--export` is written here too. It used to be
 /// read only by the full-screen session, which meant a headless run that asked
 /// for a transcript got none and was told nothing.
+///
+/// A missing prompt is a missing input, not a licence to invent one. This
+/// substituted the literal `Analyze workspace and run tests`, opened a thread,
+/// and spent the grant on an instruction nobody gave — one screen above
+/// [`run_offline_coder`], which refuses the identical omission by name. The
+/// same input is now handled the same way on both paths.
 async fn run_headless_coder(
     coder: CoderArgs,
     api_base: &str,
@@ -4299,10 +4305,18 @@ async fn run_headless_coder(
     repository: Option<String>,
     resumed: Option<crate::resume::Resumption>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let prompt = coder
+    let Some(prompt) = coder
         .prompt
-        .clone()
-        .unwrap_or_else(|| "Analyze workspace and run tests".to_string());
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+    else {
+        fail(
+            "--headless runs one prompt and exits. Give it one: \
+             `oa coder --headless \"<prompt>\"`",
+        );
+    };
     println!("Executing coder prompt headlessly: {}", prompt);
     let lane_name = coder.lane_name().unwrap_or_else(|reason| fail(&reason));
     // A headless session may start children. They run on the same lane and the

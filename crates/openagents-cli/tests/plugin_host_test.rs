@@ -18,6 +18,7 @@ use std::time::Instant;
 use openagents_cli::plugins::{
     invoke, load_plugin, Approval, CatalogEntry, Mount, MOUNT_FILE_LIMIT,
 };
+use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
 use sha2::{Digest, Sha256};
 
 /// Bump-allocating `packet-v0` scaffolding every fixture shares.
@@ -444,6 +445,109 @@ fn a_mounted_capability_needs_an_operator_before_it_can_be_loaded() {
     }
     .check(&entry)
     .is_ok());
+}
+
+// ──────────────────────────────────────── a name the session already answers
+
+/// A valid, digest-pinned, pure-compute guest that loads and does nothing.
+///
+/// The collision test needs a plugin that would otherwise install cleanly, so
+/// the only thing between it and the model's tool list is the reserved-name
+/// check.
+fn inert_guest() -> Vec<u8> {
+    wasm(&format!(
+        r#"(module (memory (export "memory") 1) {PREAMBLE}
+             (func (export "handle_packet") (param i32 i32) (result i64) (i64.const 0)))"#
+    ))
+}
+
+fn call(name: &str, arguments: serde_json::Value) -> ToolCall {
+    ToolCall {
+        id: "1".to_string(),
+        name: name.to_string(),
+        arguments,
+    }
+}
+
+/// A plugin named after a builtin is refused at install, so the declared tool
+/// list never carries a name the session would answer for itself.
+///
+/// The two plugins below are the same fixture under two names. `word_count`
+/// is the control: it installs, it is declared, and it dispatches to the
+/// plugin. `shell` is the collision — a builtin match arm wins before the
+/// plugin lookup, so a host that installed it would declare a tool the model
+/// could never reach. The list assertion is exact, which is what catches the
+/// duplicate: a host without the check declares `shell` twice.
+#[tokio::test]
+async fn a_plugin_named_after_a_builtin_is_never_declared_and_every_declared_tool_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let artifact = inert_guest();
+    for name in ["shell", "word_count"] {
+        let home = dir.path().join("plugins").join(name);
+        std::fs::create_dir_all(&home).unwrap();
+        plant(&home, name, &artifact, serde_json::json!([]), 2000, 16);
+    }
+
+    let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+    let installed: Vec<&str> = registry
+        .catalog
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
+    assert_eq!(
+        installed,
+        vec!["word_count"],
+        "a plugin named after a builtin reached the catalog"
+    );
+
+    // Asked for by exact name: the free name loads, the taken one is not
+    // there to load, and the model is told so rather than left with a tool
+    // that answers from somewhere else.
+    let taken = registry
+        .execute_tool(&call("capability", serde_json::json!({"name": "shell"})))
+        .await;
+    assert!(
+        taken.is_error,
+        "`shell` was loaded as a plugin: {}",
+        taken.output
+    );
+    let free = registry
+        .execute_tool(&call(
+            "capability",
+            serde_json::json!({"name": "word_count"}),
+        ))
+        .await;
+    assert!(
+        !free.is_error,
+        "the control plugin did not load: {}",
+        free.output
+    );
+
+    // This registry has no delegation gate, so `delegate` is not declared.
+    let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
+    assert_eq!(
+        names,
+        vec!["shell", "skill", "openagents", "capability", "word_count"],
+        "the declared list is not the set of tools that can be called"
+    );
+
+    // And every name on it reaches an implementation. `word_count` is the one
+    // that matters here: it is the plugin, dispatched from the arm below all
+    // the builtins, which is the arm a collision would have hidden it behind.
+    for name in &names {
+        if name == "openagents" {
+            // Shelling out to another CLI is not this test's business.
+            continue;
+        }
+        let out = registry
+            .execute_tool(&call(name, serde_json::json!({})))
+            .await;
+        assert!(
+            !out.output.starts_with("Unknown tool:"),
+            "`{name}` is declared and unanswered: {}",
+            out.output
+        );
+    }
 }
 
 // ─────────────────────────────────────────────────── what actually ships

@@ -37,6 +37,22 @@ use crate::plugins::{
 
 pub const OUTPUT_LIMIT: usize = 30_000;
 
+/// The names [`HarnessToolRegistry::execute_tool`] answers itself.
+///
+/// A loaded plugin is dispatched from the fallthrough arm, *below* all five of
+/// these, so a plugin carrying one of these names would be declared to the
+/// model and never reached: the builtin answers first, every time. That is why
+/// [`crate::plugins::validate_manifest`] refuses such a manifest by name
+/// rather than installing a capability nothing can call.
+///
+/// `delegate` is on the list even though it is declared only where a
+/// delegation gate exists, because its match arm is unconditional — a gateless
+/// session answers it with a refusal, which shadows a plugin just as
+/// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
+/// list and the arms in step.
+pub const BUILTIN_TOOL_NAMES: [&str; 5] =
+    ["shell", "skill", "openagents", "capability", "delegate"];
+
 /// The largest index at or below `max` that is a character boundary in `text`.
 ///
 /// Slicing a `String` by a byte index panics when the index lands inside a
@@ -1287,6 +1303,14 @@ mod tests {
         assert_eq!(
             names,
             vec!["shell", "skill", "openagents", "capability", "delegate"]
+        );
+        // The same five names `plugins::validate_manifest` refuses a plugin
+        // for taking. An arm added here and not there would leave a name a
+        // plugin can claim and never be called under.
+        assert_eq!(
+            names,
+            BUILTIN_TOOL_NAMES.to_vec(),
+            "the reserved list and the arms disagree"
         );
 
         let runtime = tokio::runtime::Runtime::new().unwrap();

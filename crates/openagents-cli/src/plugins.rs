@@ -184,6 +184,23 @@ pub fn validate_manifest(value: &serde_json::Value) -> Result<Manifest, Refusal>
             "`name` (lowercase identifier, it becomes the tool name)",
         ));
     }
+    // The manifest name *is* the tool name, and the session's own tools are
+    // dispatched before any plugin. A plugin under one of those names would be
+    // declared to the model and then permanently unreachable, which is worse
+    // than one that failed to install: the model is told a capability exists
+    // and every call to it lands on the builtin. Refused here, so it reaches
+    // neither the catalog nor a load.
+    if crate::tools::BUILTIN_TOOL_NAMES.contains(&name) {
+        return Err(refuse(
+            "name_reserved",
+            format!(
+                "the manifest is named `{name}`, which is a built-in tool of this session. \
+                 The builtin answers first, so the plugin could never run. Rename it; \
+                 the reserved names are {}",
+                crate::tools::BUILTIN_TOOL_NAMES.join(", ")
+            ),
+        ));
+    }
     let version = record.get("version").and_then(|v| v.as_str()).unwrap_or("");
     if version.is_empty() {
         return Err(bad("`version`"));
@@ -1583,6 +1600,63 @@ mod tests {
         assert_eq!(
             validate_manifest(&value).unwrap_err().code,
             "capabilities_unsupported"
+        );
+    }
+
+    /// Every name the session dispatches itself is refused, and the refusal
+    /// says which one it collided with.
+    ///
+    /// The manifest is otherwise valid, so a host without this check installs
+    /// it, declares its tool, and routes every call to the builtin instead.
+    #[test]
+    fn a_plugin_named_after_a_builtin_tool_is_refused_by_name() {
+        for reserved in crate::tools::BUILTIN_TOOL_NAMES {
+            let mut value = manifest_json(serde_json::json!([]), serde_json::json!([]));
+            value["name"] = serde_json::json!(reserved);
+            let refusal = validate_manifest(&value).unwrap_err();
+            assert_eq!(refusal.code, "name_reserved", "`{reserved}`: {refusal}");
+            assert!(
+                refusal.reason.contains(reserved),
+                "the refusal did not name the collision: {}",
+                refusal.reason
+            );
+        }
+        // A name that collides with nothing still loads, so the check is a
+        // reservation and not a ban on plugins.
+        assert_eq!(
+            validate_manifest(&manifest_json(serde_json::json!([]), serde_json::json!([])))
+                .unwrap()
+                .name,
+            "probe_plugin"
+        );
+    }
+
+    /// A colliding manifest never reaches the catalog either, so nothing can
+    /// ask for it by name and no tool is declared for it.
+    #[test]
+    fn a_colliding_manifest_is_left_out_of_the_catalog() {
+        let root = tempfile::tempdir().unwrap();
+        let plugins = root.path().join("plugins");
+        for name in ["shell", "word_count"] {
+            let dir = plugins.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut value = manifest_json(serde_json::json!([]), serde_json::json!([]));
+            value["name"] = serde_json::json!(name);
+            std::fs::write(
+                dir.join("manifest.json"),
+                serde_json::to_vec_pretty(&value).unwrap(),
+            )
+            .unwrap();
+        }
+
+        let names: Vec<String> = discover_catalog(root.path())
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
+        assert_eq!(
+            names,
+            vec!["word_count"],
+            "a plugin named after a builtin reached the catalog"
         );
     }
 
