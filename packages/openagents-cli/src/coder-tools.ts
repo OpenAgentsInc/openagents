@@ -492,7 +492,7 @@ export function openagentsTool(): CoderTool {
           finish(
             code === 0
               ? body.length === 0
-                ? "The command succeeded and printed nothing."
+                ? "Success"
                 : body
               : `The command exited with code ${String(code ?? -1)}.\n\n${body}`,
           );

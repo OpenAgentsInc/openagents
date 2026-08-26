@@ -169,7 +169,7 @@ export const renderShell = (result: ShellResult, timeoutMs: number): string => {
   if (result.code !== 0) {
     return `The command exited with code ${String(result.code)}.\n\n${body}`;
   }
-  return body.length === 0 ? "The command succeeded and printed nothing." : body;
+  return body.length === 0 ? "Success" : body;
 };
 
 export { DEFAULT_TIMEOUT_MS, MAXIMUM_TIMEOUT_MS, OUTPUT_LIMIT };

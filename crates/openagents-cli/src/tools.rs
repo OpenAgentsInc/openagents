@@ -1068,7 +1068,7 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
             if output.status.success() {
                 if bounded.trim().is_empty() {
                     (
-                        "The command succeeded and printed nothing.".to_string(),
+                        "Success".to_string(),
                         false,
                     )
                 } else {

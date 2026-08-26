@@ -80,7 +80,7 @@ describe("running a command", () => {
   });
 
   it("says a silent success was a success", async () => {
-    await expect(run("true")).resolves.toContain("succeeded and printed nothing");
+    await expect(run("true")).resolves.toBe("Success");
   });
 
   it("runs in the working directory it was given", async () => {
