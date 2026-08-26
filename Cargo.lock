@@ -393,6 +393,8 @@ dependencies = [
  "openresponses-rust",
  "ratatui",
  "ratatui-markdown",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

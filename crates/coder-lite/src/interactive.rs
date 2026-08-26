@@ -4,6 +4,7 @@
 //! grok-pager: destructure `crossterm::event::KeyEvent` by `code` and
 //! `modifiers` so control chords do not fall through to plain character input.
 
+use crate::acp;
 use crate::runtime::{CoderRuntimeSession, Control};
 use crate::tui::{CoderUi, Entry, Role};
 use std::sync::mpsc;
@@ -42,6 +43,26 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
 
     let (tx, rx) = mpsc::channel::<Control>();
     let mut ui = CoderUi::new();
+
+    match acp::find_agents().await {
+        Ok(agents) => {
+            let list = agents
+                .iter()
+                .map(|a| a.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            ui.entries.push(Entry {
+                role: Role::Notice,
+                text: format!("found ACP agents: {}", list),
+            });
+        }
+        Err(_) => {
+            ui.entries.push(Entry {
+                role: Role::Notice,
+                text: "found ACP agents: none".to_string(),
+            });
+        }
+    }
 
     loop {
         while let Ok(control) = rx.try_recv() {
