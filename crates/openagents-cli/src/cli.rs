@@ -780,8 +780,27 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     print!("{}", chunk);
                     use std::io::Write;
                     let _ = std::io::stdout().flush();
-                }).await.map_err(|e| e.to_string())?;
+                }).await.map_err(|e| e.to_string());
+                // The thread is revoked whether the turn worked or not: a
+                // failed turn still opened one, and one left open holds its
+                // grant's remaining budget.
+                let revoked = runtime.close().await;
+                // A turn that could not reach a model is a failure, and says
+                // so in the shape every other refusal here uses.
+                let result = match result {
+                    Ok(result) => result,
+                    Err(error) => fail(&error),
+                };
                 println!("\n\nTurn result:\n{}", result);
+                if let Some(model) = &runtime.last_model {
+                    println!("Model: {model}");
+                }
+                if runtime.last_usage.reported() {
+                    println!("Usage: {}", runtime.last_usage.line());
+                }
+                if let Err(error) = revoked {
+                    eprintln!("oa: the thread was not revoked: {error}");
+                }
             } else {
                 crate::interactive::run_tui(coder, token).await?;
             }
