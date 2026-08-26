@@ -55,9 +55,11 @@ pub enum TurnEvent {
     Failed(String),
     /// The model the server's grant named for that turn.
     ///
-    /// It is reported rather than assumed because the CLI cannot choose it:
-    /// `POST /api/v1/threads` publishes no model parameter, and the grant it
-    /// returns pins the model that answers.
+    /// Reported rather than assumed. `POST /api/v1/threads` does take a
+    /// `model`, but what answers is whatever the returned grant pins — a value
+    /// outside the enum is refused, and a listed model whose provider is not
+    /// configured is refused as `model_unavailable`. So the request is a
+    /// preference and the grant is the fact, and this carries the fact.
     Model(String),
 }
 

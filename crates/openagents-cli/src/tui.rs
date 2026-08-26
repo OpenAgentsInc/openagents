@@ -387,11 +387,14 @@ pub fn composer_text_width(frame_width: u16) -> usize {
 ///
 /// `Tab: effort` toggled nothing: it appended the words `[Toggled reasoning
 /// effort]` to the transcript, and `execute_turn` has no effort field to send
-/// even if it had meant it. `Shift+Tab: lane` was never handled at all, and a
-/// lane control here cannot do what its name says: `POST /api/v1/threads`
-/// publishes no model parameter, and the grant it returns pins the model that
-/// answers. The bar reports that model instead, which is a fact rather than a
-/// request.
+/// even if it had meant it. `Shift+Tab: lane` was never handled at all.
+///
+/// A lane control here is buildable — `POST /api/v1/threads` does take a
+/// `model`, and `oa coder --lane` uses it — but it would have to open a new
+/// thread to change one, since the grant a thread returns pins the model for
+/// that thread's whole life. Mid-session cycling is therefore a session
+/// decision, not a keystroke. Until that exists, the bar reports the model the
+/// grant named, which is a fact rather than a request.
 const HINTS: [&str; 4] = [
     "Enter: send",
     "Esc: exit",
