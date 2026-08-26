@@ -408,38 +408,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "coder-lite"
-version = "0.1.0"
-dependencies = [
- "anstyle",
- "anstyle-lossy",
- "anstyle-syntect",
- "clap",
- "crossterm",
- "futures",
- "html-escape",
- "libc",
- "linkify",
- "openagents-cli",
- "portable-pty",
- "pretty_assertions",
- "pulldown-cmark",
- "ratatui",
- "reqwest",
- "serde",
- "serde_json",
- "supports-color",
- "syntect",
- "textwrap",
- "tokio",
- "two-face",
- "unicode-segmentation",
- "unicode-width 0.2.0",
- "url",
- "vt100",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1929,6 +1897,9 @@ dependencies = [
 name = "openagents-cli"
 version = "0.1.0"
 dependencies = [
+ "anstyle",
+ "anstyle-lossy",
+ "anstyle-syntect",
  "async-trait",
  "bech32",
  "bip39",
@@ -1937,10 +1908,14 @@ dependencies = [
  "crossterm",
  "eventsource-stream",
  "futures",
+ "html-escape",
  "libc",
+ "linkify",
  "openagents-all-work-contract",
  "openagents-cloud-contract",
  "portable-pty",
+ "pretty_assertions",
+ "pulldown-cmark",
  "ratatui",
  "regex",
  "reqwest",
@@ -1949,14 +1924,19 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "supports-color",
+ "syntect",
  "sysinfo",
  "tempfile",
+ "textwrap",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "tungstenite",
+ "two-face",
  "unicode-segmentation",
  "unicode-width 0.2.0",
+ "url",
  "vt100",
  "wasmtime",
  "wat",

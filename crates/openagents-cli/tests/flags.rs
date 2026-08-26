@@ -136,7 +136,7 @@ fn isolated_home() -> &'static Path {
 }
 
 fn oa(args: &[&str]) -> Output {
-    let result = Command::new(env!("CARGO_BIN_EXE_oa"))
+    let result = Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(args)
         // The credential store is keyed by origin, and the stub's origin has
         // no token, so these runs never carry a real one.
@@ -485,11 +485,16 @@ fn coder_plain_without_a_prompt_explains_itself() {
     );
 }
 
-/// `oa` with no subcommand is a usage error, not a silent success.
+/// `openagents` with no command starts Coder.
 #[test]
-fn a_bare_invocation_is_a_usage_error() {
+fn a_bare_invocation_starts_coder() {
     let run = oa(&[]);
-    assert_eq!(run.status, Some(2));
+    assert_eq!(run.status, Some(0));
+    assert!(
+        run.stdout.contains("Non-interactive terminal detected"),
+        "stdout: {}",
+        run.stdout
+    );
 }
 
 /// A delegated child configured for a lane that cannot honour the flag ends
@@ -849,7 +854,7 @@ fn serve_routed(mut stream: TcpStream, routes: &[Route], hits: mpsc::Sender<Hit>
 /// `OPENAGENTS_OLLAMA_HOST` for the local lane, and a test that does not set
 /// them is testing whatever the developer's machine happens to hold.
 fn oa_env(args: &[&str], env: &[(&str, &str)]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_oa"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_openagents"));
     command.args(args).env("NO_COLOR", "");
     for (key, value) in env {
         command.env(key, value);
@@ -1801,7 +1806,7 @@ fn all_drops_the_repository_filter_the_picker_applies() {
     let origin = server.origin();
     let elsewhere = std::env::temp_dir();
 
-    let filtered = Command::new(env!("CARGO_BIN_EXE_oa"))
+    let filtered = Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args([
             "--api-url",
             &origin,
@@ -1823,7 +1828,7 @@ fn all_drops_the_repository_filter_the_picker_applies() {
         "the refusal did not say what to do next: {stderr}"
     );
 
-    let everything = Command::new(env!("CARGO_BIN_EXE_oa"))
+    let everything = Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args([
             "--api-url",
             &origin,

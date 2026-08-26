@@ -1,12 +1,13 @@
 [package]
 name = "openagents-cli"
 version = "0.1.0"
-edition.workspace = true
+# The integrated Coder markdown engine uses edition 2024 let chains.
+edition = "2024"
 license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "oa"
+name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
@@ -50,9 +51,21 @@ wasmtime = { version = "36", default-features = false, features = ["cranelift", 
 ring = "0.17"
 vt100 = "0.15"
 portable-pty = "0.9"
+anstyle = "1.0"
+anstyle-lossy = "1.1.4"
+anstyle-syntect = "1.0.4"
+html-escape = "0.2"
+linkify = "0.10"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html", "simd"] }
+supports-color = "3.0"
+syntect = "5.3"
+textwrap = "0.16"
+two-face = { version = "0.4", default-features = false, features = ["syntect-fancy"] }
+url = "2"
 
 [dev-dependencies]
 tempfile = "3"
+pretty_assertions = "1"
 # The sandbox tests need guests that misbehave on purpose -- one that grows
 # past the ceiling, one that never returns, one that imports a capability its
 # manifest never declared. None of those can be a checked-in artifact, so the

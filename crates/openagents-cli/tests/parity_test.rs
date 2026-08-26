@@ -192,7 +192,7 @@ impl Run {
 fn oa(origin: &str, args: &[&str]) -> Run {
     let mut full = vec!["--api-url", origin];
     full.extend(args.iter().copied());
-    let result = Command::new(env!("CARGO_BIN_EXE_oa"))
+    let result = Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(&full)
         .env("NO_COLOR", "")
         .env("OPENAGENTS_TOKEN", "oa_pat_stub")

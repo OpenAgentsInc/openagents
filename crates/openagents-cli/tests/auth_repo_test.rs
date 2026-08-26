@@ -382,7 +382,7 @@ const OFFLINE_ORIGIN: &str = "http://127.0.0.1:59999";
 /// Run the real `oa` binary in `directory`, with a `HOME` of its own so
 /// nothing here reads or writes the developer's `~/.gitconfig` or token store.
 fn oa(directory: &Path, home: &Path, args: &[&str]) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_oa"))
+    let output = Command::new(env!("CARGO_BIN_EXE_openagents"))
         .current_dir(directory)
         .env("HOME", home)
         .env_remove("OPENAGENTS_TOKEN")

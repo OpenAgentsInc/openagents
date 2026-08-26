@@ -2,21 +2,23 @@ mod support;
 
 #[cfg(test)]
 mod tests {
-    use openagents_cli::runtime::{CoderRuntimeSession, Lane};
-    use openagents_cli::delegate::DelegationSupervisor;
-    use openagents_cli::workspace::Isolation;
-    use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
+    use openagents_cli::api_passthrough::{ApiPassthroughClient, resolve_api_path};
     use openagents_cli::auth::CredentialStore;
-    use openagents_cli::tracker::{slug_from_remote_url, IssueListOptions, RepoTarget, TrackerClient};
-    use openagents_cli::repo::{admitted_credential_request, parse_git_credential_request};
     use openagents_cli::box_client::BoxClient;
     use openagents_cli::computer::{
-        decide, probe_host, CommandRequest, ComputerPaths, PolicyConfig, Tier,
+        CommandRequest, ComputerPaths, PolicyConfig, Tier, decide, probe_host,
     };
+    use openagents_cli::delegate::DelegationSupervisor;
     use openagents_cli::forum::ForumClient;
-    use openagents_cli::memory_client::{read_bucket, MemoryClient};
-    use openagents_cli::api_passthrough::{resolve_api_path, ApiPassthroughClient};
+    use openagents_cli::memory_client::{MemoryClient, read_bucket};
+    use openagents_cli::repo::{admitted_credential_request, parse_git_credential_request};
+    use openagents_cli::runtime::{CoderRuntimeSession, Lane};
+    use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
     use openagents_cli::trace::{default_trace_stores, redact_text};
+    use openagents_cli::tracker::{
+        IssueListOptions, RepoTarget, TrackerClient, slug_from_remote_url,
+    };
+    use openagents_cli::workspace::Isolation;
 
     /// The old assertion read `store.load().unwrap().default_profile.is_some()`,
     /// which was true because `load` synthesizes a default profile when the file
@@ -74,11 +76,13 @@ mod tests {
             Some("closed"),
             "--state closed must reach the server, not be dropped"
         );
-        assert!(!result.issues[0]
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .is_empty());
+        assert!(
+            !result.issues[0]
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+        );
     }
 
     /// `projectsV2` is the route. `projects` is what the client used to ask for,
@@ -98,9 +102,11 @@ mod tests {
             "the live repository has at least four boards; got {}",
             boards.len()
         );
-        assert!(boards
-            .iter()
-            .any(|b| b.get("number").and_then(|n| n.as_u64()) == Some(4)));
+        assert!(
+            boards
+                .iter()
+                .any(|b| b.get("number").and_then(|n| n.as_u64()) == Some(4))
+        );
     }
 
     /// A route that does not exist must produce an error. This is the assertion
@@ -120,7 +126,10 @@ mod tests {
             listed.ok().map(|r| r.issues.len())
         );
         let projects = client.list_projects(&target, false).await;
-        assert!(projects.is_err(), "a refused project list must not yield an empty board set");
+        assert!(
+            projects.is_err(),
+            "a refused project list must not yield an empty board set"
+        );
     }
 
     /// `-R` is parsed, not guessed; a slug that is not `owner/repo` is refused.
@@ -307,9 +316,11 @@ mod tests {
         // Discovery describes real directories, not invented sessions.
         let specs = default_trace_stores(std::path::Path::new("/nonexistent-home"));
         assert_eq!(specs.len(), 3);
-        assert!(specs
-            .iter()
-            .all(|spec| spec.root.starts_with("/nonexistent-home")));
+        assert!(
+            specs
+                .iter()
+                .all(|spec| spec.root.starts_with("/nonexistent-home"))
+        );
 
         let redacted = redact_text("Bearer oa_pat_998877_TOKENBODY secret", "");
         assert!(
@@ -385,13 +396,17 @@ mod tests {
     #[tokio::test]
     async fn test_real_multi_lane_delegation_issue_85() {
         let stub = crate::support::start(vec!["child ", "did the work"], None).await;
-        std::env::set_var("OPENAGENTS_API_BASE", &stub.base);
+        unsafe {
+            std::env::set_var("OPENAGENTS_API_BASE", &stub.base);
+        }
 
-        let supervisor = DelegationSupervisor::new(1, "glm-5.3-flash", None)
-            .with_isolation(Isolation::None);
+        let supervisor =
+            DelegationSupervisor::new(1, "glm-5.3-flash", None).with_isolation(Isolation::None);
         let results = supervisor.dispatch("test task").await;
 
-        std::env::remove_var("OPENAGENTS_API_BASE");
+        unsafe {
+            std::env::remove_var("OPENAGENTS_API_BASE");
+        }
         assert_eq!(results.len(), 1);
         assert!(results[0].success, "{}", results[0].output);
         assert_eq!(results[0].output, "child did the work");
@@ -401,7 +416,7 @@ mod tests {
     fn test_cargo_metadata_issue_86() {
         let cargo_toml = include_str!("../Cargo.toml");
         assert!(cargo_toml.contains("name = \"openagents-cli\""));
-        assert!(cargo_toml.contains("name = \"oa\""));
+        assert!(cargo_toml.contains("name = \"openagents\""));
     }
 
     /// The old assertion was `mems.is_empty() || !mems.is_empty()`, true of

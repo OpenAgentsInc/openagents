@@ -1112,7 +1112,7 @@ fn test_the_binary_reports_real_pairing_state_without_printing_a_secret() {
     let (origin, _frames) = start_controller_host("machine-status", serde_json::json!({}));
     stub_home(directory.path(), &origin, "curated", &root);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_oa"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(["--api-url", &origin, "--json", "computer", "status"])
         .env("HOME", directory.path())
         .env_remove("OPENAGENTS_TOKEN")
@@ -1162,7 +1162,7 @@ fn test_the_binary_serves_a_bounded_request_over_an_outbound_connection() {
     );
     stub_home(directory.path(), &origin, "curated", &root);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_oa"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(["--api-url", &origin, "computer", "up"])
         .env("HOME", directory.path())
         .env_remove("OPENAGENTS_TOKEN")
@@ -1227,7 +1227,7 @@ fn test_the_binary_refuses_a_command_outside_the_allowlist() {
     );
     stub_home(directory.path(), &origin, "curated", &root);
 
-    let _ = std::process::Command::new(env!("CARGO_BIN_EXE_oa"))
+    let _ = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(["--api-url", &origin, "computer", "up"])
         .env("HOME", directory.path())
         .env_remove("OPENAGENTS_TOKEN")
@@ -1251,7 +1251,7 @@ fn test_the_binary_refuses_a_command_outside_the_allowlist() {
     assert_eq!(recorded.decision, "not_allowlisted");
 
     // And `oa computer journal` reads it back.
-    let listed = std::process::Command::new(env!("CARGO_BIN_EXE_oa"))
+    let listed = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(["computer", "journal"])
         .env("HOME", directory.path())
         .output()
@@ -1270,7 +1270,7 @@ fn test_the_binary_refuses_a_command_outside_the_allowlist() {
 fn test_the_binary_refuses_to_serve_when_it_is_not_paired() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(directory.path().join(".config/openagents")).unwrap();
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_oa"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(["--api-url", "http://127.0.0.1:1", "computer", "up"])
         .env("HOME", directory.path())
         .env_remove("OPENAGENTS_TOKEN")
@@ -1294,7 +1294,7 @@ fn test_the_binary_logout_removes_the_machine_token() {
     let (origin, _frames) = start_controller_host("machine-logout", serde_json::json!({}));
     stub_home(directory.path(), &origin, "curated", &root);
 
-    let removed = std::process::Command::new(env!("CARGO_BIN_EXE_oa"))
+    let removed = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(["--api-url", &origin, "--json", "computer", "logout"])
         .env("HOME", directory.path())
         .env_remove("OPENAGENTS_TOKEN")
@@ -1305,7 +1305,7 @@ fn test_the_binary_logout_removes_the_machine_token() {
         serde_json::from_str(&String::from_utf8_lossy(&removed.stdout)).unwrap();
     assert_eq!(value["removed"], serde_json::json!(true));
 
-    let after = std::process::Command::new(env!("CARGO_BIN_EXE_oa"))
+    let after = std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(["--api-url", &origin, "--json", "computer", "status"])
         .env("HOME", directory.path())
         .env_remove("OPENAGENTS_TOKEN")

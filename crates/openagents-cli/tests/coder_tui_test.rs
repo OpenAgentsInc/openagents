@@ -11,14 +11,14 @@
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use futures::Stream;
-use openagents_cli::interactive::{run_loop, runtime_actor, CoderApp, Control, TurnEvent};
+use openagents_cli::interactive::{CoderApp, Control, TurnEvent, run_loop, runtime_actor};
 use openagents_cli::runtime::{CoderRuntimeSession, Lane, TurnUsage};
 use openagents_cli::tools::HarnessToolRegistry;
 
 mod support;
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use ratatui::backend::TestBackend;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 const WIDTH: u16 = 74;
 const HEIGHT: u16 = 22;
@@ -604,11 +604,11 @@ async fn end_to_end_over_the_loop_with_a_stub_runtime() {
 /// The real loop, the real `runtime_actor`, and the real `CoderRuntimeSession`
 /// against a real socket speaking real server-sent events.
 ///
-/// The reader types a prompt, presses Enter, and the reply appears. The turn is
-/// interrupted deliberately after its first chunk to prove the transcript is
-/// showing text while the turn is still open — not assembling it at the end.
+/// The reader types a prompt and presses Enter. The first response chunk is
+/// held while the turn remains open, so a response that later requests a tool
+/// cannot appear as a completed answer before the tool loop finishes.
 #[tokio::test]
-async fn end_to_end_over_real_http_shows_a_chunk_before_the_turn_finishes() {
+async fn end_to_end_over_real_http_holds_a_chunk_until_the_turn_finishes() {
     let (gate_tx, gate_rx) = tokio::sync::oneshot::channel();
     let stub = support::start(vec!["Reading the ", "repository now."], Some(gate_rx)).await;
 
@@ -630,8 +630,7 @@ async fn end_to_end_over_real_http_shows_a_chunk_before_the_turn_finishes() {
     send_keys(&keys_tx, "read the repo");
     let _ = keys_tx.send(Event::Key(key(KeyCode::Enter)));
 
-    // Once the first chunk is on the transcript, exit — with the second chunk
-    // still held behind the gate on the server.
+    // Exit while the second chunk is still held behind the gate on the server.
     let keys_for_exit = keys_tx.clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
@@ -655,8 +654,8 @@ async fn end_to_end_over_real_http_shows_a_chunk_before_the_turn_finishes() {
         "the typed prompt is not on the frame:\n{frame}"
     );
     assert!(
-        frame.contains("Reading the"),
-        "the first streamed chunk never reached the transcript:\n{frame}"
+        !frame.contains("Reading the"),
+        "a provisional chunk reached the transcript before the turn finished:\n{frame}"
     );
     assert!(
         !frame.contains("repository now."),

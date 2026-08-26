@@ -6,7 +6,6 @@
 
 [workspace]
 members = [
-    "crates/coder-lite",
     "crates/openagents-cli",
     "crates/all-work-contract",
     "crates/oa-desktop-audio",

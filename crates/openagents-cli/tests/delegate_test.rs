@@ -148,13 +148,13 @@ echo '{"type":"result","is_error":false,"result":"first last"}'
 "#,
     );
     let _exclusive = exclusive();
-    std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
 
     let supervisor = DelegationSupervisor::new(1, "claude", None)
         .with_isolation(Isolation::Directory);
     let started = Instant::now();
     let (results, events) = run(&supervisor, "ignored by the stand-in", None).await;
-    std::env::remove_var("OA_CHILD_CLAUDE");
+    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
 
     assert!(results[0].success, "{}", results[0].output);
     let total = started.elapsed();
@@ -191,7 +191,7 @@ echo "{\"type\":\"result\",\"is_error\":false,\"result\":\"pid $$\"}"
 "#,
     );
     let _exclusive = exclusive();
-    std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
 
     let together = DelegationSupervisor::new(3, "claude", None)
         .with_isolation(Isolation::Directory);
@@ -205,7 +205,7 @@ echo "{\"type\":\"result\",\"is_error\":false,\"result\":\"pid $$\"}"
     let at = Instant::now();
     let (serial, _) = run(&queued, "ignored", None).await;
     let serial_took = at.elapsed();
-    std::env::remove_var("OA_CHILD_CLAUDE");
+    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
 
     assert_eq!(parallel.iter().filter(|r| r.success).count(), 3);
     assert_eq!(serial.iter().filter(|r| r.success).count(), 3);
@@ -254,11 +254,11 @@ exit 3
 "#,
     );
     let _exclusive = exclusive();
-    std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
     let supervisor = DelegationSupervisor::new(1, "claude", None)
         .with_isolation(Isolation::Directory);
     let (results, _) = run(&supervisor, "ignored", None).await;
-    std::env::remove_var("OA_CHILD_CLAUDE");
+    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
 
     assert!(!results[0].success, "a child that exited 3 reported success");
     assert!(results[0].failure.is_some());
@@ -266,11 +266,11 @@ exit 3
     assert!(why.contains("code 3"), "{why}");
     assert!(why.contains("the tests did not pass"), "{why}");
 
-    std::env::set_var("OA_CHILD_CLAUDE", "/nonexistent/no-such-agent");
+    unsafe { std::env::set_var("OA_CHILD_CLAUDE", "/nonexistent/no-such-agent"); }
     let supervisor = DelegationSupervisor::new(1, "claude", None)
         .with_isolation(Isolation::Directory);
     let (missing, _) = run(&supervisor, "ignored", None).await;
-    std::env::remove_var("OA_CHILD_CLAUDE");
+    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
 
     assert!(!missing[0].success);
     assert!(
@@ -301,14 +301,14 @@ sleep 30
         ),
     );
     let _exclusive = exclusive();
-    std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
 
     let supervisor = DelegationSupervisor::new(1, "claude", None)
         .with_isolation(Isolation::Directory);
     let at = Instant::now();
     let (results, _) = run(&supervisor, "ignored", Some(Duration::from_millis(700))).await;
     let took = at.elapsed();
-    std::env::remove_var("OA_CHILD_CLAUDE");
+    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
 
     assert!(!results[0].success);
     assert_eq!(results[0].failure.as_deref(), Some("stopped before finishing"));
@@ -489,14 +489,14 @@ async fn proxy_stub() -> ProxyStub {
 async fn a_delegated_child_ends_its_own_thread_by_saying_what_it_did() {
     let _guard = exclusive();
     let stub = proxy_stub().await;
-    std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin));
+    unsafe { std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin)); }
 
     let supervisor = DelegationSupervisor::new(1, "glm-5.3-flash", Some("oat_test".to_string()))
         .with_isolation(Isolation::None)
         .in_directory(Some(std::env::temp_dir()));
     let (results, _events) = run(&supervisor, "say something", None).await;
 
-    std::env::remove_var("OPENAGENTS_API_BASE");
+    unsafe { std::env::remove_var("OPENAGENTS_API_BASE"); }
 
     assert_eq!(results.len(), 1);
     assert!(

@@ -10,7 +10,12 @@ pub enum CompletionShell {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "oa", version = crate::VERSION, about = "OpenAgents Rust CLI", long_about = None)]
+#[command(
+    name = "openagents",
+    version = crate::VERSION,
+    about = "Manage OpenAgents resources from your terminal",
+    long_about = None
+)]
 #[command(args_conflicts_with_subcommands = false)]
 pub struct Cli {
     #[command(subcommand)]
@@ -50,6 +55,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Forge repositories and deployment targets
+    Forge(ForgeArgs),
     /// Authentication management
     Auth(AuthArgs),
     /// OpenAgents issue tracker operations
@@ -88,17 +95,40 @@ pub enum Commands {
 }
 
 #[derive(Args, Debug)]
+pub struct ForgeArgs {
+    #[command(subcommand)]
+    pub action: ForgeAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ForgeAction {
+    /// Repository operations on the forge
+    Repo(RepoArgs),
+    /// Deployment target operations on the forge
+    Deploy(DeployArgs),
+}
+
+#[derive(Args, Debug)]
 pub struct UpdateArgs {
     #[arg(long, help = "Release channel to resolve (default: stable)")]
     pub channel: Option<String>,
 
-    #[arg(long, help = "Install this exact version instead of resolving a channel")]
+    #[arg(
+        long,
+        help = "Install this exact version instead of resolving a channel"
+    )]
     pub version: Option<String>,
 
-    #[arg(long, help = "Report what the channel names without downloading anything")]
+    #[arg(
+        long,
+        help = "Report what the channel names without downloading anything"
+    )]
     pub check: bool,
 
-    #[arg(long, help = "Reinstall even when the channel names the running version")]
+    #[arg(
+        long,
+        help = "Reinstall even when the channel names the running version"
+    )]
     pub force: bool,
 }
 
@@ -288,7 +318,11 @@ pub enum IssueAction {
     Milestone {
         #[arg(help = "Issue number")]
         number: u64,
-        #[arg(long, value_name = "NUMBER", help = "Milestone number to put the issue on")]
+        #[arg(
+            long,
+            value_name = "NUMBER",
+            help = "Milestone number to put the issue on"
+        )]
         set: Option<u64>,
         #[arg(long, help = "Take the issue off whatever milestone it is on")]
         clear: bool,
@@ -416,7 +450,11 @@ pub enum ProjectAction {
         number: u64,
         #[arg(help = "Project item id")]
         item: String,
-        #[arg(long = "set", required = true, help = "Set a field, as FIELD=VALUE; repeatable")]
+        #[arg(
+            long = "set",
+            required = true,
+            help = "Set a field, as FIELD=VALUE; repeatable"
+        )]
         set: Vec<String>,
         #[arg(short = 'R', long, help = "Repository as owner/repo")]
         repo: Option<String>,
@@ -495,10 +533,7 @@ pub enum RepoAction {
             help = "Seconds to wait for durable provisioning (0 does not wait)"
         )]
         wait_timeout: u64,
-        #[arg(
-            long,
-            help = "Attach the new repository to an existing git worktree"
-        )]
+        #[arg(long, help = "Attach the new repository to an existing git worktree")]
         source: Option<String>,
         #[arg(
             long,
@@ -561,7 +596,11 @@ pub struct CoderArgs {
     #[arg(long, help = "Delegate prompt to parallel child agents")]
     pub delegate: bool,
 
-    #[arg(long, default_value_t = 1, help = "How many child agents run the prompt")]
+    #[arg(
+        long,
+        default_value_t = 1,
+        help = "How many child agents run the prompt"
+    )]
     pub count: usize,
 
     /// `--concurrency` is the name the TypeScript CLI gives this, and the name
@@ -581,7 +620,10 @@ pub struct CoderArgs {
     )]
     pub isolation: Option<String>,
 
-    #[arg(long, help = "Leave the children's worktrees on disk so their work can be read")]
+    #[arg(
+        long,
+        help = "Leave the children's worktrees on disk so their work can be read"
+    )]
     pub keep_workspaces: bool,
 
     // The four `--child-*` flags. `oa delegate` declared them and `oa coder
@@ -614,7 +656,10 @@ pub struct CoderArgs {
     )]
     pub child_ask: bool,
 
-    #[arg(long, help = "Target harness lane (e.g. flash, free, devin, claude, codex)")]
+    #[arg(
+        long,
+        help = "Target harness lane (e.g. flash, free, devin, claude, codex)"
+    )]
     pub lane: Option<String>,
 
     /// Pick the model a turn runs on by its catalog id.
@@ -633,7 +678,10 @@ pub struct CoderArgs {
     ///
     /// The same lane `--lane local` selects. Nothing in the conversation
     /// leaves the machine and nothing is metered.
-    #[arg(long, help = "Answer from a model running on this machine through Ollama")]
+    #[arg(
+        long,
+        help = "Answer from a model running on this machine through Ollama"
+    )]
     pub local: bool,
 
     /// Answer from the built-in stand-in instead of reaching a model.
@@ -642,7 +690,10 @@ pub struct CoderArgs {
     /// it cannot reach a model — this is the only way to get the stand-in, and
     /// it opens no thread, spends nothing, and says on every reply that it is
     /// not a model.
-    #[arg(long, help = "Answer from the built-in stand-in instead of reaching a model")]
+    #[arg(
+        long,
+        help = "Answer from the built-in stand-in instead of reaching a model"
+    )]
     pub offline: bool,
 
     /// The effort recorded on the thread as its admitted execution shape.
@@ -672,7 +723,10 @@ pub struct CoderArgs {
     )]
     pub resume: Option<String>,
 
-    #[arg(long, help = "With --resume, continue the most recent thread without asking")]
+    #[arg(
+        long,
+        help = "With --resume, continue the most recent thread without asking"
+    )]
     pub last: bool,
 
     #[arg(
@@ -733,10 +787,20 @@ impl CoderArgs {
     /// one won.
     pub fn lane_name(&self) -> Result<String, String> {
         let mut asked: Vec<(&str, String)> = Vec::new();
-        if let Some(lane) = self.lane.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(lane) = self
+            .lane
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             asked.push(("--lane", lane.to_string()));
         }
-        if let Some(model) = self.model.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(model) = self
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             asked.push(("--model", model.to_string()));
         }
         if self.local {
@@ -770,7 +834,7 @@ impl CoderArgs {
                         [] => return Ok("local".to_string()),
                         [only] => return Ok(format!("ollama:{only}")),
                         _ if named.windows(2).all(|pair| pair[0] == pair[1]) => {
-                            return Ok(format!("ollama:{}", named[0]))
+                            return Ok(format!("ollama:{}", named[0]));
                         }
                         _ => {}
                     }
@@ -861,10 +925,7 @@ pub struct DelegateArgs {
     #[arg(long, default_value_t = 1, help = "How many children run this prompt")]
     pub agents: usize,
 
-    #[arg(
-        long,
-        help = "Where children work. Defaults to the current directory"
-    )]
+    #[arg(long, help = "Where children work. Defaults to the current directory")]
     pub dir: Option<String>,
 
     #[arg(
@@ -888,7 +949,10 @@ pub struct DelegateArgs {
     )]
     pub isolation: Option<String>,
 
-    #[arg(long, help = "Leave the children's worktrees on disk so their work can be read")]
+    #[arg(
+        long,
+        help = "Leave the children's worktrees on disk so their work can be read"
+    )]
     pub keep_workspaces: bool,
 
     #[arg(
@@ -1082,7 +1146,11 @@ pub enum BoxAction {
     Run {
         #[arg(help = "Box VM id, such as bx_8bhkse3n")]
         box_id: String,
-        #[arg(required = true, trailing_var_arg = true, help = "Command to run in the background")]
+        #[arg(
+            required = true,
+            trailing_var_arg = true,
+            help = "Command to run in the background"
+        )]
         command: Vec<String>,
         #[arg(long, help = "Conversation id override")]
         conversation: Option<String>,
@@ -1099,7 +1167,10 @@ pub enum BoxAction {
         // `count: u64`, clap refused every `--request-id` invocation for a
         // missing `--count`, and the only way to reach the read path was to
         // pass a number the command then ignored.
-        #[arg(long, help = "Number of boxes to request; required without --request-id")]
+        #[arg(
+            long,
+            help = "Number of boxes to request; required without --request-id"
+        )]
         count: Option<u64>,
         #[arg(long, help = "Comma-separated labels for the fanout boxes")]
         labels: Option<String>,
@@ -1107,7 +1178,10 @@ pub enum BoxAction {
         budgeted: bool,
         #[arg(long, help = "Conversation id override")]
         conversation: Option<String>,
-        #[arg(long, help = "Read an existing plan by its request id instead of asking for one")]
+        #[arg(
+            long,
+            help = "Read an existing plan by its request id instead of asking for one"
+        )]
         request_id: Option<String>,
     },
 }
@@ -1140,7 +1214,11 @@ pub enum BoxRunAction {
         offset: Option<u64>,
         #[arg(long, help = "Keep reading until the run reaches a terminal state")]
         follow: bool,
-        #[arg(long, default_value_t = 1000, help = "Milliseconds between polls while following")]
+        #[arg(
+            long,
+            default_value_t = 1000,
+            help = "Milliseconds between polls while following"
+        )]
         interval_ms: u64,
         #[arg(long, help = "Conversation id override")]
         conversation: Option<String>,
@@ -1241,7 +1319,10 @@ pub struct TraceArgs {
 pub enum TraceAction {
     /// Discover trace files in the local agent stores
     List {
-        #[arg(long, help = "Scan this directory instead of the default stores. Repeatable")]
+        #[arg(
+            long,
+            help = "Scan this directory instead of the default stores. Repeatable"
+        )]
         path: Vec<String>,
         #[arg(long, default_value_t = 20, help = "Most files to list per store")]
         limit: usize,
@@ -1284,7 +1365,7 @@ pub enum TraceAction {
 /// refusing a shell the other binary accepts.
 pub fn completion_script(shell: CompletionShell) -> String {
     use clap::CommandFactory;
-    use clap_complete::{generate, Shell};
+    use clap_complete::{Shell, generate};
     let generated = match shell {
         CompletionShell::Bash | CompletionShell::Sh => Shell::Bash,
         CompletionShell::Zsh => Shell::Zsh,
@@ -1298,7 +1379,10 @@ pub fn completion_script(shell: CompletionShell) -> String {
 
 pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     crate::diag::set_verbose(cli.verbose);
-    crate::diag::set_color(!cli.no_color);
+    crate::diag::initialize_color_from_environment();
+    if cli.no_color {
+        crate::diag::set_color(false);
+    }
     // The failure path is reached from several hundred sites that never took
     // the flag, so it is recorded once here and read there.
     crate::errors::set_json(cli.json);
@@ -1347,11 +1431,17 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let api_base = format!("{}/api/v1", endpoint.origin);
 
     match command {
+        Commands::Forge(forge) => match forge.action {
+            ForgeAction::Repo(repo) => {
+                run_repo(repo.action, &endpoint, &cred_store, cli.json).await
+            }
+            ForgeAction::Deploy(deploy) => {
+                run_deploy(deploy.action, &api_base, token, cli.json).await
+            }
+        },
         Commands::Auth(auth) => run_auth(auth.action, &endpoint, &cred_store, cli.json).await,
         Commands::Issue(issue) => run_issue(issue.action, &api_base, token, cli.json).await,
-        Commands::Project(project) => {
-            run_project(project.action, &api_base, token, cli.json).await
-        }
+        Commands::Project(project) => run_project(project.action, &api_base, token, cli.json).await,
         Commands::Milestone(milestone) => {
             run_milestone(milestone.action, &api_base, token, cli.json).await
         }
@@ -1426,8 +1516,9 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 // readable rather than painted over by the full-screen
                 // session and wiped on exit.
                 let resumed = if let Some(named) = coder.resume.as_deref() {
-                    let interactive =
-                        !coder.plain && !cli.json && std::io::IsTerminal::is_terminal(&std::io::stdin());
+                    let interactive = !coder.plain
+                        && !cli.json
+                        && std::io::IsTerminal::is_terminal(&std::io::stdin());
                     let request = crate::resume::ResumeRequest {
                         thread_id: Some(named).filter(|id| !id.is_empty()),
                         last: coder.last,
@@ -1478,9 +1569,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         boards
                             .iter()
-                            .map(|b| {
-                                format!("{} — {} ({} topics)", b.slug, b.title, b.topic_count)
-                            })
+                            .map(|b| format!("{} — {} ({} topics)", b.slug, b.title, b.topic_count))
                             .collect()
                     };
                     let value = serde_json::json!({
@@ -1573,8 +1662,7 @@ pub(crate) fn fail_as(error: crate::errors::CliError) -> ! {
 // ---------------------------------------------------------------------------
 
 use crate::auth::{
-    CredentialStore, DeviceClient, Endpoint, PendingDeviceAuthorization, PendingStore,
-    Secret,
+    CredentialStore, DeviceClient, Endpoint, PendingDeviceAuthorization, PendingStore, Secret,
 };
 
 /// Unwrap or refuse. Every auth, repository, tracker, box, and memory path
@@ -2078,11 +2166,8 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
             // so `--source` is reported as not done rather than done wrong.
             let attached = match source.as_deref() {
                 Some(directory) if created.lifecycle_state == "ready" => {
-                    let (_, clone_url) = or_fail(
-                        client
-                            .clone_info(&created.owner.login, &created.name)
-                            .await,
-                    );
+                    let (_, clone_url) =
+                        or_fail(client.clone_info(&created.owner.login, &created.name).await);
                     let path = std::path::PathBuf::from(directory);
                     let remote = remote.as_deref().unwrap_or("origin");
                     Some((
@@ -2099,8 +2184,7 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
             };
 
             if json {
-                let mut value =
-                    serde_json::to_value(&created).unwrap_or(serde_json::Value::Null);
+                let mut value = serde_json::to_value(&created).unwrap_or(serde_json::Value::Null);
                 if let Some((attached, path)) = &attached {
                     value = serde_json::json!({
                         "repository": value,
@@ -2340,7 +2424,10 @@ fn pad(text: &str, width: usize) -> String {
 }
 
 fn issue_row(issue: &serde_json::Value) -> String {
-    let extension = issue.get("openagents").cloned().unwrap_or(serde_json::Value::Null);
+    let extension = issue
+        .get("openagents")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
     let labels = names(issue.get("labels"), "name");
     format!(
         "{}{}{}{}{}",
@@ -2361,8 +2448,14 @@ fn issue_row(issue: &serde_json::Value) -> String {
 }
 
 fn issue_view_human(issue: &serde_json::Value) -> Vec<String> {
-    let extension = issue.get("openagents").cloned().unwrap_or(serde_json::Value::Null);
-    let milestone = issue.get("milestone").cloned().unwrap_or(serde_json::Value::Null);
+    let extension = issue
+        .get("openagents")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let milestone = issue
+        .get("milestone")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
     let author = issue
         .get("user")
         .map(|u| field(u, "login"))
@@ -2377,7 +2470,10 @@ fn issue_view_human(issue: &serde_json::Value) -> Vec<String> {
         ),
         format!("State:      {}", field(issue, "state")),
         format!("Author:     {}", author),
-        format!("Labels:     {}", or_none(&names(issue.get("labels"), "name"))),
+        format!(
+            "Labels:     {}",
+            or_none(&names(issue.get("labels"), "name"))
+        ),
         format!(
             "Assignees:  {}",
             or_none(&names(issue.get("assignees"), "login"))
@@ -2390,13 +2486,14 @@ fn issue_view_human(issue: &serde_json::Value) -> Vec<String> {
                 milestone_title
             }
         ),
-        format!(
-            "Progress:   {}",
-            {
-                let progress = field(&extension, "progress");
-                if progress.is_empty() { "unknown".to_string() } else { progress }
+        format!("Progress:   {}", {
+            let progress = field(&extension, "progress");
+            if progress.is_empty() {
+                "unknown".to_string()
+            } else {
+                progress
             }
-        ),
+        }),
         format!(
             "Blocked:    {}",
             if extension.get("blocked") == Some(&serde_json::Value::Bool(true)) {
@@ -2409,7 +2506,10 @@ fn issue_view_human(issue: &serde_json::Value) -> Vec<String> {
             "Blocked by: {}",
             or_none(&issue_references(extension.get("blocked_by")))
         ),
-        format!("Blocks:     {}", or_none(&issue_references(extension.get("blocks")))),
+        format!(
+            "Blocks:     {}",
+            or_none(&issue_references(extension.get("blocks")))
+        ),
         String::new(),
         field(issue, "body"),
     ]
@@ -2491,7 +2591,10 @@ fn resolve_body(body: Option<String>, body_file: Option<String>) -> Option<Strin
                 use std::io::Read;
                 let mut buffer = String::new();
                 if let Err(error) = std::io::stdin().read_to_string(&mut buffer) {
-                    fail(&format!("Could not read the body from standard input: {}", error));
+                    fail(&format!(
+                        "Could not read the body from standard input: {}",
+                        error
+                    ));
                 }
                 Some(buffer)
             } else {
@@ -2561,10 +2664,14 @@ async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, j
             };
             if !result.issues.is_empty() {
                 human.push(String::new());
-                human.push(match result.pagination.get("total").and_then(|t| t.as_u64()) {
-                    Some(total) => format!("Showing {} of {} issues.", result.issues.len(), total),
-                    None => format!("Showing {} issues.", result.issues.len()),
-                });
+                human.push(
+                    match result.pagination.get("total").and_then(|t| t.as_u64()) {
+                        Some(total) => {
+                            format!("Showing {} of {} issues.", result.issues.len(), total)
+                        }
+                        None => format!("Showing {} issues.", result.issues.len()),
+                    },
+                );
             }
             emit(json, &value, &human);
         }
@@ -2668,11 +2775,7 @@ async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, j
             match resolve_body(body, body_file) {
                 Some(text) => {
                     let comment = or_fail(tracker.comment_issue(&target, number, &text).await);
-                    emit(
-                        json,
-                        &comment,
-                        &[format!("Commented on #{}.", number)],
-                    );
+                    emit(json, &comment, &[format!("Commented on #{}.", number)]);
                 }
                 // No body is a read of the thread, which is what the
                 // TypeScript CLI does with `issue view --comments`.
@@ -2750,11 +2853,15 @@ async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, j
             let target = target_or_fail(repo);
             let mut value: Option<serde_json::Value> = None;
             if !add.is_empty() {
-                value = Some(or_fail(tracker.add_dependencies(&target, number, &add).await));
+                value = Some(or_fail(
+                    tracker.add_dependencies(&target, number, &add).await,
+                ));
             }
             for blocked_by in &remove {
                 value = Some(or_fail(
-                    tracker.remove_dependency(&target, number, *blocked_by).await,
+                    tracker
+                        .remove_dependency(&target, number, *blocked_by)
+                        .await,
                 ));
             }
             let graph = match value {
@@ -2910,7 +3017,10 @@ fn project_items_human(value: &serde_json::Value) -> Vec<String> {
     items
         .iter()
         .map(|item| {
-            let issue = item.get("issue").cloned().unwrap_or(serde_json::Value::Null);
+            let issue = item
+                .get("issue")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             let pairs: Vec<String> = item
                 .get("values")
                 .and_then(serde_json::Value::as_object)
@@ -2971,7 +3081,11 @@ async fn run_project(action: ProjectAction, api_base: &str, token: Option<String
                 ),
                 format!("Owner:    {}", {
                     let owner = field(&project, "owner");
-                    if owner.is_empty() { "unknown".to_string() } else { owner }
+                    if owner.is_empty() {
+                        "unknown".to_string()
+                    } else {
+                        owner
+                    }
                 }),
                 String::new(),
                 field(&project, "description"),
@@ -3142,11 +3256,7 @@ async fn run_project(action: ProjectAction, api_base: &str, token: Option<String
             );
             emit(json, &value, &project_items_human(&value));
         }
-        ProjectAction::ItemRemove {
-            number,
-            item,
-            repo,
-        } => {
+        ProjectAction::ItemRemove { number, item, repo } => {
             let value = {
                 let target = target_or_fail(repo);
                 or_fail(tracker.project_remove_item(&target, number, &item).await)
@@ -3238,7 +3348,11 @@ fn run_view_human(r: &crate::box_client::BoxRunRecord) -> Vec<String> {
         ),
         format!(
             "Timed Out:    {}",
-            if r.timed_out == Some(true) { "yes" } else { "no" }
+            if r.timed_out == Some(true) {
+                "yes"
+            } else {
+                "no"
+            }
         ),
     ];
     if let Some(reason) = &r.failure_reason {
@@ -3325,7 +3439,11 @@ async fn run_box(action: BoxAction, api_base: &str, token: Option<String>, json:
             if let Some(name) = &record.label {
                 human.push(format!("Label: {}", name));
             }
-            emit(json, &serde_json::json!({ "box": to_value(&record) }), &human);
+            emit(
+                json,
+                &serde_json::json!({ "box": to_value(&record) }),
+                &human,
+            );
         }
         BoxAction::View {
             box_id,
@@ -3424,7 +3542,9 @@ async fn run_box(action: BoxAction, api_base: &str, token: Option<String>, json:
                         })
                         .unwrap_or_default();
                     let Some(count) = count else {
-                        fail("pass --count <n> to request a fanout, or --request-id <id> to read an existing plan");
+                        fail(
+                            "pass --count <n> to request a fanout, or --request-id <id> to read an existing plan",
+                        );
                     };
                     or_fail(client.fanout(&id, count, &parsed, budgeted).await)
                 }
@@ -3438,11 +3558,7 @@ async fn run_box(action: BoxAction, api_base: &str, token: Option<String>, json:
     }
 }
 
-async fn run_box_runs(
-    action: BoxRunAction,
-    client: &crate::box_client::BoxClient,
-    json: bool,
-) {
+async fn run_box_runs(action: BoxRunAction, client: &crate::box_client::BoxClient, json: bool) {
     match action {
         BoxRunAction::List {
             box_id,
@@ -3797,7 +3913,10 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
 
             human.push(format!(
                 "Schema: {}",
-                summary.schema_version.as_deref().unwrap_or("(missing schema_version)")
+                summary
+                    .schema_version
+                    .as_deref()
+                    .unwrap_or("(missing schema_version)")
             ));
             if let Some(session) = &summary.session_id {
                 human.push(format!("Session: {}", session));
@@ -3820,7 +3939,11 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
                         .join(", ")
                 })
                 .unwrap_or_default();
-            human.push(format!("Steps: {} ({})", summary.steps.unwrap_or(0), sources));
+            human.push(format!(
+                "Steps: {} ({})",
+                summary.steps.unwrap_or(0),
+                sources
+            ));
             let models = summary.models.clone().unwrap_or_default();
             human.push(format!(
                 "Models: {}",
@@ -3846,7 +3969,10 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
             }
             emit(json, &trace_summary_document(&summary), &human);
         }
-        TraceAction::Redact { trace: argument, file } => {
+        TraceAction::Redact {
+            trace: argument,
+            file,
+        } => {
             let argument = match argument.or(file) {
                 Some(argument) => argument,
                 None => fail("Name the trace file to redact."),
@@ -3951,7 +4077,11 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
             // The server decides which schema versions it accepts. This only
             // catches a file that names none at all, which it can say something
             // more useful about the file than a 422 can.
-            if document.get("schema_version").and_then(|v| v.as_str()).is_none() {
+            if document
+                .get("schema_version")
+                .and_then(|v| v.as_str())
+                .is_none()
+            {
                 fail(&format!(
                     "{} carries no schema_version, so it is not an ATIF document. `oa trace show {}` reports what it is.",
                     path.display(),
@@ -4212,11 +4342,11 @@ fn conclude_fleet_target(target: &serde_json::Value) {
                 "The fleet target {id} reached {status}{code}."
             )));
         }
-        "needs_rolling_replace" => fail_as(
-            crate::errors::CliError::DeploymentRollingReplaceRequired(format!(
-                "The fleet target {id} needs a rolling replacement before it can be live."
-            )),
-        ),
+        "needs_rolling_replace" => {
+            fail_as(crate::errors::CliError::DeploymentRollingReplaceRequired(
+                format!("The fleet target {id} needs a rolling replacement before it can be live."),
+            ))
+        }
         _ => {}
     }
 }
@@ -4295,7 +4425,12 @@ fn run_provider(action: ProviderAction, json: bool) {
 /// autonomous reasoning turn (offline fallback).` and exit 0, with no flag
 /// that could ask for it.
 fn run_offline_coder(coder: CoderArgs) {
-    let Some(prompt) = coder.prompt.as_deref().map(str::trim).filter(|p| !p.is_empty()) else {
+    let Some(prompt) = coder
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    else {
         fail(
             "--offline answers one prompt from the built-in stand-in. Give it one: \
              `oa coder --offline \"<prompt>\"`",
@@ -4363,12 +4498,8 @@ async fn run_headless_coder(
         },
     );
     let lane = crate::runtime::Lane::from_str(&lane_name);
-    let mut runtime = crate::runtime::CoderRuntimeSession::new(
-        lane,
-        Some(api_base.to_string()),
-        token,
-        tools,
-    );
+    let mut runtime =
+        crate::runtime::CoderRuntimeSession::new(lane, Some(api_base.to_string()), token, tools);
     runtime.reasoning = coder.reasoning.clone();
     runtime.repository = repository;
     if let Some(resumption) = &resumed {

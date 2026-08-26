@@ -234,15 +234,12 @@ for platform in $targets; do
   # Every artifact is rebuilt from source into its own target directory. Nothing
   # is copied forward from a previous run, so a build that fails cannot leave a
   # stale binary behind for the verification step to bless.
-  # The shipped binary is `coder-lite`. It answers both surfaces: bare, it is
-  # the coder session; given a command `openagents-cli` defines, it dispatches
-  # to that command. Shipping the library crate's own binary instead would give
-  # the subcommands without the session; shipping a session that refused them
-  # would drop `issue`, `repo`, `auth` -- and `update`, so an installed build
-  # could not replace itself.
+  # The shipped binary is the OpenAgents CLI. With no command it opens Coder;
+  # named commands use the shared CLI runtime. One binary keeps Coder, forge,
+  # trace, and self-update on the same release path.
   case "$triple" in
-    *windows*) output="$repo_root/target/$triple/release/coder-lite.exe" ;;
-    *) output="$repo_root/target/$triple/release/coder-lite" ;;
+    *windows*) output="$repo_root/target/$triple/release/openagents.exe" ;;
+    *) output="$repo_root/target/$triple/release/openagents" ;;
   esac
   rm -f "$output"
 
@@ -260,7 +257,7 @@ for platform in $targets; do
   # way the comparison fell. `build.rs` declares the dependency on this
   # variable, so changing it rebuilds.
   if ! (cd "$repo_root" && OPENAGENTS_CLI_RELEASE_VERSION="$version" \
-    $build_command --release -p coder-lite --target "$triple") \
+    $build_command --release -p openagents-cli --target "$triple") \
     >"$build_log" 2>&1; then
     echo "  SKIP: build failed (see $build_log)"
     tail -5 "$build_log" | sed 's/^/    /'

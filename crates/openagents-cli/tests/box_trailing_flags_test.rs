@@ -102,7 +102,7 @@ struct Output {
 }
 
 fn oa(args: &[&str]) -> Output {
-    let result = Command::new(env!("CARGO_BIN_EXE_oa"))
+    let result = Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(args)
         .env("NO_COLOR", "")
         .output()

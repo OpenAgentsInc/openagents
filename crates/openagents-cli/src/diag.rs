@@ -15,11 +15,11 @@
 //!
 //! ## Colour
 //!
-//! `--no-color` turns off every colour the coder session draws and exports
-//! `NO_COLOR=1`, which is the convention a delegated child harness reads. The
-//! non-interactive command families print no escape sequences at all, so there
-//! is nothing there for it to suppress; that is a property of those printers,
-//! not a claim this flag makes about them.
+//! `--no-color` turns off every colour the Coder session draws. Child terminals
+//! receive `NO_COLOR=1` when they start. The non-interactive command families
+//! print no escape sequences at all, so there is nothing there for it to
+//! suppress; that is a property of those printers, not a claim this flag makes
+//! about them.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -35,26 +35,26 @@ pub fn verbose() -> bool {
     VERBOSE.load(Ordering::Relaxed)
 }
 
-/// Turn colour off, and tell anything this process spawns.
+/// Read the process-level `NO_COLOR` convention before work starts.
 ///
-/// `NO_COLOR` is set rather than merely read so a delegated child harness —
-/// which is a separate process with its own idea of styling — inherits the
-/// reader's choice.
+/// Child terminals receive this setting explicitly when they start. Keeping
+/// the value in process state avoids mutating the process environment while
+/// the TUI is running.
+pub fn initialize_color_from_environment() {
+    let enabled = std::env::var("NO_COLOR")
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    COLOR.store(enabled, Ordering::Relaxed);
+}
+
+/// Set the colour state for this process.
 pub fn set_color(on: bool) {
     COLOR.store(on, Ordering::Relaxed);
-    if !on {
-        std::env::set_var("NO_COLOR", "1");
-    }
 }
 
 /// Whether the coder session may draw in colour.
-///
-/// `NO_COLOR` in the environment counts, so the flag and the convention agree.
 pub fn color() -> bool {
     COLOR.load(Ordering::Relaxed)
-        && std::env::var("NO_COLOR")
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true)
 }
 
 /// Note a request about to be sent.
@@ -102,15 +102,12 @@ mod tests {
     }
 
     #[test]
-    fn no_color_is_exported_for_children() {
-        std::env::remove_var("NO_COLOR");
-        set_color(true);
+    fn no_color_state_disables_colour() {
+        // The process environment is never mutated in this in-process test.
+        COLOR.store(true, Ordering::Relaxed);
         assert!(color());
-        set_color(false);
+        COLOR.store(false, Ordering::Relaxed);
         assert!(!color());
-        assert_eq!(std::env::var("NO_COLOR").as_deref(), Ok("1"));
-        // Leave the process as the other tests expect to find it.
-        std::env::remove_var("NO_COLOR");
-        set_color(true);
+        COLOR.store(true, Ordering::Relaxed);
     }
 }

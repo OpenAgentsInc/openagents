@@ -117,7 +117,7 @@ struct Run {
 fn oa(origin: &str, args: &[&str]) -> Run {
     let mut full = vec!["--api-url", origin];
     full.extend(args.iter().copied());
-    let result = Command::new(env!("CARGO_BIN_EXE_oa"))
+    let result = Command::new(env!("CARGO_BIN_EXE_openagents"))
         .args(&full)
         .env("NO_COLOR", "")
         // `repo create` refuses without a credential rather than sending an

@@ -103,7 +103,7 @@ fn concurrent_oa_processes_all_record_their_authorization() {
             let home = home.path().to_path_buf();
             let origin = origin.clone();
             thread::spawn(move || {
-                Command::new(env!("CARGO_BIN_EXE_oa"))
+                Command::new(env!("CARGO_BIN_EXE_openagents"))
                     .args(["--api-url", &origin, "auth", "login", "--headless"])
                     .env("NO_COLOR", "")
                     .env("HOME", &home)

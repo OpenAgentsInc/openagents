@@ -434,7 +434,7 @@ async fn the_openagents_tool_prefers_path_and_falls_back_to_this_binary() {
     let original = std::env::var("PATH").unwrap_or_default();
 
     // With something named `openagents` on PATH, that is what runs.
-    std::env::set_var("PATH", format!("{}:{original}", dir.path().display()));
+    unsafe { std::env::set_var("PATH", format!("{}:{original}", dir.path().display())); }
     let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
     let output = registry
         .execute_tool(&ToolCall {
@@ -446,10 +446,10 @@ async fn the_openagents_tool_prefers_path_and_falls_back_to_this_binary() {
     let on_path = resolve_openagents_cli();
 
     // With nothing named `openagents` anywhere, this binary answers for it.
-    std::env::set_var("PATH", "");
+    unsafe { std::env::set_var("PATH", ""); }
     let fallback = resolve_openagents_cli();
 
-    std::env::set_var("PATH", original);
+    unsafe { std::env::set_var("PATH", original); }
 
     assert!(
         output.output.contains("SHIM-ON-PATH"),
