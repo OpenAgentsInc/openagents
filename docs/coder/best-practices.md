@@ -160,13 +160,28 @@ coder's core tools under the permission profile.
 refuses undeclared imports and stale digests; review checks the manifest
 against the shape rules.
 
-### P3. A catalog line is contested space — `adopted`
+### P3. A manifest's own words are its ranking, and rank is contested — `adopted`
 
-The capability tool carries each installed plugin's name and first sentence,
-capped at twelve. A plugin competes for that slot with everything installed;
-its first sentence must earn a model's attention on the turns where the
-plugin applies.
-**Provenance:** harvest. **Detection:** review question when the A/B shows
+The `capability` tool is constant-size on purpose (#42): the catalog is
+searched, never enumerated in the standing prompt, so the prompt does not
+grow as plugins are installed. A search returns at most `SEARCH_LIMIT` (5)
+matches, ranked by overlap with each manifest's `name` and `description`,
+plus a count of the remainder. A plugin does not compete for a standing
+slot — it competes for rank in a five-result search, and the text deciding
+that rank is its own manifest description. Write it as the words a model
+would use when it needs the plugin.
+
+**Corrected 2026-08-26.** This entry previously read "The capability tool
+carries each installed plugin's name and first sentence, capped at twelve."
+That is false in both harnesses. It was carried from a design document in
+the openagents.com repository into the ledger as `adopted` without ever
+being read against the code — the exact laundering the provenance field
+exists to prevent (see K1).
+
+**Provenance:** `crates/openagents-cli/src/plugins.rs` (`SEARCH_LIMIT`,
+`capability_tool_definition`) and
+`packages/openagents-cli/src/coder-capability.ts`, both read 2026-08-26.
+**Detection:** review question when the A/B shows
 a plugin installed but never invoked on tasks it should have served.
 
 ## Optimization
@@ -233,6 +248,42 @@ structural, not statistical — say so rather than implying precision the
 suite cannot carry (ledger M5).
 **Provenance:** dspy-gepa. **Detection:** candidate evidence without a
 stated trial count is not a promotion argument.
+
+## Knowledge
+
+### K1. A claim's provenance is where it was verified, not where it was read — `adopted`
+
+A design document, an issue body, a teardown, or a task brief is evidence
+about its author's reading. It is not evidence about the code. Before a
+claim enters this ledger, an issue's premises, or a brief handed to another
+agent, read it against the source and cite the file and symbol. A claim
+sourced to another document must say so and stays `proposed` until someone
+checks it.
+
+**Provenance:** three failures on 2026-08-26, all in briefs and ledger
+entries written from a fast survey and handed out as authoritative:
+
+- P3 asserted a twelve-slot catalog carrying each plugin's first sentence.
+  Both harnesses are constant-size by design and search the catalog instead;
+  the claim came from a document in the openagents.com repository and was
+  never read against `plugins.rs` or `coder-capability.ts`.
+- The #117 brief asserted a `tui.rs` fixed-row template with fleet/composer/
+  spacer constants. That sentence describes `coder-ui.ts`; it was lifted
+  from a Claude Code teardown comparing the TypeScript UI and attached to a
+  Rust file. Four further premises in the same brief also did not hold, one
+  of which had the port direction backwards — the TypeScript composer is a
+  flat string with no cursor index, history, or completion, so capabilities
+  the brief called owed were already present.
+- The #122 brief asserted catalog lines were literals in the two CLIs. They
+  are `description` fields in `plugins/<id>/manifest.json`; grep for one
+  returns zero source files. The same brief said twelve plugins; there are
+  thirteen.
+
+**Detection:** every premise in an issue or brief carries the file and
+symbol it was read from. A premise without one is a question for the agent
+to verify, and must be marked as such rather than stated flat. When an agent
+reports a premise false, the correction lands in the source document — an
+uncorrected brief re-teaches the error to the next reader.
 
 ## Repository
 

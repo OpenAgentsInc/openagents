@@ -77,9 +77,9 @@ analogical. The correspondence:
 | DSPy concept | Coder counterpart | State |
 | --- | --- | --- |
 | Signature (typed I/O contract) | Plugin manifest input/output schemas, host-validated | Shipped |
-| Module (a callable unit) | WASM plugin, content-addressed by digest | Shipped, twelve in-tree |
+| Module (a callable unit) | WASM plugin, content-addressed by digest | Shipped, thirteen in-tree |
 | Program (composed modules) | The coder harness: system prompt + tools + catalog + plugins per turn | Shipped |
-| Demos / instructions (optimizable text) | System prompt, tool descriptions, the twelve catalog lines, knowledge-base stances | Shipped, but **compiled into code** |
+| Demos / instructions (optimizable text) | System prompt and tool descriptions (literals in both CLIs); plugin manifest descriptions (already data) | Shipped; the prompt and tool text still compiled in |
 | Retrieval rail | `knowledge-base` plugin: corpus queried every turn, attached as a bracketed note | Shipped, with a governed promotion path |
 | Metric | Harbor verifier + ATIF token metrics per trial | Shipped (the Gym) |
 | Trace | ATIF trajectory per trial | Shipped |
@@ -93,11 +93,15 @@ Two entries deserve emphasis:
   reviewed-like-content with stable ids and a promotion path from system
   memory. This is the cleanest channel an optimizer could write
   candidates into — and the one with governance already in place.
-- **The catalog lines are the selection policy DSPy would tune.** Twelve
-  slots, one sentence each, contested (best practice P3). Which plugin a
-  model reaches for on which task class is a function of that text today;
-  the registry strategy's "selection loop" is this surface under
-  optimization.
+- **Manifest descriptions are the selection policy DSPy would tune.** The
+  `capability` tool is constant-size by design (#42): it searches the
+  catalog rather than enumerating it, returning at most five matches ranked
+  by overlap with each manifest's `name` and `description`, plus a count of
+  the remainder. So the tunable text is each plugin's own manifest
+  description, and the policy is its rank on a given query — which is the
+  registry strategy's "selection loop" already sitting in data rather than
+  in code. Corrected 2026-08-26; this bullet previously described twelve
+  standing catalog slots, which neither harness has (best practice K1).
 
 What we do not have — and did not have in DSE either — is the optimizer.
 The rest of the machine is more complete than DSE's ever was, because the
@@ -113,7 +117,7 @@ Every argument has a concrete referent here:
 
 | GEPA argument | Gym referent |
 | --- | --- |
-| `seed_candidate` | The current text surfaces: system prompt, tool descriptions, catalog lines, stances |
+| `seed_candidate` | The current text surfaces: system prompt, tool descriptions, manifest descriptions, stances |
 | `trainset` (dev) | `tb2-quick`, plus `owned-closed-issues` once its environments exist |
 | `valset` (holdout) | `tb2-cross-section` — run sparingly, exactly as the runbook already directs |
 | metric | Verifier acceptance minus a token-cost term, read from the trial's `result.json` and ATIF metrics |
@@ -161,7 +165,7 @@ adapter is Python, and `bench/` is where both live. Concretely:
   data the optimizer can diff and the build can verify, rather than string
   literals inside `crates/coder-lite` and `packages/openagents-cli`. The
   knowledge base already has this shape (corpus file → build → digest);
-  the system prompt, tool descriptions, and catalog lines need the same
+  the system prompt and tool descriptions need the same
   treatment. This staging is also what lets a human cycle (#119) and an
   optimizer cycle produce identical artifact shapes.
 
@@ -179,7 +183,7 @@ Two new tracker issues, sequenced against the existing loop set
 
 1. **Stage the optimizable text surfaces as artifacts**
    (OpenAgentsInc/openagents#122). Extract system prompt, tool
-   descriptions, and catalog lines into versioned data with digests,
+   descriptions, and manifest descriptions into versioned data with digests,
    consumed by both CLIs; define the candidate-diff format. Prerequisite
    for the optimizer; makes #119's manual levers diffable artifacts too.
 2. **A GEPA lane over the Gym** (OpenAgentsInc/openagents#123).
