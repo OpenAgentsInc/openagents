@@ -258,8 +258,26 @@ an evidence pointer is rejected at the adopt step. Save the output to
 ## 9. Current state (update as it changes)
 
 - Baselines on record: `tb2-quick`, local lane, `qwen3.8:27b-mtp-q8_0` at
-  0.5 success (two runs), plus the deliberate `qwen3:0.6b` regression row.
-  No proxy-lane rows recorded yet; no cross-section rows recorded yet.
+  0.5 success (two runs), plus the deliberate `qwen3:0.6b` regression row;
+  and `tb2-quick`, proxy lane, `gpt-5.6-luna` at 1.0 success over 2 graded
+  trials, 221.9s, gate passed (2026-08-26, #118). The proxy row is the
+  iteration baseline; cost is `null` because `gpt-5.6-luna` is unpriced.
+  No cross-section rows recorded on any lane yet.
+- `tb2-cross-section` has not been recorded. The 2026-08-26 proxy attempt
+  reached 1 of 12 tasks and was recorded `abandoned` when Docker Desktop
+  failed to start mid-suite (the host volume was full); the local-lane
+  cross-section run was never started. Both remain open on #118.
+- The `tb2-cross-section` thresholds declare
+  `maxCostPerAcceptedOutcomeUsd: 2.0`, but `gpt-5.6-luna` is unpriced, so
+  that criterion is unverifiable and the whole gate exits 2 on every proxy
+  run. Filed as #125 rather than edited alongside a run it would flatter
+  (best practice M4).
+- Rosetta note, measured 2026-08-26: on this rig the verifier's `uv`/
+  `pytest` does **not** segfault under emulation. `uv 0.9.5` plus
+  `uvx pytest` returned `pytest 9.1.1` in an amd64 container with
+  `/run/rosetta/rosetta` mapped in. `bench/README.md` still documents the
+  segfault as a standing constraint; it holds for plain qemu, not for a
+  Rosetta-enabled Docker Desktop.
 - `owned-closed-issues` is a smoke suite until its environments exist
   (`bench/tasks/owned/README.md`).
 - Cached-token splits are not surfaced end to end
