@@ -25,8 +25,9 @@ use crossterm::{
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use openagents_cli::auth::{CredentialStore, DeviceClient, open_browser};
+use openagents_cli::auth::{CredentialStore, DeviceClient, Secret, open_browser};
 use openagents_cli::composer::complete::{Completion, complete};
+use openagents_cli::repo::RepoClient;
 use openagents_cli::composer::history::History;
 use openagents_cli::composer::ComposerAction;
 use openagents_cli::runtime::Lane;
@@ -208,18 +209,37 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-/// If no credential is already in the environment or store, start a GitHub
+/// If no valid credential is in the environment or store, start a GitHub
 /// device-authorization flow and store the resulting token for the runtime to
 /// spend. The TUI is not yet on the alternate screen, so this prints normally.
 async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var("OPENAGENTS_API_KEY").is_ok() {
-        return Ok(());
-    }
-
     let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
     let store = CredentialStore::for_origin(&endpoint.origin);
-    if store.find_token()?.is_some() {
-        return Ok(());
+
+    if let Ok(key) = std::env::var("OPENAGENTS_API_KEY") {
+        let token = Secret::new(key);
+        if RepoClient::new(&endpoint.origin, Some(token))
+            .authenticated_user()
+            .await
+            .is_ok()
+        {
+            return Ok(());
+        }
+        eprintln!("OPENAGENTS_API_KEY did not authenticate; it will be ignored.");
+        // SAFETY: this process owns the environment; the TUI has not started.
+        unsafe { std::env::remove_var("OPENAGENTS_API_KEY") };
+    }
+
+    if let Some(held) = store.find_token()? {
+        if RepoClient::new(&endpoint.origin, Some(held.token.clone()))
+            .authenticated_user()
+            .await
+            .is_ok()
+        {
+            return Ok(());
+        }
+        eprintln!("Stored token did not authenticate; logging in again.");
+        store.remove()?;
     }
 
     println!("Press Enter to log in with GitHub.");
@@ -237,7 +257,8 @@ async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Start the GitHub device-authorization flow against the current endpoint,
-/// open the approval URL in the browser, poll for the token, and store it.
+/// open the approval URL in the browser, poll for the token, store it, and
+/// verify it by reading the authenticated user.
 pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
     let client = DeviceClient::new(&endpoint.origin);
@@ -250,7 +271,10 @@ pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     let store = CredentialStore::for_origin(&endpoint.origin);
     let _ = store.store(&token)?;
 
-    Ok(format!("Authenticated for {}.", endpoint.origin))
+    let user = RepoClient::new(&endpoint.origin, Some(token))
+        .authenticated_user()
+        .await?;
+    Ok(format!("Authenticated as {}.", user.login))
 }
 
 /// The columns the composer soft-wraps to: the frame's width less its border
