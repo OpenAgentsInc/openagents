@@ -27,7 +27,6 @@ use crossterm::{
 };
 use openagents_cli::auth::{CredentialStore, DeviceClient, Secret, open_browser};
 use openagents_cli::composer::complete::{Completion, complete};
-use openagents_cli::repo::RepoClient;
 use openagents_cli::composer::history::History;
 use openagents_cli::composer::ComposerAction;
 use openagents_cli::runtime::Lane;
@@ -219,11 +218,7 @@ async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Ok(key) = std::env::var("OPENAGENTS_API_KEY") {
         let token = Secret::new(key);
-        if RepoClient::new(&endpoint.origin, Some(token))
-            .authenticated_user()
-            .await
-            .is_ok()
-        {
+        if validate_token(&endpoint.origin, &token).await.is_ok() {
             return Ok(());
         }
         eprintln!("OPENAGENTS_API_KEY did not authenticate; it will be ignored.");
@@ -232,11 +227,7 @@ async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(held) = store.find_token()? {
-        if RepoClient::new(&endpoint.origin, Some(held.token.clone()))
-            .authenticated_user()
-            .await
-            .is_ok()
-        {
+        if validate_token(&endpoint.origin, &held.token).await.is_ok() {
             return Ok(());
         }
         eprintln!("Stored token did not authenticate; logging in again.");
@@ -257,9 +248,31 @@ async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// Check that a token is accepted by the deployment without calling GitHub.
+/// `GET /api/v1/models` is a light, non-GitHub endpoint that still requires a
+/// valid bearer token, so a 200 here means the token is good to spend.
+async fn validate_token(origin: &str, token: &Secret) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+    let url = format!("{}/api/v1/models", origin.trim_end_matches('/'));
+    let response = client
+        .get(&url)
+        .bearer_auth(token.expose())
+        .send()
+        .await
+        .map_err(|error| format!("could not reach {origin}: {error}"))?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let body = response.text().await.unwrap_or_default();
+    Err(format!("token rejected by {origin} ({status}): {body}").into())
+}
+
 /// Start the GitHub device-authorization flow against the current endpoint,
 /// open the approval URL in the browser, poll for the token, store it, and
-/// verify it by reading the authenticated user.
+/// verify it against the model catalog.
 pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
     let client = DeviceClient::new(&endpoint.origin);
@@ -272,10 +285,8 @@ pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     let store = CredentialStore::for_origin(&endpoint.origin);
     let _ = store.store(&token)?;
 
-    let user = RepoClient::new(&endpoint.origin, Some(token))
-        .authenticated_user()
-        .await?;
-    Ok(format!("Authenticated as {}.", user.login))
+    validate_token(&endpoint.origin, &token).await?;
+    Ok("Authenticated.".to_string())
 }
 
 /// The columns the composer soft-wraps to: the frame's width less its border

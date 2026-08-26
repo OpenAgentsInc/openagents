@@ -457,6 +457,7 @@ dependencies = [
  "pretty_assertions",
  "pulldown-cmark",
  "ratatui",
+ "reqwest",
  "serde",
  "serde_json",
  "supports-color",

@@ -27,6 +27,7 @@ ratatui = { version = "0.29", default-features = false, features = ["crossterm"]
 futures = "0.3"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+reqwest = { workspace = true }
 
 # Streaming markdown engine (src/markdown), ported from xAI grok-build.
 # Versions match grok-build's workspace pins.
