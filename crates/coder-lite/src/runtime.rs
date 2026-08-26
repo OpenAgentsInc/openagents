@@ -3,6 +3,7 @@
 use futures::StreamExt;
 use openresponses_rust::{
     CreateResponseBody, FunctionOutput, Input, Item, StreamingClient, StreamingEvent, Tool,
+    ToolChoice, ToolChoiceParam,
 };
 use std::env;
 use std::path::PathBuf;
@@ -61,12 +62,19 @@ impl CoderRuntimeSession {
 
         let client = StreamingClient::with_base_url(&self.api_key, &self.base_url);
         let tools = self.delegate_tool();
+        let mut post_tool = false;
 
         loop {
+            let tool_choice = if post_tool {
+                Some(ToolChoiceParam::Simple(ToolChoice::None))
+            } else {
+                Some(ToolChoiceParam::Simple(ToolChoice::Auto))
+            };
             let request = CreateResponseBody {
                 model: env::var("OPENAGENTS_MODEL").ok(),
                 input: Some(Input::Items(self.history.clone())),
                 tools: tools.clone(),
+                tool_choice,
                 stream: Some(true),
                 ..Default::default()
             };
@@ -194,6 +202,7 @@ impl CoderRuntimeSession {
                     if turn_failed {
                         break;
                     }
+                    post_tool = true;
                     continue;
                 } else {
                     let msg = format!("unknown ACP agent: {}", agent_id);
@@ -204,6 +213,7 @@ impl CoderRuntimeSession {
                         output: FunctionOutput::Text(msg),
                         status: None,
                     });
+                    post_tool = true;
                     continue;
                 }
             }
