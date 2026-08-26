@@ -1400,10 +1400,9 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
     );
 }
 
-/// A turn that spends its whole step budget records that, rather than an
-/// answer it never produced.
+/// The last model step synthesizes an answer instead of offering another tool.
 #[tokio::test]
-async fn a_turn_that_runs_out_of_steps_records_the_failure() {
+async fn the_last_step_requires_an_answer_from_the_gathered_evidence() {
     let stub = start(|request, origin| {
         let line = request.lines().next().unwrap_or_default().to_string();
         if line.starts_with("POST") && line.contains("/events") {
@@ -1415,7 +1414,16 @@ async fn a_turn_that_runs_out_of_steps_records_the_failure() {
         if line.starts_with("DELETE /api/v1/threads/") {
             return revoked(0);
         }
-        // Never answers. Always asks for another tool.
+        if request.contains(r#""tools":[]"#) {
+            return Reply::Sse(
+                vec![frame(
+                    serde_json::json!({"choices":[{"delta":{"content":"Here is the final answer."}}]}),
+                )],
+                None,
+            );
+        }
+        // Keep asking for tools until the runtime removes them for the final
+        // synthesis step.
         Reply::Sse(
             vec![frame(
                 serde_json::json!({"choices":[{"delta":{"tool_calls":[{
@@ -1429,34 +1437,25 @@ async fn a_turn_that_runs_out_of_steps_records_the_failure() {
     });
 
     let mut session = session(Lane::default(), stub.base.clone());
-    let failure = session
+    let answer = session
         .execute_turn("loop forever", |_| {})
         .await
-        .expect_err("a turn with no answer returned one");
+        .expect("the final synthesis step failed");
 
     let events = recorded(&stub);
     let kinds = kinds(&events);
     assert_eq!(kinds.first().map(String::as_str), Some("turn.user"));
     assert_eq!(
         kinds.last().map(String::as_str),
-        Some("turn.failed"),
-        "the exhausted budget was not written down: {kinds:?}"
+        Some("turn.assistant"),
+        "the final synthesis was not recorded: {kinds:?}"
     );
     assert!(
-        !kinds.contains(&"turn.assistant".to_string()),
-        "a turn that never answered recorded an answer: {kinds:?}"
+        !kinds.contains(&"turn.failed".to_string()),
+        "a successful synthesis retained a synthetic limit failure: {kinds:?}"
     );
-    let last = events.last().expect("an event");
-    assert!(
-        last["payload"]["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("tool steps"),
-        "the recorded failure does not name the budget: {last}"
-    );
-    // The count is the calls it actually made, not a zero.
-    assert_eq!(last["payload"]["calls"], 30);
-    assert!(failure.to_string().contains("tool steps"));
+    assert_eq!(answer, "Here is the final answer.");
+    assert_eq!(events.last().expect("an event")["payload"]["calls"], 29);
 }
 
 /// A session interrupted mid-turn says so, because its turn never got to.
@@ -1835,11 +1834,11 @@ async fn a_turn_that_runs_out_of_steps_reports_max_steps() {
     assert_eq!(report["status"], "failed");
     assert_eq!(report["error_code"], "max_steps");
     assert!(
-        report["report"]
+        !report["report"]
             .as_str()
             .unwrap_or_default()
             .contains("tool steps"),
-        "the report does not name the budget: {report}"
+        "the removed tool-limit copy leaked into the report: {report}"
     );
 }
 

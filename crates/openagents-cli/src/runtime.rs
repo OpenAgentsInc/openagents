@@ -1639,11 +1639,19 @@ impl CoderRuntimeSession {
         // tools, which is not an answer and must not be returned as one.
         let mut answered = false;
 
-        for _ in 0..MAX_TOOL_STEPS {
+        for step_index in 0..MAX_TOOL_STEPS {
+            // Reserve the last model step for synthesis. Exposing another
+            // tool here lets the loop end on a synthetic limit error instead
+            // of an answer built from the evidence already gathered.
+            let available_tools = if step_index + 1 == MAX_TOOL_STEPS {
+                &[][..]
+            } else {
+                tool_defs
+            };
             let req_body = serde_json::json!({
                 "model": grant.model,
                 "messages": self.messages,
-                "tools": tool_defs.iter().map(|t| serde_json::json!({
+                "tools": available_tools.iter().map(|t| serde_json::json!({
                     "type": "function",
                     "function": {
                         "name": t.name,
@@ -1824,10 +1832,7 @@ impl CoderRuntimeSession {
         }
 
         if !answered {
-            let why = format!(
-                "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
-                 nothing was returned rather than an empty answer that reads as success"
-            );
+            let why = "the model ended the turn without a final answer".to_string();
             return Err(self.record_failure(error_code::MAX_STEPS, why).await);
         }
         Ok(final_answer)
@@ -1848,11 +1853,16 @@ impl CoderRuntimeSession {
         // this request named after the answer completes.
         let resolved_model = self.lane_model().await?;
 
-        for _ in 0..MAX_TOOL_STEPS {
+        for step_index in 0..MAX_TOOL_STEPS {
+            let available_tools = if step_index + 1 == MAX_TOOL_STEPS {
+                &[][..]
+            } else {
+                tool_defs
+            };
             let input = messages_to_responses_input(&self.messages);
             let mut body = serde_json::json!({
                 "input": input,
-                "tools": tool_defs.iter().map(|t| serde_json::json!({
+                "tools": available_tools.iter().map(|t| serde_json::json!({
                     "type": "function",
                     "function": {
                         "name": t.name,
@@ -2043,10 +2053,7 @@ impl CoderRuntimeSession {
         }
 
         if !answered {
-            let why = format!(
-                "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
-                 nothing was returned rather than an empty answer that reads as success"
-            );
+            let why = "the model ended the turn without a final answer".to_string();
             return Err(self.record_failure(error_code::MAX_STEPS, why).await);
         }
         Ok(final_answer)
@@ -2257,11 +2264,16 @@ impl CoderRuntimeSession {
         // tools, which is not an answer and must not be returned as one.
         let mut answered = false;
 
-        for _ in 0..MAX_TOOL_STEPS {
+        for step_index in 0..MAX_TOOL_STEPS {
+            let available_tools = if step_index + 1 == MAX_TOOL_STEPS {
+                &[][..]
+            } else {
+                tool_defs
+            };
             let req_body = serde_json::json!({
                 "model": model,
                 "messages": self.messages.iter().map(ollama_message).collect::<Vec<_>>(),
-                "tools": tool_defs.iter().map(|t| serde_json::json!({
+                "tools": available_tools.iter().map(|t| serde_json::json!({
                     "type": "function",
                     "function": {
                         "name": t.name,
@@ -2359,10 +2371,7 @@ impl CoderRuntimeSession {
         }
 
         if !answered {
-            let why = format!(
-                "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
-                 nothing was returned rather than an empty answer that reads as success"
-            );
+            let why = "the model ended the turn without a final answer".to_string();
             return Err(self.record_failure(error_code::MAX_STEPS, why).await);
         }
         Ok(final_answer)

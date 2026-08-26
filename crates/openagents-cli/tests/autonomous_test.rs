@@ -350,7 +350,7 @@ async fn the_local_lane_records_what_it_answered() {
 
 // ──────────────────────────────────────────────────────────────── defect 3
 
-/// **A turn that runs out of tool steps refuses instead of reporting success.**
+/// **The final step answers instead of exposing another tool.**
 ///
 /// `run_thread_turn` loops `for _ in 0..MAX_TOOL_STEPS` and assigned
 /// `final_answer` only on the step that came back without tool calls. A model
@@ -360,15 +360,22 @@ async fn the_local_lane_records_what_it_answered() {
 /// followed by a blank line and exited 0, and the interactive session settled
 /// `TurnEvent::Done("")` as an answered turn.
 ///
-/// That is the shape the issue was reopened over, one level down: the turn did
-/// not finish and no caller could tell.
+/// The runtime now reserves the last step for synthesis. This keeps the
+/// original protection against an empty success without printing an internal
+/// tool-budget failure into the conversation.
 #[tokio::test]
-async fn a_turn_that_exhausts_its_tool_steps_refuses() {
+async fn a_turn_that_reaches_its_last_step_synthesizes() {
     // Every step asks for a tool and never stops asking. The name is one no
     // registry has, so the loop spends no time running anything.
     let stub = start(|request, served, origin| {
         if request.starts_with("POST /api/v1/threads") {
             return Reply::Json(grant(origin));
+        }
+        if request.contains(r#""tools":[]"#) {
+            return Reply::Sse(vec![
+                serde_json::json!({"choices":[{"delta":{"content":"Finished from the gathered evidence."}}]})
+                    .to_string(),
+            ]);
         }
         Reply::Sse(vec![call_tool(
             &format!("call_{served}"),
@@ -384,21 +391,19 @@ async fn a_turn_that_exhausts_its_tool_steps_refuses() {
         tools,
     );
 
-    let error = session
+    let answer = session
         .execute_turn("loop forever", |_| {})
         .await
-        .expect_err("a turn that never answered was reported as a finished turn");
-    let error = error.to_string();
+        .expect("the reserved synthesis step failed");
 
-    assert!(
-        error.contains("30") && error.contains("tool steps"),
-        "the refusal should say the step budget ran out: {error}"
-    );
+    assert_eq!(answer, "Finished from the gathered evidence.");
     assert_eq!(
         stub.completions().len(),
         30,
-        "MAX_TOOL_STEPS is 30, so the turn should spend the whole budget before refusing"
+        "the final request should use the reserved thirtieth model step"
     );
+    let last = stub.completions().pop().expect("a final request");
+    assert!(last.contains(r#""tools":[]"#), "tools remained on the final step");
 }
 
 // ──────────────────────────────────────────────────────────────── defect 4
