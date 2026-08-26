@@ -32,6 +32,13 @@ forge remote, never GitHub (best practices R2, R3). For CLI code changes
 the completion gate is `pnpm run check`; docs-only changes push with
 `--no-verify` after the docs checks.
 
+A change to the coder-lite TUI has one more step, because `pnpm run check`
+does not reach it. `cargo test -p coder-lite --test interactive_pty` drives
+the real binary on a pseudo-terminal and asserts on the rendered cells; it is
+what "headless evidence does not close a TUI issue" now points at. The
+completion gate runs neither it nor `cargo fmt` for this crate (#124), so run
+it by hand and say in the issue that you did.
+
 ## 1. Prerequisites
 
 - **Docker with amd64 emulation that works.** Terminal-Bench images are
