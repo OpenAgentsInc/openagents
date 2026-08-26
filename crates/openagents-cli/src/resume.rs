@@ -127,9 +127,11 @@ pub fn repository_of(objective: &str) -> Option<String> {
 ///
 /// Filtered to the named repository unless `all`, because a reader resuming
 /// work is almost always resuming it where they are standing. Terminal threads
-/// stay in the list: this CLI revokes its thread on a clean exit, so an
-/// open-only list would usually be empty, and picking a terminal one gets the
-/// refusal that teaches why rather than a listing that hides it.
+/// stay in the list: this CLI ends its thread on a clean exit, so an open-only
+/// list would usually be empty — and a thread that reported is resumable, which
+/// is most of what this picker is for. A cancelled one is listed too, and
+/// picking it gets the refusal that teaches why rather than a listing that
+/// hides it.
 pub fn resumable_threads(
     threads: &[ThreadSummary],
     repository: Option<&str>,
@@ -150,18 +152,28 @@ pub fn resumable_threads(
 
 /// Refuse a thread that cannot be continued.
 ///
-/// A terminal thread holds no authority and its transcript is closed — the
-/// server refuses both a re-mint and a new event — so resuming one could only
-/// ever show history. The refusal names the status, because `cancelled` after
-/// a clean exit and `failed` after an error call for different next steps.
+/// A thread that reported can be: `POST /threads/{id}/grants` reopens a
+/// `succeeded` or `failed` thread, writing what it reported into the
+/// transcript as `thread.reopened` before minting fresh authority. That is the
+/// point of a session saying how it ended rather than cancelling itself — a
+/// thread this CLI closed normally is exactly the one a reader comes back to.
+///
+/// A cancelled thread is refused, here and by the server. `DELETE` is a
+/// disposal and a caller that used it asked for the thread to be over, so
+/// resuming it would make cancellation mean nothing.
+///
+/// This used to refuse every status but `open`, which was right while the CLI
+/// had no way to end a thread except `DELETE`: every honest exit left a
+/// cancelled thread, and resuming one could only ever show history.
 pub fn assert_resumable(thread: &ThreadSummary) -> Result<(), String> {
-    if thread.status == "open" {
+    if thread.status != "cancelled" {
         return Ok(());
     }
     Err(format!(
-        "thread {} is {}: its transcript is closed and it holds no authority to re-grant. \
+        "thread {} was cancelled, so it holds no authority to re-grant and cannot be resumed. \
+         A thread that reported how it ended can be; a cancelled one is over. \
          Start a new session with `oa coder` instead.",
-        thread.id, thread.status
+        thread.id
     ))
 }
 
@@ -597,18 +609,33 @@ mod tests {
         assert!(filtered.is_empty());
     }
 
+    /// A cancelled thread is refused and a reported one is not.
+    ///
+    /// The whole point of a session reporting how it ended rather than
+    /// cancelling itself: a thread this CLI closed normally is resumable, and
+    /// one somebody threw away is not. Refusing every terminal status meant a
+    /// client could keep a thread resumable only by never saying what it did.
     #[test]
-    fn a_terminal_thread_is_refused_by_status() {
-        let thread = ThreadSummary {
+    fn a_cancelled_thread_is_refused_and_a_reported_one_is_not() {
+        let with_status = |status: &str| ThreadSummary {
             id: "t4".into(),
-            status: "cancelled".into(),
+            status: status.into(),
             objective: String::new(),
             event_count: 0,
             started_at: None,
             repository: None,
         };
-        let error = assert_resumable(&thread).unwrap_err();
+
+        let error = assert_resumable(&with_status("cancelled")).unwrap_err();
         assert!(error.contains("cancelled"), "{error}");
+
+        for reported in ["open", "succeeded", "failed"] {
+            assert!(
+                assert_resumable(&with_status(reported)).is_ok(),
+                "a {reported} thread was refused, so a session that said how it ended \
+                 cannot be resumed"
+            );
+        }
     }
 
     /// The replay is the wire transcript, not the interface's: a recorded
