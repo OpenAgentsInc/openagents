@@ -32,6 +32,7 @@ pub mod runtime;
 pub mod signals;
 pub mod tools;
 pub mod trace;
+pub mod trace_client;
 pub mod tracker;
 pub mod tui;
 pub mod update;

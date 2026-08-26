@@ -34,7 +34,6 @@ const cliErrorTags = new Set([
   "OpenAgentsCli.ComputerMachineUnavailable",
   "OpenAgentsCli.ComputerMachineMismatch",
   "OpenAgentsCli.ComputerReconnectExhausted",
-  "OpenAgentsCli.TraceUploadUnsupported",
   "OpenAgentsCli.DeploymentFailed",
   "OpenAgentsCli.DeploymentWaitTimeout",
   "OpenAgentsCli.DeploymentRollingReplaceRequired",

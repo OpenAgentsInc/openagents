@@ -6,7 +6,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { apiTransportTestLayer, type ApiRequest, type ApiResponse } from "../src/api-transport.js";
 import { runCliWith } from "../src/cli.js";
+import { traceClientLayer } from "../src/trace-client.js";
 import { credentialStoreUnavailableLayer } from "../src/credential-store.js";
 import { environmentLayerFromValues } from "../src/environment.js";
 import { outputTestLayer, type OutputDocument, type OutputMode } from "../src/output.js";
@@ -18,14 +20,26 @@ interface Written {
   readonly mode: OutputMode;
 }
 
-const harness = () => {
+const harness = (
+  handler: (input: ApiRequest) => Effect.Effect<ApiResponse, never> = () =>
+    Effect.succeed({ status: 500, body: {} }),
+  token?: string,
+) => {
   const written: Array<Written> = [];
+  const requests: Array<ApiRequest> = [];
+  const transport = apiTransportTestLayer((input) =>
+    Effect.suspend(() => {
+      requests.push(input);
+      return handler(input);
+    }),
+  );
   const layer = Layer.mergeAll(
     NodeServices.layer,
-    environmentLayerFromValues({}),
+    environmentLayerFromValues(token === undefined ? {} : { token }),
     persistedConfigurationTestLayer({}),
     terminalSessionTestLayer(false),
     credentialStoreUnavailableLayer,
+    traceClientLayer.pipe(Layer.provide(transport)),
     outputTestLayer((document, mode) =>
       Effect.sync(() => {
         written.push({ document, mode });
@@ -43,7 +57,7 @@ const harness = () => {
         unknown
       >,
     );
-  return { run, fail, written };
+  return { run, fail, written, requests };
 };
 
 const atifDocument = (message: string) => ({
@@ -174,24 +188,147 @@ describe("openagents trace", () => {
     expect(error).toMatchObject({ _tag: "OpenAgentsCli.InputError" });
   });
 
-  it("refuses upload with a typed error naming the missing server route", async () => {
+  it("uploads the document to the ingest route at the dark default", async () => {
     const { path } = scratchStore();
-    const { fail } = harness();
-    const error = await fail(["trace", "upload", path]);
-    expect(error).toMatchObject({ _tag: "OpenAgentsCli.TraceUploadUnsupported" });
-    expect(String((error as { message: string }).message)).toContain("POST /api/v1/traces");
+    const { requests, run, written } = harness(
+      () =>
+        Effect.succeed({
+          status: 201,
+          body: {
+            id: "trace-1",
+            url: "https://openagents.com/api/v1/traces/trace-1",
+            digest: "sha256:" + "a".repeat(64),
+            byte_size: 412,
+            visibility: "dark",
+            inserted_at: "2026-08-26T03:00:00Z",
+          },
+        }),
+      "test-token",
+    );
+
+    await run(["--profile", "local", "trace", "upload", path]);
+
+    expect(requests[0]?.method).toBe("POST");
+    // The visibility the server stores at is named explicitly rather than
+    // relying on a default the CLI cannot see.
+    expect(requests[0]?.path).toBe("/api/v1/traces?visibility=dark");
+    // The body is the document itself, with nothing wrapped around it.
+    expect((requests[0]?.body as Record<string, unknown>)["schema_version"]).toBe("ATIF-v1.7");
+
+    const human = written[0]?.document.human ?? [];
+    expect(human[0]).toContain("Uploaded");
+    expect(human).toContain("Trace: trace-1");
+    // No link is printed: the url the server returns points at
+    // GET /api/v1/traces/:id, and that route does not exist.
+    expect(human.join("\n")).not.toContain("http");
   });
 
-  it("still validates the local path before refusing an upload", async () => {
-    const { fail } = harness();
+  it("reports a 200 as already stored rather than as an upload", async () => {
+    const { path } = scratchStore();
+    const { run, written } = harness(
+      () =>
+        Effect.succeed({
+          status: 200,
+          body: {
+            id: "trace-1",
+            digest: "sha256:" + "b".repeat(64),
+            byte_size: 412,
+            visibility: "dark",
+            inserted_at: "2026-08-26T03:00:00Z",
+          },
+        }),
+      "test-token",
+    );
+
+    await run(["--profile", "local", "trace", "upload", path]);
+
+    // The server answers 200 for a digest it already holds. Calling that an
+    // upload would report a write that did not happen.
+    expect(written[0]?.document.human?.[0]).toContain("Already stored");
+  });
+
+  it("passes a named visibility and an attempt binding through to the route", async () => {
+    const { path } = scratchStore();
+    const { requests, run } = harness(
+      () =>
+        Effect.succeed({
+          status: 201,
+          body: {
+            id: "trace-2",
+            digest: "sha256:" + "c".repeat(64),
+            byte_size: 1,
+            visibility: "ledger",
+            inserted_at: "2026-08-26T03:00:00Z",
+          },
+        }),
+      "test-token",
+    );
+
+    await run([
+      "--profile",
+      "local",
+      "trace",
+      "upload",
+      path,
+      "--visibility",
+      "ledger",
+      "--assignment",
+      "asg-9",
+    ]);
+
+    const url = new URL(requests[0]?.path ?? "", "http://localhost/");
+    expect(url.searchParams.get("visibility")).toBe("ledger");
+    expect(url.searchParams.get("assignment_id")).toBe("asg-9");
+  });
+
+  it("refuses a visibility the server does not have, and names the ones it does", async () => {
+    const { path } = scratchStore();
+    const { fail, requests } = harness(() => Effect.succeed({ status: 201, body: {} }), "t");
+    const error = await fail([
+      "--profile",
+      "local",
+      "trace",
+      "upload",
+      path,
+      "--visibility",
+      "public",
+    ]);
+
+    expect(error).toMatchObject({ _tag: "OpenAgentsCli.InputError" });
+    expect(String((error as { message: string }).message)).toContain("dark, pulse, ledger, glass");
+    // Refused before anything left this machine.
+    expect(requests).toHaveLength(0);
+  });
+
+  it("refuses a file that is not an ATIF document before sending it", async () => {
+    const { root } = scratchStore();
+    const notAtif = join(root, "notes.json");
+    writeFileSync(notAtif, JSON.stringify({ hello: "world" }), "utf8");
+    const { fail, requests } = harness(() => Effect.succeed({ status: 201, body: {} }), "t");
+
+    const error = await fail(["--profile", "local", "trace", "upload", notAtif]);
+
+    expect(error).toMatchObject({ _tag: "OpenAgentsCli.InputError" });
+    expect(String((error as { message: string }).message)).toContain("schema_version");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("refuses an accepted status that names nothing stored", async () => {
+    const { path } = scratchStore();
+    // 201 with an empty body: the server said yes and said nothing. Reporting a
+    // stored trace here is how a caller comes to believe in one that has no id.
+    const { fail } = harness(() => Effect.succeed({ status: 201, body: {} }), "test-token");
+
+    const error = await fail(["--profile", "local", "trace", "upload", path]);
+
+    expect(error).toMatchObject({ _tag: "OpenAgentsCli.ApiError" });
+    expect(String((error as { message: string }).message)).toContain("did not say what it stored");
+  });
+
+  it("still validates the local path before reaching for the network", async () => {
+    const { fail, requests } = harness();
     const error = await fail(["trace", "upload", "no-such-trace-file-atif.json"]);
     expect(error).toMatchObject({ _tag: "OpenAgentsCli.InputError" });
-  });
-
-  it("refuses --public together with --unlisted", async () => {
-    const { path } = scratchStore();
-    const { fail } = harness();
-    const error = await fail(["trace", "upload", path, "--public", "--unlisted"]);
-    expect(error).toMatchObject({ _tag: "OpenAgentsCli.InputError" });
+    expect(requests).toHaveLength(0);
   });
 });

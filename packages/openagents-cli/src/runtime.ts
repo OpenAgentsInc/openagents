@@ -25,6 +25,7 @@ import { outputLayer } from "./output.js";
 import { persistedConfigurationLayer } from "./persisted-configuration.js";
 import { projectClientLayer } from "./project-client.js";
 import { repositoryClientLayer } from "./repository-client.js";
+import { traceClientLayer } from "./trace-client.js";
 import { requestBodyInputLayer } from "./request-body-input.js";
 import { secretInputLayer } from "./secret-input.js";
 import { terminalSessionNodeLayer } from "./terminal-session.js";
@@ -40,6 +41,7 @@ const deviceLayer = deviceClientLayer.pipe(Layer.provide(transportLayer));
 const issueLayer = issueClientLayer.pipe(Layer.provide(transportLayer));
 const projectLayer = projectClientLayer.pipe(Layer.provide(transportLayer));
 const memoryLayer = memoryClientLayer.pipe(Layer.provide(transportLayer));
+const traceLayer = traceClientLayer.pipe(Layer.provide(transportLayer));
 const boxClient = boxClientLayer.pipe(Layer.provide(transportLayer));
 const computerClient = computerClientLayer.pipe(Layer.provide(transportLayer));
 const credentialsLayer = credentialStoreOsLayer.pipe(Layer.provide(NodeServices.layer));
@@ -89,6 +91,7 @@ export const runtimeLayer = Layer.mergeAll(
   issueLayer,
   projectLayer,
   memoryLayer,
+  traceLayer,
   deviceLayer,
   boxClient,
   computerClient,

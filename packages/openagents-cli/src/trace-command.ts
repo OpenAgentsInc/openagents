@@ -1,26 +1,33 @@
 /**
  * The `openagents trace` command family.
  *
- * This is the LOCAL half of the trace pipeline: list what session exports
- * exist on this machine, summarize one, and produce a redacted sibling copy.
- * The upload half needs a forge ingest route that does not exist yet, so
- * `trace upload` refuses with a typed error that names the missing route
- * instead of pretending.
+ * `list`, `show`, and `redact` are the local half: what session exports exist
+ * on this machine, what one holds, and a redacted sibling copy of it. `upload`
+ * is the remote half, and it now sends the document to `POST /api/v1/traces`
+ * rather than refusing -- that route exists.
  *
  * The family is defined through a factory taking the root command, so the
  * registration hunk in `cli.ts` stays a single import and a single list entry.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
-import { InputError, TraceUploadUnsupported } from "./errors.js";
-import { API_VERSION_PATH } from "./constants.js";
+import { type EndpointOverrides, type Profile } from "./endpoint.js";
+import { InputError } from "./errors.js";
 import { Output, type OutputMode } from "./output.js";
+import { resolveApiSession } from "./session.js";
+import {
+  DEFAULT_TRACE_VISIBILITY,
+  MAXIMUM_TRACE_BYTES,
+  TRACE_VISIBILITIES,
+  TraceClient,
+  isTraceVisibility,
+} from "./trace-client.js";
 import {
   defaultDiscoveryBounds,
   defaultTraceStores,
@@ -35,16 +42,17 @@ import {
 
 /** The shared flags a trace handler reads back off the root command. */
 interface SharedFlags {
+  readonly profile: Option.Option<Profile>;
+  readonly apiUrl: Option.Option<string>;
   readonly json: boolean;
 }
 
 const outputMode = (json: boolean): OutputMode => (json ? "json" : "human");
 
-/** The server half `trace upload` is waiting for. One place, one sentence. */
-export const TRACE_INGEST_ROUTE_GAP =
-  "openagents.com has no trace ingest route yet. Upload needs the server half first: " +
-  `POST ${API_VERSION_PATH}/traces accepting an ATIF v1.7 document with owner_only default visibility. ` +
-  "Until that route exists, this command refuses rather than pretending to upload.";
+const endpointOverrides = (flags: SharedFlags): EndpointOverrides => ({
+  profile: flags.profile,
+  apiUrl: flags.apiUrl,
+});
 
 const listPathFlag = Flag.string("path").pipe(
   Flag.atLeast(0),
@@ -234,29 +242,103 @@ export const makeTraceCommand = <R>(root: Effect.Effect<SharedFlags, never, R>) 
     ),
   );
 
-  const uploadPublicFlag = Flag.boolean("public").pipe(
-    Flag.withDescription("Ask for public visibility instead of the owner_only default"),
+  const uploadVisibilityFlag = Flag.string("visibility").pipe(
+    Flag.withDefault(DEFAULT_TRACE_VISIBILITY as string),
+    Flag.withDescription(
+      `Transparency rung to store the trace at: ${TRACE_VISIBILITIES.join(", ")}. ` +
+        "dark is nothing public, pulse is metadata only, ledger is content and metadata, glass is full access.",
+    ),
   );
-  const uploadUnlistedFlag = Flag.boolean("unlisted").pipe(
-    Flag.withDescription("Ask for unlisted visibility instead of the owner_only default"),
+  const uploadAssignmentFlag = Flag.string("assignment").pipe(
+    Flag.optional,
+    Flag.withDescription("Bind the trace to the forge attempt with this id"),
   );
 
   const traceUploadCommand = Command.make(
     "upload",
-    { trace: traceArgument, public: uploadPublicFlag, unlisted: uploadUnlistedFlag },
-    ({ public: isPublic, trace, unlisted }) =>
+    {
+      trace: traceArgument,
+      visibility: uploadVisibilityFlag,
+      assignment: uploadAssignmentFlag,
+    },
+    ({ assignment, trace, visibility }) =>
       Effect.gen(function* () {
-        if (isPublic && unlisted) {
-          return yield* new InputError({ message: "Use either --public or --unlisted, not both." });
+        if (!isTraceVisibility(visibility)) {
+          return yield* new InputError({
+            message: `--visibility must be one of ${TRACE_VISIBILITIES.join(", ")}; got ${visibility}.`,
+          });
         }
-        // Validate the local half first so the refusal is about the real gap,
-        // not about a path typo the reader would rather hear about now.
-        yield* resolveTraceArgument(trace);
-        return yield* new TraceUploadUnsupported({ message: TRACE_INGEST_ROUTE_GAP });
+        const flags = yield* root;
+        const output = yield* Output;
+        const path = yield* resolveTraceArgument(trace);
+
+        // Everything that can be checked against the file is checked before
+        // anything leaves this machine, so a refusal names the file rather than
+        // arriving as a status from a server the caller then has to interpret.
+        const size = yield* Effect.try({
+          try: () => statSync(path).size,
+          catch: () => new InputError({ message: `The trace file at ${path} could not be read.` }),
+        });
+        if (size > MAXIMUM_TRACE_BYTES) {
+          return yield* new InputError({
+            message: `${path} is ${size} bytes; the ingest route accepts at most ${MAXIMUM_TRACE_BYTES}. Upload a redacted or trimmed copy instead.`,
+          });
+        }
+
+        const document = yield* Effect.try({
+          try: () => JSON.parse(readFileSync(path, "utf8")) as unknown,
+          catch: () =>
+            new InputError({
+              message: `${path} is not JSON. The ingest route takes one ATIF document; a line-delimited session log has to be converted first.`,
+            }),
+        });
+        if (document === null || typeof document !== "object" || Array.isArray(document)) {
+          return yield* new InputError({
+            message: `${path} is JSON but not an object, so it is not an ATIF document.`,
+          });
+        }
+        // The server decides which schema versions it accepts. This only
+        // catches a file that names none at all, which it can say more usefully
+        // about the file than a 422 can.
+        if (typeof (document as Record<string, unknown>)["schema_version"] !== "string") {
+          return yield* new InputError({
+            message: `${path} carries no schema_version, so it is not an ATIF document. openagents trace show ${path} reports what it is.`,
+          });
+        }
+
+        const session = yield* resolveApiSession(endpointOverrides(flags));
+        const traces = yield* TraceClient;
+        const stored = yield* traces.upload({
+          origin: session.endpoint.origin,
+          token: session.token,
+          document,
+          visibility,
+          ...(Option.isNone(assignment) ? {} : { assignmentId: assignment.value }),
+        });
+
+        yield* output.write(
+          {
+            value: { schema: "openagents.trace_upload.v1", input: path, ...stored },
+            human: [
+              // A 200 means the server already held this digest. Calling that an
+              // upload would report a write that did not happen.
+              stored.created
+                ? `Uploaded ${path}`
+                : `Already stored: the server holds this trace under the same digest.`,
+              `Trace: ${stored.id}`,
+              `Digest: ${stored.digest}`,
+              `Stored: ${stored.byte_size} bytes at visibility ${stored.visibility}`,
+              // No link. The response carries a url pointing at
+              // GET /api/v1/traces/:id, and that route does not exist, so
+              // printing it would hand the reader a 404 dressed as a receipt.
+            ],
+          },
+          outputMode(flags.json),
+        );
       }),
   ).pipe(
     Command.withDescription(
-      "Upload a redacted trace to openagents.com with owner_only visibility by default. The forge ingest route does not exist yet, so this refuses and names the missing server half.",
+      `Upload one ATIF document to openagents.com. Stored at ${DEFAULT_TRACE_VISIBILITY} -- nothing public -- unless --visibility names a higher rung. Redact the trace first: what is uploaded is the file as it stands.`,
     ),
   );
 

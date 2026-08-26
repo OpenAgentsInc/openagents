@@ -1005,6 +1005,22 @@ pub enum TraceAction {
         #[arg(long, help = "Deprecated alias for the positional trace argument")]
         file: Option<String>,
     },
+    /// Upload one ATIF document to openagents.com
+    ///
+    /// Stored at `dark` — nothing public — unless --visibility names a higher
+    /// rung. Redact the trace first: what is uploaded is the file as it stands.
+    Upload {
+        #[arg(help = "A trace file path, or a file name inside ~/.openagents/exports")]
+        trace: String,
+        #[arg(
+            long,
+            default_value = crate::trace_client::DEFAULT_TRACE_VISIBILITY,
+            help = "Transparency rung: dark (nothing public), pulse (metadata only), ledger (content and metadata), or glass (full access)"
+        )]
+        visibility: String,
+        #[arg(long, help = "Bind the trace to the forge attempt with this id")]
+        assignment: Option<String>,
+    },
 }
 
 /// The completion script for one shell.
@@ -1188,7 +1204,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
         Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
-        Commands::Trace(trace) => run_trace(trace.action),
+        Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
         Commands::Update(update) => {
             crate::update::run(update.channel, update.version, update.check, update.force).await?;
         }
@@ -2327,17 +2343,17 @@ async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, j
                 (None, true) => None,
             };
             let target = target_or_fail(repo);
-            let value = or_fail(tracker.set_issue_milestone(&target, number, milestone).await);
+            let value = or_fail(
+                tracker
+                    .set_issue_milestone(&target, number, milestone)
+                    .await,
+            );
             // Report what came BACK, not what was asked for. A server that
             // accepted the request and stored something else is the case a
             // printed echo of the argument would hide.
-            let stored = value.get("milestone").and_then(|m| {
-                if m.is_null() {
-                    None
-                } else {
-                    Some(m)
-                }
-            });
+            let stored = value
+                .get("milestone")
+                .filter(|milestone| !milestone.is_null());
             let human = match stored {
                 Some(m) => format!(
                     "Issue #{} is on milestone #{} {}",
@@ -2382,12 +2398,7 @@ fn milestone_listing(value: &serde_json::Value) -> Vec<String> {
 /// `create` and `delete` existed on the client and were wired to nothing, so a
 /// milestone could only be opened or removed in a browser -- which made
 /// milestones useless to agents, and agents file most of the issues here.
-async fn run_milestone(
-    action: MilestoneAction,
-    api_base: &str,
-    token: Option<String>,
-    json: bool,
-) {
+async fn run_milestone(action: MilestoneAction, api_base: &str, token: Option<String>, json: bool) {
     let tracker = crate::tracker::TrackerClient::new(api_base, token);
     match action {
         MilestoneAction::List { repo } => {
@@ -2404,12 +2415,7 @@ async fn run_milestone(
             let target = target_or_fail(repo);
             let value = or_fail(
                 tracker
-                    .create_milestone(
-                        &target,
-                        &title,
-                        description.as_deref(),
-                        due_on.as_deref(),
-                    )
+                    .create_milestone(&target, &title, description.as_deref(), due_on.as_deref())
                     .await,
             );
             // The server assigns the number. Printing the one it returned is
@@ -3327,7 +3333,7 @@ fn run_identity(action: IdentityAction, json: bool) {
 // trace
 // ---------------------------------------------------------------------------
 
-fn run_trace(action: TraceAction) {
+async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, json: bool) {
     use crate::trace;
     let home = home_directory();
 
@@ -3509,6 +3515,103 @@ fn run_trace(action: TraceAction) {
                     "Warning: the redacted copy no longer parses as JSON; review it before sharing."
                 );
             }
+        }
+        TraceAction::Upload {
+            trace: argument,
+            visibility,
+            assignment,
+        } => {
+            // Everything checkable against the file is checked before anything
+            // leaves this machine, so a refusal names the file rather than
+            // arriving as a status the caller then has to interpret.
+            let visibility = or_fail(crate::trace_client::read_visibility(&visibility));
+            let path = trace::resolve_trace_argument(&argument, &home)
+                .unwrap_or_else(|message| fail(&message));
+
+            let size = std::fs::metadata(&path)
+                .map(|meta| meta.len())
+                .unwrap_or_else(|error| {
+                    fail(&format!(
+                        "The trace file at {} could not be read: {}",
+                        path.display(),
+                        error
+                    ))
+                });
+            if size > crate::trace_client::MAXIMUM_TRACE_BYTES {
+                fail(&format!(
+                    "{} is {} bytes; the ingest route accepts at most {}. Upload a redacted or trimmed copy instead.",
+                    path.display(),
+                    size,
+                    crate::trace_client::MAXIMUM_TRACE_BYTES
+                ));
+            }
+
+            let text = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+                fail(&format!(
+                    "The trace file at {} could not be read: {}",
+                    path.display(),
+                    error
+                ))
+            });
+            let document: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|_| {
+                fail(&format!(
+                    "{} is not JSON. The ingest route takes one ATIF document; a line-delimited session log has to be converted first.",
+                    path.display()
+                ))
+            });
+            if !document.is_object() {
+                fail(&format!(
+                    "{} is JSON but not an object, so it is not an ATIF document.",
+                    path.display()
+                ));
+            }
+            // The server decides which schema versions it accepts. This only
+            // catches a file that names none at all, which it can say something
+            // more useful about the file than a 422 can.
+            if document.get("schema_version").and_then(|v| v.as_str()).is_none() {
+                fail(&format!(
+                    "{} carries no schema_version, so it is not an ATIF document. `oa trace show {}` reports what it is.",
+                    path.display(),
+                    argument
+                ));
+            }
+
+            let client = crate::trace_client::TraceClient::new(api_base, token);
+            let stored = or_fail(
+                client
+                    .upload(&document, visibility, assignment.as_deref())
+                    .await,
+            );
+
+            let value = serde_json::json!({
+                "schema": "openagents.trace_upload.v1",
+                "input": path,
+                "id": stored.id,
+                "digest": stored.digest,
+                "byte_size": stored.byte_size,
+                "visibility": stored.visibility,
+                "inserted_at": stored.inserted_at,
+                "created": stored.created,
+            });
+            let human = vec![
+                // A 200 means the server already held this digest. Calling that
+                // an upload would report a write that did not happen.
+                if stored.created {
+                    format!("Uploaded {}", path.display())
+                } else {
+                    "Already stored: the server holds this trace under the same digest.".to_string()
+                },
+                format!("Trace: {}", stored.id),
+                format!("Digest: {}", stored.digest),
+                format!(
+                    "Stored: {} bytes at visibility {}",
+                    stored.byte_size, stored.visibility
+                ),
+                // No link. The response carries a url pointing at
+                // GET /api/v1/traces/:id, and that route does not exist, so
+                // printing it would hand the reader a 404 dressed as a receipt.
+            ];
+            emit(json, &value, &human);
         }
     }
 }

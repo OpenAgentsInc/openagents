@@ -171,11 +171,6 @@ export class ComputerReconnectExhausted extends Schema.TaggedErrorClass<Computer
   { message: Schema.String },
 ) {}
 
-export class TraceUploadUnsupported extends Schema.TaggedErrorClass<TraceUploadUnsupported>()(
-  "OpenAgentsCli.TraceUploadUnsupported",
-  { message: Schema.String },
-) {}
-
 /** A fleet promotion target reached `failed` or `reverted`. */
 export class DeploymentFailed extends Schema.TaggedErrorClass<DeploymentFailed>()(
   "OpenAgentsCli.DeploymentFailed",
@@ -236,7 +231,6 @@ export type CliError =
   | ComputerMachineUnavailable
   | ComputerMachineMismatch
   | ComputerReconnectExhausted
-  | TraceUploadUnsupported
   | DeploymentFailed
   | DeploymentWaitTimeout
   | DeploymentRollingReplaceRequired;
@@ -265,8 +259,11 @@ export const exitCodeFor = (error: CliError): number => {
       return 14;
     case "OpenAgentsCli.ComputerReconnectExhausted":
       return 15;
-    case "OpenAgentsCli.TraceUploadUnsupported":
-      return 16;
+    // 16 was TraceUploadUnsupported, the refusal `trace upload` returned while
+    // POST /api/v1/traces did not exist. The route exists and the command
+    // uploads, so the code is retired rather than reassigned: a script that
+    // still checks for 16 should stop seeing it, not start seeing it mean
+    // something else.
     // Deployment outcomes stay apart from each other and from transport
     // failures, so release automation can tell "the fleet rejected these
     // bytes" from "the CLI stopped watching" without parsing prose.
