@@ -1,0 +1,92 @@
+//! `/export` writes a real ATIF document for a transcript built through the
+//! `Entry` constructors the markdown port introduced (commit 2185306d80).
+//!
+//! This lives in its own test binary because it swaps `HOME` to keep the
+//! export out of the developer's `~/.openagents/exports`. `HOME` is
+//! process-global, and cargo runs the tests in one binary on threads, so a
+//! neighbour reading the environment mid-swap would be a real race. One test
+//! per process removes the race rather than papering over it.
+
+use coder_lite::export::export_trajectory;
+use coder_lite::tui::{Entry, Role, ToolCall, now_ms};
+
+fn delegate_call() -> ToolCall {
+    ToolCall {
+        call_id: "call-7".to_string(),
+        function_name: "delegate".to_string(),
+        arguments: serde_json::json!({ "agent": "devin", "task": "Read src/main.rs" }),
+        output: None,
+        error: None,
+    }
+}
+
+#[test]
+fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
+    // Runs the real exporter, but into a scratch HOME so it cannot write to
+    // the developer's `~/.openagents/exports`. The clipboard copy is left to
+    // fail or succeed on its own; only the file is asserted.
+    let scratch = std::env::temp_dir().join(format!("coder-lite-export-{}", now_ms()));
+    std::fs::create_dir_all(&scratch).unwrap();
+
+    let mut entries = vec![
+        Entry::new(Role::Notice, "found ACP agents: devin"),
+        Entry::new(Role::You, "explain rust"),
+        Entry::new(Role::Assistant, "Rust is a systems language."),
+    ];
+    let mut tool = Entry::tool_call("delegate devin: Read src/main.rs");
+    tool.tool = Some(delegate_call());
+    tool.output = Some("Reading file...\nDone".to_string());
+    entries.push(tool);
+    // `/export` itself is an interface command and must not become a step.
+    entries.push(Entry::new(Role::You, "/export"));
+
+    let previous = std::env::var("HOME").ok();
+    // SAFETY: single-threaded within this test; restored before returning.
+    unsafe { std::env::set_var("HOME", &scratch) };
+    let result = export_trajectory(&entries, "coder-auto", "openagents", "main");
+    unsafe {
+        match previous {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
+    let body = std::fs::read_to_string(&result.path)
+        .unwrap_or_else(|e| panic!("export wrote nothing to {}: {e}", result.path));
+    let document: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+    assert_eq!(document["schema_version"], "ATIF-v1.7");
+    let steps = document["steps"].as_array().unwrap();
+    assert_eq!(
+        steps.len(),
+        3,
+        "expected user + assistant + tool steps, got {steps:#?}"
+    );
+    assert_eq!(result.steps, 3);
+
+    let tool_step = steps
+        .iter()
+        .find(|s| s.get("tool_calls").is_some())
+        .expect("the delegate call did not survive into the export");
+    assert_eq!(tool_step["tool_calls"][0]["function_name"], "delegate");
+    assert_eq!(tool_step["tool_calls"][0]["tool_call_id"], "call-7");
+    assert_eq!(
+        tool_step["observation"]["results"][0]["content"],
+        "Reading file...\nDone"
+    );
+
+    // Timestamps come from `Entry::at`; an unstamped entry would serialize as
+    // the epoch and make every exported trajectory look like 1970.
+    let stamp = steps[0]["timestamp"].as_str().unwrap();
+    assert!(
+        !stamp.starts_with("1970-"),
+        "export timestamps fell back to the epoch: {stamp}"
+    );
+
+    // The notice is kept out of `steps` and recorded alongside them.
+    let notices = document["extra"]["notices"].as_array().unwrap();
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0]["text"], "found ACP agents: devin");
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}

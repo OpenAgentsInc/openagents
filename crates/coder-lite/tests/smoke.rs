@@ -4,11 +4,15 @@ use std::time::Duration;
 
 #[tokio::test]
 async fn smoke_openresponses_stream() {
-    if env_unset("OPENAGENTS_API_KEY") {
-        std::env::set_var("OPENAGENTS_API_KEY", "fake");
-    }
-    if env_unset("OPENAGENTS_BASE_URL") {
-        std::env::set_var("OPENAGENTS_BASE_URL", "https://openagents.com/api/v1");
+    // SAFETY: edition 2024 marks `set_var` unsafe. Set before any task that
+    // reads the environment is spawned.
+    unsafe {
+        if env_unset("OPENAGENTS_API_KEY") {
+            std::env::set_var("OPENAGENTS_API_KEY", "fake");
+        }
+        if env_unset("OPENAGENTS_BASE_URL") {
+            std::env::set_var("OPENAGENTS_BASE_URL", "https://openagents.com/api/v1");
+        }
     }
 
     let (tx, rx) = mpsc::channel::<Control>();

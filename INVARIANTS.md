@@ -2563,3 +2563,42 @@ renders as the bare product name `Coder`, never as its id.
   be a worse lie than the vendor name it replaced.
 - Held by `packages/openagents-cli/test/coder-tiers.test.ts`. Issue
   OpenAgentsInc/openagents#40.
+
+## coder-lite Transcript Rendering
+
+`crates/coder-lite` renders assistant markdown with the streaming engine
+ported from grok-build (`crates/coder-lite/src/markdown/`, Apache-2.0, see
+`LICENSE-APACHE-xai` there). Three things about that rendering are fixed.
+
+- **Nothing the model sent may disappear.** A construct either renders or
+  renders literally. An unterminated fence shows its body, an unknown language
+  shows its code, malformed emphasis shows its text. Silently dropping content
+  is the same class of defect as a command that fabricates data, and it is
+  refused on the same grounds. The mirror of it also holds: content the model
+  sent once is rendered once. `Entry` seeds its renderer lazily from
+  `Entry::text`, so a chunk must reach the renderer before it joins `text` —
+  the other order renders the first chunk of every stream twice. Held by
+  `crates/coder-lite/tests/markdown.rs::no_construct_swallows_its_content`,
+  `malformed_markdown_renders_literally_rather_than_disappearing`, and
+  `crates/coder-lite/tests/streaming.rs::streaming_an_entry_renders_each_chunk_exactly_once`.
+- **One amber on one background.** Every painted cell in the transcript is
+  `#FFB000` on `#080600`. Markdown elements and syntax highlighting are told
+  apart by effect — bold, dim, italic, underline — never by hue. Colour
+  arriving from syntect or from a themed style is flattened by
+  `markdown::theme::amberize` before it reaches the screen. The braille
+  spinner frames and the `Entry` / `CoderUi` frame are part of the same
+  identity. Held by
+  `crates/coder-lite/tests/markdown.rs::every_painted_cell_keeps_the_amber_palette`,
+  `syntax_highlighting_shows_up_as_weight_not_hue`, and
+  `spinner_frames_still_animate`. Role markers sit at column 0 — `>` for a
+  user message, `⏺` for a notice, reasoning line, or tool call — with a
+  two-column hanging indent on wrapped lines. Held by
+  `crates/coder-lite/tests/rebase_contract.rs`, which also holds the `/export`
+  payload and the delegate-error box against a future rewrite of the
+  transcript renderer.
+- **Streaming is incremental, and that is measured.** A chunk is on screen
+  before the stream closes, and streaming an `n`-byte answer reparses `O(n)`
+  bytes rather than `O(n²)`. `StreamingMarkdownRenderer::reparsed_bytes` and
+  `transcript::WrapStats` exist so the saving is asserted as cost, not assumed
+  from output that happens to look right. Held by
+  `crates/coder-lite/tests/streaming.rs`. Issue OpenAgentsInc/openagents#104.

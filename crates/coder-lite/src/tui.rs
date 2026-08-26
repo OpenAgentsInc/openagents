@@ -1,94 +1,20 @@
 //! Full-screen coder TUI layout matching packages/openagents-cli/src/coder-ui.ts
 
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
-use ratatui_markdown::markdown::MarkdownRenderer;
-use ratatui_markdown::theme::{CodeColors, Generation, RichTextTheme};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const TEXT_COLOR: Color = Color::Rgb(255, 176, 0);
-const BACKGROUND_COLOR: Color = Color::Rgb(8, 6, 0);
+use crate::markdown::theme::{BACKGROUND_COLOR, TEXT_COLOR};
+use crate::osc8::PlacedLink;
+use crate::transcript::MarkdownContent;
+
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
-#[derive(Debug, Clone, Copy)]
-struct CoderTheme;
-
-impl RichTextTheme for CoderTheme {
-    fn generation(&self) -> Generation {
-        Generation(1)
-    }
-    fn get_text_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_muted_text_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_primary_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_popup_selected_background(&self) -> Color {
-        BACKGROUND_COLOR
-    }
-    fn get_border_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_focused_border_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_secondary_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_info_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_json_key_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_json_string_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_json_number_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_json_bool_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_json_null_color(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_accent_yellow(&self) -> Color {
-        TEXT_COLOR
-    }
-    fn get_background_color(&self) -> Color {
-        BACKGROUND_COLOR
-    }
-    fn get_code_colors(&self) -> CodeColors {
-        CodeColors {
-            comment: TEXT_COLOR,
-            keyword: TEXT_COLOR,
-            string: TEXT_COLOR,
-            string_escape: TEXT_COLOR,
-            number: TEXT_COLOR,
-            constant: TEXT_COLOR,
-            function: TEXT_COLOR,
-            r#type: TEXT_COLOR,
-            variable: TEXT_COLOR,
-            property: TEXT_COLOR,
-            operator: TEXT_COLOR,
-            punctuation: TEXT_COLOR,
-            attribute: TEXT_COLOR,
-            tag: TEXT_COLOR,
-            label: TEXT_COLOR,
-            error: TEXT_COLOR,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Role {
@@ -117,6 +43,12 @@ pub struct Entry {
     pub output: Option<String>,
     pub tool: Option<ToolCall>,
     pub at: u64,
+    /// Streaming markdown state for assistant entries.
+    ///
+    /// Built on first use and fed chunk by chunk, so the engine's checkpoint
+    /// freezing survives across frames. `None` for every other role — those
+    /// render as plain wrapped text and always did.
+    md: Option<Box<MarkdownContent>>,
 }
 
 /// Current time as epoch milliseconds.
@@ -125,6 +57,76 @@ pub fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+impl Entry {
+    /// An entry with no tool output, stamped with the current time.
+    pub fn new(role: Role, text: impl Into<String>) -> Self {
+        Self {
+            role,
+            text: text.into(),
+            output: None,
+            tool: None,
+            at: now_ms(),
+            md: None,
+        }
+    }
+
+    /// A tool-call entry with an (initially empty) output box.
+    ///
+    /// Named `tool_call` rather than `tool` because `Entry` also carries a
+    /// `tool` field holding the ATIF [`ToolCall`] record; callers set that
+    /// field after construction.
+    pub fn tool_call(text: impl Into<String>) -> Self {
+        Self {
+            role: Role::Tool,
+            text: text.into(),
+            output: Some(String::new()),
+            tool: None,
+            at: now_ms(),
+            md: None,
+        }
+    }
+
+    /// Append a streamed chunk of assistant text.
+    ///
+    /// The chunk goes to both `text` (the verbatim source, which nothing
+    /// rewrites) and the streaming markdown renderer. Keeping the source means
+    /// a rendering failure can always fall back to showing what arrived, and
+    /// it is what `/export` writes into the ATIF document.
+    pub fn push_text(&mut self, chunk: &str) {
+        if self.role == Role::Assistant {
+            // Order matters. `markdown_mut` seeds a fresh renderer from
+            // `self.text`, so the chunk must reach the renderer *before* it
+            // joins `self.text` — otherwise the first chunk of a stream is
+            // seeded and then pushed again, and the reader sees it twice.
+            self.markdown_mut().push(chunk);
+        }
+        self.text.push_str(chunk);
+    }
+
+    /// Tell the markdown engine the stream ended, flushing any held-back bytes.
+    pub fn finish_text(&mut self) {
+        if self.role == Role::Assistant && self.md.is_some() {
+            self.markdown_mut().finish();
+        }
+    }
+
+    /// The streaming renderer, seeded from `text` if it does not exist yet.
+    ///
+    /// Seeding covers entries built whole rather than streamed (session
+    /// replay, tests): they get the same rendering, just without the
+    /// incremental saving there was nothing to save.
+    fn markdown_mut(&mut self) -> &mut MarkdownContent {
+        if self.md.is_none() {
+            let mut content = MarkdownContent::new();
+            if !self.text.is_empty() {
+                content.push(&self.text);
+            }
+            self.md = Some(Box::new(content));
+        }
+        self.md.as_mut().expect("just inserted")
+    }
 }
 
 #[derive(Debug)]
@@ -143,6 +145,11 @@ pub struct CoderUi {
     pub loading: bool,
     pub tick: u64,
     pub agents: Vec<crate::acp::Agent>,
+    /// Hyperlinks on the last rendered frame, in absolute screen coordinates.
+    ///
+    /// The caller emits these as OSC 8 sequences after flushing the frame; see
+    /// [`crate::osc8`].
+    pub links: Vec<PlacedLink>,
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -238,6 +245,7 @@ impl CoderUi {
             loading: false,
             tick: 0,
             agents: Vec::new(),
+            links: Vec::new(),
         }
     }
 
@@ -246,10 +254,7 @@ impl CoderUi {
         let style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
 
         // Fill the entire terminal with the background color first.
-        let bg_line = Line::from(vec![Span::styled(
-            " ".repeat(area.width as usize),
-            style,
-        )]);
+        let bg_line = Line::from(vec![Span::styled(" ".repeat(area.width as usize), style)]);
         let bg = Paragraph::new(Text::from(vec![bg_line; area.height as usize]));
         frame.render_widget(bg, area);
 
@@ -271,10 +276,19 @@ impl CoderUi {
             .split(area);
 
         let transcript_area = main_bottom[0];
+        let width = transcript_area.width as usize;
 
-        let mut all_lines = Vec::new();
-        for entry in &self.entries {
-            all_lines.extend(self.render_entry(entry, transcript_area.width as usize));
+        let mut all_lines: Vec<Line<'static>> = Vec::new();
+        let mut links = Vec::new();
+        for index in 0..self.entries.len() {
+            let offset = all_lines.len();
+            let entry = &mut self.entries[index];
+            let (lines, entry_links) = render_entry(entry, width);
+            for mut link in entry_links {
+                link.row += offset;
+                links.push(link);
+            }
+            all_lines.extend(lines);
         }
 
         if self.loading {
@@ -286,6 +300,8 @@ impl CoderUi {
         self.transcript_height = transcript_area.height;
         self.scroll_max = total.saturating_sub(transcript_area.height);
         let start = self.effective_scroll(transcript_area.height, total);
+
+        self.links = crate::osc8::place(&links, transcript_area, start as usize);
 
         let transcript = Paragraph::new(Text::from(all_lines))
             .scroll((start, 0))
@@ -303,108 +319,18 @@ impl CoderUi {
             ]));
         }
 
-        let input = Paragraph::new(Text::from(input_lines))
-            .style(style)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(style)
-                    .style(style),
-            );
+        let input = Paragraph::new(Text::from(input_lines)).style(style).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(style)
+                .style(style),
+        );
         frame.render_widget(input, input_area);
 
         let last_chunk = input_chunks.last().map(|s| s.as_str()).unwrap_or("");
         let cursor_x = input_area.x + 1 + 3 + last_chunk.chars().count() as u16;
         let cursor_y = input_area.y + 1 + visible_input_lines.saturating_sub(1);
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
-    }
-
-    fn render_entry(&self, entry: &Entry, width: usize) -> Vec<Line<'static>> {
-        match entry.role {
-            Role::Assistant if !entry.text.is_empty() => {
-                let renderer = MarkdownRenderer::new(width.max(1));
-                let blocks = renderer.parse(&entry.text);
-                let mut lines = renderer.render(&blocks, &CoderTheme);
-
-                for line in &mut lines {
-                    let mapped = line
-                        .spans
-                        .drain(..)
-                        .map(|span| {
-                            let style = span.style.fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
-                            Span::styled(span.content.to_string(), style)
-                        })
-                        .collect::<Vec<_>>();
-                    *line = Line::from(mapped);
-                }
-
-                while lines.last().map_or(false, |l| {
-                    l.spans.iter().all(|s| s.content.is_empty())
-                }) {
-                    lines.pop();
-                }
-
-                lines
-            }
-            Role::Tool => {
-                let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
-                let mut lines = Vec::new();
-
-                // One-line tool call header, flush left.
-                let header_body = width.saturating_sub(2);
-                let header_chunks = wrap_text(&entry.text, header_body);
-                let header = header_chunks.first().cloned().unwrap_or_default();
-                lines.push(Line::from(vec![
-                    Span::styled("⏺ ", text_style),
-                    Span::styled(header, text_style),
-                ]));
-
-                // ~5-line output box, split by actual newlines.
-                let out = entry.output.as_deref().unwrap_or("");
-                let out_lines: Vec<&str> = out.lines().collect();
-                let start = out_lines.len().saturating_sub(5);
-                let window = &out_lines[start..];
-                for i in 0..5 {
-                    let text = if i < window.len() { window[i] } else { "" };
-                    let clipped = text.chars().take(width.saturating_sub(2)).collect::<String>();
-                    lines.push(Line::from(vec![
-                        Span::styled("│ ", text_style),
-                        Span::styled(clipped, text_style),
-                    ]));
-                }
-
-                lines
-            }
-            _ => {
-                let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
-
-                let (first_prefix, marker, marker_space, rest_indent, first_body) = match entry.role {
-                    Role::You => ("", ">", " ", "  ", width.saturating_sub(2)),
-                    Role::Assistant => ("", "", "", "", width),
-                    _ => ("", "⏺", " ", "  ", width.saturating_sub(2)),
-                };
-
-                let chunks = wrap_text(&entry.text, first_body);
-
-                let mut lines = Vec::new();
-                for (i, chunk) in chunks.iter().enumerate() {
-                    if i == 0 {
-                        lines.push(Line::from(vec![
-                            Span::styled(first_prefix, text_style),
-                            Span::styled(marker, text_style),
-                            Span::styled(marker_space, text_style),
-                            Span::styled(chunk.clone(), text_style),
-                        ]));
-                    } else {
-                        lines.push(Line::from(vec![
-                            Span::styled(rest_indent, text_style),
-                            Span::styled(chunk.clone(), text_style),
-                        ]));
-                    }
-                }
-                lines
-            }
-        }
     }
 
     /// Calculate the scroll offset that keeps the viewport at the bottom
@@ -433,5 +359,102 @@ impl CoderUi {
             current.saturating_add(delta as u16).min(max)
         };
         self.scroll_override = if new >= max { None } else { Some(new) };
+    }
+}
+
+impl Default for CoderUi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Render one transcript entry to lines plus its hyperlinks.
+///
+/// Link rows are relative to the returned lines; the caller offsets them.
+fn render_entry(
+    entry: &mut Entry,
+    width: usize,
+) -> (Vec<Line<'static>>, Vec<crate::transcript::ScreenLink>) {
+    let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+
+    match entry.role {
+        Role::Assistant if !entry.text.is_empty() => {
+            let width = width.max(1);
+            let md = entry.markdown_mut();
+            let mut lines = md.lines(width).to_vec();
+            let links = md.links(width).to_vec();
+
+            // Trailing blank lines are layout, not content: the next entry
+            // supplies its own separation.
+            while lines
+                .last()
+                .is_some_and(|l| l.spans.iter().all(|s| s.content.trim().is_empty()))
+            {
+                lines.pop();
+            }
+
+            let links = links.into_iter().filter(|l| l.row < lines.len()).collect();
+            (lines, links)
+        }
+        Role::Tool => {
+            let mut lines = Vec::new();
+
+            // One-line tool call header, flush left.
+            let header_body = width.saturating_sub(2);
+            let header_chunks = wrap_text(&entry.text, header_body);
+            let header = header_chunks.first().cloned().unwrap_or_default();
+            lines.push(Line::from(vec![
+                Span::styled("⏺ ", text_style),
+                Span::styled(header, text_style),
+            ]));
+
+            // ~5-line output box, split by actual newlines.
+            let out = entry.output.as_deref().unwrap_or("");
+            let out_lines: Vec<&str> = out.lines().collect();
+            let start = out_lines.len().saturating_sub(5);
+            let window = &out_lines[start..];
+            for i in 0..5 {
+                let text = if i < window.len() { window[i] } else { "" };
+                let clipped = text
+                    .chars()
+                    .take(width.saturating_sub(2))
+                    .collect::<String>();
+                lines.push(Line::from(vec![
+                    Span::styled("│ ", text_style),
+                    Span::styled(clipped, text_style),
+                ]));
+            }
+
+            (lines, Vec::new())
+        }
+        _ => {
+            let (first_prefix, marker, marker_space, rest_indent, first_body) = match entry.role {
+                Role::You => ("", ">", " ", "  ", width.saturating_sub(2)),
+                Role::Assistant => ("", "", "", "", width),
+                // Flush left, matching 727ab02ece: a Notice or Reasoning
+                // bullet sits at column 0 like the `>` of a user message.
+                _ => ("", "⏺", " ", "  ", width.saturating_sub(2)),
+            };
+
+            let chunks = wrap_text(&entry.text, first_body);
+
+            let mut lines = Vec::new();
+            for (i, chunk) in chunks.iter().enumerate() {
+                if i == 0 {
+                    lines.push(Line::from(vec![
+                        Span::styled(first_prefix, text_style),
+                        Span::styled(marker, text_style),
+                        Span::styled(marker_space, text_style),
+                        Span::styled(chunk.clone(), text_style),
+                    ]));
+                } else {
+                    lines.push(Line::from(vec![
+                        Span::styled(rest_indent, text_style),
+                        Span::styled(chunk.clone(), text_style),
+                    ]));
+                }
+            }
+            (lines, Vec::new())
+        }
     }
 }

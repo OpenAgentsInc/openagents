@@ -16,11 +16,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if dev {
         boot_dev_server().await?;
-        if env::var("OPENAGENTS_BASE_URL").is_err() {
-            env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
-        }
-        if env::var("OPENAGENTS_API_KEY").is_err() {
-            env::set_var("OPENAGENTS_API_KEY", DEV_API_KEY);
+        // SAFETY: edition 2024 marks `set_var` unsafe because another thread
+        // reading the environment concurrently is UB. This runs before the TUI
+        // and its tokio tasks start, so no other thread exists yet.
+        unsafe {
+            if env::var("OPENAGENTS_BASE_URL").is_err() {
+                env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
+            }
+            if env::var("OPENAGENTS_API_KEY").is_err() {
+                env::set_var("OPENAGENTS_API_KEY", DEV_API_KEY);
+            }
         }
     }
 

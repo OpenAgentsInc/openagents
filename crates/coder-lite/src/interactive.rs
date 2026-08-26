@@ -7,20 +7,20 @@
 use crate::acp;
 use crate::export::{export_trajectory, git_info};
 use crate::runtime::{CoderRuntimeSession, Control};
-use crate::tui::{now_ms, CoderUi, Entry, Role, ToolCall};
-use std::env;
-use std::sync::mpsc;
+use crate::tui::{CoderUi, Entry, Role, ToolCall};
 use crossterm::{
-    event::{
-        self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-    },
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
+    event::{
+        self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, PopKeyboardEnhancementFlags,
+        PushKeyboardEnhancementFlags,
+    },
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+use std::env;
 use std::io::{stderr, stdout};
+use std::sync::mpsc;
 use std::time::Duration;
 
 pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,23 +53,15 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|a| a.id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            ui.entries.push(Entry {
-                role: Role::Notice,
-                text: format!("found ACP agents: {}", list),
-                output: None,
-                tool: None,
-                at: now_ms(),
-            });
+            ui.entries.push(Entry::new(
+                Role::Notice,
+                format!("found ACP agents: {}", list),
+            ));
             ui.agents = agents;
         }
         Err(_) => {
-            ui.entries.push(Entry {
-                role: Role::Notice,
-                text: "found ACP agents: none".to_string(),
-                output: None,
-                tool: None,
-                at: now_ms(),
-            });
+            ui.entries
+                .push(Entry::new(Role::Notice, "found ACP agents: none"));
         }
     }
 
@@ -83,43 +75,41 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             match control {
                 Control::Chunk(chunk) => {
                     // Append text to the current assistant entry.
-                    if let Some(last) = ui
-                        .entries
-                        .iter_mut()
-                        .rfind(|e| e.role == Role::Assistant)
-                    {
-                        last.text.push_str(&chunk);
+                    if let Some(last) = ui.entries.iter_mut().rfind(|e| e.role == Role::Assistant) {
+                        last.push_text(&chunk);
                         ui.scroll_override = None;
                     }
                 }
-                Control::Done => ui.loading = false,
+                Control::Done => {
+                    // Tell the markdown engine the stream closed so it flushes
+                    // any bytes held back at a chunk boundary.
+                    if let Some(last) = ui.entries.iter_mut().rfind(|e| e.role == Role::Assistant) {
+                        last.finish_text();
+                    }
+                    ui.loading = false;
+                }
                 Control::Tool {
                     function_name,
                     arguments,
                     title,
                 } => {
-                    let parsed = serde_json::from_str(&arguments).unwrap_or_else(|_| {
-                        serde_json::json!({ "unparsed_arguments": arguments })
-                    });
+                    let parsed = serde_json::from_str(&arguments)
+                        .unwrap_or_else(|_| serde_json::json!({ "unparsed_arguments": arguments }));
                     let call_id = format!("call-{}", ui.entries.len());
                     let agent = parsed
                         .get("agent")
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown")
                         .to_string();
-                    ui.entries.push(Entry {
-                        role: Role::Tool,
-                        text: format!("delegate {}: {}", agent, title),
-                        output: Some(String::new()),
-                        tool: Some(ToolCall {
-                            call_id,
-                            function_name,
-                            arguments: parsed,
-                            output: None,
-                            error: None,
-                        }),
-                        at: now_ms(),
+                    let mut entry = Entry::tool_call(format!("delegate {}: {}", agent, title));
+                    entry.tool = Some(ToolCall {
+                        call_id,
+                        function_name,
+                        arguments: parsed,
+                        output: None,
+                        error: None,
                     });
+                    ui.entries.push(entry);
                     ui.scroll_override = None;
                 }
                 Control::ToolTitle(title) => {
@@ -140,9 +130,7 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 Control::ToolText(chunk) => {
                     if let Some(last) = ui.entries.last_mut() {
                         if last.role == Role::Tool {
-                            last.output
-                                .get_or_insert_with(String::new)
-                                .push_str(&chunk);
+                            last.output.get_or_insert_with(String::new).push_str(&chunk);
                             if let Some(ref mut tool) = last.tool {
                                 tool.output = last.output.clone();
                             }
@@ -159,6 +147,17 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             ui.render(f, size);
         })?;
 
+        // ratatui has no hyperlink concept, so repaint the link runs as OSC 8
+        // sequences over the frame it just flushed. `emit` re-reads the text
+        // out of the buffer, so this can never change what a cell says.
+        if !ui.links.is_empty() {
+            let buffer = terminal.current_buffer_mut().clone();
+            let mut out = std::io::stdout();
+            let _ = crate::osc8::emit(&mut out, &ui.links, &buffer);
+            let cursor = terminal.get_cursor_position()?;
+            terminal.set_cursor_position(cursor)?;
+        }
+
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind != KeyEventKind::Press {
@@ -166,8 +165,7 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 match key {
                     KeyEvent {
-                        code: KeyCode::Esc,
-                        ..
+                        code: KeyCode::Esc, ..
                     }
                     | KeyEvent {
                         code: KeyCode::Char('q' | 'c' | 'd'),
@@ -187,43 +185,20 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                             ui.scroll_override = None;
 
                             if prompt.trim() == "/export" {
-                                ui.entries.push(Entry {
-                                    role: Role::You,
-                                    text: prompt,
-                                    output: None,
-                                    tool: None,
-                                    at: now_ms(),
-                                });
+                                ui.entries.push(Entry::new(Role::You, prompt));
                                 let model = ui.model.clone();
                                 let result =
                                     export_trajectory(&ui.entries, &model, &ui.repo, &ui.branch);
-                                ui.entries.push(Entry {
-                                    role: Role::Notice,
-                                    text: format!(
+                                ui.entries.push(Entry::new(
+                                    Role::Notice,
+                                    format!(
                                         "exported {} steps to {} (copied: {})",
-                                        result.steps,
-                                        result.path,
-                                        result.copied
+                                        result.steps, result.path, result.copied
                                     ),
-                                    output: None,
-                                    tool: None,
-                                    at: now_ms(),
-                                });
+                                ));
                             } else {
-                                ui.entries.push(Entry {
-                                    role: Role::You,
-                                    text: prompt.clone(),
-                                    output: None,
-                                    tool: None,
-                                    at: now_ms(),
-                                });
-                                ui.entries.push(Entry {
-                                    role: Role::Assistant,
-                                    text: String::new(),
-                                    output: None,
-                                    tool: None,
-                                    at: now_ms(),
-                                });
+                                ui.entries.push(Entry::new(Role::You, prompt.clone()));
+                                ui.entries.push(Entry::new(Role::Assistant, String::new()));
                                 ui.loading = true;
 
                                 let mut session = CoderRuntimeSession::new();
@@ -242,8 +217,7 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                         ui.composer.pop();
                     }
                     KeyEvent {
-                        code: KeyCode::Up,
-                        ..
+                        code: KeyCode::Up, ..
                     } => ui.scroll_by(-1),
                     KeyEvent {
                         code: KeyCode::Down,

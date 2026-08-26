@@ -1,17 +1,13 @@
-use coder_lite::tui::{CoderUi, Entry, Role};
+use coder_lite::tui::{CoderUi, Entry};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 #[test]
 fn renders_delegate_tool_call_and_five_line_box() {
     let mut ui = CoderUi::new();
-    ui.entries.push(Entry {
-        role: Role::Tool,
-        text: "delegate devin: Read src/main.rs".to_string(),
-        output: Some("Reading file...\nFound main()\nDone".to_string()),
-        tool: None,
-        at: 0,
-    });
+    let mut call = Entry::tool_call("delegate devin: Read src/main.rs");
+    call.output = Some("Reading file...\nFound main()\nDone".to_string());
+    ui.entries.push(call);
 
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
