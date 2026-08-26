@@ -57,7 +57,11 @@ impl fmt::Display for ForumError {
                 write!(f, "The forum API refused the request (HTTP {})", status)?;
                 let trimmed = body.trim();
                 if !trimmed.is_empty() {
-                    write!(f, ": {}", &trimmed[..trimmed.len().min(400)])?;
+                    // The body is the server's, so the 400-byte bound has to
+                    // land on a character boundary or rendering the refusal
+                    // panics instead of reporting it.
+                    let end = crate::tracker::floor_char_boundary(trimmed, 400);
+                    write!(f, ": {}", &trimmed[..end])?;
                 }
                 Ok(())
             }

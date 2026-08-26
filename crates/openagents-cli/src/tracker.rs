@@ -67,6 +67,22 @@ impl fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
+/// The largest index at or below `max` that `text` can be split on.
+///
+/// `str::floor_char_boundary` is still unstable, and several modules here need
+/// it. Bounding a server-supplied string by a byte count without it is a panic
+/// waiting for a multi-byte character to land on the limit.
+pub fn floor_char_boundary(text: &str, max: usize) -> usize {
+    if max >= text.len() {
+        return text.len();
+    }
+    let mut index = max;
+    while index > 0 && !text.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
+
 /// Turns the unified error envelope into one sentence.
 ///
 /// The deployment answers refusals in more than one shape: `{"message": …,
@@ -78,12 +94,19 @@ pub fn error_sentence(body: &str, status: u16) -> String {
     let parsed: Value = match serde_json::from_str(body) {
         Ok(value) => value,
         // A non-JSON body is still the server's answer. Print it, bounded.
+        //
+        // The bound is a byte count and the body is the server's, so the cut
+        // has to land on a character boundary. Slicing at a fixed byte index
+        // panicked the process on any non-JSON body over 400 bytes whose 400th
+        // byte fell inside a multi-byte character — an HTML 502 from a proxy,
+        // say — and it panicked on the one path whose whole job is to report
+        // that the request was refused.
         Err(_) => {
             let trimmed = body.trim();
             return if trimmed.is_empty() {
                 format!("The OpenAgents API returned HTTP {}.", status)
             } else {
-                trimmed[..trimmed.len().min(400)].to_string()
+                trimmed[..floor_char_boundary(trimmed, 400)].to_string()
             };
         }
     };

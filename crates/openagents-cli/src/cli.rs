@@ -2077,8 +2077,12 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
 
 /// The first eight characters of a UUID, which is how the TypeScript CLI renders
 /// topic ids in a listing.
+///
+/// The id comes from the server, so the eight-byte bound is floored to a
+/// character boundary. An id that is not a UUID would otherwise panic the
+/// listing rather than render short.
 fn short_id(id: &str) -> &str {
-    &id[..id.len().min(8)]
+    &id[..crate::tracker::floor_char_boundary(id, 8)]
 }
 
 fn home_directory() -> std::path::PathBuf {

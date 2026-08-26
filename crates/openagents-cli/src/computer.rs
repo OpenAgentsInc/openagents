@@ -1328,7 +1328,11 @@ fn run_quietly(argv: &[&str], cwd: &Path) -> String {
         Ok(output) if output.status.success() => {
             let mut text = String::from_utf8_lossy(&output.stdout).to_string();
             if text.len() > 512 {
-                text.truncate(512);
+                // `String::truncate` panics off a character boundary, and this
+                // is the stdout of whatever binary the probe found. The version
+                // cut twenty lines down already floors the index; this one did
+                // not.
+                text.truncate(bounded_index(&text, 512));
             }
             text.trim().to_string()
         }
