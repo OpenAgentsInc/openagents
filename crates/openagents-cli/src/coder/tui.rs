@@ -2,7 +2,7 @@
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Position, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
@@ -223,6 +223,13 @@ pub struct CoderUi {
     pub reasoning: Option<String>,
     pub running: bool,
     pub entries: Vec<Entry>,
+    /// Whether the centered startup summary is still visible.
+    ///
+    /// It is UI chrome, not a transcript entry, and disappears when the first
+    /// prompt is sent.
+    pub show_welcome: bool,
+    /// The directory Coder was started in, shown in the startup summary.
+    pub cwd: String,
     /// Manual scroll override; `None` means the viewport follows the bottom.
     pub scroll_override: Option<u16>,
     pub scroll_max: u16,
@@ -316,6 +323,8 @@ impl CoderUi {
             reasoning: None,
             running: true,
             entries: vec![],
+            show_welcome: true,
+            cwd: String::new(),
             scroll_override: None,
             scroll_max: 0,
             transcript_height: 0,
@@ -487,6 +496,13 @@ impl CoderUi {
             .style(style);
         frame.render_widget(transcript, transcript_area);
 
+        let conversation_started = self.entries.iter().any(|entry| {
+            matches!(entry.role, Role::You | Role::Assistant | Role::Tool)
+        });
+        if self.show_welcome && !conversation_started {
+            self.render_welcome(frame, transcript_area);
+        }
+
         let input_area = main[1];
 
         let mut input_lines = Vec::new();
@@ -560,6 +576,66 @@ impl CoderUi {
         if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
             cell.modifier.insert(Modifier::REVERSED);
         }
+    }
+
+    /// Draw the startup facts as centered UI chrome, outside the transcript.
+    fn render_welcome(&self, frame: &mut Frame, area: Rect) {
+        if area.width < 20 || area.height < 7 {
+            return;
+        }
+
+        let width = area.width.saturating_sub(4).min(100);
+        let height = 8.min(area.height);
+        let welcome_area = Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        let body_width = width.saturating_sub(4) as usize;
+        let value_width = body_width.saturating_sub("Working directory  ".len());
+        let agents = if self.agents.is_empty() {
+            "None installed".to_string()
+        } else {
+            self.agents
+                .iter()
+                .map(|agent| agent.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let fit = |value: &str| {
+            let truncated = value.chars().count() > value_width;
+            let mut value = value.chars().take(value_width).collect::<String>();
+            if truncated && value_width > 0 {
+                value.pop();
+                value.push('…');
+            }
+            value
+        };
+        let label_style = Style::default()
+            .fg(DIM_TEXT_COLOR)
+            .bg(BACKGROUND_COLOR);
+        let value_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+        let row = |label: &'static str, value: String| {
+            Line::from(vec![
+                Span::styled(label, label_style),
+                Span::styled(value, value_style),
+            ])
+        };
+        let content = Text::from(vec![
+            row("Working directory  ", fit(&self.cwd)),
+            row("Endpoint           ", fit(&self.endpoint)),
+            row("ACP agents         ", fit(&agents)),
+            Line::default(),
+            Line::from(Span::styled("Type /help for commands and keys.", label_style)),
+        ]);
+        let block = Block::default()
+            .title(format!(" Coder v{} ", crate::VERSION))
+            .title_alignment(Alignment::Center)
+            .borders(Borders::ALL)
+            .border_style(value_style)
+            .style(value_style);
+        frame.render_widget(Paragraph::new(content).block(block), welcome_area);
     }
 
     /// Calculate the scroll offset that keeps the viewport at the bottom

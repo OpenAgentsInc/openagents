@@ -586,6 +586,18 @@ mod unix_pty {
             "the session heading should label the current Coder version.\n{}",
             frame.dump()
         );
+        assert!(
+            frame
+                .transcript()
+                .contains("Working directory"),
+            "the startup summary should name the working directory.\n{}",
+            frame.dump()
+        );
+        assert!(
+            !frame.transcript().contains("Coder Flash · https://"),
+            "the startup summary should not repeat the lane from the footer.\n{}",
+            frame.dump()
+        );
     }
 
     /// The installer itself runs from a pipe, then starts Coder from the same

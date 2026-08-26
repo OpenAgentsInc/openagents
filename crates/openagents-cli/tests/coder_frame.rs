@@ -31,6 +31,46 @@ fn text_of(buffer: &ratatui::buffer::Buffer) -> String {
     buffer.content.iter().map(|c| c.symbol()).collect()
 }
 
+#[test]
+fn startup_facts_are_centered_outside_the_transcript() {
+    let mut ui = CoderUi::new();
+    ui.cwd = "/Users/example/work/openagents".to_string();
+    ui.endpoint = "https://openagents.com/api/v1".to_string();
+    ui.lane = "Coder Flash".to_string();
+
+    let buffer = draw(&mut ui);
+    let text = text_of(&buffer);
+    assert!(text.contains(&format!("Coder v{}", openagents_cli::VERSION)));
+    assert!(text.contains("/Users/example/work/openagents"));
+    assert!(text.contains("https://openagents.com/api/v1"));
+    assert!(text.contains("Type /help for commands and keys."));
+
+    let title_row = (0..buffer.area.height)
+        .find(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer.cell((x, *y)).unwrap().symbol())
+                .collect::<String>()
+                .contains("Coder v")
+        })
+        .expect("startup box title");
+    assert!(
+        (6..=9).contains(&title_row),
+        "the startup box is not vertically centered: row {title_row}"
+    );
+}
+
+#[test]
+fn the_startup_box_leaves_when_the_conversation_starts() {
+    let mut ui = CoderUi::new();
+    ui.cwd = "/Users/example/work/openagents".to_string();
+    assert!(text_of(&draw(&mut ui)).contains("Working directory"));
+
+    ui.entries.push(Entry::new(Role::You, "hello"));
+    let text = text_of(&draw(&mut ui));
+    assert!(!text.contains("Working directory"));
+    assert!(text.contains("> hello"));
+}
+
 /// The model field holds what answered, and nothing until something has.
 #[test]
 fn the_model_field_is_empty_until_a_model_answers() {

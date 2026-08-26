@@ -82,22 +82,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // before reporting it, so the `acp` tool is declared over a list of
     // programs that exist on this machine rather than a registry's wish list.
     let agents = crate::coder::acp::find_agents().await.unwrap_or_default();
-    let acp_line = if agents.is_empty() {
-        "no ACP agents installed".to_string()
-    } else {
-        format!(
-            "acp: {}",
-            agents
-                .iter()
-                .map(|a| a.id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    };
     ui.agents = agents.clone();
 
     let mut session: Option<Arc<Mutex<Session>>> = None;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    ui.cwd = cwd.display().to_string();
 
     if let Some(token) = crate::coder::runtime::user_token() {
         let endpoint = crate::auth::resolve_endpoint(None, None)?;
@@ -115,15 +104,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 options.dev,
                 tx.clone(),
             ))));
-            ui.entries.push(Entry::new(
-                Role::Notice,
-                format!(
-                    "Coder v{} · {} · {} · {acp_line} · /help",
-                    crate::VERSION,
-                    lane.label(),
-                    crate::coder::runtime::api_base()
-                ),
-            ));
         } else {
             // A stored token the deployment refused. The row says the
             // credential is unverified rather than naming whoever it was
@@ -290,15 +270,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 options.dev,
                                 tx.clone(),
                             ))));
-                            ui.entries.push(Entry::new(
-                                Role::Notice,
-                                format!(
-                                    "Coder v{} · {} · {} · {acp_line} · /help",
-                                    crate::VERSION,
-                                    lane.label(),
-                                    crate::coder::runtime::api_base()
-                                ),
-                            ));
                             // The account is only now known, so this is the
                             // first read that can answer.
                             refresh_credit(&tx);
@@ -784,6 +755,7 @@ fn submit(
     cwd: &std::path::Path,
 ) -> commands::Outcome {
     ui.scroll_override = None;
+    ui.show_welcome = false;
     ui.entries.push(Entry::new(Role::You, text.clone()));
 
     if text.trim_start().starts_with('/') {
