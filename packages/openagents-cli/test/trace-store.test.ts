@@ -249,6 +249,32 @@ describe("trace redaction", () => {
       text: "signing with nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5 today",
       secret: "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5",
     },
+    // Our own token families. The `api_key` rule covers other people's
+    // credentials -- sk-, ghp_, AKIA -- and stopped there, so this command
+    // redacted a Stripe key and left an OpenAgents one in place while
+    // reporting "Nothing matched the redaction rules."
+    {
+      category: "oa_token",
+      text: "called the API with oa_pat_REALTOKEN456 just now",
+      secret: "oa_pat_REALTOKEN456",
+    },
+    {
+      category: "oa_agent_token",
+      text: "the child ran as oa_agent_ABCDEF123456 here",
+      secret: "oa_agent_ABCDEF123456",
+    },
+    {
+      category: "x_code",
+      text: "paired with oa-x-QQQQ1234 yesterday",
+      secret: "oa-x-QQQQ1234",
+    },
+    {
+      // Minted by computer pairing, and hyphenated, which every other token
+      // rule stops at.
+      category: "machine_token",
+      text: "the machine token is smct_machine-secret today",
+      secret: "smct_machine-secret",
+    },
   ];
 
   it.each(plantedSecrets)("removes a planted $category", ({ category, secret, text }) => {
