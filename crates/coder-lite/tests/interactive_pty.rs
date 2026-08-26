@@ -34,10 +34,11 @@
 //! `run_tui` opens a session only when a stored credential validates against
 //! `GET {origin}/api/v1/models`. The harness therefore points
 //! `OPENAGENTS_API_URL` at a stub HTTP server it starts on loopback, which
-//! answers that one route with `200` and refuses everything else. So the
-//! session is real, the frame is real, no provider credential is spent, and
-//! nothing leaves the machine. A turn is never completed on purpose: what is
-//! asserted is that Enter *starts* one, which is the part the composer owns.
+//! answers that route and `GET {origin}/api/v1/credit` — the one the status
+//! bar reads its balance from — with `200`, and refuses everything else. So
+//! the session is real, the frame is real, no provider credential is spent,
+//! and nothing leaves the machine. A turn is never completed on purpose: what
+//! is asserted is that Enter *starts* one, which is the part the composer owns.
 
 #[cfg(not(unix))]
 #[test]
@@ -75,19 +76,40 @@ mod unix_pty {
 
     // ─────────────────────────────────────────────────── the stub deployment
 
-    /// A loopback HTTP server that answers exactly one route.
+    /// A loopback HTTP server that answers exactly two routes.
     ///
     /// `GET …/api/v1/models` is what `validate_token` calls to decide whether
-    /// a session may open, and it is the only thing this harness wants a
-    /// deployment for. Everything else is refused with `503` and a body that
+    /// a session may open. `GET …/api/v1/credit` is what the status bar reads
+    /// its balance from, and it answers the exact body
+    /// `OpenAgentsWeb.CreditController` writes — so the figure on the bottom
+    /// row is one this binary parsed out of an HTTP response rather than one a
+    /// test handed it. Everything else is refused with `503` and a body that
     /// says who refused it, so a request this harness did not intend is
     /// legible rather than silently satisfied.
     struct Stub {
         origin: String,
     }
 
+    /// A $20 account that has spent $1.60 on priced lanes, every call priced.
+    const STUB_CREDIT: &str = concat!(
+        r#"{"credit":{"allowance_microusd":20000000,"spent_microusd":1600000,"#,
+        r#""remaining_microusd":18400000,"unpriced_calls":0,"complete":true}}"#
+    );
+
+    /// The same account after three turns on a lane this deployment has no
+    /// rates for: nothing was drawn down, and the server says its own spend
+    /// figure is incomplete.
+    const STUB_CREDIT_UNPRICED: &str = concat!(
+        r#"{"credit":{"allowance_microusd":20000000,"spent_microusd":0,"#,
+        r#""remaining_microusd":20000000,"unpriced_calls":3,"complete":false}}"#
+    );
+
     impl Stub {
         fn start() -> Self {
+            Self::start_with_credit(STUB_CREDIT)
+        }
+
+        fn start_with_credit(credit: &'static str) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback stub");
             let port = listener.local_addr().expect("stub address").port();
             std::thread::spawn(move || {
@@ -102,15 +124,22 @@ mod unix_pty {
                         }
                     }
                     let head = String::from_utf8_lossy(&request).to_string();
-                    let response = if head.starts_with("GET ") && head.contains("/api/v1/models") {
-                        let body = r#"{"data":[]}"#;
+                    let served = if head.starts_with("GET ") && head.contains("/api/v1/models") {
+                        Some(r#"{"data":[]}"#)
+                    } else if head.starts_with("GET ") && head.contains("/api/v1/credit") {
+                        Some(credit)
+                    } else {
+                        None
+                    };
+                    let response = if let Some(body) = served {
                         format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
                              Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                             body.len()
                         )
                     } else {
-                        let body = "the coder-lite PTY harness stub serves /api/v1/models only";
+                        let body =
+                            "the coder-lite PTY harness stub serves /api/v1/models and /credit";
                         format!(
                             "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n\
                              Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -266,8 +295,19 @@ mod unix_pty {
             Self::start_sized(ROWS, COLS)
         }
 
+        /// A session whose deployment answers `GET /api/v1/credit` with one
+        /// named body, so a test can drive the status bar's states from the
+        /// wire rather than from the renderer.
+        fn start_with_credit(credit: &'static str) -> Self {
+            Self::start_full(ROWS, COLS, credit)
+        }
+
         fn start_sized(rows: u16, cols: u16) -> Self {
-            let stub = Stub::start();
+            Self::start_full(rows, cols, STUB_CREDIT)
+        }
+
+        fn start_full(rows: u16, cols: u16, credit: &'static str) -> Self {
+            let stub = Stub::start_with_credit(credit);
             let home = scratch_dir();
             let workdir = home.join("workdir");
             std::fs::create_dir_all(&workdir).expect("create the scratch working directory");
@@ -608,7 +648,7 @@ mod unix_pty {
             |frame| {
                 frame
                     .transcript()
-                    .contains("the coder-lite PTY harness stub serves /api/v1/models only")
+                    .contains("the coder-lite PTY harness stub serves /api/v1/models and /credit")
             },
         );
     }
@@ -721,6 +761,76 @@ mod unix_pty {
         assert!(
             composer.bottom < frame.rows.len() - 1,
             "the status bar should sit below the composer, not inside it.\n{}",
+            frame.dump()
+        );
+    }
+
+    /// The balance on the bottom row is the deployment's, not this session's.
+    ///
+    /// The stub answers `GET /api/v1/credit` with the body the server writes
+    /// for a $20 account that has spent $1.60, so what this asserts is a figure
+    /// that travelled over HTTP, through `serde`, into the frame — not one a
+    /// test handed the renderer. Nothing in the session has spent a token, so a
+    /// build that derived the balance from its own usage counter would show the
+    /// whole $20.00 here and go red.
+    #[test]
+    fn the_status_bar_carries_the_balance_the_server_reported() {
+        let tui = Tui::start();
+        let frame = tui.wait_for("the status bar to carry a balance", FIRST_FRAME, |frame| {
+            frame.status_bar().contains("$18.40")
+        });
+
+        let status = frame.status_bar();
+        assert!(
+            status.contains("$18.40 left"),
+            "the bottom row should carry the remaining balance, and held {:?}.\n{}",
+            status,
+            frame.dump()
+        );
+        assert!(
+            status.contains("tokens"),
+            "the balance goes beside the token counts, not instead of them: {:?}.\n{}",
+            status,
+            frame.dump()
+        );
+        // $20.00 is the allowance, and printing it would be reporting a grant
+        // as a balance.
+        assert!(
+            !status.contains("$20.00"),
+            "the bottom row printed the allowance rather than the remainder: {:?}.\n{}",
+            status,
+            frame.dump()
+        );
+    }
+
+    /// The other display state, and the one the coder's own lane is in today.
+    ///
+    /// The deployment answers with a remainder of $20.00 that three unpriced
+    /// calls did not move, and says so. The bottom row must report the calls it
+    /// cannot see rather than the figure it was handed: a status bar showing
+    /// `$20.00 left` beside a session that has been working all afternoon is
+    /// the exact failure `Credit.unpriced_calls/1` exists to prevent.
+    #[test]
+    fn an_unpriced_lane_reports_what_it_cannot_see_rather_than_a_figure() {
+        let tui = Tui::start_with_credit(STUB_CREDIT_UNPRICED);
+        let frame = tui.wait_for(
+            "the status bar to report the unpriced calls",
+            FIRST_FRAME,
+            |frame| frame.status_bar().contains("unpriced"),
+        );
+
+        let status = frame.status_bar();
+        assert!(
+            status.contains("credit: 3 unpriced calls"),
+            "the bottom row should name the calls the server could not price, \
+             and held {:?}.\n{}",
+            status,
+            frame.dump()
+        );
+        assert!(
+            !status.contains('$'),
+            "an unpriced balance must print no dollar figure at all: {:?}.\n{}",
+            status,
             frame.dump()
         );
     }

@@ -145,9 +145,23 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let mut terminal = Terminal::new(backend)?;
     terminal.show_cursor()?;
 
+    // What the account holds before this session has spent anything, so the
+    // bottom row carries a balance from the first frame rather than only after
+    // a turn.
+    if session.is_some() {
+        refresh_credit(&tx);
+    }
+
     loop {
         while let Ok(control) = rx.try_recv() {
+            // A turn that has stopped, either way, is the moment the server's
+            // figure can have moved. Read it again rather than adjusting the
+            // one on screen: this terminal is not the only thing spending.
+            let settled = matches!(control, Control::Done | Control::Failed(_));
             apply(&mut ui, control);
+            if settled {
+                refresh_credit(&tx);
+            }
         }
 
         terminal.draw(|f| {
@@ -227,6 +241,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                     crate::runtime::api_base()
                                 ),
                             ));
+                            // The account is only now known, so this is the
+                            // first read that can answer.
+                            refresh_credit(&tx);
                         }
                         Err(error) => {
                             ui.entries.push(Entry::new(
@@ -279,6 +296,27 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         }
     }
     Ok(())
+}
+
+/// Ask the deployment what the account has left, off the frame loop.
+///
+/// Spawned rather than awaited, because a slow deployment must not hold a
+/// frame: the answer arrives as a [`Control`] like everything else. The
+/// outcome is sent either way, including when there is no credential to ask
+/// with — the bottom row has to stop showing a figure it can no longer
+/// confirm, and `None` is what tells it to.
+fn refresh_credit(tx: &Sender<Control>) {
+    let token = crate::runtime::user_token();
+    let base = crate::runtime::api_base();
+    let tx = tx.clone();
+
+    tokio::spawn(async move {
+        let outcome = match token {
+            Some(token) => crate::credit::fetch(&base, &token).await,
+            None => None,
+        };
+        let _ = tx.send(Control::Credit(outcome));
+    });
 }
 
 /// Check that a token is accepted by the deployment without calling GitHub.
@@ -418,6 +456,10 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 ui.add_usage(usage);
             }
         }
+        // Replaced rather than accumulated: it is the account's balance as of
+        // that read, not a delta this session can add up. A read that found
+        // nothing replaces the figure too — see `crate::credit`.
+        Control::Credit(outcome) => ui.credit.record(outcome),
         Control::Notice(text) => {
             if !text.trim().is_empty() {
                 ui.entries.push(Entry::new(Role::Notice, text));

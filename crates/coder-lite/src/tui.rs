@@ -174,6 +174,13 @@ pub struct CoderUi {
     pub loading: bool,
     pub tick: u64,
     pub total_usage: TurnUsage,
+    /// What the last read of the account's credit found, or that it found
+    /// nothing.
+    ///
+    /// Nothing here derives it from [`Self::total_usage`]: that total is this
+    /// session's, and the credit is the account's. See [`crate::credit`] for
+    /// why a failed read clears this rather than leaving the last figure up.
+    pub credit: crate::credit::CreditField,
     pub agents: Vec<crate::acp::Agent>,
     /// Hyperlinks on the last rendered frame, in absolute screen coordinates.
     ///
@@ -233,6 +240,7 @@ impl CoderUi {
             loading: false,
             tick: 0,
             total_usage: TurnUsage::default(),
+            credit: crate::credit::CreditField::Unread,
             agents: Vec::new(),
             links: Vec::new(),
         }
@@ -241,6 +249,32 @@ impl CoderUi {
     /// Add a turn's reported usage to the running conversation total.
     pub fn add_usage(&mut self, usage: TurnUsage) {
         self.total_usage.add(usage);
+    }
+
+    /// The bottom row, as a `·`-joined list of the fields that have something
+    /// to say.
+    ///
+    /// The credit and the tokens are facts about two different things, which
+    /// is why they are separate fields rather than one combined figure: the
+    /// tokens are this terminal's turn totals, and the credit is the account's,
+    /// read from the server, and possibly moved by another terminal since. A
+    /// field with nothing to report contributes nothing, so the row never
+    /// carries a placeholder that could be read as a value.
+    pub fn status_line(credit: &crate::credit::CreditField, usage: &TurnUsage) -> String {
+        let fields = [
+            credit.status(),
+            format!(
+                "{} prompt + {} completion = {} tokens",
+                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+            ),
+        ];
+
+        fields
+            .iter()
+            .filter(|field| !field.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" · ")
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
@@ -340,12 +374,7 @@ impl CoderUi {
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 
         let status_area = main[2];
-        let status = format!(
-            "{} prompt + {} completion = {} tokens",
-            self.total_usage.prompt_tokens,
-            self.total_usage.completion_tokens,
-            self.total_usage.total_tokens
-        );
+        let status = Self::status_line(&self.credit, &self.total_usage);
         let status_widget = Paragraph::new(status)
             .style(style)
             .alignment(ratatui::layout::Alignment::Right);

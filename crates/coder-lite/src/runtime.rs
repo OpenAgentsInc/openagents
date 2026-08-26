@@ -58,6 +58,12 @@ pub enum Control {
     Model(String),
     /// What the turn spent, as the server reported it.
     Usage(TurnUsage),
+    /// What one read of `GET /api/v1/credit` found, and `None` when it found
+    /// nothing. Read rather than subtracted from `Usage`: spend is the
+    /// server's, and this session is not the only thing spending it. The
+    /// failure travels too, because the frame has to stop showing the previous
+    /// answer rather than leave it up.
+    Credit(Option<crate::credit::Credit>),
     /// Something worth saying that is not the model talking.
     Notice(String),
     /// What one of the session's own commands printed. Markdown, rendered the
