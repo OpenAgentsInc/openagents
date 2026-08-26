@@ -4386,8 +4386,18 @@ async fn run_headless_coder(
     if runtime.last_usage.reported() {
         println!("Usage: {}", runtime.last_usage.line());
     }
-    if let Err(error) = revoked {
-        eprintln!("oa: the thread was not revoked: {error}");
+    // The revocation reply carries the grant's own spend, and dropping it is
+    // how the CLI came to print a client-side count nothing could check.
+    match revoked {
+        Ok(spent) => {
+            if let Some(line) = runtime.spend_line(spent) {
+                println!("{line}");
+            }
+        }
+        Err(error) => eprintln!("oa: the thread was not revoked: {error}"),
+    }
+    for failure in &runtime.record_failures {
+        eprintln!("oa: {failure}");
     }
 
     if let Some(path) = coder.export.as_deref() {

@@ -32,6 +32,9 @@ enum Reply {
     Sse(Vec<String>, Option<(usize, Duration)>),
     /// Newline-delimited JSON, the shape Ollama streams.
     Ndjson(Vec<String>, Option<(usize, Duration)>),
+    /// A body sent after a pause. What tells a call that was awaited from one
+    /// that was spawned and hoped for: only the first waits.
+    Delayed(Duration, u16, &'static str, String),
 }
 
 /// A server that records what it was asked and answers from a script.
@@ -82,7 +85,15 @@ where
                     return;
                 };
                 seen.lock().unwrap().push(request.clone());
-                match handler(&request, &origin) {
+                let reply = match handler(&request, &origin) {
+                    Reply::Delayed(pause, status, content_type, body) => {
+                        tokio::time::sleep(pause).await;
+                        Reply::Body(status, content_type, body)
+                    }
+                    other => other,
+                };
+                match reply {
+                    Reply::Delayed(..) => unreachable!("already unwrapped"),
                     Reply::Body(status, content_type, body) => {
                         let head = format!(
                             "HTTP/1.1 {status} X\r\ncontent-type: {content_type}\r\n\
@@ -368,10 +379,12 @@ async fn a_second_turn_reuses_the_first_turns_thread() {
     session.execute_turn("one", |_| {}).await.unwrap();
     session.execute_turn("two", |_| {}).await.unwrap();
 
+    // The open, not the appends: `POST /threads/{id}/events` shares the prefix
+    // and a turn now writes several of those.
     let opens = stub
         .request_lines()
         .iter()
-        .filter(|line| line.starts_with("POST /api/v1/threads"))
+        .filter(|line| line.starts_with("POST /api/v1/threads ") && !line.contains("/events"))
         .count();
     assert_eq!(opens, 1, "each turn opened its own thread");
 }
@@ -927,5 +940,527 @@ async fn the_second_turn_carries_what_the_first_turn_answered() {
         "the second turn did not carry the first turn's answer, so the model \
          cannot see what it said: {}",
         bodies[1]
+    );
+}
+
+// ────────────────────────────────────────────────────────────── the record
+//
+// A session used to reach `DELETE` having recorded nothing at all, so the
+// server's only terminal act was a cancellation and 31 of the 50 most recent
+// threads on one account read `error_code: cancelled` over runs that had
+// answered correctly (issue #106). These prove the turn writes itself down
+// first, and — the half that matters more — that a turn which did *not* answer
+// writes down that it did not.
+
+/// The `event_type` of every transcript event the stub was posted, in order.
+fn recorded(stub: &Stub) -> Vec<serde_json::Value> {
+    stub.requests()
+        .iter()
+        .filter(|request| {
+            request
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with("POST") && line.contains("/events"))
+        })
+        .filter_map(|request| {
+            request
+                .split_once("\r\n\r\n")
+                .map(|(_, body)| body.to_string())
+        })
+        .filter_map(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+        .flat_map(|body| {
+            body.get("events")
+                .and_then(|events| events.as_array())
+                .cloned()
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+fn kinds(events: &[serde_json::Value]) -> Vec<String> {
+    events
+        .iter()
+        .map(|event| event["event_type"].as_str().unwrap_or("?").to_string())
+        .collect()
+}
+
+/// The 201 the record route answers an append with.
+fn appended() -> Reply {
+    Reply::Body(
+        201,
+        "application/json",
+        r#"{"events":[{"id":7}],"thread":{"id":"th_test","event_count":7}}"#.to_string(),
+    )
+}
+
+fn revoked(total_tokens: u64) -> Reply {
+    Reply::Body(
+        200,
+        "application/json",
+        format!(
+            r#"{{"grant":{{"status":"revoked","spent":{{"calls":1,"total_tokens":{total_tokens}}}}},
+                "thread":{{"id":"th_test","status":"cancelled"}}}}"#
+        ),
+    )
+}
+
+/// A stub that answers a thread open, transcript appends, a revocation, and a
+/// two-step turn: reasoning and a `shell` call, then the answer.
+fn recording_stub() -> Stub {
+    start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        if line.starts_with("DELETE /api/v1/threads/") {
+            return revoked(116);
+        }
+        // The second call carries the tool result back, which is how a
+        // stateless stub tells the steps of one turn apart.
+        if request.contains(r#""role":"tool""#) {
+            return Reply::Sse(
+                vec![
+                    frame(serde_json::json!({"choices":[{"delta":{"content":"It said hello."}}]})),
+                    frame(serde_json::json!({
+                        "choices": [],
+                        "usage": {"prompt_tokens": 99, "completion_tokens": 17, "total_tokens": 116}
+                    })),
+                ],
+                None,
+            );
+        }
+        Reply::Sse(
+            vec![
+                frame(serde_json::json!({"choices":[{"delta":{"reasoning":"I should look."}}]})),
+                frame(serde_json::json!({"choices":[{"delta":{"tool_calls":[{
+                    "index": 0,
+                    "id": "call_a",
+                    "function": {"name": "shell", "arguments": "{\"command\":\"echo hello\"}"}
+                }]}}]})),
+            ],
+            None,
+        )
+    })
+}
+
+/// A turn that answered is written to the transcript, in order, before the
+/// thread is revoked.
+#[tokio::test]
+async fn a_finished_turn_is_written_down_before_the_thread_is_revoked() {
+    let stub = recording_stub();
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let answer = session
+        .execute_turn("what does echo hello print?", |_| {})
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "It said hello.");
+    session.close().await.expect("the revocation failed");
+
+    let events = recorded(&stub);
+    assert_eq!(
+        kinds(&events),
+        vec!["turn.user", "turn.reasoning", "tool.ran", "turn.assistant"],
+        "the transcript is not the session: {:?}",
+        kinds(&events)
+    );
+
+    assert_eq!(events[0]["payload"]["text"], "what does echo hello print?");
+    assert_eq!(events[1]["payload"]["text"], "I should look.");
+
+    let ran = &events[2]["payload"];
+    assert_eq!(ran["call_id"], "call_a");
+    assert_eq!(ran["tool"], "shell");
+    assert_eq!(
+        ran["arguments"], r#"{"command":"echo hello"}"#,
+        "the arguments are the wire's own string, which is what replays"
+    );
+    assert!(
+        ran["output"].as_str().unwrap_or_default().contains("hello"),
+        "the tool ran but its result was not recorded: {ran}"
+    );
+
+    let said = &events[3]["payload"];
+    assert_eq!(said["text"], "It said hello.");
+    assert_eq!(said["usage"]["total_tokens"], 116);
+    assert_eq!(said["calls"], 1);
+
+    // Nothing claims a failure, because there was none.
+    assert!(
+        !kinds(&events).contains(&"turn.failed".to_string()),
+        "a turn that answered recorded a failure"
+    );
+
+    // And every append landed before the revocation. A record written after
+    // the thread is terminal is refused by the server and is not a record.
+    let lines = stub.request_lines();
+    let revocation = lines
+        .iter()
+        .position(|line| line.starts_with("DELETE"))
+        .expect("no revocation was sent");
+    let last_append = lines
+        .iter()
+        .rposition(|line| line.starts_with("POST") && line.contains("/events"))
+        .expect("nothing was appended");
+    assert!(
+        last_append < revocation,
+        "an append landed after the revocation: {lines:?}"
+    );
+}
+
+/// What a recorded turn replays to on the next `--resume`.
+///
+/// This is the thing #106 unblocked: with only `thread.opened` on the thread,
+/// `oa coder --resume` on a thread this CLI had opened replayed nothing. The
+/// recorded events go through the real `replay_wire`, so a change to either
+/// side of that contract fails here.
+#[tokio::test]
+async fn a_recorded_turn_replays_into_the_conversation_it_came_from() {
+    let stub = recording_stub();
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session
+        .execute_turn("what does echo hello print?", |_| {})
+        .await
+        .expect("the turn failed");
+    session.close().await.expect("the revocation failed");
+
+    // Exactly what `GET /api/v1/threads/{id}/events` would hand back.
+    let transcript: Vec<openagents_cli::resume::ThreadEvent> = recorded(&stub)
+        .into_iter()
+        .enumerate()
+        .map(|(index, event)| openagents_cli::resume::ThreadEvent {
+            id: index as i64 + 1,
+            event_type: event["event_type"].as_str().unwrap_or_default().to_string(),
+            payload: event["payload"].clone(),
+        })
+        .collect();
+
+    let replayed = openagents_cli::resume::replay_wire(&transcript);
+    let shape: Vec<&str> = replayed.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(
+        shape,
+        vec!["user", "assistant", "tool", "assistant"],
+        "the recorded turn does not rebuild the conversation it came from"
+    );
+    assert_eq!(
+        replayed[0].content.as_deref(),
+        Some("what does echo hello print?")
+    );
+    assert_eq!(
+        replayed[1].tool_calls.as_ref().unwrap()[0]["function"]["name"],
+        "shell"
+    );
+    assert_eq!(replayed[2].tool_call_id.as_deref(), Some("call_a"));
+    assert_eq!(replayed[3].content.as_deref(), Some("It said hello."));
+}
+
+/// A turn the proxy refused records the refusal, and records no answer.
+///
+/// The mirror of the bug being fixed: a record that says every session
+/// succeeded is exactly as wrong as one that says every session was cancelled.
+#[tokio::test]
+async fn a_refused_turn_records_the_failure_and_never_an_answer() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        if line.starts_with("DELETE /api/v1/threads/") {
+            return revoked(0);
+        }
+        Reply::Body(
+            402,
+            "application/json",
+            r#"{"code":"credit_exhausted","message":"nothing left"}"#.to_string(),
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let failure = session
+        .execute_turn("do something", |_| {})
+        .await
+        .expect_err("a refused proxy returned success");
+    session.close().await.expect("the revocation failed");
+
+    let events = recorded(&stub);
+    assert_eq!(
+        kinds(&events),
+        vec!["turn.user", "turn.failed"],
+        "a refused turn did not write down that it failed: {:?}",
+        kinds(&events)
+    );
+    let why = events[1]["payload"]["error"].as_str().unwrap_or_default();
+    assert!(
+        why.contains("402") && why.contains("credit_exhausted"),
+        "the recorded failure does not say what refused it: {why}"
+    );
+    assert!(
+        failure.to_string().contains("402"),
+        "the caller was told something else: {failure}"
+    );
+}
+
+/// A turn that spends its whole step budget records that, rather than an
+/// answer it never produced.
+#[tokio::test]
+async fn a_turn_that_runs_out_of_steps_records_the_failure() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        if line.starts_with("DELETE /api/v1/threads/") {
+            return revoked(0);
+        }
+        // Never answers. Always asks for another tool.
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"tool_calls":[{
+                    "index": 0,
+                    "id": "call_loop",
+                    "function": {"name": "shell", "arguments": "{\"command\":\"true\"}"}
+                }]}}]}),
+            )],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let failure = session
+        .execute_turn("loop forever", |_| {})
+        .await
+        .expect_err("a turn with no answer returned one");
+
+    let events = recorded(&stub);
+    let kinds = kinds(&events);
+    assert_eq!(kinds.first().map(String::as_str), Some("turn.user"));
+    assert_eq!(
+        kinds.last().map(String::as_str),
+        Some("turn.failed"),
+        "the exhausted budget was not written down: {kinds:?}"
+    );
+    assert!(
+        !kinds.contains(&"turn.assistant".to_string()),
+        "a turn that never answered recorded an answer: {kinds:?}"
+    );
+    let last = events.last().expect("an event");
+    assert!(
+        last["payload"]["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("tool steps"),
+        "the recorded failure does not name the budget: {last}"
+    );
+    // The count is the calls it actually made, not a zero.
+    assert_eq!(last["payload"]["calls"], 30);
+    assert!(failure.to_string().contains("tool steps"));
+}
+
+/// A session interrupted mid-turn says so, because its turn never got to.
+#[tokio::test]
+async fn an_interrupted_session_records_the_interruption() {
+    let stub = recording_stub();
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session
+        .execute_turn("what does echo hello print?", |_| {})
+        .await
+        .expect("the turn failed");
+    session.note_interruption("stopped before finishing").await;
+
+    let kinds = kinds(&recorded(&stub));
+    assert_eq!(
+        kinds.last().map(String::as_str),
+        Some("turn.failed"),
+        "the interruption left no trace: {kinds:?}"
+    );
+}
+
+/// A transcript the server will not take does not cost the reader their answer
+/// — and is not swallowed either.
+#[tokio::test]
+async fn a_refused_append_is_reported_and_does_not_lose_the_answer() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return Reply::Body(
+                422,
+                "application/json",
+                r#"{"code":"event_invalid","message":"no"}"#.to_string(),
+            );
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"content":"PONG"}}]}),
+            )],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let answer = session
+        .execute_turn("say pong", |_| {})
+        .await
+        .expect("a refused append threw away a turn that worked");
+    assert_eq!(answer, "PONG");
+    assert!(
+        session
+            .record_failures
+            .iter()
+            .any(|failure| failure.contains("turn.assistant") && failure.contains("422")),
+        "the refused append was swallowed: {:?}",
+        session.record_failures
+    );
+}
+
+/// The revocation's `spent` is read rather than dropped, and a divergence from
+/// what this process counted is named rather than left for nobody to notice.
+#[tokio::test]
+async fn the_grant_spend_is_reported_and_a_divergence_is_named() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        if line.starts_with("DELETE /api/v1/threads/") {
+            return revoked(500);
+        }
+        Reply::Sse(
+            vec![
+                frame(serde_json::json!({"choices":[{"delta":{"content":"PONG"}}]})),
+                frame(serde_json::json!({
+                    "choices": [],
+                    "usage": {"prompt_tokens": 99, "completion_tokens": 17, "total_tokens": 116}
+                })),
+            ],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session.execute_turn("say pong", |_| {}).await.unwrap();
+    assert_eq!(session.session_usage.total_tokens, 116);
+
+    let spent = session.close().await.expect("the revocation failed");
+    let line = session
+        .spend_line(spent)
+        .expect("the server reported a spend and nothing said so");
+    assert!(line.contains("500"), "{line}");
+    assert!(line.contains("116"), "{line}");
+    assert!(line.contains("384"), "the divergence was not named: {line}");
+
+    // And an agreeing figure is reported without crying mismatch.
+    let agreed = session
+        .spend_line(Some(TurnUsage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 116,
+        }))
+        .expect("a reported spend");
+    assert_eq!(agreed, "Billed by the server: 116 tokens");
+}
+
+/// The interactive session revokes its thread when the screen goes, awaited.
+///
+/// `run_tui` used to `abort()` this actor, which drops the session inside a
+/// dead task where the `Drop` impl can only spawn a `DELETE` the exiting
+/// process may never poll (issue #107). Here the app's control channel is
+/// dropped, exactly as leaving the screen drops it.
+///
+/// Proved with a clock, because "the stub eventually saw a DELETE" is also
+/// what the racing `Drop` does on a runtime that stays up. The stub holds the
+/// revocation open for `HELD`, so only an actor that *awaits* the close takes
+/// that long to return; a spawned best effort returns immediately and leaves
+/// the request in flight.
+#[tokio::test]
+async fn the_interactive_actor_awaits_its_revocation_when_the_app_goes() {
+    /// Long enough to separate an awaited call from a spawned one, short
+    /// enough not to slow the suite.
+    const HELD: Duration = Duration::from_millis(600);
+
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        if line.starts_with("DELETE /api/v1/threads/") {
+            return Reply::Delayed(
+                HELD,
+                200,
+                "application/json",
+                r#"{"grant":{"status":"revoked","spent":{"calls":1,"total_tokens":116}}}"#
+                    .to_string(),
+            );
+        }
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"content":"ok"}}]}),
+            )],
+            None,
+        )
+    });
+    let session = session(Lane::OxAlpha, stub.base.clone());
+
+    let (control_tx, control_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let actor = tokio::spawn(openagents_cli::interactive::runtime_actor(
+        session, control_rx, event_tx,
+    ));
+
+    control_tx
+        .send(openagents_cli::interactive::Control::Prompt(
+            "say ok".to_string(),
+        ))
+        .unwrap();
+    // Wait for the turn to settle before the app goes, so what is timed below
+    // is the exit and not the turn.
+    loop {
+        match event_rx.recv().await.expect("the actor stopped early") {
+            openagents_cli::interactive::TurnEvent::Done(_) => break,
+            openagents_cli::interactive::TurnEvent::Failed(why) => panic!("the turn failed: {why}"),
+            _ => {}
+        }
+    }
+
+    drop(control_tx);
+    let left = Instant::now();
+    tokio::time::timeout(Duration::from_secs(10), actor)
+        .await
+        .expect("the actor never returned, so nothing was awaited")
+        .expect("the actor panicked");
+    let took = left.elapsed();
+
+    let lines = stub.request_lines();
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("DELETE /api/v1/threads/th_test")),
+        "the interactive session left its thread open: {lines:?}"
+    );
+    assert!(
+        took >= HELD,
+        "the actor returned after {took:?} with the revocation still held open for {HELD:?}, \
+         so it was spawned and abandoned rather than awaited"
+    );
+    // And it wrote the turn down on the way, like every other path.
+    assert!(
+        kinds(&recorded(&stub)).contains(&"turn.assistant".to_string()),
+        "the interactive session recorded no answer"
     );
 }

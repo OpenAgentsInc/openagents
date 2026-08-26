@@ -519,23 +519,50 @@ async fn run_proxy_child(
 
     let id = task.id;
     let sink = events.clone();
-    let turn = runtime.execute_turn(&task.prompt, move |chunk| {
-        let _ = sink.send(ChildEvent::Output {
-            id,
-            text: chunk.to_string(),
-        });
-    });
 
-    tokio::select! {
-        biased;
-        _ = cancel.changed() => Err(ChildFailure {
-            why: "stopped before finishing".to_string(),
-            pid: None,
-        }),
-        answered = turn => match answered {
-            Ok(text) => Ok(ChildAnswer { text, pid: None }),
-            Err(error) => Err(ChildFailure { why: error.to_string(), pid: None }),
-        },
+    let outcome = {
+        let turn = runtime.execute_turn(&task.prompt, move |chunk| {
+            let _ = sink.send(ChildEvent::Output {
+                id,
+                text: chunk.to_string(),
+            });
+        });
+
+        tokio::select! {
+            biased;
+            _ = cancel.changed() => Err("stopped before finishing".to_string()),
+            answered = turn => answered.map_err(|error| error.to_string()),
+        }
+    };
+
+    // A cancelled child drops its turn mid-flight, so the turn's own failure
+    // path never runs and the transcript would simply stop. Say what happened
+    // before the thread is revoked, so a stopped child is not left looking
+    // like one that finished quietly.
+    if let Err(why) = &outcome {
+        runtime.note_interruption(why).await;
+    }
+    // Awaited, on every path. A child used to leave its thread to the `Drop`
+    // impl, which spawns a best-effort DELETE the process may never poll — and
+    // a thread left open holds its grant's remaining budget. The failure is
+    // reported to the parent's event stream rather than to a screen this child
+    // does not own.
+    if let Err(error) = runtime.close().await {
+        let _ = events.send(ChildEvent::Activity {
+            id,
+            text: format!("the thread was not revoked: {error}"),
+        });
+    }
+    for failure in &runtime.record_failures {
+        let _ = events.send(ChildEvent::Activity {
+            id,
+            text: failure.clone(),
+        });
+    }
+
+    match outcome {
+        Ok(text) => Ok(ChildAnswer { text, pid: None }),
+        Err(why) => Err(ChildFailure { why, pid: None }),
     }
 }
 

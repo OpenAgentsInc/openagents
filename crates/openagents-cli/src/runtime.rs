@@ -19,6 +19,26 @@
 //! request with the sentence `Completed autonomous reasoning turn (offline
 //! fallback).` and exit 0. Neither comes back.
 //!
+//! ## A turn writes itself down before the thread is revoked
+//!
+//! The thread lane records what it did to `POST /api/v1/threads/{id}/events`
+//! as it happens — `turn.user`, `turn.reasoning`, `tool.ran`, `turn.assistant`
+//! — which is the vocabulary [`crate::resume`] replays and the one
+//! `docs/2026-08-24-coder-account-integration-audit.md` fixes. It used to
+//! record nothing at all, so every session reached `DELETE` with a transcript
+//! holding one `thread.opened` and nothing else, and the account's history
+//! read as a wall of cancellations over runs that had answered correctly.
+//!
+//! A turn that did not answer records [`ThreadRecord::failed`] instead, and
+//! never an answer: the point of writing the turn down is that the record
+//! matches what happened, which it does not if a refused proxy, a broken
+//! stream, an interrupted session, or an exhausted step budget lands in the
+//! transcript looking like an answer.
+//!
+//! Recording is best effort and does not fail a turn that worked: a transcript
+//! that could not be written is kept in [`CoderRuntimeSession::record_failures`]
+//! and reported, rather than swallowed or allowed to throw away an answer.
+//!
 //! ## Model ids are the server's, not this file's
 //!
 //! The deployment publishes its catalog at `GET /api/v1/models` and refuses
@@ -56,6 +76,12 @@ pub const OLLAMA_HOST: &str = "http://127.0.0.1:11434";
 ///
 /// A backstop against a model that loops, not a budget.
 const MAX_TOOL_STEPS: usize = 30;
+
+/// How many transcript events one append may carry.
+///
+/// The server's own cap (`OpenAgents.Threads.maximum_event_batch/0`). A longer
+/// list is split into several appends rather than refused as one.
+const MAX_EVENT_BATCH: usize = 100;
 
 /// The tier names a reader may type, and the catalog id each one opens on.
 ///
@@ -233,6 +259,85 @@ pub struct InferenceGrant {
     pub model: String,
 }
 
+/// One event on a thread's transcript, in the vocabulary `--resume` replays.
+///
+/// The words are the ones the server's own readers know: `turn.user`,
+/// `turn.reasoning`, `tool.ran` and `turn.assistant` are what
+/// [`crate::resume::replay_wire`] rebuilds a conversation from and what the
+/// WEKA export cuts model calls at. `turn.failed` is deliberately outside that
+/// set — a turn that did not answer has no answer to replay, and a reader that
+/// does not know the word skips it rather than feeding a failure back to a
+/// model as though the model had said it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ThreadRecord {
+    pub event_type: String,
+    pub payload: serde_json::Value,
+}
+
+impl ThreadRecord {
+    fn new(event_type: &str, payload: serde_json::Value) -> Self {
+        Self {
+            event_type: event_type.to_string(),
+            payload,
+        }
+    }
+
+    /// What the reader asked.
+    pub fn user(text: &str) -> Self {
+        Self::new("turn.user", serde_json::json!({ "text": text }))
+    }
+
+    /// What the model thought before it answered, recorded whole.
+    pub fn reasoning(text: &str) -> Self {
+        Self::new("turn.reasoning", serde_json::json!({ "text": text }))
+    }
+
+    /// One call with its arguments and its result: one fact, one event.
+    ///
+    /// `arguments` is the raw JSON string the wire carried, not a re-encoding
+    /// of it, because that is what goes back to a model on replay.
+    pub fn tool_ran(call_id: &str, tool: &str, arguments: &str, output: &str) -> Self {
+        Self::new(
+            "tool.ran",
+            serde_json::json!({
+                "call_id": call_id,
+                "tool": tool,
+                "arguments": arguments,
+                "output": output,
+            }),
+        )
+    }
+
+    /// The answer, with what the turn spent reaching it.
+    pub fn assistant(text: &str, usage: TurnUsage, calls: usize) -> Self {
+        Self::new(
+            "turn.assistant",
+            serde_json::json!({
+                "text": text,
+                "usage": usage,
+                "calls": calls,
+            }),
+        )
+    }
+
+    /// A turn that produced no answer, and the sentence saying why.
+    ///
+    /// This is the half of the record that keeps it honest. A session that
+    /// failed must not read afterwards as one that succeeded, so every exit
+    /// from a turn that is not the model's own answer writes one of these and
+    /// no `turn.assistant`.
+    pub fn failed(why: &str, usage: TurnUsage, calls: usize) -> Self {
+        Self::new(
+            "turn.failed",
+            serde_json::json!({
+                "error": why,
+                "usage": usage,
+                "calls": calls,
+            }),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -259,6 +364,22 @@ pub struct CoderRuntimeSession {
     pub last_model: Option<String>,
     /// What the last turn spent, summed over its steps.
     pub last_usage: TurnUsage,
+    /// How many tools the last turn ran, counted as they were recorded.
+    pub last_calls: usize,
+    /// What every turn this session ran has spent, summed.
+    ///
+    /// The figure to hold a server-reported grant spend against: `last_usage`
+    /// is one turn, and a session that ran four of them and compared the
+    /// fourth against the grant's total would report a divergence on every
+    /// multi-turn session and call it a mismatch.
+    pub session_usage: TurnUsage,
+    /// Transcript appends this session could not make, in the order they failed.
+    ///
+    /// Recording is best effort — a thread the server would not take an event
+    /// for is not a reason to throw away an answer the reader is waiting on —
+    /// but a silent best effort is how the record came to disagree with the
+    /// session in the first place. The failure is kept here and reported.
+    pub record_failures: Vec<String>,
     /// The reasoning the last turn emitted, if the model emits any.
     ///
     /// Kept off the content callback deliberately: `delta.reasoning` and
@@ -302,6 +423,9 @@ impl CoderRuntimeSession {
             last_grant: None,
             last_model: None,
             last_usage: TurnUsage::default(),
+            last_calls: 0,
+            session_usage: TurnUsage::default(),
+            record_failures: Vec::new(),
             last_reasoning: String::new(),
             reasoning: None,
             repository: None,
@@ -677,6 +801,91 @@ impl CoderRuntimeSession {
         }))
     }
 
+    /// What the server billed this session against what this process counted.
+    ///
+    /// `close` hands back the grant's own `spent`, and the caller used to drop
+    /// it, so the CLI printed its client-side accumulation and nothing could
+    /// ever notice the two disagreeing. This is the line that notices: the
+    /// server's figure, and a second sentence naming the gap when there is one.
+    ///
+    /// `None` when the server reported no spend — the local lane, or a session
+    /// that never opened a thread — because there is nothing to reconcile.
+    pub fn spend_line(&self, reported: Option<TurnUsage>) -> Option<String> {
+        let reported = reported?;
+        let counted = self.session_usage.total_tokens;
+        let billed = reported.total_tokens;
+        let line = format!("Billed by the server: {billed} tokens");
+        if billed == counted {
+            return Some(line);
+        }
+        Some(format!(
+            "{line} — this session counted {counted}, a difference of {}. \
+             The server's figure is the one the account is charged against.",
+            billed.abs_diff(counted)
+        ))
+    }
+
+    // ───────────────────────────────────────────────────────── the transcript
+
+    /// The thread this session holds, while it holds one.
+    pub fn thread(&self) -> Option<&str> {
+        self.thread_id.as_deref()
+    }
+
+    /// Append events to this session's thread transcript.
+    ///
+    /// `POST /api/v1/threads/{id}/events`, batched: one round trip lands the
+    /// whole list in order or none of it, capped at the server's own batch
+    /// maximum so a long step is split rather than refused whole. A session
+    /// holding no thread — the local lane, or one already revoked — writes
+    /// nothing and answers `Ok(false)`, because nowhere to write is not a
+    /// failure to write.
+    pub async fn record(&self, events: &[ThreadRecord]) -> Result<bool, Failure> {
+        let Some(thread_id) = &self.thread_id else {
+            return Ok(false);
+        };
+        if events.is_empty() {
+            return Ok(false);
+        }
+        let url = format!("{}/threads/{thread_id}/events", self.api_base);
+        for batch in events.chunks(MAX_EVENT_BATCH) {
+            let mut request = self
+                .http
+                .post(&url)
+                .timeout(Duration::from_secs(30))
+                .json(&serde_json::json!({ "events": batch }));
+            if let Some(token) = &self.user_token {
+                request = request.bearer_auth(token);
+            }
+            let resp = request.send().await.map_err(|error| -> Failure {
+                format!("{url} could not be reached: {error}").into()
+            })?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(format!(
+                    "{url} refused the transcript append: {status} {}",
+                    snippet(&body)
+                )
+                .into());
+            }
+        }
+        Ok(true)
+    }
+
+    /// Record, keeping a refusal rather than failing the turn over it.
+    pub async fn note(&mut self, events: Vec<ThreadRecord>) {
+        if let Err(error) = self.record(&events).await {
+            let kinds = events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.record_failures
+                .push(format!("{kinds} were not recorded: {error}"));
+        }
+    }
+
     // ─────────────────────────────────────────────────────────── the turn
 
     pub async fn execute_turn<F>(
@@ -706,17 +915,22 @@ impl CoderRuntimeSession {
         });
 
         self.last_usage = TurnUsage::default();
+        self.last_calls = 0;
         self.last_reasoning.clear();
 
-        if self.lane.is_local() {
+        let answered = if self.lane.is_local() {
             self.run_local_turn(&tool_defs, chunk_callback).await
         } else {
-            self.run_thread_turn(&tool_defs, chunk_callback).await
-        }
+            self.run_thread_turn(prompt, &tool_defs, chunk_callback)
+                .await
+        };
+        self.session_usage.add(self.last_usage);
+        answered
     }
 
     async fn run_thread_turn<F>(
         &mut self,
+        prompt: &str,
         tool_defs: &[ToolDefinition],
         mut chunk_callback: F,
     ) -> Result<String, Failure>
@@ -740,6 +954,10 @@ impl CoderRuntimeSession {
             }
         };
         self.last_model = Some(grant.model.clone());
+
+        // The transcript opens with what was asked, before a model is reached,
+        // so a turn that dies mid-step still leaves the question behind.
+        self.note(vec![ThreadRecord::user(prompt)]).await;
 
         let mut final_answer = String::new();
         // False means the step budget ran out with every step still calling
@@ -785,15 +1003,16 @@ impl CoderRuntimeSession {
                 Ok(r) => {
                     let status = r.status();
                     let body = r.text().await.unwrap_or_default();
-                    return Err(format!(
+                    let why = format!(
                         "{} refused the turn: {status} {}",
                         grant.proxy_url,
                         snippet(&body)
-                    )
-                    .into());
+                    );
+                    return Err(self.record_failure(why).await);
                 }
                 Err(error) => {
-                    return Err(format!("{} could not be reached: {error}", grant.proxy_url).into())
+                    let why = format!("{} could not be reached: {error}", grant.proxy_url);
+                    return Err(self.record_failure(why).await);
                 }
             };
 
@@ -804,11 +1023,16 @@ impl CoderRuntimeSession {
                 let event = match event {
                     Ok(event) => event,
                     Err(error) => {
-                        return Err(format!(
+                        let why = format!(
                             "the reply from {} stopped mid-stream: {error}",
                             grant.proxy_url
-                        )
-                        .into())
+                        );
+                        // What streamed before the break is part of what
+                        // happened and is kept, but the turn still records as
+                        // failed: an incomplete answer is not an answer.
+                        self.last_usage.add(step.usage);
+                        self.last_reasoning.push_str(&step.reasoning);
+                        return Err(self.record_failure(why).await);
                     }
                 };
                 if event.data == "[DONE]" {
@@ -822,6 +1046,14 @@ impl CoderRuntimeSession {
 
             self.last_usage.add(step.usage);
             self.last_reasoning.push_str(&step.reasoning);
+
+            // The working comes before whatever it led to, in the order it
+            // happened. Recorded whole: it is the largest part of what a
+            // session produces and a transcript without it is a summary.
+            if !step.reasoning.trim().is_empty() {
+                let thought = ThreadRecord::reasoning(&step.reasoning);
+                self.note(vec![thought]).await;
+            }
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
@@ -842,24 +1074,55 @@ impl CoderRuntimeSession {
                     tool_calls: None,
                     tool_call_id: None,
                 });
+                let said = ThreadRecord::assistant(&final_answer, self.last_usage, self.last_calls);
+                self.note(vec![said]).await;
                 answered = true;
                 break;
             }
-            self.run_tools(step).await;
+            let ran = self.run_tools(step).await;
+            self.last_calls += ran.len();
+            self.note(ran).await;
         }
 
         if !answered {
-            return Err(format!(
+            let why = format!(
                 "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
                  nothing was returned rather than an empty answer that reads as success"
-            )
-            .into());
+            );
+            return Err(self.record_failure(why).await);
         }
         Ok(final_answer)
     }
 
+    /// Write a turn's failure to the transcript, then hand back the failure.
+    ///
+    /// Every exit from a turn that is not the model's own answer goes through
+    /// here, so the record cannot say a session succeeded where it did not.
+    async fn record_failure(&mut self, why: String) -> Failure {
+        let (usage, calls) = (self.last_usage, self.last_calls);
+        self.note(vec![ThreadRecord::failed(&why, usage, calls)])
+            .await;
+        why.into()
+    }
+
+    /// Record that this session stopped before the turn in flight answered.
+    ///
+    /// A dropped turn future never reaches [`Self::record_failure`] — a
+    /// cancelled child, a session quit mid-turn — so the caller that dropped
+    /// it says so here. Without this an interruption leaves a transcript that
+    /// simply stops, which a later reader has no way to tell from a turn that
+    /// finished quietly.
+    pub async fn note_interruption(&mut self, why: &str) {
+        let (usage, calls) = (self.last_usage, self.last_calls);
+        self.note(vec![ThreadRecord::failed(why, usage, calls)])
+            .await;
+    }
+
     /// Record the assistant's tool calls, run them, and put the results back.
-    async fn run_tools(&mut self, step: StepAccumulator) {
+    ///
+    /// Hands back one `tool.ran` per call for the transcript: the call and its
+    /// result are one fact, and the caller has both only once the tool has run.
+    async fn run_tools(&mut self, step: StepAccumulator) -> Vec<ThreadRecord> {
         let recorded: Vec<serde_json::Value> = step
             .tool_calls
             .values()
@@ -883,6 +1146,7 @@ impl CoderRuntimeSession {
             tool_call_id: None,
         });
 
+        let mut ran = Vec::new();
         for (id, name, args_str) in step.tool_calls.into_values() {
             let arguments: serde_json::Value =
                 serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
@@ -892,6 +1156,12 @@ impl CoderRuntimeSession {
                 arguments,
             };
             let result = self.tools.execute_tool(&call).await;
+            ran.push(ThreadRecord::tool_ran(
+                &id,
+                &name,
+                &args_str,
+                &result.output,
+            ));
             self.messages.push(ChatMessage {
                 role: "tool".to_string(),
                 content: Some(result.output),
@@ -899,6 +1169,7 @@ impl CoderRuntimeSession {
                 tool_call_id: Some(id),
             });
         }
+        ran
     }
 
     // ────────────────────────────────────────────────────── the local lane
@@ -1087,7 +1358,11 @@ impl CoderRuntimeSession {
                 answered = true;
                 break;
             }
-            self.run_tools(step).await;
+            // The local lane holds no thread of its own, so `note` writes
+            // nothing; it is called anyway so a local session that resumed
+            // somebody's thread records against it like any other.
+            let ran = self.run_tools(step).await;
+            self.note(ran).await;
         }
 
         if !answered {

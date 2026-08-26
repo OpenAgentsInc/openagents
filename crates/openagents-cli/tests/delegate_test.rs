@@ -333,3 +333,177 @@ fn an_unknown_lane_is_not_silently_ox_alpha() {
     assert!(!ChildLane::known("gemni"));
     assert!(!ChildLane::known(""));
 }
+
+// ──────────────────────────────────────────────────── the child's own thread
+//
+// A delegated child opens a thread of its own and used to leave revoking it to
+// the `Drop` impl, which spawns a best-effort `DELETE` onto whatever runtime is
+// still up. The audit in #89 found two threads still open from long-dead
+// sessions; a thread left open holds its grant's remaining budget (issue #107).
+
+/// How long the stub holds a revocation open.
+///
+/// Long enough to tell an awaited `close()` from the `Drop` impl's spawned
+/// best effort, which returns at once and leaves its request in flight.
+const REVOCATION_HELD: Duration = Duration::from_millis(600);
+
+/// A stand-in for the account API and the proxy, which records what it took.
+struct ProxyStub {
+    origin: String,
+    requests: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl ProxyStub {
+    fn request_lines(&self) -> Vec<String> {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request.lines().next().unwrap_or_default().to_string())
+            .collect()
+    }
+}
+
+/// Answers a thread open, transcript appends, a revocation, and one turn.
+async fn proxy_stub() -> ProxyStub {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let origin = format!("http://127.0.0.1:{port}");
+    let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    let seen = std::sync::Arc::clone(&requests);
+    let grant_url = format!("{origin}/proxy");
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 4096];
+            loop {
+                let Ok(read) = socket.read(&mut buffer).await else {
+                    break;
+                };
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+                let text = String::from_utf8_lossy(&request);
+                if let Some(end) = text.find("\r\n\r\n") {
+                    let length = text
+                        .lines()
+                        .find_map(|line| {
+                            line.strip_prefix("content-length: ")
+                                .or_else(|| line.strip_prefix("Content-Length: "))
+                        })
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let request = String::from_utf8_lossy(&request).to_string();
+            let line = request.lines().next().unwrap_or_default().to_string();
+            seen.lock().unwrap().push(request);
+
+            let (status, content_type, body) = if line.starts_with("POST")
+                && line.contains("/events")
+            {
+                (
+                    201,
+                    "application/json",
+                    r#"{"events":[{"id":1}]}"#.to_string(),
+                )
+            } else if line.starts_with("POST /api/v1/threads") {
+                (
+                    200,
+                    "application/json",
+                    format!(
+                        r#"{{"thread":{{"id":"th_child"}},"grant":{{"token":"tok","url":"{grant_url}","model":"ox-alpha"}}}}"#
+                    ),
+                )
+            } else if line.starts_with("DELETE /api/v1/threads/") {
+                // Held open, so an awaited revocation is measurably slower
+                // than a spawned one. See the test below.
+                tokio::time::sleep(REVOCATION_HELD).await;
+                (
+                    200,
+                    "application/json",
+                    r#"{"grant":{"status":"revoked","spent":{"calls":1,"total_tokens":12}}}"#
+                        .to_string(),
+                )
+            } else {
+                let frame =
+                    serde_json::json!({"choices":[{"delta":{"content":"the child answered"}}]});
+                let stream = format!("data: {frame}\n\ndata: [DONE]\n\n");
+                let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(stream.as_bytes()).await;
+                let _ = socket.flush().await;
+                continue;
+            };
+
+            let head = format!(
+                "HTTP/1.1 {status} X\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = socket.write_all(head.as_bytes()).await;
+            let _ = socket.write_all(body.as_bytes()).await;
+            let _ = socket.flush().await;
+        }
+    });
+
+    ProxyStub { origin, requests }
+}
+
+/// A child on the proxy revokes its own thread, awaited, and writes its turn
+/// down on the way.
+///
+/// A child used to leave the revocation to the `Drop` impl, which spawns a
+/// `DELETE` onto whatever runtime is still up and may never be polled. Timed
+/// rather than merely observed: the stub holds the revocation open, so a child
+/// that finishes faster than that did not wait for it.
+#[tokio::test]
+async fn a_delegated_child_revokes_its_own_thread() {
+    let _guard = exclusive();
+    let stub = proxy_stub().await;
+    std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin));
+
+    let supervisor = DelegationSupervisor::new(1, "ox-alpha", Some("oat_test".to_string()))
+        .with_isolation(Isolation::None)
+        .in_directory(Some(std::env::temp_dir()));
+    let (results, _events) = run(&supervisor, "say something", None).await;
+
+    std::env::remove_var("OPENAGENTS_API_BASE");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        results[0].success,
+        "the child failed: {}",
+        results[0].output
+    );
+
+    let lines = stub.request_lines();
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("DELETE /api/v1/threads/th_child")),
+        "the child left its thread open: {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("POST") && line.contains("/events")),
+        "the child recorded nothing of what it did: {lines:?}"
+    );
+    assert!(
+        results[0].duration_ms >= REVOCATION_HELD.as_millis(),
+        "the child finished in {}ms with the revocation held open for {}ms, so it was \
+         spawned and abandoned rather than awaited",
+        results[0].duration_ms,
+        REVOCATION_HELD.as_millis()
+    );
+}

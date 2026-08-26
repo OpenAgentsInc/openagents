@@ -143,6 +143,12 @@ pub enum TurnEvent {
 /// How often the streaming bullet flips.
 const PULSE: Duration = Duration::from_millis(400);
 
+/// How long the exit waits for the session to revoke its thread.
+///
+/// Long enough for a `DELETE` on a working connection, short enough that a
+/// reader who has quit does not sit looking at a finished screen.
+const THREAD_REVOCATION_GRACE: Duration = Duration::from_secs(15);
+
 /// The diff inspector's state.
 struct DiffView {
     files: Vec<FileDiff>,
@@ -858,7 +864,31 @@ where
     }
 }
 
+/// Revoke a session's thread and say what it cost, and what went unrecorded.
+///
+/// The lines land on stdout rather than in a screen because both callers reach
+/// here after their screen is gone. Silence when the session held no thread:
+/// the local lane has nothing to revoke and nothing was billed.
+pub async fn close_and_report(session: &mut CoderRuntimeSession) {
+    match session.close().await {
+        Ok(spent) => {
+            if let Some(line) = session.spend_line(spent) {
+                println!("{line}");
+            }
+        }
+        Err(error) => eprintln!("oa: the thread was not revoked: {error}"),
+    }
+    for failure in &session.record_failures {
+        eprintln!("oa: {failure}");
+    }
+}
+
 /// Own the session and do what the app asks for.
+///
+/// Returns once the app has dropped its control channel, having revoked the
+/// session's thread on the way out. The caller awaits that rather than
+/// aborting the task: an aborted actor drops its session, and the `Drop` impl
+/// only spawns a revocation that the exiting process may never poll.
 pub async fn runtime_actor(
     mut session: CoderRuntimeSession,
     mut control: UnboundedReceiver<Control>,
@@ -887,7 +917,7 @@ pub async fn runtime_actor(
                     Err(error) => TurnEvent::Failed(error.to_string()),
                 };
                 if events.send(event).is_err() {
-                    return;
+                    break;
                 }
             }
             Control::Diff(arguments) => {
@@ -896,7 +926,7 @@ pub async fn runtime_actor(
                     Err(why) => TurnEvent::Notice(why),
                 };
                 if events.send(event).is_err() {
-                    return;
+                    break;
                 }
             }
             Control::ForeignResume(selection) => {
@@ -932,7 +962,7 @@ pub async fn runtime_actor(
                         control: session,
                     });
                     if opened.is_err() {
-                        return;
+                        break;
                     }
                     // Forwarded from a task of its own so this actor stays
                     // able to answer while the program runs.
@@ -952,6 +982,9 @@ pub async fn runtime_actor(
             },
         }
     }
+    // The app has gone. Revoke the thread here, awaited, rather than leaving
+    // it to `Drop` in an aborted task.
+    close_and_report(&mut session).await;
 }
 
 /// Collect the diff `/diff` asked for.
@@ -1137,7 +1170,23 @@ pub async fn run_tui(
         .await
     };
 
-    runtime.abort();
+    // `run_loop` has taken the control sender with it, so the actor's receiver
+    // is closed and the actor is on its way out with a revocation to make.
+    // Awaited rather than aborted: aborting drops the session inside a dead
+    // task, where the `Drop` impl can only spawn a DELETE this process may
+    // exit before polling. Bounded, because a turn still streaming would
+    // otherwise hold the exit for as long as the model wants — and in that
+    // case `Drop`'s best effort is what is left, which is what it is for.
+    if tokio::time::timeout(THREAD_REVOCATION_GRACE, runtime)
+        .await
+        .is_err()
+    {
+        eprintln!(
+            "oa: the session was still working after {}s, so its thread was left to the \
+             best-effort revocation.",
+            THREAD_REVOCATION_GRACE.as_secs()
+        );
+    }
     result?;
 
     if let Some(path) = args.export {
@@ -1206,7 +1255,7 @@ async fn run_without_a_terminal(
     // streamed, which is how the offline paths still say something.
     let streamed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let saw = std::sync::Arc::clone(&streamed);
-    let answer = session
+    let answered = session
         .execute_turn(&prompt, move |chunk| {
             use std::io::Write;
             saw.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -1214,7 +1263,13 @@ async fn run_without_a_terminal(
             let _ = std::io::stdout().flush();
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string());
+    // Awaited, and awaited whether the turn worked or not. This path used to
+    // return on the failure and leave the revocation to `Drop`, which spawns a
+    // best-effort DELETE that may never be polled before the process exits —
+    // and a thread left open holds its grant's remaining budget.
+    close_and_report(&mut session).await;
+    let answer = answered?;
     if !streamed.load(std::sync::atomic::Ordering::Relaxed) {
         print!("{answer}");
     }

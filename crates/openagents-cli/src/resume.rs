@@ -29,11 +29,15 @@
 //!
 //! ## What a Rust-opened thread replays to
 //!
-//! [`crate::runtime`] records `thread.opened` and no turn events, so a thread
-//! this CLI opened replays to an empty conversation while one `openagents
-//! coder` opened replays to its transcript. That is the record, not a parse
-//! failure, and the caller says how many messages came back rather than
-//! implying a transcript that is not there.
+//! Its own conversation. [`crate::runtime`] records `turn.user`, `tool.ran`
+//! and `turn.assistant` as a turn runs, which is the vocabulary below, so a
+//! thread this CLI opened resumes the same way one `openagents coder` opened
+//! does. It did not always: the runtime recorded nothing at all, every thread
+//! held one `thread.opened` and no more, and `--resume` on one replayed zero
+//! messages. A thread from before that fix still replays to an empty
+//! conversation — that is the record, not a parse failure, and the caller says
+//! how many messages came back rather than implying a transcript that is not
+//! there.
 
 use crate::runtime::ChatMessage;
 use serde::Deserialize;
