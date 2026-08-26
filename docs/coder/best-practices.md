@@ -33,9 +33,33 @@ Harbor verifier is the oracle of record.
 Headless output does not prove an interactive TUI works. Agent shells are
 non-TTY and will take the non-interactive branch every time.
 **Provenance:** postmortem (every check bypassed ratatui via the headless
-fallback). **Detection:** review question. An automated PTY harness is the
-planned gate (autoimprove §7.4); until it exists, no interactive-TUI issue
-closes on headless evidence.
+fallback). **Detection:** a written test, not yet a gate —
+`crates/coder-lite/tests/interactive_pty.rs`, run by
+`cargo test -p coder-lite`, starts the real binary with no arguments on a
+pseudo-terminal and asserts on the emulated cells: that a bare invocation
+opens a session rather than printing help, that a composer box renders, that
+typed characters echo and the caret column tracks them, that backspace
+removes them, that Enter clears the composer and puts the line in the
+transcript, that a `/` line reaches the session's own dispatch and an unknown
+one is refused by name, that a resize redraws at the new width, that the
+bottom status bar reports usage, and that leaving restores the terminal
+(`ECHO` and `ICANON` read back from the pty master, alternate screen left).
+No interactive-TUI issue closes on headless evidence; the harness is the
+evidence. One limit, stated plainly: `pnpm run check` does not run this
+suite. The completion gate's only cargo invocation is
+`check:all-work-contract`, and `test:cloud-crates` is not wired into `check`,
+so until that wiring lands (#124) this practice holds only when someone runs
+`cargo test -p coder-lite` by hand. Treat it as enforced on the surface, not
+in CI.
+
+Stubbing the composer's row mapping to drop its content fails two of the
+eight — the echo test and the Enter test — while the caret, slash-dispatch,
+resize, status-bar, and teardown tests still pass, because they read state
+the stub does not touch. That is the harness working: a composer-render
+break localizes to two tests, so read a 2-of-8 failure as a located defect,
+not a partial one. K1 is this same discipline applied to claims — read the
+premise against the source. This entry applies it to behavior: run the check
+on the surface the user touches.
 
 ### V3. Parity claims quantify — `adopted`
 

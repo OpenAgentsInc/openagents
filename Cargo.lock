@@ -418,8 +418,10 @@ dependencies = [
  "crossterm",
  "futures",
  "html-escape",
+ "libc",
  "linkify",
  "openagents-cli",
+ "portable-pty",
  "pretty_assertions",
  "pulldown-cmark",
  "ratatui",
@@ -434,6 +436,7 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width 0.2.0",
  "url",
+ "vt100",
 ]
 
 [[package]]

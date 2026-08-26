@@ -50,3 +50,9 @@ url = "2"
 
 [dev-dependencies]
 pretty_assertions = "1"
+# tests/interactive_pty.rs drives the real binary on a pseudo-terminal and
+# reads the emulated screen, because a non-TTY shell takes the headless
+# branch and never exercises ratatui. Versions match openagents-cli's pins.
+portable-pty = "0.9"
+vt100 = "0.15"
+libc = "0.2"
