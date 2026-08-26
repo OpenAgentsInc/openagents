@@ -38,11 +38,13 @@ Options:
                      over the OpenResponses streaming surface. Starts one from
                      ../openagents.com if none is running, and tolerates one
                      that already is.
-  --lane <name>      Which model answers. `auto` leaves it to the deployment;
-                     `flash` and `pro` are tiers; `local` or `ollama:<model>`
-                     answers from this machine; any other name is checked
-                     against GET /api/v1/models and refused if it is not
-                     served. Defaults to `auto`.
+  --lane <name>      Which model answers. `flash` and `free` are the two
+                     switchable lanes, and shift+tab moves between them; each
+                     resolves its model from GET /api/v1/models at open.
+                     `local` or `ollama:<model>` answers from this machine; any
+                     other name is read as a catalog id, checked against
+                     GET /api/v1/models, and refused if it is not served.
+                     Defaults to `flash`.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to
                      leave the deployment's own default.
   -h, --help         Print this and exit.
@@ -138,7 +140,7 @@ enum Parsed {
 /// dropped is a flag that lied about being read.
 fn parse(arguments: &[String]) -> Result<Parsed, String> {
     let mut options = SessionOptions {
-        lane_name: "auto".to_string(),
+        lane_name: "flash".to_string(),
         reasoning: None,
         dev: false,
     };

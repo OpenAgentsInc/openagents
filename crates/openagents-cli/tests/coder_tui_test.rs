@@ -92,7 +92,7 @@ fn app() -> (
     UnboundedReceiver<Control>,
 ) {
     let (tx, rx) = unbounded_channel();
-    (CoderApp::new("openagents coder", &Lane::OxAlpha), tx, rx)
+    (CoderApp::new("openagents coder", &Lane::default()), tx, rx)
 }
 
 fn type_str(app: &mut CoderApp, control: &UnboundedSender<Control>, text: &str) {
@@ -395,12 +395,12 @@ fn the_model_shown_is_the_one_the_turn_answered_from() {
 
     type_str(&mut app, &control, "go");
     app.on_key(&key(KeyCode::Enter), 120, &control);
-    app.on_turn_event(TurnEvent::Model("ox-alpha-2".to_string()));
+    app.on_turn_event(TurnEvent::Model("glm-5.3-flash-2".to_string()));
     app.on_turn_event(TurnEvent::Done("done".to_string()));
     app.draw(&mut term).unwrap();
-    assert_eq!(app.model(), Some("ox-alpha-2"));
+    assert_eq!(app.model(), Some("glm-5.3-flash-2"));
     assert!(
-        screen(&term).contains("Model: ox-alpha-2"),
+        screen(&term).contains("Model: glm-5.3-flash-2"),
         "{}",
         screen(&term)
     );
@@ -472,7 +472,7 @@ fn a_narrow_window_drops_hints_rather_than_showing_half_of_one() {
     let mut term = terminal_of(74, HEIGHT);
     app.draw(&mut term).unwrap();
     let row = status_row(&term);
-    assert!(row.contains("Lane: Coder (ox-alpha)"), "{row}");
+    assert!(row.contains("Lane: Coder Flash (flash)"), "{row}");
     assert!(!row.contains("Ent"), "a hint was cut in half: {row}");
 
     // Narrower still: the lowest-priority segment goes too, whole.
@@ -553,7 +553,7 @@ fn send_keys(tx: &UnboundedSender<Event>, text: &str) {
 #[tokio::test]
 async fn end_to_end_over_the_loop_with_a_stub_runtime() {
     let mut term = terminal();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     let (keys_tx, keys_rx) = unbounded_channel();
     let (control_tx, mut control_rx) = unbounded_channel::<Control>();
     let (turn_tx, mut turn_rx) = unbounded_channel::<TurnEvent>();
@@ -613,7 +613,7 @@ async fn end_to_end_over_real_http_shows_a_chunk_before_the_turn_finishes() {
     let stub = support::start(vec!["Reading the ", "repository now."], Some(gate_rx)).await;
 
     let session = CoderRuntimeSession::new(
-        Lane::OxAlpha,
+        Lane::default(),
         Some(stub.base),
         Some("oat_test".to_string()),
         HarnessToolRegistry::new(Some(std::env::temp_dir())),
@@ -624,7 +624,7 @@ async fn end_to_end_over_real_http_shows_a_chunk_before_the_turn_finishes() {
     tokio::spawn(runtime_actor(session, control_rx, turn_tx.clone()));
 
     let mut term = terminal();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     let (keys_tx, keys_rx) = unbounded_channel();
 
     send_keys(&keys_tx, "read the repo");
@@ -674,7 +674,7 @@ async fn end_to_end_over_real_http_streams_a_whole_reply_onto_the_transcript() {
     let stub = support::start(vec!["Two files ", "changed today."], None).await;
 
     let session = CoderRuntimeSession::new(
-        Lane::OxAlpha,
+        Lane::default(),
         Some(stub.base),
         Some("oat_test".to_string()),
         HarnessToolRegistry::new(Some(std::env::temp_dir())),
@@ -685,7 +685,7 @@ async fn end_to_end_over_real_http_streams_a_whole_reply_onto_the_transcript() {
     tokio::spawn(runtime_actor(session, control_rx, turn_tx.clone()));
 
     let mut term = terminal();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     let (keys_tx, keys_rx) = unbounded_channel();
 
     send_keys(&keys_tx, "what changed");
@@ -731,7 +731,7 @@ async fn a_refused_turn_says_so_on_the_transcript() {
     let stub = support::start_refusing().await;
 
     let session = CoderRuntimeSession::new(
-        Lane::OxAlpha,
+        Lane::default(),
         Some(stub.base),
         None,
         HarnessToolRegistry::new(Some(std::env::temp_dir())),
@@ -742,7 +742,7 @@ async fn a_refused_turn_says_so_on_the_transcript() {
     tokio::spawn(runtime_actor(session, control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(100, HEIGHT);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     let (keys_tx, keys_rx) = unbounded_channel();
     send_keys(&keys_tx, "hello");
     let _ = keys_tx.send(Event::Key(key(KeyCode::Enter)));
@@ -1050,7 +1050,7 @@ fn scratch_directory() -> tempfile::TempDir {
 fn tab_completes_the_only_command_that_matches() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let dir = scratch_directory();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha)
+    let mut app = CoderApp::new("openagents coder", &Lane::default())
         .with_working_directory(dir.path().to_path_buf());
     let mut term = terminal();
 
@@ -1068,7 +1068,7 @@ fn tab_completes_the_only_command_that_matches() {
 fn tab_lists_the_candidates_rather_than_choosing_one() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let dir = scratch_directory();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha)
+    let mut app = CoderApp::new("openagents coder", &Lane::default())
         .with_working_directory(dir.path().to_path_buf());
     let mut term = terminal();
 
@@ -1096,7 +1096,7 @@ fn tab_lists_the_candidates_rather_than_choosing_one() {
 fn tab_completes_a_path_in_the_working_directory() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let dir = scratch_directory();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha)
+    let mut app = CoderApp::new("openagents coder", &Lane::default())
         .with_working_directory(dir.path().to_path_buf());
     let mut term = terminal();
 
@@ -1116,7 +1116,7 @@ fn tab_completes_a_path_in_the_working_directory() {
 fn the_candidate_list_goes_away_on_the_next_keystroke() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let dir = scratch_directory();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha)
+    let mut app = CoderApp::new("openagents coder", &Lane::default())
         .with_working_directory(dir.path().to_path_buf());
     let mut term = terminal();
 
@@ -1425,7 +1425,7 @@ async fn slash_diff_shows_what_changed_in_a_real_repository() {
     assert_eq!(files[0].path, "thing.txt");
     assert_eq!(files[0].stats(), (1, 1));
 
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha)
+    let mut app = CoderApp::new("openagents coder", &Lane::default())
         .with_working_directory(repo.to_path_buf());
     let mut term = terminal_of(90, HEIGHT);
     app.on_turn_event(TurnEvent::Diff(files));
@@ -1482,7 +1482,7 @@ use std::time::Duration;
 /// the production one and only the inference host is absent.
 fn actor_session() -> CoderRuntimeSession {
     CoderRuntimeSession::new(
-        Lane::OxAlpha,
+        Lane::default(),
         // Reserved by RFC 6890 as "this host on this network": nothing here
         // reaches it, and a test that accidentally tried would fail loudly.
         Some("http://192.0.2.1:9/api/v1".to_string()),
@@ -1535,7 +1535,7 @@ where
     tokio::spawn(runtime_actor(actor_session(), control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(size.0, size.1);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     // The frame's size is what the child is told, so it has to be known before
     // the child starts.
     app.draw(&mut term).unwrap();
@@ -1652,7 +1652,7 @@ async fn keys_reach_the_program_and_ctrl_bracket_takes_them_back() {
     tokio::spawn(runtime_actor(actor_session(), control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(WIDE, HEIGHT);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     app.draw(&mut term).unwrap();
     app.submit("/run cat".to_string(), &control_tx);
     pump(
@@ -1719,7 +1719,7 @@ async fn esc_goes_to_the_program_rather_than_ending_the_session() {
     tokio::spawn(runtime_actor(actor_session(), control_rx, turn_tx.clone()));
 
     let mut term = terminal();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     app.draw(&mut term).unwrap();
     app.submit("/run cat".to_string(), &control_tx);
     pump(
@@ -1783,7 +1783,7 @@ async fn a_command_that_is_not_there_is_reported_rather_than_hanging() {
     tokio::spawn(runtime_actor(actor_session(), control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(100, HEIGHT);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     app.draw(&mut term).unwrap();
     app.submit(
         "/run this-program-does-not-exist-anywhere".to_string(),
@@ -1891,7 +1891,7 @@ async fn end_to_end_over_the_loop_running_a_program_under_a_terminal() {
     tokio::spawn(runtime_actor(actor_session(), control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(90, HEIGHT);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     let (keys_tx, keys_rx) = unbounded_channel();
 
     send_keys(&keys_tx, "/run tty");
@@ -1937,7 +1937,7 @@ async fn resizing_the_frame_signals_the_running_program() {
     tokio::spawn(runtime_actor(actor_session(), control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(80, 24);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     app.draw(&mut term).unwrap();
     app.submit(
         "/run trap 'stty size' WINCH; stty size; for i in 1 2 3 4 5 6 7 8 9 10; do sleep 0.3; done"
@@ -2051,7 +2051,7 @@ async fn end_to_end_over_real_http_the_bar_reports_the_model_and_the_tokens() {
     let stub = support::start_reporting_usage(vec!["Done."], (128, 64, 192)).await;
 
     let session = CoderRuntimeSession::new(
-        Lane::OxAlpha,
+        Lane::default(),
         Some(stub.base),
         Some("oat_test".to_string()),
         HarnessToolRegistry::new(Some(std::env::temp_dir())),
@@ -2062,7 +2062,7 @@ async fn end_to_end_over_real_http_the_bar_reports_the_model_and_the_tokens() {
     tokio::spawn(runtime_actor(session, control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(140, HEIGHT);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
     let (keys_tx, keys_rx) = unbounded_channel();
     send_keys(&keys_tx, "how much");
     let _ = keys_tx.send(Event::Key(key(KeyCode::Enter)));
@@ -2084,7 +2084,7 @@ async fn end_to_end_over_real_http_the_bar_reports_the_model_and_the_tokens() {
     .await;
 
     let row = status_row(&term);
-    assert!(row.contains("Model: ox-alpha"), "{row}");
+    assert!(row.contains("Model: glm-5.3-flash"), "{row}");
     assert!(
         row.contains("Tokens: 128+64=192"),
         "the tokens the server reported are not on the bar: {row}"
@@ -2128,7 +2128,7 @@ async fn slash_diff_typed_into_the_composer_opens_the_inspector() {
     tokio::spawn(runtime_actor(actor_session(), control_rx, turn_tx.clone()));
 
     let mut term = terminal_of(90, HEIGHT);
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha)
+    let mut app = CoderApp::new("openagents coder", &Lane::default())
         .with_working_directory(repo.to_path_buf());
     type_str(&mut app, &control_tx, "/diff");
     app.on_key(&key(KeyCode::Enter), 90, &control_tx);

@@ -96,7 +96,18 @@ where
             };
             recorder.lock().unwrap().push(request.clone());
 
-            let reply = handler(&request, served, &handler_origin);
+            // The catalog, answered before the handler sees the request. A
+            // switchable lane resolves its model against this at open, and a
+            // stub that did not serve it would refuse at the lane instead of
+            // exercising whatever the handler was written to exercise.
+            let reply = if request.starts_with("GET /api/v1/models") {
+                Reply::Json(
+                    r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#
+                        .to_string(),
+                )
+            } else {
+                handler(&request, served, &handler_origin)
+            };
             match reply {
                 Reply::Json(body) => {
                     let response = format!(
@@ -168,7 +179,7 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Option<String> {
 
 fn grant(origin: &str) -> String {
     format!(
-        r#"{{"thread":{{"id":"th_test"}},"grant":{{"token":"tok_test","url":"{origin}/proxy","model":"ox-alpha"}}}}"#
+        r#"{{"thread":{{"id":"th_test"}},"grant":{{"token":"tok_test","url":"{origin}/proxy","model":"glm-5.3-flash"}}}}"#
     )
 }
 
@@ -367,7 +378,7 @@ async fn a_turn_that_exhausts_its_tool_steps_refuses() {
 
     let (_dir, tools) = registry();
     let mut session = CoderRuntimeSession::new(
-        Lane::OxAlpha,
+        Lane::default(),
         Some(stub.base.clone()),
         Some("tok_user".to_string()),
         tools,
@@ -475,7 +486,7 @@ async fn the_openagents_tool_prefers_path_and_falls_back_to_this_binary() {
 /// already put their children in a group. Dropping the future — which is what
 /// `run_proxy_child`'s `tokio::select!` does when a fan-out is cancelled —
 /// left the operating-system process running, reparented to init. On the
-/// default `ox-alpha` lane a child is an in-process task with no pid at all,
+/// default `glm-5.3-flash` lane a child is an in-process task with no pid at all,
 /// so `signals::stop_tree` is never called for it and nothing else stopped
 /// what it had started.
 ///

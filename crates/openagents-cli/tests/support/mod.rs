@@ -56,9 +56,23 @@ async fn start_with(
                 None => continue,
             };
 
+            // The catalog. A switchable lane resolves its model against this
+            // before it opens a thread, so a stub that does not serve it
+            // refuses at the lane and never reaches the routes below.
+            if request.starts_with("GET /api/v1/models") {
+                let body = r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true},{"id":"thinkingmachines/inkling","availability":"available","default":false},{"id":"gemini-3.7-flash","availability":"available","default":false}]}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+                continue;
+            }
+
             if request.starts_with("POST /api/v1/threads") {
                 let body = format!(
-                    r#"{{"thread":{{"id":"th_test"}},"grant":{{"token":"tok_test","url":"{grant_url}","model":"ox-alpha"}}}}"#
+                    r#"{{"thread":{{"id":"th_test"}},"grant":{{"token":"tok_test","url":"{grant_url}","model":"glm-5.3-flash"}}}}"#
                 );
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",

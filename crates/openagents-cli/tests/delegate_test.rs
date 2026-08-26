@@ -433,12 +433,22 @@ async fn proxy_stub() -> ProxyStub {
                         "grant":{"status":"revoked","spent":{"calls":1,"total_tokens":12}}}"#
                         .to_string(),
                 )
+            } else if line.starts_with("GET /api/v1/models") {
+                // The catalog. A child runs on `glm-5.3-flash` as a directly-named
+                // model, and a named model is checked against this before the
+                // turn runs.
+                (
+                    200,
+                    "application/json",
+                    r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#
+                        .to_string(),
+                )
             } else if line.starts_with("POST /api/v1/threads") {
                 (
                     200,
                     "application/json",
                     format!(
-                        r#"{{"thread":{{"id":"th_child"}},"grant":{{"token":"tok","url":"{grant_url}","model":"ox-alpha"}}}}"#
+                        r#"{{"thread":{{"id":"th_child"}},"grant":{{"token":"tok","url":"{grant_url}","model":"glm-5.3-flash"}}}}"#
                     ),
                 )
             } else {
@@ -481,7 +491,7 @@ async fn a_delegated_child_ends_its_own_thread_by_saying_what_it_did() {
     let stub = proxy_stub().await;
     std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin));
 
-    let supervisor = DelegationSupervisor::new(1, "ox-alpha", Some("oat_test".to_string()))
+    let supervisor = DelegationSupervisor::new(1, "glm-5.3-flash", Some("oat_test".to_string()))
         .with_isolation(Isolation::None)
         .in_directory(Some(std::env::temp_dir()));
     let (results, _events) = run(&supervisor, "say something", None).await;
@@ -748,10 +758,10 @@ async fn the_delegate_tool_carries_the_sessions_child_options() {
 #[tokio::test]
 async fn the_delegate_tool_refuses_a_flag_its_lane_cannot_honour() {
     let options = child_options_from(&["oa", "coder", "--child-model", "gpt-5"]);
-    // ox-alpha children run on the grant the server issues, which pins the
+    // glm-5.3-flash children run on the grant the server issues, which pins the
     // model. There is no honouring `--child-model` there.
     let report =
-        openagents_cli::delegate::fanout_for_tool("go", 1, "ox-alpha", None, options, None).await;
+        openagents_cli::delegate::fanout_for_tool("go", 1, "glm-5.3-flash", None, options, None).await;
     assert!(
         report.starts_with("No children were started:"),
         "the tool ran a fan-out without the model it was given: {report}"

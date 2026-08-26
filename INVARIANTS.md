@@ -2532,10 +2532,17 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
 
 The coder never shows a vendor model name. What a reader sees — the status
 line, the fleet rows, the resume picker, switch notices, the `/help` text —
-is "OpenAgents Coder" and its tiers: `Coder Auto` (the server picks the
-lane), `Coder Flash` (the fast tier), `Coder Pro` (the strong tier),
-`Coder Local` (a local model server answers). A model outside the tier map
-renders as the bare product name `Coder`, never as its id.
+is "OpenAgents Coder" and its lanes: `Coder Flash` (the Vercel gateway lane,
+and the default), `Coder Free` (the OpenRouter lane), `Coder Local` (a local
+model server answers). A model outside the lane map renders as the bare
+product name `Coder`, never as its id.
+
+`Coder Auto` and `Coder Pro` were retired (#131). `Auto` named no model and
+let the deployment choose; `Pro` pinned a model that left the catalog. The
+identifiers `auto` and `pro` are left unclaimed rather than aliased onto a
+surviving lane, so that if either returns it can mean what it meant. In the
+Rust CLI they parse as directly-named models and are refused by the catalog
+under their own names.
 
 - The tier-to-model map lives in exactly one module,
   `packages/openagents-cli/src/coder-tiers.ts`. Display code holds no vendor
@@ -2544,10 +2551,32 @@ renders as the bare product name `Coder`, never as its id.
   vendor id for records and exports, which are allowed to name what a reader
   could run again. The split is the enforcement seam: rendering reads
   `model`, records read `modelId`.
-- Shift+Tab cycles the tier (Auto → Flash → Pro → Local → Auto); Tab cycles
-  the reasoning level. A fresh `openagents coder` session with no `--model`
-  runs as `Coder Auto`: its thread is opened unpinned and the inference proxy
-  request names no model, so the server selects the lane per call.
+- Shift+Tab cycles the lane; Tab cycles the reasoning level. The cycle walks
+  the lane table rather than toggling between known variants, so restoring a
+  retired lane is one table entry.
+- A fresh session with no `--model` runs as `Coder Flash`, and **every lane
+  pins a model**. Nothing opens unpinned any more: the lane resolves an id
+  against `GET /api/v1/models` at open and sends it. A lane that opened
+  unpinned could not say what it asked for, and the row under the input bar
+  would be naming a lane while the server chose per call.
+- **A lane holds an ordered preference, never a compiled id.** The ids are
+  resolved against the live catalog at open: the first candidate the catalog
+  both lists and reports `available` wins. Where the primary is gone the
+  declared fallback answers; where **neither** is served, or the catalog
+  cannot be read, the lane **refuses and names what the deployment does
+  serve** — it never pins a compiled default. A compiled tier-to-id table is
+  what left two lanes naming models that had left the selectable list.
+- **The lane is shown under the input bar, with the model that answered.**
+  It is a live fact — it changes what the next turn costs and which model
+  answers it — so it is not announced once at session open where it scrolls
+  away. The row carries the *effective* model, read from the grant, so a lane
+  running on its fallback says so. A label still reading `Coder Flash` while
+  a fallback answers is the defect the field exists to prevent.
+- **A model id is never a lane alias.** `gemini-3.7-flash`, `gpt-5.6-luna`,
+  `ox-alpha` and their short forms name those models and nothing else. They
+  used to be tier aliases, and a reader who types a model id and receives a
+  different model because the tier behind the alias moved is the worst
+  outcome the lane vocabulary can produce.
 - A tier is checked against what the server says it can answer before a thread
   opens on it. `tierUnavailable` reads the same `/api/v1/models` catalog and
   the same `availability` field that `chooseBackend` applies to the model a

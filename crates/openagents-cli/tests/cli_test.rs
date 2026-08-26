@@ -331,7 +331,7 @@ mod tests {
     async fn test_live_inference_loop_issue_83() {
         let stub = crate::support::start(vec!["four ", "chunks ", "in ", "order"], None).await;
         let tools = HarnessToolRegistry::new(Some(std::env::temp_dir()));
-        let mut session = CoderRuntimeSession::new(Lane::OxAlpha, Some(stub.base), None, tools);
+        let mut session = CoderRuntimeSession::new(Lane::default(), Some(stub.base), None, tools);
 
         let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let sink = std::sync::Arc::clone(&seen);
@@ -351,7 +351,7 @@ mod tests {
     async fn a_refused_turn_is_an_error_not_a_finished_turn() {
         let stub = crate::support::start_refusing().await;
         let tools = HarnessToolRegistry::new(Some(std::env::temp_dir()));
-        let mut session = CoderRuntimeSession::new(Lane::OxAlpha, Some(stub.base), None, tools);
+        let mut session = CoderRuntimeSession::new(Lane::default(), Some(stub.base), None, tools);
 
         let error = session
             .execute_turn("hello", |_| {})
@@ -387,7 +387,7 @@ mod tests {
         let stub = crate::support::start(vec!["child ", "did the work"], None).await;
         std::env::set_var("OPENAGENTS_API_BASE", &stub.base);
 
-        let supervisor = DelegationSupervisor::new(1, "ox-alpha", None)
+        let supervisor = DelegationSupervisor::new(1, "glm-5.3-flash", None)
             .with_isolation(Isolation::None);
         let results = supervisor.dispatch("test task").await;
 

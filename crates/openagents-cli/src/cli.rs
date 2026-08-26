@@ -614,7 +614,7 @@ pub struct CoderArgs {
     )]
     pub child_ask: bool,
 
-    #[arg(long, help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex)")]
+    #[arg(long, help = "Target harness lane (e.g. flash, free, devin, claude, codex)")]
     pub lane: Option<String>,
 
     /// Pick the model a turn runs on by its catalog id.
@@ -715,7 +715,12 @@ pub struct CoderArgs {
 }
 
 /// The lane name `oa coder` runs on when nothing names another.
-const DEFAULT_LANE: &str = "ox-alpha";
+///
+/// A lane name, not a model id. It used to be `ox-alpha`, which pinned one
+/// model directly and went stale the moment that model left the catalog; the
+/// default is now the Flash lane, whose id is resolved against
+/// `GET /api/v1/models` at open.
+const DEFAULT_LANE: &str = "flash";
 
 impl CoderArgs {
     /// The lane this invocation asked for, as a name [`crate::runtime::Lane`]
@@ -873,7 +878,7 @@ pub struct DelegateArgs {
 
     #[arg(
         long,
-        help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex). Defaults to ox-alpha, which spends this account's grant"
+        help = "Target harness lane (e.g. flash, free, devin, claude, codex). Defaults to ox-alpha, which spends this account's grant"
     )]
     pub lane: Option<String>,
 

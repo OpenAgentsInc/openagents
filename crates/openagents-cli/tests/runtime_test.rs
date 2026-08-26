@@ -61,7 +61,26 @@ impl Stub {
 }
 
 /// Start a stub whose handler picks a reply from the request text.
+///
+/// `GET /api/v1/models` is answered from [`DEFAULT_CATALOG`] before the
+/// handler sees it, because every switchable lane reads the catalog at open
+/// and no test here was written to expect that request.
 fn start<H>(handler: H) -> Stub
+where
+    H: Fn(&str, &str) -> Reply + Send + Sync + 'static,
+{
+    start_inner(handler, false)
+}
+
+/// The same stub, for a test that pins a catalog of its own.
+fn start_serving_its_own_catalog<H>(handler: H) -> Stub
+where
+    H: Fn(&str, &str) -> Reply + Send + Sync + 'static,
+{
+    start_inner(handler, true)
+}
+
+fn start_inner<H>(handler: H, handles_catalog: bool) -> Stub
 where
     H: Fn(&str, &str) -> Reply + Send + Sync + 'static,
 {
@@ -88,6 +107,23 @@ where
                     return;
                 };
                 seen.lock().unwrap().push(request.clone());
+                // Every switchable lane reads the catalog before it opens a
+                // thread, so a stub that does not serve one refuses at the
+                // lane and never reaches the route the test was written for.
+                // Answered here rather than in each handler so that a handler
+                // counting its own calls is not made to count this one — the
+                // catalog read is the runtime's business, not the test's.
+                // A handler that wants a catalog of its own says so first.
+                if request.starts_with("GET /api/v1/models") && !handles_catalog {
+                    let head = format!(
+                        "HTTP/1.1 200 X\r\ncontent-type: application/json\r\n\
+                         content-length: {}\r\nconnection: close\r\n\r\n",
+                        DEFAULT_CATALOG.len()
+                    );
+                    let _ = socket.write_all(head.as_bytes()).await;
+                    let _ = socket.write_all(DEFAULT_CATALOG.as_bytes()).await;
+                    return;
+                }
                 let reply = match handler(&request, &origin) {
                     Reply::Delayed(pause, status, content_type, body) => {
                         tokio::time::sleep(pause).await;
@@ -174,6 +210,16 @@ where
     Stub { base, requests }
 }
 
+/// What a stub serves when its handler has no opinion about the catalog.
+///
+/// The ids this deployment serves. `ox-alpha` is absent: it has left the
+/// selectable list, and a fixture that kept it would let a lane pinning it go
+/// on passing here long after it stopped working anywhere else.
+const DEFAULT_CATALOG: &str = r#"{"default":"glm-5.3-flash","models":[
+    {"id":"glm-5.3-flash","availability":"available","default":true},
+    {"id":"gemini-3.7-flash","availability":"available","default":false},
+    {"id":"gpt-5.6-luna","availability":"available","default":false}]}"#;
+
 async fn read_request(socket: &mut tokio::net::TcpStream) -> Option<String> {
     let mut request = Vec::new();
     let mut buffer = [0u8; 4096];
@@ -233,7 +279,7 @@ const DEAD: &str = "http://127.0.0.1:1/api/v1";
 async fn a_chunk_reaches_the_caller_before_the_turn_returns() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Sse(
             vec![
@@ -245,7 +291,7 @@ async fn a_chunk_reaches_the_caller_before_the_turn_returns() {
     });
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, Instant)>();
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
 
     let started = Instant::now();
     let answer = session
@@ -288,7 +334,7 @@ async fn a_chunk_reaches_the_caller_before_the_turn_returns() {
 async fn a_turn_reports_the_tokens_the_server_counted() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Sse(
             vec![
@@ -303,7 +349,7 @@ async fn a_turn_reports_the_tokens_the_server_counted() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let answer = session.execute_turn("say pong", |_| {}).await.unwrap();
 
     assert_eq!(answer, "PONG");
@@ -330,7 +376,7 @@ async fn a_turn_reports_the_tokens_the_server_counted() {
 async fn the_session_revokes_its_thread_when_it_closes() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         if request.starts_with("DELETE /api/v1/threads/") {
             return Reply::Body(
@@ -349,7 +395,7 @@ async fn the_session_revokes_its_thread_when_it_closes() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session.execute_turn("hello", |_| {}).await.unwrap();
     let spent = session.close().await.expect("the revocation failed");
 
@@ -386,7 +432,7 @@ async fn the_session_revokes_its_thread_when_it_closes() {
 async fn a_second_turn_reuses_the_first_turns_thread() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Sse(
             vec![frame(
@@ -396,7 +442,7 @@ async fn a_second_turn_reuses_the_first_turns_thread() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session.execute_turn("one", |_| {}).await.unwrap();
     session.execute_turn("two", |_| {}).await.unwrap();
 
@@ -414,18 +460,18 @@ async fn a_second_turn_reuses_the_first_turns_thread() {
 
 /// A lane nothing admits is refused by name, with what the deployment serves.
 ///
-/// `Lane::from_str` used to answer any unrecognised name with `Lane::OxAlpha`,
+/// `Lane::from_str` used to answer any unrecognised name with `Lane::default()`,
 /// so `--lane bogus` ran the default and said nothing about it.
 #[tokio::test]
 async fn an_unadmitted_lane_is_refused_with_the_ones_that_work() {
-    let stub = start(|request, _origin| {
+    let stub = start_serving_its_own_catalog(|request, _origin| {
         if request.starts_with("GET /api/v1/models") {
             return Reply::Body(
                 200,
                 "application/json",
                 r#"{"default":"gemini-3.7-flash","models":[
                     {"id":"gemini-3.7-flash","availability":"available","default":true},
-                    {"id":"ox-alpha","availability":"available","default":false}]}"#
+                    {"id":"glm-5.3-flash","availability":"available","default":false}]}"#
                     .to_string(),
             );
         }
@@ -440,9 +486,9 @@ async fn an_unadmitted_lane_is_refused_with_the_ones_that_work() {
     let message = error.to_string();
 
     assert!(message.contains("bogus"), "{message}");
-    assert!(message.contains("ox-alpha"), "{message}");
+    assert!(message.contains("glm-5.3-flash"), "{message}");
     assert!(message.contains("gemini-3.7-flash"), "{message}");
-    for tier in ["auto", "flash", "pro", "ollama:<model>"] {
+    for tier in ["flash", "free", "ollama:<model>"] {
         assert!(
             message.contains(tier),
             "the refusal does not name {tier}: {message}"
@@ -461,14 +507,14 @@ async fn an_unadmitted_lane_is_refused_with_the_ones_that_work() {
 /// A model in the catalog whose provider is not configured is refused too.
 #[tokio::test]
 async fn a_served_but_unconfigured_model_is_refused() {
-    let stub = start(|request, _origin| {
+    let stub = start_serving_its_own_catalog(|request, _origin| {
         if request.starts_with("GET /api/v1/models") {
             return Reply::Body(
                 200,
                 "application/json",
                 r#"{"models":[
                     {"id":"quiet-one","availability":"unavailable","default":false},
-                    {"id":"ox-alpha","availability":"available","default":true}]}"#
+                    {"id":"glm-5.3-flash","availability":"available","default":true}]}"#
                     .to_string(),
             );
         }
@@ -482,13 +528,29 @@ async fn a_served_but_unconfigured_model_is_refused() {
         .expect_err("an unavailable model ran a turn")
         .to_string();
     assert!(message.contains("provider is not configured"), "{message}");
-    assert!(message.contains("ox-alpha"), "{message}");
+    assert!(message.contains("glm-5.3-flash"), "{message}");
 }
 
-/// A tier opens on the catalog id it names, and the grant's model is reported.
+/// A lane whose primary is gone opens on its declared fallback.
+///
+/// The end-to-end half of `a_lane_falls_back_when_its_primary_is_not_served`.
+/// This deployment does not serve `glm-5.3-flash`, so Flash resolves to
+/// `gemini-3.7-flash` and the thread is opened on *that* — and the grant comes
+/// back naming it, which is what the row under the composer then reports. The
+/// lane did not open on its primary and pretend, and it did not refuse.
 #[tokio::test]
-async fn a_tier_opens_its_thread_on_the_model_it_names() {
-    let stub = start(|request, origin| {
+async fn a_lane_opens_its_thread_on_the_fallback_when_the_primary_is_not_served() {
+    let stub = start_serving_its_own_catalog(|request, origin| {
+        if request.starts_with("GET /api/v1/models") {
+            return Reply::Body(
+                200,
+                "application/json",
+                r#"{"models":[
+                    {"id":"gemini-3.7-flash","availability":"available","default":true},
+                    {"id":"gpt-5.6-luna","availability":"available","default":false}]}"#
+                    .to_string(),
+            );
+        }
         if request.starts_with("POST /api/v1/threads") {
             return Reply::Body(
                 200,
@@ -522,9 +584,17 @@ async fn a_tier_opens_its_thread_on_the_model_it_names() {
     );
 }
 
-/// `auto` names no model, so the deployment's own default answers.
+/// Every lane pins a model. Nothing opens unpinned any more.
+///
+/// This replaces `the_auto_lane_names_no_model_at_all`. `auto` was the lane
+/// that deliberately named nothing and let the deployment choose, and it is
+/// gone: a session that names no lane opens on Flash, and Flash resolves an
+/// id from the catalog. The assertion is inverted on purpose — the old defect
+/// was a lane that pinned a dead id, and the new one would be a lane that
+/// quietly stopped pinning at all and let the server pick while the row went
+/// on naming a lane.
 #[tokio::test]
-async fn the_auto_lane_names_no_model_at_all() {
+async fn the_default_lane_pins_a_model_from_the_catalog_rather_than_opening_unpinned() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
             return Reply::Body(
@@ -541,7 +611,8 @@ async fn the_auto_lane_names_no_model_at_all() {
         )
     });
 
-    let mut session = session(Lane::from_str("auto"), stub.base.clone());
+    // No lane named at all: the same thing a fresh session does.
+    let mut session = session(Lane::from_str(""), stub.base.clone());
     session.execute_turn("hello", |_| {}).await.unwrap();
 
     let open = stub
@@ -550,8 +621,28 @@ async fn the_auto_lane_names_no_model_at_all() {
         .find(|r| r.starts_with("POST /api/v1/threads"))
         .unwrap();
     let body = open.split("\r\n\r\n").nth(1).unwrap_or_default();
-    assert!(!body.contains("\"model\""), "auto pinned a model: {body}");
-    // What answered is still reported, because the grant said so.
+    assert!(
+        body.contains("\"model\""),
+        "the default lane opened unpinned, so the deployment chose and the \
+         session cannot say what it asked for: {body}"
+    );
+    // `DEFAULT_CATALOG` serves Flash's primary, so that is what it opened on.
+    // It did not open on `ox-alpha`, which has left the selectable list, and
+    // it did not guess at anything this crate compiled in.
+    assert!(
+        body.contains("glm-5.3-flash"),
+        "the default lane did not open on the model the catalog serves: {body}"
+    );
+    assert!(
+        !body.contains("ox-alpha"),
+        "a fresh session opened on ox-alpha: {body}"
+    );
+    // What answered comes from the grant, never from the lane. This stub
+    // deliberately grants a *different* model from the one that was asked
+    // for, and the session reports the grant's — because that is what the
+    // proxy will actually call, and the row under the composer reads this.
+    // A session that echoed its own request here would render "Coder Flash ·
+    // glm-5.3-flash" while Gemini answered.
     assert_eq!(session.last_model.as_deref(), Some("gemini-3.7-flash"));
 }
 
@@ -569,7 +660,7 @@ async fn a_refused_thread_ends_the_turn() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let message = session
         .execute_turn("hello", |_| {})
         .await
@@ -597,7 +688,7 @@ async fn a_thread_with_no_grant_ends_the_turn() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let message = session
         .execute_turn("hello", |_| {})
         .await
@@ -611,7 +702,7 @@ async fn a_thread_with_no_grant_ends_the_turn() {
 async fn a_refused_proxy_call_ends_the_turn() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Body(
             402,
@@ -620,7 +711,7 @@ async fn a_refused_proxy_call_ends_the_turn() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let message = session
         .execute_turn("hello", |_| {})
         .await
@@ -633,7 +724,7 @@ async fn a_refused_proxy_call_ends_the_turn() {
 /// An unreachable proxy is an error, not an empty success.
 #[tokio::test]
 async fn an_unreachable_host_ends_the_turn() {
-    let mut session = session(Lane::OxAlpha, DEAD.to_string());
+    let mut session = session(Lane::default(), DEAD.to_string());
     let message = session
         .execute_turn("hello", |_| {})
         .await
@@ -652,7 +743,7 @@ async fn a_tool_call_runs_and_its_output_returns_to_the_model() {
     let counter = Arc::clone(&round);
     let stub = start(move |request, origin| {
         if request.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         let step = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if step == 0 {
@@ -671,7 +762,7 @@ async fn a_tool_call_runs_and_its_output_returns_to_the_model() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let answer = session.execute_turn("run it", |_| {}).await.unwrap();
     assert_eq!(answer, "the marker is marker-9f3");
 
@@ -927,7 +1018,7 @@ async fn the_local_lane_runs_tools_and_feeds_the_result_back() {
 async fn the_second_turn_carries_what_the_first_turn_answered() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Sse(
             vec![frame(
@@ -937,7 +1028,7 @@ async fn the_second_turn_carries_what_the_first_turn_answered() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let first = session
         .execute_turn("invent a codeword", |_| {})
         .await
@@ -953,7 +1044,9 @@ async fn the_second_turn_carries_what_the_first_turn_answered() {
     let bodies: Vec<String> = stub
         .requests()
         .into_iter()
-        .filter(|r| !r.starts_with("POST /api/v1/threads"))
+        .filter(|r| {
+            !r.starts_with("POST /api/v1/threads") && !r.starts_with("GET /api/v1/models")
+        })
         .collect();
     assert_eq!(bodies.len(), 2, "expected one proxy call per turn");
     assert!(
@@ -1068,7 +1161,7 @@ fn recording_stub() -> Stub {
             return filed(116);
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         if line.starts_with("DELETE /api/v1/threads/") {
             return revoked(116);
@@ -1106,7 +1199,7 @@ fn recording_stub() -> Stub {
 #[tokio::test]
 async fn a_finished_turn_is_written_down_before_the_thread_is_revoked() {
     let stub = recording_stub();
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let answer = session
         .execute_turn("what does echo hello print?", |_| {})
         .await
@@ -1174,7 +1267,7 @@ async fn a_finished_turn_is_written_down_before_the_thread_is_revoked() {
 #[tokio::test]
 async fn a_recorded_turn_replays_into_the_conversation_it_came_from() {
     let stub = recording_stub();
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session
         .execute_turn("what does echo hello print?", |_| {})
         .await
@@ -1226,7 +1319,7 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
             return filed(0);
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Body(
             402,
@@ -1235,7 +1328,7 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let failure = session
         .execute_turn("do something", |_| {})
         .await
@@ -1270,7 +1363,7 @@ async fn a_turn_that_runs_out_of_steps_records_the_failure() {
             return appended();
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         if line.starts_with("DELETE /api/v1/threads/") {
             return revoked(0);
@@ -1288,7 +1381,7 @@ async fn a_turn_that_runs_out_of_steps_records_the_failure() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let failure = session
         .execute_turn("loop forever", |_| {})
         .await
@@ -1323,7 +1416,7 @@ async fn a_turn_that_runs_out_of_steps_records_the_failure() {
 #[tokio::test]
 async fn an_interrupted_session_records_the_interruption() {
     let stub = recording_stub();
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session
         .execute_turn("what does echo hello print?", |_| {})
         .await
@@ -1352,7 +1445,7 @@ async fn a_refused_append_is_reported_and_does_not_lose_the_answer() {
             );
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Sse(
             vec![frame(
@@ -1362,7 +1455,7 @@ async fn a_refused_append_is_reported_and_does_not_lose_the_answer() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let answer = session
         .execute_turn("say pong", |_| {})
         .await
@@ -1391,7 +1484,7 @@ async fn the_grant_spend_is_reported_and_a_divergence_is_named() {
             return filed(500);
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Sse(
             vec![
@@ -1405,7 +1498,7 @@ async fn the_grant_spend_is_reported_and_a_divergence_is_named() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session.execute_turn("say pong", |_| {}).await.unwrap();
     assert_eq!(session.session_usage.total_tokens, 116);
 
@@ -1461,7 +1554,7 @@ async fn the_interactive_actor_awaits_its_ending_when_the_app_goes() {
             );
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Sse(
             vec![frame(
@@ -1470,7 +1563,7 @@ async fn the_interactive_actor_awaits_its_ending_when_the_app_goes() {
             None,
         )
     });
-    let session = session(Lane::OxAlpha, stub.base.clone());
+    let session = session(Lane::default(), stub.base.clone());
 
     let (control_tx, control_rx) = tokio::sync::mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1546,7 +1639,7 @@ async fn the_interactive_actor_awaits_its_ending_when_the_app_goes() {
 #[tokio::test]
 async fn a_session_that_answered_reports_succeeded_and_is_not_cancelled() {
     let stub = recording_stub();
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let answer = session
         .execute_turn("what does echo hello print?", |_| {})
         .await
@@ -1600,7 +1693,7 @@ async fn a_session_that_answered_reports_succeeded_and_is_not_cancelled() {
 #[tokio::test]
 async fn the_report_carries_the_accounts_credential() {
     let stub = recording_stub();
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session
         .execute_turn("what does echo hello print?", |_| {})
         .await
@@ -1627,7 +1720,7 @@ async fn a_refused_turn_reports_failed_and_names_a_code() {
             return filed(0);
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Body(
             402,
@@ -1636,7 +1729,7 @@ async fn a_refused_turn_reports_failed_and_names_a_code() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session
         .execute_turn("do something", |_| {})
         .await
@@ -1669,7 +1762,7 @@ async fn a_turn_that_runs_out_of_steps_reports_max_steps() {
             return filed(0);
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         // Never answers. Always asks for another tool.
         Reply::Sse(
@@ -1684,7 +1777,7 @@ async fn a_turn_that_runs_out_of_steps_reports_max_steps() {
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session
         .execute_turn("loop forever", |_| {})
         .await
@@ -1716,7 +1809,7 @@ async fn a_broken_stream_reports_that_the_reply_never_finished() {
             return filed(0);
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         // A frame, then the socket goes without `[DONE]` and without the
         // declared body ever finishing.
@@ -1725,7 +1818,7 @@ async fn a_broken_stream_reports_that_the_reply_never_finished() {
         ))
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let failure = session
         .execute_turn("say pong", |_| {})
         .await
@@ -1752,7 +1845,7 @@ async fn a_broken_stream_reports_that_the_reply_never_finished() {
 #[tokio::test]
 async fn an_interrupted_session_reports_cancelled_and_says_it_was_interrupted() {
     let stub = recording_stub();
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     // A turn that answered first, so a stale success is available to inherit.
     session
         .execute_turn("what does echo hello print?", |_| {})
@@ -1795,7 +1888,7 @@ async fn a_turn_dropped_while_it_ran_does_not_report_the_previous_turns_success(
             return filed(0);
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         // The first turn answers at once. The second is held open long enough
         // to be dropped part way through.
@@ -1816,7 +1909,7 @@ async fn a_turn_dropped_while_it_ran_does_not_report_the_previous_turns_success(
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     let answer = session.execute_turn("one", |_| {}).await.expect("turn one");
     assert_eq!(answer, "first");
     assert_eq!(session.outcome().map(|o| o.status()), Some("succeeded"));
@@ -1854,12 +1947,12 @@ async fn a_thread_no_turn_ran_on_reports_that_no_turn_ran() {
             return filed(0);
         }
         if line.starts_with("POST /api/v1/threads/") && line.contains("/grants") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         Reply::Body(200, "application/json", "{}".to_string())
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session
         .adopt_thread("th_test")
         .await
@@ -1889,7 +1982,7 @@ async fn a_refused_report_still_ends_the_thread_and_is_reported_to_the_reader() 
             return Reply::Body(404, "text/plain", "Not Found".to_string());
         }
         if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
         }
         if line.starts_with("DELETE /api/v1/threads/") {
             return revoked(116);
@@ -1902,7 +1995,7 @@ async fn a_refused_report_still_ends_the_thread_and_is_reported_to_the_reader() 
         )
     });
 
-    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let mut session = session(Lane::default(), stub.base.clone());
     session.execute_turn("say ok", |_| {}).await.unwrap();
     let spent = session
         .finish()

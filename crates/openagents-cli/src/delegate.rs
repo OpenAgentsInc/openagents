@@ -558,7 +558,13 @@ async fn run_proxy_child(
     mut cancel: watch::Receiver<bool>,
 ) -> Result<ChildAnswer, ChildFailure> {
     let tools = HarnessToolRegistry::child(Some(workspace.path.clone()));
-    let mut runtime = CoderRuntimeSession::new(Lane::OxAlpha, None, user_token, tools);
+    // The default lane, which resolves its model from the catalog. This used
+    // to name `ox-alpha` directly, which is exactly the shape that goes stale:
+    // `ChildLane::OxAlpha` is a *harness* name meaning "in this process on the
+    // OpenAgents proxy", and spending it as a model id tied every delegated
+    // child to one model's continued existence. The harness name is unchanged;
+    // only the model behind it is now asked for rather than assumed.
+    let mut runtime = CoderRuntimeSession::new(Lane::default(), None, user_token, tools);
 
     let id = task.id;
     let sink = events.clone();

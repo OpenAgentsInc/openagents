@@ -1310,7 +1310,7 @@ mod tests {
     /// exactly like a model choosing not to call it.
     #[test]
     fn an_interactive_session_can_delegate() {
-        let tools = session_tools("ox-alpha", &Some("token".to_string()), Default::default());
+        let tools = session_tools("glm-5.3-flash", &Some("token".to_string()), Default::default());
         let names: Vec<String> = tools.list_tools().into_iter().map(|t| t.name).collect();
         assert!(
             names.iter().any(|n| n == "delegate"),
@@ -1338,13 +1338,16 @@ mod tests {
     #[test]
     fn the_lane_label_carries_the_tier_only_when_there_is_one() {
         assert_eq!(lane_label(&Lane::Flash), "Coder Flash (flash)");
-        assert_eq!(lane_label(&Lane::Auto), "Coder Auto (auto)");
+        assert_eq!(lane_label(&Lane::Free), "Coder Free (free)");
         assert_eq!(
             lane_label(&Lane::Local(String::new())),
             "Coder Local (local)"
         );
         // A model named directly belongs to no tier, so none is invented.
-        assert_eq!(lane_label(&Lane::OxAlpha), "Coder (ox-alpha)");
+        assert_eq!(
+            lane_label(&Lane::Named("glm-5.3-flash".to_string())),
+            "Coder (glm-5.3-flash)"
+        );
         assert_eq!(
             lane_label(&Lane::Named("some-model".to_string())),
             "Coder (some-model)"
@@ -1358,7 +1361,7 @@ mod tests {
     fn every_listed_command_is_handled() {
         let (tx, _rx) = unbounded_channel();
         for (name, _) in COMMANDS {
-            let mut app = CoderApp::new("t", &Lane::OxAlpha);
+            let mut app = CoderApp::new("t", &Lane::default());
             app.run_command(&format!("/{name}"), &tx);
             let said = app.transcript();
             assert!(

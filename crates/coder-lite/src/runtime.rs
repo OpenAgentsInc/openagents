@@ -313,6 +313,16 @@ impl Session {
         &self.lane
     }
 
+    /// Move this session onto `lane`, as shift+tab does.
+    ///
+    /// The thread the session was holding is dropped rather than carried
+    /// over, because its grant pinned the *old* lane's model for the thread's
+    /// whole life. The next turn opens its own thread on the new lane.
+    pub fn set_lane(&mut self, lane: Lane) {
+        self.lane = lane.clone();
+        self.inner.set_lane(lane);
+    }
+
     /// Run one turn, streaming everything it does down `tx`.
     ///
     /// Always ends with exactly one [`Control::Done`], so a frame cannot be

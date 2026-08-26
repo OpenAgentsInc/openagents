@@ -881,7 +881,7 @@ fn resuming_a_real_session_prints_what_that_session_file_actually_holds() {
 #[test]
 fn the_composer_turns_slash_resume_into_the_message_the_actor_runs() {
     let (tx, mut rx) = unbounded_channel::<Control>();
-    let mut app = CoderApp::new("openagents coder", &Lane::OxAlpha);
+    let mut app = CoderApp::new("openagents coder", &Lane::default());
 
     app.submit("/resume".to_string(), &tx);
     assert!(matches!(rx.try_recv(), Ok(Control::ForeignResume(None))));

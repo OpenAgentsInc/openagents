@@ -125,7 +125,15 @@ mod unix_pty {
                     }
                     let head = String::from_utf8_lossy(&request).to_string();
                     let served = if head.starts_with("GET ") && head.contains("/api/v1/models") {
-                        Some(r#"{"data":[]}"#)
+                        // The shape `served_models` reads, with one available
+                        // model so the Flash lane resolves and the turn gets
+                        // as far as the thread call this stub refuses. An
+                        // empty list would refuse at the lane instead, and the
+                        // test below would stop proving the turn reaches the
+                        // deployment at all.
+                        Some(
+                            r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#,
+                        )
                     } else if head.starts_with("GET ") && head.contains("/api/v1/credit") {
                         Some(credit)
                     } else {

@@ -72,11 +72,11 @@ fn captured() -> BTreeMap<String, String> {
     );
     out.insert(
         "system_prompt.thread.no_tools".to_string(),
-        session(Lane::OxAlpha).build_system_prompt(&[]),
+        session(Lane::default()).build_system_prompt(&[]),
     );
     out.insert(
         "system_prompt.thread.two_tools".to_string(),
-        session(Lane::OxAlpha).build_system_prompt(&two),
+        session(Lane::default()).build_system_prompt(&two),
     );
 
     for tool in registry().list_tools() {

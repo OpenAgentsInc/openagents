@@ -137,29 +137,78 @@ const MAX_TOOL_STEPS: usize = 30;
 /// list is split into several appends rather than refused as one.
 const MAX_EVENT_BATCH: usize = 100;
 
-/// The tier names a reader may type, and the catalog id each one opens on.
+/// One switchable lane: what a reader types, what the row calls it, and the
+/// catalog ids it prefers in order.
 ///
-/// A tier is the unit `--lane` deals in: `flash` is the fast lane whatever
-/// model is behind it this month, so renaming a vendor model is a one-line
-/// change here and nothing else in the crate holds a vendor string. The ids on
-/// the right were served by `GET /api/v1/models` when this was written; the
-/// server is the authority and refuses any that stop being true.
-pub const TIERS: &[(&str, &str)] = &[
-    ("flash", "gemini-3.7-flash"),
-    ("pro", "gpt-5.6-luna"),
-    ("ox-alpha", "ox-alpha"),
+/// `candidates` is a *preference*, never a pin. The ids are resolved against
+/// `GET /api/v1/models` at thread open, so a lane whose first choice has left
+/// the catalog opens on its next one instead of naming a model that is gone.
+pub struct LaneSpec {
+    /// What `--lane` takes for this lane.
+    pub name: &'static str,
+    /// What the row under the composer calls it.
+    pub label: &'static str,
+    /// Catalog ids in the order this lane would rather have them.
+    pub candidates: &'static [&'static str],
+}
+
+/// The lanes shift+tab walks, in the order it walks them.
+///
+/// The table holds lane names and *preferences*, never a pinned id. The
+/// previous table mapped each tier to one compiled catalog id, and two of the
+/// three ended up naming models that had left the selectable list — the exact
+/// failure that resolving against the live catalog prevents.
+///
+/// Nothing outside this table counts the lanes: [`Lane::cycle`] walks it and
+/// [`admitted_lanes`] reads it. Restoring a retired lane — Pro, which the
+/// owner pulled for now — is one entry here, one [`Lane`] variant, and one
+/// [`Lane::from_str`] arm.
+pub const LANES: &[LaneSpec] = &[
+    LaneSpec {
+        name: "flash",
+        label: "Coder Flash",
+        // The Vercel gateway lane: GLM 5.3 Flash, falling back to Gemini 3.7
+        // Flash.
+        //
+        // Two spellings of the same model, because a catalog's client-facing
+        // `id` and its gateway's vendor slug are not the same string and only
+        // the deployment knows which it publishes — `ox-alpha` was the id for
+        // `stealth/ox-alpha` on exactly this pattern. Listing both is not
+        // guessing: an id the catalog does not serve never matches, so the
+        // deployment decides and neither spelling can be pinned wrongly. The
+        // OpenRouter spelling of this model (`z-ai/…`, hyphenated) is
+        // deliberately absent — that gateway is Free's, and normalising the
+        // two into one "canonical" spelling would be wrong on one of them.
+        candidates: &["glm-5.3-flash", "zai/glm-5.3-flash", "gemini-3.7-flash"],
+    },
+    LaneSpec {
+        name: "free",
+        label: "Coder Free",
+        // The OpenRouter lane. Inkling first, then whatever the deployment
+        // publishes as its free lane.
+        candidates: &["thinkingmachines/inkling", "openrouter/free"],
+    },
 ];
 
+/// The spec for a lane name, or `None` if nothing admits that name.
+pub fn lane_spec(name: &str) -> Option<&'static LaneSpec> {
+    LANES.iter().find(|lane| lane.name == name)
+}
+
 /// What `--lane` takes, for a refusal that leaves the reader somewhere to go.
+///
+/// Lane names only. The catalog ids behind them are deliberately absent: they
+/// are resolved at open and printing a guess here is how a refusal comes to
+/// recommend a model the deployment does not serve.
 pub fn admitted_lanes() -> String {
-    let tiers = TIERS
+    let lanes = LANES
         .iter()
-        .map(|(name, id)| format!("{name} ({id})"))
+        .map(|lane| lane.name)
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "auto (the deployment's own default), {tiers}, \
-         local or ollama:<model> for a model on this machine"
+        "{lanes}, local or ollama:<model> for a model on this machine, \
+         or any id `GET /api/v1/models` serves"
     )
 }
 
@@ -170,17 +219,19 @@ pub fn admitted_lanes() -> String {
 /// turn, so `--lane bogus` is refused by name with the list of what this
 /// deployment serves. It used to fall through to `_ => Lane::OxAlpha`, which
 /// ran the default lane while the reader believed they had chosen another.
+/// `Auto`, `OxAlpha`, and `Pro` are gone on purpose, and the names `auto` and
+/// `pro` are left unclaimed rather than aliased onto a surviving lane. `Auto`
+/// meant "name no model and let the deployment decide"; if it returns it
+/// should mean that again, and a convenience alias pointing it at Flash would
+/// spend the identifier on something it does not mean.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum Lane {
-    /// No model named at thread open. The deployment's own default answers.
-    Auto,
-    /// The `ox-alpha` tier.
+    /// The Vercel gateway lane, and the lane a session opens on when none was
+    /// named. Its ids come from [`LANES`], resolved against the catalog.
     #[default]
-    OxAlpha,
-    /// The fast tier.
     Flash,
-    /// The strong tier.
-    Pro,
+    /// The OpenRouter lane. Its ids come from [`LANES`] too.
+    Free,
     /// A model id named directly, checked against `GET /api/v1/models`.
     Named(String),
     /// Ollama on this machine. An empty string means "whatever is installed".
@@ -194,10 +245,19 @@ impl Lane {
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.trim().to_lowercase().as_str() {
-            "" | "auto" => Lane::Auto,
-            "ox-alpha" | "ox" | "openagents" => Lane::OxAlpha,
-            "flash" | "coder-flash" | "gemini" | "gemini-flash" | "gemini-3.7-flash" => Lane::Flash,
-            "pro" | "coder-pro" | "gpt-5.6-luna" | "luna" => Lane::Pro,
+            // Nothing named opens on the default lane. That is not the same
+            // as the word "auto", which no longer names a lane and falls
+            // through to `Named` below to be refused by the catalog.
+            "" => Lane::default(),
+            "flash" | "coder-flash" => Lane::Flash,
+            "free" | "coder-free" => Lane::Free,
+            // `gemini`, `gemini-3.7-flash`, `luna`, `gpt-5.6-luna`, `glm-5.3-flash`
+            // and `pro` are deliberately absent. They used to be tier aliases,
+            // and a reader who types a model id and receives a *different*
+            // model because the tier behind the alias moved is the worst
+            // outcome this enum can produce. They fall through to `Named`,
+            // which pins exactly what was typed and earns a refusal by name
+            // when the deployment does not serve it.
             "local" | "ollama" => Lane::Local(String::new()),
             other if other.starts_with("ollama:") => {
                 Lane::Local(other.trim_start_matches("ollama:").trim().to_string())
@@ -206,16 +266,67 @@ impl Lane {
         }
     }
 
-    /// The catalog id to send at thread open, or `None` to let the server pick.
-    pub fn model_id(&self) -> Option<&str> {
+    /// The [`LaneSpec`] behind this lane, or `None` for one that names its own
+    /// model.
+    pub fn spec(&self) -> Option<&'static LaneSpec> {
         match self {
-            Lane::Auto => None,
-            Lane::OxAlpha => Some("ox-alpha"),
-            Lane::Flash => Some(TIERS[0].1),
-            Lane::Pro => Some(TIERS[1].1),
-            Lane::Named(id) => Some(id.as_str()),
-            // The local lane names its model to Ollama, never to the server.
-            Lane::Local(_) => None,
+            Lane::Flash => lane_spec("flash"),
+            Lane::Free => lane_spec("free"),
+            Lane::Named(_) | Lane::Local(_) => None,
+        }
+    }
+
+    /// The next lane shift+tab moves to.
+    ///
+    /// Walks [`LANES`] rather than toggling between two known variants, so a
+    /// lane added back to that table joins the cycle without another edit
+    /// here. A lane that is not in the table — a directly-named model, or
+    /// Ollama — is left where it is: the reader pinned that on purpose and a
+    /// keystroke should not throw it away.
+    pub fn cycle(&self) -> Lane {
+        let Some(spec) = self.spec() else {
+            return self.clone();
+        };
+        let at = LANES
+            .iter()
+            .position(|lane| lane.name == spec.name)
+            .unwrap_or(0);
+        let next = LANES[(at + 1) % LANES.len()].name;
+        Lane::from_str(next)
+    }
+
+    /// The catalog id to send at thread open, given what the deployment serves.
+    ///
+    /// `Ok(None)` means "send no model", which only the local lane wants —
+    /// it names its model to Ollama and never reaches the server.
+    ///
+    /// A switchable lane takes the first of its [`LaneSpec::candidates`] the
+    /// catalog both lists and reports available. Two outcomes, and they are
+    /// not the same:
+    ///
+    /// - The primary is missing and a fallback is served. That is the designed
+    ///   path, and it resolves quietly — but the caller records the id that
+    ///   came back, so the row names the model that answered rather than the
+    ///   lane that was asked for.
+    /// - **Nothing the lane prefers is served.** Then it refuses, naming what
+    ///   this deployment does serve. It does not pin a compiled default. A
+    ///   lane that fell back to a constant here would be the failure this
+    ///   whole table was rewritten to delete, and harder to see than the last
+    ///   one, because the label would still look right.
+    pub fn resolve(&self, served: &[ServedModel]) -> Result<Option<String>, Failure> {
+        match self {
+            Lane::Local(_) => Ok(None),
+            Lane::Named(id) => Ok(Some(id.clone())),
+            _ => {
+                let spec = self
+                    .spec()
+                    .expect("a lane that is neither named nor local has a spec");
+                let served_here = |id: &str| served.iter().any(|m| m.id == id && m.available);
+                match spec.candidates.iter().find(|id| served_here(id)) {
+                    Some(id) => Ok(Some((*id).to_string())),
+                    None => Err(unresolved_lane(spec, served)),
+                }
+            }
         }
     }
 
@@ -231,26 +342,50 @@ impl Lane {
     /// directly did not ask for a tier.
     pub fn tier(&self) -> Option<&'static str> {
         match self {
-            Lane::Auto => Some("auto"),
-            Lane::Flash => Some("flash"),
-            Lane::Pro => Some("pro"),
             Lane::Local(_) => Some("local"),
-            Lane::OxAlpha | Lane::Named(_) => None,
+            Lane::Named(_) => None,
+            _ => self.spec().map(|spec| spec.name),
         }
     }
 
     /// The name for this lane on a status line.
     pub fn label(&self) -> String {
         match self {
-            Lane::Auto => "Coder Auto".to_string(),
-            Lane::Flash => "Coder Flash".to_string(),
-            Lane::Pro => "Coder Pro".to_string(),
             Lane::Local(model) if model.is_empty() => "Coder Local".to_string(),
             Lane::Local(model) => format!("Coder Local ({model})"),
-            Lane::OxAlpha => "Coder (ox-alpha)".to_string(),
             Lane::Named(id) => format!("Coder ({id})"),
+            _ => self
+                .spec()
+                .map(|spec| spec.label.to_string())
+                .unwrap_or_else(|| "Coder".to_string()),
         }
     }
+}
+
+/// The refusal for a lane none of whose candidates this deployment serves.
+///
+/// Shaped after the server's own `unadmitted_model/1`: it names what was
+/// wanted, then interpolates what is actually served, so the reader is left
+/// with something they can type rather than only the news that they cannot
+/// type what they did.
+fn unresolved_lane(spec: &LaneSpec, served: &[ServedModel]) -> Failure {
+    let wanted = spec.candidates.join(", ");
+    let usable: Vec<&str> = served
+        .iter()
+        .filter(|m| m.available)
+        .map(|m| m.id.as_str())
+        .collect();
+    let alternatives = match usable.is_empty() {
+        true => "This deployment serves no model with a configured provider credential.".to_string(),
+        false => format!("This deployment serves {}.", usable.join(", ")),
+    };
+    format!(
+        "{} cannot open: it prefers {wanted}, and this deployment serves none of them. \
+         {alternatives} Name one directly with --lane <id>, or use one of: {}.",
+        spec.label,
+        admitted_lanes()
+    )
+    .into()
 }
 
 /// As much of an error body as belongs in a one-line message.
@@ -836,6 +971,48 @@ impl CoderRuntimeSession {
         }
     }
 
+    /// Move this session onto another lane.
+    ///
+    /// The thread it was holding is dropped rather than reused. A thread's
+    /// grant pins one model for its whole life, so a turn run on the old
+    /// thread would be answered by the old lane's model while the row named
+    /// the new one — the precise lie the row exists to prevent. The next turn
+    /// opens its own thread on the new lane.
+    ///
+    /// `last_model` is cleared with it: what answered belonged to the lane
+    /// that has just been left, and carrying it forward would attribute a
+    /// model to a lane that has not yet run a turn.
+    pub fn set_lane(&mut self, lane: Lane) {
+        self.lane = lane;
+        self.thread_id = None;
+        self.last_model = None;
+    }
+
+    /// The model id this session's lane opens on, read from the live catalog.
+    ///
+    /// A lane that names its own model (`Named`) or names none (`Local`) never
+    /// pays for the round trip; only a switchable lane does, and it pays it so
+    /// that the id it opens on is one the deployment is serving *now* rather
+    /// than one that was true when this crate was compiled.
+    ///
+    /// A catalog that cannot be read is a refusal, not a licence to guess. The
+    /// alternative — pinning a compiled id when the server is unreachable — is
+    /// how a lane comes to open on a model that left the list months ago.
+    async fn lane_model(&self) -> Result<Option<String>, Failure> {
+        if self.lane.spec().is_none() {
+            return self.lane.resolve(&[]);
+        }
+        let served = self.served_models().await.map_err(|error| -> Failure {
+            format!(
+                "{} could not be opened: the catalog that says which model it runs \
+                 could not be read: {error}",
+                self.lane.label()
+            )
+            .into()
+        })?;
+        self.lane.resolve(&served)
+    }
+
     // ────────────────────────────────────────────────── threads and grants
 
     pub async fn create_thread(&self) -> Result<InferenceGrant, Failure> {
@@ -852,7 +1029,7 @@ impl CoderRuntimeSession {
         // `lane` is the thread's execution shape and the server admits only
         // `thread` and `local`; this path is the proxy, which is `thread`. It
         // used to send a model name here and every request was refused with
-        // `"ox-alpha" is not an admitted lane` — invisibly, because the caller
+        // `"glm-5.3-flash" is not an admitted lane` — invisibly, because the caller
         // answered the refusal with a fabricated grant.
         //
         // `model` is separate and optional. Omitting it opens on the
@@ -863,7 +1040,7 @@ impl CoderRuntimeSession {
             "objective": "Coding assistant session",
             "lane": "thread",
         });
-        if let Some(model) = self.lane.model_id() {
+        if let Some(model) = self.lane_model().await? {
             body["model"] = serde_json::json!(model);
         }
         // `--reasoning`. The thread carries the effort; the proxy reads it from
@@ -1465,8 +1642,8 @@ impl CoderRuntimeSession {
                 })).collect::<Vec<_>>(),
                 "stream": true
             });
-            if let Some(model) = self.lane.model_id() {
-                body["model"] = serde_json::Value::String(model.to_string());
+            if let Some(model) = self.lane_model().await? {
+                body["model"] = serde_json::Value::String(model);
             }
 
             let url = format!("{}/responses", self.api_base);
@@ -2238,36 +2415,179 @@ fn ollama_message(message: &ChatMessage) -> serde_json::Value {
 mod tests {
     use super::*;
 
-    #[test]
-    fn tier_names_map_onto_catalog_ids() {
-        assert_eq!(Lane::from_str("flash").model_id(), Some("gemini-3.7-flash"));
-        assert_eq!(Lane::from_str("pro").model_id(), Some("gpt-5.6-luna"));
-        assert_eq!(Lane::from_str("ox-alpha").model_id(), Some("ox-alpha"));
-        assert_eq!(Lane::from_str("auto").model_id(), None);
+    /// Every id a lane can send is resolved from the catalog it was handed.
+    fn served(ids: &[&str]) -> Vec<ServedModel> {
+        ids.iter()
+            .map(|id| ServedModel {
+                id: (*id).to_string(),
+                available: true,
+                default: false,
+            })
+            .collect()
     }
 
-    /// The invented ids are gone. Every id this file can send is one the
-    /// deployment's catalog listed: `gemini-3.7-flash`, `ox-alpha`,
-    /// `gpt-5.6-luna`. `gemini-3.7-pro`, `claude-3-7-sonnet` and
-    /// `codex-preview` were never served by anything.
+    /// The designed path: the primary is served, so the primary answers.
     #[test]
-    fn no_lane_sends_a_model_id_that_was_made_up() {
-        const SERVED: [&str; 3] = ["gemini-3.7-flash", "ox-alpha", "gpt-5.6-luna"];
-        for (name, _) in TIERS {
-            let lane = Lane::from_str(name);
-            let id = lane.model_id().expect("a tier pins a model");
+    fn a_lane_opens_on_its_primary_when_the_catalog_serves_it() {
+        let catalog = served(&["glm-5.3-flash", "gemini-3.7-flash", "openrouter/free"]);
+        assert_eq!(
+            Lane::from_str("flash").resolve(&catalog).unwrap(),
+            Some("glm-5.3-flash".to_string())
+        );
+        let catalog = served(&["thinkingmachines/inkling", "openrouter/free"]);
+        assert_eq!(
+            Lane::from_str("free").resolve(&catalog).unwrap(),
+            Some("thinkingmachines/inkling".to_string())
+        );
+    }
+
+    /// The primary has left the catalog, so the declared fallback answers.
+    #[test]
+    fn a_lane_falls_back_when_its_primary_is_not_served() {
+        let catalog = served(&["gemini-3.7-flash", "openrouter/free"]);
+        assert_eq!(
+            Lane::from_str("flash").resolve(&catalog).unwrap(),
+            Some("gemini-3.7-flash".to_string())
+        );
+        assert_eq!(
+            Lane::from_str("free").resolve(&catalog).unwrap(),
+            Some("openrouter/free".to_string())
+        );
+    }
+
+    /// The case that put us here: **neither** id is served.
+    ///
+    /// The lane refuses and names what the deployment does serve. It does not
+    /// pin a compiled default. A build that quietly fell back to a constant
+    /// here would pass both tests above and reintroduce the exact failure
+    /// this table was rewritten to delete — with a label that still looked
+    /// right.
+    #[test]
+    fn a_lane_refuses_rather_than_pin_a_model_the_catalog_does_not_serve() {
+        // A catalog that serves real models, none of which any lane prefers.
+        let catalog = served(&["gpt-5.6-luna", "some-other-model"]);
+        for name in ["flash", "free"] {
+            let error = Lane::from_str(name)
+                .resolve(&catalog)
+                .expect_err("a lane whose candidates are all gone must refuse");
+            let text = error.to_string();
+            for id in Lane::from_str(name).spec().unwrap().candidates {
+                assert!(
+                    text.contains(id),
+                    "the refusal does not say '{id}' was wanted: {text}"
+                );
+            }
             assert!(
-                SERVED.contains(&id),
-                "tier '{name}' opens on '{id}', which the catalog did not list"
+                text.contains("gpt-5.6-luna") && text.contains("some-other-model"),
+                "the refusal does not name what is served: {text}"
             );
         }
+    }
+
+    /// An empty catalog is a refusal too, not a licence to guess.
+    #[test]
+    fn a_lane_refuses_against_an_empty_catalog() {
+        for name in ["flash", "free"] {
+            assert!(Lane::from_str(name).resolve(&[]).is_err());
+        }
+    }
+
+    /// Listed but with no provider credential is not "served".
+    #[test]
+    fn an_unavailable_model_does_not_satisfy_a_lane() {
+        let catalog = vec![ServedModel {
+            id: "glm-5.3-flash".to_string(),
+            available: false,
+            default: false,
+        }];
+        assert!(Lane::from_str("flash").resolve(&catalog).is_err());
+    }
+
+    /// No lane holds a compiled id any more.
+    #[test]
+    fn no_lane_pins_a_model_without_asking_the_catalog() {
+        for lane in LANES {
+            let resolved = Lane::from_str(lane.name).resolve(&[]);
+            assert!(
+                resolved.is_err(),
+                "lane '{}' produced {resolved:?} from an empty catalog, so it is \
+                 pinning something that was compiled in rather than served",
+                lane.name
+            );
+        }
+    }
+
+    /// A fresh session does not open on `ox-alpha`, and `auto` is not a lane.
+    #[test]
+    fn the_default_lane_is_flash_and_the_retired_names_are_unclaimed() {
+        assert_eq!(Lane::default(), Lane::Flash);
+        assert_eq!(Lane::from_str(""), Lane::Flash);
+        assert_eq!(Lane::default().label(), "Coder Flash");
+        // A fresh session opens on Flash, and Flash is not `ox-alpha`.
+        assert_ne!(Lane::default(), Lane::Named("ox-alpha".to_string()));
+        // `auto`, `pro`, and `ox-alpha` name no lane. They are carried as
+        // directly-named models so the catalog refuses them by name, rather
+        // than aliased onto a surviving lane.
+        for retired in ["auto", "pro", "coder-pro", "ox-alpha", "ox", "openagents"] {
+            assert_eq!(
+                Lane::from_str(retired),
+                Lane::Named(retired.to_string()),
+                "'{retired}' still resolves to a lane"
+            );
+        }
+    }
+
+    /// A model id means that model, whatever a tier is called this month.
+    #[test]
+    fn a_model_id_is_never_read_as_a_tier() {
+        for id in ["gemini-3.7-flash", "gemini", "gemini-flash", "gpt-5.6-luna", "luna"] {
+            assert_eq!(
+                Lane::from_str(id),
+                Lane::Named(id.to_string()),
+                "'{id}' is being read as a tier, so typing it can return another model"
+            );
+        }
+        // And a directly-named model pins exactly what was typed.
+        assert_eq!(
+            Lane::from_str("gemini-3.7-flash").resolve(&[]).unwrap(),
+            Some("gemini-3.7-flash".to_string())
+        );
+    }
+
+    /// Shift+tab walks the lane table, so restoring a lane is one entry.
+    #[test]
+    fn the_cycle_walks_every_lane_and_returns_to_where_it_started() {
+        let start = Lane::default();
+        let mut seen = vec![start.label()];
+        let mut lane = start.clone();
+        for _ in 0..LANES.len() - 1 {
+            lane = lane.cycle();
+            assert!(
+                !seen.contains(&lane.label()),
+                "the cycle repeated {} before visiting every lane",
+                lane.label()
+            );
+            seen.push(lane.label());
+        }
+        assert_eq!(seen.len(), LANES.len());
+        assert_eq!(lane.cycle(), start, "the cycle does not close");
+        assert_eq!(seen, vec!["Coder Flash", "Coder Free"]);
+    }
+
+    /// A lane the reader pinned by hand is not thrown away by a keystroke.
+    #[test]
+    fn the_cycle_leaves_a_directly_named_lane_alone() {
+        let named = Lane::from_str("some-model");
+        assert_eq!(named.cycle(), named);
+        let local = Lane::from_str("ollama:qwen3");
+        assert_eq!(local.cycle(), local);
     }
 
     #[test]
     fn an_unknown_name_is_carried_as_named_rather_than_becoming_the_default() {
         assert_eq!(Lane::from_str("bogus"), Lane::Named("bogus".to_string()));
         assert_eq!(Lane::from_str("claude"), Lane::Named("claude".to_string()));
-        assert_ne!(Lane::from_str("bogus"), Lane::OxAlpha);
+        assert_ne!(Lane::from_str("bogus"), Lane::default());
     }
 
     #[test]
@@ -2280,17 +2600,17 @@ mod tests {
         assert!(Lane::from_str("ollama:qwen3:0.6b").is_local());
         assert!(!Lane::from_str("flash").is_local());
         // The local lane names no catalog model, because no grant carries it.
-        assert_eq!(Lane::from_str("ollama:qwen3").model_id(), None);
+        assert_eq!(Lane::from_str("ollama:qwen3").resolve(&[]).unwrap(), None);
     }
 
     #[test]
-    fn every_tier_has_a_name_and_a_label() {
-        assert_eq!(Lane::from_str("auto").tier(), Some("auto"));
+    fn every_lane_has_a_name_and_a_label() {
         assert_eq!(Lane::from_str("flash").tier(), Some("flash"));
-        assert_eq!(Lane::from_str("pro").tier(), Some("pro"));
+        assert_eq!(Lane::from_str("free").tier(), Some("free"));
         assert_eq!(Lane::from_str("local").tier(), Some("local"));
         assert_eq!(Lane::from_str("bogus").tier(), None);
         assert_eq!(Lane::from_str("flash").label(), "Coder Flash");
+        assert_eq!(Lane::from_str("free").label(), "Coder Free");
         assert_eq!(
             Lane::from_str("ollama:qwen3:0.6b").label(),
             "Coder Local (qwen3:0.6b)"
@@ -2300,10 +2620,17 @@ mod tests {
     #[test]
     fn the_admitted_lane_sentence_names_every_way_in() {
         let sentence = admitted_lanes();
-        for fragment in ["auto", "flash", "pro", "ox-alpha", "ollama:<model>"] {
+        for fragment in ["flash", "free", "ollama:<model>"] {
             assert!(
                 sentence.contains(fragment),
                 "'{fragment}' missing from: {sentence}"
+            );
+        }
+        // It recommends lane names, never a catalog id it has not checked.
+        for guess in ["glm-5.3-flash", "gpt-5.6-luna", "gemini-3.7-flash", "ox-alpha"] {
+            assert!(
+                !sentence.contains(guess),
+                "the sentence recommends '{guess}', which it has not confirmed is served"
             );
         }
     }
@@ -2326,16 +2653,16 @@ mod tests {
         assert_eq!(usage.line(), "239 prompt + 25 completion = 264 tokens");
     }
 
-    /// The exact frames a live `ox-alpha` turn sent, in order: reasoning
+    /// The exact frames a live `glm-5.3-flash` turn sent, in order: reasoning
     /// first, then the answer, then usage on a chunk with no choices at all.
     #[test]
     fn a_real_proxy_stream_yields_the_answer_the_reasoning_and_the_counts() {
         let frames = [
-            r#"{"choices":[{"delta":{"reasoning":"The user wants "},"index":0}],"model":"ox-alpha"}"#,
-            r#"{"choices":[{"delta":{"reasoning":"PONG."},"index":0}],"model":"ox-alpha"}"#,
-            r#"{"choices":[{"delta":{"content":"PONG"},"index":0}],"model":"ox-alpha"}"#,
-            r#"{"choices":[{"delta":{},"finish_reason":"stop","index":0}],"model":"ox-alpha"}"#,
-            r#"{"choices":[],"model":"ox-alpha","usage":{"completion_tokens":17,"prompt_tokens":99,"total_tokens":116}}"#,
+            r#"{"choices":[{"delta":{"reasoning":"The user wants "},"index":0}],"model":"glm-5.3-flash"}"#,
+            r#"{"choices":[{"delta":{"reasoning":"PONG."},"index":0}],"model":"glm-5.3-flash"}"#,
+            r#"{"choices":[{"delta":{"content":"PONG"},"index":0}],"model":"glm-5.3-flash"}"#,
+            r#"{"choices":[{"delta":{},"finish_reason":"stop","index":0}],"model":"glm-5.3-flash"}"#,
+            r#"{"choices":[],"model":"glm-5.3-flash","usage":{"completion_tokens":17,"prompt_tokens":99,"total_tokens":116}}"#,
         ];
         let mut step = StepAccumulator::default();
         let mut streamed = String::new();
@@ -2543,7 +2870,7 @@ mod tests {
         assert!(local.build_system_prompt(&[]).contains("on this machine"));
 
         let hosted = CoderRuntimeSession::new(
-            Lane::OxAlpha,
+            Lane::default(),
             Some("http://127.0.0.1:1/api/v1".to_string()),
             None,
             HarnessToolRegistry::new(Some(std::env::temp_dir())),

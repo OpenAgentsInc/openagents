@@ -62,7 +62,8 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         return Ok(());
     }
 
-    let lane = Lane::from_str(&options.lane_name);
+    // Mutable because shift+tab moves it.
+    let mut lane = Lane::from_str(&options.lane_name);
     let (tx, rx) = mpsc::channel::<Control>();
     let mut ui = CoderUi::new();
     let mut history = History::load(History::default_path());
@@ -332,6 +333,23 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
             ComposerAction::Redraw => history.stop_walking(),
             ComposerAction::Moved => {}
+            // Shift+Tab moves between the switchable lanes. It is handled here
+            // rather than in `handle_session_key` because it has to reach the
+            // session, and the session is behind an async lock.
+            ComposerAction::Ignored if key.code == KeyCode::BackTab => {
+                lane = lane.cycle();
+                ui.lane = lane.label();
+                // Nothing has answered on the new lane yet. Carrying the old
+                // model across would leave the row naming a model this lane
+                // never asked for, which is the one thing the row must not do.
+                ui.model.clear();
+                if let Some(session) = &session {
+                    session.lock().await.set_lane(lane.clone());
+                }
+                ui.entries
+                    .push(Entry::new(Role::Notice, format!("Lane: {}", lane.label())));
+                ui.scroll_override = None;
+            }
             // The composer did not want it, so it is the session's.
             ComposerAction::Ignored => {
                 handle_session_key(&mut ui, &mut history, &key, width, &cwd);

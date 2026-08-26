@@ -865,7 +865,7 @@ fn oa_env(args: &[&str], env: &[(&str, &str)]) -> Output {
 /// The catalog `GET /api/v1/models` serves in these tests.
 const CATALOG: &str = r#"{"default":"gemini-3.7-flash","models":[
     {"id":"gemini-3.7-flash","availability":"available","default":true},
-    {"id":"ox-alpha","availability":"available","default":false},
+    {"id":"glm-5.3-flash","availability":"available","default":false},
     {"id":"gpt-5.6-luna","availability":"available","default":false}]}"#;
 
 /// A thread open, a grant that points the proxy back at this same server, and
@@ -884,7 +884,7 @@ fn coder_routes(port: u16) -> Vec<Route> {
             201,
             format!(
                 r#"{{"thread":{{"id":"t-1","status":"open"}},
-                     "grant":{{"token":"g-1","url":{proxy:?},"model":"ox-alpha"}}}}"#
+                     "grant":{{"token":"g-1","url":{proxy:?},"model":"glm-5.3-flash"}}}}"#
             ),
             "application/json",
         ),
@@ -1326,7 +1326,8 @@ fn the_reported_isolation_is_the_one_the_children_get() {
 /// A fan-out that was given no `--lane` says which one it chose, and why that
 /// matters, before a child exists.
 ///
-/// `ox-alpha` is the one lane that opens a thread per child and spends this
+/// `ox-alpha` is the one *delegation* lane that opens a thread per child and
+/// spends this
 /// account's grant; the others shell out to a harness the reader installed.
 /// The header names the lane either way, so it cannot distinguish a lane that
 /// was chosen from one that was assumed — this line is what does.
@@ -1424,7 +1425,10 @@ fn model_names_the_id_the_thread_opens_on() {
     let with: serde_json::Value = serde_json::from_str(&with).expect("the open body is JSON");
     let without: serde_json::Value = serde_json::from_str(&without).expect("the open body is JSON");
     assert_eq!(with["model"], "gpt-5.6-luna");
-    assert_eq!(without["model"], "ox-alpha");
+    // Nothing named, so the default lane — Flash — resolved against this
+    // stub's catalog, which serves its primary. It opened on that. It did not
+    // open unpinned, and it did not open on a model this crate compiled in.
+    assert_eq!(without["model"], "glm-5.3-flash");
     assert_ne!(
         with["model"], without["model"],
         "--model changed nothing about the thread that was opened"
@@ -1672,7 +1676,7 @@ fn resume_routes(port: u16) -> Vec<Route> {
             201,
             format!(
                 r#"{{"thread":{{"id":{id:?},"status":"open"}},
-                     "grant":{{"token":"g-2","url":{proxy:?},"model":"ox-alpha"}}}}"#
+                     "grant":{{"token":"g-2","url":{proxy:?},"model":"glm-5.3-flash"}}}}"#
             ),
             "application/json",
         ));
@@ -1941,7 +1945,7 @@ fn flags_that_name_different_lanes_are_refused_by_name() {
             "coder",
             "--headless",
             "--model",
-            "ox-alpha",
+            "glm-5.3-flash",
             "--lane",
             "pro",
             "hello",
@@ -1950,13 +1954,15 @@ fn flags_that_name_different_lanes_are_refused_by_name() {
     );
     assert_eq!(both.status, Some(2), "stdout: {}", both.stdout);
     assert!(
-        both.stderr.contains("--lane pro") && both.stderr.contains("--model ox-alpha"),
+        both.stderr.contains("--lane pro") && both.stderr.contains("--model glm-5.3-flash"),
         "the refusal did not name both flags: {}",
         both.stderr
     );
 
     // Two names for the *same* lane is agreement, not a conflict, and is not
-    // refused: `--lane pro` and `--model gpt-5.6-luna` name one thing.
+    // refused. `pro` used to be the tier alias that agreed with
+    // `gpt-5.6-luna`; it is not a lane any more, so agreement is now spelled
+    // the only way that cannot go stale — the same id in both flags.
     let agreeing = oa_env(
         &[
             "--api-url",
@@ -1966,7 +1972,7 @@ fn flags_that_name_different_lanes_are_refused_by_name() {
             "--model",
             "gpt-5.6-luna",
             "--lane",
-            "pro",
+            "gpt-5.6-luna",
             "hello",
         ],
         &[("OPENAGENTS_TOKEN", "t")],

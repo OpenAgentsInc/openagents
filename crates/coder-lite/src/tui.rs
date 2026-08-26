@@ -385,6 +385,65 @@ impl CoderUi {
         self.credit.status()
     }
 
+    /// What the row says about the lane, between the identity and the balance.
+    ///
+    /// The lane name alone until a model has answered, and the lane name plus
+    /// **the model that answered** from then on — [`Self::model`] is what the
+    /// grant pinned, never what the lane asked for. That is the whole point of
+    /// putting the lane here: `Coder Flash` while Gemini is answering is the
+    /// defect this row exists to prevent, so the two are always drawn
+    /// together and the reader never has to trust that the label still means
+    /// what it meant at open.
+    ///
+    /// Empty when no lane has been recorded, so the field costs no columns on
+    /// a frame that has nothing to say.
+    pub fn lane_field(&self) -> String {
+        self.lane_field_within(u16::MAX)
+    }
+
+    /// The same field, narrowed to what will actually fit beside its
+    /// neighbours.
+    ///
+    /// The row has three fields and a fixed width, and at 70 columns a full
+    /// account, a full endpoint, a lane name, a catalog id and the reserved
+    /// balance columns do not all fit. Something has to give, and *which*
+    /// thing gives is the decision this method makes.
+    ///
+    /// It gives up the lane name before the model, because the model is the
+    /// load-bearing half: `Coder Flash` while Gemini is answering is the
+    /// defect this field exists to prevent, whereas a bare `gemini-3.7-flash`
+    /// is still true. And it renders **nothing at all** rather than a form
+    /// that would not fit whole — never a truncated id, and never a lane name
+    /// standing alone once a model has answered, which would be the forbidden
+    /// state written out. `/info` carries the lane and the model either way,
+    /// so what is dropped here is recoverable rather than lost.
+    fn lane_field_within(&self, columns: u16) -> String {
+        if self.lane.is_empty() {
+            return String::new();
+        }
+        let columns = columns as usize;
+        let fits = |text: &str| text.chars().count() <= columns;
+
+        // Nothing has answered yet, so nothing is claimed about a model and
+        // the lane name alone cannot mislead.
+        if self.model.is_empty() {
+            return match fits(&self.lane) {
+                true => self.lane.clone(),
+                false => String::new(),
+            };
+        }
+
+        let full = format!("{} · {}", self.lane, self.model);
+        if fits(&full) {
+            return full;
+        }
+        // The model alone is still true. The lane name is the nicety.
+        if fits(&self.model) {
+            return self.model.clone();
+        }
+        String::new()
+    }
+
     /// The host of [`Self::endpoint`], scheme and path removed.
     ///
     /// `None` when nothing set an endpoint, so the row draws the identity
@@ -506,24 +565,47 @@ impl CoderUi {
         // paragraph would paint over the balance, and a right-aligned one over
         // this, so the two fields have their own rectangles.
         let status_area = main[2];
-        // The split is exact rather than two overlapping full-width
-        // paragraphs: the identity gets everything up to the reserved columns
-        // and the balance gets the rest, so the two rectangles cannot overlap
-        // at any width. On a terminal narrower than BALANCE_COLUMNS the
-        // identity is squeezed to nothing and the balance keeps the row,
-        // because the balance is the field that changes what you do next.
-        let identity_width = status_area.width.saturating_sub(BALANCE_COLUMNS);
+        // The split is exact rather than overlapping full-width paragraphs:
+        // each field gets its own rectangle, so no two can overlap at any
+        // width. Right to left, the balance keeps its reserved columns, the
+        // lane takes what its own text needs from what is left, and the
+        // identity takes the remainder.
+        //
+        // The lane is sized to its content rather than given a fixed block
+        // because its text grows by the length of a catalog id the moment a
+        // fallback answers, and a fixed block would clip exactly the case the
+        // field exists to report. On a terminal narrower than BALANCE_COLUMNS
+        // the identity and the lane are squeezed to nothing and the balance
+        // keeps the row, because the balance is the field that changes what
+        // you do next.
+        let shared = status_area.width.saturating_sub(BALANCE_COLUMNS);
+        // The identity is measured first and keeps what it needs, because a
+        // clipped account or a half-written host is a field reporting
+        // something it was never given — `openagents.c` is not a host. The
+        // lane then takes what is genuinely spare, and shortens itself to fit
+        // rather than pushing into its neighbour.
+        let identity_wants = self.status_line().chars().count() as u16;
+        let spare = shared.saturating_sub(identity_wants).saturating_sub(1);
+        let lane = self.lane_field_within(spare);
+        let lane_width = (lane.chars().count() as u16).min(shared);
+        let identity_width = shared.saturating_sub(lane_width);
         let identity_area = Rect {
             width: identity_width,
             ..status_area
         };
-        let balance_area = Rect {
+        let lane_area = Rect {
             x: status_area.x + identity_width,
-            width: status_area.width - identity_width,
+            width: lane_width,
+            ..status_area
+        };
+        let balance_area = Rect {
+            x: status_area.x + shared,
+            width: status_area.width - shared,
             ..status_area
         };
         let status_widget = Paragraph::new(self.status_line()).style(style);
         frame.render_widget(status_widget, identity_area);
+        frame.render_widget(Paragraph::new(lane).style(style), lane_area);
         let balance_widget = Paragraph::new(self.balance_line())
             .style(style)
             .alignment(ratatui::layout::Alignment::Right);

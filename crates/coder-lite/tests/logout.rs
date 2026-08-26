@@ -80,7 +80,20 @@ where
                     return;
                 };
                 seen.lock().unwrap().push(request.clone());
-                match handler(&request, &origin) {
+                // The catalog, answered before the handler sees it. A
+                // switchable lane resolves its model against this at open, so
+                // a stub that did not serve it would refuse at the lane and
+                // never open the thread these tests are about.
+                let reply = if request.starts_with("GET /api/v1/models") {
+                    Reply::Body(
+                        200,
+                        r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#
+                            .to_string(),
+                    )
+                } else {
+                    handler(&request, &origin)
+                };
+                match reply {
                     Reply::Body(status, body) => {
                         let head = format!(
                             "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\n\
