@@ -99,7 +99,22 @@ work is the most expensive axis; it enters the loop only when a cheaper
 lever has stopped paying, and it lands under the repository completion gate
 (`pnpm run check`) like any other code.
 
-### 2.4 Lanes and routing: which model gets which task class
+### 2.4 The optimizer tier: GEPA over the Gym
+
+The manual loop is GEPA with a population of one; the upstream optimizer
+parallelizes it without changing its laws. The full analysis — the DSE
+history, the plugin-system-as-DSPy-layer correspondence, the tier boundary,
+and the budget math — is
+`docs/coder/2026-08-26-dspy-gepa-coder-optimization.md`. The short form:
+upstream Python `gepa` wraps the suite runner as its metric, mutates the
+staged text surfaces (system prompt, tool descriptions, catalog lines,
+knowledge-base stances), screens on cheap sets, confirms on the holdout
+cross-section, and emits **candidates with evidence — never deployments**.
+A candidate lands the way every other lever does: a reviewed commit with
+its measured delta. Do not reimplement the optimizer in-house; DSE died
+with a grid-search stand-in where GEPA should have been.
+
+### 2.5 Lanes and routing: which model gets which task class
 
 The same suite per catalog model, per lane, is the comparative matrix the
 compute mix wants. Scores per lane are not just a leaderboard: they are the
@@ -207,7 +222,11 @@ up.**
 5. **Automated review** — a second agent invoked with the trial artifacts
    produces the review without a human copying transcripts; proposals
    arrive machine-readable and the adopt step becomes a diff.
-6. **Routing feedback** — per-lane suite scores feed lane selection, once
+6. **The optimizer lane** (§2.4) — text surfaces staged as diffable
+   artifacts, then upstream GEPA screening candidates against the Gym,
+   sharing the review's proposal schema so a reflection and a mutation
+   are the same object.
+7. **Routing feedback** — per-lane suite scores feed lane selection, once
    cached-token accounting (#220) makes the cost axis honest.
 
 The loop is not expected to converge on perfection. It is expected to stop

@@ -169,6 +169,71 @@ plugin applies.
 **Provenance:** harvest. **Detection:** review question when the A/B shows
 a plugin installed but never invoked on tasks it should have served.
 
+## Optimization
+
+Provenance for this section: **dspy-gepa** —
+`docs/coder/2026-08-26-dspy-gepa-coder-optimization.md`, which reviews the
+DSE history audit, the 2026-06-28 Python-versus-Effect decision, and the
+2026-07-04 evolve-the-harness audit.
+
+### O1. An optimizer output is a candidate, never a deployment — `adopted`
+
+An offline optimizer produces candidate artifacts with evidence. Landing
+one is a separate, reviewed change carrying its measured delta, exactly
+like a hand-written lever. This law predates the coder — it is carried
+forward verbatim from the DSE/Blueprint contracts and restated in the
+current plugin model assessment and registry strategy.
+**Provenance:** dspy-gepa. **Detection:** review of any change that lands
+optimizer output without its evidence rows.
+
+### O2. Do not reimplement the optimizer — `adopted`
+
+Consume upstream `gepa`/DSPy at the Python tier where Harbor already
+lives. DSE shipped 9,678 lines with deterministic grid search standing in
+for MIPROv2 and GEPA, and the hard part was the part it never had.
+**Provenance:** dspy-gepa; DSE history audit. **Detection:** review of any
+proposal to build a search/teleprompter in Rust, TypeScript, or Effect.
+
+### O3. Screen on the dev set, confirm on a holdout — `adopted`
+
+The optimizer screens candidates on cheap sets (`tb2-quick`,
+`owned-closed-issues` when its environments exist) and spends a
+`tb2-cross-section` run only on survivors. The holdout is also the
+judge-gaming control: a candidate that gamed the dev verifier fails a set
+it never trained against.
+**Provenance:** dspy-gepa; the evolve-the-harness audit's judge-overfit
+caution. **Detection:** candidate evidence must name both sets and state
+dev-set coverage; a candidate scored only on the screening set is not
+confirmed.
+
+### O4. The cost term lives inside the objective — `adopted`
+
+A token/cost penalty is part of the metric the optimizer maximizes, not a
+figure reported beside it. Otherwise the optimizer buys score with spend.
+**Provenance:** dspy-gepa (the published loop's
+`−0.005×tokens_per_million`); ledger M2 for the accounting half.
+**Detection:** review of the objective function in the optimizer lane.
+
+### O5. Candidates carry a transfer label — `adopted`
+
+Every candidate records the model family it was evolved against. Code
+mechanisms transfer across families; tuned prompts do not, and have
+backfired cross-family. Re-evaluate a prompt-class candidate when the
+target family differs.
+**Provenance:** dspy-gepa (the published loop measured +14.4 points
+same-family versus +0.4 cross-family). **Detection:** candidate artifact
+schema requires the field; review rejects an unlabeled prompt candidate.
+
+### O6. Acceptance states its trial count and floor — `adopted`
+
+A promotion gate is "beats the incumbent by ≥N over K trials," with both
+numbers written down, set just above the measured noise floor. On
+`tb2-quick` the available rates are 0, .5, and 1, so the floor is
+structural, not statistical — say so rather than implying precision the
+suite cannot carry (ledger M5).
+**Provenance:** dspy-gepa. **Detection:** candidate evidence without a
+stated trial count is not a promotion argument.
+
 ## Repository
 
 ### R1. Pack with `pnpm pack`, never `npm pack` — `adopted`

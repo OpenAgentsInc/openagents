@@ -113,6 +113,10 @@ One per cycle (best practice M1). Sources, in order of cost:
 4. **Structural gaps** (autoimprove §2.3: compaction, history, shell
    parsing) — only when cheaper levers have stopped paying, and with the
    designated suite oracle named before you start.
+5. **Optimizer candidates** (autoimprove §2.4), once the lane exists — a
+   GEPA candidate is a lever like any other and enters at §4 with its
+   evidence rows, transfer label, and stated acceptance floor. It does not
+   land on the optimizer's say-so (ledger O1).
 
 Write down, before implementing: the lever, the suite that will measure it,
 and the delta direction that would confirm it. If you cannot name the
@@ -264,3 +268,7 @@ an evidence pointer is rejected at the adopt step. Save the output to
   rounds.
 - The PTY-driven interactive harness (autoimprove §7.4) does not exist
   yet; best practice V2 is enforced by rule, not by gate.
+- The optimizer lane (autoimprove §2.4) does not exist yet. The text
+  surfaces it would mutate are still string literals in the two CLIs
+  rather than staged artifacts; until that lands, every cycle is a
+  hand-written lever and the ledger's O-series applies to nothing running.
