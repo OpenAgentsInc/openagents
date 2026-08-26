@@ -854,6 +854,18 @@ impl CoderRuntimeSession {
             "".to_string(),
             prompt::CODER_CONCISION.to_string(),
             "".to_string(),
+            format!(
+                "The session's working directory is `{}`. This is a runtime fact: when asked \
+                 where you are working, state this path and do not invent another one. Use the \
+                 `shell` tool with `pwd` when you need to verify it.",
+                self.tools.cwd.display()
+            ),
+            "".to_string(),
+            "When you call a tool, wait for its result before giving the reader a final answer. \
+             Use the next model round to synthesize the result. Text from a tool-call round is \
+             withheld from the reader."
+                .to_string(),
+            "".to_string(),
         ];
 
         if tool_defs.is_empty() {
@@ -1541,6 +1553,11 @@ impl CoderRuntimeSession {
 
             let mut stream = resp.bytes_stream().eventsource();
             let mut step = StepAccumulator::default();
+            // A model can emit prose before it finishes declaring a tool call.
+            // Hold that prose until this round is known to be its final answer;
+            // otherwise the reader sees an unsupported answer before the tools
+            // that were meant to establish it have run.
+            let mut deferred_text = String::new();
 
             while let Some(event) = stream.next().await {
                 let event = match event {
@@ -1564,7 +1581,7 @@ impl CoderRuntimeSession {
                 let Ok(json) = serde_json::from_str::<serde_json::Value>(&event.data) else {
                     continue;
                 };
-                step.absorb_openai(&json, &mut chunk_callback);
+                step.absorb_openai(&json, &mut |chunk| deferred_text.push_str(chunk));
             }
 
             self.last_usage.add(step.usage);
@@ -1580,6 +1597,9 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                if !deferred_text.is_empty() {
+                    chunk_callback(&deferred_text);
+                }
                 // The answer joins the transcript. `run_tools` records an
                 // assistant turn only when that turn called a tool, so without
                 // this the model never sees anything it said itself: asked in
@@ -1679,6 +1699,7 @@ impl CoderRuntimeSession {
 
             let mut stream = resp.bytes_stream().eventsource();
             let mut step = StepAccumulator::default();
+            let mut deferred_text = String::new();
             let mut completed = false;
 
             while let Some(event) = stream.next().await {
@@ -1694,7 +1715,7 @@ impl CoderRuntimeSession {
 
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.data) {
                     if event.event == "response.completed" {
-                        step.absorb_responses(&value, &mut chunk_callback);
+                        step.absorb_responses(&value, &mut |chunk| deferred_text.push_str(chunk));
                         completed = true;
                         break;
                     }
@@ -1710,7 +1731,7 @@ impl CoderRuntimeSession {
                         self.last_reasoning.push_str(&step.reasoning);
                         return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
                     }
-                    step.absorb_responses(&value, &mut chunk_callback);
+                    step.absorb_responses(&value, &mut |chunk| deferred_text.push_str(chunk));
                 }
             }
 
@@ -1731,6 +1752,9 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                if !deferred_text.is_empty() {
+                    chunk_callback(&deferred_text);
+                }
                 self.messages.push(ChatMessage {
                     role: "assistant".to_string(),
                     content: if final_answer.is_empty() {
@@ -2000,6 +2024,7 @@ impl CoderRuntimeSession {
             let mut bytes = resp.bytes_stream();
             let mut pending = String::new();
             let mut step = StepAccumulator::default();
+            let mut deferred_text = String::new();
 
             while let Some(chunk) = bytes.next().await {
                 let chunk = match chunk {
@@ -2019,14 +2044,14 @@ impl CoderRuntimeSession {
                         continue;
                     }
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                        step.absorb_ollama(&json, &mut chunk_callback);
+                        step.absorb_ollama(&json, &mut |chunk| deferred_text.push_str(chunk));
                     }
                 }
             }
             let tail = pending.trim();
             if !tail.is_empty() {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(tail) {
-                    step.absorb_ollama(&json, &mut chunk_callback);
+                    step.absorb_ollama(&json, &mut |chunk| deferred_text.push_str(chunk));
                 }
             }
 
@@ -2035,6 +2060,9 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                if !deferred_text.is_empty() {
+                    chunk_callback(&deferred_text);
+                }
                 // The answer joins the transcript. `run_tools` records an
                 // assistant turn only when that turn called a tool, so without
                 // this the model never sees anything it said itself: asked in
@@ -2878,5 +2906,33 @@ mod tests {
         assert!(hosted
             .build_system_prompt(&[])
             .contains("OpenAgents inference proxy"));
+    }
+
+    #[test]
+    fn the_system_prompt_names_the_session_working_directory() {
+        let workspace = std::path::PathBuf::from("/workspace/verified-cwd");
+        let session = CoderRuntimeSession::new(
+            Lane::default(),
+            None,
+            None,
+            HarnessToolRegistry::new(Some(workspace.clone())),
+        );
+
+        let prompt = session.build_system_prompt(&[]);
+        assert!(
+            prompt.contains(&format!(
+                "The session's working directory is `{}`",
+                workspace.display()
+            )),
+            "the system prompt did not name the runtime working directory: {prompt}"
+        );
+        assert!(
+            prompt.contains("do not invent another one"),
+            "the system prompt did not forbid made-up working directories: {prompt}"
+        );
+        assert!(
+            prompt.contains("wait for its result before giving the reader a final answer"),
+            "the system prompt did not require a post-tool synthesis: {prompt}"
+        );
     }
 }

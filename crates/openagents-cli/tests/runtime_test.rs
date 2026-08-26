@@ -268,15 +268,17 @@ fn session(lane: Lane, base: String) -> CoderRuntimeSession {
 /// A port nothing listens on, so a connection to it is refused at once.
 const DEAD: &str = "http://127.0.0.1:1/api/v1";
 
-// ──────────────────────────────────────────────────────── the streaming clock
+// ───────────────────────────────────────────────────── the final-answer gate
 
-/// The reply arrives while the turn is still open, not assembled at the end.
+/// The caller gets a complete answer only after the model has closed its
+/// response without requesting a tool.
 ///
-/// The server sends `PO`, waits 700ms, then sends `NG`. The assertion is on
-/// the gap between the first chunk and the return: a batched response would
-/// deliver both at once and close that gap to nothing.
+/// A later stream frame can still declare a tool call, so emitting `PO` before
+/// the terminal `NG` frame would make it possible to show unsupported prose.
+/// The response is therefore held as one final callback once the round is
+/// known not to contain a tool call.
 #[tokio::test]
-async fn a_chunk_reaches_the_caller_before_the_turn_returns() {
+async fn a_final_answer_reaches_the_caller_after_the_round_closes() {
     let stub = start(|request, origin| {
         if request.starts_with("POST /api/v1/threads") {
             return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
@@ -293,7 +295,6 @@ async fn a_chunk_reaches_the_caller_before_the_turn_returns() {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, Instant)>();
     let mut session = session(Lane::default(), stub.base.clone());
 
-    let started = Instant::now();
     let answer = session
         .execute_turn("say pong", move |chunk| {
             let _ = tx.send((chunk.to_string(), Instant::now()));
@@ -312,18 +313,13 @@ async fn a_chunk_reaches_the_caller_before_the_turn_returns() {
             .iter()
             .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>(),
-        vec!["PO", "NG"],
-        "the reply did not arrive in pieces"
+        vec!["PONG"],
+        "the caller received text before the model had finished its round"
     );
     assert_eq!(answer, "PONG");
-
-    let first = chunks[0].1;
-    let lead = returned.duration_since(first);
     assert!(
-        lead >= Duration::from_millis(500),
-        "the first chunk landed only {lead:?} before the turn returned, so this run \
-         does not distinguish streaming from a batched reply (turn took {:?})",
-        returned.duration_since(started)
+        returned >= chunks[0].1,
+        "the callback arrived after the turn returned"
     );
 }
 
@@ -783,6 +779,59 @@ async fn a_tool_call_runs_and_its_output_returns_to_the_model() {
     );
 }
 
+/// Text from a response that also asks for a tool is provisional. It must not
+/// reach the reader before the tool result is available and the model returns
+/// its final synthesis on the next round.
+#[tokio::test]
+async fn a_tool_round_does_not_stream_provisional_text() {
+    let round = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = Arc::clone(&round);
+    let stub = start(move |request, origin| {
+        if request.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
+        }
+        let step = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if step == 0 {
+            return Reply::Sse(
+                vec![
+                    frame(
+                        serde_json::json!({"choices":[{"delta":{"content":"I will check that now."}}]}),
+                    ),
+                    frame(serde_json::json!({"choices":[{"delta":{"tool_calls":[{
+                        "index": 0,
+                        "id": "call_a",
+                        "function": {"name": "shell", "arguments": "{\"command\":\"pwd\"}"}
+                    }]}}]})),
+                ],
+                None,
+            );
+        }
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"content":"The working directory is verified."}}]}),
+            )],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::default(), stub.base.clone());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let received = Arc::clone(&seen);
+    let answer = session
+        .execute_turn("where am I working?", move |chunk| {
+            received.lock().unwrap().push(chunk.to_string());
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(answer, "The working directory is verified.");
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["The working directory is verified."],
+        "a response that requested a tool leaked provisional text to the reader"
+    );
+}
+
 // ───────────────────────────────────────────────────────────── the local lane
 
 fn ollama_stub() -> Stub {
@@ -818,7 +867,7 @@ fn ollama_stub() -> Stub {
     })
 }
 
-/// The local lane answers with the OpenAgents host unreachable, and streams.
+/// The local lane answers with the OpenAgents host unreachable.
 ///
 /// `api_base` points at a closed port for the whole turn: a single request to
 /// openagents.com would fail the turn, so a pass is proof that none was made.
@@ -857,13 +906,11 @@ async fn the_local_lane_answers_with_the_proxy_unreachable() {
     }
     assert_eq!(
         chunks.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(),
-        vec!["PO", "NG"]
+        vec!["PONG"]
     );
-    let lead = returned.duration_since(chunks[0].1);
     assert!(
-        lead >= Duration::from_millis(500),
-        "the first chunk landed only {lead:?} before the turn returned, so this run \
-         does not distinguish streaming from a batched reply"
+        returned >= chunks[0].1,
+        "the callback arrived after the local turn returned"
     );
 
     // The whole exchange was with the local server.
