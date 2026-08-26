@@ -364,6 +364,16 @@ impl Session {
         let spent = self.inner.finish().await?;
         Ok(self.inner.spend_line(spent))
     }
+
+    /// The failures the runtime recorded and nothing has shown yet.
+    ///
+    /// [`Self::execute_turn`] drains these into notices; [`Self::finish`]
+    /// cannot, because its caller is not a turn. `/logout` reads them so an
+    /// ending that fell back to a cancellation says so on screen rather than
+    /// only in the runtime's field.
+    pub fn take_record_failures(&mut self) -> Vec<String> {
+        self.inner.record_failures.drain(..).collect()
+    }
 }
 
 /// The repository this session was opened in, as `owner/name`, when it is one.

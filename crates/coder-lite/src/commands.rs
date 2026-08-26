@@ -34,6 +34,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("help", "list these commands and the keys"),
     ("login", "log in with GitHub and store the token"),
     (
+        "logout",
+        "end this session's thread and remove the stored token",
+    ),
+    (
         "resume",
         "coding-agent sessions other tools left on this machine: /resume, /resume <number>",
     ),
@@ -67,16 +71,32 @@ pub fn names() -> Vec<&'static str> {
 
 /// Whether `name` is one this module runs.
 pub fn handles(name: &str) -> bool {
-    matches!(name, "clear" | "diff" | "export" | "help" | "login" | "resume" | "run")
+    matches!(
+        name,
+        "clear" | "diff" | "export" | "help" | "login" | "logout" | "resume" | "run"
+    )
+}
+
+/// What the dispatch could not finish on its own.
+///
+/// `/logout` has to end the live thread and drop the credential, and the
+/// session is owned by the frame loop rather than by this module, so the line
+/// is recognised here and carried out there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The line ran here. Nothing is left to do.
+    Done,
+    /// Log this session out: see [`logout`].
+    Logout,
 }
 
 /// Run one `/` line. `line` still carries its leading slash.
-pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) {
+pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Outcome {
     let body = line.trim_start_matches('/');
     let mut words = body.split_whitespace();
     let Some(name) = words.next() else {
         output(ui, "A command needs a name. Try `/help`.");
-        return;
+        return Outcome::Done;
     };
     let arguments: Vec<String> = words.map(str::to_string).collect();
     let rest = body[name.len()..].trim().to_string();
@@ -89,6 +109,10 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) {
         }
         "export" => crate::interactive::export(ui),
         "login" => spawn_login(ui, tx),
+        // Nothing is printed here: the notice is written by `logout` once the
+        // thread has been ended and the credential removed, so it says what
+        // actually happened rather than what was asked for.
+        "logout" => return Outcome::Logout,
         "diff" => spawn_diff(ui, arguments, tx, cwd),
         "run" => spawn_run(ui, &rest, tx, cwd),
         "resume" => spawn_resume(ui, &arguments, tx, cwd),
@@ -97,6 +121,7 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) {
             &format!("There is no `/{other}`. `/help` lists the commands."),
         ),
     }
+    Outcome::Done
 }
 
 fn output(ui: &mut CoderUi, text: &str) {
@@ -114,6 +139,148 @@ fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {
         };
         let _ = tx.send(Control::Output(text));
     });
+}
+
+// ───────────────────────────────────────────────────────────────── /logout
+
+/// The environment variables that carry a credential into this process.
+///
+/// `do_login` writes the first one so the runtime spends the token without a
+/// second store lookup, and [`openagents_cli::auth::CredentialStore::find_token`]
+/// reads the second one ahead of every store. Left set, either would hand the
+/// next session the credential that was just removed, and the store deletion
+/// would have been theatre.
+const ENVIRONMENT_CREDENTIALS: [&str; 2] = ["OPENAGENTS_API_KEY", "OPENAGENTS_TOKEN"];
+
+/// What the session is after a `/logout`. It is not over: the transcript is
+/// still here and the frame's own unauthenticated branch refuses every prompt
+/// at the composer, before any request is built, so there is nothing left that
+/// can fail somewhere far away holding a credential that is gone.
+const STAYS_OPEN: &str = "- This session stays open and unauthenticated. The transcript is still \
+                          here, every prompt is refused until you log in again, and `/login` — or \
+                          Enter on an empty line — starts a new thread.";
+
+/// Log this session out of the API it is pointed at.
+///
+/// The notice it returns is the whole answer, and it names which credential
+/// was removed. A logout that says only "logged out" is what makes a token
+/// that went missing untraceable to any command (issue #128).
+pub async fn logout(session: &mut crate::runtime::Session) -> String {
+    match openagents_cli::auth::resolve_endpoint(None, None) {
+        Ok(endpoint) => {
+            let store = openagents_cli::auth::CredentialStore::for_origin(&endpoint.origin);
+            logout_at(session, &store).await
+        }
+        Err(error) => {
+            // Which store to open could not be decided, so nothing is opened:
+            // guessing production here is exactly how a token disappears from
+            // an endpoint nobody asked about.
+            let mut lines = vec![
+                "Logged out. No stored token was removed: which API this session is pointed at \
+                 could not be resolved, so no credential store was opened."
+                    .to_string(),
+                format!("- {error}"),
+            ];
+            lines.extend(end_thread(session).await);
+            lines.extend(clear_environment());
+            lines.push(STAYS_OPEN.to_string());
+            lines.join("\n")
+        }
+    }
+}
+
+/// [`logout`] against a named store.
+///
+/// Split out so a test can drive the real removal against a store confined to
+/// a directory rather than against the developer's own keychain.
+pub async fn logout_at(
+    session: &mut crate::runtime::Session,
+    store: &openagents_cli::auth::CredentialStore,
+) -> String {
+    let origin = store.origin().to_string();
+    let mut lines = vec![format!("Logged out of `{origin}`.")];
+    // The thread first, while the credential is still good: ending it is a
+    // report to the server, and a session whose token has already been taken
+    // away cannot make one. A thread left open holds its grant's remaining
+    // budget (#106, #107), so this is the part that is not optional.
+    lines.extend(end_thread(session).await);
+    lines.extend(clear_environment());
+
+    let held = store.find_token();
+    let source = match &held {
+        Ok(Some(stored)) => stored.source.label(),
+        _ => "store",
+    };
+    match store.remove() {
+        Ok(true) => lines.push(format!(
+            "- Removed the OpenAgents token stored for `{origin}` (from the {source}). No other \
+             endpoint's token was touched."
+        )),
+        Ok(false) => lines.push(format!(
+            "- No OpenAgents token was stored for `{origin}`, so there was none to remove."
+        )),
+        Err(error) => lines.push(format!(
+            "- The token stored for `{origin}` was NOT removed: {error}. It is still there."
+        )),
+    }
+    if let Err(error) = held {
+        lines.push(format!(
+            "- Where that token was held could not be read: {error}"
+        ));
+    }
+
+    lines.push(STAYS_OPEN.to_string());
+    lines.join("\n")
+}
+
+/// End the session's thread by reporting what it did, and say so.
+async fn end_thread(session: &mut crate::runtime::Session) -> Vec<String> {
+    let ended = session.finish().await;
+    // `finish` falls back to a cancellation when the report is refused, and
+    // records why. Nothing drains that outside a turn, so it is read here:
+    // otherwise the notice would claim a report that did not happen.
+    let recorded = session.take_record_failures();
+    let mut lines = Vec::new();
+    match ended {
+        Ok(spent) => {
+            if recorded.is_empty() {
+                let billed = spent.map(|line| format!(" {line}.")).unwrap_or_default();
+                lines.push(format!(
+                    "- The thread was ended by reporting what this session did, so nothing is \
+                     left holding its grant's remaining budget.{billed}"
+                ));
+            } else {
+                lines.extend(recorded.into_iter().map(|note| format!("- {note}")));
+            }
+        }
+        Err(error) => {
+            lines.push(format!(
+                "- The thread was NOT ended: {error}. It may still be open and holding its \
+                 grant's remaining budget."
+            ));
+            lines.extend(recorded.into_iter().map(|note| format!("- {note}")));
+        }
+    }
+    lines
+}
+
+/// Drop the credentials this process carries in its environment, and say which.
+fn clear_environment() -> Vec<String> {
+    let mut lines = Vec::new();
+    for name in ENVIRONMENT_CREDENTIALS {
+        if std::env::var_os(name).is_none() {
+            continue;
+        }
+        // SAFETY: the same process-global write `do_login` makes when it puts
+        // the token here, undone. This runs on the frame's own task, between
+        // turns, with no session holding a credential read in flight.
+        unsafe { std::env::remove_var(name) };
+        lines.push(format!(
+            "- Cleared `{name}` from this session. The shell that set it still has it, so a new \
+             session started from that shell would use it again."
+        ));
+    }
+    lines
 }
 
 fn help() -> String {

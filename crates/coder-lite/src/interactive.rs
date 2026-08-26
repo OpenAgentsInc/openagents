@@ -212,11 +212,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             ComposerAction::Submit(text) => {
                 history.record(&text);
                 history.stop_walking();
+                let mut asked_to_log_out = false;
                 if let Some(session) = &session {
                     if !text.trim().is_empty() {
-                        submit(&mut ui, text, session, &tx, &cwd);
+                        asked_to_log_out =
+                            submit(&mut ui, text, session, &tx, &cwd) == commands::Outcome::Logout;
                     }
-                } else if text.trim().is_empty() {
+                } else if text.trim().is_empty() || text.trim() == "/login" {
                     ui.entries.push(Entry::new(
                         Role::Notice,
                         "Opening GitHub login in your browser...",
@@ -257,6 +259,34 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         Role::Notice,
                         "Press Enter to log in with GitHub.",
                     ));
+                }
+
+                // `/logout` is run here rather than in the dispatch because the
+                // session is owned here: the credential goes, and the thread
+                // that credential opened has to be ended by reporting first, on
+                // the same grace the exit uses. The session is taken before the
+                // work and put back if it could not be done, so a `/logout` that
+                // did not happen never leaves the frame believing it did.
+                if asked_to_log_out && let Some(active) = session.take() {
+                    let notice = tokio::time::timeout(REVOCATION_GRACE, async {
+                        commands::logout(&mut *active.lock().await).await
+                    })
+                    .await;
+                    match notice {
+                        Ok(notice) => ui.entries.push(Entry::new(Role::Notice, notice)),
+                        Err(_) => {
+                            session = Some(active);
+                            ui.entries.push(Entry::new(
+                                Role::Notice,
+                                format!(
+                                    "Still logged in: this session was working after {}s, so its \
+                                     thread could not be ended and its token was left alone. Run \
+                                     `/logout` again once the turn has finished.",
+                                    REVOCATION_GRACE.as_secs()
+                                ),
+                            ));
+                        }
+                    }
                 }
             }
             ComposerAction::Redraw => history.stop_walking(),
@@ -554,19 +584,21 @@ fn handle_session_key(
 }
 
 /// Send what was typed: a command to the session, or a prompt to the model.
+///
+/// Returns what the caller still has to do, which for everything but
+/// `/logout` is nothing.
 fn submit(
     ui: &mut CoderUi,
     text: String,
     session: &Arc<Mutex<Session>>,
     tx: &Sender<Control>,
     cwd: &std::path::Path,
-) {
+) -> commands::Outcome {
     ui.scroll_override = None;
     ui.entries.push(Entry::new(Role::You, text.clone()));
 
     if text.trim_start().starts_with('/') {
-        commands::run(ui, text.trim(), tx, cwd);
-        return;
+        return commands::run(ui, text.trim(), tx, cwd);
     }
 
     ui.entries.push(Entry::new(Role::Assistant, String::new()));
@@ -577,6 +609,7 @@ fn submit(
     tokio::spawn(async move {
         session.lock().await.execute_turn(&text, tx).await;
     });
+    commands::Outcome::Done
 }
 
 /// `/export` is here rather than in `commands` because it reads the whole
