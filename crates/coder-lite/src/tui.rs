@@ -10,6 +10,7 @@ use ratatui::{
 
 const TEXT_COLOR: Color = Color::Rgb(255, 176, 0);
 const BACKGROUND_COLOR: Color = Color::Rgb(8, 6, 0);
+const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 #[derive(Debug, Clone)]
 pub enum Role {
@@ -40,6 +41,7 @@ pub struct CoderUi {
     pub scroll_max: u16,
     pub transcript_height: u16,
     pub loading: bool,
+    pub tick: u64,
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -133,10 +135,12 @@ impl CoderUi {
             scroll_max: 0,
             transcript_height: 0,
             loading: false,
+            tick: 0,
         }
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        self.tick = self.tick.wrapping_add(1);
         let style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
 
         // Fill the entire terminal with the background color first.
@@ -158,12 +162,10 @@ impl CoderUi {
         let visible_input_lines = total_input_lines.min(max_input_lines);
         let input_scroll = total_input_lines.saturating_sub(visible_input_lines);
         let input_box_height = visible_input_lines + 2;
-        let status_height = if self.loading { 1 } else { 0 };
-        let bottom_height = input_box_height + status_height;
 
         let main_bottom = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
+            .constraints([Constraint::Min(0), Constraint::Length(input_box_height)])
             .split(area);
 
         let transcript_area = main_bottom[0];
@@ -171,6 +173,14 @@ impl CoderUi {
         let mut all_lines = Vec::new();
         for entry in &self.entries {
             all_lines.extend(self.render_entry(entry, transcript_area.width as usize));
+        }
+
+        if self.loading {
+            let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
+            all_lines.push(Line::from(vec![Span::styled(
+                format!("> {}", spinner),
+                style,
+            )]));
         }
 
         let total = all_lines.len() as u16;
@@ -183,26 +193,7 @@ impl CoderUi {
             .style(style);
         frame.render_widget(transcript, transcript_area);
 
-        let bottom = main_bottom[1];
-        let bottom_chunks = if self.loading {
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(1), Constraint::Length(input_box_height)])
-                .split(bottom)
-        } else {
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(input_box_height)])
-                .split(bottom)
-        };
-
-        if self.loading {
-            let status = Paragraph::new(Line::from(vec![Span::styled("● working…", style)]))
-                .style(style);
-            frame.render_widget(status, bottom_chunks[0]);
-        }
-
-        let input_idx = if self.loading { 1 } else { 0 };
+        let input_area = main_bottom[1];
 
         let mut input_lines = Vec::new();
         for (i, chunk) in input_chunks.iter().enumerate().skip(input_scroll as usize) {
@@ -221,9 +212,8 @@ impl CoderUi {
                     .border_style(style)
                     .style(style),
             );
-        frame.render_widget(input, bottom_chunks[input_idx]);
+        frame.render_widget(input, input_area);
 
-        let input_area = bottom_chunks[input_idx];
         let last_chunk = input_chunks.last().map(|s| s.as_str()).unwrap_or("");
         let cursor_x = input_area.x + 1 + 3 + last_chunk.chars().count() as u16;
         let cursor_y = input_area.y + 1 + visible_input_lines.saturating_sub(1);
