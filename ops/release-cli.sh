@@ -1,0 +1,373 @@
+#!/bin/sh
+# Build, sign, and publish the OpenAgents CLI for every platform the installer
+# knows how to ask for.
+#
+# The contract this script fills is written down in the installer served at
+# https://openagents.com/install.sh. Under the base URL
+# https://openagents.com/releases it fetches:
+#
+#   <base>/<channel>                              a bare version string
+#   <base>/openagents-<version>-<platform>        the executable, no extension
+#   <base>/SHA256SUMS-<version>                   "<sha256>  <name>" per line
+#
+# Anything this script emits that disagrees with those three shapes is a broken
+# release, so the names are derived here once and never spelled twice.
+#
+# Usage:
+#   ops/release-cli.sh --version 0.1.0-rc.1
+#   ops/release-cli.sh --version 0.1.0-rc.1 --publish
+#   ops/release-cli.sh --version 0.1.0 --publish --channel stable
+#
+# Options:
+#   --version X.Y.Z[-suffix]  Required. The version to build and name.
+#   --targets "a b c"         Platforms to attempt. Defaults to all five.
+#   --publish                 Upload to the release bucket. Off by default.
+#   --channel NAME            Point a channel at this version after publishing.
+#   --allow-partial           Publish even though some platforms are missing.
+#   --allow-prerelease-channel  Let a prerelease version claim a channel.
+#   --skip-notarization       Build macOS artifacts without Apple notarization.
+
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+
+# platform | rust target triple | builder | expected `file` signature
+#
+# The fourth column is the anti-forgery check. Cross-compilation fails in ways
+# that still leave a runnable file sitting at the output path -- a stale
+# artifact from a previous target, or a host build that silently ignored the
+# requested triple -- and a release that ships a darwin binary under a
+# linux-x86_64 name is worse than one that admits it built four of five. Every
+# artifact is read back and matched against this signature before it is staged.
+platform_table='macos-aarch64|aarch64-apple-darwin|cargo|Mach-O 64-bit executable arm64
+macos-x86_64|x86_64-apple-darwin|cargo|Mach-O 64-bit executable x86_64
+linux-x86_64|x86_64-unknown-linux-gnu|zigbuild|ELF 64-bit LSB*x86-64
+linux-aarch64|aarch64-unknown-linux-gnu|zigbuild|ELF 64-bit LSB*ARM aarch64
+windows-x86_64|x86_64-pc-windows-gnu|zigbuild|PE32+ executable*x86-64'
+
+all_platforms=$(printf '%s\n' "$platform_table" | cut -d'|' -f1 | tr '\n' ' ')
+
+version=''
+targets=''
+publish=0
+channel=''
+allow_partial=0
+allow_prerelease_channel=0
+skip_notarization=0
+
+bucket=${OPENAGENTS_RELEASES_BUCKET:-openagentsgemini-cli-releases}
+gcloud_config=${CLOUDSDK_CONFIG:-/Users/christopherdavid/work/.secrets/gcloud-sa-config}
+notary_env=${OPENAGENTS_NOTARY_ENV:-/Users/christopherdavid/work/.secrets/appstoreconnect.env}
+
+# The code signing identifier is pinned rather than derived from the file name.
+# codesign defaults the identifier to the basename, which would give the same
+# build a different identity depending on where it was staged.
+signing_identifier='com.openagents.cli'
+
+die() {
+  echo "$@" >&2
+  exit 1
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --version) version=${2:-}; shift 2 ;;
+    --targets) targets=${2:-}; shift 2 ;;
+    --channel) channel=${2:-}; shift 2 ;;
+    --publish) publish=1; shift ;;
+    --allow-partial) allow_partial=1; shift ;;
+    --allow-prerelease-channel) allow_prerelease_channel=1; shift ;;
+    --skip-notarization) skip_notarization=1; shift ;;
+    -h | --help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+[ -n "$version" ] || die "--version is required"
+
+# The same grammar the installer applies to its argument. A version this script
+# accepts but the installer rejects would publish an artifact nobody can ask for.
+printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?$' ||
+  die "invalid version: $version (expected X.Y.Z or X.Y.Z-suffix)"
+
+case "$version" in
+  *-*) prerelease=1 ;;
+  *) prerelease=0 ;;
+esac
+
+[ -n "$targets" ] || targets=$all_platforms
+
+for command_name in cargo file shasum; do
+  command -v "$command_name" >/dev/null 2>&1 ||
+    die "$command_name is required to build a release"
+done
+
+dist="$repo_root/dist/releases/$version"
+rm -rf "$dist"
+mkdir -p "$dist"
+
+built=''
+missing=''
+manifest_entries=''
+
+notary_loaded=0
+load_notary_env() {
+  [ "$notary_loaded" = 0 ] || return 0
+  [ -f "$notary_env" ] || return 1
+  # The App Store Connect key id, issuer, and private key path are read from the
+  # operator's secret file at call time and passed to notarytool per invocation.
+  # `notarytool store-credentials` would copy the same private key into the
+  # login keychain, leaving a second durable copy of a credential that already
+  # exists on disk; passing it per call leaves nothing new behind.
+  set -a
+  # shellcheck disable=SC1090
+  . "$notary_env"
+  set +a
+  notary_loaded=1
+  return 0
+}
+
+# Sign, notarize, and verify one macOS artifact.
+#
+# Apple cannot staple a notarization ticket to a bare Mach-O executable -- only
+# a container such as a .zip, .dmg, or .pkg carries the stapled ticket -- and
+# `xcrun stapler staple` on a bare binary fails with error 73. The installer
+# downloads a single executable and marks it executable, so a stapled container
+# would mean changing a landed contract to buy something the install path does
+# not use: curl sets no com.apple.quarantine attribute, so Gatekeeper is not
+# consulted on a piped install at all. The artifact therefore ships bare, and
+# `spctl --assess -t install` confirms Apple's notary service recognizes it
+# online as "Notarized Developer ID" for the paths where quarantine does apply.
+sign_and_notarize() {
+  artifact=$1
+  platform=$2
+
+  command -v codesign >/dev/null 2>&1 || die "codesign is required for $platform"
+
+  load_notary_env ||
+    die "missing $notary_env; macOS artifacts must be signed. Pass --skip-notarization to build unsigned."
+
+  [ -n "${OA_DEVELOPER_ID_APPLICATION:-}" ] ||
+    die "OA_DEVELOPER_ID_APPLICATION is not set in $notary_env"
+
+  echo "  signing $platform as $signing_identifier"
+  codesign --force --timestamp --options runtime \
+    --identifier "$signing_identifier" \
+    --sign "$OA_DEVELOPER_ID_APPLICATION" \
+    "$artifact" >/dev/null 2>&1 ||
+    die "codesign failed for $platform"
+
+  codesign --verify --strict "$artifact" ||
+    die "signature does not verify for $platform"
+
+  if [ "$skip_notarization" = 1 ]; then
+    echo "  skipping notarization for $platform (--skip-notarization)"
+    notary_status='skipped'
+    notary_submission=''
+    return 0
+  fi
+
+  command -v xcrun >/dev/null 2>&1 || die "xcrun is required to notarize $platform"
+
+  submission_zip="$artifact.notarize.zip"
+  rm -f "$submission_zip"
+  /usr/bin/ditto -c -k --keepParent "$artifact" "$submission_zip"
+
+  echo "  notarizing $platform"
+  notary_log="$artifact.notary.log"
+  xcrun notarytool submit "$submission_zip" \
+    --key "$ASC_API_PRIVATE_KEY_PATH" \
+    --key-id "$ASC_API_KEY_ID" \
+    --issuer "$ASC_API_ISSUER_ID" \
+    --wait --timeout 30m >"$notary_log" 2>&1 ||
+    { cat "$notary_log" >&2; die "notarization failed for $platform"; }
+
+  notary_submission=$(awk '/^  id: /{print $2; exit}' "$notary_log")
+  notary_status=$(awk '/^  status: /{print $2; exit}' "$notary_log")
+  rm -f "$submission_zip"
+
+  [ "$notary_status" = "Accepted" ] ||
+    { cat "$notary_log" >&2; die "notarization for $platform came back $notary_status"; }
+
+  echo "  notarized $platform ($notary_submission, $notary_status)"
+
+  # Evidence, not ceremony: this is the assessment an operator would run by hand
+  # to answer "will Gatekeeper accept this".
+  spctl --assess -vv -t install "$artifact" 2>&1 | sed 's/^/    /'
+}
+
+echo "Building OpenAgents CLI $version"
+echo
+
+for platform in $targets; do
+  row=$(printf '%s\n' "$platform_table" | grep "^$platform|") ||
+    die "unknown platform: $platform (known: $all_platforms)"
+
+  triple=$(printf '%s' "$row" | cut -d'|' -f2)
+  builder=$(printf '%s' "$row" | cut -d'|' -f3)
+  expected=$(printf '%s' "$row" | cut -d'|' -f4)
+
+  echo "$platform ($triple, $builder)"
+
+  if ! rustup target list --installed 2>/dev/null | grep -qx "$triple"; then
+    echo "  SKIP: rust target $triple is not installed (rustup target add $triple)"
+    missing="$missing $platform"
+    continue
+  fi
+
+  if [ "$builder" = zigbuild ] && ! command -v cargo-zigbuild >/dev/null 2>&1; then
+    echo "  SKIP: cargo-zigbuild is not installed and $triple cannot be built natively here"
+    missing="$missing $platform"
+    continue
+  fi
+
+  # Every artifact is rebuilt from source into its own target directory. Nothing
+  # is copied forward from a previous run, so a build that fails cannot leave a
+  # stale binary behind for the verification step to bless.
+  case "$triple" in
+    *windows*) output="$repo_root/target/$triple/release/oa.exe" ;;
+    *) output="$repo_root/target/$triple/release/oa" ;;
+  esac
+  rm -f "$output"
+
+  build_log="$dist/$platform.build.log"
+  if [ "$builder" = zigbuild ]; then
+    build_command='cargo zigbuild'
+  else
+    build_command='cargo build'
+  fi
+
+  if ! (cd "$repo_root" && $build_command --release -p openagents-cli --target "$triple") \
+    >"$build_log" 2>&1; then
+    echo "  SKIP: build failed (see $build_log)"
+    tail -5 "$build_log" | sed 's/^/    /'
+    missing="$missing $platform"
+    continue
+  fi
+
+  [ -f "$output" ] || { echo "  SKIP: build reported success but produced no binary"; missing="$missing $platform"; continue; }
+
+  # The forgery check. `file` reads the actual Mach-O/ELF/PE header rather than
+  # trusting the path the compiler was asked to write to.
+  signature=$(file -b "$output")
+  # shellcheck disable=SC2254
+  case "$signature" in
+    $expected*) ;;
+    *)
+      echo "  REFUSED: $output is '$signature', expected '$expected'"
+      echo "  Refusing to publish a binary under a platform name it does not match."
+      missing="$missing $platform"
+      continue
+      ;;
+  esac
+
+  # The installer never appends an extension to the artifact URL, on any
+  # platform: it computes artifact_base before it branches on windows and never
+  # revisits it. The staged file name matches that URL exactly.
+  artifact="$dist/openagents-$version-$platform"
+  cp "$output" "$artifact"
+  chmod +x "$artifact"
+
+  notary_status='not-applicable'
+  notary_submission=''
+  case "$platform" in
+    macos-*) sign_and_notarize "$artifact" "$platform" ;;
+  esac
+
+  sha=$(shasum -a 256 "$artifact" | awk '{print $1}')
+  size=$(wc -c <"$artifact" | tr -d ' ')
+  echo "  ok  $signature"
+  echo "      sha256 $sha  ($size bytes)"
+
+  built="$built $platform"
+  manifest_entries="$manifest_entries
+    {\"platform\": \"$platform\", \"target\": \"$triple\", \"builder\": \"$builder\", \"sha256\": \"$sha\", \"bytes\": $size, \"notarization\": \"$notary_status\", \"notarization_submission\": \"$notary_submission\"},"
+  echo
+done
+
+[ -n "$built" ] || die "no platform built; nothing to publish"
+
+# The sums file the installer reads. Its lookup is
+#   awk '$2 == name || $2 == "*" name'
+# over "<sha256>  <name>", and for windows it appends ".exe" to the name it
+# looks up even though it downloaded a URL without one. That asymmetry lives in
+# a landed installer, so the sums file reproduces it exactly: the artifact keeps
+# its extensionless name and the sums entry carries the .exe the installer will
+# search for. Diverging here would checksum-fail every Windows install.
+sums="$dist/SHA256SUMS-$version"
+: >"$sums"
+for platform in $built; do
+  artifact="openagents-$version-$platform"
+  sums_name=$artifact
+  case "$platform" in
+    windows-*) sums_name="$artifact.exe" ;;
+  esac
+  sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}')
+  printf '%s  %s\n' "$sha" "$sums_name" >>"$sums"
+done
+
+cat >"$dist/release-manifest.json" <<EOF
+{
+  "schema": "openagents.cli-release.v1",
+  "version": "$version",
+  "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "git_sha": "$(git -C "$repo_root" rev-parse --verify HEAD)",
+  "host": "$(uname -sm)",
+  "artifacts": [$(printf '%s' "$manifest_entries" | sed '$ s/,$//')
+  ]
+}
+EOF
+
+echo "Built:  $(printf '%s' "$built" | tr -s ' ')"
+if [ -n "$missing" ]; then
+  echo "Missing:$missing"
+fi
+echo "Staged in $dist"
+echo
+
+if [ -n "$missing" ] && [ "$allow_partial" = 0 ]; then
+  echo "This release is missing:$missing" >&2
+  echo "" >&2
+  echo "A channel that points at a version some platforms cannot install is a" >&2
+  echo "broken channel, and the installer reports a bare download failure rather" >&2
+  echo "than 'unsupported platform'. Fix the toolchain, restrict --targets to" >&2
+  echo "what you meant to ship, or pass --allow-partial to publish anyway." >&2
+  exit 1
+fi
+
+if [ "$publish" = 0 ]; then
+  echo "Not publishing (--publish was not passed)."
+  exit 0
+fi
+
+command -v gcloud >/dev/null 2>&1 || die "gcloud is required to publish"
+CLOUDSDK_CONFIG=$gcloud_config
+export CLOUDSDK_CONFIG
+
+echo "Publishing to gs://$bucket"
+for platform in $built; do
+  artifact="openagents-$version-$platform"
+  gcloud storage cp "$dist/$artifact" "gs://$bucket/$artifact" \
+    --content-type=application/octet-stream --quiet
+done
+gcloud storage cp "$sums" "gs://$bucket/SHA256SUMS-$version" \
+  --content-type=text/plain --quiet
+
+echo "Published $version"
+
+[ -n "$channel" ] || { echo "No channel updated (--channel was not passed)."; exit 0; }
+
+if [ "$prerelease" = 1 ] && [ "$allow_prerelease_channel" = 0 ]; then
+  die "refusing to point '$channel' at prerelease $version; pass --allow-prerelease-channel if that is the intent"
+fi
+
+# The pointer file is the whole body, no trailing newline beyond the one the
+# installer strips with tr -d '[:space:]'.
+pointer=$(mktemp)
+printf '%s\n' "$version" >"$pointer"
+gcloud storage cp "$pointer" "gs://$bucket/$channel" \
+  --content-type=text/plain --cache-control='public, max-age=60' --quiet
+rm -f "$pointer"
+
+echo "Channel '$channel' now points at $version"
