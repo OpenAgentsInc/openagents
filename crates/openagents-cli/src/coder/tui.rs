@@ -23,6 +23,8 @@ use crate::runtime::TurnUsage;
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const TOOL_RAIL_WAVE_ROWS: f32 = 32.0;
 const TOOL_RAIL_WAVE_SPEED: f32 = 0.15;
+const TOOL_OUTPUT_ROWS: usize = 5;
+const TOOL_OUTPUT_SCROLL_FRAMES: u64 = 8;
 
 /// Who this session is signed in as.
 ///
@@ -120,6 +122,8 @@ pub struct Entry {
     pub output: Option<String>,
     pub tool: Option<ToolCall>,
     pub at: u64,
+    /// The first frame of the one-shot preview sweep for long tool output.
+    output_scroll_started: Option<u64>,
     /// Streaming markdown state for assistant entries.
     ///
     /// Built on first use and fed chunk by chunk, so the engine's checkpoint
@@ -146,6 +150,7 @@ impl Entry {
             output: None,
             tool: None,
             at: now_ms(),
+            output_scroll_started: None,
             md: None,
         }
     }
@@ -163,6 +168,7 @@ impl Entry {
             output: Some(String::new()),
             tool: None,
             at: now_ms(),
+            output_scroll_started: None,
             md: None,
         }
     }
@@ -770,8 +776,15 @@ fn render_entry(
             // that produced no output.
             let out = entry.output.as_deref().unwrap_or("");
             let out_lines: Vec<&str> = out.lines().collect();
-            let start = out_lines.len().saturating_sub(5);
-            let window = &out_lines[start..];
+            let final_start = out_lines.len().saturating_sub(TOOL_OUTPUT_ROWS);
+            let start = if final_start == 0 || !motion_enabled {
+                final_start
+            } else {
+                let started = *entry.output_scroll_started.get_or_insert(tick);
+                tool_output_scroll_start(final_start, tick.saturating_sub(started))
+            };
+            let end = (start + TOOL_OUTPUT_ROWS).min(out_lines.len());
+            let window = &out_lines[start..end];
 
             // One-line tool call header, flush left.
             let done = entry.tool.as_ref().is_some_and(|tool| tool.done);
@@ -882,6 +895,17 @@ fn tool_rail_wave_color(tick: u64, row: u16) -> Color {
     let phase = (row as f32 / TOOL_RAIL_WAVE_ROWS) * 2.0 * PI;
     let brightness = (tick as f32 * TOOL_RAIL_WAVE_SPEED + phase).sin().powi(2);
     blend_rgb(BACKGROUND_COLOR, TEXT_COLOR, brightness)
+}
+
+/// Move a long output preview from its first rows to its final rows once.
+fn tool_output_scroll_start(final_start: usize, age: u64) -> usize {
+    if age >= TOOL_OUTPUT_SCROLL_FRAMES {
+        return final_start;
+    }
+
+    let progress = age as f64 / TOOL_OUTPUT_SCROLL_FRAMES as f64;
+    let eased = 1.0 - (1.0 - progress).powi(5);
+    (final_start as f64 * eased).round() as usize
 }
 
 fn blend_rgb(from: Color, to: Color, amount: f32) -> Color {

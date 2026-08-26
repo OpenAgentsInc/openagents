@@ -384,6 +384,71 @@ fn a_user_turn_uses_75_percent_amber() {
 }
 
 #[test]
+fn long_tool_output_sweeps_from_its_first_rows_to_its_last_rows() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "scrolling-output".to_string(),
+            name: "shell".to_string(),
+            arguments: r#"{"command":"long command"}"#.to_string(),
+        },
+    );
+    apply(
+        &mut ui,
+        Control::ToolOutput {
+            call_id: "scrolling-output".to_string(),
+            chunk: (1..=20)
+                .map(|line| format!("line {line:02}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        },
+    );
+
+    let first_frame = text_of(&draw(&mut ui));
+    assert!(first_frame.contains("line 01"), "{first_frame}");
+    assert!(first_frame.contains("line 05"), "{first_frame}");
+    assert!(!first_frame.contains("line 20"), "{first_frame}");
+
+    for _ in 0..8 {
+        draw(&mut ui);
+    }
+    let settled_frame = text_of(&draw(&mut ui));
+    assert!(!settled_frame.contains("line 01"), "{settled_frame}");
+    assert!(settled_frame.contains("line 16"), "{settled_frame}");
+    assert!(settled_frame.contains("line 20"), "{settled_frame}");
+}
+
+#[test]
+fn reduced_motion_opens_long_tool_output_at_its_last_rows() {
+    let mut ui = CoderUi::new();
+    ui.motion_enabled = false;
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "still-output".to_string(),
+            name: "shell".to_string(),
+            arguments: r#"{"command":"long command"}"#.to_string(),
+        },
+    );
+    apply(
+        &mut ui,
+        Control::ToolOutput {
+            call_id: "still-output".to_string(),
+            chunk: (1..=20)
+                .map(|line| format!("line {line:02}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        },
+    );
+
+    let frame = text_of(&draw(&mut ui));
+    assert!(!frame.contains("line 01"), "{frame}");
+    assert!(frame.contains("line 16"), "{frame}");
+    assert!(frame.contains("line 20"), "{frame}");
+}
+
+#[test]
 fn the_status_row_uses_50_percent_amber() {
     let mut ui = CoderUi::new();
     ui.identity = openagents_cli::coder::tui::Identity::Named {
