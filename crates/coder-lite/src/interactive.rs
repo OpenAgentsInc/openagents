@@ -176,6 +176,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         refresh_credit(&tx);
     }
 
+    // Lane changes describe the current selection, not a sequence of events.
+    // Keep its one transcript entry so rapid Shift+Tab presses do not bury the
+    // conversation beneath stale selections.
+    let mut lane_notice = None;
+
     loop {
         while let Ok(control) = rx.try_recv() {
             // A turn that has stopped, either way, is the moment the server's
@@ -369,9 +374,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 if let Some(session) = &session {
                     session.lock().await.set_lane(lane.clone());
                 }
-                ui.entries
-                    .push(Entry::new(Role::Notice, format!("Lane: {}", lane.label())));
-                ui.scroll_override = None;
+                record_lane_notice(&mut ui, &mut lane_notice, &lane);
             }
             // The composer did not want it, so it is the session's.
             ComposerAction::Ignored => {
@@ -658,6 +661,26 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
     }
 }
 
+/// Show the current lane once, replacing the prior lane selection when it is
+/// still present in the transcript.
+fn record_lane_notice(ui: &mut CoderUi, lane_notice: &mut Option<usize>, lane: &Lane) {
+    let text = format!("Lane: {}", lane.label());
+    let updated = lane_notice
+        .and_then(|index| ui.entries.get_mut(index))
+        .filter(|entry| entry.role == Role::Notice && entry.text.starts_with("Lane: "))
+        .is_some_and(|entry| {
+            entry.text = text.clone();
+            true
+        });
+
+    if !updated {
+        ui.entries.push(Entry::new(Role::Notice, text));
+        *lane_notice = Some(ui.entries.len() - 1);
+    }
+
+    ui.scroll_override = None;
+}
+
 fn tool_entry<'a>(ui: &'a mut CoderUi, call_id: &str) -> Option<&'a mut Entry> {
     ui.entries.iter_mut().rev().find(|entry| {
         entry.role == Role::Tool
@@ -814,5 +837,32 @@ mod tests {
     #[test]
     fn paste_line_endings_become_composer_line_endings() {
         assert_eq!(normalize_paste("one\r\ntwo\rthree"), "one\ntwo\nthree");
+    }
+
+    #[test]
+    fn lane_changes_replace_one_notice_even_after_other_output() {
+        let mut ui = CoderUi::new();
+        let mut lane_notice = None;
+
+        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Flash);
+        ui.entries.push(Entry::new(Role::Output, "other output"));
+        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Free);
+
+        assert_eq!(ui.entries.len(), 2);
+        assert_eq!(ui.entries[0].text, "Lane: Coder Free");
+        assert_eq!(ui.entries[1].text, "other output");
+    }
+
+    #[test]
+    fn a_cleared_transcript_starts_a_fresh_lane_notice() {
+        let mut ui = CoderUi::new();
+        let mut lane_notice = None;
+
+        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Flash);
+        ui.entries.clear();
+        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Free);
+
+        assert_eq!(ui.entries.len(), 1);
+        assert_eq!(ui.entries[0].text, "Lane: Coder Free");
     }
 }
