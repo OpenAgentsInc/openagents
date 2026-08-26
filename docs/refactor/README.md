@@ -9,5 +9,8 @@ plans.
   and supersession removals, with restoration pointers.
 - `2026-07-14-main-stabilization-sweep.md`: red -> green ledger for the
   post-merge-window stabilization of `main`.
+- `2026-08-26-codebase-deletion-audit.md`: first-principles audit of stale
+  applications, crates, packages, and infrastructure after the Phoenix and
+  Rust CLI consolidations.
 
 Autopilot coder product audits now live under `../autopilot-coder/`.
