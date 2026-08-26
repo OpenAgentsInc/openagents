@@ -272,7 +272,8 @@ async fn validate_token(origin: &str, token: &Secret) -> Result<(), Box<dyn std:
 
 /// Start the GitHub device-authorization flow against the current endpoint,
 /// open the approval URL in the browser, poll for the token, store it, and
-/// verify it against the model catalog.
+/// verify it against the model catalog. The token is also placed in
+/// `OPENAGENTS_API_KEY` so the runtime spends it without a second store lookup.
 pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
     let client = DeviceClient::new(&endpoint.origin);
@@ -282,10 +283,14 @@ pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     open_browser(&auth.verification_uri_complete);
 
     let token = client.wait(&auth).await?;
-    let store = CredentialStore::for_origin(&endpoint.origin);
-    let _ = store.store(&token)?;
-
     validate_token(&endpoint.origin, &token).await?;
+
+    let store = CredentialStore::for_origin(&endpoint.origin);
+    let _ = store.store(&token);
+
+    // SAFETY: this process owns the environment; the TUI has not started here.
+    unsafe { std::env::set_var("OPENAGENTS_API_KEY", token.expose()) };
+
     Ok("Authenticated.".to_string())
 }
 
