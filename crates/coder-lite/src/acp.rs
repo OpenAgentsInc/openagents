@@ -13,6 +13,10 @@ use std::path::{Path, PathBuf};
 pub struct Agent {
     pub id: String,
     pub name: String,
+    /// Command to run the agent, as found on this system.
+    pub command: String,
+    /// Args to pass after `command`.
+    pub args: Vec<String>,
 }
 
 /// Discover all ACP agents in the registry that are also available locally.
@@ -57,9 +61,12 @@ pub async fn find_agents() -> Result<Vec<Agent>, Box<dyn std::error::Error>> {
         };
 
         if is_available(&agent, &npm_root, &uv_tools).await {
+            let (command, args) = launch_for(&agent);
             found.push(Agent {
                 id: agent.id,
                 name: agent.name,
+                command,
+                args,
             });
         }
     }
@@ -145,6 +152,53 @@ async fn is_available(agent: &RegistryAgent, npm_root: &Option<String>, uv_tools
     }
 
     false
+}
+
+fn launch_for(agent: &RegistryAgent) -> (String, Vec<String>) {
+    let Some(dist) = &agent.distribution else {
+        return (agent.id.clone(), Vec::new());
+    };
+
+    if let Some(binary) = &dist.binary {
+        let platform = current_platform();
+        if let Some(target) = binary.get(&platform) {
+            let name = Path::new(&target.cmd)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&target.cmd)
+                .to_string();
+            let mut args = target.args.clone().unwrap_or_default();
+            // ACP mode is the agent's streaming protocol.
+            if !args.iter().any(|a| a == "acp") {
+                args.push("acp".to_string());
+            }
+            return (name, args);
+        }
+    }
+
+    if let Some(npx) = &dist.npx {
+        let mut args = vec!["-y".to_string(), npx.package.clone()];
+        if let Some(extra) = &npx.args {
+            args.extend(extra.iter().cloned());
+        }
+        if !args.iter().any(|a| a == "acp") {
+            args.push("acp".to_string());
+        }
+        return ("npx".to_string(), args);
+    }
+
+    if let Some(uvx) = &dist.uvx {
+        let mut args = vec![uvx.package.clone()];
+        if let Some(extra) = &uvx.args {
+            args.extend(extra.iter().cloned());
+        }
+        if !args.iter().any(|a| a == "acp") {
+            args.push("acp".to_string());
+        }
+        return ("uvx".to_string(), args);
+    }
+
+    (agent.id.clone(), Vec::new())
 }
 
 fn current_platform() -> String {

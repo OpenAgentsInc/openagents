@@ -88,7 +88,7 @@ impl RichTextTheme for CoderTheme {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Role {
     You,
     Assistant,
@@ -101,6 +101,7 @@ pub enum Role {
 pub struct Entry {
     pub role: Role,
     pub text: String,
+    pub output: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -118,6 +119,7 @@ pub struct CoderUi {
     pub transcript_height: u16,
     pub loading: bool,
     pub tick: u64,
+    pub agents: Vec<crate::acp::Agent>,
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -212,6 +214,7 @@ impl CoderUi {
             transcript_height: 0,
             loading: false,
             tick: 0,
+            agents: Vec::new(),
         }
     }
 
@@ -316,6 +319,34 @@ impl CoderUi {
                     l.spans.iter().all(|s| s.content.is_empty())
                 }) {
                     lines.pop();
+                }
+
+                lines
+            }
+            Role::Tool => {
+                let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+                let mut lines = Vec::new();
+
+                // One-line tool call header.
+                let header_body = width.saturating_sub(4);
+                let header_chunks = wrap_text(&entry.text, header_body);
+                let header = header_chunks.first().cloned().unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::styled("  ⏺ ", text_style),
+                    Span::styled(header, text_style),
+                ]));
+
+                // ~5-line output box, one chunk per line.
+                let out = entry.output.as_ref().map_or(&[][..], |v| v.as_slice());
+                let start = out.len().saturating_sub(5);
+                let window = &out[start..];
+                for i in 0..5 {
+                    let text = window.get(i).map(String::as_str).unwrap_or("");
+                    let clipped = text.chars().take(width.saturating_sub(4)).collect::<String>();
+                    lines.push(Line::from(vec![
+                        Span::styled("  │ ", text_style),
+                        Span::styled(clipped, text_style),
+                    ]));
                 }
 
                 lines

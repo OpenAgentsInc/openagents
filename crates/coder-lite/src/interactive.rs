@@ -5,9 +5,11 @@
 //! `modifiers` so control chords do not fall through to plain character input.
 
 use crate::acp;
+use crate::acp_harness::{AcpEvent, AcpHarness};
 use crate::runtime::{CoderRuntimeSession, Control};
 use crate::tui::{CoderUi, Entry, Role};
 use std::sync::mpsc;
+use std::path::PathBuf;
 use crossterm::{
     event::{
         self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
@@ -20,6 +22,14 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io::{stderr, stdout};
 use std::time::Duration;
+
+#[derive(Debug, Clone)]
+pub enum DelegateControl {
+    Tool { agent: String, title: String },
+    Text(String),
+    Done,
+    Error(String),
+}
 
 pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     if !atty_is_terminal() {
@@ -42,6 +52,7 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     terminal.show_cursor()?;
 
     let (tx, rx) = mpsc::channel::<Control>();
+    let (delegate_tx, delegate_rx) = mpsc::channel::<DelegateControl>();
     let mut ui = CoderUi::new();
 
     match acp::find_agents().await {
@@ -54,12 +65,15 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
             ui.entries.push(Entry {
                 role: Role::Notice,
                 text: format!("found ACP agents: {}", list),
+                output: None,
             });
+            ui.agents = agents;
         }
         Err(_) => {
             ui.entries.push(Entry {
                 role: Role::Notice,
                 text: "found ACP agents: none".to_string(),
+                output: None,
             });
         }
     }
@@ -74,6 +88,36 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Control::Done => ui.loading = false,
+            }
+        }
+
+        while let Ok(delegate) = delegate_rx.try_recv() {
+            match delegate {
+                DelegateControl::Tool { agent, title } => {
+                    ui.entries.push(Entry {
+                        role: Role::Tool,
+                        text: format!("delegate {}: {}", agent, title),
+                        output: Some(Vec::new()),
+                    });
+                    ui.scroll_override = None;
+                }
+                DelegateControl::Text(chunk) => {
+                    if let Some(last) = ui.entries.last_mut() {
+                        if last.role == Role::Tool {
+                            last.output.get_or_insert_with(Vec::new).push(chunk);
+                        }
+                    }
+                    ui.scroll_override = None;
+                }
+                DelegateControl::Done => {}
+                DelegateControl::Error(message) => {
+                    ui.entries.push(Entry {
+                        role: Role::Notice,
+                        text: format!("delegate error: {}", message),
+                        output: None,
+                    });
+                    ui.scroll_override = None;
+                }
             }
         }
 
@@ -106,23 +150,94 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                             ui.composer.push('\n');
                         } else if !ui.composer.trim().is_empty() {
                             let prompt = ui.composer.clone();
-                            ui.entries.push(Entry {
-                                role: Role::You,
-                                text: prompt.clone(),
-                            });
-                            ui.entries.push(Entry {
-                                role: Role::Assistant,
-                                text: String::new(),
-                            });
                             ui.composer.clear();
                             ui.scroll_override = None;
-                            ui.loading = true;
 
-                            let mut session = CoderRuntimeSession::new();
-                            let tx = tx.clone();
-                            tokio::spawn(async move {
-                                let _ = session.execute_turn(&prompt, tx).await;
-                            });
+                            if let Some(rest) = prompt.strip_prefix("/delegate") {
+                                let rest = rest.trim_start();
+                                if let Some((agent_id, task)) = rest.split_once(' ') {
+                                    let agent_id = agent_id.to_string();
+                                    let task = task.trim().to_string();
+                                    let agent = ui.agents.iter().find(|a| a.id == agent_id).cloned();
+                                    ui.entries.push(Entry {
+                                        role: Role::You,
+                                        text: prompt,
+                                        output: None,
+                                    });
+                                    match agent {
+                                        Some(agent) => {
+                                            ui.entries.push(Entry {
+                                                role: Role::Tool,
+                                                text: format!("delegate {}: starting", agent_id),
+                                                output: Some(Vec::new()),
+                                            });
+                                            let cwd =
+                                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                                            let delegate_tx = delegate_tx.clone();
+                                            tokio::spawn(async move {
+                                                let harness = AcpHarness {
+                                                    command: agent.command,
+                                                    args: agent.args,
+                                                };
+                                                let result = harness
+                                                    .run(&task, &cwd, |event| match event {
+                                                        AcpEvent::Tool { kind: _, title } => {
+                                                            let _ = delegate_tx.send(
+                                                                DelegateControl::Tool {
+                                                                    agent: agent_id.clone(),
+                                                                    title,
+                                                                },
+                                                            );
+                                                        }
+                                                        AcpEvent::Text { chunk } => {
+                                                            let _ = delegate_tx
+                                                                .send(DelegateControl::Text(chunk));
+                                                        }
+                                                        _ => {}
+                                                    })
+                                                    .await;
+                                                if let Err(e) = result {
+                                                    let _ = delegate_tx
+                                                        .send(DelegateControl::Error(e.to_string()));
+                                                } else {
+                                                    let _ = delegate_tx.send(DelegateControl::Done);
+                                                }
+                                            });
+                                        }
+                                        None => {
+                                            ui.entries.push(Entry {
+                                                role: Role::Notice,
+                                                text: format!("unknown ACP agent: {}", agent_id),
+                                                output: None,
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    ui.entries.push(Entry {
+                                        role: Role::Notice,
+                                        text: "usage: /delegate <agent> <prompt>".to_string(),
+                                        output: None,
+                                    });
+                                }
+                            } else {
+                                ui.entries.push(Entry {
+                                    role: Role::You,
+                                    text: prompt.clone(),
+                                    output: None,
+                                });
+                                ui.entries.push(Entry {
+                                    role: Role::Assistant,
+                                    text: String::new(),
+                                    output: None,
+                                });
+                                ui.loading = true;
+
+                                let mut session = CoderRuntimeSession::new();
+                                let tx = tx.clone();
+                                tokio::spawn(async move {
+                                    let _ = session.execute_turn(&prompt, tx).await;
+                                });
+                            }
                         }
                     }
                     KeyEvent {
