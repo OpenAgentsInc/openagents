@@ -88,5 +88,29 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0]["text"], "found ACP agents: devin");
 
+    // The trajectory records the version this binary was *published* as, which
+    // is what `openagents_cli::VERSION` carries: `ops/release-cli.sh` threads
+    // the published name in through `OPENAGENTS_CLI_RELEASE_VERSION`, and the
+    // crate manifest is only the fallback for a build that is not a release.
+    //
+    // This read `env!("CARGO_PKG_VERSION")` until 2026-08-26, so every trace
+    // exported from 0.0.1, 0.0.2 and 0.0.3 claimed to come from `0.1.0` -- the
+    // one version that was withdrawn and must never be attributed to anything.
+    //
+    // Note what this assertion can and cannot do. In a normal `cargo test` the
+    // two expressions are the same string, so it passes against the bug as
+    // happily as against the fix; it holds the intent and catches someone
+    // replacing this with a literal. What actually separates them is a release
+    // build, where they differ by construction:
+    //
+    //     OPENAGENTS_CLI_RELEASE_VERSION=9.9.9 cargo test -p coder-lite \
+    //       --test export_atif
+    //
+    // That run fails against the old code and passes against this one.
+    assert_eq!(
+        document["agent"]["version"], openagents_cli::VERSION,
+        "the exported trajectory must name the published version, not the crate manifest"
+    );
+
     let _ = std::fs::remove_dir_all(&scratch);
 }

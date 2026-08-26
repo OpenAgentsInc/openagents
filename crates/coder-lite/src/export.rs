@@ -241,7 +241,7 @@ pub fn export_trajectory(
         "trajectory_id": format!("{}-{}", repo, at_iso),
         "agent": {
             "name": AGENT_NAME,
-            "version": env!("CARGO_PKG_VERSION"),
+            "version": openagents_cli::VERSION,
             "model_name": model,
         },
         "steps": steps,
