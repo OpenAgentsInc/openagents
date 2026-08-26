@@ -1,7 +1,14 @@
-//! coder-lite: a minimal ratatui TUI boot crate
+//! coder-lite: the OpenAgents coder TUI.
+//!
+//! The frame, the palette, the composer wiring, the session's own commands,
+//! and the ACP path are here. The runtime beneath — tools, threads, grants,
+//! lanes, metering, revocation — is `openagents_cli`, used as a library so
+//! there is one implementation of each and this crate cannot drift from it.
 
 pub mod acp;
 pub mod acp_harness;
+pub mod acp_tool;
+pub mod commands;
 pub mod export;
 pub mod interactive;
 pub mod markdown;

@@ -53,6 +53,31 @@ pub const OUTPUT_LIMIT: usize = 30_000;
 pub const BUILTIN_TOOL_NAMES: [&str; 5] =
     ["shell", "skill", "openagents", "capability", "delegate"];
 
+/// A tool the front-end driving the session answers itself.
+///
+/// The five tools above are every session's, and they stay here. A front-end
+/// can have a capability no other caller has — coder-lite's ACP path, which
+/// hands a task to a coding agent installed on this machine, is the one this
+/// exists for — and it belongs in the same declaration the other five are in,
+/// because the model reads one list and the system prompt counts it.
+///
+/// The handler is given the whole [`ToolCall`] rather than just its arguments
+/// so it can stream what it is doing against the call's own id while it runs.
+/// A name that collides with a built-in is refused at registration: a host
+/// tool that shadowed `shell` would be a tool the model believes it knows the
+/// behaviour of and does not.
+pub struct HostTool {
+    pub definition: ToolDefinition,
+    pub run: HostToolFn,
+}
+
+/// What a host tool does, and whether it worked.
+pub type HostToolFn = Arc<
+    dyn Fn(&ToolCall) -> std::pin::Pin<Box<dyn std::future::Future<Output = (String, bool)> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// The largest index at or below `max` that is a character boundary in `text`.
 ///
 /// Slicing a `String` by a byte index panics when the index lands inside a
@@ -163,6 +188,8 @@ pub struct HarnessToolRegistry {
     /// Plugins the model loaded through `capability`, in load order. Each one
     /// declares a further tool under its own manifest name.
     loaded: Mutex<Vec<Arc<LoadedPlugin>>>,
+    /// Tools the front-end driving this session answers itself.
+    host: Vec<HostTool>,
 }
 
 impl HarnessToolRegistry {
@@ -200,6 +227,7 @@ impl HarnessToolRegistry {
             catalog,
             plugin_approval: Approval::default(),
             loaded: Mutex::new(Vec::new()),
+            host: Vec::new(),
         };
         registry.load_local_skills();
         registry
@@ -291,6 +319,48 @@ impl HarnessToolRegistry {
         } else {
             Some(parts.join("\n\n"))
         }
+    }
+
+    /// Declare a tool the caller answers itself.
+    ///
+    /// Three names are refused rather than accepted-and-shadowed, because in
+    /// each case one of the two answers could never be reached and the model
+    /// would be told a capability exists that does something else:
+    ///
+    /// - one of [`BUILTIN_TOOL_NAMES`], which this module answers first;
+    /// - a name another host tool already holds;
+    /// - a name a plugin in this session's catalog claims. A plugin is
+    ///   dispatched from the fallthrough arm *below* the host tools, so a host
+    ///   tool of the same name would shadow it exactly as a builtin would.
+    ///   [`crate::plugins::validate_manifest`] cannot see this collision — it
+    ///   validates a manifest on disk, long before a front end decides what to
+    ///   declare — so it is caught here, where the catalog and the host tool
+    ///   are both known.
+    ///
+    /// The caller is expected to say so rather than swallow the refusal: a
+    /// capability that quietly failed to register is one the reader believes
+    /// they have.
+    pub fn add_host_tool(&mut self, tool: HostTool) -> Result<(), String> {
+        let name = tool.definition.name.clone();
+        if BUILTIN_TOOL_NAMES.contains(&name.as_str()) {
+            return Err(format!(
+                "`{name}` is one of this session's own tools and cannot be replaced by a host \
+                 tool. The reserved names are {}.",
+                BUILTIN_TOOL_NAMES.join(", ")
+            ));
+        }
+        if self.host.iter().any(|held| held.definition.name == name) {
+            return Err(format!("a host tool named `{name}` is already declared"));
+        }
+        if let Some(entry) = self.catalog.iter().find(|entry| entry.name == name) {
+            return Err(format!(
+                "a plugin named `{name}` is installed at {}, and a host tool of that name would \
+                 shadow it. Rename one of them.",
+                entry.manifest_path.display()
+            ));
+        }
+        self.host.push(tool);
+        Ok(())
     }
 
     /// The plugins loaded into this session so far.
@@ -396,6 +466,11 @@ impl HarnessToolRegistry {
                     "required": ["prompt"]
                 }),
             });
+        }
+
+        // Whatever the front-end answers itself.
+        for tool in &self.host {
+            tools.push(tool.definition.clone());
         }
 
         // A plugin the model loaded through `capability` declares a tool of
@@ -557,6 +632,17 @@ impl HarnessToolRegistry {
                 }
             }
             other => {
+                // The front-end's own tools first: they were declared before
+                // any plugin was loaded, and `add_host_tool` has already
+                // refused a name that collides with a built-in.
+                if let Some(tool) = self.host.iter().find(|t| t.definition.name == other) {
+                    let (output, is_error) = (tool.run)(call).await;
+                    return ToolOutput {
+                        call_id: call.id.clone(),
+                        output,
+                        is_error,
+                    };
+                }
                 // A loaded plugin answers under its own manifest name.
                 let plugin = self
                     .loaded_plugins()
@@ -1339,6 +1425,93 @@ mod tests {
                 "`{name}` is declared and unanswered"
             );
         }
+    }
+
+    // ───────────────────────────────────────────────── tools the host answers
+
+    fn host_tool(name: &str, answer: &'static str) -> HostTool {
+        HostTool {
+            definition: ToolDefinition {
+                name: name.to_string(),
+                description: "A tool the front-end answers.".to_string(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            run: Arc::new(move |call: &ToolCall| {
+                let id = call.id.clone();
+                Box::pin(async move { (format!("{answer} for {id}"), false) })
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_host_tool_is_declared_alongside_the_built_ins_and_answers() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = HarnessToolRegistry::new(Some(root.path().to_path_buf()));
+        registry.add_host_tool(host_tool("acp", "handed off")).unwrap();
+
+        let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
+        assert_eq!(names, vec!["shell", "skill", "openagents", "capability", "acp"]);
+
+        let out = registry
+            .execute_tool(&ToolCall {
+                id: "call_1".to_string(),
+                name: "acp".to_string(),
+                arguments: serde_json::json!({}),
+            })
+            .await;
+        assert!(!out.is_error);
+        assert_eq!(out.output, "handed off for call_1");
+    }
+
+    /// Two answers to one name is a model told a tool does one thing while
+    /// something else does another.
+    #[test]
+    fn a_host_tool_cannot_take_a_built_in_name_or_its_own_twice() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = HarnessToolRegistry::new(Some(root.path().to_path_buf()));
+        for reserved in BUILTIN_TOOL_NAMES {
+            let refusal = registry
+                .add_host_tool(host_tool(reserved, "x"))
+                .expect_err("a reserved name was accepted");
+            assert!(refusal.contains(reserved), "{refusal}");
+        }
+        registry.add_host_tool(host_tool("acp", "x")).unwrap();
+        assert!(registry.add_host_tool(host_tool("acp", "y")).is_err());
+        // And the refused names declared nothing.
+        let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
+        assert_eq!(names.iter().filter(|n| *n == "acp").count(), 1);
+    }
+
+    /// The collision `validate_manifest` cannot see. A plugin is installed
+    /// and valid; a front end then declares a host tool of the same name. The
+    /// host tool is dispatched first, so the plugin would be declared to the
+    /// model and never reached — the same defect `name_reserved` exists to
+    /// prevent, one layer up.
+    #[test]
+    fn a_host_tool_cannot_shadow_an_installed_plugin() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+        if !repo
+            .join("plugins")
+            .join("word-stats")
+            .join("manifest.json")
+            .is_file()
+        {
+            return;
+        }
+        let mut registry = HarnessToolRegistry::new(Some(repo));
+        assert!(
+            registry.catalog.iter().any(|e| e.name == "word_stats"),
+            "the checked-in catalog was not discovered"
+        );
+
+        let refusal = registry
+            .add_host_tool(host_tool("word_stats", "the host's answer"))
+            .expect_err("a host tool shadowed an installed plugin");
+        assert!(refusal.contains("word_stats"), "{refusal}");
+        assert!(refusal.contains("shadow"), "{refusal}");
+        // And nothing was declared under the contested name twice.
+        let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
+        assert_eq!(names.iter().filter(|n| *n == "word_stats").count(), 0);
     }
 
     #[tokio::test]

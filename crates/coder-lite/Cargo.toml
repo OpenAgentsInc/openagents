@@ -13,10 +13,17 @@ name = "coder-lite"
 path = "src/main.rs"
 
 [dependencies]
+# The capable runtime lives next door and stays there: tools (`shell`,
+# `skill`, `openagents`, `capability`, `delegate`) with their refusal patterns
+# and output ceiling, the grok-derived composer, lanes, the live model
+# catalog, metering, and thread revocation. Taken as a library rather than
+# copied, so there is one implementation of each and coder-lite cannot drift
+# from it. What coder-lite owns is the front: the frame, the palette, the
+# spinner, the system prompt, and the session loop in `interactive.rs`.
+openagents-cli = { path = "../openagents-cli" }
 tokio = { version = "1", features = ["full"] }
 crossterm = { version = "0.28", features = ["event-stream"] }
 ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
-openresponses-rust = "2026.7.26"
 futures = "0.3"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

@@ -1,14 +1,60 @@
 //! ACP child agent harness for coder-lite.
 //!
 //! Spawns an ACP-compatible CLI agent over stdio and streams JSON-RPC
-//! `session/update` events as they arrive.
+//! `session/update` events as they arrive: `initialize`, `session/new`, an
+//! optional `session/set_mode`, then `session/prompt`. A
+//! `session/request_permission` the agent sends back is answered without
+//! asking the reader, preferring whichever option the agent marked `allow*`.
+//!
+//! ## The child is stopped with its whole tree
+//!
+//! A coding agent shells out. Killing only the agent leaves its build, its
+//! test run, or its `sleep` behind with nothing left to stop them, so the
+//! child is spawned into a process group of its own and
+//! [`openagents_cli::signals::stop_tree`] signals the group — `SIGTERM`, then
+//! `SIGKILL` after a grace period, so an agent that writes a transcript on the
+//! way out gets to write it. This used to be a bare `child.kill()`, which
+//! stopped the agent and orphaned everything under it.
 
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
+use openagents_cli::signals::stop_tree;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
+
+/// How much the child is allowed to do without being asked.
+///
+/// The names are coder-lite's; the wire carries the agent's own. A build of
+/// the agent that does not know a mode is not a reason to lose the child, so
+/// setting it is best effort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionMode {
+    Dangerous,
+    Prompt,
+    ReadOnly,
+}
+
+impl PermissionMode {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.trim().to_lowercase().as_str() {
+            "dangerous" | "bypass" => Some(PermissionMode::Dangerous),
+            "prompt" | "default" | "ask" => Some(PermissionMode::Prompt),
+            "read-only" | "readonly" => Some(PermissionMode::ReadOnly),
+            _ => None,
+        }
+    }
+
+    /// The mode id sent in `session/set_mode`.
+    pub fn mode_id(self) -> &'static str {
+        match self {
+            PermissionMode::Dangerous => "bypass",
+            PermissionMode::Prompt => "default",
+            PermissionMode::ReadOnly => "read-only",
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum AcpFailure {
@@ -37,6 +83,9 @@ pub enum AcpEvent {
 pub struct AcpHarness {
     pub command: String,
     pub args: Vec<String>,
+    /// Sent as `session/set_mode` after the session opens. `None` leaves the
+    /// agent's own default, which is a different answer from naming one.
+    pub mode: Option<PermissionMode>,
 }
 
 impl Default for AcpHarness {
@@ -44,6 +93,7 @@ impl Default for AcpHarness {
         Self {
             command: "devin".to_string(),
             args: vec!["acp".to_string()],
+            mode: None,
         }
     }
 }
@@ -61,12 +111,18 @@ impl AcpHarness {
     where
         F: FnMut(AcpEvent) + Send,
     {
-        let mut child = Command::new(&self.command)
+        let mut command = Command::new(&self.command);
+        command
             .args(&self.args)
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        // Its own process group, so stopping the child stops what the child
+        // started.
+        #[cfg(unix)]
+        command.process_group(0);
+        let mut child = command
             .spawn()
             .map_err(|error| {
                 AcpFailure::Unstartable(if error.kind() == std::io::ErrorKind::NotFound {
@@ -86,7 +142,7 @@ impl AcpHarness {
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let (Some(mut stdin), Some(stdout)) = (stdin, stdout) else {
-            let _ = child.kill().await;
+            stop_tree(&mut child).await;
             return Err(AcpFailure::Refused(
                 "the agent's standard streams could not be opened".to_string(),
             ));
@@ -97,7 +153,7 @@ impl AcpHarness {
             .converse(prompt, cwd, &mut stdin, &mut lines, &mut on_event)
             .await;
 
-        let _ = child.kill().await;
+        stop_tree(&mut child).await;
         outcome
     }
 
@@ -150,6 +206,22 @@ impl AcpHarness {
         on_event(AcpEvent::Session {
             id: session_id.clone(),
         });
+
+        if let Some(mode) = self.mode {
+            // Best effort: a build of the agent without this mode should not
+            // cost the child over the name of a permission setting.
+            let _ = request(
+                stdin,
+                lines,
+                &mut seq,
+                "session/set_mode",
+                serde_json::json!({"sessionId": session_id, "modeId": mode.mode_id()}),
+                REQUEST_TIMEOUT,
+                &mut answer,
+                on_event,
+            )
+            .await;
+        }
 
         request(
             stdin,
@@ -230,10 +302,16 @@ where
                 continue;
             }
             if let Some(error) = message.get("error") {
+                // The agent's own bytes, and `serde_json` does not escape
+                // non-ASCII, so a refusal carrying an accent or an emoji
+                // across byte 200 used to panic here and take the whole
+                // session with it. Floored to a character boundary, as the
+                // four cuts in `28704f72ff` were.
                 let text = serde_json::to_string(error).unwrap_or_default();
+                let end = openagents_cli::tracker::floor_char_boundary(&text, 200);
                 return Err(AcpFailure::Refused(format!(
                     "the agent refused `{method}`: {}",
-                    &text[..text.len().min(200)]
+                    &text[..end]
                 )));
             }
             return Ok(message
@@ -358,4 +436,33 @@ fn first_allow_option(params: &serde_json::Value) -> Option<String> {
         .and_then(|option| option.get("optionId"))
         .and_then(|v| v.as_str())
         .map(String::from)
+}
+
+#[cfg(test)]
+mod tests {
+    /// A refusal carrying a multi-byte character across the 200-byte bound
+    /// used to panic here, which killed the whole session rather than the one
+    /// delegation. Same defect class as `28704f72ff`.
+    #[test]
+    fn a_long_refusal_with_a_multibyte_character_on_the_bound_does_not_panic() {
+        // Sized so the multi-byte character straddles byte 200 of the
+        // *encoded* JSON, not of the message: the envelope counts too, and a
+        // fixture that guessed the offset proved nothing. Searched rather than
+        // computed, so a change in how `serde_json` encodes cannot silently
+        // turn this into a test of a string that was ASCII all along. The
+        // length check matters as much as the boundary one — `is_char_boundary`
+        // is also false for an index past the end.
+        let text = (150..250)
+            .map(|width| {
+                let message = format!("{}\u{20ac}", "x".repeat(width));
+                serde_json::to_string(&serde_json::json!({ "message": message })).unwrap()
+            })
+            .find(|text| text.len() > 200 && !text.is_char_boundary(200))
+            .expect("no width made the character straddle byte 200");
+
+        let end = openagents_cli::tracker::floor_char_boundary(&text, 200);
+        let head = &text[..end]; // the old code was `&text[..200]`, which panics
+        assert!(end < 200);
+        assert!(head.len() == end);
+    }
 }

@@ -55,9 +55,42 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 
 type Failure = Box<dyn std::error::Error + Send + Sync>;
+
+/// What a session says about the tools it runs, while it runs them.
+///
+/// The chunk callback carries the model's words and nothing else, so a caller
+/// drawing a frame had no way to show that a `shell` call was in flight: a
+/// two-minute test run was two minutes of a spinner over an empty transcript.
+/// The call and its result are two events rather than one for exactly that
+/// reason — the header goes up when the call starts, and the output fills in
+/// when it returns.
+#[derive(Debug, Clone)]
+pub enum ToolEvent {
+    /// A call the model made, as the arguments arrived on the wire.
+    Started {
+        call_id: String,
+        name: String,
+        /// The raw JSON string, not a re-encoding of it.
+        arguments: String,
+    },
+    /// What the call answered, and whether it worked.
+    Finished {
+        call_id: String,
+        name: String,
+        output: String,
+        is_error: bool,
+    },
+}
+
+/// Who to tell about [`ToolEvent`]s.
+///
+/// `Arc` rather than `Box` because the session is moved into a task of its own
+/// and the observer usually outlives the call that installed it.
+pub type ToolObserver = Arc<dyn Fn(ToolEvent) + Send + Sync>;
 
 pub const THREAD_LANE_NOTICE: &str =
     "You answer through the OpenAgents inference proxy, on a thread opened for this session. \
@@ -407,6 +440,11 @@ pub struct CoderRuntimeSession {
     pub http: reqwest::Client,
     pub tools: HarnessToolRegistry,
     pub messages: Vec<ChatMessage>,
+    /// Told about every tool this session runs, as it runs it.
+    ///
+    /// `None` by default: a caller that does not draw a frame has nothing to
+    /// do with the events, and the turn behaves exactly as it did before.
+    pub tool_observer: Option<ToolObserver>,
     /// The thread to revoke when the session closes.
     thread_id: Option<String>,
 }
@@ -451,7 +489,20 @@ impl CoderRuntimeSession {
                 .unwrap_or_default(),
             tools,
             messages: Vec::new(),
+            tool_observer: None,
             thread_id: None,
+        }
+    }
+
+    /// Report every tool this session runs to `observer`.
+    pub fn observing_tools(mut self, observer: ToolObserver) -> Self {
+        self.tool_observer = Some(observer);
+        self
+    }
+
+    fn tell(&self, event: ToolEvent) {
+        if let Some(observer) = &self.tool_observer {
+            observer(event);
         }
     }
 
@@ -1155,7 +1206,20 @@ impl CoderRuntimeSession {
                 name: name.clone(),
                 arguments,
             };
+            // Before the call, so a caller drawing a frame can show what is in
+            // flight rather than only what has already finished.
+            self.tell(ToolEvent::Started {
+                call_id: id.clone(),
+                name: name.clone(),
+                arguments: args_str.clone(),
+            });
             let result = self.tools.execute_tool(&call).await;
+            self.tell(ToolEvent::Finished {
+                call_id: id.clone(),
+                name: name.clone(),
+                output: result.output.clone(),
+                is_error: result.is_error,
+            });
             ran.push(ThreadRecord::tool_ran(
                 &id,
                 &name,

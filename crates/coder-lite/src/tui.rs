@@ -7,9 +7,10 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
-use unicode_width::UnicodeWidthStr;
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use openagents_cli::composer::Composer;
 
 use crate::markdown::theme::{BACKGROUND_COLOR, TEXT_COLOR};
 use crate::osc8::PlacedLink;
@@ -24,6 +25,22 @@ pub enum Role {
     Tool,
     Reasoning,
     Notice,
+    /// What one of the session's own commands printed — `/diff`, `/help`,
+    /// `/resume`.
+    ///
+    /// Rendered through the markdown engine like an assistant turn, so a diff
+    /// or a table reads the way it should, and exported as a notice rather
+    /// than as a model step: the session wrote it, not a model, and a
+    /// trajectory that says otherwise is a trajectory that lies about who
+    /// produced what.
+    Output,
+}
+
+impl Role {
+    /// Whether this role's text goes through the streaming markdown engine.
+    fn is_markdown(&self) -> bool {
+        matches!(self, Role::Assistant | Role::Output)
+    }
 }
 
 /// One tool call captured for ATIF export.
@@ -96,7 +113,7 @@ impl Entry {
     /// a rendering failure can always fall back to showing what arrived, and
     /// it is what `/export` writes into the ATIF document.
     pub fn push_text(&mut self, chunk: &str) {
-        if self.role == Role::Assistant {
+        if self.role.is_markdown() {
             // Order matters. `markdown_mut` seeds a fresh renderer from
             // `self.text`, so the chunk must reach the renderer *before* it
             // joins `self.text` — otherwise the first chunk of a stream is
@@ -108,7 +125,7 @@ impl Entry {
 
     /// Tell the markdown engine the stream ended, flushing any held-back bytes.
     pub fn finish_text(&mut self) {
-        if self.role == Role::Assistant && self.md.is_some() {
+        if self.role.is_markdown() && self.md.is_some() {
             self.markdown_mut().finish();
         }
     }
@@ -132,9 +149,19 @@ impl Entry {
 
 #[derive(Debug)]
 pub struct CoderUi {
-    pub composer: String,
+    /// The line being typed.
+    ///
+    /// The grok-derived multi-line editor from `openagents-cli`, so the
+    /// readline chords — Ctrl+A, Ctrl+E, Ctrl+W, Ctrl+K, Ctrl+U, Alt+B, Alt+F
+    /// — and word motions work here, and the caret is where the caret is
+    /// rather than always at the end of the text.
+    pub composer: Composer,
     pub repo: String,
     pub branch: String,
+    /// The model that answered the last turn, as its grant pinned it.
+    ///
+    /// Empty until one has. Never a guess: `--lane` says what was asked for,
+    /// and this says what answered, and the two are not the same fact.
     pub model: String,
     pub reasoning: Option<String>,
     pub running: bool,
@@ -188,51 +215,14 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
-fn wrap_input(text: &str, width: usize) -> Vec<String> {
-    if width == 0 {
-        return vec![text.to_string()];
-    }
-    let mut lines = Vec::new();
-
-    for paragraph in text.split('\n') {
-        let mut current = String::new();
-        let mut current_width = 0;
-        for c in paragraph.chars() {
-            let w = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
-            if current_width + w <= width {
-                current.push(c);
-                current_width += w;
-            } else {
-                lines.push(current);
-                current = c.to_string();
-                current_width = w;
-            }
-        }
-
-        if current.is_empty() {
-            if lines.is_empty() {
-                lines.push(String::new());
-            }
-        } else {
-            lines.push(current);
-        }
-    }
-
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-
-    lines
-}
-
 impl CoderUi {
     pub fn new() -> Self {
         Self {
-            composer: String::new(),
+            composer: Composer::new(),
             repo: "~/work/openagents".to_string(),
             branch: "main".to_string(),
-            model: "sol-high".to_string(),
-            reasoning: Some("medium".to_string()),
+            model: String::new(),
+            reasoning: None,
             running: true,
             entries: vec![],
             scroll_override: None,
@@ -259,7 +249,13 @@ impl CoderUi {
             .saturating_sub(2)
             .saturating_sub(3)
             .max(1);
-        let input_chunks = wrap_input(&self.composer, input_width);
+        let input_chunks: Vec<String> = self
+            .composer
+            .rows(input_width)
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let (caret_row, caret_col) = self.composer.cursor_rowcol(input_width);
         let total_input_lines = input_chunks.len() as u16;
         let max_input_lines: u16 = 8;
         let visible_input_lines = total_input_lines.min(max_input_lines);
@@ -323,14 +319,18 @@ impl CoderUi {
         );
         frame.render_widget(input, input_area);
 
-        let last_chunk = input_chunks.last().map(|s| s.as_str()).unwrap_or("");
-        let last_prefix_width: u16 = 3;
-        let cursor_x = input_area.x
-            + 1
-            + last_prefix_width
-            + last_chunk.width().min(input_width as usize) as u16;
-        let cursor_y = input_area.y + 1 + visible_input_lines.saturating_sub(1);
+        // Where the caret actually is, not where the text ends: Ctrl+A and the
+        // word motions move it, and a caret drawn at the end of the line while
+        // the next character lands in the middle is a frame that lies.
+        let caret_screen_row = (caret_row as u16).saturating_sub(input_scroll);
+        let cursor_x = input_area.x + 1 + 3 + caret_col as u16;
+        let cursor_y = input_area.y + 1 + caret_screen_row.min(visible_input_lines.saturating_sub(1));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
+        // A block cursor, as grok-build's textarea draws one: the hardware
+        // cursor alone is easy to lose in the alternate screen, and a trailing
+        // space with nothing over it looks like a line that ends earlier than
+        // it does. `REVERSED` swaps the two palette colours for one cell, so
+        // the block is ground-on-amber and the palette is untouched.
         let buf = frame.buffer_mut();
         if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
             cell.modifier.insert(Modifier::REVERSED);
@@ -382,7 +382,7 @@ fn render_entry(
     let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
 
     match entry.role {
-        Role::Assistant if !entry.text.is_empty() => {
+        ref role if role.is_markdown() && !entry.text.is_empty() => {
             let width = width.max(1);
             let md = entry.markdown_mut();
             let mut lines = md.lines(width).to_vec();

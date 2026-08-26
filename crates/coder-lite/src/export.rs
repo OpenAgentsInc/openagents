@@ -10,7 +10,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const SCHEMA_VERSION: &str = "ATIF-v1.7";
 const AGENT_NAME: &str = "openagents-coder";
-const INTERFACE_COMMANDS: &[&str] = &["/export", "/system", "/skills"];
+/// Lines that are the reader talking to the session rather than to a model.
+///
+/// They are typed into the composer like a prompt and look like one in the
+/// transcript, but no model ever saw them, so a trajectory that recorded them
+/// as user turns would be describing a conversation that did not happen. The
+/// list is matched on the whole line for the commands that take no argument
+/// and on the first word for the ones that do.
+const INTERFACE_COMMANDS: &[&str] = &["/export", "/system", "/skills", "/help", "/clear"];
+
+/// The same, for commands that carry arguments: `/diff HEAD`, `/run cargo test`.
+const INTERFACE_COMMAND_PREFIXES: &[&str] = &["/diff", "/run", "/resume", "/export"];
 
 pub struct ExportedTrajectory {
     pub path: String,
@@ -130,7 +140,11 @@ pub fn git_info() -> Option<(String, String)> {
 
 fn is_interface_command(text: &str) -> bool {
     let t = text.trim();
-    INTERFACE_COMMANDS.iter().any(|cmd| t == *cmd)
+    if INTERFACE_COMMANDS.iter().any(|cmd| t == *cmd) {
+        return true;
+    }
+    let first = t.split_whitespace().next().unwrap_or_default();
+    INTERFACE_COMMAND_PREFIXES.iter().any(|cmd| first == *cmd)
 }
 
 fn step_of(
@@ -201,7 +215,10 @@ pub fn export_trajectory(
 
     for (i, entry) in entries.iter().enumerate() {
         if let Some(notice) = match entry.role {
-            Role::Notice => Some(json!({
+            // What the session said, and what its own commands printed. Both
+            // are notices rather than steps: no model produced either, and
+            // `step_of` leaves both out of `steps` for the same reason.
+            Role::Notice | Role::Output => Some(json!({
                 "timestamp": iso_for_ms(entry.at),
                 "text": entry.text,
             })),
