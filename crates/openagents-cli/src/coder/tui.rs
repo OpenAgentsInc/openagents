@@ -25,6 +25,7 @@ const TOOL_RAIL_WAVE_ROWS: f32 = 32.0;
 const TOOL_RAIL_WAVE_SPEED: f32 = 0.15;
 const TOOL_OUTPUT_ROWS: usize = 5;
 const TOOL_OUTPUT_SCROLL_FRAMES: u64 = 8;
+const TOOL_SETTLE_FRAMES: u64 = 10;
 
 /// Who this session is signed in as.
 ///
@@ -124,12 +125,17 @@ pub struct Entry {
     pub at: u64,
     /// The first frame of the one-shot preview sweep for long tool output.
     output_scroll_started: Option<u64>,
+    /// The frame on which this tool finished, for its one-shot settle fade.
+    tool_settled_at: Option<u64>,
     /// Streaming markdown state for assistant entries.
     ///
     /// Built on first use and fed chunk by chunk, so the engine's checkpoint
     /// freezing survives across frames. `None` for every other role — those
     /// render as plain wrapped text and always did.
     md: Option<Box<MarkdownContent>>,
+    /// Markdown state for tool output, rebuilt only when its source changes.
+    output_md: Option<Box<MarkdownContent>>,
+    output_md_source: String,
 }
 
 /// Current time as epoch milliseconds.
@@ -151,7 +157,10 @@ impl Entry {
             tool: None,
             at: now_ms(),
             output_scroll_started: None,
+            tool_settled_at: None,
             md: None,
+            output_md: None,
+            output_md_source: String::new(),
         }
     }
 
@@ -169,7 +178,10 @@ impl Entry {
             tool: None,
             at: now_ms(),
             output_scroll_started: None,
+            tool_settled_at: None,
             md: None,
+            output_md: None,
+            output_md_source: String::new(),
         }
     }
 
@@ -197,6 +209,11 @@ impl Entry {
         }
     }
 
+    /// Start the one-shot visual transition from active to completed.
+    pub(crate) fn settle_tool(&mut self, tick: u64) {
+        self.tool_settled_at = Some(tick);
+    }
+
     /// The streaming renderer, seeded from `text` if it does not exist yet.
     ///
     /// Seeding covers entries built whole rather than streamed (session
@@ -211,6 +228,22 @@ impl Entry {
             self.md = Some(Box::new(content));
         }
         self.md.as_mut().expect("just inserted")
+    }
+
+    /// Render the current tool output through the same markdown engine as an
+    /// assistant turn. Tool output arrives as a growing snapshot, so rebuild
+    /// the renderer only when that snapshot changes.
+    fn output_markdown_mut(&mut self) -> &mut MarkdownContent {
+        let source = self.output.as_deref().unwrap_or("");
+        if self.output_md.is_none() || self.output_md_source != source {
+            let mut content = MarkdownContent::new();
+            content.push(source);
+            content.finish();
+            self.output_md = Some(Box::new(content));
+            self.output_md_source.clear();
+            self.output_md_source.push_str(source);
+        }
+        self.output_md.as_mut().expect("just inserted")
     }
 }
 
@@ -771,11 +804,32 @@ fn render_entry(
         Role::Tool => {
             let mut lines = Vec::new();
 
-            // ~5-line output box, split by actual newlines. The explicit done
-            // bit distinguishes an active silent call from a settled call
-            // that produced no output.
-            let out = entry.output.as_deref().unwrap_or("");
-            let out_lines: Vec<&str> = out.lines().collect();
+            // Render markdown-shaped tool output with the shared engine. Keep
+            // ordinary command output line-oriented: CommonMark treats a
+            // single newline as a space, which would destroy logs and tables
+            // that are plain text rather than markdown.
+            let output_width = width.saturating_sub(2).max(1);
+            let output = entry.output.as_deref().unwrap_or("").to_string();
+            let (mut out_lines, out_links) = if tool_output_is_markdown(&output) {
+                let md = entry.output_markdown_mut();
+                let rendered = md.lines(output_width).to_vec();
+                let links = md.links(output_width).to_vec();
+                (rendered, links)
+            } else {
+                (
+                    output
+                        .lines()
+                        .map(|line| Line::from(Span::raw(line.to_string())))
+                        .collect(),
+                    Vec::new(),
+                )
+            };
+            while out_lines
+                .last()
+                .is_some_and(|line| line.spans.iter().all(|span| span.content.trim().is_empty()))
+            {
+                out_lines.pop();
+            }
             let final_start = out_lines.len().saturating_sub(TOOL_OUTPUT_ROWS);
             let start = if final_start == 0 || !motion_enabled {
                 final_start
@@ -789,7 +843,9 @@ fn render_entry(
             // One-line tool call header, flush left.
             let done = entry.tool.as_ref().is_some_and(|tool| tool.done);
             let marker = if done { "⏺ " } else { "○ " };
-            let marker_style = if done || !motion_enabled {
+            let marker_style = if done {
+                text_style.fg(tool_settle_color(entry, tick, motion_enabled))
+            } else if !motion_enabled {
                 text_style
             } else {
                 text_style.fg(tool_rail_wave_color(tick, 0))
@@ -805,11 +861,9 @@ fn render_entry(
 
             // Only draw the vertical bar for lines that actually exist.
             for (row, line) in window.iter().enumerate() {
-                let clipped = line
-                    .chars()
-                    .take(width.saturating_sub(2))
-                    .collect::<String>();
-                let rail_style = if done || !motion_enabled {
+                let rail_style = if done {
+                    text_style.fg(tool_settle_color(entry, tick, motion_enabled))
+                } else if !motion_enabled {
                     text_style
                 } else {
                     text_style.fg(tool_rail_wave_color(
@@ -817,18 +871,27 @@ fn render_entry(
                         u16::try_from(start + row + 1).unwrap_or(u16::MAX),
                     ))
                 };
-                lines.push(Line::from(vec![
-                    Span::styled("│ ", rail_style),
-                    Span::styled(
-                        clipped,
-                        Style::default()
-                            .fg(DIM_TEXT_COLOR)
-                            .bg(BACKGROUND_COLOR),
-                    ),
-                ]));
+                let mut spans = Vec::with_capacity(line.spans.len() + 1);
+                spans.push(Span::styled("│ ", rail_style));
+                spans.extend(line.spans.iter().cloned().map(|mut span| {
+                    span.style.fg = Some(DIM_TEXT_COLOR);
+                    span.style.bg = Some(BACKGROUND_COLOR);
+                    span
+                }));
+                lines.push(Line::from(spans));
             }
 
-            (lines, Vec::new())
+            let links = out_links
+                .into_iter()
+                .filter(|link| (start..end).contains(&link.row))
+                .map(|mut link| {
+                    link.row = link.row - start + 1;
+                    link.col_start += 2;
+                    link.col_end += 2;
+                    link
+                })
+                .collect();
+            (lines, links)
         }
         _ => {
             let (first_prefix, marker, marker_space, rest_indent, first_body) = match entry.role {
@@ -902,6 +965,29 @@ fn tool_header_text(entry: &Entry) -> String {
     }
 }
 
+/// Whether tool output carries CommonMark structure instead of plain logs.
+fn tool_output_is_markdown(output: &str) -> bool {
+    output.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with("# ")
+            || trimmed.starts_with("## ")
+            || trimmed.starts_with("### ")
+            || trimmed.starts_with("- ")
+            || trimmed.starts_with("* ")
+            || trimmed.starts_with("> ")
+            || trimmed.starts_with("```")
+            || trimmed.starts_with("| ")
+            || trimmed
+                .split_once(". ")
+                .is_some_and(|(number, _)| number.chars().all(|c| c.is_ascii_digit()))
+            || trimmed.contains("**")
+            || trimmed.contains("__")
+            || trimmed.contains("~~")
+            || trimmed.contains('`')
+            || (trimmed.contains('[') && trimmed.contains("]("))
+    })
+}
+
 /// Grok's active-tool rail: a brightness wave that travels down the rows.
 fn tool_rail_wave_color(tick: u64, row: u16) -> Color {
     use std::f32::consts::PI;
@@ -909,6 +995,20 @@ fn tool_rail_wave_color(tick: u64, row: u16) -> Color {
     let phase = (row as f32 / TOOL_RAIL_WAVE_ROWS) * 2.0 * PI;
     let brightness = (tick as f32 * TOOL_RAIL_WAVE_SPEED + phase).sin().powi(2);
     blend_rgb(BACKGROUND_COLOR, TEXT_COLOR, brightness)
+}
+
+/// Fade a completed tool's marker and rail into the resting secondary amber.
+fn tool_settle_color(entry: &Entry, tick: u64, motion_enabled: bool) -> Color {
+    if !motion_enabled {
+        return DIM_TEXT_COLOR;
+    }
+    let age = entry
+        .tool_settled_at
+        .map(|started| tick.saturating_sub(started))
+        .unwrap_or(TOOL_SETTLE_FRAMES);
+    let remaining = 1.0 - (age.min(TOOL_SETTLE_FRAMES) as f32 / TOOL_SETTLE_FRAMES as f32);
+    let eased = remaining * remaining;
+    blend_rgb(DIM_TEXT_COLOR, TEXT_COLOR, eased)
 }
 
 /// Move a long output preview from its first rows to its final rows once.

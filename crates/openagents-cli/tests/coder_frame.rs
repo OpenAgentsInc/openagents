@@ -265,13 +265,51 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
     );
     let settled = draw(&mut ui);
     let settled_again = draw(&mut ui);
-    assert_eq!(settled.cell((0, 1)).unwrap().fg, TEXT_COLOR);
-    assert_eq!(
+    assert_ne!(
         settled.cell((0, 1)).unwrap().fg,
         settled_again.cell((0, 1)).unwrap().fg,
-        "a finished tool rail kept moving"
+        "the completion settle animation did not advance"
     );
+    for _ in 0..10 {
+        let _ = draw(&mut ui);
+    }
+    let resting = draw(&mut ui);
+    assert_eq!(resting.cell((0, 1)).unwrap().fg, DIM_TEXT_COLOR);
     assert!(ui.entries[0].tool.as_ref().unwrap().done);
+}
+
+#[test]
+fn markdown_tool_output_uses_the_shared_renderer() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "c1".to_string(),
+            name: "read".to_string(),
+            arguments: r#"{"path":"README.md"}"#.to_string(),
+        },
+    );
+    apply(
+        &mut ui,
+        Control::ToolOutput {
+            call_id: "c1".to_string(),
+            chunk: "## Result\n\n**passed**".to_string(),
+        },
+    );
+
+    let frame = draw(&mut ui);
+    let screen = text_of(&frame);
+    assert!(screen.contains("Result"), "{screen}");
+    assert!(screen.contains("passed"), "{screen}");
+    assert!(!screen.contains("##"), "{screen}");
+    assert!(!screen.contains("**"), "{screen}");
+    let passed = frame
+        .content
+        .iter()
+        .find(|cell| cell.symbol() == "p")
+        .expect("rendered markdown body");
+    assert!(passed.modifier.contains(ratatui::style::Modifier::BOLD));
+    assert_eq!(passed.fg, DIM_TEXT_COLOR);
 }
 
 #[test]

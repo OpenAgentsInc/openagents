@@ -583,7 +583,9 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             ui.scroll_override = None;
         }
         Control::ToolDone { call_id, is_error } => {
+            let settled_at = ui.tick;
             if let Some(entry) = tool_entry(ui, &call_id) {
+                entry.settle_tool(settled_at);
                 if let Some(tool) = entry.tool.as_mut() {
                     tool.done = true;
                 }
