@@ -167,20 +167,20 @@ async fn boot_dev_server() -> Result<(), Box<dyn std::error::Error>> {
     command.process_group(0);
     let _child = command.spawn()?;
 
-    for _ in 0..60 {
+    for _ in 0..300 {
         if is_dev_server_up().await {
             return Ok(());
         }
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_millis(500)).await;
     }
 
-    Err("dev server did not become ready in 60 seconds".into())
+    Err("dev server did not become ready in 150 seconds".into())
 }
 
 async fn is_dev_server_up() -> bool {
     timeout(Duration::from_secs(2), async {
         let mut stream = TcpStream::connect("127.0.0.1:4000").await.ok()?;
-        let request = "GET /api/v1/health HTTP/1.1\r\nHost: 127.0.0.1:4000\r\nConnection: close\r\n\r\n";
+        let request = "GET /health HTTP/1.1\r\nHost: 127.0.0.1:4000\r\nConnection: close\r\n\r\n";
         stream.write_all(request.as_bytes()).await.ok()?;
         let mut buf = [0u8; 256];
         let n = stream.read(&mut buf).await.ok()?;
