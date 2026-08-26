@@ -101,7 +101,8 @@ pub enum Role {
 pub struct Entry {
     pub role: Role,
     pub text: String,
-    pub output: Option<Vec<String>>,
+    /// Tool output text, rendered as a ~5-line box split by newlines.
+    pub output: Option<String>,
 }
 
 #[derive(Debug)]
@@ -327,24 +328,25 @@ impl CoderUi {
                 let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
                 let mut lines = Vec::new();
 
-                // One-line tool call header.
-                let header_body = width.saturating_sub(4);
+                // One-line tool call header, flush left.
+                let header_body = width.saturating_sub(2);
                 let header_chunks = wrap_text(&entry.text, header_body);
                 let header = header_chunks.first().cloned().unwrap_or_default();
                 lines.push(Line::from(vec![
-                    Span::styled("  ⏺ ", text_style),
+                    Span::styled("⏺ ", text_style),
                     Span::styled(header, text_style),
                 ]));
 
-                // ~5-line output box, one chunk per line.
-                let out = entry.output.as_ref().map_or(&[][..], |v| v.as_slice());
-                let start = out.len().saturating_sub(5);
-                let window = &out[start..];
+                // ~5-line output box, split by actual newlines.
+                let out = entry.output.as_deref().unwrap_or("");
+                let out_lines: Vec<&str> = out.lines().collect();
+                let start = out_lines.len().saturating_sub(5);
+                let window = &out_lines[start..];
                 for i in 0..5 {
-                    let text = window.get(i).map(String::as_str).unwrap_or("");
-                    let clipped = text.chars().take(width.saturating_sub(4)).collect::<String>();
+                    let text = if i < window.len() { window[i] } else { "" };
+                    let clipped = text.chars().take(width.saturating_sub(2)).collect::<String>();
                     lines.push(Line::from(vec![
-                        Span::styled("  │ ", text_style),
+                        Span::styled("│ ", text_style),
                         Span::styled(clipped, text_style),
                     ]));
                 }

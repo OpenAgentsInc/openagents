@@ -86,27 +86,29 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(last) = ui.entries.last_mut() {
                         if last.role == Role::Tool {
                             last.text = format!("delegate {}: {}", agent, title);
-                            last.output = Some(Vec::new());
+                            last.output = Some(String::new());
                         } else {
                             ui.entries.push(Entry {
                                 role: Role::Tool,
                                 text: format!("delegate {}: {}", agent, title),
-                                output: Some(Vec::new()),
+                                output: Some(String::new()),
                             });
                         }
                     } else {
                         ui.entries.push(Entry {
                             role: Role::Tool,
                             text: format!("delegate {}: {}", agent, title),
-                            output: Some(Vec::new()),
-                        });
+                            output: Some(String::new()),
+                            });
                     }
                     ui.scroll_override = None;
                 }
                 Control::ToolText(chunk) => {
                     if let Some(last) = ui.entries.last_mut() {
                         if last.role == Role::Tool {
-                            last.output.get_or_insert_with(Vec::new).push(chunk);
+                            last.output
+                                .get_or_insert_with(String::new)
+                                .push_str(&chunk);
                         }
                     }
                     ui.scroll_override = None;
