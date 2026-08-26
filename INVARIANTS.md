@@ -2602,3 +2602,54 @@ ported from grok-build (`crates/coder-lite/src/markdown/`, Apache-2.0, see
   `transcript::WrapStats` exist so the saving is asserted as cost, not assumed
   from output that happens to look right. Held by
   `crates/coder-lite/tests/streaming.rs`. Issue OpenAgentsInc/openagents#104.
+
+## Foreign Session Resume
+
+`oa coder`'s `/resume` lists Claude Code and Codex sessions from their own
+local stores and prints the command that resumes one in the tool that owns it
+(`crates/openagents-cli/src/foreign_resume.rs`, the port of
+`packages/openagents-cli/src/coder-foreign-resume.ts`). Discovery is the
+`packet-v0` WebAssembly guest at `plugins/foreign-sessions`, run under the
+wasm host in `crates/openagents-cli/src/plugins.rs` over read-only mounts of
+`~/.claude` and `~/.codex`. Four things about that surface are fixed.
+
+- **What is offered is the session on disk.** Before a resume command is
+  printed, the scanner's reported path is resolved against the declared mount
+  roots and the file is opened by the host, and the reported session id is
+  found in that file's own leading records. A session whose file is absent,
+  unreadable, or holding a different id is refused by name with the path.
+  Nothing is rendered from the scan alone, and no empty or invented session
+  stands in for one that could not be read. The single exception is a file over
+  the host's per-file read bound, where the id is the file name; the output
+  says so on the line it prints rather than implying a read that did not
+  happen. Held by
+  `crates/openagents-cli/tests/foreign_resume_test.rs::a_session_whose_file_is_gone_is_refused_by_name_with_the_path`,
+  `a_file_that_holds_a_different_session_does_not_become_a_resume_command`,
+  `resuming_a_real_session_prints_what_that_session_file_actually_holds`, and
+  `a_real_session_with_the_wrong_id_on_it_is_refused_against_the_file` — the
+  last two against this machine's real stores and the shipped artifact.
+- **A reported path stays inside its mount.** The relative path comes out of a
+  file this process does not own, so it is joined component by component and an
+  empty, `.`, `..`, or absolute component refuses the join outright. Held by
+  `a_reported_path_cannot_climb_out_of_the_mounted_store`.
+- **Everything surfaced is redacted.** A foreign store holds someone else's
+  session history, so every string taken from one — session id, working
+  directory, file path — passes through `crate::trace::redact_text`, the rules
+  this CLI shares with `packages/atif/src/redaction.ts`, before it reaches the
+  transcript. Held by
+  `no_planted_credential_survives_into_the_listing_or_the_selection`, which
+  reads `fixtures/redaction/planted-secrets.json` rather than restating the
+  patterns.
+- **A printed command is exact or absent.** A working directory whose only
+  redaction is the home rewrite is rebuilt as `"$HOME/…"`, which expands back
+  to the recorded path character for character; anything else the rules removed
+  means no `cd` is printed and the categories are named. A value that cannot be
+  safely quoted, or a session id that is not shaped like one, never reaches a
+  command line — the recorded value is still shown, as an escaped literal. A
+  `cd` to somewhere other than where the session ran is worse than no `cd`.
+  Held by
+  `a_working_directory_becomes_a_command_only_when_it_round_trips` in
+  `foreign_resume.rs` and
+  `a_working_directory_that_would_run_a_command_never_reaches_the_command_line`.
+
+Issue OpenAgentsInc/openagents#82.

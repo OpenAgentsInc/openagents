@@ -22,6 +22,7 @@ pub mod delegate;
 pub mod diag;
 pub mod diff;
 pub mod fleet;
+pub mod foreign_resume;
 pub mod forum;
 pub mod identity;
 pub mod interactive;

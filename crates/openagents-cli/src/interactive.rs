@@ -69,6 +69,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("export", "write the transcript to a file: /export <path>"),
     ("help", "list these commands"),
     (
+        "resume",
+        "recent Claude Code and Codex sessions on this machine: /resume, /resume <number>",
+    ),
+    (
         "run",
         "run a program under a terminal in this frame: /run <command>",
     ),
@@ -85,6 +89,9 @@ pub enum Control {
     Prompt(String),
     /// Collect a diff. The words are `/diff`'s arguments, already split.
     Diff(Vec<String>),
+    /// Ask the foreign-session scanner what other coding agents left on this
+    /// machine. `None` lists; `Some(n)` describes the nth listed session.
+    ForeignResume(Option<usize>),
     /// Start a program under a pseudoterminal of this size.
     Run {
         command: Vec<String>,
@@ -383,6 +390,30 @@ impl CoderApp {
             },
             "diff" => {
                 if control.send(Control::Diff(arguments.to_vec())).is_err() {
+                    self.push(Role::Error, "The runtime task is gone.");
+                }
+            }
+            "resume" => {
+                // A bare `/resume` lists; `/resume <n>` picks. A word that is
+                // not a positive number is refused rather than read as a list
+                // request, because silently listing after a mistyped pick is
+                // how someone resumes the wrong session.
+                let selection = match arguments.first() {
+                    None => None,
+                    Some(word) => match word.parse::<usize>() {
+                        Ok(number) if number >= 1 => Some(number),
+                        _ => {
+                            self.push(
+                                Role::Error,
+                                format!(
+                                    "`/resume` takes a number from the list: `/resume 1`. `{word}` is not one."
+                                ),
+                            );
+                            return;
+                        }
+                    },
+                };
+                if control.send(Control::ForeignResume(selection)).is_err() {
                     self.push(Role::Error, "The runtime task is gone.");
                 }
             }
@@ -865,6 +896,24 @@ pub async fn runtime_actor(
                     Err(why) => TurnEvent::Notice(why),
                 };
                 if events.send(event).is_err() {
+                    return;
+                }
+            }
+            Control::ForeignResume(selection) => {
+                // The scan compiles and runs a wasm guest and walks two state
+                // directories, all of it synchronous. On a blocking thread so
+                // the frame keeps drawing while it works.
+                let here = cwd.clone();
+                let home = crate::auth::home_directory();
+                let scanned = tokio::task::spawn_blocking(move || {
+                    crate::foreign_resume::foreign_resume_turn(&here, &home, selection)
+                })
+                .await;
+                let notice = match scanned {
+                    Ok(text) => text,
+                    Err(error) => format!("The foreign-session scan did not finish: {error}"),
+                };
+                if events.send(TurnEvent::Notice(notice)).is_err() {
                     return;
                 }
             }

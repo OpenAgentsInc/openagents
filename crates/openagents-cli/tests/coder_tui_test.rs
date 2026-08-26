@@ -1078,7 +1078,7 @@ fn tab_lists_the_candidates_rather_than_choosing_one() {
 
     let frame = screen(&term);
     assert!(
-        frame.contains("clear  diff  export  help  run"),
+        frame.contains("clear  diff  export  help  resume  run"),
         "the candidates were not listed:\n{frame}"
     );
     let composer = frame
