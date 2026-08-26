@@ -4,7 +4,6 @@ import * as os from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   asImageFilePath,
-  expandImageRefsForModel,
   mimeTypeForImage,
   parseDroppedImagePaths,
   removeOuterQuotes,

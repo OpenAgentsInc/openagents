@@ -5,7 +5,6 @@ import {
   expandPastedTextRefs,
   formatPastedTextRef,
   getPastedTextRefNumLines,
-  PASTE_MAX_LINES,
   PASTE_TEXT_THRESHOLD,
   shouldCollapsePaste,
 } from "../src/coder-paste.js";

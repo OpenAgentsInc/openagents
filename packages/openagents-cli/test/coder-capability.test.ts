@@ -259,7 +259,7 @@ describe("matchCapabilities", () => {
       description: "Read a conversation back from this machine: a Claude Code or Codex session.",
       manifestPath: "/tmp/a.json",
       artifact: { path: "a.wasm", digest: "sha256:aa" },
-      capabilities: { mounts: [], hosts: [], timeout_ms: 1000, memory_max_mib: 64 },
+      capabilities: { mounts: [], hosts: [], timeout_ms: 1000 },
     },
     {
       name: "word_stats",
@@ -267,7 +267,7 @@ describe("matchCapabilities", () => {
       description: "Compute statistics for a piece of text.",
       manifestPath: "/tmp/b.json",
       artifact: { path: "b.wasm", digest: "sha256:bb" },
-      capabilities: { mounts: [], hosts: [], timeout_ms: 1000, memory_max_mib: 64 },
+      capabilities: { mounts: [], hosts: [], timeout_ms: 1000 },
     },
   ];
 
