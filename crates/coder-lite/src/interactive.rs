@@ -188,21 +188,22 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     disable_raw_mode()?;
     std::io::stdout().execute(LeaveAlternateScreen)?;
 
-    // The screen is gone, so these land on the normal one. Revoking the thread
-    // is the point: one left open holds its grant's remaining budget, and the
-    // `Drop` backstop can only spawn a `DELETE` this process may exit before
-    // polling.
+    // The screen is gone, so these land on the normal one. Ending the thread is
+    // the point: one left open holds its grant's remaining budget, and the
+    // `Drop` backstop can only spawn an ending this process may exit before
+    // polling. It ends by reporting what the session did, so leaving is not
+    // recorded as a cancellation and the thread can be resumed later.
     match tokio::time::timeout(REVOCATION_GRACE, async {
-        session.lock().await.close().await
+        session.lock().await.finish().await
     })
     .await
     {
         Ok(Ok(Some(line))) => println!("{line}"),
         Ok(Ok(None)) => {}
-        Ok(Err(error)) => eprintln!("coder-lite: the thread was not revoked: {error}"),
+        Ok(Err(error)) => eprintln!("coder-lite: the thread was not ended: {error}"),
         Err(_) => eprintln!(
             "coder-lite: the session was still working after {}s, so its thread was left to \
-             the best-effort revocation.",
+             the best-effort ending.",
             REVOCATION_GRACE.as_secs()
         ),
     }

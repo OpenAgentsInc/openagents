@@ -347,13 +347,19 @@ impl Session {
         send(&sink, Control::Done);
     }
 
-    /// Revoke this session's thread and say what the server billed.
+    /// End this session's thread by saying what it did, and say what the
+    /// server billed.
+    ///
+    /// A report rather than a `DELETE`: a session that answered and left is not
+    /// a cancellation, and filing it as one is what made every thread in the
+    /// account's history read as cancelled (issue #106). It also leaves the
+    /// thread resumable, which `DELETE` does not.
     ///
     /// Awaited by the caller rather than left to `Drop`: a thread left open
     /// holds its grant's remaining budget, and the `Drop` backstop can only
-    /// spawn a `DELETE` this process may exit before polling.
-    pub async fn close(&mut self) -> Result<Option<String>, Failure> {
-        let spent = self.inner.close().await?;
+    /// spawn an ending this process may exit before polling.
+    pub async fn finish(&mut self) -> Result<Option<String>, Failure> {
+        let spent = self.inner.finish().await?;
         Ok(self.inner.spend_line(spent))
     }
 }

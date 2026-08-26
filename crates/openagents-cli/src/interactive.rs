@@ -864,19 +864,23 @@ where
     }
 }
 
-/// Revoke a session's thread and say what it cost, and what went unrecorded.
+/// End a session's thread, and say what it cost and what went unrecorded.
+///
+/// The ending is a report — what the session's last turn actually did — and
+/// not a `DELETE`, which would file every session here as a cancellation
+/// whatever it answered (issue #106).
 ///
 /// The lines land on stdout rather than in a screen because both callers reach
 /// here after their screen is gone. Silence when the session held no thread:
-/// the local lane has nothing to revoke and nothing was billed.
+/// the local lane has nothing to end and nothing was billed.
 pub async fn close_and_report(session: &mut CoderRuntimeSession) {
-    match session.close().await {
+    match session.finish().await {
         Ok(spent) => {
             if let Some(line) = session.spend_line(spent) {
                 println!("{line}");
             }
         }
-        Err(error) => eprintln!("oa: the thread was not revoked: {error}"),
+        Err(error) => eprintln!("oa: the thread was not ended: {error}"),
     }
     for failure in &session.record_failures {
         eprintln!("oa: {failure}");

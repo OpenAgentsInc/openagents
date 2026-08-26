@@ -354,6 +354,11 @@ struct ProxyStub {
 }
 
 impl ProxyStub {
+    /// Every request this stub has taken, headers and body, most recent last.
+    fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
+
     fn request_lines(&self) -> Vec<String> {
         self.requests
             .lock()
@@ -364,7 +369,7 @@ impl ProxyStub {
     }
 }
 
-/// Answers a thread open, transcript appends, a revocation, and one turn.
+/// Answers a thread open, transcript appends, the thread's report, and one turn.
 async fn proxy_stub() -> ProxyStub {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -417,6 +422,17 @@ async fn proxy_stub() -> ProxyStub {
                     "application/json",
                     r#"{"events":[{"id":1}]}"#.to_string(),
                 )
+            } else if line.starts_with("POST") && line.contains("/report") {
+                // Held open, so an awaited ending is measurably slower than a
+                // spawned one. See the test below.
+                tokio::time::sleep(REVOCATION_HELD).await;
+                (
+                    200,
+                    "application/json",
+                    r#"{"thread":{"id":"th_child","status":"succeeded"},
+                        "grant":{"status":"revoked","spent":{"calls":1,"total_tokens":12}}}"#
+                        .to_string(),
+                )
             } else if line.starts_with("POST /api/v1/threads") {
                 (
                     200,
@@ -424,16 +440,6 @@ async fn proxy_stub() -> ProxyStub {
                     format!(
                         r#"{{"thread":{{"id":"th_child"}},"grant":{{"token":"tok","url":"{grant_url}","model":"ox-alpha"}}}}"#
                     ),
-                )
-            } else if line.starts_with("DELETE /api/v1/threads/") {
-                // Held open, so an awaited revocation is measurably slower
-                // than a spawned one. See the test below.
-                tokio::time::sleep(REVOCATION_HELD).await;
-                (
-                    200,
-                    "application/json",
-                    r#"{"grant":{"status":"revoked","spent":{"calls":1,"total_tokens":12}}}"#
-                        .to_string(),
                 )
             } else {
                 let frame =
@@ -459,15 +465,18 @@ async fn proxy_stub() -> ProxyStub {
     ProxyStub { origin, requests }
 }
 
-/// A child on the proxy revokes its own thread, awaited, and writes its turn
-/// down on the way.
+/// A child on the proxy ends its own thread, awaited, saying what it did and
+/// writing its turn down on the way.
 ///
-/// A child used to leave the revocation to the `Drop` impl, which spawns a
-/// `DELETE` onto whatever runtime is still up and may never be polled. Timed
-/// rather than merely observed: the stub holds the revocation open, so a child
-/// that finishes faster than that did not wait for it.
+/// A child used to leave the ending to the `Drop` impl, which spawns a request
+/// onto whatever runtime is still up and may never be polled. Timed rather
+/// than merely observed: the stub holds the ending open, so a child that
+/// finishes faster than that did not wait for it.
+///
+/// A child that answered reports `succeeded` rather than being cancelled
+/// (issue #106), which is also what leaves its thread resumable.
 #[tokio::test]
-async fn a_delegated_child_revokes_its_own_thread() {
+async fn a_delegated_child_ends_its_own_thread_by_saying_what_it_did() {
     let _guard = exclusive();
     let stub = proxy_stub().await;
     std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin));
@@ -490,9 +499,25 @@ async fn a_delegated_child_revokes_its_own_thread() {
     assert!(
         lines
             .iter()
-            .any(|line| line.starts_with("DELETE /api/v1/threads/th_child")),
+            .any(|line| line.starts_with("POST /api/v1/threads/th_child/report")),
         "the child left its thread open: {lines:?}"
     );
+    assert!(
+        !lines.iter().any(|line| line.starts_with("DELETE")),
+        "the child cancelled a thread it had answered on: {lines:?}"
+    );
+    let reported: serde_json::Value = stub
+        .requests()
+        .into_iter()
+        .find(|request| request.contains("/report"))
+        .and_then(|request| {
+            request
+                .split_once("\r\n\r\n")
+                .and_then(|(_, body)| serde_json::from_str(body).ok())
+        })
+        .expect("the child said nothing about how it ended");
+    assert_eq!(reported["status"], "succeeded");
+    assert_eq!(reported.get("error_code"), None);
     assert!(
         lines
             .iter()
@@ -501,7 +526,7 @@ async fn a_delegated_child_revokes_its_own_thread() {
     );
     assert!(
         results[0].duration_ms >= REVOCATION_HELD.as_millis(),
-        "the child finished in {}ms with the revocation held open for {}ms, so it was \
+        "the child finished in {}ms with the ending held open for {}ms, so it was \
          spawned and abandoned rather than awaited",
         results[0].duration_ms,
         REVOCATION_HELD.as_millis()

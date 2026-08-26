@@ -36,6 +36,11 @@ struct Stub {
 }
 
 impl Stub {
+    /// Every request this stub has taken, headers and body, most recent last.
+    fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
+
     fn request_lines(&self) -> Vec<String> {
         self.requests
             .lock()
@@ -424,19 +429,25 @@ async fn a_refused_proxy_fails_the_turn() {
     assert_eq!(reply_text(&seen), "", "a reply was invented");
 }
 
-/// Leaving revokes the thread and reports what the server billed. A thread
-/// left open holds its grant's remaining budget.
+/// Leaving reports what the session did and ends the thread, and reports what
+/// the server billed. A thread left open holds its grant's remaining budget.
+///
+/// The `DELETE` this replaces recorded a session that had answered as
+/// `cancelled` (issue #106) and left it unresumable, so the assertion is on
+/// both halves: the report says `succeeded`, and no revocation is sent.
 #[tokio::test]
-async fn closing_revokes_the_thread_and_reports_the_server_figure() {
+async fn leaving_reports_what_the_session_did_rather_than_cancelling_it() {
     let stub = start(|request, origin| {
         if request.contains("POST /api/v1/threads ") {
             return Reply::Body(200, "application/json", grant(origin));
         }
-        if request.contains("DELETE /api/v1/threads/th_test") {
+        if request.contains("POST /api/v1/threads/th_test/report") {
             return Reply::Body(
                 200,
                 "application/json",
-                r#"{"grant":{"spent":{"total_tokens":99}}}"#.to_string(),
+                r#"{"thread":{"id":"th_test","status":"succeeded"},
+                    "grant":{"spent":{"total_tokens":99}}}"#
+                    .to_string(),
             );
         }
         if request.contains("/api/inference/proxy") {
@@ -450,18 +461,33 @@ async fn closing_revokes_the_thread_and_reports_the_server_figure() {
     session.execute_turn("hello", tx).await;
     let _ = drain(&rx);
 
-    let line = tokio::time::timeout(Duration::from_secs(10), session.close())
+    let line = tokio::time::timeout(Duration::from_secs(10), session.finish())
         .await
-        .expect("close hung")
-        .expect("close failed")
+        .expect("the ending hung")
+        .expect("the ending failed")
         .expect("the server reported no spend");
     assert!(line.contains("99"), "{line}");
 
+    let reported = stub
+        .requests()
+        .into_iter()
+        .find(|r| r.contains("POST /api/v1/threads/th_test/report"))
+        .expect("the session never said what it did");
+    let body: serde_json::Value =
+        serde_json::from_str(reported.split("\r\n\r\n").nth(1).unwrap_or("{}")).unwrap();
+    assert_eq!(body["status"], "succeeded");
+    assert_eq!(
+        body.get("error_code"),
+        None,
+        "a session that answered named an error code: {body}"
+    );
+
     assert!(
-        stub.request_lines()
+        !stub
+            .request_lines()
             .iter()
-            .any(|l| l.starts_with("DELETE /api/v1/threads/th_test")),
-        "the thread was never revoked: {:?}",
+            .any(|l| l.starts_with("DELETE /api/v1/threads/")),
+        "leaving cancelled the thread instead of reporting: {:?}",
         stub.request_lines()
     );
 }

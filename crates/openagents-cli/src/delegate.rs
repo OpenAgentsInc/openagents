@@ -586,14 +586,16 @@ async fn run_proxy_child(
         runtime.note_interruption(why).await;
     }
     // Awaited, on every path. A child used to leave its thread to the `Drop`
-    // impl, which spawns a best-effort DELETE the process may never poll — and
-    // a thread left open holds its grant's remaining budget. The failure is
-    // reported to the parent's event stream rather than to a screen this child
-    // does not own.
-    if let Err(error) = runtime.close().await {
+    // impl, which spawns a best-effort ending the process may never poll — and
+    // a thread left open holds its grant's remaining budget. It ends by
+    // reporting what it did: a child that answered is not a cancellation, and a
+    // child that was stopped reports `cancelled` with `interrupted` because
+    // `note_interruption` above settled that. The failure is reported to the
+    // parent's event stream rather than to a screen this child does not own.
+    if let Err(error) = runtime.finish().await {
         let _ = events.send(ChildEvent::Activity {
             id,
-            text: format!("the thread was not revoked: {error}"),
+            text: format!("the thread was not ended: {error}"),
         });
     }
     for failure in &runtime.record_failures {

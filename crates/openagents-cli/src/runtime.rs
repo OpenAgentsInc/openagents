@@ -5,7 +5,8 @@
 //!
 //! - The **thread lane** opens `POST /api/v1/threads`, takes the grant that
 //!   comes back, and streams `POST /api/inference/proxy` with the grant's
-//!   bearer token. The thread is revoked with `DELETE /api/v1/threads/{id}`.
+//!   bearer token. The thread ends by saying what it did, with
+//!   `POST /api/v1/threads/{id}/report`.
 //! - The **local lane** talks to an Ollama server on this machine and never
 //!   touches openagents.com at all, so it answers with the proxy unreachable.
 //!
@@ -38,6 +39,32 @@
 //! Recording is best effort and does not fail a turn that worked: a transcript
 //! that could not be written is kept in [`CoderRuntimeSession::record_failures`]
 //! and reported, rather than swallowed or allowed to throw away an answer.
+//!
+//! ## A session says how it ended, and `DELETE` is a disposal
+//!
+//! `DELETE /api/v1/threads/{id}` writes `error_code: cancelled` and the
+//! sentence *The thread was cancelled before it reported.* That is the only
+//! thing this file used to send, so a run that answered correctly and exited 0
+//! left a permanent record saying it had been cancelled — 31 of one account's
+//! 50 most recent threads (issue #106).
+//!
+//! Every exit now goes through [`CoderRuntimeSession::finish`], which sends
+//! `POST /api/v1/threads/{id}/report` with the outcome the session actually
+//! reached and revokes in the same call. `DELETE` stays for the one case it
+//! describes: throwing a thread away.
+//!
+//! The mirror of that bug would be worse, so the outcome is not a caller's to
+//! assert. [`CoderRuntimeSession::execute_turn`] settles it from the turn's own
+//! `Result` in one place, and [`ThreadOutcome`] has no constructor that can
+//! pair `succeeded` with an error code or a failure without one — the server
+//! refuses an incoherent pair twice over, and this file does not try to send
+//! one. A turn still in flight leaves the session's standing outcome
+//! [`ThreadOutcome::interrupted`], so a session dropped mid-turn reports as
+//! interrupted rather than inheriting the last turn's success.
+//!
+//! Reporting rather than cancelling is also what makes `--resume` work across
+//! processes: `POST /threads/{id}/grants` reopens a thread that reported and
+//! refuses one that was cancelled.
 //!
 //! ## Model ids are the server's, not this file's
 //!
@@ -371,6 +398,159 @@ impl ThreadRecord {
     }
 }
 
+/// The three ways a thread may end, as the server spells them.
+pub const SUCCEEDED: &str = "succeeded";
+pub const FAILED: &str = "failed";
+pub const CANCELLED: &str = "cancelled";
+
+/// The error codes this CLI files, one per way a turn can fail to answer.
+///
+/// `&'static str` throughout, so a code is one of these and not a sentence
+/// somebody assembled at a call site: `GET /api/v1/threads` groups on this
+/// field, and a code built from an error message would make every failure its
+/// own category.
+pub mod error_code {
+    /// The proxy refused the turn or could not be reached.
+    pub const PROVIDER_FAILED: &str = "provider_failed";
+    /// The reply stopped part way through, so there is no whole answer.
+    pub const STREAM_BROKEN: &str = "stream_broken";
+    /// The turn spent its whole tool-step budget without answering.
+    pub const MAX_STEPS: &str = "max_steps";
+    /// The session was stopped before its turn finished. Ctrl-C is this.
+    pub const INTERRUPTED: &str = "interrupted";
+    /// A turn failed some other way, named in the report rather than the code.
+    pub const TURN_FAILED: &str = "turn_failed";
+    /// The session held a thread but never ran a turn on it.
+    pub const NO_TURN: &str = "no_turn";
+}
+
+/// The largest report the server takes, `OpenAgents.Threads.Thread`'s
+/// `@objective_bytes`. A longer one is refused whole, so it is cut here.
+const MAX_REPORT_BYTES: usize = 32_768;
+
+/// How a session ended, in the vocabulary `POST /threads/{id}/report` takes.
+///
+/// The status and the error code are one decision, not two, and the
+/// constructors are the only way to make either: `succeeded` carries no code
+/// and every other end has to name one. That is not politeness towards the
+/// server's validation — it is the same rule as [`ThreadRecord::failed`],
+/// pointed at the thread's permanent report instead of its transcript. A run
+/// that failed, was interrupted, or exhausted its steps and is filed as a
+/// success would be a worse record than the wall of cancellations this
+/// replaces, because a reader can tell a cancellation is uninformative and
+/// cannot tell a false success from a true one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadOutcome {
+    status: &'static str,
+    error_code: Option<&'static str>,
+    report: String,
+}
+
+impl ThreadOutcome {
+    /// The session answered. No error code, because there was no error.
+    pub fn succeeded(report: &str) -> Self {
+        Self {
+            status: SUCCEEDED,
+            error_code: None,
+            report: bounded_report(report, "The session answered."),
+        }
+    }
+
+    /// The session did not answer, and `code` says which way.
+    pub fn failed(code: &'static str, report: &str) -> Self {
+        Self {
+            status: FAILED,
+            error_code: Some(code),
+            report: bounded_report(report, "The turn failed without saying why."),
+        }
+    }
+
+    /// The session was stopped before the turn in flight could finish.
+    ///
+    /// `cancelled` rather than `failed`: nothing was wrong with the work, a
+    /// reader ended it. The server treats a cancelled thread as disposed of and
+    /// refuses to re-mint authority on it, which is the right answer for a
+    /// thread somebody stopped on purpose.
+    pub fn interrupted(report: &str) -> Self {
+        Self {
+            status: CANCELLED,
+            error_code: Some(error_code::INTERRUPTED),
+            report: bounded_report(report, "The session was stopped before the turn finished."),
+        }
+    }
+
+    /// The session held a thread and never ran a turn on it.
+    ///
+    /// Not a success: nothing was answered. Not a cancellation either, because
+    /// nobody asked for the thread to be over and a thread that reports stays
+    /// resumable.
+    pub fn no_turn() -> Self {
+        Self::failed(
+            error_code::NO_TURN,
+            "The session ended without running a turn on this thread.",
+        )
+    }
+
+    pub fn status(&self) -> &str {
+        self.status
+    }
+
+    /// `None` exactly when the session succeeded.
+    pub fn error_code(&self) -> Option<&str> {
+        self.error_code
+    }
+
+    pub fn report(&self) -> &str {
+        &self.report
+    }
+
+    /// The body `POST /threads/{id}/report` takes.
+    ///
+    /// `usage` is what this process counted, sent as the session's own figure
+    /// and labelled as such: the account is charged against the grant's spend,
+    /// which the server already holds and this call reads back.
+    fn wire(&self, usage: TurnUsage) -> serde_json::Value {
+        let mut body = serde_json::json!({
+            "status": self.status,
+            "report": self.report,
+            "usage": {
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
+                "counted_by": "client",
+            },
+        });
+        if let Some(code) = self.error_code {
+            body["error_code"] = serde_json::json!(code);
+        }
+        body
+    }
+}
+
+/// A report the server will take: never blank, never over the bound.
+///
+/// A model that answered with nothing still ended a session, and a blank
+/// report is refused — so the stand-in says what happened rather than letting
+/// the whole report fail over an empty answer.
+fn bounded_report(text: &str, if_blank: &str) -> String {
+    let text = text.trim();
+    if text.is_empty() {
+        return if_blank.to_string();
+    }
+    if text.len() <= MAX_REPORT_BYTES {
+        return text.to_string();
+    }
+    // On a character boundary, and with the cut named: a report that stops mid
+    // sentence should say that it was cut rather than look like the whole of
+    // what the session said.
+    const NOTE: &str = "\n[report truncated]";
+    let mut end = MAX_REPORT_BYTES - NOTE.len();
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{NOTE}", &text[..end])
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -447,6 +627,20 @@ pub struct CoderRuntimeSession {
     pub tool_observer: Option<ToolObserver>,
     /// The thread to revoke when the session closes.
     thread_id: Option<String>,
+    /// What this session would report if it ended now.
+    ///
+    /// Written in exactly one place — the end of [`Self::execute_turn`], from
+    /// that turn's own `Result` — and by [`Self::note_interruption`] for a turn
+    /// that never got to return. `None` means no turn has run, which is a
+    /// different thing from a turn that ran and failed.
+    outcome: Option<ThreadOutcome>,
+    /// The failure the turn in flight already wrote down, with its code.
+    ///
+    /// [`Self::record_failure`] knows which way a turn failed; the `Err` that
+    /// comes back up the stack is only a sentence. This carries the code from
+    /// one to the other so the reported outcome is specific rather than
+    /// `turn_failed` for everything. Cleared at the top of every turn.
+    pending_failure: Option<ThreadOutcome>,
 }
 
 impl CoderRuntimeSession {
@@ -491,6 +685,8 @@ impl CoderRuntimeSession {
             messages: Vec::new(),
             tool_observer: None,
             thread_id: None,
+            outcome: None,
+            pending_failure: None,
         }
     }
 
@@ -769,10 +965,9 @@ impl CoderRuntimeSession {
         if let Some(token) = &self.user_token {
             request = request.bearer_auth(token);
         }
-        let resp = request
-            .send()
-            .await
-            .map_err(|error| -> Failure { format!("{url} could not be reached: {error}").into() })?;
+        let resp = request.send().await.map_err(|error| -> Failure {
+            format!("{url} could not be reached: {error}").into()
+        })?;
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
@@ -815,11 +1010,99 @@ impl CoderRuntimeSession {
         Ok(grant)
     }
 
-    /// Revoke this session's thread.
+    /// What this session would report if it ended now.
     ///
-    /// A thread left open holds its grant's remaining budget. `DELETE
-    /// /api/v1/threads/{id}` closes both and returns the grant's spend, which
-    /// is why the reply is worth reading rather than discarding.
+    /// `None` until a turn has run. Read-only on purpose: the outcome is
+    /// settled from a turn's own result, not asserted by whoever is holding
+    /// the session.
+    pub fn outcome(&self) -> Option<&ThreadOutcome> {
+        self.outcome.as_ref()
+    }
+
+    /// End this session's thread by saying what it did.
+    ///
+    /// This is the exit every path takes. `POST /api/v1/threads/{id}/report`
+    /// writes the outcome and revokes the grant in the same call, so the thread
+    /// does not stay open holding its remaining budget and the permanent record
+    /// says what happened. A session with no thread — the local lane, or one
+    /// already ended — writes nothing and answers `Ok(None)`.
+    ///
+    /// The outcome is [`Self::outcome`], which is the turn's own result and not
+    /// a claim made here. A session that held a thread and ran no turn on it
+    /// reports [`ThreadOutcome::no_turn`] rather than a success it never had.
+    ///
+    /// If the report is refused — a deployment older than the route, most
+    /// plainly — the thread is still revoked with [`Self::close`] and the
+    /// refusal is kept in [`Self::record_failures`], which every caller
+    /// already prints. Leaving the thread open because the honest ending was
+    /// unavailable would trade one bug for a worse one.
+    pub async fn finish(&mut self) -> Result<Option<TurnUsage>, Failure> {
+        if self.thread_id.is_none() {
+            return Ok(None);
+        }
+        let outcome = self.outcome.clone().unwrap_or_else(ThreadOutcome::no_turn);
+        match self.report(outcome).await {
+            Ok(spent) => Ok(spent),
+            Err(error) => {
+                self.record_failures.push(format!(
+                    "the thread could not report how it ended: {error}. \
+                     It was cancelled instead, so it does not stay open holding \
+                     its grant's remaining budget."
+                ));
+                self.close().await
+            }
+        }
+    }
+
+    /// Say what the thread did, and end it.
+    ///
+    /// `POST /api/v1/threads/{id}/report`. The reply carries the revoked
+    /// grant's spend, exactly as a revocation's does, so a caller reads what
+    /// the session cost in the answer that ends it.
+    ///
+    /// The thread is released only once the server has taken the report: a
+    /// refused report leaves the session still holding its thread, so
+    /// [`Self::finish`] can still revoke it rather than leaking it.
+    pub async fn report(&mut self, outcome: ThreadOutcome) -> Result<Option<TurnUsage>, Failure> {
+        let Some(thread_id) = self.thread_id.clone() else {
+            return Ok(None);
+        };
+        let url = format!("{}/threads/{thread_id}/report", self.api_base);
+        let mut request = self
+            .http
+            .post(&url)
+            .timeout(Duration::from_secs(30))
+            .json(&outcome.wire(self.session_usage));
+        if let Some(token) = &self.user_token {
+            request = request.bearer_auth(token);
+        }
+        let resp = request.send().await.map_err(|error| -> Failure {
+            format!("{url} could not be reached: {error}").into()
+        })?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("{url} refused the report: {status} {}", snippet(&body)).into());
+        }
+        // Only now: the thread has ended, and there is nothing left to revoke.
+        self.thread_id = None;
+        self.last_grant = None;
+        let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+        Ok(grant_spend(&body))
+    }
+
+    /// Throw this session's thread away.
+    ///
+    /// `DELETE /api/v1/threads/{id}` writes `cancelled` with the sentence *The
+    /// thread was cancelled before it reported.*, and the server will not
+    /// re-mint authority on a cancelled thread. So this is the disposal, for a
+    /// caller that means the thread to be over — not the way a session that did
+    /// its work ends. That is [`Self::finish`], and using this instead is how
+    /// every session in the account's history came to read as a cancellation
+    /// (issue #106).
+    ///
+    /// A thread left open holds its grant's remaining budget, and the reply
+    /// returns the grant's spend, which is why it is worth reading.
     pub async fn close(&mut self) -> Result<Option<TurnUsage>, Failure> {
         let Some(thread_id) = self.thread_id.take() else {
             return Ok(None);
@@ -841,21 +1124,13 @@ impl CoderRuntimeSession {
             );
         }
         let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
-        let spent = body.get("grant").and_then(|g| g.get("spent"));
-        Ok(spent.map(|spent| TurnUsage {
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            total_tokens: spent
-                .get("total_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-        }))
+        Ok(grant_spend(&body))
     }
 
     /// What the server billed this session against what this process counted.
     ///
-    /// `close` hands back the grant's own `spent`, and the caller used to drop
-    /// it, so the CLI printed its client-side accumulation and nothing could
+    /// Ending a thread hands back the grant's own `spent`, and the caller used
+    /// to drop it, so the CLI printed its client-side accumulation and nothing could
     /// ever notice the two disagreeing. This is the line that notices: the
     /// server's figure, and a second sentence naming the gap when there is one.
     ///
@@ -968,6 +1243,16 @@ impl CoderRuntimeSession {
         self.last_usage = TurnUsage::default();
         self.last_calls = 0;
         self.last_reasoning.clear();
+        self.pending_failure = None;
+        // While the turn runs, the session's standing outcome is an
+        // interruption. A turn that returns replaces it below; a session
+        // dropped or quit mid-turn never gets that far, and this is what
+        // stops it reporting the *previous* turn's success as this session's
+        // ending.
+        self.outcome = Some(ThreadOutcome::interrupted(
+            "The session ended while a turn was still running, so the turn never \
+             reported an outcome.",
+        ));
 
         let answered = if self.lane.is_local() {
             self.run_local_turn(&tool_defs, chunk_callback).await
@@ -976,6 +1261,17 @@ impl CoderRuntimeSession {
                 .await
         };
         self.session_usage.add(self.last_usage);
+
+        // The one place the outcome is decided, and it is decided from the
+        // turn's own result rather than from anything a caller believes. An
+        // `Err` cannot land here as `succeeded` whatever it says, which is the
+        // rule that keeps this from becoming issue #106 pointed the other way.
+        self.outcome = Some(match &answered {
+            Ok(answer) => ThreadOutcome::succeeded(answer),
+            Err(error) => self.pending_failure.take().unwrap_or_else(|| {
+                ThreadOutcome::failed(error_code::TURN_FAILED, &error.to_string())
+            }),
+        });
         answered
     }
 
@@ -1059,11 +1355,11 @@ impl CoderRuntimeSession {
                         grant.proxy_url,
                         snippet(&body)
                     );
-                    return Err(self.record_failure(why).await);
+                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
                 }
                 Err(error) => {
                     let why = format!("{} could not be reached: {error}", grant.proxy_url);
-                    return Err(self.record_failure(why).await);
+                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
                 }
             };
 
@@ -1083,7 +1379,7 @@ impl CoderRuntimeSession {
                         // failed: an incomplete answer is not an answer.
                         self.last_usage.add(step.usage);
                         self.last_reasoning.push_str(&step.reasoning);
-                        return Err(self.record_failure(why).await);
+                        return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
                     }
                 };
                 if event.data == "[DONE]" {
@@ -1140,7 +1436,7 @@ impl CoderRuntimeSession {
                 "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
                  nothing was returned rather than an empty answer that reads as success"
             );
-            return Err(self.record_failure(why).await);
+            return Err(self.record_failure(error_code::MAX_STEPS, why).await);
         }
         Ok(final_answer)
     }
@@ -1149,10 +1445,15 @@ impl CoderRuntimeSession {
     ///
     /// Every exit from a turn that is not the model's own answer goes through
     /// here, so the record cannot say a session succeeded where it did not.
-    async fn record_failure(&mut self, why: String) -> Failure {
+    ///
+    /// `code` is which way it failed, kept for the thread's report: the `Err`
+    /// that travels back up the stack is a sentence, and a sentence is not a
+    /// category anything can group on.
+    async fn record_failure(&mut self, code: &'static str, why: String) -> Failure {
         let (usage, calls) = (self.last_usage, self.last_calls);
         self.note(vec![ThreadRecord::failed(&why, usage, calls)])
             .await;
+        self.pending_failure = Some(ThreadOutcome::failed(code, &why));
         why.into()
     }
 
@@ -1163,10 +1464,15 @@ impl CoderRuntimeSession {
     /// it says so here. Without this an interruption leaves a transcript that
     /// simply stops, which a later reader has no way to tell from a turn that
     /// finished quietly.
+    ///
+    /// It settles the session's outcome too, so the thread's report says the
+    /// session was stopped rather than carrying whatever the last turn that
+    /// did finish had said.
     pub async fn note_interruption(&mut self, why: &str) {
         let (usage, calls) = (self.last_usage, self.last_calls);
         self.note(vec![ThreadRecord::failed(why, usage, calls)])
             .await;
+        self.outcome = Some(ThreadOutcome::interrupted(why));
     }
 
     /// Record the assistant's tool calls, run them, and put the results back.
@@ -1361,11 +1667,13 @@ impl CoderRuntimeSession {
                 Ok(r) => {
                     let status = r.status();
                     let body = r.text().await.unwrap_or_default();
-                    return Err(
-                        format!("{url} refused the turn: {status} {}", snippet(&body)).into(),
-                    );
+                    let why = format!("{url} refused the turn: {status} {}", snippet(&body));
+                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
                 }
-                Err(error) => return Err(format!("{url} could not be reached: {error}").into()),
+                Err(error) => {
+                    let why = format!("{url} could not be reached: {error}");
+                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                }
             };
 
             // Ollama streams newline-delimited JSON rather than server-sent
@@ -1375,9 +1683,15 @@ impl CoderRuntimeSession {
             let mut step = StepAccumulator::default();
 
             while let Some(chunk) = bytes.next().await {
-                let chunk = chunk.map_err(|error| -> Failure {
-                    format!("the reply from {url} stopped mid-stream: {error}").into()
-                })?;
+                let chunk = match chunk {
+                    Ok(chunk) => chunk,
+                    Err(error) => {
+                        let why = format!("the reply from {url} stopped mid-stream: {error}");
+                        self.last_usage.add(step.usage);
+                        self.last_reasoning.push_str(&step.reasoning);
+                        return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
+                    }
+                };
                 pending.push_str(&String::from_utf8_lossy(&chunk));
                 while let Some(newline) = pending.find('\n') {
                     let line: String = pending.drain(..=newline).collect();
@@ -1430,21 +1744,26 @@ impl CoderRuntimeSession {
         }
 
         if !answered {
-            return Err(format!(
+            let why = format!(
                 "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
                  nothing was returned rather than an empty answer that reads as success"
-            )
-            .into());
+            );
+            return Err(self.record_failure(error_code::MAX_STEPS, why).await);
         }
         Ok(final_answer)
     }
 }
 
 /// A thread left open holds its grant's remaining budget, and the interactive
-/// session has no place to await a revocation on its way out. This is the
-/// backstop: best effort, on whatever runtime is still up. `close` is the path
-/// that can be awaited and proven, and it clears the id so this does not fire
-/// twice.
+/// session has no place to await an ending on its way out. This is the
+/// backstop: best effort, on whatever runtime is still up. [`CoderRuntimeSession::finish`]
+/// is the path that can be awaited and proven, and it clears the id so this
+/// does not fire twice.
+///
+/// It says what the session did where the session knows — a dropped session is
+/// not a reason for the record to claim a cancellation that did not happen —
+/// and falls back to the disposal only for a thread no turn ever ran on, which
+/// is the one case where there is genuinely nothing to report.
 impl Drop for CoderRuntimeSession {
     fn drop(&mut self) {
         let Some(thread_id) = self.thread_id.take() else {
@@ -1453,11 +1772,24 @@ impl Drop for CoderRuntimeSession {
         let Ok(handle) = tokio::runtime::Handle::try_current() else {
             return;
         };
-        let url = format!("{}/threads/{thread_id}", self.api_base);
         let token = self.user_token.clone();
         let http = self.http.clone();
+        let ending = self
+            .outcome
+            .as_ref()
+            .map(|outcome| (outcome.wire(self.session_usage), true))
+            .unwrap_or((serde_json::json!({}), false));
+        let url = match ending.1 {
+            true => format!("{}/threads/{thread_id}/report", self.api_base),
+            false => format!("{}/threads/{thread_id}", self.api_base),
+        };
         handle.spawn(async move {
-            let mut request = http.delete(&url).timeout(Duration::from_secs(10));
+            let (body, reporting) = ending;
+            let mut request = match reporting {
+                true => http.post(&url).json(&body),
+                false => http.delete(&url),
+            }
+            .timeout(Duration::from_secs(10));
             if let Some(token) = token {
                 request = request.bearer_auth(token);
             }
@@ -1578,6 +1910,20 @@ impl StepAccumulator {
             }
         }
     }
+}
+
+/// What the grant in an ending's reply had spent, when it says.
+///
+/// Both endings answer with the same body, so both read it the same way.
+/// `None` when the server reported no spend, because there is nothing to
+/// reconcile against.
+fn grant_spend(body: &serde_json::Value) -> Option<TurnUsage> {
+    let spent = body.get("grant").and_then(|grant| grant.get("spent"))?;
+    Some(TurnUsage {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: field(spent, "total_tokens"),
+    })
 }
 
 fn field(value: &serde_json::Value, key: &str) -> u64 {
@@ -1841,6 +2187,88 @@ mod tests {
             wire["tool_calls"][0]["function"]["arguments"]["path"], "a.txt",
             "Ollama takes arguments as an object, not as the proxy's string"
         );
+    }
+
+    /// The status and the error code cannot disagree, whichever way round.
+    ///
+    /// The server refuses an incoherent pair in a changeset and again in a
+    /// database constraint, and the point of the constructors is that this
+    /// client never sends the server one to refuse. There is no way to build a
+    /// success carrying an error code or a failure carrying none, so this
+    /// walks every ending the CLI can file and asserts the pair.
+    #[test]
+    fn a_reported_outcome_and_its_error_code_always_agree() {
+        let endings = [
+            ThreadOutcome::succeeded("it answered"),
+            ThreadOutcome::failed(error_code::PROVIDER_FAILED, "the proxy refused it"),
+            ThreadOutcome::failed(error_code::STREAM_BROKEN, "the reply stopped"),
+            ThreadOutcome::failed(error_code::MAX_STEPS, "no answer in 30 steps"),
+            ThreadOutcome::failed(error_code::TURN_FAILED, "something else"),
+            ThreadOutcome::interrupted("ctrl-c"),
+            ThreadOutcome::no_turn(),
+        ];
+
+        for ending in endings {
+            let body = ending.wire(TurnUsage::default());
+            let coded = body.get("error_code").and_then(|v| v.as_str());
+            match ending.status() {
+                SUCCEEDED => assert_eq!(
+                    coded, None,
+                    "a success named an error code, which the server refuses: {body}"
+                ),
+                other => {
+                    assert!(
+                        other == FAILED || other == CANCELLED,
+                        "'{other}' is not one of the server's terminal statuses"
+                    );
+                    assert!(
+                        coded.is_some_and(|code| !code.trim().is_empty()),
+                        "a thread that did not succeed named no error code: {body}"
+                    );
+                }
+            }
+            assert_eq!(coded, ending.error_code());
+            assert!(
+                !body["report"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty(),
+                "a blank report is refused: {body}"
+            );
+        }
+    }
+
+    /// An interruption is a cancellation, and it is never a success.
+    #[test]
+    fn an_interruption_is_recorded_as_the_cancellation_it_was() {
+        let stopped = ThreadOutcome::interrupted("stopped before finishing");
+        assert_eq!(stopped.status(), CANCELLED);
+        assert_eq!(stopped.error_code(), Some(error_code::INTERRUPTED));
+        assert_ne!(stopped.status(), SUCCEEDED);
+        assert_eq!(stopped.report(), "stopped before finishing");
+    }
+
+    /// A report is never blank and never over the server's bound.
+    ///
+    /// A model that answered with nothing still ended a session; filing a
+    /// blank report is refused outright, so the whole ending would fail over
+    /// an empty answer and the thread would be left open.
+    #[test]
+    fn a_report_is_always_something_the_server_will_take() {
+        let empty = ThreadOutcome::succeeded("   ");
+        assert_eq!(empty.report(), "The session answered.");
+
+        let long = ThreadOutcome::succeeded(&"é".repeat(MAX_REPORT_BYTES));
+        assert!(
+            long.report().len() <= MAX_REPORT_BYTES,
+            "a report of {} bytes is over the server's bound",
+            long.report().len()
+        );
+        assert!(long.report().ends_with("[report truncated]"));
+        // Cut on a character boundary: `é` is two bytes, so a naive cut splits
+        // one and the string is not valid UTF-8 to begin with.
+        assert!(long.report().starts_with('é'));
     }
 
     /// The local lane's system prompt must not promise a metered proxy, and the

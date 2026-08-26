@@ -35,6 +35,9 @@ enum Reply {
     /// A body sent after a pause. What tells a call that was awaited from one
     /// that was spawned and hoped for: only the first waits.
     Delayed(Duration, u16, &'static str, String),
+    /// An event stream that is cut off: one frame, then the connection goes
+    /// without closing the chunked body. A reply that stopped part way.
+    Truncated(String),
 }
 
 /// A server that records what it was asked and answers from a script.
@@ -102,6 +105,24 @@ where
                         );
                         let _ = socket.write_all(head.as_bytes()).await;
                         let _ = socket.write_all(body.as_bytes()).await;
+                    }
+                    Reply::Truncated(frame) => {
+                        // Chunked, so a body that simply stops is a torn
+                        // stream rather than a complete one: with `connection:
+                        // close` and no framing, EOF *is* the end and nothing
+                        // downstream can tell it from a finished reply.
+                        let _ = socket
+                            .write_all(
+                                b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\
+                                  transfer-encoding: chunked\r\n\r\n",
+                            )
+                            .await;
+                        let body = format!("data: {frame}\n\n");
+                        let _ = socket
+                            .write_all(format!("{:x}\r\n{body}\r\n", body.len()).as_bytes())
+                            .await;
+                        let _ = socket.flush().await;
+                        // No terminating chunk: the socket just goes.
                     }
                     Reply::Sse(frames, pause) => {
                         let _ = socket
@@ -993,6 +1014,37 @@ fn appended() -> Reply {
     )
 }
 
+/// The 200 the report route answers with: the ended thread and its grant's
+/// spend, the same shape a revocation answers with.
+fn filed(total_tokens: u64) -> Reply {
+    Reply::Body(
+        200,
+        "application/json",
+        format!(
+            r#"{{"grant":{{"status":"revoked","spent":{{"calls":1,"total_tokens":{total_tokens}}}}},
+                "thread":{{"id":"th_test","status":"succeeded"}}}}"#
+        ),
+    )
+}
+
+/// The body of the report the session filed, or `None` if it filed none.
+fn filed_report(stub: &Stub) -> Option<serde_json::Value> {
+    stub.requests()
+        .iter()
+        .find(|request| {
+            request
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with("POST") && line.contains("/report"))
+        })
+        .and_then(|request| {
+            request
+                .split_once("\r\n\r\n")
+                .map(|(_, body)| body.to_string())
+        })
+        .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+}
+
 fn revoked(total_tokens: u64) -> Reply {
     Reply::Body(
         200,
@@ -1011,6 +1063,9 @@ fn recording_stub() -> Stub {
         let line = request.lines().next().unwrap_or_default().to_string();
         if line.starts_with("POST") && line.contains("/events") {
             return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(116);
         }
         if line.starts_with("POST /api/v1/threads") {
             return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
@@ -1057,7 +1112,7 @@ async fn a_finished_turn_is_written_down_before_the_thread_is_revoked() {
         .await
         .expect("the turn failed");
     assert_eq!(answer, "It said hello.");
-    session.close().await.expect("the revocation failed");
+    session.finish().await.expect("the ending failed");
 
     let events = recorded(&stub);
     assert_eq!(
@@ -1093,20 +1148,20 @@ async fn a_finished_turn_is_written_down_before_the_thread_is_revoked() {
         "a turn that answered recorded a failure"
     );
 
-    // And every append landed before the revocation. A record written after
-    // the thread is terminal is refused by the server and is not a record.
+    // And every append landed before the ending. A record written after the
+    // thread is terminal is refused by the server and is not a record.
     let lines = stub.request_lines();
-    let revocation = lines
+    let ending = lines
         .iter()
-        .position(|line| line.starts_with("DELETE"))
-        .expect("no revocation was sent");
+        .position(|line| line.starts_with("POST") && line.contains("/report"))
+        .expect("no report was sent");
     let last_append = lines
         .iter()
         .rposition(|line| line.starts_with("POST") && line.contains("/events"))
         .expect("nothing was appended");
     assert!(
-        last_append < revocation,
-        "an append landed after the revocation: {lines:?}"
+        last_append < ending,
+        "an append landed after the thread had ended: {lines:?}"
     );
 }
 
@@ -1124,7 +1179,7 @@ async fn a_recorded_turn_replays_into_the_conversation_it_came_from() {
         .execute_turn("what does echo hello print?", |_| {})
         .await
         .expect("the turn failed");
-    session.close().await.expect("the revocation failed");
+    session.finish().await.expect("the ending failed");
 
     // Exactly what `GET /api/v1/threads/{id}/events` would hand back.
     let transcript: Vec<openagents_cli::resume::ThreadEvent> = recorded(&stub)
@@ -1167,11 +1222,11 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
         if line.starts_with("POST") && line.contains("/events") {
             return appended();
         }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
         if line.starts_with("POST /api/v1/threads") {
             return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
-        }
-        if line.starts_with("DELETE /api/v1/threads/") {
-            return revoked(0);
         }
         Reply::Body(
             402,
@@ -1185,7 +1240,7 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
         .execute_turn("do something", |_| {})
         .await
         .expect_err("a refused proxy returned success");
-    session.close().await.expect("the revocation failed");
+    session.finish().await.expect("the ending failed");
 
     let events = recorded(&stub);
     assert_eq!(
@@ -1332,11 +1387,11 @@ async fn the_grant_spend_is_reported_and_a_divergence_is_named() {
         if line.starts_with("POST") && line.contains("/events") {
             return appended();
         }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(500);
+        }
         if line.starts_with("POST /api/v1/threads") {
             return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
-        }
-        if line.starts_with("DELETE /api/v1/threads/") {
-            return revoked(500);
         }
         Reply::Sse(
             vec![
@@ -1354,7 +1409,7 @@ async fn the_grant_spend_is_reported_and_a_divergence_is_named() {
     session.execute_turn("say pong", |_| {}).await.unwrap();
     assert_eq!(session.session_usage.total_tokens, 116);
 
-    let spent = session.close().await.expect("the revocation failed");
+    let spent = session.finish().await.expect("the ending failed");
     let line = session
         .spend_line(spent)
         .expect("the server reported a spend and nothing said so");
@@ -1373,20 +1428,20 @@ async fn the_grant_spend_is_reported_and_a_divergence_is_named() {
     assert_eq!(agreed, "Billed by the server: 116 tokens");
 }
 
-/// The interactive session revokes its thread when the screen goes, awaited.
+/// The interactive session ends its thread when the screen goes, awaited.
 ///
 /// `run_tui` used to `abort()` this actor, which drops the session inside a
-/// dead task where the `Drop` impl can only spawn a `DELETE` the exiting
+/// dead task where the `Drop` impl can only spawn an ending the exiting
 /// process may never poll (issue #107). Here the app's control channel is
 /// dropped, exactly as leaving the screen drops it.
 ///
-/// Proved with a clock, because "the stub eventually saw a DELETE" is also
+/// Proved with a clock, because "the stub eventually saw the ending" is also
 /// what the racing `Drop` does on a runtime that stays up. The stub holds the
-/// revocation open for `HELD`, so only an actor that *awaits* the close takes
+/// report open for `HELD`, so only an actor that *awaits* the ending takes
 /// that long to return; a spawned best effort returns immediately and leaves
 /// the request in flight.
 #[tokio::test]
-async fn the_interactive_actor_awaits_its_revocation_when_the_app_goes() {
+async fn the_interactive_actor_awaits_its_ending_when_the_app_goes() {
     /// Long enough to separate an awaited call from a spawned one, short
     /// enough not to slow the suite.
     const HELD: Duration = Duration::from_millis(600);
@@ -1396,10 +1451,7 @@ async fn the_interactive_actor_awaits_its_revocation_when_the_app_goes() {
         if line.starts_with("POST") && line.contains("/events") {
             return appended();
         }
-        if line.starts_with("POST /api/v1/threads") {
-            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
-        }
-        if line.starts_with("DELETE /api/v1/threads/") {
+        if line.starts_with("POST") && line.contains("/report") {
             return Reply::Delayed(
                 HELD,
                 200,
@@ -1407,6 +1459,9 @@ async fn the_interactive_actor_awaits_its_revocation_when_the_app_goes() {
                 r#"{"grant":{"status":"revoked","spent":{"calls":1,"total_tokens":116}}}"#
                     .to_string(),
             );
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
         }
         Reply::Sse(
             vec![frame(
@@ -1450,12 +1505,17 @@ async fn the_interactive_actor_awaits_its_revocation_when_the_app_goes() {
     assert!(
         lines
             .iter()
-            .any(|line| line.starts_with("DELETE /api/v1/threads/th_test")),
+            .any(|line| line.starts_with("POST /api/v1/threads/th_test/report")),
         "the interactive session left its thread open: {lines:?}"
+    );
+    assert_eq!(
+        filed_report(&stub).map(|body| body["status"].clone()),
+        Some(serde_json::json!("succeeded")),
+        "the interactive session did not say what it did: {lines:?}"
     );
     assert!(
         took >= HELD,
-        "the actor returned after {took:?} with the revocation still held open for {HELD:?}, \
+        "the actor returned after {took:?} with the ending still held open for {HELD:?}, \
          so it was spawned and abandoned rather than awaited"
     );
     // And it wrote the turn down on the way, like every other path.
@@ -1463,4 +1523,430 @@ async fn the_interactive_actor_awaits_its_revocation_when_the_app_goes() {
         kinds(&recorded(&stub)).contains(&"turn.assistant".to_string()),
         "the interactive session recorded no answer"
     );
+}
+
+// ─────────────────────────────────────────────────────────────── the ending
+//
+// The other half of issue #106. A turn that wrote itself down still reached
+// `DELETE /api/v1/threads/{id}`, which hard-codes `error_code: cancelled` and
+// the sentence "The thread was cancelled before it reported." — so a session
+// that answered correctly and exited 0 left a permanent record saying it had
+// been cancelled, and a cancelled thread cannot be resumed.
+//
+// These prove the session says which of the three things happened, that it
+// says it before anything is revoked, and — the half that matters more — that
+// nothing which failed, was interrupted, or ran out of steps can say it
+// succeeded. Recording every session as a success would be worse than
+// recording every session as a cancellation: a reader can tell that a wall of
+// cancellations is uninformative, and cannot tell a false success from a
+// true one.
+
+/// A session that answered reports `succeeded`, names no error code, and is
+/// never cancelled.
+#[tokio::test]
+async fn a_session_that_answered_reports_succeeded_and_is_not_cancelled() {
+    let stub = recording_stub();
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let answer = session
+        .execute_turn("what does echo hello print?", |_| {})
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "It said hello.");
+
+    let spent = session.finish().await.expect("the ending failed");
+    assert_eq!(spent.map(|usage| usage.total_tokens), Some(116));
+
+    let report = filed_report(&stub).expect("the session never said what it did");
+    assert_eq!(report["status"], "succeeded");
+    assert_eq!(
+        report.get("error_code"),
+        None,
+        "a session that answered named an error code, which the server refuses \
+         and this client should not be trying: {report}"
+    );
+    assert_eq!(
+        report["report"], "It said hello.",
+        "the report is not what the session answered: {report}"
+    );
+    // What the session counted, sent as the session's own figure. The account
+    // is charged against the grant's spend, which the reply carries back.
+    assert_eq!(report["usage"]["total_tokens"], 116);
+    assert_eq!(report["usage"]["counted_by"], "client");
+
+    // Nothing was thrown away. A cancelled thread cannot be re-granted, so a
+    // `DELETE` here is what made `--resume` impossible across processes.
+    assert!(
+        !stub
+            .request_lines()
+            .iter()
+            .any(|line| line.starts_with("DELETE")),
+        "the session cancelled the thread it had just reported on: {:?}",
+        stub.request_lines()
+    );
+
+    // The ending fires once.
+    assert!(session.finish().await.unwrap().is_none());
+    assert_eq!(
+        stub.request_lines()
+            .iter()
+            .filter(|line| line.contains("/report"))
+            .count(),
+        1
+    );
+}
+
+/// The report carries the account's own credential, and is sent with a bearer
+/// token like every other owner-scoped call.
+#[tokio::test]
+async fn the_report_carries_the_accounts_credential() {
+    let stub = recording_stub();
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session
+        .execute_turn("what does echo hello print?", |_| {})
+        .await
+        .unwrap();
+    session.finish().await.expect("the ending failed");
+
+    let reported = stub
+        .requests()
+        .into_iter()
+        .find(|request| request.contains("/report"))
+        .expect("no report was sent");
+    assert!(reported.contains("Bearer oat_test"), "{reported}");
+}
+
+/// A turn the proxy refused reports `failed` with a code, and never `succeeded`.
+#[tokio::test]
+async fn a_refused_turn_reports_failed_and_names_a_code() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        Reply::Body(
+            402,
+            "application/json",
+            r#"{"code":"credit_exhausted","message":"nothing left"}"#.to_string(),
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session
+        .execute_turn("do something", |_| {})
+        .await
+        .expect_err("a refused proxy returned success");
+    session.finish().await.expect("the ending failed");
+
+    let report = filed_report(&stub).expect("the session never said what it did");
+    assert_eq!(
+        report["status"], "failed",
+        "a turn the proxy refused was filed as something else: {report}"
+    );
+    assert_eq!(report["error_code"], "provider_failed");
+    let why = report["report"].as_str().unwrap_or_default();
+    assert!(
+        why.contains("402") && why.contains("credit_exhausted"),
+        "the report does not say what refused the turn: {why}"
+    );
+}
+
+/// A turn that spent its whole step budget reports `max_steps`, not an answer
+/// it never produced.
+#[tokio::test]
+async fn a_turn_that_runs_out_of_steps_reports_max_steps() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        // Never answers. Always asks for another tool.
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"tool_calls":[{
+                    "index": 0,
+                    "id": "call_loop",
+                    "function": {"name": "shell", "arguments": "{\"command\":\"true\"}"}
+                }]}}]}),
+            )],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session
+        .execute_turn("loop forever", |_| {})
+        .await
+        .expect_err("a turn with no answer returned one");
+    session.finish().await.expect("the ending failed");
+
+    let report = filed_report(&stub).expect("the session never said what it did");
+    assert_eq!(report["status"], "failed");
+    assert_eq!(report["error_code"], "max_steps");
+    assert!(
+        report["report"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("tool steps"),
+        "the report does not name the budget: {report}"
+    );
+}
+
+/// A reply that broke mid-stream reports `stream_broken`. Half an answer is
+/// not an answer.
+#[tokio::test]
+async fn a_broken_stream_reports_that_the_reply_never_finished() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        // A frame, then the socket goes without `[DONE]` and without the
+        // declared body ever finishing.
+        Reply::Truncated(frame(
+            serde_json::json!({"choices":[{"delta":{"content":"PO"}}]}),
+        ))
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let failure = session
+        .execute_turn("say pong", |_| {})
+        .await
+        .expect_err("half a reply was returned as an answer");
+    assert!(
+        failure.to_string().contains("mid-stream"),
+        "the caller was told something else: {failure}"
+    );
+    session.finish().await.expect("the ending failed");
+
+    let report = filed_report(&stub).expect("the session never said what it did");
+    assert_eq!(
+        report["status"], "failed",
+        "a reply that never finished was filed as an answer: {report}"
+    );
+    assert_eq!(report["error_code"], "stream_broken");
+}
+
+/// A session stopped mid-turn reports `cancelled` with `interrupted`, and
+/// cannot inherit the last finished turn's success.
+///
+/// This is the Ctrl-C shape: `oa delegate` cancels a child by dropping its
+/// turn future, which never reaches the turn's own failure path.
+#[tokio::test]
+async fn an_interrupted_session_reports_cancelled_and_says_it_was_interrupted() {
+    let stub = recording_stub();
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    // A turn that answered first, so a stale success is available to inherit.
+    session
+        .execute_turn("what does echo hello print?", |_| {})
+        .await
+        .expect("the turn failed");
+    assert_eq!(session.outcome().map(|o| o.status()), Some("succeeded"));
+
+    session.note_interruption("stopped before finishing").await;
+    session.finish().await.expect("the ending failed");
+
+    let report = filed_report(&stub).expect("the session never said what it did");
+    assert_eq!(
+        report["status"], "cancelled",
+        "an interrupted session was filed as something else: {report}"
+    );
+    assert_eq!(report["error_code"], "interrupted");
+    assert!(
+        report["report"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("stopped before finishing"),
+        "{report}"
+    );
+}
+
+/// A turn dropped while it was still running reports as interrupted, not as
+/// whatever the previous turn did.
+///
+/// The session's standing outcome is an interruption for as long as a turn is
+/// in flight, so a process that quits mid-turn cannot file the last finished
+/// turn's answer as this session's ending.
+#[tokio::test]
+async fn a_turn_dropped_while_it_ran_does_not_report_the_previous_turns_success() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        // The first turn answers at once. The second is held open long enough
+        // to be dropped part way through.
+        if request.contains("\"content\":\"second\"") {
+            return Reply::Sse(
+                vec![
+                    frame(serde_json::json!({"choices":[{"delta":{"content":"…"}}]})),
+                    frame(serde_json::json!({"choices":[{"delta":{"content":"never"}}]})),
+                ],
+                Some((1, Duration::from_secs(30))),
+            );
+        }
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"content":"first"}}]}),
+            )],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let answer = session.execute_turn("one", |_| {}).await.expect("turn one");
+    assert_eq!(answer, "first");
+    assert_eq!(session.outcome().map(|o| o.status()), Some("succeeded"));
+
+    // Drop the second turn part way through, exactly as quitting does.
+    let dropped = tokio::time::timeout(
+        Duration::from_millis(400),
+        session.execute_turn("second", |_| {}),
+    )
+    .await;
+    assert!(
+        dropped.is_err(),
+        "the held turn returned; the stub answered"
+    );
+
+    assert_eq!(
+        session.outcome().map(|o| o.status()),
+        Some("cancelled"),
+        "a session dropped mid-turn kept the previous turn's outcome"
+    );
+    session.finish().await.expect("the ending failed");
+    let report = filed_report(&stub).expect("the session never said what it did");
+    assert_eq!(report["status"], "cancelled");
+    assert_eq!(report["error_code"], "interrupted");
+    assert_ne!(report["report"], "first");
+}
+
+/// A session that held a thread and never ran a turn does not claim it
+/// answered.
+#[tokio::test]
+async fn a_thread_no_turn_ran_on_reports_that_no_turn_ran() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads/") && line.contains("/grants") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session
+        .adopt_thread("th_test")
+        .await
+        .expect("the thread was not adopted");
+    assert!(session.outcome().is_none());
+    session.finish().await.expect("the ending failed");
+
+    let report = filed_report(&stub).expect("the session never said what it did");
+    assert_eq!(report["status"], "failed");
+    assert_eq!(report["error_code"], "no_turn");
+}
+
+/// A deployment without the report route still has its thread ended, and says
+/// so rather than swallowing it.
+///
+/// A thread left open holds its grant's remaining budget (#107), so the
+/// refusal falls back to the disposal — and the report is sent first, which is
+/// the only place both requests appear in one run.
+#[tokio::test]
+async fn a_refused_report_still_ends_the_thread_and_is_reported_to_the_reader() {
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return Reply::Body(404, "text/plain", "Not Found".to_string());
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        if line.starts_with("DELETE /api/v1/threads/") {
+            return revoked(116);
+        }
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"content":"ok"}}]}),
+            )],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    session.execute_turn("say ok", |_| {}).await.unwrap();
+    let spent = session
+        .finish()
+        .await
+        .expect("a refused report left the thread open");
+    assert_eq!(spent.map(|usage| usage.total_tokens), Some(116));
+
+    let lines = stub.request_lines();
+    let attempted = lines
+        .iter()
+        .position(|line| line.contains("/report"))
+        .expect("no report was attempted");
+    let revocation = lines
+        .iter()
+        .position(|line| line.starts_with("DELETE"))
+        .expect("the thread was left open");
+    assert!(
+        attempted < revocation,
+        "the thread was cancelled before it tried to report: {lines:?}"
+    );
+    assert!(
+        session
+            .record_failures
+            .iter()
+            .any(|failure| failure.contains("404") && failure.contains("report")),
+        "the refused report was swallowed: {:?}",
+        session.record_failures
+    );
+}
+
+/// The local lane has no thread, so it reports nothing and fails at nothing.
+#[tokio::test]
+async fn a_session_with_no_thread_reports_nothing() {
+    let mut session = session(Lane::Local("qwen3".to_string()), DEAD.to_string());
+    assert!(session
+        .finish()
+        .await
+        .expect("no thread is not a failure")
+        .is_none());
+    assert!(session
+        .report(openagents_cli::runtime::ThreadOutcome::succeeded(
+            "anything"
+        ))
+        .await
+        .expect("no thread is not a failure")
+        .is_none());
 }

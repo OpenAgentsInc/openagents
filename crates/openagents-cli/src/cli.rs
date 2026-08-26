@@ -4610,9 +4610,11 @@ async fn run_headless_coder(
         })
         .await
         .map_err(|e| e.to_string());
-    // The thread is revoked whether the turn worked or not: a failed turn still
-    // opened one, and one left open holds its grant's remaining budget.
-    let revoked = runtime.close().await;
+    // The thread ends whether the turn worked or not — a failed turn still
+    // opened one, and one left open holds its grant's remaining budget — and it
+    // ends by saying which of the two happened. `close()` here instead would
+    // file this run as a cancellation however it went (issue #106).
+    let revoked = runtime.finish().await;
     // A turn that could not reach a model is a failure, and says so in the
     // shape every other refusal here uses.
     let result = match result {
@@ -4634,7 +4636,7 @@ async fn run_headless_coder(
                 println!("{line}");
             }
         }
-        Err(error) => eprintln!("oa: the thread was not revoked: {error}"),
+        Err(error) => eprintln!("oa: the thread was not ended: {error}"),
     }
     for failure in &runtime.record_failures {
         eprintln!("oa: {failure}");
