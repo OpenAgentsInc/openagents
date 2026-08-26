@@ -20,8 +20,9 @@ use crate::tui::{CoderUi, Entry, Role, ToolCall};
 use crossterm::{
     ExecutableCommand,
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-        KeyModifiers, MouseEventKind, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -154,7 +155,15 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let flags = event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
         | event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES
         | event::KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
-    let _ = crossterm::execute!(stderr, PushKeyboardEnhancementFlags(flags));
+    // Ask the terminal to wrap clipboard input in paste markers. Without
+    // this, a newline in a pasted list arrives as an Enter key and submits
+    // the first line before the rest reaches the composer. grok-build uses
+    // the same terminal protocol for its text inputs.
+    let _ = crossterm::execute!(
+        stderr,
+        PushKeyboardEnhancementFlags(flags),
+        EnableBracketedPaste
+    );
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -199,6 +208,14 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             continue;
         }
         let key = match event::read()? {
+            Event::Paste(text) => {
+                // Paste is one editing operation, even when it contains
+                // newlines. In particular, do not pass its newlines through
+                // the Enter path below: they belong in the prompt.
+                ui.composer.insert_str(&normalize_paste(&text));
+                history.stop_walking();
+                continue;
+            }
             Event::Key(key) => key,
             Event::Mouse(mouse) => {
                 // Three rows a notch, which is what a terminal scrolls.
@@ -364,7 +381,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     }
 
     terminal.hide_cursor()?;
-    let _ = crossterm::execute!(stderr, PopKeyboardEnhancementFlags);
+    let _ = crossterm::execute!(stderr, DisableBracketedPaste, PopKeyboardEnhancementFlags);
     let _ = std::io::stdout().execute(DisableMouseCapture);
     disable_raw_mode()?;
     std::io::stdout().execute(LeaveAlternateScreen)?;
@@ -524,6 +541,14 @@ fn is_quit(key: &KeyEvent) -> bool {
             ..
         }
     )
+}
+
+/// Normalize the line endings terminal emulators use for bracketed paste.
+///
+/// The composer stores hard breaks as `\n`; keeping `\r` would put the caret
+/// and wrapping logic out of agreement with the text the submitted turn uses.
+fn normalize_paste(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 /// Apply one message from the runtime to the frame.
@@ -784,5 +809,10 @@ mod tests {
             .collect();
         listed.sort_unstable();
         assert_eq!(offered, listed);
+    }
+
+    #[test]
+    fn paste_line_endings_become_composer_line_endings() {
+        assert_eq!(normalize_paste("one\r\ntwo\rthree"), "one\ntwo\nthree");
     }
 }

@@ -401,6 +401,17 @@ mod unix_pty {
             }
         }
 
+        /// Send one bracketed paste transaction, as iTerm2 and other modern
+        /// terminals do for clipboard input. The embedded newlines must stay
+        /// in the composer until the user presses Enter afterward.
+        fn paste_text(&mut self, text: &str) {
+            let mut bytes = Vec::with_capacity(text.len() + 12);
+            bytes.extend_from_slice(b"\x1b[200~");
+            bytes.extend_from_slice(text.as_bytes());
+            bytes.extend_from_slice(b"\x1b[201~");
+            self.send(&bytes);
+        }
+
         fn frame(&self) -> Frame {
             let emulator = self.emulator.lock().expect("emulator lock");
             let screen = emulator.parser.screen();
@@ -607,6 +618,42 @@ mod unix_pty {
             (composer_top + 1, caret_column(3)),
             "the caret should have come back two columns with the two deletions.\n{}",
             frame.dump()
+        );
+    }
+
+    /// A clipboard paste is one editing operation, not a run of Enter keys.
+    /// This catches the regression where a bulleted list submitted its first
+    /// line and left later lines in the composer.
+    #[test]
+    fn multiline_paste_stays_in_the_composer_until_enter() {
+        let mut tui = Tui::start();
+        tui.wait_for_composer();
+
+        tui.paste_text("shopping list\r\n- coffee\r\n- filters");
+        let frame = tui.wait_for(
+            "the complete pasted list in the composer",
+            REDRAW,
+            |frame| {
+                frame.composer().is_some_and(|composer| {
+                    composer.lines == [" > shopping list", "   - coffee", "   - filters"]
+                })
+            },
+        );
+        assert!(
+            !frame.transcript().contains("shopping list"),
+            "paste should not submit before Enter.\n{}",
+            frame.dump()
+        );
+
+        tui.send(b"\r");
+        tui.wait_for(
+            "the complete pasted list to submit after Enter",
+            REDRAW,
+            |frame| {
+                frame
+                    .transcript()
+                    .contains("> shopping list - coffee - filters")
+            },
         );
     }
 
@@ -951,6 +998,10 @@ mod unix_pty {
         assert!(
             contains(&output, b"\x1b[?1049l"),
             "the session should have left the alternate screen on the way out"
+        );
+        assert!(
+            contains(&output, b"\x1b[?2004h") && contains(&output, b"\x1b[?2004l"),
+            "the session should enable bracketed paste while it owns the terminal and disable it on exit"
         );
     }
 
