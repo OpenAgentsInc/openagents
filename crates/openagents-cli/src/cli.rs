@@ -4252,11 +4252,18 @@ async fn run_deploy(action: DeployAction, api_base: &str, token: Option<String>,
                 .and_then(serde_json::Value::as_array)
                 .cloned()
                 .unwrap_or_default();
-            let human: Vec<String> = if targets.is_empty() {
-                vec!["No fleet targets found.".to_string()]
+            // The TypeScript CLI leads with the repository the targets belong
+            // to. Without it a list of bare SHAs does not say which fleet it
+            // describes, which matters once more than one repository deploys.
+            let mut human: Vec<String> = Vec::new();
+            if let Some(repo) = value.get("repo").and_then(serde_json::Value::as_str) {
+                human.push(format!("Repository: {repo}"));
+            }
+            if targets.is_empty() {
+                human.push("No fleet targets found.".to_string());
             } else {
-                targets.iter().map(fleet::target_row).collect()
-            };
+                human.extend(targets.iter().map(fleet::target_row));
+            }
             emit(json, &value, &human);
         }
         DeployAction::View {
