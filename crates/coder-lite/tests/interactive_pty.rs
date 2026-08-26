@@ -756,7 +756,7 @@ mod unix_pty {
     /// through a PTY and reads cells, so it has no access to a private
     /// constant. If the two drift, `the_bottom_row_carries_the_identity_and_the_balance`
     /// fails on the column assertion rather than passing quietly.
-    const BALANCE_COLUMNS: usize = 26;
+    const BALANCE_COLUMNS: usize = 32;
 
     /// The bottom row carries who the session is and what the account has
     /// left — two fields, one row, neither painting over the other.
@@ -804,13 +804,13 @@ mod unix_pty {
         // The other half of the same row. The identity must not have painted
         // over it, and it must sit inside the reserved columns rather than
         // wherever a right-aligned full-width paragraph would have put it.
-        let balance = status
-            .find("$18.40 left")
-            .unwrap_or_else(|| panic!(
+        let balance = status.find("$18.40 left").unwrap_or_else(|| {
+            panic!(
                 "the balance should share the bottom row with the identity, \
                  and the row held {status:?}.\n{}",
                 frame.dump()
-            ));
+            )
+        });
         let identity = status
             .find("unverified")
             .expect("the identity was asserted present just above");
@@ -890,12 +890,11 @@ mod unix_pty {
     /// The other display state, and the one the coder's own lane is in today.
     ///
     /// The deployment answers with a remainder of $20.00 that three unpriced
-    /// calls did not move, and says so. The bottom row must report the calls it
-    /// cannot see rather than the figure it was handed: a status bar showing
-    /// `$20.00 left` beside a session that has been working all afternoon is
-    /// the exact failure `Credit.unpriced_calls/1` exists to prevent.
+    /// calls did not move, and says so. The bottom row now reports the dollar
+    /// figure alongside the calls it cannot price, so the reader can see the
+    /// remainder and why it has not moved.
     #[test]
-    fn an_unpriced_lane_reports_what_it_cannot_see_rather_than_a_figure() {
+    fn an_unpriced_lane_reports_the_figure_alongside_the_unpriced_calls() {
         let tui = Tui::start_with_credit(STUB_CREDIT_UNPRICED);
         let frame = tui.wait_for(
             "the status bar to report the unpriced calls",
@@ -905,15 +904,9 @@ mod unix_pty {
 
         let status = frame.status_bar();
         assert!(
-            status.contains("credit: 3 unpriced calls"),
-            "the bottom row should name the calls the server could not price, \
+            status.contains("$20.00 left, 3 unpriced calls"),
+            "the bottom row should carry the remainder and the unpriced calls, \
              and held {:?}.\n{}",
-            status,
-            frame.dump()
-        );
-        assert!(
-            !status.contains('$'),
-            "an unpriced balance must print no dollar figure at all: {:?}.\n{}",
             status,
             frame.dump()
         );

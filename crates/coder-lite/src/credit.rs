@@ -107,21 +107,24 @@ impl CreditField {
 
     /// What the status bar prints for the balance, or nothing.
     ///
-    /// Four answers for four states, and no two of them can be mistaken for
+    /// Three answers for three states, and no two of them can be mistaken for
     /// each other: nothing at all before a read, `credit: unavailable` when a
-    /// read failed, `credit: N calls unpriced` when the server's own spend is
-    /// incomplete, and a dollar figure only when it is not.
+    /// read failed, and a dollar figure once the server answers. When the
+    /// server also reports unpriced calls, the figure is followed by the count
+    /// so the reader can tell the remainder did not move because some calls
+    /// had no rate to draw from.
     pub fn status(&self) -> String {
         match self {
             CreditField::Unread => String::new(),
             CreditField::Unavailable => "credit: unavailable".to_string(),
-            CreditField::Known(credit) if credit.complete => {
-                format!("{} left", dollars(credit.remaining_microusd))
-            }
             CreditField::Known(credit) => {
-                let calls = credit.unpriced_calls;
-                let plural = if calls == 1 { "call" } else { "calls" };
-                format!("credit: {calls} unpriced {plural}")
+                let mut status = format!("{} left", dollars(credit.remaining_microusd));
+                if !credit.complete {
+                    let calls = credit.unpriced_calls;
+                    let plural = if calls == 1 { "call" } else { "calls" };
+                    status = format!("{status}, {calls} unpriced {plural}");
+                }
+                status
             }
         }
     }
@@ -189,16 +192,13 @@ mod tests {
     }
 
     #[test]
-    fn an_incomplete_balance_prints_no_figure_at_all() {
+    fn an_incomplete_balance_prints_the_figure_and_the_unpriced_count() {
         let status = known(UNPRICED).status();
 
-        assert_eq!(status, "credit: 3 unpriced calls");
-        // The property, stated rather than implied: the remainder is $20.00
-        // and this is the account that spent real tokens on an unpriced lane,
-        // so the one thing the line must not contain is that figure.
+        assert_eq!(status, "$20.00 left, 3 unpriced calls");
         assert!(
-            !status.contains("20.00") && !status.contains('$'),
-            "an unpriced balance must not print a dollar figure: {status:?}"
+            status.contains('$'),
+            "an unpriced balance still prints a dollar figure: {status:?}"
         );
     }
 
@@ -211,7 +211,7 @@ mod tests {
 
         assert_eq!(
             CreditField::Known(credit).status(),
-            "credit: 1 unpriced call"
+            "$20.00 left, 1 unpriced call"
         );
     }
 

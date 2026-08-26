@@ -26,13 +26,12 @@ const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦
 /// Reserving the columns rather than painting the whole width is what keeps
 /// the two fields from erasing each other.
 ///
-/// 26 is measured against the strings [`crate::credit::CreditField::status`]
-/// actually formats, not chosen round. The widest is the unpriced-call state:
-/// `credit: 3 unpriced calls` is 24 columns and `credit: 12 unpriced calls` is
-/// 25, and a benchmark run on this lane came back with 12 unpriced calls — so
-/// 24 would truncate the very case the field exists to report. 26 leaves a
-/// column of air between the identity and the figure.
-const BALANCE_COLUMNS: u16 = 26;
+/// 32 is the tightest the balance can be on an 80-column terminal while still
+/// leaving room for the identity and a model id on the left. The unpriced
+/// state now carries the dollar figure plus the call count, e.g.
+/// `$20.00 left, 12 unpriced calls` (31 columns), and the three-digit case
+/// is exactly 32 columns, so 32 is the reservation that fits the worst case.
+const BALANCE_COLUMNS: u16 = 32;
 
 /// Who this session is signed in as.
 ///
@@ -553,7 +552,8 @@ impl CoderUi {
         // the next character lands in the middle is a frame that lies.
         let caret_screen_row = (caret_row as u16).saturating_sub(input_scroll);
         let cursor_x = input_area.x + 1 + 3 + caret_col as u16;
-        let cursor_y = input_area.y + 1 + caret_screen_row.min(visible_input_lines.saturating_sub(1));
+        let cursor_y =
+            input_area.y + 1 + caret_screen_row.min(visible_input_lines.saturating_sub(1));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 
         // The row under the composer is what you can do next, not what you

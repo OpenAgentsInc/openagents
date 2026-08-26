@@ -127,7 +127,10 @@ fn the_three_identity_states_read_differently() {
     let unverified = render(Identity::Unverified);
     let anonymous = render(Identity::Anonymous);
 
-    assert_ne!(named, unverified, "a dead credential reads as a live account");
+    assert_ne!(
+        named, unverified,
+        "a dead credential reads as a live account"
+    );
     assert_ne!(named, anonymous);
     assert_ne!(
         unverified, anonymous,
@@ -166,8 +169,8 @@ fn the_identity_leaves_the_right_of_the_row_clear() {
     let mut ui = CoderUi::new();
     ui.identity = signed_in();
     // Long enough to run the whole width if nothing stopped it.
-    ui.endpoint = "https://a-very-long-deployment-name-that-runs-on-and-on.openagents.com/api/v1"
-        .to_string();
+    ui.endpoint =
+        "https://a-very-long-deployment-name-that-runs-on-and-on.openagents.com/api/v1".to_string();
 
     let buffer = draw(&mut ui, 80, 24);
     let y = buffer.area.height - 1;
@@ -198,10 +201,16 @@ fn info_reports_the_server_s_billed_figure_and_the_client_count_as_two_numbers()
 
     let text = command(&mut ui, "/info");
     assert!(text.contains("Billed by the server"), "{text}");
-    assert!(text.contains("1500"), "the server's figure is missing: {text}");
+    assert!(
+        text.contains("1500"),
+        "the server's figure is missing: {text}"
+    );
     assert!(text.contains("1234"), "the client count is missing: {text}");
     // And the gap is named rather than left for the reader to subtract.
-    assert!(text.contains("266"), "the difference is not reported: {text}");
+    assert!(
+        text.contains("266"),
+        "the difference is not reported: {text}"
+    );
 }
 
 /// A figure nobody sent is not printed as a figure.
@@ -251,9 +260,15 @@ fn info_separates_the_last_turn_from_the_session_total() {
 
     let text = command(&mut ui, "/info");
     assert!(text.contains("Last turn"), "{text}");
-    assert!(text.contains("340"), "the last turn is not reported: {text}");
+    assert!(
+        text.contains("340"),
+        "the last turn is not reported: {text}"
+    );
     assert!(text.contains("This session counted"), "{text}");
-    assert!(text.contains("460"), "the session total is not reported: {text}");
+    assert!(
+        text.contains("460"),
+        "the session total is not reported: {text}"
+    );
 }
 
 /// The model, the lane, and the thread, each as the session was given it.
@@ -301,7 +316,7 @@ fn info_reports_the_same_identity_the_row_does() {
 
 /// Columns the renderer keeps clear on the right of the row for the balance,
 /// mirroring `tui::BALANCE_COLUMNS`.
-const BALANCE_COLUMNS: usize = 26;
+const BALANCE_COLUMNS: usize = 32;
 
 fn priced() -> coder_lite::credit::CreditField {
     coder_lite::credit::CreditField::Known(coder_lite::credit::Credit {
@@ -374,10 +389,10 @@ fn the_row_carries_the_identity_and_the_balance_without_either_erasing_the_other
 
 /// The widest thing the balance field ever says still fits its columns.
 ///
-/// `BALANCE_COLUMNS` is 26 because these strings are 24 and 25 columns wide,
-/// not because 26 is round. A benchmark run on this lane came back with 12
-/// unpriced calls, so the two-digit case is the one the field exists to report
-/// and the one a narrower reservation would truncate.
+/// `BALANCE_COLUMNS` is 32 because the unpriced state now prints the dollar
+/// figure plus the call count (e.g. `$20.00 left, 999 unpriced calls`), and
+/// that is exactly 32 columns — the tightest reservation that still lets an
+/// 80-column row hold a typical identity and a model id beside it.
 #[test]
 fn the_widest_balance_string_fits_the_columns_reserved_for_it() {
     for calls in [3, 12, 999] {
@@ -387,14 +402,10 @@ fn the_widest_balance_string_fits_the_columns_reserved_for_it() {
         ui.credit = unpriced(calls);
 
         let row = status_row(&mut ui);
-        let expected = format!("credit: {calls} unpriced calls");
+        let expected = format!("$20.00 left, {calls} unpriced calls");
         assert!(
             row.contains(&expected),
             "the row should carry {expected:?} untruncated, and held {row:?}"
-        );
-        assert!(
-            !row.contains('$'),
-            "an unpriced balance prints no dollar figure at all, and the row held {row:?}"
         );
         assert!(
             row.contains("AtlantisPleb"),
@@ -464,7 +475,10 @@ fn a_fallback_reads_differently_from_the_lane_on_its_own_model() {
     let mut fell_back = CoderUi::new();
     fell_back.identity = signed_in();
     fell_back.lane = "Coder Flash".to_string();
-    apply(&mut fell_back, Control::Model("gemini-3.7-flash".to_string()));
+    apply(
+        &mut fell_back,
+        Control::Model("gemini-3.7-flash".to_string()),
+    );
 
     let on_primary = status_row(&mut primary);
     let on_fallback = status_row(&mut fell_back);
@@ -589,7 +603,10 @@ fn the_lane_leaves_the_balance_columns_clear() {
     }
     let row = row(&buffer, y);
     // Both neighbours survive.
-    assert!(row.contains("AtlantisPleb"), "the identity was erased: {row}");
+    assert!(
+        row.contains("AtlantisPleb"),
+        "the identity was erased: {row}"
+    );
     assert!(row.contains("Coder Flash"), "{row}");
     assert!(row.contains("gemini-3.7-flash"), "{row}");
 }
@@ -633,7 +650,10 @@ fn a_narrow_row_gives_up_the_lane_name_before_the_model() {
         let cut = ["gemini-3.7-flas", "gemini-3.7-", "emini-3.7-flash"]
             .iter()
             .any(|piece| row_at.contains(piece) && !row_at.contains("gemini-3.7-flash"));
-        assert!(!cut, "a model id was cut in half at {width} columns: {row_at}");
+        assert!(
+            !cut,
+            "a model id was cut in half at {width} columns: {row_at}"
+        );
         // And a bare lane name never stands beside a model that answered.
         if row_at.contains("Coder Flash") {
             assert!(
