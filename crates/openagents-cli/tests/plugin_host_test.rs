@@ -527,7 +527,17 @@ async fn a_plugin_named_after_a_builtin_is_never_declared_and_every_declared_too
     let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
     assert_eq!(
         names,
-        vec!["shell", "skill", "openagents", "capability", "word_count"],
+        vec![
+            "read",
+            "write",
+            "edit",
+            "bash",
+            "shell",
+            "skill",
+            "openagents",
+            "capability",
+            "word_count"
+        ],
         "the declared list is not the set of tools that can be called"
     );
 

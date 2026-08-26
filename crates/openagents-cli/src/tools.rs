@@ -1,13 +1,26 @@
 //! The tools a session declares to the model, and what running them does.
 //!
-//! Five tools: `shell`, `skill`, `openagents`, `capability`, and — only where
-//! a delegation gate exists — `delegate`. Each is declared to the model and
+//! Nine tools: `read`, `write`, `edit`, `bash`, `shell`, `skill`,
+//! `openagents`, `capability`, and — only where a delegation gate exists —
+//! `delegate`. Each is declared to the model and
 //! each has an implementation in [`HarnessToolRegistry::execute_tool`]; the
 //! list and the match arms carry the same names, which is the only property
 //! that keeps a declared tool from being a promise nothing keeps. This
 //! module's header once claimed `capability` while `list_tools` did not
 //! declare it and no arm implemented it; the rule the mistake bought is that
 //! a name is written here only after something answers it.
+//!
+//! `read`, `write`, `edit` and `bash` are the four a coding agent needs to
+//! touch a file without spelling the intent as a shell command. They are pi's
+//! four, deliberately kept to pi's size: `read` returns a file, `write`
+//! replaces one, `edit` replaces one exact run of text inside one, and `bash`
+//! is `shell` under the name that set uses — the same arm answers both, so
+//! they cannot drift apart. What the originals did not have is here because
+//! this repository has shipped and fixed each of them: a bounded cut steps
+//! back to a character boundary, a failure reports `is_error: true`, a refusal
+//! is output the model can read and retry from, `write` and `edit` stage and
+//! rename rather than truncating in place (#114), and no path leaves the
+//! session's working directory without the refusal saying where it went.
 //!
 //! `capability` searches the local catalog of digest-pinned WebAssembly
 //! plugins and loads one into the session, at which point the plugin's own
@@ -50,12 +63,21 @@ pub const OUTPUT_LIMIT: usize = 30_000;
 /// session answers it with a refusal, which shadows a plugin just as
 /// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
 /// list and the arms in step.
-pub const BUILTIN_TOOL_NAMES: [&str; 5] =
-    ["shell", "skill", "openagents", "capability", "delegate"];
+pub const BUILTIN_TOOL_NAMES: [&str; 9] = [
+    "read",
+    "write",
+    "edit",
+    "bash",
+    "shell",
+    "skill",
+    "openagents",
+    "capability",
+    "delegate",
+];
 
 /// A tool the front-end driving the session answers itself.
 ///
-/// The five tools above are every session's, and they stay here. A front-end
+/// The nine tools above are every session's, and they stay here. A front-end
 /// can have a capability no other caller has — coder-lite's ACP path, which
 /// hands a task to a coding agent installed on this machine, is the one this
 /// exists for — and it belongs in the same declaration the other five are in,
@@ -381,6 +403,54 @@ impl HarnessToolRegistry {
 
         let mut tools = vec![
             ToolDefinition {
+                name: "read".to_string(),
+                description: text::RUST_READ.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "The file to read, relative to the working directory or absolute inside it."}
+                    },
+                    "required": ["path"]
+                }),
+            },
+            ToolDefinition {
+                name: "write".to_string(),
+                description: text::RUST_WRITE.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "The file to write, relative to the working directory or absolute inside it."},
+                        "content": {"type": "string", "description": "The complete new contents of the file."}
+                    },
+                    "required": ["path", "content"]
+                }),
+            },
+            ToolDefinition {
+                name: "edit".to_string(),
+                description: text::RUST_EDIT.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "The file to edit, relative to the working directory or absolute inside it."},
+                        "oldText": {"type": "string", "description": "The exact text to replace. It must appear in the file exactly once."},
+                        "newText": {"type": "string", "description": "What to put in its place. Empty deletes the old text."}
+                    },
+                    "required": ["path", "oldText", "newText"]
+                }),
+            },
+            ToolDefinition {
+                name: "bash".to_string(),
+                description: text::RUST_BASH.replace("{cwd}", &self.cwd.display().to_string()),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "command": {"type": "string", "description": "The command line to run through /bin/sh -c."},
+                        "timeout_seconds": {"type": "integer", "description": "How long to wait. Defaults to 120; raise for a build or test run."}
+                    },
+                    "required": ["command"]
+                }),
+            },
+            ToolDefinition {
                 name: "shell".to_string(),
                 description: text::RUST_SHELL.replace("{cwd}", &self.cwd.display().to_string()),
                 parameters: serde_json::json!({
@@ -469,7 +539,35 @@ impl HarnessToolRegistry {
 
     pub async fn execute_tool(&self, call: &ToolCall) -> ToolOutput {
         match call.name.as_str() {
-            "shell" => {
+            "read" => {
+                let (output, is_error) = answer_read(&self.cwd, &call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                }
+            }
+            "write" => {
+                let (output, is_error) = answer_write(&self.cwd, &call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                }
+            }
+            "edit" => {
+                let (output, is_error) = answer_edit(&self.cwd, &call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                }
+            }
+            // One arm for both names: `bash` is the name pi's tool set gives
+            // this, `shell` is the name this session has always given it, and
+            // two implementations would be two behaviours the moment either
+            // one was touched.
+            "shell" | "bash" => {
                 let cmd = call
                     .arguments
                     .get("command")
@@ -999,6 +1097,211 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
     }
 }
 
+// ─────────────────────────────────────────────────────────── the file tools
+
+/// The absolute path `raw` names, or why this session will not touch it.
+///
+/// A relative path is taken against the session's working directory. `..` is
+/// resolved here rather than by the filesystem, so a path that does not exist
+/// yet is checked too — `write` creates files, and a check that only worked on
+/// what already exists would be no check at all. Then the deepest part of the
+/// path that does exist is canonicalised, which is what catches a symlink
+/// inside the tree pointing out of it.
+///
+/// The refusal is the tool's output: it names where the path landed, so the
+/// model can retry with one inside rather than read an empty result.
+fn resolve_in_cwd(cwd: &Path, raw: &str) -> Result<PathBuf, String> {
+    if raw.trim().is_empty() {
+        return Err("No `path` was given.".to_string());
+    }
+    let base = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    let joined = if Path::new(raw).is_absolute() {
+        PathBuf::from(raw)
+    } else {
+        base.join(raw)
+    };
+
+    let mut lexical = PathBuf::new();
+    for part in joined.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                lexical.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => lexical.push(other.as_os_str()),
+        }
+    }
+
+    if !nearest_existing(&lexical).starts_with(&base) {
+        return Err(format!(
+            "Refusing to touch `{raw}`: it resolves to {}, outside this session's working \
+             directory {}. Name a path inside it.",
+            lexical.display(),
+            base.display()
+        ));
+    }
+    Ok(lexical)
+}
+
+/// The deepest ancestor of `path` that exists, resolved through symlinks.
+fn nearest_existing(path: &Path) -> PathBuf {
+    let mut probe = path;
+    loop {
+        if let Ok(real) = probe.canonicalize() {
+            return real;
+        }
+        match probe.parent() {
+            Some(parent) => probe = parent,
+            None => return path.to_path_buf(),
+        }
+    }
+}
+
+/// Write `content` to `path` by staging it beside the destination and renaming.
+///
+/// Truncating in place opens a window in which every other reader on the
+/// machine — a compiler, a test run, a second agent — sees a half-written file
+/// (#114). `rename` within a directory is atomic, so no reader sees anything
+/// but the old file or the new one. The staging name carries the process id
+/// and a counter so two writers cannot collide on it, and a failed rename
+/// takes the staged file with it rather than leaving litter behind.
+fn write_atomically(path: &Path, content: &str) -> std::io::Result<()> {
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(dir)?;
+
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let staging = dir.join(format!(
+        ".{}.{}.{}.staged",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+
+    fs::write(&staging, content)?;
+    if let Err(error) = fs::rename(&staging, path) {
+        let _ = fs::remove_file(&staging);
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// The `read` tool: a file as text, or a refusal saying why not.
+fn answer_read(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
+    let raw = arguments.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let path = match resolve_in_cwd(cwd, raw) {
+        Ok(path) => path,
+        Err(refusal) => return (refusal, true),
+    };
+    match fs::read_to_string(&path) {
+        Ok(content) if content.len() > OUTPUT_LIMIT => {
+            // The cut steps back to a character boundary; slicing a `String`
+            // at a fixed byte count panics the first time a file carries a
+            // non-ASCII character across the limit.
+            let head = &content[..floor_char_boundary(&content, OUTPUT_LIMIT)];
+            (
+                format!(
+                    "{head}\n\n[Output truncated: the file is {} characters, limit is {}. Read \
+                     the rest with `bash`.]",
+                    content.len(),
+                    OUTPUT_LIMIT
+                ),
+                false,
+            )
+        }
+        Ok(content) => (content, false),
+        Err(error) => (format!("Could not read `{raw}`: {error}."), true),
+    }
+}
+
+/// The `write` tool: replace a file's contents, or say why nothing was written.
+fn answer_write(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
+    let raw = arguments.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let Some(content) = arguments.get("content").and_then(|v| v.as_str()) else {
+        return (
+            "Nothing was written: `content` is required and must be the file's complete new \
+             contents."
+                .to_string(),
+            true,
+        );
+    };
+    let path = match resolve_in_cwd(cwd, raw) {
+        Ok(path) => path,
+        Err(refusal) => return (refusal, true),
+    };
+    match write_atomically(&path, content) {
+        Ok(()) => (
+            format!("Wrote {} bytes to {}.", content.len(), path.display()),
+            false,
+        ),
+        Err(error) => (format!("Could not write `{raw}`: {error}."), true),
+    }
+}
+
+/// The `edit` tool: replace one exact run of text, or refuse and change nothing.
+///
+/// The two refusals are the design, and they are pi's. Text that is not there
+/// cannot be replaced, and text that is there more than once does not say
+/// which one was meant — so the model is told the count and asked to add
+/// context until the match is unique. That single rule is what makes a
+/// surgical edit safe without a diff format. Both refusals return before the
+/// write, so a refused edit leaves the file exactly as it was.
+fn answer_edit(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
+    let raw = arguments.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let old = arguments
+        .get("oldText")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let new = arguments
+        .get("newText")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if old.is_empty() {
+        return (
+            "Nothing was changed: `oldText` is required and must be the exact text to replace."
+                .to_string(),
+            true,
+        );
+    }
+    let path = match resolve_in_cwd(cwd, raw) {
+        Ok(path) => path,
+        Err(refusal) => return (refusal, true),
+    };
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(error) => return (format!("Could not read `{raw}` to edit it: {error}."), true),
+    };
+
+    match content.matches(old).count() {
+        0 => (
+            format!(
+                "Nothing was changed: that `oldText` does not appear in {raw}. It has to match \
+                 byte for byte, whitespace and newlines included."
+            ),
+            true,
+        ),
+        1 => match write_atomically(&path, &content.replacen(old, new, 1)) {
+            Ok(()) => (
+                format!(
+                    "Replaced {} bytes with {} in {}.",
+                    old.len(),
+                    new.len(),
+                    path.display()
+                ),
+                false,
+            ),
+            Err(error) => (format!("Could not write `{raw}`: {error}."), true),
+        },
+        hits => (
+            format!(
+                "Nothing was changed: that `oldText` appears {hits} times in {raw} and it has to \
+                 appear exactly once. Add the lines above and below the one you mean until the \
+                 match is unique, then call again."
+            ),
+            true,
+        ),
+    }
+}
+
 /// As [`run_real_shell`]: the text, and whether it worked. A CLI that could
 /// not even be spawned was previously reported to the model as a success.
 /// Where the program behind the `openagents` tool came from.
@@ -1382,9 +1685,19 @@ mod tests {
         let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
         assert_eq!(
             names,
-            vec!["shell", "skill", "openagents", "capability", "delegate"]
+            vec![
+                "read",
+                "write",
+                "edit",
+                "bash",
+                "shell",
+                "skill",
+                "openagents",
+                "capability",
+                "delegate"
+            ]
         );
-        // The same five names `plugins::validate_manifest` refuses a plugin
+        // The same nine names `plugins::validate_manifest` refuses a plugin
         // for taking. An arm added here and not there would leave a name a
         // plugin can claim and never be called under.
         assert_eq!(
@@ -1433,7 +1746,20 @@ mod tests {
         registry.add_host_tool(host_tool("acp", "handed off")).unwrap();
 
         let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
-        assert_eq!(names, vec!["shell", "skill", "openagents", "capability", "acp"]);
+        assert_eq!(
+            names,
+            vec![
+                "read",
+                "write",
+                "edit",
+                "bash",
+                "shell",
+                "skill",
+                "openagents",
+                "capability",
+                "acp"
+            ]
+        );
 
         let out = registry
             .execute_tool(&ToolCall {
@@ -1677,5 +2003,267 @@ mod defect_tests {
         let (text, failed) = run_real_shell("sleep 5", &dir, 1).await;
         assert!(failed, "a timeout must be an error, got: {text}");
         assert!(text.contains("timed out"), "{text}");
+    }
+
+    // ─────────────────────────────────────────── read, write, edit and bash
+
+    fn file_call(name: &str, arguments: serde_json::Value) -> ToolCall {
+        ToolCall {
+            id: "1".to_string(),
+            name: name.to_string(),
+            arguments,
+        }
+    }
+
+    /// The rule that makes a surgical edit safe without a diff format: text
+    /// appearing more than once does not say which one was meant, so the edit
+    /// is refused — and, the half that matters, the file is left alone. An
+    /// `edit` that replaced the first hit would silently change the wrong line
+    /// and report success.
+    #[tokio::test]
+    async fn an_edit_whose_text_appears_twice_is_refused_and_the_file_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        let before = "let x = 1;\nlet y = 2;\nlet x = 1;\n";
+        std::fs::write(dir.path().join("a.rs"), before).unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({"path": "a.rs", "oldText": "let x = 1;", "newText": "let x = 9;"}),
+            ))
+            .await;
+
+        assert!(out.is_error, "a refused edit is a failure: {}", out.output);
+        assert!(
+            out.output.contains("appears 2 times"),
+            "the refusal must say how many: {}",
+            out.output
+        );
+        assert!(
+            out.output.contains("unique"),
+            "the refusal must say what to do about it: {}",
+            out.output
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.rs")).unwrap(),
+            before,
+            "a refused edit wrote to the file"
+        );
+    }
+
+    /// The other refusal. Text that is not there cannot be replaced, and the
+    /// model needs to be told that rather than handed an empty result.
+    #[tokio::test]
+    async fn an_edit_whose_text_is_not_there_is_refused_and_the_file_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        let before = "one\ntwo\n";
+        std::fs::write(dir.path().join("a.txt"), before).unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({"path": "a.txt", "oldText": "three", "newText": "four"}),
+            ))
+            .await;
+
+        assert!(out.is_error, "{}", out.output);
+        assert!(!out.output.trim().is_empty(), "a refusal is never silent");
+        assert!(out.output.contains("does not appear"), "{}", out.output);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            before
+        );
+    }
+
+    /// The success path, and the one thing about it worth pinning: only the
+    /// matched run changes.
+    #[tokio::test]
+    async fn a_unique_edit_replaces_that_run_and_nothing_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        std::fs::write(dir.path().join("a.txt"), "keep\nchange me\nkeep\n").unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({"path": "a.txt", "oldText": "change me", "newText": "changed"}),
+            ))
+            .await;
+
+        assert!(!out.is_error, "{}", out.output);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "keep\nchanged\nkeep\n"
+        );
+    }
+
+    /// A missing file is a refusal the model reads and retries from, not an
+    /// unwrap that takes the process with it.
+    #[tokio::test]
+    async fn reading_a_file_that_is_not_there_is_a_refusal_and_not_a_raise() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+
+        let out = registry
+            .execute_tool(&file_call(
+                "read",
+                serde_json::json!({"path": "missing.txt"}),
+            ))
+            .await;
+
+        assert!(out.is_error, "a missing file is a failure: {}", out.output);
+        assert!(
+            out.output.contains("missing.txt"),
+            "the refusal must name the path: {}",
+            out.output
+        );
+        assert!(!out.output.trim().is_empty(), "a refusal is never silent");
+    }
+
+    /// `shell` reported every failure as a success until recently, so a
+    /// failing build read like a passing one. `bash` is the same arm, and this
+    /// holds it to the same answer through the tool interface.
+    #[tokio::test]
+    async fn a_bash_command_that_exits_non_zero_is_reported_as_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+
+        let failed = registry
+            .execute_tool(&file_call("bash", serde_json::json!({"command": "exit 3"})))
+            .await;
+        assert!(
+            failed.is_error,
+            "a non-zero exit must be an error: {}",
+            failed.output
+        );
+        assert!(failed.output.contains('3'), "{}", failed.output);
+
+        let worked = registry
+            .execute_tool(&file_call(
+                "bash",
+                serde_json::json!({"command": "echo ok"}),
+            ))
+            .await;
+        assert!(!worked.is_error, "{}", worked.output);
+        assert!(worked.output.contains("ok"), "{}", worked.output);
+    }
+
+    /// Nothing reaches a path outside the session's working directory, and the
+    /// refusal says so rather than failing somewhere further down with an
+    /// error about permissions.
+    #[tokio::test]
+    async fn a_path_outside_the_working_directory_is_refused_by_every_file_tool() {
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.txt");
+        std::fs::write(&secret, "not yours\n").unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+
+        for arguments in [
+            serde_json::json!({"path": "../escaped.txt", "content": "x", "oldText": "a", "newText": "b"}),
+            serde_json::json!({"path": secret.display().to_string(), "content": "x", "oldText": "not yours", "newText": "mine"}),
+        ] {
+            for tool in ["read", "write", "edit"] {
+                let out = registry
+                    .execute_tool(&file_call(tool, arguments.clone()))
+                    .await;
+                assert!(out.is_error, "`{tool}` did not refuse: {}", out.output);
+                assert!(
+                    out.output
+                        .contains("outside this session's working directory"),
+                    "`{tool}` refused without saying why: {}",
+                    out.output
+                );
+            }
+        }
+
+        assert_eq!(
+            std::fs::read_to_string(&secret).unwrap(),
+            "not yours\n",
+            "a refused write reached outside the working directory"
+        );
+    }
+
+    /// `write` creates the parents, and it stages and renames — so the only
+    /// thing left in the directory afterwards is the file itself. A reader
+    /// arriving mid-write sees the old file or the new one, never a truncated
+    /// one (#114).
+    #[tokio::test]
+    async fn a_write_creates_parents_and_leaves_no_staged_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+
+        let out = registry
+            .execute_tool(&file_call(
+                "write",
+                serde_json::json!({"path": "deep/er/a.txt", "content": "hello\n"}),
+            ))
+            .await;
+        assert!(!out.is_error, "{}", out.output);
+
+        let home = dir.path().join("deep").join("er");
+        assert_eq!(
+            std::fs::read_to_string(home.join("a.txt")).unwrap(),
+            "hello\n"
+        );
+        let left: Vec<String> = std::fs::read_dir(&home)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(left, vec!["a.txt"], "a staged file was left behind");
+    }
+
+    /// The rename itself, which is the part that closes the window: the
+    /// destination is a different file afterwards, so no reader ever held a
+    /// descriptor on a truncated one. Writing in place keeps the same inode
+    /// and passes every other assertion here (#114).
+    #[cfg(unix)]
+    #[test]
+    fn a_write_replaces_the_file_by_rename_rather_than_truncating_it() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.txt");
+        std::fs::write(&path, "old\n").unwrap();
+        let before = std::fs::metadata(&path).unwrap().ino();
+
+        write_atomically(&path, "new\n").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new\n");
+        assert_ne!(
+            before,
+            std::fs::metadata(&path).unwrap().ino(),
+            "the file was truncated in place instead of staged and renamed"
+        );
+    }
+
+    /// The bounded cut in `read`, on the same defect the shell one was fixed
+    /// for: `&content[..OUTPUT_LIMIT]` panics when a multi-byte character
+    /// straddles the limit, and it takes the whole agent process with it.
+    #[tokio::test]
+    async fn reading_a_file_with_a_multibyte_character_on_the_limit_does_not_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        let mut body = "a".repeat(OUTPUT_LIMIT - 1);
+        body.push_str("€€€");
+        assert!(
+            !body.is_char_boundary(OUTPUT_LIMIT),
+            "the probe must straddle"
+        );
+        std::fs::write(dir.path().join("big.txt"), &body).unwrap();
+
+        let out = registry
+            .execute_tool(&file_call("read", serde_json::json!({"path": "big.txt"})))
+            .await;
+
+        assert!(!out.is_error, "{}", out.output);
+        assert!(out.output.contains("[Output truncated"), "it was not cut");
+        assert!(
+            out.output.starts_with(&body[..OUTPUT_LIMIT - 1]),
+            "the cut did not step back to the boundary"
+        );
     }
 }

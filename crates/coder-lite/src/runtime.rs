@@ -89,7 +89,7 @@ pub fn send(sink: &Sink, message: Control) {
 /// The system message this session opens with.
 ///
 /// The staged instructions first and unchanged, then the tools — because a
-/// model that is told it has no tools when it has five will not use them, and
+/// model that is told it has no tools when it has some will not use them, and
 /// one told it has tools it does not have will claim to have run them. The
 /// list is generated from what was actually declared, so the two cannot
 /// disagree.
@@ -160,10 +160,10 @@ pub struct Session {
 impl Session {
     /// Open a session on `lane`, reporting everything it does to `tx`.
     ///
-    /// The tools are the full set — `shell`, `skill`, `openagents`,
-    /// `capability`, and `delegate` — on the same terms `oa coder` gets them:
-    /// children run on this lane, on this credential, and cannot delegate
-    /// again.
+    /// The tools are the full set — `read`, `write`, `edit`, `bash`, `shell`,
+    /// `skill`, `openagents`, `capability`, and `delegate` — on the same terms
+    /// `oa coder` gets them: children run on this lane, on this credential, and
+    /// cannot delegate again.
     pub fn open(
         lane: Lane,
         lane_name: &str,
@@ -394,7 +394,10 @@ pub fn tool_title(name: &str, arguments: &str) -> String {
     };
 
     let detail = match name {
-        "shell" => string("command"),
+        "shell" | "bash" => string("command"),
+        // The path, never the content: `write` carries a whole file in its
+        // arguments, and the fallthrough below would put it in the header.
+        "read" | "write" | "edit" => string("path"),
         "skill" => string("name"),
         "openagents" => parsed.get("args").and_then(|v| v.as_array()).map(|args| {
             args.iter()

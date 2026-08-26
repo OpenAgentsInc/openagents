@@ -35,6 +35,14 @@ pub mod system_prompt {
 
 /// The tool-description surface: `surfaces/coder/tool-descriptions.v1.json`.
 pub mod tool_descriptions {
+    /// `rust.read`
+    pub const RUST_READ: &str = "Read a file and return its whole contents as text. `path` is relative to the session's working directory, or an absolute path inside it; a path that resolves outside it is refused. Use this rather than `cat` through the shell — there is nothing to quote and nothing to escape.";
+    /// `rust.write`
+    pub const RUST_WRITE: &str = "Write `content` to `path`, creating parent directories and replacing any file already there. The file is staged beside its destination and renamed into place, so nothing else on this machine can read it half-written. Use this rather than a shell heredoc. To change part of a file use `edit` instead: it does not ask you to reproduce the rest.";
+    /// `rust.edit`
+    pub const RUST_EDIT: &str = "Replace one exact run of text in a file. `oldText` must match byte for byte, whitespace and newlines included, and must appear exactly once. If it appears more than once the edit is refused and the file is left alone: add the lines above and below the one you mean until the match is unique, then call again. `newText` may be empty to delete the run. Use this rather than `sed` for a surgical change.";
+    /// `rust.bash`
+    pub const RUST_BASH: &str = "Run a command through `/bin/sh -c` in the session's working directory, {cwd}. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. This is the same runner as `shell`, and either name reaches it.";
     /// `rust.shell`
     pub const RUST_SHELL: &str = "Run a shell command on this machine. The working directory is {cwd}, so paths are relative to it and you do not need to ask where you are. Returns combined stdout and stderr with the exit code. Batch independent commands into one call with && instead of one call each: every call replays the conversation so far.";
     /// `rust.skill`
@@ -52,6 +60,6 @@ pub mod tool_descriptions {
 /// A run records these so a bench row names exactly which text produced it.
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ("system-prompt", "sha256:8f0fbbbb38f4ce609a09fe2ba4e03ca160ff2c0d0f698dd4676c2bf940ded849"),
-    ("tool-descriptions", "sha256:513c7518c72ba8c9959e517ea9f1262d7d3ee6b08452ddb48568bdabf6383c1b"),
+    ("tool-descriptions", "sha256:f85ed27173e41eb6752cc6232600ff17b02ea06a41b59383b1963093459b1eca"),
     ("catalog-lines", "sha256:98a96bcf6acfd5847bc1bddcc575761af71be7ea144f3584b3594b24b2f80911"),
 ];
