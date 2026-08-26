@@ -7,7 +7,6 @@ mod tests {
     use openagents_cli::workspace::Isolation;
     use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
     use openagents_cli::auth::CredentialStore;
-    use openagents_cli::identity::{derive_seed_identity, SeedStore};
     use openagents_cli::tracker::{slug_from_remote_url, IssueListOptions, RepoTarget, TrackerClient};
     use openagents_cli::repo::{admitted_credential_request, parse_git_credential_request};
     use openagents_cli::box_client::BoxClient;
@@ -36,28 +35,6 @@ mod tests {
         assert_eq!(held.token.expose(), "oa_pat_roundtrip");
         assert!(store.remove().unwrap());
         assert!(store.find_token().unwrap().is_none());
-    }
-
-    /// The old assertion checked only that the strings began `npub1`/`nsec1`, which
-    /// a `format!` over a SHA-256 digest satisfied. These assert the derivation.
-    /// The full contract, including parity with the TypeScript CLI, is in
-    /// `tests/identity_test.rs`.
-    #[test]
-    fn test_identity_generation_issue_75() {
-        let phrase = "abandon abandon abandon abandon abandon abandon \
-                      abandon abandon abandon abandon abandon about";
-        let identity = derive_seed_identity(phrase).unwrap();
-        assert_eq!(
-            identity.npub,
-            "npub1az708q3kd9zy6z6f44zav5ygvdwelkzspf6mtusttx47lft2z38sghk0w7"
-        );
-        assert!(derive_seed_identity("not a mnemonic").is_err());
-
-        // Nothing is persisted until something asks for it to be.
-        let directory = tempfile::tempdir().unwrap();
-        let store = SeedStore::new(Some(directory.path().join("identity")));
-        assert!(!store.present());
-        assert!(store.identity().is_err());
     }
 
     /// The old assertion was `issues.is_empty() || !issues.is_empty()`, which is

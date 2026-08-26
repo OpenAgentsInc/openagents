@@ -25,7 +25,6 @@ pub mod errors;
 pub mod fleet;
 pub mod foreign_resume;
 pub mod forum;
-pub mod identity;
 pub mod interactive;
 pub mod markdown;
 pub mod memory_client;

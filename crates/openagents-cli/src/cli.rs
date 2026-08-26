@@ -52,8 +52,6 @@ pub struct Cli {
 pub enum Commands {
     /// Authentication management
     Auth(AuthArgs),
-    /// Agent and human identity operations
-    Identity(IdentityArgs),
     /// OpenAgents issue tracker operations
     Issue(IssueArgs),
     /// OpenAgents project management
@@ -151,37 +149,6 @@ pub enum AuthAction {
     GitCredential {
         #[arg(default_value = "get")]
         operation: String,
-    },
-}
-
-#[derive(Args, Debug)]
-pub struct IdentityArgs {
-    #[command(subcommand)]
-    pub action: IdentityAction,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum IdentityAction {
-    /// Show the public identity derived from the stored seed, and what protects it
-    Show,
-    /// Generate a new seed phrase and store it encrypted under the OS keychain
-    Create {
-        #[arg(long, default_value_t = 12, help = "Words in the new seed phrase: 12 for 128 bits, 24 for 256")]
-        words: usize,
-        #[arg(long, help = "Replace the stored seed. The identity and wallet it derives are lost")]
-        force: bool,
-    },
-    /// Restore an existing seed phrase, read from standard input
-    Import {
-        #[arg(long, help = "Replace the stored seed. The identity and wallet it derives are lost")]
-        force: bool,
-    },
-    /// Print the stored seed phrase
-    Backup,
-    /// Delete the stored seed
-    Forget {
-        #[arg(long, help = "Confirm that the identity and wallet are to be destroyed")]
-        force: bool,
     },
 }
 
@@ -1376,7 +1343,6 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     match command {
         Commands::Auth(auth) => run_auth(auth.action, &endpoint, &cred_store, cli.json).await,
-        Commands::Identity(identity) => run_identity(identity.action, cli.json),
         Commands::Issue(issue) => run_issue(issue.action, &api_base, token, cli.json).await,
         Commands::Project(project) => {
             run_project(project.action, &api_base, token, cli.json).await
@@ -3709,203 +3675,6 @@ async fn run_memory(action: MemoryAction, api_base: &str, token: Option<String>,
 /// encrypted or is readable text is not something a person can infer from the
 /// path, and the plaintext fallback is only honest if the surface that shows an
 /// identity says so every time.
-fn print_identity(
-    identity: &crate::identity::SeedIdentity,
-    protection: crate::identity::SeedProtection,
-    seed_path: &std::path::Path,
-    json: bool,
-) {
-    if json {
-        let value = serde_json::json!({
-            "schema": "openagents.cli_identity.v1",
-            "profile": identity.profile,
-            "npub": identity.npub,
-            "nostr_public_key": identity.nostr_public_key_hex,
-            "nostr_derivation_path": identity.nostr_derivation_path,
-            "wallet_address": identity.wallet_address,
-            "wallet_public_key": identity.wallet_public_key_hex,
-            "wallet_fingerprint": identity.wallet_fingerprint_hex,
-            "wallet_derivation_path": identity.wallet_derivation_path,
-            "spending_rail": serde_json::Value::Null,
-            "seed_path": seed_path,
-            "seed_protection": protection.id(),
-            "seed_encrypted_at_rest": protection.encrypted_at_rest(),
-        });
-        println!("{}", value);
-        return;
-    }
-    println!("Identity: {}", identity.npub);
-    println!("  public key   {}", identity.nostr_public_key_hex);
-    println!("  path         {}", identity.nostr_derivation_path);
-    println!("Wallet:   {}", identity.wallet_address);
-    println!("  public key   {}", identity.wallet_public_key_hex);
-    println!("  fingerprint  {}", identity.wallet_fingerprint_hex);
-    println!("  path         {}", identity.wallet_derivation_path);
-    println!("Profile:  {}", identity.profile);
-    println!("{}", protection.describe(seed_path));
-}
-
-fn run_identity(action: IdentityAction, json: bool) {
-    use crate::identity::{
-        derive_seed_identity, generate_seed_phrase, is_valid_seed_phrase, SeedStore,
-    };
-    let store = SeedStore::new(None);
-    let seed_path = store.path();
-
-    let refuse_if_seed_exists = |force: bool| {
-        if store.present() && !force {
-            fail(&format!(
-                "A seed is already stored at {}. Back it up with `oa identity backup` first, \
-                 then pass --force to replace it.",
-                seed_path.display()
-            ));
-        }
-    };
-
-    // Migrate before reading. A seed written before the CLI could encrypt one is
-    // plaintext until something moves it, and the move is the same atomic rename
-    // either way, so the first `show` after an upgrade protects it rather than
-    // waiting for the next `import`. `forget` and the write paths do not call
-    // this: sealing a seed that is about to be deleted or replaced would mint a
-    // wrapping key for nothing.
-    let protection_in_force = || {
-        store
-            .protect()
-            .unwrap_or_else(|e| fail(&e.to_string()))
-            .unwrap_or_else(|| {
-                store
-                    .available_protection()
-                    .unwrap_or_else(|e| fail(&e.to_string()))
-            })
-    };
-
-    match action {
-        IdentityAction::Show => {
-            let protection = protection_in_force();
-            let identity = store.identity().unwrap_or_else(|e| fail(&e.to_string()));
-            print_identity(&identity, protection, &seed_path, json);
-        }
-        IdentityAction::Create { words, force } => {
-            if words != 12 && words != 24 {
-                fail("--words must be 12 or 24.");
-            }
-            refuse_if_seed_exists(force);
-
-            let phrase = generate_seed_phrase(words).unwrap_or_else(|e| fail(&e.to_string()));
-            // Derive before storing: a phrase that cannot be derived from must not
-            // become the identity on this machine.
-            let identity = derive_seed_identity(&phrase).unwrap_or_else(|e| fail(&e.to_string()));
-            let (_, stored_protection) = store.store_phrase(&phrase).unwrap_or_else(|e| {
-                fail(&format!(
-                    "The new seed could not be stored at {}: {}",
-                    seed_path.display(),
-                    e
-                ))
-            });
-
-            if !json {
-                println!(
-                    "Wrote a new {}-word seed to {} (mode 0600).",
-                    words,
-                    seed_path.display()
-                );
-                println!(
-                    "Back it up now with `oa identity backup`. Nothing else on this machine \
-                     can recover it."
-                );
-            }
-            print_identity(&identity, stored_protection, &seed_path, json);
-        }
-        IdentityAction::Import { force } => {
-            refuse_if_seed_exists(force);
-
-            let mut phrase = String::new();
-            if std::io::Read::read_to_string(&mut std::io::stdin(), &mut phrase).is_err() {
-                fail("No seed phrase was provided on standard input.");
-            }
-            let phrase = phrase.trim().to_string();
-            if phrase.is_empty() {
-                fail("No seed phrase was provided on standard input.");
-            }
-            // The phrase is never echoed back, not even the part that parsed.
-            if !is_valid_seed_phrase(&phrase) {
-                fail(
-                    "That is not a valid English BIP-39 seed phrase. Check the word count \
-                     (12, 15, 18, 21, or 24) and the spelling of each word.",
-                );
-            }
-            let identity = derive_seed_identity(&phrase).unwrap_or_else(|e| fail(&e.to_string()));
-            let (_, stored_protection) = store.store_phrase(&phrase).unwrap_or_else(|e| {
-                fail(&format!(
-                    "The seed could not be stored at {}: {}",
-                    seed_path.display(),
-                    e
-                ))
-            });
-
-            if !json {
-                println!("Stored the seed at {} (mode 0600).", seed_path.display());
-            }
-            print_identity(&identity, stored_protection, &seed_path, json);
-        }
-        IdentityAction::Backup => {
-            // The one command that prints the secret, and the one that refuses
-            // --json: the phrase must not land in machine-collected output.
-            if json {
-                fail(
-                    "`oa identity backup` does not support --json. The seed phrase must not \
-                     land in machine-collected output; run it without --json and copy the \
-                     phrase yourself.",
-                );
-            }
-            let protection = protection_in_force();
-            let phrase = match store.read_phrase() {
-                Ok(Some(phrase)) => phrase,
-                Ok(None) => fail(&crate::identity::IdentityError::NoSeed.to_string()),
-                Err(e) => fail(&e.to_string()),
-            };
-            println!(
-                "This is the only secret on this machine. Anyone holding it holds the \
-                 identity and the wallet."
-            );
-            // The person about to write the phrase down is the one who most
-            // needs to know whether the copy they are leaving behind on disk is
-            // encrypted or is the phrase itself.
-            println!("{}", protection.describe(&seed_path));
-            println!("{}", phrase);
-        }
-        IdentityAction::Forget { force } => {
-            if !force {
-                fail(&format!(
-                    "Deleting {} destroys the identity and the wallet it derives. Back the \
-                     phrase up with `oa identity backup`, then pass --force.",
-                    seed_path.display()
-                ));
-            }
-            let removed = store.forget().unwrap_or_else(|e| {
-                fail(&format!(
-                    "The seed at {} could not be removed: {}",
-                    seed_path.display(),
-                    e
-                ))
-            });
-            if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "schema": "openagents.cli_identity_forget.v1",
-                        "removed": removed,
-                        "seed_path": seed_path,
-                    })
-                );
-            } else if removed {
-                println!("Removed {}.", seed_path.display());
-            } else {
-                println!("No seed was stored at {}.", seed_path.display());
-            }
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // trace

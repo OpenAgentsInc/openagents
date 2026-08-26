@@ -286,7 +286,6 @@ impl AcpHarness {
         // unconditionally.
         #[cfg(unix)]
         {
-            use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
         if let Some(environment) = &self.env {

@@ -710,7 +710,6 @@ async fn run_cli_child(
     // started. `process_group` is a Unix extension and is absent on Windows.
     #[cfg(unix)]
     {
-        use std::os::unix::process::CommandExt;
         spawn.process_group(0);
     }
     let mut child = match spawn.spawn() {

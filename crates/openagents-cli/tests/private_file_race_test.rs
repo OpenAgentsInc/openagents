@@ -23,7 +23,6 @@
 
 use openagents_cli::auth::{CredentialStore, PendingDeviceAuthorization, PendingStore, Secret};
 use openagents_cli::computer::{ComputerPaths, PolicyConfig};
-use openagents_cli::identity::{generate_seed_phrase, NoKeyStore, SeedStore};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
@@ -301,77 +300,6 @@ fn concurrent_pending_authorization_writes_all_succeed() {
     assert_no_staging_files_left(directory.path());
 }
 
-/// Concurrent seed writes all succeed and the seed that remains is one somebody
-/// actually wrote.
-///
-/// The seed store staged through a fixed `seed.tmp` and removed it before each
-/// write, so two writers could put half of one phrase and half of another in
-/// the file that then got renamed over the seed. A seed is the one file where
-/// that costs an identity outright: nothing recovers a mnemonic that is six
-/// words from one wallet and six from another.
-#[test]
-fn concurrent_seed_writes_all_succeed_and_the_seed_still_opens() {
-    let directory = tempfile::tempdir().expect("an identity directory");
-    let at = directory.path().join("identity");
-    let phrases: Vec<String> = (0..WRITERS)
-        .map(|_| generate_seed_phrase(12).expect("a phrase"))
-        .collect();
-
-    let written = phrases.clone();
-    let target = at.clone();
-    let results = race(move |index| {
-        SeedStore::with_key_store(target.clone(), Box::new(NoKeyStore))
-            .write_phrase(&written[index])
-    });
-    for (index, result) in results.iter().enumerate() {
-        assert!(
-            result.is_ok(),
-            "writer {index} was told the seed was not written: {}",
-            result.as_ref().unwrap_err()
-        );
-    }
-
-    let store = SeedStore::with_key_store(at.clone(), Box::new(NoKeyStore));
-    let recovered = store
-        .read_phrase()
-        .expect("the seed opens")
-        .expect("a seed is stored");
-    assert!(
-        phrases.contains(&recovered),
-        "the stored seed is not any phrase that was written, so two writes were spliced"
-    );
-    #[cfg(unix)]
-    {
-        assert_eq!(
-            mode_of(&store.path()),
-            0o600,
-            "the seed is readable to the machine"
-        );
-        assert_eq!(
-            mode_of(&at),
-            0o700,
-            "the identity directory is open to the machine"
-        );
-    }
-    assert_no_staging_files_left(&at);
-}
-
-/// A reader of `computer.json` never sees a policy it cannot decode, however
-/// many writers are working on it.
-///
-/// `computer.json` wrote in place — truncate the target, then write it — so
-/// between those two calls the file on disk is empty, and any `oa` that read
-/// the policy in that window was told its own configuration is not valid JSON.
-/// It is the policy file: the answer decides which commands the Computer will
-/// run at all, and `load_config` is right to refuse a file it cannot read
-/// rather than fall back to a default the owner never chose. So the refusal
-/// lands on a reader that did nothing wrong.
-///
-/// Writers alone would not settle this. Two small `write` calls usually land
-/// whole, so a test that only writes passes against the broken version. Readers
-/// are what make the truncate window visible, and staging elsewhere and
-/// renaming is what closes it: the target is only ever the old file or the new
-/// one.
 #[test]
 fn a_reader_never_sees_a_half_written_computer_policy() {
     /// Enough passes for the truncate window to be observed if it is open.
