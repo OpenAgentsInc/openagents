@@ -144,7 +144,14 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
 
     enable_raw_mode()?;
     let mut stdout = stdout();
-    stdout.execute(EnterAlternateScreen)?;
+    if let Err(error) = stdout.execute(EnterAlternateScreen) {
+        let _ = disable_raw_mode();
+        return Err(error.into());
+    }
+    // This guard owns every terminal mode after the alternate screen opens.
+    // A failed event reader must not strand mouse reporting or raw mode in the
+    // invoking shell.
+    let _terminal_cleanup = TerminalCleanup;
     // Match grok-build: capture ordinary mouse gestures for in-app trackpad
     // scrolling, while Shift-drag remains native terminal selection and copy.
     // Terminal emulators bypass application mouse reporting for that modified
@@ -383,10 +390,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     }
 
     terminal.hide_cursor()?;
-    let _ = crossterm::execute!(stderr, DisableBracketedPaste, PopKeyboardEnhancementFlags);
-    let _ = std::io::stdout().execute(DisableMouseCapture);
-    disable_raw_mode()?;
-    std::io::stdout().execute(LeaveAlternateScreen)?;
 
     // The screen is gone, so these land on the normal one. Ending the thread is
     // the point: one left open holds its grant's remaining budget, and the
@@ -798,8 +801,39 @@ pub fn export(ui: &mut CoderUi) {
 pub use commands::names as command_names;
 
 fn atty_is_terminal() -> bool {
-    std::io::IsTerminal::is_terminal(&std::io::stdin())
-        && std::io::IsTerminal::is_terminal(&std::io::stdout())
+    if !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+        return false;
+    }
+
+    // The installer runs from a pipe. stdin is therefore exhausted, but the
+    // controlling terminal remains available and Crossterm opens it for raw
+    // mode and input. Redirecting stdin to `/dev/tty` beforehand breaks its
+    // input reader on macOS, so detect the terminal without changing stdin.
+    #[cfg(unix)]
+    {
+        std::fs::File::open("/dev/tty").is_ok()
+    }
+
+    #[cfg(not(unix))]
+    {
+        std::io::IsTerminal::is_terminal(&std::io::stdin())
+    }
+}
+
+/// Restore terminal state even when an input or draw operation returns early.
+struct TerminalCleanup;
+
+impl Drop for TerminalCleanup {
+    fn drop(&mut self) {
+        let _ = crossterm::execute!(
+            std::io::stderr(),
+            DisableBracketedPaste,
+            PopKeyboardEnhancementFlags
+        );
+        let _ = std::io::stdout().execute(DisableMouseCapture);
+        let _ = disable_raw_mode();
+        let _ = std::io::stdout().execute(LeaveAlternateScreen);
+    }
 }
 
 /// Every command the session lists is one it handles.
