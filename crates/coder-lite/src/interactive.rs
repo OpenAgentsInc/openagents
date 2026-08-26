@@ -25,6 +25,7 @@ use crossterm::{
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use openagents_cli::auth::{CredentialStore, DeviceClient, open_browser};
 use openagents_cli::composer::complete::{Completion, complete};
 use openagents_cli::composer::history::History;
 use openagents_cli::composer::ComposerAction;
@@ -58,6 +59,8 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         println!("Non-interactive terminal detected. Run coder-lite from a TTY.");
         return Ok(());
     }
+
+    ensure_authenticated().await?;
 
     let lane = Lane::from_str(&options.lane_name);
     let (tx, rx) = mpsc::channel::<Control>();
@@ -202,6 +205,40 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             REVOCATION_GRACE.as_secs()
         ),
     }
+    Ok(())
+}
+
+/// If no credential is already in the environment or store, start a GitHub
+/// device-authorization flow and store the resulting token for the runtime to
+/// spend. The TUI is not yet on the alternate screen, so this prints normally.
+async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::var("OPENAGENTS_API_KEY").is_ok() {
+        return Ok(());
+    }
+
+    let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
+    let store = CredentialStore::for_origin(&endpoint.origin);
+    if store.find_token()?.is_some() {
+        return Ok(());
+    }
+
+    println!("Press Enter to log in with GitHub.");
+    let mut line = String::new();
+    let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
+    tokio::io::AsyncBufReadExt::read_line(&mut stdin, &mut line).await?;
+
+    let client = DeviceClient::new(&endpoint.origin);
+    let scopes: &[String] = &[];
+    let auth = client.start(scopes).await?;
+
+    println!("Opening {} in your browser...", auth.verification_uri_complete);
+    open_browser(&auth.verification_uri_complete);
+    println!("Waiting for approval...");
+
+    let token = client.wait(&auth).await?;
+    let _ = store.store(&token)?;
+    println!("Authenticated.");
+
     Ok(())
 }
 

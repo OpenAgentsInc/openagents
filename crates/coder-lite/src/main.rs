@@ -23,8 +23,8 @@ use tokio::time::{sleep, timeout};
 
 use coder_lite::interactive::SessionOptions;
 
+const DEV_API_URL: &str = "http://127.0.0.1:4000";
 const DEV_BASE_URL: &str = "http://127.0.0.1:4000/api/v1";
-const DEV_API_KEY: &str = "fake";
 
 /// Every flag this binary reads. A flag listed here does what it says or the
 /// binary refuses to start; there is nothing accepted-and-ignored.
@@ -48,8 +48,9 @@ Options:
   -V, --version      Print the version and exit.
 
 Environment:
+  OPENAGENTS_API_URL    The API origin to use. `--dev` sets it.
   OPENAGENTS_BASE_URL   The /api/v1 base to use. `--dev` sets it.
-  OPENAGENTS_API_KEY    The credential to spend. Falls back to `oa auth`.
+  OPENAGENTS_API_KEY    The credential to spend. Optional if signed in.
   OPENAGENTS_WEB_REPO   Where `--dev` looks for start_server.sh.
   ACP_REGISTRY          Where the `acp` tool looks for installed agents.
 
@@ -72,8 +73,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // before the TUI and its tokio tasks start, so no other thread
                 // exists yet.
                 unsafe {
+                    env::set_var("OPENAGENTS_API_URL", DEV_API_URL);
                     env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
-                    env::set_var("OPENAGENTS_API_KEY", DEV_API_KEY);
                 }
             }
             options
