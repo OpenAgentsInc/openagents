@@ -223,6 +223,8 @@ pub struct CoderUi {
     pub reasoning: Option<String>,
     pub running: bool,
     pub entries: Vec<Entry>,
+    /// The current session goal, when one exists.
+    pub goal: Option<crate::coder::goal::Goal>,
     /// Whether the centered startup summary is still visible.
     ///
     /// It is UI chrome, not a transcript entry, and disappears when the first
@@ -323,6 +325,7 @@ impl CoderUi {
             reasoning: None,
             running: true,
             entries: vec![],
+            goal: None,
             show_welcome: true,
             cwd: String::new(),
             scroll_override: None,
@@ -543,7 +546,7 @@ impl CoderUi {
         // The lane takes exactly the columns it needs and is right-aligned to
         // the edge. The balance gets the remaining columns on the left; no
         // fixed gutter survives when either field is short.
-        let balance = self.balance_line();
+        let mut balance = self.balance_line();
         let balance_width = (balance.chars().count() as u16).min(status_area.width);
         let gap = u16::from(balance_width > 0);
         let lane = self.lane_field_within(
@@ -552,6 +555,28 @@ impl CoderUi {
                 .saturating_sub(balance_width.saturating_add(gap)),
         );
         let lane_width = (lane.chars().count() as u16).min(status_area.width);
+        if let Some(goal) = self
+            .goal
+            .as_ref()
+            .filter(|goal| goal.status == crate::coder::goal::GoalStatus::Active)
+        {
+            let snippet = if goal.objective.chars().count() > 25 {
+                format!("{}…", goal.objective.chars().take(22).collect::<String>())
+            } else {
+                goal.objective.clone()
+            };
+            let field = format!("goal: \"{snippet}\"");
+            let separator = if balance.is_empty() { "" } else { " · " };
+            let needed = separator.len() as u16 + field.chars().count() as u16;
+            if balance_width
+                .saturating_add(lane_width)
+                .saturating_add(needed)
+                <= status_area.width
+            {
+                balance.push_str(separator);
+                balance.push_str(&field);
+            }
+        }
         let balance_area = Rect {
             width: status_area.width.saturating_sub(lane_width),
             ..status_area

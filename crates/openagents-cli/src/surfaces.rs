@@ -53,6 +53,8 @@ pub mod tool_descriptions {
     pub const RUST_DELEGATE: &str = "Run one prompt on independent child coding agents in parallel and return what each one found or did. Use it when work splits into parts that do not depend on each other: several files to change the same way, several hypotheses to check, several tests to run down. Each child is a full coding agent with its own shell tool, working in a git worktree of its own so children cannot overwrite each other, and it starts with no context from this conversation and cannot ask questions — so the prompt has to be self-contained. Every child runs the same prompt and each is told separately which number it is, so write the prompt for whichever child reads it: say \"read the file at your own number\" rather than naming one child. Children run on {lane} and on this session's budget. Prefer one call with a count over several calls, and prefer `shell` over this for a single command — a child agent is for work worth a whole agent, not one line of output. At most {max_count} children.";
     /// `rust.capability`
     pub const RUST_CAPABILITY: &str = "Discover and load installed plugin capabilities: sandboxed, digest-pinned WebAssembly programs this machine already holds for common agent work. Before writing a script for a task, search here first — a capability that covers it is bounded, reviewable, and returns structured output. Call with `query` describing what you need to get the best matches; then call again with `name` set to the exact returned name to load it and make its dedicated tool available. Every later call to the loaded capability uses that exact name as the tool name.";
+    /// `goal`
+    pub const GOAL: &str = "Report a state change on the active persistent task goal for this session. The goal's objective, status, and budget already accompany each turn; call this with action='complete' when the goal is done and verified, or 'block'/'pause'/'resume' to update its status.";
 }
 
 /// Every staged surface and the digest of the artifact this was built from.
@@ -60,6 +62,6 @@ pub mod tool_descriptions {
 /// A run records these so a bench row names exactly which text produced it.
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ("system-prompt", "sha256:8f0fbbbb38f4ce609a09fe2ba4e03ca160ff2c0d0f698dd4676c2bf940ded849"),
-    ("tool-descriptions", "sha256:f85ed27173e41eb6752cc6232600ff17b02ea06a41b59383b1963093459b1eca"),
+    ("tool-descriptions", "sha256:e3f86c6eeebd99c99d21fb06aab9f1ea7628e7f38c1c78d9dca028335bdd1532"),
     ("catalog-lines", "sha256:98a96bcf6acfd5847bc1bddcc575761af71be7ea144f3584b3594b24b2f80911"),
 ];

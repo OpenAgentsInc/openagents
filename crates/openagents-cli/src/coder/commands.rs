@@ -32,6 +32,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "write the transcript to ~/.openagents/exports as an ATIF document",
     ),
     ("help", "list these commands and the keys"),
+    ("goal", "set, inspect, or manage the task goal"),
     (
         "info",
         "what this session has spent: tokens, model, lane, thread",
@@ -78,7 +79,16 @@ pub fn names() -> Vec<&'static str> {
 pub fn handles(name: &str) -> bool {
     matches!(
         name,
-        "clear" | "diff" | "export" | "help" | "info" | "login" | "logout" | "resume" | "run"
+        "clear"
+            | "diff"
+            | "export"
+            | "goal"
+            | "help"
+            | "info"
+            | "login"
+            | "logout"
+            | "resume"
+            | "run"
     )
 }
 

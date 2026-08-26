@@ -387,6 +387,13 @@ impl HarnessToolRegistry {
         Ok(())
     }
 
+    /// Remove a front-end tool when the state that made it available is gone.
+    pub fn remove_host_tool(&mut self, name: &str) -> bool {
+        let before = self.host.len();
+        self.host.retain(|tool| tool.definition.name != name);
+        self.host.len() != before
+    }
+
     /// The plugins loaded into this session so far.
     pub fn loaded_plugins(&self) -> Vec<Arc<LoadedPlugin>> {
         self.loaded

@@ -286,8 +286,8 @@ it — `transcript.rs:23-25`, `tui.rs:15` (palette constants only), and `mod.rs`
 
 ### F. Commands
 
-coder-lite handles **7** (`commands.rs:24-44`): `/clear`, `/diff`, `/export`,
-`/help`, `/login`, `/resume`, `/run`.
+The native Coder handles **10**: `/clear`, `/diff`, `/export`, `/goal`, `/help`,
+`/info`, `/login`, `/logout`, `/resume`, and `/run`.
 `oa coder` handles **6** (`interactive.rs:63-79`): the same minus `/login`.
 TypeScript handles **10**: `/reload`, `/skills`, `/plugin load`, `/resume`,
 `/delegate` (UI side) and `/system`, `/goal`, `/export`, `/help`, `/?`
@@ -301,7 +301,7 @@ TypeScript handles **10**: `/reload`, `/skills`, `/plugin load`, `/resume`,
 | F4 | `/skills` screen | **T** — TS has an arrows plus space-toggle screen (`coder-ui.ts:1490-1518`). Boundary-split, §7 |
 | F5 | `/system` (describe the assembled context) | **T (small)** — `coder-session.ts:864-874` |
 | F6 | `/plugin load <path>` | **T (low)** — `coder-ui.ts:1294-1307` |
-| F7 | `/goal` | **boundary violation as scoped** — §7 |
+| F7 | `/goal` | **P** — #138 ports the store and budget policy into the Rust runtime; the TUI dispatches the command and renders its active-goal footer field |
 | F8 | `/reload` | **D (not applicable)** — TS re-execs itself from a source checkout (`coder-ui.ts:1264-1280`). A compiled binary has no equivalent |
 
 TypeScript defect worth recording while retiring it: `coder-session.ts:968-1019`
@@ -586,12 +586,10 @@ Per #117's guardrail. After release 0.0.2 this is a module seam inside one
 binary rather than a seam between two, which makes it easier to cross by
 accident and no less real.
 
-**7.1 — `/goal` (F7), as scoped, is a violation.** TS's `/goal` has five
-sub-actions and a token budget backed by a `GoalStore` (`coder-goals.ts`). A
-goal store with budgets is session state and spending policy — runtime. If this
-is wanted, the store lands in `openagents-cli` and coder-lite renders the goal
-in the status bar and dispatches the sub-commands. Porting `coder-goals.ts` into
-`crates/coder-lite/` would put budget policy in the presentation crate.
+**7.1 — `/goal` (F7) is ported at the required boundary.** Issue #138 places
+the goal store, usage accounting, budget transition, standing turn context,
+and model tool in `openagents-cli`. The TUI dispatches the slash commands and
+renders the active-goal footer field. No budget policy lives in presentation.
 
 **7.2 — Image paste (A11) must be split.** The placeholder token, its map, and
 its rendering are presentation. MIME sniffing, base64 encoding, and assembling a

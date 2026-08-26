@@ -228,7 +228,7 @@ export function goalBudgetExhaustedPrompt(goal: PersistentGoal): string {
 export function goalTool(goalStore: GoalStore): CoderTool {
   return {
     name: "goal",
-    description: TOOL_DESCRIPTION_SURFACE["node.goal"],
+    description: TOOL_DESCRIPTION_SURFACE.goal,
     parameters: {
       type: "object",
       properties: {

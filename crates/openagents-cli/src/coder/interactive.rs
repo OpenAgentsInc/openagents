@@ -658,6 +658,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             ui.loading = false;
             ui.waiting = None;
         }
+        Control::Goal(goal) => ui.goal = goal,
     }
 }
 
@@ -757,6 +758,19 @@ fn submit(
     ui.scroll_override = None;
     ui.show_welcome = false;
     ui.entries.push(Entry::new(Role::You, text.clone()));
+
+    if crate::coder::goal::is_goal_command(&text) {
+        let notice = match session.try_lock() {
+            Ok(mut session) => {
+                let notice = session.goal_command(&text);
+                ui.goal = session.goal();
+                notice
+            }
+            Err(_) => "The running turn must finish before `/goal` can change.".to_string(),
+        };
+        ui.entries.push(Entry::new(Role::Output, notice));
+        return commands::Outcome::Done;
+    }
 
     if text.trim_start().starts_with('/') {
         return commands::run(ui, text.trim(), tx, cwd);

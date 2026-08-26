@@ -359,6 +359,50 @@ async fn a_turn_opens_a_thread_runs_a_tool_and_streams_the_answer() {
 
     let lines = stub.request_lines();
     assert!(lines.iter().any(|l| l.starts_with("POST /api/v1/threads")));
+    assert!(
+        stub.requests()
+            .iter()
+            .filter(|request| request.contains("/api/inference/proxy"))
+            .all(|request| !request.contains("\"name\":\"goal\"")),
+        "a session with no goal declared the goal tool"
+    );
+}
+
+#[tokio::test]
+async fn an_active_goal_rides_the_turn_and_accounts_for_usage() {
+    let stub = start(move |request, origin| {
+        if request.contains("POST /api/v1/threads ") {
+            return Reply::Body(200, "application/json", grant(origin));
+        }
+        if request.contains("/api/inference/proxy") {
+            return Reply::Sse(vec![text("working"), usage(42)]);
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let (tx, rx) = channel();
+    let mut session = session(&stub.base, tx.clone());
+    session.goal_command("/goal --budget 40 finish the native port");
+    session.execute_turn("continue", tx).await;
+
+    let request = stub
+        .requests()
+        .into_iter()
+        .find(|request| request.contains("/api/inference/proxy"))
+        .expect("proxy request");
+    assert!(request.contains("finish the native port"), "{request}");
+    assert!(request.contains("Token budget remaining: 40 tokens"), "{request}");
+    assert!(request.contains("\"name\":\"goal\""), "{request}");
+
+    let seen = drain(&rx);
+    assert!(seen.iter().any(|control| {
+        matches!(
+            control,
+            Control::Goal(Some(goal))
+                if goal.status == openagents_cli::coder::goal::GoalStatus::BudgetLimited
+                    && goal.tokens_used == 42
+        )
+    }));
 }
 
 /// A silent provider becomes visible, loses its request at the deadline, and

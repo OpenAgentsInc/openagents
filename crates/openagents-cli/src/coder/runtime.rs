@@ -28,13 +28,11 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
+use crate::runtime::{ChatMessage, CoderRuntimeSession, Lane, ToolEvent, TurnProgress, TurnUsage};
 use crate::surfaces::system_prompt as prompt;
-use crate::runtime::{
-    ChatMessage, CoderRuntimeSession, Lane, ToolEvent, TurnProgress, TurnUsage,
-};
 use crate::tools::{DelegationGate, HarnessToolRegistry, ToolDefinition};
-
 
 type Failure = Box<dyn std::error::Error + Send + Sync>;
 
@@ -84,6 +82,8 @@ pub enum Control {
     Failed(String),
     /// The turn is over, one way or the other.
     Done,
+    /// The current goal after a command, tool call, or usage update.
+    Goal(Option<crate::coder::goal::Goal>),
 }
 
 /// A `Sender` an observer can hold: `Fn` observers are shared, and the frame
@@ -109,9 +109,8 @@ pub fn system_prompt(tools: &[ToolDefinition]) -> String {
     if tools.is_empty() {
         lines.push(prompt::CODER_LITE_NO_TOOLS.to_string());
     } else {
-        lines.push(
-            prompt::CODER_LITE_TOOL_LIST_HEADER.replace("{count}", &tools.len().to_string()),
-        );
+        lines
+            .push(prompt::CODER_LITE_TOOL_LIST_HEADER.replace("{count}", &tools.len().to_string()));
         for tool in tools {
             lines.push(format!("- `{}`", tool.name));
         }
@@ -169,6 +168,7 @@ pub struct Session {
     /// Cleared at the top of every turn and set by the `acp` tool itself; see
     /// [`crate::coder::acp_tool`] for why one is the limit.
     acp_spent: Arc<AtomicBool>,
+    goal: crate::coder::goal::SharedGoal,
 }
 
 impl Session {
@@ -230,6 +230,7 @@ impl Session {
         );
 
         let sink: Sink = Arc::new(Mutex::new(tx));
+        let goal = Arc::new(Mutex::new(crate::coder::goal::GoalStore::default()));
         let observed = Arc::clone(&sink);
         let progress = Arc::clone(&sink);
 
@@ -258,55 +259,52 @@ impl Session {
         }
 
         let mut inner = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools)
-        .observing_tools(Arc::new(move |event: ToolEvent| match event {
-            ToolEvent::Started {
-                call_id,
-                name,
-                arguments,
-            } => send(
-                &observed,
-                Control::Tool {
+            .observing_tools(Arc::new(move |event: ToolEvent| match event {
+                ToolEvent::Started {
                     call_id,
                     name,
                     arguments,
-                },
-            ),
-            ToolEvent::Finished {
-                call_id,
-                output,
-                is_error,
-                ..
-            } => {
-                send(
+                } => send(
                     &observed,
-                    Control::ToolOutput {
-                        call_id: call_id.clone(),
-                        chunk: output,
+                    Control::Tool {
+                        call_id,
+                        name,
+                        arguments,
                     },
-                );
-                send(&observed, Control::ToolDone { call_id, is_error });
-            }
-        }))
-        .observing_progress(Arc::new(move |event| {
-            let message = match event {
-                TurnProgress::Waiting {
-                    retry: 0,
-                    max_retries: _,
-                } => Some("Waiting for the model...".to_string()),
-                TurnProgress::Waiting {
-                    retry,
-                    max_retries,
-                } => Some(format!(
-                    "Waiting for the model (retry {retry} of {max_retries})..."
-                )),
-                TurnProgress::Retrying { retry, max_retries } => Some(format!(
-                    "No response after 10 seconds. Retrying ({retry} of {max_retries})..."
-                )),
-                TurnProgress::Clear => None,
-            };
-            send(&progress, Control::Waiting(message));
-        }))
-        .use_openresponses(dev);
+                ),
+                ToolEvent::Finished {
+                    call_id,
+                    output,
+                    is_error,
+                    ..
+                } => {
+                    send(
+                        &observed,
+                        Control::ToolOutput {
+                            call_id: call_id.clone(),
+                            chunk: output,
+                        },
+                    );
+                    send(&observed, Control::ToolDone { call_id, is_error });
+                }
+            }))
+            .observing_progress(Arc::new(move |event| {
+                let message = match event {
+                    TurnProgress::Waiting {
+                        retry: 0,
+                        max_retries: _,
+                    } => Some("Waiting for the model...".to_string()),
+                    TurnProgress::Waiting { retry, max_retries } => Some(format!(
+                        "Waiting for the model (retry {retry} of {max_retries})..."
+                    )),
+                    TurnProgress::Retrying { retry, max_retries } => Some(format!(
+                        "No response after 10 seconds. Retrying ({retry} of {max_retries})..."
+                    )),
+                    TurnProgress::Clear => None,
+                };
+                send(&progress, Control::Waiting(message));
+            }))
+            .use_openresponses(dev);
         inner.reasoning = reasoning;
         inner.repository = repository();
 
@@ -326,6 +324,7 @@ impl Session {
             lane,
             sink,
             acp_spent,
+            goal,
         }
     }
 
@@ -356,6 +355,89 @@ impl Session {
             .set_first_response_policy(waiting_after, timeout_after);
     }
 
+    /// Apply one `/goal` command and return its notice.
+    pub fn goal_command(&mut self, line: &str) -> String {
+        use crate::coder::goal::{GoalCommand, GoalStatus};
+
+        let Some(command) = crate::coder::goal::parse_command(line) else {
+            return "There is no `/goal` command in that input.".to_string();
+        };
+        let mut store = match self.goal.lock() {
+            Ok(store) => store,
+            Err(_) => return "This session does not have goal storage available.".to_string(),
+        };
+        match command {
+            GoalCommand::Status => crate::coder::goal::format_notice(store.get().as_ref()),
+            GoalCommand::Clear => {
+                let cleared = store.clear();
+                drop(store);
+                if cleared {
+                    self.inner.tools.remove_host_tool("goal");
+                    self.refresh_system_prompt();
+                    "Cleared active task goal.".to_string()
+                } else {
+                    "No active task goal to clear.".to_string()
+                }
+            }
+            GoalCommand::Pause => match store.update_status(GoalStatus::Paused) {
+                Some(goal) => format!("Paused task goal: \"{}\"", goal.objective),
+                None => "No active task goal to pause.".to_string(),
+            },
+            GoalCommand::Resume => match store.update_status(GoalStatus::Active) {
+                Some(goal) => format!("Resumed task goal: \"{}\"", goal.objective),
+                None => "No task goal to resume.".to_string(),
+            },
+            GoalCommand::Set {
+                objective,
+                token_budget,
+            } => {
+                let goal = store.set(&objective, token_budget);
+                drop(store);
+                if !self
+                    .inner
+                    .tools
+                    .list_tools()
+                    .iter()
+                    .any(|tool| tool.name == "goal")
+                {
+                    if let Err(refusal) = self
+                        .inner
+                        .tools
+                        .add_host_tool(crate::coder::goal::host_tool(Arc::clone(&self.goal)))
+                    {
+                        return refusal;
+                    }
+                    self.refresh_system_prompt();
+                }
+                format!(
+                    "Set active goal: \"{}\"{}\nCall /goal for details, or /goal clear to remove.",
+                    goal.objective,
+                    goal.token_budget
+                        .map(|budget| {
+                            format!(" (Budget: {} tokens)", crate::coder::goal::grouped(budget))
+                        })
+                        .unwrap_or_default()
+                )
+            }
+        }
+    }
+
+    pub fn goal(&self) -> Option<crate::coder::goal::Goal> {
+        self.goal.lock().ok().and_then(|store| store.get())
+    }
+
+    fn refresh_system_prompt(&mut self) {
+        let content = system_prompt(&self.inner.tools.list_tools());
+        if let Some(message) = self
+            .inner
+            .messages
+            .first_mut()
+            .filter(|message| message.role == "system")
+        {
+            message.content = Some(content);
+        }
+    }
+
     /// Run one turn, streaming everything it does down `tx`.
     ///
     /// Always ends with exactly one [`Control::Done`], so a frame cannot be
@@ -372,9 +454,17 @@ impl Session {
         // other.
         let streamed = Arc::new(AtomicBool::new(false));
         let saw = Arc::clone(&streamed);
+        let started = Instant::now();
+        let goal_prompt = self
+            .goal()
+            .as_ref()
+            .and_then(crate::coder::goal::continuation_prompt);
+        let outgoing = goal_prompt
+            .map(|goal| format!("{prompt}\n\n{goal}"))
+            .unwrap_or_else(|| prompt.to_string());
         let result = self
             .inner
-            .execute_turn(prompt, move |chunk| {
+            .execute_turn(&outgoing, move |chunk| {
                 if !chunk.is_empty() {
                     saw.store(true, Ordering::Relaxed);
                     send(&chunks, Control::Chunk(chunk.to_string()));
@@ -390,6 +480,13 @@ impl Session {
         }
         if self.inner.last_usage.reported() {
             send(&sink, Control::Usage(self.inner.last_usage));
+        }
+        if let Ok(mut goal) = self.goal.lock() {
+            goal.add_usage(
+                self.inner.last_usage.total_tokens,
+                u64::try_from((started.elapsed().as_millis() + 500) / 1_000).unwrap_or(u64::MAX),
+            );
+            send(&sink, Control::Goal(goal.get()));
         }
         match result {
             Ok(answer) => {
@@ -542,7 +639,10 @@ mod tests {
             },
         ];
         let prompt = system_prompt(&tools);
-        assert!(prompt.contains("You have 2 tools, and no others:"), "{prompt}");
+        assert!(
+            prompt.contains("You have 2 tools, and no others:"),
+            "{prompt}"
+        );
         assert!(prompt.contains("- `shell`"), "{prompt}");
         assert!(prompt.contains("- `skill`"), "{prompt}");
 
@@ -572,5 +672,91 @@ mod tests {
         );
         // Arguments that will not parse are not a reason to draw no header.
         assert_eq!(tool_title("shell", "not json"), "shell");
+    }
+
+    #[test]
+    fn a_goal_adds_its_tool_and_clear_removes_it() {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut session = Session::open_at(
+            Lane::Flash,
+            "flash",
+            None,
+            Vec::new(),
+            "http://127.0.0.1:1/api/v1".to_string(),
+            Some("test-token".to_string()),
+            false,
+            tx,
+        );
+        assert!(
+            session
+                .inner
+                .tools
+                .list_tools()
+                .iter()
+                .all(|tool| tool.name != "goal")
+        );
+
+        let notice = session.goal_command("/goal --budget 500 finish the port");
+        assert!(notice.contains("Set active goal"), "{notice}");
+        assert!(
+            session
+                .inner
+                .tools
+                .list_tools()
+                .iter()
+                .any(|tool| tool.name == "goal")
+        );
+        assert!(
+            session.inner.messages[0]
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("- `goal`")
+        );
+
+        assert_eq!(
+            session.goal_command("/goal clear"),
+            "Cleared active task goal."
+        );
+        assert!(session.goal().is_none());
+        assert!(
+            session
+                .inner
+                .tools
+                .list_tools()
+                .iter()
+                .all(|tool| tool.name != "goal")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_model_can_complete_the_active_goal() {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut session = Session::open_at(
+            Lane::Flash,
+            "flash",
+            None,
+            Vec::new(),
+            "http://127.0.0.1:1/api/v1".to_string(),
+            Some("test-token".to_string()),
+            false,
+            tx,
+        );
+        session.goal_command("/goal finish the port");
+        let output = session
+            .inner
+            .tools
+            .execute_tool(&crate::tools::ToolCall {
+                id: "goal-call".to_string(),
+                name: "goal".to_string(),
+                arguments: serde_json::json!({"action": "complete"}),
+            })
+            .await;
+        assert!(!output.is_error, "{}", output.output);
+        assert!(output.output.contains("marked as completed"));
+        assert_eq!(
+            session.goal().unwrap().status,
+            crate::coder::goal::GoalStatus::Completed
+        );
     }
 }

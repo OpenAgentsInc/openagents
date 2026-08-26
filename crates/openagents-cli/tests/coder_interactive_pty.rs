@@ -800,6 +800,43 @@ mod unix_pty {
         });
     }
 
+    #[test]
+    fn goal_commands_match_the_retired_typescript_surface() {
+        let mut tui = Tui::start();
+        tui.wait_for_composer();
+
+        tui.type_text("/goooooal --budget 500 finish the native port");
+        tui.send(b"\r");
+        let frame = tui.wait_for("the goal to be set and shown", REDRAW, |frame| {
+            let transcript = frame.transcript();
+            transcript.contains("Set active goal: \"finish the native port\"")
+                && frame.rows.iter().any(|row| row.contains("goal: \"finish the native port\""))
+        });
+        assert!(
+            !frame.transcript().contains("There is no `/goal`"),
+            "the native command dispatch still refused `/goal`.\n{}",
+            frame.dump()
+        );
+
+        tui.type_text("/goal status");
+        tui.send(b"\r");
+        tui.wait_for("goal status to show its budget", REDRAW, |frame| {
+            frame.transcript().contains("Active Goal (active)")
+                && frame.transcript().contains("0 / 500 tokens")
+        });
+
+        tui.type_text("/goal clear");
+        tui.send(b"\r");
+        let frame = tui.wait_for("the goal to clear", REDRAW, |frame| {
+            frame.transcript().contains("Cleared active task goal.")
+        });
+        assert!(
+            frame.rows.last().is_some_and(|row| !row.contains("goal: \"")),
+            "the footer kept a cleared goal.\n{}",
+            frame.dump()
+        );
+    }
+
     /// A resize redraws the frame at the new size instead of leaving the old
     /// one behind it.
     #[test]
