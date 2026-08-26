@@ -126,26 +126,54 @@ impl CoderRuntimeSession {
             if let Some((call_id, agent_id, task)) = pending_tool.take() {
                 if let Some(agent) = self.agents.iter().find(|a| a.id == agent_id).cloned() {
                     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                    let mut header_sent = false;
                     let result = {
                         let tx = tx.clone();
                         AcpHarness {
                             command: agent.command,
                             args: agent.args,
                         }
-                        .run(&task, &cwd, move |event| match event {
-                            AcpEvent::Tool { title, .. } => {
-                                let _ = tx.send(Control::Tool {
-                                    agent: agent_id.clone(),
-                                    title,
-                                });
+                        .run(&task, &cwd, |event| {
+                            match event {
+                                AcpEvent::Tool { title, .. } => {
+                                    header_sent = true;
+                                    let _ = tx.send(Control::Tool {
+                                        agent: agent_id.clone(),
+                                        title,
+                                    });
+                                }
+                                AcpEvent::Text { chunk } => {
+                                    let _ = tx.send(Control::ToolText(chunk));
+                                }
+                                _ => {}
                             }
-                            AcpEvent::Text { chunk } => {
-                                let _ = tx.send(Control::ToolText(chunk));
-                            }
-                            _ => {}
                         })
                         .await
                     };
+
+                    match &result {
+                        Ok(_) if !header_sent => {
+                            let _ = tx.send(Control::Tool {
+                                agent: agent_id.clone(),
+                                title: "completed".to_string(),
+                            });
+                        }
+                        Err(_) if !header_sent => {
+                            let _ = tx.send(Control::Tool {
+                                agent: agent_id.clone(),
+                                title: "error".to_string(),
+                            });
+                            let _ = tx.send(Control::ToolText(
+                                result.as_ref().err().unwrap().to_string(),
+                            ));
+                        }
+                        Err(_) => {
+                            let _ = tx.send(Control::ToolText(
+                                result.as_ref().err().unwrap().to_string(),
+                            ));
+                        }
+                        _ => {}
+                    }
 
                     let _ = tx.send(Control::ToolDone);
                     let output = result.unwrap_or_else(|e| e.to_string());
