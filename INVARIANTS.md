@@ -332,10 +332,16 @@ come from the Freerange teardown
 
 ## Product Surface Ownership
 
-- `apps/openagents.com/` owns the `openagents.com` product surface and retains
-  its local invariant ledger.
-- `apps/forum/` owns forum-specific code and must mount under `/forum` when it
-  is served by `openagents.com`.
+- The separate `OpenAgentsInc/openagents.com` repository owns the sole current
+  web application and backend. Its Phoenix application owns the public site,
+  APIs, forum, forge, authentication, inference, credits, conversations, Box,
+  computers, voice-facing routes, receipts, and operations.
+- `crates/openagents-cli` is the sole current terminal and CLI authority in
+  this repository. Release tooling builds its `openagents` binary.
+- `apps/openagents.com/` is a historical TypeScript implementation pending
+  deletion. It has no current web, API, or deployment authority.
+- `apps/forum/` is historical forum port source. The Phoenix application owns
+  the live forum at `/forum`.
 - The deleted `apps/forge/`, `apps/nostr-relay/`, and
   `apps/openagents-world/` paths have no production authority. Git history is
   their archive.
@@ -1455,17 +1461,6 @@ come from the Freerange teardown
   unread counts or status badges may not appear until a real authority supplies
   them. ProductSpec and AssuranceSpec remain excluded under the preceding
   allowlist rule.
-- AUDIO-0 #8733 is a planned, not-yet-live exception for the future Mic path.
-  When AUDIO-4 #8737 lands, native capture/playback may run only in the signed
-  process-opaque `crates/oa-desktop-audio` Rust helper authorized by the
-  Effect/Rust audio decision. `packages/audio-contract` Effect Schema remains
-  canonical, Electron main supervises a closed public-safe control protocol,
-  raw media and the direct authenticated media socket stay inside the helper,
-  renderer, preload, Runtime Gateway events, Khala Sync, command authority,
-  storage policy, Google adapters, and UI remain Effect/TypeScript. This bullet
-  does not make Mic visible in the MVP: AUDIO work retains its own acceptance
-  gates and cannot expand the ProductSpec surface allowlist.
-
 ### Persistent Voice and Raw Media
 
 - Sarah voice admission is a read-only preflight: it never creates a ticket,
@@ -2595,11 +2590,12 @@ under their own names.
 - Held by `packages/openagents-cli/test/coder-tiers.test.ts`. Issue
   OpenAgentsInc/openagents#40.
 
-## coder-lite Transcript Rendering
+## OpenAgents CLI transcript rendering
 
-`crates/coder-lite` renders assistant markdown with the streaming engine
-ported from grok-build (`crates/coder-lite/src/markdown/`, Apache-2.0, see
-`LICENSE-APACHE-xai` there). Three things about that rendering are fixed.
+`crates/openagents-cli` renders Coder assistant markdown with the streaming
+engine ported from grok-build (`crates/openagents-cli/src/coder/markdown/`,
+Apache-2.0, see `LICENSE-APACHE-xai` there). Three things about that rendering
+are fixed.
 
 - **Nothing the model sent may disappear.** A construct either renders or
   renders literally. An unterminated fence shows its body, an unknown language
@@ -2609,9 +2605,9 @@ ported from grok-build (`crates/coder-lite/src/markdown/`, Apache-2.0, see
   sent once is rendered once. `Entry` seeds its renderer lazily from
   `Entry::text`, so a chunk must reach the renderer before it joins `text` —
   the other order renders the first chunk of every stream twice. Held by
-  `crates/coder-lite/tests/markdown.rs::no_construct_swallows_its_content`,
+  `crates/openagents-cli/tests/coder_markdown.rs::no_construct_swallows_its_content`,
   `malformed_markdown_renders_literally_rather_than_disappearing`, and
-  `crates/coder-lite/tests/streaming.rs::streaming_an_entry_renders_each_chunk_exactly_once`.
+  `crates/openagents-cli/tests/coder_streaming.rs::streaming_an_entry_renders_each_chunk_exactly_once`.
 - **One amber on one background.** Every painted cell in the transcript is
   `#FFB000` on `#080600`. Markdown elements and syntax highlighting are told
   apart by effect — bold, dim, italic, underline — never by hue. Colour
@@ -2619,12 +2615,12 @@ ported from grok-build (`crates/coder-lite/src/markdown/`, Apache-2.0, see
   `markdown::theme::amberize` before it reaches the screen. The braille
   spinner frames and the `Entry` / `CoderUi` frame are part of the same
   identity. Held by
-  `crates/coder-lite/tests/markdown.rs::every_painted_cell_keeps_the_amber_palette`,
+  `crates/openagents-cli/tests/coder_markdown.rs::every_painted_cell_keeps_the_amber_palette`,
   `syntax_highlighting_shows_up_as_weight_not_hue`, and
   `spinner_frames_still_animate`. Role markers sit at column 0 — `>` for a
   user message, `⏺` for a notice, reasoning line, or tool call — with a
   two-column hanging indent on wrapped lines. Held by
-  `crates/coder-lite/tests/rebase_contract.rs`, which also holds the `/export`
+  `crates/openagents-cli/tests/coder_rebase_contract.rs`, which also holds the `/export`
   payload and the delegate-error box against a future rewrite of the
   transcript renderer.
 - **Streaming is incremental, and that is measured.** A chunk is on screen
@@ -2632,7 +2628,7 @@ ported from grok-build (`crates/coder-lite/src/markdown/`, Apache-2.0, see
   bytes rather than `O(n²)`. `StreamingMarkdownRenderer::reparsed_bytes` and
   `transcript::WrapStats` exist so the saving is asserted as cost, not assumed
   from output that happens to look right. Held by
-  `crates/coder-lite/tests/streaming.rs`. Issue OpenAgentsInc/openagents#104.
+  `crates/openagents-cli/tests/coder_streaming.rs`. Issue OpenAgentsInc/openagents#104.
 
 ## Foreign Session Resume
 

@@ -52,19 +52,14 @@ if ! ( cd "$root" && pnpm exec vp lint --quiet ) >&2; then
   exit 1
 fi
 
-# Targeted checks for the CLI and Phoenix backend.
-cli_changed=$(echo "$changed_files" | grep -E '^crates/(coder-lite|openagents-cli)/' | sed -n '1p')
-phoenix_changed=$(echo "$changed_files" | grep -E '^apps/openagents\.com/' | sed -n '1p')
+# Targeted checks for the Rust CLI. The Phoenix backend lives in the separate
+# OpenAgentsInc/openagents.com repository.
+cli_changed=$(echo "$changed_files" | grep -E '^crates/openagents-cli/' | sed -n '1p')
 
 if [ -n "$cli_changed" ]; then
   echo "[pre-push guard] Rust CLI changes -> running cargo checks..." >&2
-  ( cd "$root" && cargo check -p coder-lite ) || { echo "[pre-push guard] BLOCKED: cargo check -p coder-lite failed." >&2; exit 1; }
-  ( cd "$root" && cargo test -p coder-lite ) || { echo "[pre-push guard] BLOCKED: cargo test -p coder-lite failed." >&2; exit 1; }
-fi
-
-if [ -n "$phoenix_changed" ]; then
-  echo "[pre-push guard] Phoenix changes -> running mix compile..." >&2
-  ( cd "$root/apps/openagents.com" && mix compile ) || { echo "[pre-push guard] BLOCKED: mix compile failed." >&2; exit 1; }
+  ( cd "$root" && cargo check -p openagents-cli ) || { echo "[pre-push guard] BLOCKED: cargo check -p openagents-cli failed." >&2; exit 1; }
+  ( cd "$root" && cargo test -p openagents-cli ) || { echo "[pre-push guard] BLOCKED: cargo test -p openagents-cli failed." >&2; exit 1; }
 fi
 
 echo "[pre-push guard] fast main guard green — push allowed." >&2

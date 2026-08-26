@@ -80,7 +80,7 @@ export const DesktopArtifactFormatSchema = Schema.Literals(desktopArtifactFormat
 export interface DesktopTargetDefinition {
   readonly platform: DesktopTargetPlatform;
   readonly arch: DesktopTargetArchitecture;
-  /** Explicit Rust target triple for owned native components (oa-desktop-audio). */
+  /** Explicit Rust target triple for an owned native component. */
   readonly rustTargetTriple: string;
   /** Required package formats per ProductSpec §4. */
   readonly requiredFormats: ReadonlyArray<DesktopArtifactFormat>;
@@ -296,7 +296,7 @@ export const desktopReleaseSetArtifactName = (
 // ---------------------------------------------------------------------------
 
 export const nativeComponentProvenances = [
-  /** Built in-tree from an owned workspace crate (e.g. oa-desktop-audio). */
+  /** Built in-tree from an owned workspace crate. */
   "workspace-crate",
   /** Copied from the exact lockfile-pinned dependency for the target. */
   "locked-dependency",

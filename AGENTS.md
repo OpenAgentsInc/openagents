@@ -2,9 +2,13 @@
 
 ## Scope
 
-This repository is the OpenAgents Effect monorepo on Node 24, pnpm, and Vite
-Plus. The conversion contract is complete, supported paths must remain on that
-toolchain.
+This repository owns the OpenAgents Rust CLI and retained supporting services,
+contracts, and tools. The separate `OpenAgentsInc/openagents.com` repository
+owns the sole current web application and backend, implemented in Phoenix.
+The `apps/openagents.com` tree here is historical and must not receive current
+web, API, or deployment work.
+
+Retained TypeScript paths use Node 24, pnpm, and Vite Plus.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
@@ -264,16 +268,12 @@ not waive these controls:
   must not be selected, priced, provisioned, or used as a fallback. Historical
   SHC evidence may remain only when explicitly labeled historical.
 
-- `apps/openagents.com/` owns the single OpenAgents web app. The retained
-  public product routes are `/`, `/forum`, required Forum
-  descendants, and `/promises` (`/sarah` was removed at owner direction
-  2026-07-10 — see the Sarah section below), legal, authentication, machine-readable API,
-  asset, and operational endpoints are infrastructure exceptions. Preserve the
-  complete product-promise and service-deliverable integrity chain—including
-  stable docs/report paths, registry/transition/audit/readiness APIs,
-  transition authority, and dereferenceable receipt/verification/evidence
-  refs. Autopilot, Sites, and other legacy pages are retirement sources, not
-  product surfaces to grow.
+- `OpenAgentsInc/openagents.com` owns the single OpenAgents web application and
+  backend. Its Phoenix application owns public routes, the forum, the forge,
+  authentication, APIs, product promises, receipts, and operations. The
+  `apps/openagents.com/` tree in this repository is a retired TypeScript
+  implementation pending deletion. Do not deploy it or add web or API work to
+  it.
 - The retired `apps/openagents-world/`, `apps/forge/`, and
   `apps/nostr-relay/` services are deleted. Git history is their archive, do
   not recreate them or route current work to them.
@@ -854,8 +854,9 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   empty directory), not by reading the publish output, and check
   `npm view <pkg>@<version> dependencies` for a surviving `catalog:`.
 - **Google Cloud Authentication (`gcloud` on Chris's dev machine):** Do NOT attempt interactive `gcloud auth login` or user OAuth. Prefix all `gcloud` commands and deployment scripts with `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` (or `/Users/christopherdavid/work/.secrets/gcloud-sa-config`). This uses the pre-authenticated workspace service account (`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`).
-  Example:
-  `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config bash apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh production`
+  Web and backend deployments belong to the separate
+  `OpenAgentsInc/openagents.com` Phoenix repository. Do not use the historical
+  TypeScript deployment scripts in this repository.
 - Signing/notarization details live in `apps/oa-updates/docs/release-signing-runbook.md`
   (ed25519 release key + the `HQWSG26L43` Apple Developer ID) — read before any signed
   release. Publish/deploy only from a clean `origin/main`, RCs are pre-releases and
@@ -1045,8 +1046,9 @@ and deterministic Effect tests. Do not skip it merely because
     Schema). This is the one thing that did not change, and it is not the
     thing that was removed — it is the substrate under the Worker, Pylon,
     the Cloud contracts, and every web surface.
-  - **Web document, SEO, and form surfaces: TanStack Start + plain React**,
-    in `apps/openagents.com/apps/start`. That is the whole public web app.
+  - **Historical web documents: TanStack Start + plain React** in
+    `apps/openagents.com/apps/start`. This retired tree is not the public web
+    application. The separate Phoenix repository owns current web surfaces.
   - **Omega-adjacent documents and panels: GPUI** — omega-pinned Rust crates
     built to wasm and served as static documents behind an explicit gate.
     Today that is `/demo` (`OPENAGENTS_MARKET_DEMO_ENABLED`, on in
@@ -1115,17 +1117,6 @@ and deterministic Effect tests. Do not skip it merely because
   `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
   Worker, and Pylon logic stays on Effect/TypeScript and moves to the selected
   Node runtime under the conversion contract.
-- **Narrow persistent-audio Rust exception (owner direction, 2026-07-12):**
-  AUDIO-0 #8733 may add `crates/oa-desktop-audio` as a process-opaque native
-  Desktop media helper. It owns microphone/playback device I/O, resampling,
-  bounded audio buffers, packetization, the direct authenticated media socket,
-  and prompt cancellation only. Effect Schema in `packages/audio-contract`
-  remains canonical, and host supervision, identity, policy,
-  commands, conversations, Sync, storage orchestration, Google adapters,
-  receipts, and all UI remain Effect/TypeScript. The helper never becomes a
-  Tauri/WGPUI shell, links into the renderer, or learns command/Sync/storage
-  authority. Binding rationale and reversal tests live in
-  `docs/voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md`.
 - **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
   no-Expo mandate for the framework, amended 2026-07-09):** the mobile
   destination is a new **OpenAgents** app at `apps/openagents-mobile`, built

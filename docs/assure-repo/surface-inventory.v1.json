@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:70b6d652076b37c10109b54de527c61c1e549afad5b1e2664207f8432292ebed",
+  "sourceDigest": "sha256:07cb2799eb4e736a10517a133dfc89f81fdf780177f5fca314a44f57e0f1d014",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -439,40 +439,6 @@
       }
     },
     {
-      "id": "crate:all-work-contract",
-      "kind": "crate",
-      "owningPath": "crates/all-work-contract",
-      "title": "all-work-contract",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "crates/all-work-contract (cargo test --workspace)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "crate:coder-lite",
-      "kind": "crate",
-      "owningPath": "crates/coder-lite",
-      "title": "coder-lite",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "crates/coder-lite (cargo test --workspace)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
       "id": "crate:oa-cloud-run-bridge",
       "kind": "crate",
       "owningPath": "crates/oa-cloud-run-bridge",
@@ -499,23 +465,6 @@
         {
           "type": "test",
           "ref": "crates/oa-codex-control (cargo test --workspace)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "crate:oa-desktop-audio",
-      "kind": "crate",
-      "owningPath": "crates/oa-desktop-audio",
-      "title": "oa-desktop-audio",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "crates/oa-desktop-audio (cargo test --workspace)"
         }
       ],
       "obligation": {
@@ -3436,17 +3385,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 183,
+    "totalSurfaces": 180,
     "byKind": {
       "app": 17,
-      "crate": 9,
+      "crate": 6,
       "document": 52,
       "package": 98,
       "public-endpoint": 2,
       "release-pipeline": 4,
       "worker": 1
     },
-    "withOracle": 175,
+    "withOracle": 172,
     "unverified": 8,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3454,7 +3403,7 @@
       "reference-only": 1
     },
     "byObligationState": {
-      "designed": 139,
+      "designed": 136,
       "inconclusive": 4,
       "mapped": 36,
       "out-of-scope": 4

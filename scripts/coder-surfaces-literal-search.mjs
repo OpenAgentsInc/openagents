@@ -35,8 +35,8 @@ const ALLOWED = [
   "crates/openagents-cli/src/surfaces.rs",
   "packages/openagents-cli/src/coder-surfaces.generated.ts",
   "plugins/",
-  "crates/coder-lite/tests/coder-surfaces-golden.json",
   "crates/openagents-cli/tests/coder-surfaces-golden.json",
+  "crates/openagents-cli/tests/coder-amber-surfaces-golden.json",
   "docs/",
 ];
 

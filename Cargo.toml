@@ -1,14 +1,12 @@
-# OpenAgents Cloud Rust workspace
-# Migrated from private OpenAgentsInc/cloud (source commit recorded in
-# docs/cloud/MIGRATION.md). These crates are first-class OpenAgents Cloud
-# infrastructure: control plane, managed node daemon, workroom sidecar, and
-# shared contracts. They are independent of Pylon (contributor runtime).
+# OpenAgents Rust workspace
+# The released CLI is the terminal authority. Managed-computer services remain
+# here pending the deployment inventory in the codebase deletion audit. Their
+# source came from the private OpenAgentsInc/cloud repository;
+# docs/cloud/MIGRATION.md records that migration.
 
 [workspace]
 members = [
     "crates/openagents-cli",
-    "crates/all-work-contract",
-    "crates/oa-desktop-audio",
     "crates/openagents-cloud-contract",
     "crates/oa-codex-control",
     "crates/oa-node",

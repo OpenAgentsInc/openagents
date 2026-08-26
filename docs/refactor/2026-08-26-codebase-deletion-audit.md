@@ -458,7 +458,29 @@ Apply these rules:
 Do not create a second archive inside the active repository. Git retains every
 deleted byte.
 
-## Proposed execution order
+## Execution status
+
+Phase 1 was completed on 2026-08-26 against recovery baseline
+`84682e9c4862abb23d8da731370cfe99ce7e7447`:
+
+- The pre-push hook now tests `openagents-cli` and no longer treats the legacy
+  TypeScript tree as an in-repository Phoenix application.
+- The CLI no longer declares unused dependencies on
+  `openagents-all-work-contract` or `openagents-cloud-contract`.
+- `crates/all-work-contract` and `crates/oa-desktop-audio` were deleted. The
+  TypeScript `packages/all-work-contract` generator remains because it has
+  current TypeScript consumers.
+- Root authority documents now identify `OpenAgentsInc/openagents.com` as the
+  sole current web application and backend and `crates/openagents-cli` as the
+  terminal authority.
+- Cargo metadata and the repository surface inventory were regenerated after
+  the deletion.
+- `cargo test --workspace`, the all-work generation check, the Coder surface
+  check, the assure-repo inventory check, and the release-contract tests pass.
+
+Phases 2 through 6 remain open.
+
+## Execution order
 
 ### Phase 1: repair the active boundary
 
@@ -468,6 +490,8 @@ deleted byte.
 3. Delete `crates/all-work-contract` and `crates/oa-desktop-audio`.
 4. Record the Phoenix repository as the sole current web/backend owner in root
    documentation.
+
+Status: complete on 2026-08-26.
 
 ### Phase 2: drain the duplicate backend
 

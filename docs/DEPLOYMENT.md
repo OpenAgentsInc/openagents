@@ -5,6 +5,13 @@ indexes the per-surface runbooks (the sources of truth) and gives the one-line
 recipe, where the secrets live, and the conventions. When a surface's mechanics
 change, update its linked runbook **and** fix the pointer here.
 
+> Web and backend authority correction (2026-08-26): the separate
+> `OpenAgentsInc/openagents.com` repository owns the sole current website and
+> backend, implemented in Phoenix. Deploy it only through that repository's
+> runbooks and controls. Every `openagents-monolith` row and every
+> `apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh` command in this
+> document is historical evidence and must not be run.
+
 > Client retirement update (2026-07-14): every former `clients/` application
 > (`khala-cli`, `khala-ios`, and `khala-mobile`) has been removed. Any legacy
 > row below is historical context only, never a release target. Use Pylon,
@@ -16,9 +23,10 @@ change, update its linked runbook **and** fix the pointer here.
 > entry. The Omega download surface stays live and is signed through
 > `apps/openagents.com/apps/start/scripts/sign-omega-download-manifest.ts`.
 
-> Infrastructure authority correction (2026-07-14): Google Cloud is the only
-> production infrastructure. Deploy `openagents.com` with the Cloud Run script.
-> do not use any Cloudflare/Worker/Wrangler row retained in older history.
+> Infrastructure authority correction (2026-07-14, amended 2026-08-26):
+> Google Cloud is the only production infrastructure. Do not use any
+> Cloudflare, Worker, Wrangler, or historical TypeScript monolith deployment
+> row retained in older history.
 > Cloudflare remains authoritative DNS only: keep its nameserver delegation
 > and DNS-only records pointing directly to Google Cloud. Do not migrate the
 > zone to Cloud DNS or enable Cloudflare proxying without owner direction.

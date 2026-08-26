@@ -131,8 +131,9 @@ through that delivery boundary. A client cannot supply its own relay outcome.
 Canonical JSON uses `openagents-canonical-json-v1`: UTF-8, object keys sorted
 by Unicode code point, array order retained, safe integers only, absent fields
 omitted, present null encoded as `null`, and no insignificant whitespace. The
-Effect and Rust conformance tests compare the same committed byte vector.
-The Effect export `encodeAllWorkCanonicalJson` and Rust export
+Effect conformance tests in this repository and Rust conformance tests in the
+pinned Omega consumer compare the same committed byte vector. The Effect
+export `encodeAllWorkCanonicalJson` and generated Rust export
 `canonical_json_bytes` enforce that encoding; the Effect encoder also enforces
 the boundary byte limit.
 
@@ -252,7 +253,6 @@ pnpm --dir packages/all-work-contract generate
 pnpm --dir packages/all-work-contract check:generated
 pnpm --dir packages/all-work-contract typecheck
 pnpm --dir packages/all-work-contract test
-cargo test -p openagents-all-work-contract
 pnpm --dir packages/omega-effectd typecheck
 pnpm exec vp test --root packages/omega-effectd --config vitest.config.ts --run src/protocol/server.test.ts src/protocol/all-work-process.test.ts
 ```

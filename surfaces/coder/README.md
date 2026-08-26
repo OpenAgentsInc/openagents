@@ -34,10 +34,10 @@ visible rather than hidden.
 pnpm run build:coder-surfaces
 ```
 
-That re-pins `index.json` and regenerates the two modules the CLIs compile:
+That re-pins `index.json` and regenerates the two modules the native and legacy
+CLIs compile:
 
-- `crates/openagents-cli/src/surfaces.rs` — read by `crates/openagents-cli` and,
-  through it, by `crates/coder-lite`
+- `crates/openagents-cli/src/surfaces.rs` — read by the current Rust CLI
 - `packages/openagents-cli/src/coder-surfaces.generated.ts`
 
 Neither generated module is edited by hand. Both are build output.
@@ -57,8 +57,8 @@ reports any copy living outside the artifact and its build output.
 
 ## The catalog lines are a mirror, not a move
 
-`system-prompt` and `tool-descriptions` were string literals in
-`crates/coder-lite`, `crates/openagents-cli`, and `packages/openagents-cli`.
+`system-prompt` and `tool-descriptions` were string literals in the former
+`coder-lite` crate, `crates/openagents-cli`, and `packages/openagents-cli`.
 Staging them moved the text; the artifact is now where it is edited.
 
 A plugin's catalog line was never a literal. It is the top-level `description`

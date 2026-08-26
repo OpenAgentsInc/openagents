@@ -1,5 +1,13 @@
 # Product
 
+## Repository boundary
+
+The separate `OpenAgentsInc/openagents.com` repository owns the sole current
+web application and backend, implemented in Phoenix. This repository owns the
+released Rust CLI and retained supporting services, contracts, and tools. The
+TypeScript application under `apps/openagents.com` is historical and is not a
+current deploy target.
+
 ## Register
 
 brand

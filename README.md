@@ -200,13 +200,21 @@ thesis narrowed into the current Desktop product without disappearing.
 
 ## Working in this repository
 
-This is a Node.js, pnpm, Vite Plus, Effect, and Effect Schema monorepo. The
-current toolchain is pinned in [`package.json`](package.json).
+This repository owns the released Rust CLI and retained supporting services,
+contracts, and tools. The separate `OpenAgentsInc/openagents.com` repository
+owns the sole current web application and backend, implemented in Phoenix.
+The TypeScript application under `apps/openagents.com` is historical and is
+not a current deploy target.
 
+Retained TypeScript code uses Node.js, pnpm, Vite Plus, Effect, and Effect
+Schema. The toolchain is pinned in [`package.json`](package.json).
+
+- [`crates/openagents-cli`](crates/openagents-cli) — released `openagents`
+  binary and its `coder` front door.
 - [`apps/openagents-mobile`](apps/openagents-mobile/README.md) — React
   Native/Expo host for the compact OpenAgents client.
-- [`apps/openagents.com`](apps/openagents.com/README.md) — public, auth, API,
-  Sync, promise, receipt, health, legal, and operations surfaces.
+- [`apps/openagents.com`](apps/openagents.com/README.md) — historical
+  TypeScript web and API implementation pending deletion.
 - [`apps/pylon`](apps/pylon) — account custody and owner-local execution.
 - [`packages`](packages) — shared schemas, runtime, Sync, UI, evidence, and
   infrastructure contracts.

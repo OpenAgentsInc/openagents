@@ -153,11 +153,11 @@ should be deliberately smaller than the full harness contract:
    inference absence disables that capability honestly; it must not create a
    silent fallback with broader authority.
 
-The existing
-[`oa-desktop-audio`](../../crates/oa-desktop-audio/src/main.rs) process is a
-useful shape reference: it uses a closed newline-delimited JSON control channel
-and keeps native device/transport state in the child process. It is not a
-MemoHarness dependency and should not be generalized into one.
+The former `crates/oa-desktop-audio/src/main.rs` process, recoverable from Git
+history before the 2026-08-26 cleanup, is a useful historical shape reference:
+it uses a closed newline-delimited JSON control channel and keeps native
+device/transport state in the child process. It is not a MemoHarness dependency
+and should not be generalized into one.
 
 The existing
 [`openagents-cloud-contract`](../../crates/openagents-cloud-contract/src/lib.rs)

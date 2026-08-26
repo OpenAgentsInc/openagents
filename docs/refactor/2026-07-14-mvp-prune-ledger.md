@@ -1,5 +1,11 @@
 # MVP Hygiene Prune Ledger — 2026-07-14
 
+> Superseded on 2026-08-26: the first phase of the
+> [codebase deletion audit](2026-08-26-codebase-deletion-audit.md) deleted the
+> unused `oa-desktop-audio` crate after its Electron consumer was removed. The
+> audio-substrate disposition below records the decision at the time of this
+> ledger and is no longer current.
+
 - Class: cleanup record
 - Date: 2026-07-14
 - Scope: owner-directed repo-hygiene sweep — delete, deprecate, or archive

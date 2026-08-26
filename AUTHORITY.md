@@ -236,7 +236,7 @@ authority.
     "order": 5,
     "status": "admitted_for_research_planning_product_changes_and_reversible_experiments_after_core_programs",
     "outcome": "Reconcile recent transcript promises into company priorities, ship evidence-backed user value, grow active users, and generate revenue through bounded reversible experiments.",
-    "authority_refs": ["docs/transcripts/README.md", "apps/openagents.com/workers/api/src/product-promises.ts"],
+    "authority_refs": ["docs/transcripts/README.md", "OpenAgentsInc/openagents.com:docs/product-promises-registry.md"],
     "advance_when": "rolling_owner_strategy_revision_or_profile_revocation"
   }
 ]
