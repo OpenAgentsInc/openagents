@@ -202,8 +202,20 @@ pub struct CoderArgs {
     #[arg(long, help = "Delegate prompt to parallel child agents")]
     pub delegate: bool,
 
-    #[arg(long, default_value_t = 1, help = "Parallel child worker count")]
+    #[arg(long, default_value_t = 1, help = "How many child agents run the prompt")]
     pub count: usize,
+
+    #[arg(long, help = "How many children run at once. Defaults to all of them")]
+    pub max_parallel: Option<usize>,
+
+    #[arg(
+        long,
+        help = "Working directory each child gets: worktree (default, a detached git worktree of HEAD), directory, or none"
+    )]
+    pub isolation: Option<String>,
+
+    #[arg(long, help = "Leave the children's worktrees on disk so their work can be read")]
+    pub keep_workspaces: bool,
 
     #[arg(long, help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex)")]
     pub lane: Option<String>,
@@ -450,8 +462,19 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             } else if coder.headless {
                 let prompt = coder.prompt.unwrap_or_else(|| "Analyze workspace and run tests".to_string());
                 println!("Executing coder prompt headlessly: {}", prompt);
-                let tools = crate::tools::HarnessToolRegistry::new(None);
-                let lane = crate::runtime::Lane::from_str(&coder.lane.unwrap_or_else(|| "ox-alpha".to_string()));
+                let lane_name = coder.lane.unwrap_or_else(|| "ox-alpha".to_string());
+                // A headless session may start children. They run on the same
+                // lane and the same credential, and they do not get the tool
+                // themselves.
+                let tools = crate::tools::HarnessToolRegistry::with_delegation(
+                    None,
+                    crate::tools::DelegationGate {
+                        lane: lane_name.clone(),
+                        user_token: token.clone(),
+                        max_count: crate::delegate::MAX_DELEGATE_COUNT,
+                    },
+                );
+                let lane = crate::runtime::Lane::from_str(&lane_name);
                 let mut runtime = crate::runtime::CoderRuntimeSession::new(lane, None, token, tools);
                 let result = runtime.execute_turn(&prompt, |chunk| {
                     print!("{}", chunk);
@@ -572,7 +595,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 /// Exit code 2 is what the TypeScript CLI returns for an input or configuration
 /// error, and the point of this whole path: a command that cannot reach its data
 /// says so and exits non-zero rather than returning something plausible.
-fn fail(message: &str) -> ! {
+pub(crate) fn fail(message: &str) -> ! {
     eprintln!("oa: {}", message);
     std::process::exit(2)
 }

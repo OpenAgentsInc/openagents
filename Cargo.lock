@@ -1573,6 +1573,7 @@ dependencies = [
  "crossterm",
  "eventsource-stream",
  "futures",
+ "libc",
  "openagents-all-work-contract",
  "openagents-cloud-contract",
  "ratatui",

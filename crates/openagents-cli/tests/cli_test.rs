@@ -4,6 +4,7 @@ mod support;
 mod tests {
     use openagents_cli::runtime::{CoderRuntimeSession, Lane};
     use openagents_cli::delegate::DelegationSupervisor;
+    use openagents_cli::workspace::Isolation;
     use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
     use openagents_cli::auth::CredentialStore;
     use openagents_cli::identity::{derive_seed_identity, SeedStore};
@@ -201,7 +202,8 @@ mod tests {
         let stub = crate::support::start(vec!["child ", "did the work"], None).await;
         std::env::set_var("OPENAGENTS_API_BASE", &stub.base);
 
-        let supervisor = DelegationSupervisor::new(1, "ox-alpha", None);
+        let supervisor = DelegationSupervisor::new(1, "ox-alpha", None)
+            .with_isolation(Isolation::None);
         let results = supervisor.dispatch("test task").await;
 
         std::env::remove_var("OPENAGENTS_API_BASE");
