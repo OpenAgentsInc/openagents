@@ -510,7 +510,7 @@ fn pretty(value: &serde_json::Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| "null".to_string())
 }
 
-pub async fn run(args: ApiArgs, endpoint: &crate::auth::Endpoint, _json: bool) {
+pub async fn run(args: ApiArgs, endpoint: &crate::auth::Endpoint, json: bool) {
     let fail = crate::cli::fail;
 
     // `oa api <METHOD> <PATH>` stays accepted, so the shape this command shipped
@@ -592,27 +592,44 @@ pub async fn run(args: ApiArgs, endpoint: &crate::auth::Endpoint, _json: bool) {
     };
 
     if !response.successful() {
-        match &response.body {
-            Some(value) => eprintln!("{}", pretty(value)),
-            None if !response.text.trim().is_empty() => eprintln!("{}", response.text.trim_end()),
-            None => {}
-        }
         let details = api_error_details(response.body.as_ref());
         let request_id = response.request_id.clone().or(details.request_id);
-        if let Some(id) = &request_id {
-            eprintln!("Request id: {id}");
-        }
         let summary = format!(
             "the API returned HTTP {} for {method} {request_path}",
             response.status
         );
-        match details.message {
-            Some(message) => fail(&format!("{summary}. {message}")),
-            None => fail(&summary),
+        let message = match &details.message {
+            Some(text) => format!("{summary}. {text}"),
+            None => summary,
+        };
+        // Under `--json` the envelope is the whole answer: a second copy of
+        // the body on stderr and a `Request id:` line are prose a consumer did
+        // not ask for, and the request id is a field of the envelope already.
+        if !json {
+            match &response.body {
+                Some(value) => eprintln!("{}", pretty(value)),
+                None if !response.text.trim().is_empty() => {
+                    eprintln!("{}", response.text.trim_end())
+                }
+                None => {}
+            }
+            if let Some(id) = &request_id {
+                eprintln!("Request id: {id}");
+            }
         }
+        crate::errors::fail(&crate::errors::CliError::Api {
+            status: response.status,
+            code: details.code,
+            message,
+            request_id,
+        });
     }
 
     match &response.body {
+        // `--json` is a machine contract, so the body goes out on one line the
+        // way `openagents api --json` sends it. Without the flag it is
+        // pretty-printed, which is what a person at a terminal wants.
+        Some(value) if json => println!("{}", serde_json::Value::to_string(value)),
         Some(value) => println!("{}", pretty(value)),
         // A 2xx that is not JSON is shown exactly as it arrived. Replacing it
         // with `{}` or `null` would be the CLI inventing a body.

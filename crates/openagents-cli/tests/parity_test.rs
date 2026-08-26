@@ -66,6 +66,13 @@ struct StubServer {
 
 impl StubServer {
     fn start(script: Vec<(u16, &'static str, Vec<u8>)>) -> Self {
+        Self::start_with_headers(script, Vec::new())
+    }
+
+    fn start_with_headers(
+        script: Vec<(u16, &'static str, Vec<u8>)>,
+        extra: Vec<(String, String)>,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind a port");
         let port = listener.local_addr().expect("read the port").port();
         let (tx, hits) = mpsc::channel();
@@ -74,7 +81,7 @@ impl StubServer {
                 let Ok(stream) = stream else { break };
                 let index = answered.min(script.len().saturating_sub(1));
                 let (code, content_type, body) = script[index].clone();
-                serve_one(stream, code, content_type, &body, tx.clone());
+                serve_one(stream, code, content_type, &body, &extra, tx.clone());
             }
         });
         Self { port, hits }
@@ -83,6 +90,24 @@ impl StubServer {
     /// A server that answers everything the same way.
     fn always(code: u16, content_type: &'static str, body: Vec<u8>) -> Self {
         Self::start(vec![(code, content_type, body)])
+    }
+
+    /// The same, with response headers of its own. `x-request-id` is the one
+    /// the envelope reads, and it can only be tested from the header side by
+    /// actually sending one.
+    fn with_headers(
+        code: u16,
+        content_type: &'static str,
+        body: Vec<u8>,
+        headers: &[(&str, &str)],
+    ) -> Self {
+        Self::start_with_headers(
+            vec![(code, content_type, body)],
+            headers
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
+        )
     }
 
     fn origin(&self) -> String {
@@ -103,6 +128,7 @@ fn serve_one(
     code: u16,
     content_type: &str,
     body: &[u8],
+    extra_headers: &[(String, String)],
     hits: mpsc::Sender<Hit>,
 ) {
     let mut reader = BufReader::new(stream.try_clone().expect("clone the stream"));
@@ -131,10 +157,14 @@ fn serve_one(
         return;
     }
     let _ = hits.send(Hit { method, path });
-    let response = format!(
-        "HTTP/1.1 {code} X\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+    let mut response = format!(
+        "HTTP/1.1 {code} X\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n",
         body.len()
     );
+    for (name, value) in extra_headers {
+        response.push_str(&format!("{name}: {value}\r\n"));
+    }
+    response.push_str("\r\n");
     let _ = stream.write_all(response.as_bytes());
     let _ = stream.write_all(body);
     let _ = stream.flush();
@@ -580,33 +610,160 @@ fn the_json_flag_is_read_and_not_merely_accepted() {
     }
 }
 
-/// `trace list` accepts `--json` and prints human text anyway.
+/// `trace list --json` prints the document the TypeScript CLI publishes.
 ///
-/// Recorded from `openagents trace list --json` at cd0c05d465:
+/// It printed the same human table it prints without the flag. Recorded from
+/// `openagents trace list --json`, and built at `trace-command.ts:151`:
 ///
 /// ```text
 /// {"schema":"openagents.trace_list.v1","stores":[{"root":"…","kind":
-///  "openagents_export","present":true,"matched":68,…}]}
+///  "openagents_export","present":true,"matched":68,…}],"traces":[…]}
 /// ```
 ///
-/// `oa trace list --json` prints the same table it prints without the flag.
-/// `run_trace` takes a `json` parameter and reads it in one of its four arms.
-/// The same holds for `trace show`, `trace redact`, `plugin search`,
-/// `plugin inspect`, `plugin run`, `api`, `coder`, `delegate`, and `update`.
+/// The schema name and both arrays are asserted, not merely "it is JSON": a
+/// command that printed `{}` would satisfy the weaker check.
 #[test]
-#[ignore = "#88: oa trace list ignores --json and prints the human table. \
-            Run with --ignored to see it; delete the attribute when the flag \
-            is read."]
 fn trace_list_honours_the_json_flag() {
     let server = StubServer::always(200, "application/json", b"{}".to_vec());
     let run = oa(&server.origin(), &["--json", "trace", "list"]);
     assert_eq!(run.code(), 0, "stderr: {}", run.stderr);
-    serde_json::from_str::<serde_json::Value>(&run.stdout).unwrap_or_else(|error| {
-        panic!(
-            "trace list --json did not print JSON ({error}): {}",
-            run.stdout
-        )
-    });
+    let document: serde_json::Value =
+        serde_json::from_str(run.stdout.trim()).unwrap_or_else(|error| {
+            panic!(
+                "trace list --json did not print JSON ({error}): {}",
+                run.stdout
+            )
+        });
+    assert_eq!(document["schema"], "openagents.trace_list.v1");
+    assert!(
+        document["stores"].is_array(),
+        "the scans the command performed are missing: {}",
+        run.stdout
+    );
+    assert!(
+        document["traces"].is_array(),
+        "the discovered traces are missing: {}",
+        run.stdout
+    );
+
+    let plain = StubServer::always(200, "application/json", b"{}".to_vec());
+    let human = oa(&plain.origin(), &["trace", "list"]);
+    assert_ne!(
+        human.stdout, run.stdout,
+        "trace list produced identical output with and without --json"
+    );
+}
+
+/// The commands that took `--json` and did nothing with it now answer with a
+/// document.
+///
+/// The audit listed fourteen. Each one below is run twice against the same
+/// fixture; identical output means the flag is still accepted and ignored.
+/// Comparing the two runs is what catches that — asserting that the `--json`
+/// run "produces output" does not, because the human text is output too.
+#[test]
+fn the_previously_ignored_json_flags_are_read() {
+    // Every case must print something without the flag, or the comparison
+    // below would be two empty strings and prove nothing.
+    let cases: &[&[&str]] = &[
+        &["trace", "list"],
+        &["plugin", "list"],
+        &["api", "/api/v1/user"],
+    ];
+    for command in cases {
+        let plain_server =
+            StubServer::always(200, "application/json", br#"{"login":"x"}"#.to_vec());
+        let plain = oa(&plain_server.origin(), command);
+        let json_server = StubServer::always(200, "application/json", br#"{"login":"x"}"#.to_vec());
+        let mut with_flag = vec!["--json"];
+        with_flag.extend(command.iter().copied());
+        let json = oa(&json_server.origin(), &with_flag);
+
+        // A command whose fixture cannot make it succeed proves nothing about
+        // the flag, so its exit status is asserted first.
+        assert_eq!(
+            plain.code(),
+            json.code(),
+            "oa {} disagreed with itself about whether it worked",
+            command.join(" ")
+        );
+        assert!(
+            !plain.stdout.trim().is_empty() || !json.stdout.trim().is_empty(),
+            "oa {} printed nothing either way",
+            command.join(" ")
+        );
+        assert_ne!(
+            plain.stdout,
+            json.stdout,
+            "oa {} produced identical output with and without --json, \
+             so the flag is accepted and ignored",
+            command.join(" ")
+        );
+        if json.code() == 0 {
+            serde_json::from_str::<serde_json::Value>(json.stdout.trim()).unwrap_or_else(|error| {
+                panic!(
+                    "oa --json {} did not print JSON ({error}): {}",
+                    command.join(" "),
+                    json.stdout
+                )
+            });
+        }
+    }
+}
+
+/// `oa api --json` prints the body on one line; without the flag, indented.
+///
+/// `openagents api` renders the body through the shared output layer, which
+/// stringifies compactly under `--json` (`output.ts`) and pretty-prints for a
+/// person (`cli.ts:1497`). `oa` pretty-printed in both.
+#[test]
+fn api_renders_its_body_compactly_only_under_json() {
+    const BODY: &[u8] = br#"{"login":"AtlantisPleb","id":14167547}"#;
+
+    let compact_server = StubServer::always(200, "application/json", BODY.to_vec());
+    let compact = oa(&compact_server.origin(), &["--json", "api", "/api/v1/user"]);
+    assert_eq!(compact.code(), 0, "stderr: {}", compact.stderr);
+    assert_eq!(
+        compact.stdout.trim_end().lines().count(),
+        1,
+        "api --json spanned several lines: {}",
+        compact.stdout
+    );
+
+    let pretty_server = StubServer::always(200, "application/json", BODY.to_vec());
+    let pretty = oa(&pretty_server.origin(), &["api", "/api/v1/user"]);
+    assert_eq!(pretty.code(), 0, "stderr: {}", pretty.stderr);
+    assert!(
+        pretty.stdout.trim_end().lines().count() > 1,
+        "api without --json stopped pretty-printing for a person: {}",
+        pretty.stdout
+    );
+}
+
+/// A refused `oa api` reaches the ladder, and says so once.
+///
+/// `oa api` reported every status through `fail`, so a 404 from a passthrough
+/// route and a typo in its arguments exited alike. Under `--json` it also
+/// echoed the body to stderr, which a consumer reading the envelope did not
+/// ask for.
+#[test]
+fn a_refused_api_passthrough_reaches_the_ladder() {
+    let server = StubServer::always(
+        404,
+        "application/json",
+        br#"{"message":"no such route","code":"not_found"}"#.to_vec(),
+    );
+    let run = oa(&server.origin(), &["--json", "api", "/api/v1/nope"]);
+    assert_eq!(run.code(), 4, "stderr: {}", run.stderr);
+    let envelope: serde_json::Value = serde_json::from_str(run.stdout.trim())
+        .unwrap_or_else(|error| panic!("api --json did not print JSON ({error}): {}", run.stdout));
+    assert_eq!(envelope["code"], "not_found");
+    assert_eq!(envelope["exit_code"], 4);
+    assert!(
+        run.stderr.trim().is_empty(),
+        "the body was echoed alongside the envelope: {}",
+        run.stderr
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -640,33 +797,41 @@ fn no_refusal_exits_zero() {
     }
 }
 
-/// `oa` collapses every server refusal to exit 2. The TypeScript CLI does not.
+/// Each refusal class exits with its own status, the way `openagents` does.
 ///
-/// This test records the divergence rather than blessing it. The TypeScript
-/// ladder is deliberate and published in
-/// `packages/openagents-cli/src/errors.ts:238-305`:
+/// `oa` collapsed all of these to 2, so a caller could not tell an expired
+/// token from a typo from a missing repository from an outage. The ladder is
+/// published in `packages/openagents-cli/src/errors.ts` (`exitCodeFor`) and
+/// consumers already code against it, so `oa` adopts it rather than inventing
+/// a second one.
 ///
-/// | condition          | openagents | oa |
-/// | ------------------ | ---------: | -: |
-/// | 400, 422           |          2 |  2 |
-/// | 401, 403           |          3 |  2 |
-/// | 404                |          4 |  2 |
-/// | 409                |          5 |  2 |
-/// | 5xx                |          6 |  2 |
+/// The expectations here were not derived from that source by reading. Each
+/// was measured by running both binaries against the same stub, at
+/// `1fb228a72d` for `oa` and `packages/openagents-cli/dist/main.js` for
+/// `openagents`:
 ///
-/// Measured against production at cd0c05d465: `openagents deploy list` exits
-/// 3 and `oa deploy list` exits 2; `openagents issue view 999999` exits 4 and
-/// `oa` exits 2.
-///
-/// A caller cannot tell an expired token from a typo from a missing repository
-/// from a server outage. When the ladder lands in `oa`, this test is the file
-/// that has to change, which is the point: the collapse becomes a deliberate
-/// edit rather than a silent default.
+/// ```text
+/// HTTP 401  oa exit=3  openagents exit=3
+/// HTTP 404  oa exit=4  openagents exit=4
+/// HTTP 409  oa exit=5  openagents exit=5
+/// HTTP 500  oa exit=6  openagents exit=6
+/// ```
 #[test]
-fn every_server_refusal_currently_exits_two() {
-    for status in [401u16, 403, 404, 409, 500, 502] {
+fn each_refusal_class_exits_on_its_own_rung() {
+    // (status, exit), transcribed from `exitCodeFor`'s `ApiError` arm.
+    let ladder: &[(u16, i32)] = &[
+        (400, 2),
+        (422, 2),
+        (401, 3),
+        (403, 3),
+        (404, 4),
+        (409, 5),
+        (500, 6),
+        (502, 6),
+    ];
+    for (status, expected) in ladder {
         let server = StubServer::always(
-            status,
+            *status,
             "application/json",
             format!(r#"{{"message":"refused {status}"}}"#).into_bytes(),
         );
@@ -676,30 +841,71 @@ fn every_server_refusal_currently_exits_two() {
         );
         assert_eq!(
             run.code(),
-            2,
-            "HTTP {status} exited {}. If the #88 exit ladder has landed, \
-             update this test to the new expectation rather than deleting it.",
+            *expected,
+            "HTTP {status} exited {} where the TypeScript CLI exits {expected}",
             run.code()
         );
     }
 }
 
-/// A refusal writes to stderr and leaves stdout clean.
+/// The ladder itself, arm by arm, against the source it was transcribed from.
 ///
-/// A `--json` consumer piping stdout must not receive prose. `oa` writes
-/// `oa: …` to stderr on every failure, which is right; what it does not yet do
-/// is write a JSON error object to stdout under `--json`, the way the
-/// TypeScript CLI does. Recorded from `openagents box list --json` at
-/// cd0c05d465:
+/// The test above covers the statuses one command can be made to produce. This
+/// covers the rungs no HTTP status reaches — the pairing codes, the deployment
+/// codes, rung 7, rung 1 — so a later edit to `exit_code` cannot quietly move
+/// one of them. Every pair below is one `case` in `exitCodeFor`.
+#[test]
+fn the_ladder_matches_the_published_typescript_ladder() {
+    use openagents_cli::errors::CliError::*;
+
+    let m = || "x".to_string();
+    let cases: Vec<(openagents_cli::errors::CliError, i32)> = vec![
+        (Input(m()), 2),
+        (Configuration(m()), 2),
+        (AuthenticationRequired(m()), 3),
+        (CredentialStore(m()), 3),
+        (Network(m()), 6),
+        (Contract(m()), 6),
+        (Import(m()), 7),
+        (Provisioning(m()), 7),
+        (Git(m()), 1),
+        (Output(m()), 1),
+        (ComputerAlreadyPaired(m()), 5),
+        (ComputerPairingInProgress(m()), 5),
+        (ComputerDisabled(m()), 8),
+        (ComputerPairingExpired(m()), 9),
+        (ComputerPairingRefused(m()), 10),
+        (ComputerPairingNetworkFailure(m()), 11),
+        (ComputerStatusNetworkFailure(m()), 12),
+        (ComputerMachineUnavailable(m()), 13),
+        (ComputerMachineMismatch(m()), 14),
+        (ComputerReconnectExhausted(m()), 15),
+        (DeploymentFailed(m()), 17),
+        (DeploymentWaitTimeout(m()), 18),
+        (DeploymentRollingReplaceRequired(m()), 19),
+    ];
+    for (error, expected) in &cases {
+        assert_eq!(
+            error.exit_code(),
+            *expected,
+            "{error:?} left rung {expected}"
+        );
+    }
+
+    // 16 is retired, not reassigned. It was `TraceUploadUnsupported`, and a
+    // script still checking for it must stop seeing it rather than start
+    // seeing it mean something else.
+    assert!(
+        !cases.iter().any(|(_, code)| *code == 16),
+        "something was given the retired code 16"
+    );
+}
+
+/// A refusal without `--json` is one sentence on stderr, and stdout stays
+/// clean.
 ///
-/// ```text
-/// {"code":"api_error","message":"This deployment does not report a
-///  conversation for the account. …","exit_code":3}
-/// ```
-///
-/// Until that lands, the contract this pins is the weaker one: stdout stays
-/// empty, so a consumer sees a parse failure on empty input rather than prose
-/// masquerading as data.
+/// A consumer piping stdout must never receive prose there. This is the half
+/// of the contract that held before the envelope landed, and it still holds.
 #[test]
 fn a_refusal_keeps_prose_off_stdout() {
     let server = StubServer::always(
@@ -709,18 +915,277 @@ fn a_refusal_keeps_prose_off_stdout() {
     );
     let run = oa(
         &server.origin(),
-        &["--json", "issue", "list", "-R", "OpenAgentsInc/openagents"],
+        &["issue", "list", "-R", "OpenAgentsInc/openagents"],
     );
-    assert_ne!(run.code(), 0);
+    assert_eq!(run.code(), 3, "stderr: {}", run.stderr);
     assert!(
         run.stdout.trim().is_empty(),
-        "prose reached stdout under --json: {}",
+        "prose reached stdout: {}",
         run.stdout
     );
     assert!(
         run.stderr.contains("forbidden"),
         "the server's message never reached the user: {}",
         run.stderr
+    );
+}
+
+/// Under `--json`, a refusal is a JSON object on stdout with the four fields
+/// the TypeScript CLI publishes.
+///
+/// `oa` answered every `--json` failure with the human `oa: …` sentence, so a
+/// consumer that asked for JSON got prose on any failure at all. Measured side
+/// by side against a stub answering 401 with `x-request-id: req_abc123`, at
+/// `1fb228a72d` and `packages/openagents-cli/dist/main.js`:
+///
+/// ```text
+/// oa         {"code":"a_server_code","exit_code":3,"message":"…","request_id":"req_abc123"}
+/// openagents {"code":"a_server_code","message":"…","exit_code":3,"request_id":"req_abc123"}
+/// ```
+///
+/// Same four keys, same values but for `message`, which `oa` prefixes with the
+/// operation and the status. That prefix is more than `openagents` prints and
+/// is not a parity break; the fields a machine reads are.
+#[test]
+fn a_json_refusal_is_the_published_error_envelope() {
+    let server = StubServer::always(
+        401,
+        "application/json",
+        br#"{"message":"forbidden","code":"a_server_code","request_id":"req_from_body"}"#.to_vec(),
+    );
+    let run = oa(
+        &server.origin(),
+        &["--json", "issue", "list", "-R", "OpenAgentsInc/openagents"],
+    );
+    assert_eq!(run.code(), 3, "stderr: {}", run.stderr);
+
+    let envelope: serde_json::Value =
+        serde_json::from_str(run.stdout.trim()).unwrap_or_else(|error| {
+            panic!(
+                "--json failure did not print JSON ({error}): {}",
+                run.stdout
+            )
+        });
+    assert_eq!(envelope["code"], "a_server_code");
+    assert_eq!(
+        envelope["exit_code"], 3,
+        "the envelope's exit_code disagrees with the process's"
+    );
+    assert_eq!(
+        envelope["exit_code"].as_i64(),
+        Some(i64::from(run.code())),
+        "a caller reading the field and a caller reading $? would disagree"
+    );
+    assert!(
+        envelope["message"]
+            .as_str()
+            .is_some_and(|text| text.contains("forbidden")),
+        "the server's own sentence is missing: {}",
+        run.stdout
+    );
+    assert_eq!(
+        envelope["request_id"], "req_from_body",
+        "the request id a caller quotes to an operator was dropped"
+    );
+    assert!(
+        run.stderr.trim().is_empty(),
+        "the sentence was printed twice, once as prose: {}",
+        run.stderr
+    );
+}
+
+/// The `x-request-id` header outranks the body's own field.
+///
+/// That is the order `packages/openagents-cli/src/api-transport.ts:112` and
+/// `tracker-request.ts:87` resolve them in, and it matters: the header is
+/// stamped by the edge that actually served the request, while the body's copy
+/// can be echoed from further in.
+#[test]
+fn the_request_id_header_wins_over_the_body() {
+    let server = StubServer::with_headers(
+        500,
+        "application/json",
+        br#"{"message":"boom","request_id":"req_from_body"}"#.to_vec(),
+        &[("x-request-id", "req_from_header")],
+    );
+    let run = oa(
+        &server.origin(),
+        &["--json", "issue", "list", "-R", "OpenAgentsInc/openagents"],
+    );
+    assert_eq!(run.code(), 6, "stderr: {}", run.stderr);
+    let envelope: serde_json::Value =
+        serde_json::from_str(run.stdout.trim()).expect("--json failure must print JSON");
+    assert_eq!(envelope["request_id"], "req_from_header");
+}
+
+/// A refusal with no request id publishes no `request_id` key.
+///
+/// The TypeScript envelope omits the field rather than sending `null`
+/// (`main.ts:60`), and an invented id would be worse than none: it would be
+/// quoted to an operator who could not find it.
+#[test]
+fn an_envelope_omits_a_request_id_it_was_not_given() {
+    let server = StubServer::always(404, "application/json", br#"{"message":"gone"}"#.to_vec());
+    let run = oa(
+        &server.origin(),
+        &["--json", "issue", "list", "-R", "OpenAgentsInc/openagents"],
+    );
+    assert_eq!(run.code(), 4, "stderr: {}", run.stderr);
+    let envelope: serde_json::Value =
+        serde_json::from_str(run.stdout.trim()).expect("--json failure must print JSON");
+    assert!(
+        envelope.get("request_id").is_none(),
+        "a request id was published that the server never sent: {}",
+        run.stdout
+    );
+    // With no server `code`, the envelope falls back to the snake-cased tag,
+    // which is what `errorCode` does.
+    assert_eq!(envelope["code"], "api_error");
+}
+
+/// Every `--json` document is one line, success or failure.
+///
+/// `oa` pretty-printed, which spread each document over dozens of lines and
+/// broke every NDJSON consumer that worked against `openagents`. Measured
+/// against the same stub at `1fb228a72d`:
+///
+/// ```text
+/// oa         {"memories":[]}
+/// openagents {"memories":[]}
+/// ```
+#[test]
+fn json_output_is_one_line_per_document() {
+    let ok = StubServer::always(
+        200,
+        "application/json",
+        br#"{"issues":[{"number":1,"title":"t","state":"open"}],"total_count":1}"#.to_vec(),
+    );
+    let success = oa(
+        &ok.origin(),
+        &["--json", "issue", "list", "-R", "OpenAgentsInc/openagents"],
+    );
+    assert_eq!(success.code(), 0, "stderr: {}", success.stderr);
+    assert_eq!(
+        success.stdout.trim_end().lines().count(),
+        1,
+        "a --json success spanned several lines: {}",
+        success.stdout
+    );
+
+    let refused = StubServer::always(404, "application/json", br#"{"message":"gone"}"#.to_vec());
+    let failure = oa(
+        &refused.origin(),
+        &["--json", "issue", "list", "-R", "OpenAgentsInc/openagents"],
+    );
+    assert_eq!(
+        failure.stdout.trim_end().lines().count(),
+        1,
+        "a --json refusal spanned several lines: {}",
+        failure.stdout
+    );
+}
+
+/// An input error keeps rung 2, and reports through the same envelope.
+///
+/// Rung 2 is the usage status, and it is the one rung that did not move. What
+/// changed is that it is now reached only by what the caller typed, rather
+/// than by every failure in the crate.
+#[test]
+fn an_input_error_stays_on_rung_two() {
+    let server = StubServer::always(200, "application/json", b"{}".to_vec());
+    let run = oa(
+        &server.origin(),
+        &[
+            "--json",
+            "deploy",
+            "promote",
+            "--repo",
+            "x",
+            "--sha",
+            "not-a-sha",
+        ],
+    );
+    assert_eq!(run.code(), 2, "stderr: {}", run.stderr);
+    let envelope: serde_json::Value =
+        serde_json::from_str(run.stdout.trim()).unwrap_or_else(|error| {
+            panic!(
+                "--json input error did not print JSON ({error}): {}",
+                run.stdout
+            )
+        });
+    assert_eq!(envelope["code"], "input_error");
+    assert_eq!(envelope["exit_code"], 2);
+}
+
+// ---------------------------------------------------------------------------
+// 4b. The deployment rungs release automation keys on
+// ---------------------------------------------------------------------------
+
+/// A fleet target that failed exits 17, and one needing an operator exits 19.
+///
+/// These are separate rungs in `errors.ts` for a reason: release automation
+/// has to tell "the fleet rejected these bytes" from "an operator must finish
+/// this by hand", and both from a transport failure. `oa` exited 2 for all
+/// three.
+#[test]
+fn a_terminal_deployment_state_has_a_rung_of_its_own() {
+    for (state, expected) in [
+        ("failed", 17),
+        ("reverted", 17),
+        ("needs_rolling_replace", 19),
+    ] {
+        let body = format!(
+            r#"{{"id":"tgt-1","status":"{state}","sha":"{}","environment":"production"}}"#,
+            "a".repeat(40)
+        );
+        let server = StubServer::always(200, "application/json", body.into_bytes());
+        let run = oa(&server.origin(), &["deploy", "view", "tgt-1", "--wait"]);
+        assert_eq!(
+            run.code(),
+            expected,
+            "a target in {state} exited {}: {}",
+            run.code(),
+            run.stderr
+        );
+    }
+}
+
+/// A `--wait` that runs out exits 18, not 17.
+///
+/// The target has not failed; the CLI stopped watching. Rolling back on this
+/// would be rolling back a deployment that is still in flight.
+#[test]
+fn a_wait_that_runs_out_is_not_a_failed_deployment() {
+    let body = format!(
+        r#"{{"id":"tgt-1","status":"promoting","sha":"{}","environment":"production"}}"#,
+        "a".repeat(40)
+    );
+    let server = StubServer::always(200, "application/json", body.into_bytes());
+    let run = oa(
+        &server.origin(),
+        &[
+            "--json",
+            "deploy",
+            "view",
+            "tgt-1",
+            "--wait",
+            "--wait-timeout",
+            "1",
+        ],
+    );
+    assert_eq!(
+        run.code(),
+        18,
+        "a wait timeout exited {}: {}",
+        run.code(),
+        run.stderr
+    );
+    let envelope: serde_json::Value =
+        serde_json::from_str(run.stdout.trim()).expect("--json failure must print JSON");
+    assert_eq!(envelope["code"], "deployment_wait_timeout");
+    assert_ne!(
+        envelope["exit_code"], 17,
+        "a target that is still promoting was reported as failed"
     );
 }
 

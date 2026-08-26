@@ -21,6 +21,7 @@ pub mod computer;
 pub mod delegate;
 pub mod diag;
 pub mod diff;
+pub mod errors;
 pub mod fleet;
 pub mod foreign_resume;
 pub mod forum;

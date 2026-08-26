@@ -1266,6 +1266,9 @@ pub fn completion_script(shell: CompletionShell) -> String {
 pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     crate::diag::set_verbose(cli.verbose);
     crate::diag::set_color(!cli.no_color);
+    // The failure path is reached from several hundred sites that never took
+    // the flag, so it is recorded once here and read there.
+    crate::errors::set_json(cli.json);
 
     // `--completions` writes a script and stops. It reaches no endpoint and
     // needs no token, so it is answered before either is resolved.
@@ -1375,6 +1378,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 crate::delegate::run_delegation(
                     crate::delegate::DelegationRequest::from_coder(coder),
                     token,
+                    cli.json,
                 )
                 .await?;
             } else if coder.offline {
@@ -1421,6 +1425,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             crate::delegate::run_delegation(
                 crate::delegate::DelegationRequest::from_delegate(args),
                 token,
+                cli.json,
             )
             .await?;
         }
@@ -1435,7 +1440,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     // A refusal ends the command. The version this replaces answered
                     // a non-2xx with two hardcoded boards, one of which the server
                     // has never served.
-                    let boards = client.list_boards().await.unwrap_or_else(|e| fail(&e.to_string()));
+                    let boards = or_fail(client.list_boards().await);
                     let human: Vec<String> = if boards.is_empty() {
                         vec!["No boards found.".to_string()]
                     } else {
@@ -1459,10 +1464,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     emit(cli.json, &value, &human);
                 }
                 ForumAction::Topics { board, page } => {
-                    let list = client
-                        .list_topics(&board, page)
-                        .await
-                        .unwrap_or_else(|e| fail(&e.to_string()));
+                    let list = or_fail(client.list_topics(&board, page).await);
                     emit(
                         cli.json,
                         &crate::forum::topic_list_value(&list),
@@ -1473,10 +1475,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     if query.trim().is_empty() {
                         fail("Pass the words to search for.");
                     }
-                    let list = client
-                        .search_topics(&query, board.as_deref(), page)
-                        .await
-                        .unwrap_or_else(|e| fail(&e.to_string()));
+                    let list = or_fail(client.search_topics(&query, board.as_deref(), page).await);
                     emit(
                         cli.json,
                         &crate::forum::topic_list_value(&list),
@@ -1484,10 +1483,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
                 ForumAction::Topic { id, page } => {
-                    let topic = client
-                        .read_topic(&id, page)
-                        .await
-                        .unwrap_or_else(|e| fail(&e.to_string()));
+                    let topic = or_fail(client.read_topic(&id, page).await);
                     emit(
                         cli.json,
                         &crate::forum::topic_page_value(&topic),
@@ -1501,20 +1497,43 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
         Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
         Commands::Update(update) => {
-            crate::update::run(update.channel, update.version, update.check, update.force).await?;
+            let outcome = crate::update::run(
+                update.channel,
+                update.version,
+                update.check,
+                update.force,
+                cli.json,
+            )
+            .await?;
+            if cli.json {
+                print_json(&outcome.document());
+            }
         }
     }
     Ok(())
 }
 
-/// Print a refusal on stderr and exit non-zero.
+/// Refuse an input the CLI will not act on: exit 2, the usage status.
 ///
 /// Exit code 2 is what the TypeScript CLI returns for an input or configuration
 /// error, and the point of this whole path: a command that cannot reach its data
 /// says so and exits non-zero rather than returning something plausible.
+///
+/// This used to be the *only* refusal path, so a 404, an expired token, and a
+/// misspelled flag all left here with the same status. A failure the server
+/// caused goes through [`or_fail`] instead, which classifies it. Reserve this
+/// for what the caller typed.
 pub(crate) fn fail(message: &str) -> ! {
-    eprintln!("oa: {}", message);
-    std::process::exit(2)
+    crate::errors::fail(&crate::errors::CliError::Input(message.to_string()))
+}
+
+/// Refuse with a class of the caller's choosing.
+///
+/// The escape hatch for failures that are neither an input error nor a server
+/// refusal — a deployment that reached `failed`, a document that would not
+/// render — so each reaches its own rung of the ladder.
+pub(crate) fn fail_as(error: crate::errors::CliError) -> ! {
+    crate::errors::fail(&error)
 }
 
 // ---------------------------------------------------------------------------
@@ -1533,10 +1552,18 @@ use crate::auth::{
 ///
 /// That is the whole difference between reporting what the server said and
 /// printing an empty list that reads as "there is nothing".
-fn or_fail<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
+/// Unwrap, or report the failure on the rung of the ladder it belongs to.
+///
+/// The bound is `Into<CliError>` rather than `Display` on purpose. `Display`
+/// let every failure in the crate reach this function and leave it as exit 2,
+/// which is how an expired token, a missing repository, and a misspelled flag
+/// came to be indistinguishable to a caller. A type that wants a rung of its
+/// own declares it with a `From` impl in `crate::errors`; a type with no impl
+/// is an input error, which is what it exited as before.
+fn or_fail<T, E: Into<crate::errors::CliError>>(result: Result<T, E>) -> T {
     match result {
         Ok(value) => value,
-        Err(error) => fail(&error.to_string()),
+        Err(error) => crate::errors::fail(&error.into()),
     }
 }
 
@@ -1854,10 +1881,14 @@ async fn run_auth_status(endpoint: &Endpoint, store: &CredentialStore, json: boo
 // repo
 // ---------------------------------------------------------------------------
 
+/// One `--json` document, on one line. See [`emit`] for why it is not
+/// pretty-printed.
 fn print_json(value: &serde_json::Value) {
-    match serde_json::to_string_pretty(value) {
+    match serde_json::to_string(value) {
         Ok(text) => println!("{text}"),
-        Err(error) => fail(&format!("could not render JSON output: {error}")),
+        Err(error) => fail_as(crate::errors::CliError::Output(format!(
+            "could not render JSON output: {error}"
+        ))),
     }
 }
 
@@ -2091,17 +2122,44 @@ fn home_directory() -> std::path::PathBuf {
 // ---------------------------------------------------------------------------
 
 /// Print the server's body verbatim under `--json`, or the human lines.
+///
+/// One line, not pretty-printed. The TypeScript CLI stringifies compactly
+/// (`output.ts`), so a consumer reading `oa … --json` in a loop gets one
+/// document per line; pretty-printing spread each document over dozens of
+/// lines and broke every NDJSON reader that worked against `openagents`.
 fn emit(json: bool, value: &serde_json::Value, human: &[String]) {
     if json {
-        match serde_json::to_string_pretty(value) {
+        match serde_json::to_string(value) {
             Ok(text) => println!("{}", text),
-            Err(error) => fail(&format!("Could not render JSON: {}", error)),
+            Err(error) => fail_as(crate::errors::CliError::Output(format!(
+                "Could not render JSON: {}",
+                error
+            ))),
         }
     } else {
         for line in human {
             println!("{}", line);
         }
     }
+}
+
+/// A serializable value with a `schema` field in front of it.
+///
+/// The TypeScript commands publish `{ schema: "…", ...result }`, which is a
+/// spread. Rust has no spread, so the fields are merged here rather than
+/// restated field by field at each call — restating them is how `forum search
+/// --json` came to drop five of them.
+fn schema_document<T: serde::Serialize>(schema: &str, value: &T) -> serde_json::Value {
+    let mut document = serde_json::Map::new();
+    document.insert("schema".to_string(), schema.into());
+    if let Ok(serde_json::Value::Object(fields)) = serde_json::to_value(value) {
+        document.extend(fields);
+    }
+    serde_json::Value::Object(document)
+}
+
+fn trace_summary_document(summary: &crate::trace::TraceSummary) -> serde_json::Value {
+    schema_document("openagents.trace_summary.v1", summary)
 }
 
 fn field(value: &serde_json::Value, key: &str) -> String {
@@ -3738,9 +3796,14 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
             };
             let (scans, candidates) = trace::discover(&specs, bounds);
 
+            let mut human: Vec<String> = Vec::new();
             for scan in &scans {
                 if !scan.present {
-                    println!("{}: {} (not present)", scan.kind.as_str(), scan.root.display());
+                    human.push(format!(
+                        "{}: {} (not present)",
+                        scan.kind.as_str(),
+                        scan.root.display()
+                    ));
                     continue;
                 }
                 let mut line = format!(
@@ -3757,21 +3820,34 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
                     line.push_str(", scan truncated at its entry budget");
                 }
                 line.push(')');
-                println!("{}", line);
+                human.push(line);
             }
 
             if candidates.is_empty() {
-                println!("No trace files found.");
+                human.push("No trace files found.".to_string());
             }
-            for candidate in candidates {
-                println!(
+            for candidate in &candidates {
+                human.push(format!(
                     "{}  {}  {}B  {}",
                     candidate.kind.as_str(),
                     candidate.modified_at,
                     candidate.bytes,
                     candidate.path.display()
-                );
+                ));
             }
+
+            // The document the TypeScript CLI publishes for this command
+            // (`trace-command.ts:151`): the same schema name and the same two
+            // arrays, so a consumer that reads one reads the other.
+            emit(
+                json,
+                &serde_json::json!({
+                    "schema": "openagents.trace_list.v1",
+                    "stores": scans,
+                    "traces": candidates,
+                }),
+                &human,
+            );
         }
         TraceAction::Show { trace: argument } => {
             // An argument that resolves to nothing is refused. The version this
@@ -3786,35 +3862,39 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
                 ))
             });
 
-            println!("File: {}", summary.path.display());
+            let mut human: Vec<String> = vec![format!("File: {}", summary.path.display())];
             if summary.format != "atif" {
                 let described = if summary.format == "jsonl" {
                     "line-delimited session log (not ATIF)"
                 } else {
                     "unknown"
                 };
-                println!("Format: {}", described);
-                println!("Size: {} bytes", summary.bytes);
+                human.push(format!("Format: {}", described));
+                human.push(format!("Size: {} bytes", summary.bytes));
                 if let Some(lines) = summary.lines {
-                    println!("Lines: {}", lines);
+                    human.push(format!("Lines: {}", lines));
                 }
-                println!("This slice summarizes ATIF documents only; foreign logs get metadata.");
+                human.push(
+                    "This slice summarizes ATIF documents only; foreign logs get metadata."
+                        .to_string(),
+                );
+                emit(json, &trace_summary_document(&summary), &human);
                 return;
             }
 
-            println!(
+            human.push(format!(
                 "Schema: {}",
                 summary.schema_version.as_deref().unwrap_or("(missing schema_version)")
-            );
+            ));
             if let Some(session) = &summary.session_id {
-                println!("Session: {}", session);
+                human.push(format!("Session: {}", session));
             }
             if summary.agent_name.is_some() || summary.agent_model.is_some() {
-                println!(
+                human.push(format!(
                     "Agent: {} ({})",
                     summary.agent_name.as_deref().unwrap_or("unknown"),
                     summary.agent_model.as_deref().unwrap_or("unknown model")
-                );
+                ));
             }
             let sources = summary
                 .steps_by_source
@@ -3827,28 +3907,31 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
                         .join(", ")
                 })
                 .unwrap_or_default();
-            println!("Steps: {} ({})", summary.steps.unwrap_or(0), sources);
-            let models = summary.models.unwrap_or_default();
-            println!(
+            human.push(format!("Steps: {} ({})", summary.steps.unwrap_or(0), sources));
+            let models = summary.models.clone().unwrap_or_default();
+            human.push(format!(
                 "Models: {}",
                 if models.is_empty() {
                     "(none recorded)".to_string()
                 } else {
                     models.join(", ")
                 }
+            ));
+            human.push(format!("Tool calls: {}", summary.tool_calls.unwrap_or(0)));
+            human.push(
+                match (summary.total_prompt_tokens, summary.total_completion_tokens) {
+                    (None, None) => "Tokens: not recorded".to_string(),
+                    (prompt, completion) => format!(
+                        "Tokens: {} prompt, {} completion",
+                        prompt.unwrap_or(0),
+                        completion.unwrap_or(0)
+                    ),
+                },
             );
-            println!("Tool calls: {}", summary.tool_calls.unwrap_or(0));
-            match (summary.total_prompt_tokens, summary.total_completion_tokens) {
-                (None, None) => println!("Tokens: not recorded"),
-                (prompt, completion) => println!(
-                    "Tokens: {} prompt, {} completion",
-                    prompt.unwrap_or(0),
-                    completion.unwrap_or(0)
-                ),
-            }
             if let (Some(first), Some(last)) = (&summary.first_timestamp, &summary.last_timestamp) {
-                println!("Span: {} to {}", first, last);
+                human.push(format!("Span: {} to {}", first, last));
             }
+            emit(json, &trace_summary_document(&summary), &human);
         }
         TraceAction::Redact { trace: argument, file } => {
             let argument = match argument.or(file) {
@@ -3873,9 +3956,9 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
                 ))
             });
 
-            println!("Wrote {}", result.output.display());
+            let mut human: Vec<String> = vec![format!("Wrote {}", result.output.display())];
             if result.total == 0 {
-                println!("Nothing matched the redaction rules.");
+                human.push("Nothing matched the redaction rules.".to_string());
             } else {
                 // Counts per category, never the matched text.
                 let detail = result
@@ -3884,18 +3967,24 @@ async fn run_trace(action: TraceAction, api_base: &str, token: Option<String>, j
                     .map(|(category, count)| format!("{} {}", category, count))
                     .collect::<Vec<_>>()
                     .join(", ");
-                println!(
+                human.push(format!(
                     "Redacted {} match{}: {}",
                     result.total,
                     if result.total == 1 { "" } else { "es" },
                     detail
-                );
+                ));
             }
             if result.valid_json == Some(false) {
-                println!(
+                human.push(
                     "Warning: the redacted copy no longer parses as JSON; review it before sharing."
+                        .to_string(),
                 );
             }
+            emit(
+                json,
+                &schema_document("openagents.trace_redaction.v1", &result),
+                &human,
+            );
         }
         TraceAction::Upload {
             trace: argument,
@@ -4051,7 +4140,7 @@ async fn run_deploy(action: DeployAction, api_base: &str, token: Option<String>,
                 );
                 return;
             }
-            let target = or_fail(
+            let target = or_fail_deploy_wait(
                 client
                     .wait(&target_id, std::time::Duration::from_secs(wait_timeout))
                     .await,
@@ -4143,7 +4232,7 @@ async fn run_deploy(action: DeployAction, api_base: &str, token: Option<String>,
                 );
                 return;
             }
-            let target = or_fail(
+            let target = or_fail_deploy_wait(
                 client
                     .wait(&id, std::time::Duration::from_secs(wait_timeout))
                     .await,
@@ -4170,21 +4259,44 @@ async fn run_deploy(action: DeployAction, api_base: &str, token: Option<String>,
 ///
 /// `failed` and `reverted` are a deployment failure; `needs_rolling_replace`
 /// is its own condition; `live` succeeds.
+/// Unwrap a `--wait`, keeping "stopped watching" apart from "was refused".
+///
+/// A wait that runs out is not a failed deployment: the target keeps running.
+/// The TypeScript CLI gives it rung 18 of its own so release automation can
+/// resume rather than roll back, and this is where `oa` earns the same
+/// distinction. Every other failure keeps the class it already had.
+fn or_fail_deploy_wait<T>(result: Result<T, crate::tracker::ApiError>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(crate::tracker::ApiError::Timeout { message, .. }) => {
+            fail_as(crate::errors::CliError::DeploymentWaitTimeout(message))
+        }
+        Err(other) => or_fail(Err(other)),
+    }
+}
+
 fn conclude_fleet_target(target: &serde_json::Value) {
     let status = crate::fleet::target_status(target);
     let id = crate::fleet::target_id(target);
     match status.as_str() {
+        // Three outcomes, three statuses. Release automation keys on 17, 18,
+        // and 19 to tell "the fleet rejected these bytes" from "the CLI
+        // stopped watching" from "an operator has to finish this by hand", and
+        // it can only do that if they never share a status with each other or
+        // with a transport failure.
         "failed" | "reverted" => {
             let code = crate::fleet::failure_code(target)
                 .map(|code| format!(" ({code})"))
                 .unwrap_or_default();
-            fail(&format!(
+            fail_as(crate::errors::CliError::DeploymentFailed(format!(
                 "The fleet target {id} reached {status}{code}."
-            ));
+            )));
         }
-        "needs_rolling_replace" => fail(&format!(
-            "The fleet target {id} needs a rolling replacement before it can be live."
-        )),
+        "needs_rolling_replace" => fail_as(
+            crate::errors::CliError::DeploymentRollingReplaceRequired(format!(
+                "The fleet target {id} needs a rolling replacement before it can be live."
+            )),
+        ),
         _ => {}
     }
 }

@@ -154,9 +154,13 @@ pub fn operator_remediation(error: ApiError) -> ApiError {
             operation,
             status: status @ (401 | 403),
             message,
+            code,
+            request_id,
         } => ApiError::Refused {
             operation,
             status,
+            code,
+            request_id,
             message: format!(
                 "{message} Fleet promotion requires an operator API token holding \
                  {OPERATOR_SCOPE}; forge:write cannot promote, and neither can a Git credential \
@@ -309,12 +313,15 @@ impl FleetClient {
             }
             let elapsed = started.elapsed();
             if elapsed >= timeout {
-                return Err(ApiError::Input(format!(
-                    "The fleet target {id} was still {} after {} seconds. It keeps running; \
-                     resume with: oa deploy view {id} --wait",
-                    target_status(&target),
-                    timeout.as_secs()
-                )));
+                return Err(ApiError::Timeout {
+                    operation: "wait for a fleet target".to_string(),
+                    message: format!(
+                        "The fleet target {id} was still {} after {} seconds. It keeps running; \
+                         resume with: oa deploy view {id} --wait",
+                        target_status(&target),
+                        timeout.as_secs()
+                    ),
+                });
             }
             let delay = poll_delay(attempt);
             let remaining = timeout - elapsed;
@@ -381,6 +388,8 @@ mod tests {
             operation: "list fleet targets".into(),
             status: 401,
             message: "Requires an API token carrying deployments:promote".into(),
+            code: None,
+            request_id: None,
         });
         let rendered = error.to_string();
         assert!(rendered.contains("deployments:promote"));
@@ -394,6 +403,8 @@ mod tests {
             operation: "read a fleet target".into(),
             status: 404,
             message: "No such target.".into(),
+            code: None,
+            request_id: None,
         });
         assert!(!error.to_string().contains("deployments:promote"));
     }

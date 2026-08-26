@@ -1462,10 +1462,7 @@ pub async fn run(args: PluginArgs, json: bool) {
                         })
                     })
                     .collect();
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&rows).unwrap_or_default()
-                );
+                println!("{}", serde_json::Value::from(rows));
             } else {
                 for entry in &catalog {
                     let reach = match entry.tier() {
@@ -1482,7 +1479,27 @@ pub async fn run(args: PluginArgs, json: bool) {
                 crate::cli::fail("no capability catalog could be read from this directory");
             }
             let ranked = match_capabilities(&catalog, &query);
-            if ranked.is_empty() {
+            let matched: Vec<serde_json::Value> = ranked
+                .iter()
+                .take(SEARCH_LIMIT)
+                .map(|(entry, hits)| {
+                    serde_json::json!({
+                        "name": entry.name,
+                        "version": entry.version,
+                        "terms_matched": hits,
+                        "description": first_sentence(&entry.description),
+                    })
+                })
+                .collect();
+            if json {
+                // The ranking is the answer, so it is the field. An empty
+                // array is a real answer to "nothing matched" and needs no
+                // sentence wrapped around it.
+                println!(
+                    "{}",
+                    serde_json::json!({ "query": query, "matches": matched })
+                );
+            } else if ranked.is_empty() {
                 println!("Nothing installed matches that.");
             } else {
                 for (entry, hits) in ranked.iter().take(SEARCH_LIMIT) {
@@ -1508,6 +1525,25 @@ pub async fn run(args: PluginArgs, json: bool) {
                             crate::cli::fail(&format!("`{name}` did not compile {refusal}"))
                         }
                     };
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "name": entry.name,
+                                "version": entry.version,
+                                "manifest": plugin.manifest_path.to_string_lossy(),
+                                "digest": plugin.digest,
+                                "imports": shape.imports,
+                                "mounts": plugin
+                                    .mounts
+                                    .iter()
+                                    .map(|root| root.to_string_lossy().into_owned())
+                                    .collect::<Vec<_>>(),
+                                "tier": format!("{:?}", entry.tier()),
+                            })
+                        );
+                        return;
+                    }
                     println!("{}", describe_load(&plugin));
                     println!("manifest: {}", plugin.manifest_path.display());
                     println!("digest:   {}", plugin.digest);
@@ -1547,7 +1583,11 @@ pub async fn run(args: PluginArgs, json: bool) {
                 Ok(plugin) => plugin,
                 Err(refusal) => crate::cli::fail(&format!("`{name}` did not load {refusal}")),
             };
+            // The load line is a diagnostic about what was mounted, not the
+            // capability's answer, so it stays on stderr in both modes and a
+            // `--json` reader piping stdout is unaffected by it.
             eprintln!("{}", describe_load(&plugin));
+            let digest = plugin.digest.clone();
             match invoke_async(
                 Arc::new(plugin),
                 serde_json::to_vec(&arguments).unwrap_or_default(),
@@ -1556,6 +1596,22 @@ pub async fn run(args: PluginArgs, json: bool) {
             {
                 Err(refusal) => crate::cli::fail(&format!("`{name}` refused {refusal}")),
                 Ok(bytes) => match String::from_utf8(bytes) {
+                    Ok(text) if json => {
+                        // A capability that answered JSON has its answer
+                        // carried as JSON; one that answered prose has it
+                        // carried as a string. Either way the envelope names
+                        // which, so a consumer never has to guess.
+                        let output = serde_json::from_str::<serde_json::Value>(&text)
+                            .unwrap_or_else(|_| serde_json::Value::String(text.clone()));
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "name": name,
+                                "digest": digest,
+                                "output": output,
+                            })
+                        );
+                    }
                     Ok(text) => println!("{text}"),
                     Err(err) => crate::cli::fail(&format!(
                         "`{name}` answered with {} bytes that are not UTF-8",

@@ -14,7 +14,7 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYP
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::tracker::{error_sentence, urlencode, ApiError};
+use crate::tracker::{error_fields, error_sentence, header_request_id, urlencode, ApiError};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MemoryRecord {
@@ -115,6 +115,9 @@ impl MemoryClient {
         })?;
         let status = response.status().as_u16();
         crate::diag::response(status, &url);
+        // Read before the body is consumed; the header outranks the body's own
+        // `request_id`, as it does in the TypeScript transport.
+        let header_id = header_request_id(&response);
         let text = response.text().await.map_err(|e| ApiError::Transport {
             operation: operation.to_string(),
             why: e.to_string(),
@@ -123,10 +126,13 @@ impl MemoryClient {
         if !accepted.contains(&status) {
             let message = error_sentence(&text, status);
             crate::diag::refused(status, &message);
+            let (code, body_id) = error_fields(&text);
             return Err(ApiError::Refused {
                 operation: operation.to_string(),
                 status,
                 message,
+                code,
+                request_id: header_id.or(body_id),
             });
         }
         serde_json::from_str(&text).map_err(|e| ApiError::Malformed {

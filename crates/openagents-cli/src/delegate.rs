@@ -1242,7 +1242,19 @@ pub fn describe(description: Option<&str>, prompt: &str) -> String {
 pub async fn run_delegation(
     args: DelegationRequest,
     user_token: Option<String>,
+    json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Per-child progress is a running commentary, not the answer. Under
+    // `--json` the answer is the one document at the end, so the commentary
+    // moves to stderr — which is what the TypeScript CLI does with it too
+    // (`cli.ts:3025`, where the `--json` path unsubscribes the printer).
+    let say = move |line: String| {
+        if json {
+            eprintln!("{line}");
+        } else {
+            println!("{line}");
+        }
+    };
     let requested = args.count.max(1);
     if requested > MAX_DELEGATE_COUNT {
         fail(&format!(
@@ -1294,7 +1306,7 @@ pub async fn run_delegation(
         .in_directory(args.directory.as_deref().map(PathBuf::from))
         .with_child_options(child);
 
-    println!(
+    say(format!(
         "Delegating {}: {} {} on {}, {} at a time, isolation: {}.",
         description,
         supervisor.count,
@@ -1302,9 +1314,9 @@ pub async fn run_delegation(
         lane.label(),
         supervisor.max_parallel,
         isolation.name(),
-    );
+    ));
     if let Some(directory) = &supervisor.directory {
-        println!("Children work under {}.", directory.display());
+        say(format!("Children work under {}.", directory.display()));
     }
 
     // `ctrl+c` is the only stop signal a running fan-out has. Without it a
@@ -1329,27 +1341,27 @@ pub async fn run_delegation(
                     workspace,
                     pid,
                 } => {
-                    println!(
+                    say(format!(
                         "[child {id}] started on {lane} in {workspace}{}",
                         match pid {
                             Some(pid) => format!(" as pid {pid}"),
                             None => " in this process".to_string(),
                         }
-                    );
+                    ));
                 }
                 ChildEvent::Output { id, text } => printer.feed(id, &text),
                 ChildEvent::Activity { id, text } => {
                     printer.flush(id);
-                    println!("[child {id}] · {text}");
+                    say(format!("[child {id}] · {text}"));
                 }
                 ChildEvent::Finished(result) => {
                     printer.flush(result.id);
-                    println!(
+                    say(format!(
                         "[child {}] {} after {}ms",
                         result.id,
                         if result.success { "finished" } else { "FAILED" },
                         result.duration_ms
-                    );
+                    ));
                 }
             }
         }
@@ -1363,33 +1375,70 @@ pub async fn run_delegation(
     let _ = printing.await;
     interrupt.abort();
 
-    println!();
     let succeeded = results.iter().filter(|result| result.success).count();
-    for result in &results {
+    if json {
+        // The field names the TypeScript CLI publishes for this command
+        // (`cli.ts:3070`): `agent`, `cwd`, and one entry per child. It
+        // pretty-prints this one document — `JSON.stringify(…, null, 2)` —
+        // where every other `--json` output it writes is compact. This matches
+        // it rather than tidying it, because a consumer already parsing that
+        // shape is what the flag is for.
+        let document = serde_json::json!({
+            "agent": lane.label(),
+            "cwd": supervisor
+                .directory
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
+            "lane": lane_name,
+            "outcomes": results
+                .iter()
+                .map(|result| serde_json::json!({
+                    "id": result.id,
+                    "success": result.success,
+                    "duration_ms": result.duration_ms,
+                    "pid": result.pid,
+                    "workspace": result
+                        .workspace
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().into_owned()),
+                    "failure": result.failure,
+                }))
+                .collect::<Vec<_>>(),
+            "succeeded": succeeded,
+            "requested": results.len(),
+        });
         println!(
-            "child {}: {} in {}ms{}{}",
-            result.id,
-            if result.success { "ok" } else { "failed" },
-            result.duration_ms,
-            match result.pid {
-                Some(pid) => format!(", pid {pid}"),
-                None => String::new(),
-            },
-            match &result.workspace {
-                Some(path) => format!(", in {}", path.display()),
-                None => String::new(),
-            }
+            "{}",
+            serde_json::to_string_pretty(&document).unwrap_or_else(|_| document.to_string())
         );
-        if let Some(why) = &result.failure {
-            println!("  {why}");
+    } else {
+        println!();
+        for result in &results {
+            println!(
+                "child {}: {} in {}ms{}{}",
+                result.id,
+                if result.success { "ok" } else { "failed" },
+                result.duration_ms,
+                match result.pid {
+                    Some(pid) => format!(", pid {pid}"),
+                    None => String::new(),
+                },
+                match &result.workspace {
+                    Some(path) => format!(", in {}", path.display()),
+                    None => String::new(),
+                }
+            );
+            if let Some(why) = &result.failure {
+                println!("  {why}");
+            }
         }
+        println!(
+            "{succeeded} of {} {} completed on {}.",
+            results.len(),
+            if results.len() == 1 { "child" } else { "children" },
+            lane.label()
+        );
     }
-    println!(
-        "{succeeded} of {} {} completed on {}.",
-        results.len(),
-        if results.len() == 1 { "child" } else { "children" },
-        lane.label()
-    );
 
     if succeeded < results.len() {
         // A fan-out that lost a child is not a command that worked. This used

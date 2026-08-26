@@ -237,6 +237,33 @@ pub enum Outcome {
     },
 }
 
+impl Outcome {
+    /// The `--json` document. `Outcome` exists so a caller can report the
+    /// decision without inferring it from printed text; this is that report.
+    pub fn document(&self) -> serde_json::Value {
+        match self {
+            Self::AlreadyCurrent { version } => serde_json::json!({
+                "schema": "openagents.cli_update.v1",
+                "outcome": "already_current",
+                "version": version,
+            }),
+            Self::Available { version } => serde_json::json!({
+                "schema": "openagents.cli_update.v1",
+                "outcome": "available",
+                "version": version,
+                "installed": crate::VERSION,
+            }),
+            Self::Replaced { from, to, path } => serde_json::json!({
+                "schema": "openagents.cli_update.v1",
+                "outcome": "replaced",
+                "from": from,
+                "to": to,
+                "path": path.to_string_lossy(),
+            }),
+        }
+    }
+}
+
 impl Updater {
     pub fn new(base_url: Option<String>, channel: Option<String>) -> Self {
         let base_url = base_url
@@ -473,7 +500,18 @@ pub async fn run(
     requested: Option<String>,
     check: bool,
     force: bool,
+    json: bool,
 ) -> Result<Outcome, Box<dyn std::error::Error>> {
+    // Progress is a diagnostic, not the answer. Under `--json` the answer is
+    // the one document the caller printed at the end, so these lines move to
+    // stderr rather than interleaving with it on stdout.
+    let say = |line: String| {
+        if json {
+            eprintln!("{line}");
+        } else {
+            println!("{line}");
+        }
+    };
     let platform = platform().ok_or_else(|| UpdateError::UnsupportedPlatform {
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
@@ -493,17 +531,17 @@ pub async fn run(
         None => {
             let resolved = updater.resolve_channel().await?;
 
-            println!(
+            say(format!(
                 "Channel '{}' names {} ({} is installed).",
                 updater.channel, resolved, current
-            );
+            ));
 
             resolved
         }
     };
 
     if version == current && !force {
-        println!("Already running {current}. Nothing to do.");
+        say(format!("Already running {current}. Nothing to do."));
 
         return Ok(Outcome::AlreadyCurrent {
             version: version.clone(),
@@ -511,26 +549,26 @@ pub async fn run(
     }
 
     if check {
-        println!("Update available: {current} -> {version}");
+        say(format!("Update available: {current} -> {version}"));
 
         return Ok(Outcome::Available { version });
     }
 
     let target = running_binary()?;
 
-    println!(
+    say(format!(
         "Downloading {} ({platform})...",
         artifact_name(&version, &platform)
-    );
+    ));
 
     let bytes = updater.fetch_verified(&version, &platform).await?;
 
-    println!("  Verified sha256 {}.", hex_digest(&bytes));
+    say(format!("  Verified sha256 {}.", hex_digest(&bytes)));
 
     replace_binary(&target, &bytes)?;
 
-    println!("Replaced {}.", target.display());
-    println!("OpenAgents CLI is now {version}.");
+    say(format!("Replaced {}.", target.display()));
+    say(format!("OpenAgents CLI is now {version}."));
 
     Ok(Outcome::Replaced {
         from: current.to_string(),

@@ -33,11 +33,25 @@ pub enum ApiError {
         operation: String,
         status: u16,
         message: String,
+        /// The server's own `code` field, when it sent one. It becomes the
+        /// `code` of the `--json` error envelope, the way `trackerErrorDetails`
+        /// feeds `ApiError.code` in the TypeScript CLI.
+        code: Option<String>,
+        /// `x-request-id`, or the body's `request_id`. The one field a caller
+        /// can quote back to an operator, so it is carried rather than
+        /// flattened into prose.
+        request_id: Option<String>,
     },
     /// The server answered inside the accepted set with a body this cannot read.
     Malformed { operation: String, why: String },
     /// The caller asked for something the client will not send.
     Input(String),
+    /// The client stopped waiting on a job that had not reached a terminal
+    /// state. The job itself has not failed, which is why this is not a
+    /// refusal: it is the difference between "the fleet rejected these bytes"
+    /// and "the CLI stopped watching", and release automation reads the two as
+    /// different exit statuses.
+    Timeout { operation: String, message: String },
 }
 
 impl fmt::Display for ApiError {
@@ -50,6 +64,7 @@ impl fmt::Display for ApiError {
                 operation,
                 status,
                 message,
+                ..
             } => write!(
                 f,
                 "The API refused the request to {} (HTTP {}): {}",
@@ -61,6 +76,7 @@ impl fmt::Display for ApiError {
                 operation, why
             ),
             Self::Input(message) => write!(f, "{}", message),
+            Self::Timeout { message, .. } => write!(f, "{}", message),
         }
     }
 }
@@ -147,6 +163,33 @@ pub fn error_sentence(body: &str, status: u16) -> String {
         sentence = format!("{} [request {}]", sentence, request_id);
     }
     sentence
+}
+
+/// The `code` and `request_id` a refusal body carries, if any.
+///
+/// [`error_sentence`] renders the body for a person; these two fields are what
+/// a machine reads, and they travel separately so the `--json` error envelope
+/// can publish them as fields rather than leave a caller to parse them back out
+/// of the sentence. This is the Rust side of `trackerErrorDetails` in
+/// `packages/openagents-cli/src/tracker-request.ts`.
+pub fn error_fields(body: &str) -> (Option<String>, Option<String>) {
+    let Ok(parsed) = serde_json::from_str::<Value>(body) else {
+        return (None, None);
+    };
+    let text = |key: &str| parsed.get(key).and_then(Value::as_str).map(str::to_string);
+    (text("code"), text("request_id"))
+}
+
+/// `x-request-id` off a response, read before the body is consumed.
+///
+/// The header wins over the body's own `request_id` in the TypeScript client
+/// (`api-transport.ts:112`), so the caller resolves them in that order.
+pub fn header_request_id(response: &reqwest::Response) -> Option<String> {
+    response
+        .headers()
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
 }
 
 fn message_list(value: &Value) -> String {
@@ -385,6 +428,9 @@ impl TrackerClient {
         })?;
         let status = response.status().as_u16();
         crate::diag::response(status, &url);
+        // Read before the body is consumed; the header outranks the body's own
+        // `request_id`, as it does in the TypeScript transport.
+        let header_id = header_request_id(&response);
         let text = response.text().await.map_err(|e| ApiError::Transport {
             operation: operation.to_string(),
             why: e.to_string(),
@@ -393,10 +439,13 @@ impl TrackerClient {
         if !accepted.contains(&status) {
             let message = error_sentence(&text, status);
             crate::diag::refused(status, &message);
+            let (code, body_id) = error_fields(&text);
             return Err(ApiError::Refused {
                 operation: operation.to_string(),
                 status,
                 message,
+                code,
+                request_id: header_id.or(body_id),
             });
         }
         if text.trim().is_empty() {

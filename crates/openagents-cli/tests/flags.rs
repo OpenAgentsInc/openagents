@@ -344,7 +344,13 @@ fn verbose_prints_the_servers_refusal() {
         "--repo",
         "owner/repo",
     ]);
-    assert_eq!(run.status, Some(2));
+    // 6 is the transport rung, not the usage rung. `oa` exited 2 for this and
+    // for a misspelled flag alike until #88; measured after, against the same
+    // dead port:
+    //
+    //   openagents --json issue list …  ->  {"code":"transport_error",…}  exit 6
+    //   oa         --json issue list …  ->  {"code":"transport_error",…}  exit 6
+    assert_eq!(run.status, Some(6));
     assert!(
         run.stderr
             .contains("http://127.0.0.1:1/api/v1/repos/owner/repo/issues"),

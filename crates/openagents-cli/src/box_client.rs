@@ -19,7 +19,7 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYP
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::tracker::{error_sentence, urlencode, ApiError};
+use crate::tracker::{error_fields, error_sentence, header_request_id, urlencode, ApiError};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BoxRecord {
@@ -261,6 +261,9 @@ impl BoxClient {
         })?;
         let status = response.status().as_u16();
         crate::diag::response(status, &url);
+        // Read before the body is consumed; the header outranks the body's own
+        // `request_id`, as it does in the TypeScript transport.
+        let header_id = header_request_id(&response);
         let text = response.text().await.map_err(|e| ApiError::Transport {
             operation: operation.to_string(),
             why: e.to_string(),
@@ -269,10 +272,13 @@ impl BoxClient {
         if !accepted.contains(&status) {
             let message = error_sentence(&text, status);
             crate::diag::refused(status, &message);
+            let (code, body_id) = error_fields(&text);
             return Err(ApiError::Refused {
                 operation: operation.to_string(),
                 status,
                 message,
+                code,
+                request_id: header_id.or(body_id),
             });
         }
         if text.trim().is_empty() {
@@ -345,6 +351,11 @@ impl BoxClient {
             message: "This deployment does not report a conversation for the account. \
                       Pass --conversation <conversation_id> to name the conversation to use."
                 .to_string(),
+            // This refusal is the client's summary of two the server sent, so
+            // no single `code` or request id belongs to it. The status is the
+            // server's, and the status is what the ladder reads.
+            code: None,
+            request_id: None,
         })
     }
 

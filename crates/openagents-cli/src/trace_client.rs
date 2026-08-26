@@ -21,7 +21,7 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYP
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::tracker::{error_sentence, urlencode, ApiError};
+use crate::tracker::{error_fields, error_sentence, header_request_id, urlencode, ApiError};
 
 /// The transparency ladder the server stores a trace under.
 ///
@@ -128,6 +128,7 @@ impl TraceClient {
 
         let status = response.status().as_u16();
         crate::diag::response(status, &url);
+        let header_id = header_request_id(&response);
         let text = response.text().await.map_err(|error| ApiError::Transport {
             operation: "upload a trace".to_string(),
             why: error.to_string(),
@@ -136,10 +137,13 @@ impl TraceClient {
         if status != 200 && status != 201 {
             let message = error_sentence(&text, status);
             crate::diag::refused(status, &message);
+            let (code, body_id) = error_fields(&text);
             return Err(ApiError::Refused {
                 operation: "upload a trace".to_string(),
                 status,
                 message,
+                code,
+                request_id: header_id.or(body_id),
             });
         }
 
