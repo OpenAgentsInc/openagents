@@ -60,8 +60,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         return Ok(());
     }
 
-    ensure_authenticated().await?;
-
     let lane = Lane::from_str(&options.lane_name);
     let (tx, rx) = mpsc::channel::<Control>();
     let mut ui = CoderUi::new();
@@ -90,27 +88,39 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     };
     ui.agents = agents.clone();
 
-    let session = Arc::new(Mutex::new(Session::open(
-        lane.clone(),
-        &options.lane_name,
-        options.reasoning.clone(),
-        agents,
-        tx.clone(),
-    )));
+    let mut session: Option<Arc<Mutex<Session>>> = None;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
-    // What the session is, said once, from what it actually holds. The model
-    // is not named here: no model has answered yet, and naming the lane's
-    // preferred id as though it had is exactly the class of claim this UI must
-    // not make.
-    ui.entries.push(Entry::new(
-        Role::Notice,
-        format!(
-            "{} · {} · {acp_line} · /help",
-            lane.label(),
-            crate::runtime::api_base()
-        ),
-    ));
+    if let Some(token) = crate::runtime::user_token() {
+        let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
+        if validate_token(&endpoint.origin, &Secret::new(token)).await.is_ok() {
+            session = Some(Arc::new(Mutex::new(Session::open(
+                lane.clone(),
+                &options.lane_name,
+                options.reasoning.clone(),
+                agents.clone(),
+                tx.clone(),
+            ))));
+            ui.entries.push(Entry::new(
+                Role::Notice,
+                format!(
+                    "{} · {} · {acp_line} · /help",
+                    lane.label(),
+                    crate::runtime::api_base()
+                ),
+            ));
+        } else {
+            ui.entries.push(Entry::new(
+                Role::Notice,
+                "Stored token did not authenticate. Press Enter to log in with GitHub.",
+            ));
+        }
+    } else {
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            "Press Enter to log in with GitHub.",
+        ));
+    }
 
     enable_raw_mode()?;
     let mut stdout = stdout();
@@ -169,8 +179,46 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             ComposerAction::Submit(text) => {
                 history.record(&text);
                 history.stop_walking();
-                if !text.trim().is_empty() {
-                    submit(&mut ui, text, &session, &tx, &cwd);
+                if let Some(session) = &session {
+                    if !text.trim().is_empty() {
+                        submit(&mut ui, text, session, &tx, &cwd);
+                    }
+                } else if text.trim().is_empty() {
+                    ui.entries.push(Entry::new(
+                        Role::Notice,
+                        "Opening GitHub login in your browser...",
+                    ));
+                    match do_login().await {
+                        Ok(message) => {
+                            ui.entries.push(Entry::new(Role::Notice, message));
+                            session = Some(Arc::new(Mutex::new(Session::open(
+                                lane.clone(),
+                                &options.lane_name,
+                                options.reasoning.clone(),
+                                agents.clone(),
+                                tx.clone(),
+                            ))));
+                            ui.entries.push(Entry::new(
+                                Role::Notice,
+                                format!(
+                                    "{} · {} · {acp_line} · /help",
+                                    lane.label(),
+                                    crate::runtime::api_base()
+                                ),
+                            ));
+                        }
+                        Err(error) => {
+                            ui.entries.push(Entry::new(
+                                Role::Notice,
+                                format!("Login failed: {error}"),
+                            ));
+                        }
+                    }
+                } else {
+                    ui.entries.push(Entry::new(
+                        Role::Notice,
+                        "Press Enter to log in with GitHub.",
+                    ));
                 }
             }
             ComposerAction::Redraw => history.stop_walking(),
@@ -192,60 +240,23 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // `Drop` backstop can only spawn an ending this process may exit before
     // polling. It ends by reporting what the session did, so leaving is not
     // recorded as a cancellation and the thread can be resumed later.
-    match tokio::time::timeout(REVOCATION_GRACE, async {
-        session.lock().await.finish().await
-    })
-    .await
-    {
-        Ok(Ok(Some(line))) => println!("{line}"),
-        Ok(Ok(None)) => {}
-        Ok(Err(error)) => eprintln!("coder-lite: the thread was not ended: {error}"),
-        Err(_) => eprintln!(
-            "coder-lite: the session was still working after {}s, so its thread was left to \
-             the best-effort ending.",
-            REVOCATION_GRACE.as_secs()
-        ),
+    if let Some(session) = &session {
+        match tokio::time::timeout(REVOCATION_GRACE, async {
+            session.lock().await.finish().await
+        })
+        .await
+        {
+            Ok(Ok(Some(line))) => println!("{line}"),
+            Ok(Ok(None)) => {}
+            Ok(Err(error)) => eprintln!("coder-lite: the thread was not ended: {error}"),
+            Err(_) => eprintln!(
+                "coder-lite: the session was still working after {}s, so its thread was left \
+                 to the best-effort ending.",
+                REVOCATION_GRACE.as_secs()
+            ),
+        }
     }
     Ok(())
-}
-
-/// If no valid credential is in the environment or store, start a GitHub
-/// device-authorization flow and store the resulting token for the runtime to
-/// spend. The TUI is not yet on the alternate screen, so this prints normally.
-async fn ensure_authenticated() -> Result<(), Box<dyn std::error::Error>> {
-    let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
-    let store = CredentialStore::for_origin(&endpoint.origin);
-
-    if let Ok(key) = std::env::var("OPENAGENTS_API_KEY") {
-        let token = Secret::new(key);
-        if validate_token(&endpoint.origin, &token).await.is_ok() {
-            return Ok(());
-        }
-        eprintln!("OPENAGENTS_API_KEY did not authenticate; it will be ignored.");
-        // SAFETY: this process owns the environment; the TUI has not started.
-        unsafe { std::env::remove_var("OPENAGENTS_API_KEY") };
-    }
-
-    if let Some(held) = store.find_token()? {
-        if validate_token(&endpoint.origin, &held.token).await.is_ok() {
-            return Ok(());
-        }
-        eprintln!("Stored token did not authenticate; logging in again.");
-        store.remove()?;
-    }
-
-    println!("Press Enter to log in with GitHub.");
-    let mut line = String::new();
-    let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
-    tokio::io::AsyncBufReadExt::read_line(&mut stdin, &mut line).await?;
-
-    match do_login().await {
-        Ok(message) => {
-            println!("{message}");
-            Ok(())
-        }
-        Err(error) => Err(error),
-    }
 }
 
 /// Check that a token is accepted by the deployment without calling GitHub.
@@ -274,6 +285,9 @@ async fn validate_token(origin: &str, token: &Secret) -> Result<(), Box<dyn std:
 /// open the approval URL in the browser, poll for the token, store it, and
 /// verify it against the model catalog. The token is also placed in
 /// `OPENAGENTS_API_KEY` so the runtime spends it without a second store lookup.
+///
+/// This is called from inside the TUI, so it must not print to stdout; the
+/// caller is responsible for showing any message in the transcript.
 pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
     let client = DeviceClient::new(&endpoint.origin);
