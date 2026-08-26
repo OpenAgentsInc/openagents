@@ -33,6 +33,12 @@ OpenAgentsInc/openagents#26 and
   whole-file bound. `foreign-sessions` gates its packet entry behind the
   default `entry` feature so this crate can depend on the scan logic
   without a duplicate-export link error.
+- `knowledge-base/` — the retrieval rail rather than a tool: a corpus of
+  reviewed stances and public-doc summaries compiled into the artifact at
+  build, which the harness queries on every turn and attaches as a bracketed
+  note. It declares no mounts and no hosts, and it is never offered to a model
+  as a tool. `knowledge-base/README.md` covers the corpus, the rebuild, and how
+  a system memory is promoted into a stance.
 
 Each plugin's built `.wasm` artifact and its `sha256:` digest pin are
 checked in beside the source, so the CLI runs them without a Rust
