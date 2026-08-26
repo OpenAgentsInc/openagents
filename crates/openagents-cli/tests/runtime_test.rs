@@ -874,3 +874,58 @@ async fn the_local_lane_runs_tools_and_feeds_the_result_back() {
         chats[1]
     );
 }
+
+/// The model must be able to see what it said itself.
+///
+/// `run_tools` records an assistant turn only when that turn called a tool, so
+/// a turn that simply answered was never added to `self.messages`. The session
+/// is reused across turns, so asked in turn two what it said in turn one, the
+/// model had nothing to read and confabulated a fresh answer instead:
+///
+///     turn 1: "invent a six-letter codeword" -> QORVEN
+///     turn 2: "what was the codeword?"       -> ZORBEX
+///
+/// This asserts the recording rather than the model's behaviour: the second
+/// turn's request body must carry the first turn's answer. A test that asked
+/// the model to recall something from the *user's* prompt would pass against
+/// the defect, because user messages were always recorded.
+#[tokio::test]
+async fn the_second_turn_carries_what_the_first_turn_answered() {
+    let stub = start(|request, origin| {
+        if request.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "ox-alpha"));
+        }
+        Reply::Sse(
+            vec![frame(
+                serde_json::json!({"choices":[{"delta":{"content":"QORVEN"}}]}),
+            )],
+            None,
+        )
+    });
+
+    let mut session = session(Lane::OxAlpha, stub.base.clone());
+    let first = session
+        .execute_turn("invent a codeword", |_| {})
+        .await
+        .unwrap();
+    assert_eq!(first, "QORVEN");
+    session
+        .execute_turn("what was the codeword?", |_| {})
+        .await
+        .unwrap();
+
+    // The last proxy request is the second turn's. It must contain the answer
+    // the first turn produced.
+    let bodies: Vec<String> = stub
+        .requests()
+        .into_iter()
+        .filter(|r| !r.starts_with("POST /api/v1/threads"))
+        .collect();
+    assert_eq!(bodies.len(), 2, "expected one proxy call per turn");
+    assert!(
+        bodies[1].contains("QORVEN"),
+        "the second turn did not carry the first turn's answer, so the model \
+         cannot see what it said: {}",
+        bodies[1]
+    );
+}

@@ -742,6 +742,9 @@ impl CoderRuntimeSession {
         self.last_model = Some(grant.model.clone());
 
         let mut final_answer = String::new();
+        // False means the step budget ran out with every step still calling
+        // tools, which is not an answer and must not be returned as one.
+        let mut answered = false;
 
         for _ in 0..MAX_TOOL_STEPS {
             let req_body = serde_json::json!({
@@ -822,11 +825,36 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                // The answer joins the transcript. `run_tools` records an
+                // assistant turn only when that turn called a tool, so without
+                // this the model never sees anything it said itself: asked in
+                // the next turn what it just told you, it confabulates a new
+                // answer rather than reading the old one. A test that asks it
+                // to recall something from the *user's* prompt hides this,
+                // because user messages were always recorded.
+                self.messages.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: if final_answer.is_empty() {
+                        None
+                    } else {
+                        Some(final_answer.clone())
+                    },
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+                answered = true;
                 break;
             }
             self.run_tools(step).await;
         }
 
+        if !answered {
+            return Err(format!(
+                "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
+                 nothing was returned rather than an empty answer that reads as success"
+            )
+            .into());
+        }
         Ok(final_answer)
     }
 
@@ -973,6 +1001,9 @@ impl CoderRuntimeSession {
 
         let url = format!("{}/api/chat", self.ollama_host.trim_end_matches('/'));
         let mut final_answer = String::new();
+        // False means the step budget ran out with every step still calling
+        // tools, which is not an answer and must not be returned as one.
+        let mut answered = false;
 
         for _ in 0..MAX_TOOL_STEPS {
             let req_body = serde_json::json!({
@@ -1036,11 +1067,36 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                // The answer joins the transcript. `run_tools` records an
+                // assistant turn only when that turn called a tool, so without
+                // this the model never sees anything it said itself: asked in
+                // the next turn what it just told you, it confabulates a new
+                // answer rather than reading the old one. A test that asks it
+                // to recall something from the *user's* prompt hides this,
+                // because user messages were always recorded.
+                self.messages.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: if final_answer.is_empty() {
+                        None
+                    } else {
+                        Some(final_answer.clone())
+                    },
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+                answered = true;
                 break;
             }
             self.run_tools(step).await;
         }
 
+        if !answered {
+            return Err(format!(
+                "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
+                 nothing was returned rather than an empty answer that reads as success"
+            )
+            .into());
+        }
         Ok(final_answer)
     }
 }

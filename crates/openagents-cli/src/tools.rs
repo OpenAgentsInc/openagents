@@ -36,6 +36,26 @@ use crate::plugins::{
 };
 
 pub const OUTPUT_LIMIT: usize = 30_000;
+
+/// The largest index at or below `max` that is a character boundary in `text`.
+///
+/// Slicing a `String` by a byte index panics when the index lands inside a
+/// multi-byte character, and truncating tool output at a fixed byte count does
+/// exactly that the first time a command prints an accent or an emoji past the
+/// limit. The panic took the whole agent process with it, before the thread
+/// could even be revoked. `str::floor_char_boundary` is unstable, so this is
+/// the same thing spelled out.
+fn floor_char_boundary(text: &str, max: usize) -> usize {
+    if max >= text.len() {
+        return text.len();
+    }
+    let mut index = max;
+    while index > 0 && !text.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
+
 pub const DEFAULT_TIMEOUT_SECS: u64 = 120;
 pub const MAXIMUM_TIMEOUT_SECS: u64 = 600;
 
@@ -373,11 +393,11 @@ impl HarnessToolRegistry {
                     };
                 }
 
-                let output_str = run_real_shell(cmd, &self.cwd, timeout_secs).await;
+                let (output_str, failed) = run_real_shell(cmd, &self.cwd, timeout_secs).await;
                 ToolOutput {
                     call_id: call.id.clone(),
                     output: output_str,
-                    is_error: false,
+                    is_error: failed,
                 }
             }
             "skill" => {
@@ -402,11 +422,11 @@ impl HarnessToolRegistry {
                     .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect::<Vec<_>>())
                     .unwrap_or_default();
 
-                let output_str = run_openagents_cli(&args_array).await;
+                let (output_str, failed) = run_openagents_cli(&args_array).await;
                 ToolOutput {
                     call_id: call.id.clone(),
                     output: output_str,
-                    is_error: false,
+                    is_error: failed,
                 }
             }
             "delegate" => {
@@ -770,17 +790,30 @@ pub fn check_shell_refusal(cmd: &str) -> Option<String> {
     None
 }
 
-async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> String {
-    let child = match Command::new("/bin/sh")
+/// The text a tool result carries, and whether the command actually worked.
+///
+/// The outcome used to be dropped here and every shell result was reported to
+/// the model as `is_error: false`, so a failing build read like a passing one
+/// and the model carried on as though the step had succeeded.
+async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bool) {
+    let mut command = Command::new("/bin/sh");
+    command
         .arg("-c")
         .arg(cmd)
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
+        // The shell spawns children of its own, and without a group of their
+        // own they survive a cancelled fan-out and reparent to init. Every
+        // other spawn site in this crate — `delegate.rs`, `computer.rs`,
+        // `acp.rs` — already puts its child in one; this was the exception.
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let child = match command.spawn()
     {
         Ok(c) => c,
-        Err(e) => return format!("Failed to spawn shell command: {}", e),
+        Err(e) => return (format!("Failed to spawn shell command: {}", e), true),
     };
 
     let execution = child.wait_with_output();
@@ -792,28 +825,41 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> String {
 
             let total_len = combined.len();
             let bounded = if total_len > OUTPUT_LIMIT {
-                format!("{}\n\n[Output truncated: printed {} characters, limit is {}]", &combined[..OUTPUT_LIMIT], total_len, OUTPUT_LIMIT)
+                format!(
+                    "{}\n\n[Output truncated: printed {} characters, limit is {}]",
+                    &combined[..floor_char_boundary(&combined, OUTPUT_LIMIT)],
+                    total_len,
+                    OUTPUT_LIMIT
+                )
             } else {
                 combined
             };
 
             if output.status.success() {
                 if bounded.trim().is_empty() {
-                    "The command succeeded and printed nothing.".to_string()
+                    ("The command succeeded and printed nothing.".to_string(), false)
                 } else {
-                    bounded.trim().to_string()
+                    (bounded.trim().to_string(), false)
                 }
             } else {
                 let code = output.status.code().unwrap_or(1);
-                format!("The command exited with code {}.\n\n{}", code, bounded.trim())
+                (
+                    format!("The command exited with code {}.\n\n{}", code, bounded.trim()),
+                    true,
+                )
             }
         }
-        Ok(Err(e)) => format!("Shell execution error: {}", e),
-        Err(_) => format!("The command timed out after {} seconds and was stopped.", timeout_secs),
+        Ok(Err(e)) => (format!("Shell execution error: {}", e), true),
+        Err(_) => (
+            format!("The command timed out after {} seconds and was stopped.", timeout_secs),
+            true,
+        ),
     }
 }
 
-async fn run_openagents_cli(args: &[String]) -> String {
+/// As [`run_real_shell`]: the text, and whether it worked. A CLI that could
+/// not even be spawned was previously reported to the model as a success.
+async fn run_openagents_cli(args: &[String]) -> (String, bool) {
     let mut cmd = Command::new("openagents");
     cmd.args(args);
     cmd.stdout(Stdio::piped());
@@ -824,9 +870,9 @@ async fn run_openagents_cli(args: &[String]) -> String {
             let mut combined = String::new();
             combined.push_str(&String::from_utf8_lossy(&output.stdout));
             combined.push_str(&String::from_utf8_lossy(&output.stderr));
-            combined.trim().to_string()
+            (combined.trim().to_string(), !output.status.success())
         }
-        Err(e) => format!("Failed to run openagents CLI: {}", e),
+        Err(e) => (format!("Failed to run openagents CLI: {}", e), true),
     }
 }
 
@@ -1179,5 +1225,65 @@ mod tests {
             .await;
         assert!(out.is_error);
         assert!(out.output.contains("does_not_exist"), "{}", out.output);
+    }
+}
+
+#[cfg(test)]
+mod defect_tests {
+    use super::*;
+
+    /// `&combined[..OUTPUT_LIMIT]` is a *byte* index into a `String`. The first
+    /// time a command printed an accent or an emoji straddling the limit, the
+    /// slice panicked and took the whole agent process with it — before the
+    /// thread could even be revoked. Any `git log`, test run, or file with a
+    /// non-ASCII character past 30 kB did it.
+    #[test]
+    fn truncation_survives_a_multibyte_character_on_the_boundary() {
+        // 29,999 ASCII bytes, then a 3-byte character straddling byte 30,000.
+        let mut text = "a".repeat(OUTPUT_LIMIT - 1);
+        text.push_str("€€€");
+        assert!(!text.is_char_boundary(OUTPUT_LIMIT), "the probe must straddle");
+
+        let cut = floor_char_boundary(&text, OUTPUT_LIMIT);
+        // The old code did `&text[..OUTPUT_LIMIT]`, which panics here.
+        let head = &text[..cut];
+
+        assert_eq!(cut, OUTPUT_LIMIT - 1, "it must step back to the boundary");
+        assert!(head.ends_with('a'));
+        assert!(text.len() > cut, "there was something to truncate");
+    }
+
+    #[test]
+    fn a_boundary_that_is_already_clean_is_left_alone() {
+        let text = "a".repeat(OUTPUT_LIMIT + 10);
+        assert_eq!(floor_char_boundary(&text, OUTPUT_LIMIT), OUTPUT_LIMIT);
+    }
+
+    #[test]
+    fn a_short_string_is_never_cut() {
+        let text = "€€€";
+        assert_eq!(floor_char_boundary(text, OUTPUT_LIMIT), text.len());
+    }
+
+    /// Every shell result was reported to the model as `is_error: false`, so a
+    /// failing build read exactly like a passing one.
+    #[tokio::test]
+    async fn a_failing_command_is_reported_as_a_failure() {
+        let dir = std::env::temp_dir();
+        let (text, failed) = run_real_shell("exit 7", &dir, 30).await;
+        assert!(failed, "exit 7 must be reported as an error, got: {text}");
+        assert!(text.contains('7'), "the code belongs in the text: {text}");
+
+        let (text, failed) = run_real_shell("true", &dir, 30).await;
+        assert!(!failed, "a successful command must not be an error: {text}");
+    }
+
+    /// A timeout is not a successful result either.
+    #[tokio::test]
+    async fn a_timed_out_command_is_reported_as_a_failure() {
+        let dir = std::env::temp_dir();
+        let (text, failed) = run_real_shell("sleep 5", &dir, 1).await;
+        assert!(failed, "a timeout must be an error, got: {text}");
+        assert!(text.contains("timed out"), "{text}");
     }
 }
