@@ -105,11 +105,10 @@ mod unix_pty {
     );
 
     impl Stub {
-        fn start() -> Self {
-            Self::start_with_credit(STUB_CREDIT)
-        }
-
-        fn start_with_credit(credit: &'static str) -> Self {
+        fn start_with_credit_and_unknown_delay(
+            credit: &'static str,
+            unknown_delay: Duration,
+        ) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback stub");
             let port = listener.local_addr().expect("stub address").port();
             std::thread::spawn(move || {
@@ -146,8 +145,8 @@ mod unix_pty {
                             body.len()
                         )
                     } else {
-                        let body =
-                            "the Coder PTY harness stub serves /api/v1/models and /credit";
+                        std::thread::sleep(unknown_delay);
+                        let body = "the Coder PTY harness stub serves /api/v1/models and /credit";
                         format!(
                             "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n\
                              Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -300,20 +299,24 @@ mod unix_pty {
         /// command set instead, and this harness has nothing to say about
         /// that surface.
         fn start() -> Self {
-            Self::start_full(ROWS, COLS, STUB_CREDIT, false)
+            Self::start_full(ROWS, COLS, STUB_CREDIT, false, Duration::ZERO)
         }
 
         /// Start the bare binary with an exhausted pipe as standard input,
         /// which is how `curl … | sh` hands control to Coder after install.
         fn start_with_piped_stdin() -> Self {
-            Self::start_full(ROWS, COLS, STUB_CREDIT, true)
+            Self::start_full(ROWS, COLS, STUB_CREDIT, true, Duration::ZERO)
         }
 
         /// A session whose deployment answers `GET /api/v1/credit` with one
         /// named body, so a test can drive the status bar's states from the
         /// wire rather than from the renderer.
         fn start_with_credit(credit: &'static str) -> Self {
-            Self::start_full(ROWS, COLS, credit, false)
+            Self::start_full(ROWS, COLS, credit, false, Duration::ZERO)
+        }
+
+        fn start_with_blocked_turn() -> Self {
+            Self::start_full(ROWS, COLS, STUB_CREDIT, false, Duration::from_secs(5))
         }
 
         fn start_full(
@@ -321,8 +324,9 @@ mod unix_pty {
             cols: u16,
             credit: &'static str,
             piped_stdin: bool,
+            unknown_delay: Duration,
         ) -> Self {
-            let stub = Stub::start_with_credit(credit);
+            let stub = Stub::start_with_credit_and_unknown_delay(credit, unknown_delay);
             let home = scratch_dir();
             let workdir = home.join("workdir");
             std::fs::create_dir_all(&workdir).expect("create the scratch working directory");
@@ -587,9 +591,7 @@ mod unix_pty {
             frame.dump()
         );
         assert!(
-            frame
-                .transcript()
-                .contains("Working directory"),
+            frame.transcript().contains("Working directory"),
             "the startup summary should name the working directory.\n{}",
             frame.dump()
         );
@@ -623,7 +625,10 @@ mod unix_pty {
         );
 
         let status = tui.quit();
-        assert!(status.success(), "piped Coder did not exit cleanly: {status:?}");
+        assert!(
+            status.success(),
+            "piped Coder did not exit cleanly: {status:?}"
+        );
     }
 
     /// The one the postmortem is about: is there anywhere to type.
@@ -770,6 +775,48 @@ mod unix_pty {
         );
     }
 
+    /// Escape cancels the active transport without leaving Coder. The prompt
+    /// remains in the transcript, the composer becomes usable, and a later
+    /// turn has a new generation that cannot receive the old turn's events.
+    #[test]
+    fn escape_cancels_the_active_turn_and_returns_to_the_composer() {
+        let mut tui = Tui::start_with_blocked_turn();
+        tui.wait_for_composer();
+
+        tui.type_text("wait for this request");
+        tui.send(b"\r");
+        tui.wait_for("the blocked turn to start", REDRAW, |frame| {
+            frame.transcript().contains("> wait for this request")
+        });
+
+        tui.send(&[0x1b]);
+        let canceled = tui.wait_for("the turn cancellation to complete", REDRAW, |frame| {
+            frame.transcript().contains("Turn canceled.")
+                && frame
+                    .composer()
+                    .is_some_and(|composer| composer.has_gutter())
+        });
+        assert!(
+            canceled.transcript().contains("> wait for this request"),
+            "cancellation removed completed transcript content.\n{}",
+            canceled.dump()
+        );
+
+        tui.type_text("next turn");
+        let next = tui.wait_for("the composer to accept a new prompt", REDRAW, |frame| {
+            frame
+                .composer()
+                .is_some_and(|composer| composer.first() == " > next turn")
+        });
+        assert!(
+            !next
+                .transcript()
+                .contains("The turn task was already gone."),
+            "cancellation ran twice.\n{}",
+            next.dump()
+        );
+    }
+
     /// A `/` line reaches the session's own dispatch rather than being sent to
     /// a model or dropped. Both halves are asserted: a name that exists runs,
     /// and a name that does not is refused by name.
@@ -810,7 +857,10 @@ mod unix_pty {
         let frame = tui.wait_for("the goal to be set and shown", REDRAW, |frame| {
             let transcript = frame.transcript();
             transcript.contains("Set active goal: \"finish the native port\"")
-                && frame.rows.iter().any(|row| row.contains("goal: \"finish the native port\""))
+                && frame
+                    .rows
+                    .iter()
+                    .any(|row| row.contains("goal: \"finish the native port\""))
         });
         assert!(
             !frame.transcript().contains("There is no `/goal`"),
@@ -831,7 +881,10 @@ mod unix_pty {
             frame.transcript().contains("Cleared active task goal.")
         });
         assert!(
-            frame.rows.last().is_some_and(|row| !row.contains("goal: \"")),
+            frame
+                .rows
+                .last()
+                .is_some_and(|row| !row.contains("goal: \"")),
             "the footer kept a cleared goal.\n{}",
             frame.dump()
         );

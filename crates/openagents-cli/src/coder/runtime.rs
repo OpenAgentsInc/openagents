@@ -30,6 +30,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::coder::turn::TurnId;
 use crate::runtime::{ChatMessage, CoderRuntimeSession, Lane, ToolEvent, TurnProgress, TurnUsage};
 use crate::surfaces::system_prompt as prompt;
 use crate::tools::{DelegationGate, HarnessToolRegistry, ToolDefinition};
@@ -39,6 +40,15 @@ type Failure = Box<dyn std::error::Error + Send + Sync>;
 /// What the runtime tells the frame, in the order it happened.
 #[derive(Debug, Clone)]
 pub enum Control {
+    /// One event produced by a specific turn. The frame applies it only while
+    /// this generation remains active.
+    Turn { id: TurnId, event: Box<Control> },
+    /// The transport task has stopped and the interrupted turn has been
+    /// recorded locally. This is the typed completion of a cancel request.
+    CancelComplete {
+        id: TurnId,
+        diagnostic: Option<String>,
+    },
     /// A piece of the reply, as the model wrote it.
     Chunk(String),
     /// A tool call started. The header goes up now; the box fills in later.
@@ -90,11 +100,51 @@ pub enum Control {
 /// loop's receiver is on the other end of exactly one channel.
 pub type Sink = Arc<Mutex<Sender<Control>>>;
 
+/// Routes observer events back to the turn that created them.
+///
+/// Tool completions keep their original mapping after cancellation, so a late
+/// completion cannot be relabeled as output from a newer turn.
+#[derive(Debug, Default)]
+pub struct TurnRouter {
+    active: Option<TurnId>,
+    calls: std::collections::HashMap<String, TurnId>,
+}
+
+pub type SharedTurnRouter = Arc<Mutex<TurnRouter>>;
+
+impl TurnRouter {
+    fn start(&mut self, id: TurnId) {
+        self.active = Some(id);
+    }
+
+    pub fn cancel(&mut self, id: TurnId) {
+        if self.active == Some(id) {
+            self.active = None;
+        }
+    }
+
+    fn finish(&mut self, id: TurnId) {
+        if self.active == Some(id) {
+            self.active = None;
+        }
+    }
+}
+
 /// Put a message on the frame's channel, or drop it if the frame is gone.
 pub fn send(sink: &Sink, message: Control) {
     if let Ok(tx) = sink.lock() {
         let _ = tx.send(message);
     }
+}
+
+fn send_turn(sink: &Sink, id: TurnId, event: Control) {
+    send(
+        sink,
+        Control::Turn {
+            id,
+            event: Box::new(event),
+        },
+    );
 }
 
 /// The system message this session opens with.
@@ -169,6 +219,8 @@ pub struct Session {
     /// [`crate::coder::acp_tool`] for why one is the limit.
     acp_spent: Arc<AtomicBool>,
     goal: crate::coder::goal::SharedGoal,
+    turn_router: SharedTurnRouter,
+    next_turn: u64,
 }
 
 impl Session {
@@ -233,6 +285,9 @@ impl Session {
         let goal = Arc::new(Mutex::new(crate::coder::goal::GoalStore::default()));
         let observed = Arc::clone(&sink);
         let progress = Arc::clone(&sink);
+        let turn_router = Arc::new(Mutex::new(TurnRouter::default()));
+        let observed_turns = Arc::clone(&turn_router);
+        let progress_turns = Arc::clone(&turn_router);
 
         // Coder's own capability, declared only where there is one to
         // declare: `find_agents` reports installed agents, so a machine with
@@ -264,28 +319,45 @@ impl Session {
                     call_id,
                     name,
                     arguments,
-                } => send(
-                    &observed,
-                    Control::Tool {
-                        call_id,
-                        name,
-                        arguments,
-                    },
-                ),
+                } => {
+                    let id = observed_turns.lock().ok().and_then(|mut turns| {
+                        let id = turns.active?;
+                        turns.calls.insert(call_id.clone(), id);
+                        Some(id)
+                    });
+                    if let Some(id) = id {
+                        send_turn(
+                            &observed,
+                            id,
+                            Control::Tool {
+                                call_id,
+                                name,
+                                arguments,
+                            },
+                        );
+                    }
+                }
                 ToolEvent::Finished {
                     call_id,
                     output,
                     is_error,
                     ..
                 } => {
-                    send(
-                        &observed,
-                        Control::ToolOutput {
-                            call_id: call_id.clone(),
-                            chunk: output,
-                        },
-                    );
-                    send(&observed, Control::ToolDone { call_id, is_error });
+                    let id = observed_turns
+                        .lock()
+                        .ok()
+                        .and_then(|mut turns| turns.calls.remove(&call_id));
+                    if let Some(id) = id {
+                        send_turn(
+                            &observed,
+                            id,
+                            Control::ToolOutput {
+                                call_id: call_id.clone(),
+                                chunk: output,
+                            },
+                        );
+                        send_turn(&observed, id, Control::ToolDone { call_id, is_error });
+                    }
                 }
             }))
             .observing_progress(Arc::new(move |event| {
@@ -302,7 +374,10 @@ impl Session {
                     )),
                     TurnProgress::Clear => None,
                 };
-                send(&progress, Control::Waiting(message));
+                let id = progress_turns.lock().ok().and_then(|turns| turns.active);
+                if let Some(id) = id {
+                    send_turn(&progress, id, Control::Waiting(message));
+                }
             }))
             .use_openresponses(dev);
         inner.reasoning = reasoning;
@@ -325,6 +400,8 @@ impl Session {
             sink,
             acp_spent,
             goal,
+            turn_router,
+            next_turn: 1,
         }
     }
 
@@ -442,7 +519,18 @@ impl Session {
     ///
     /// Always ends with exactly one [`Control::Done`], so a frame cannot be
     /// left spinning over a turn that has finished.
+    /// Run a turn for callers that do not own a UI generation counter.
     pub async fn execute_turn(&mut self, prompt: &str, tx: Sender<Control>) {
+        let id = TurnId::new(self.next_turn);
+        self.next_turn = self.next_turn.saturating_add(1);
+        self.execute_turn_with_id(id, prompt, tx).await;
+    }
+
+    /// Run one turn under a generation assigned by the frame reducer.
+    pub async fn execute_turn_with_id(&mut self, id: TurnId, prompt: &str, tx: Sender<Control>) {
+        if let Ok(mut turns) = self.turn_router.lock() {
+            turns.start(id);
+        }
         // A fresh turn may hand work to an agent again. The limit is per user
         // turn, not per session.
         self.acp_spent.store(false, Ordering::SeqCst);
@@ -467,26 +555,26 @@ impl Session {
             .execute_turn(&outgoing, move |chunk| {
                 if !chunk.is_empty() {
                     saw.store(true, Ordering::Relaxed);
-                    send(&chunks, Control::Chunk(chunk.to_string()));
+                    send_turn(&chunks, id, Control::Chunk(chunk.to_string()));
                 }
             })
             .await;
 
         if let Some(model) = &self.inner.last_model {
-            send(&sink, Control::Model(model.clone()));
+            send_turn(&sink, id, Control::Model(model.clone()));
         }
         if let Some(thread) = self.inner.thread() {
-            send(&sink, Control::Thread(thread.to_string()));
+            send_turn(&sink, id, Control::Thread(thread.to_string()));
         }
         if self.inner.last_usage.reported() {
-            send(&sink, Control::Usage(self.inner.last_usage));
+            send_turn(&sink, id, Control::Usage(self.inner.last_usage));
         }
         if let Ok(mut goal) = self.goal.lock() {
             goal.add_usage(
                 self.inner.last_usage.total_tokens,
                 u64::try_from((started.elapsed().as_millis() + 500) / 1_000).unwrap_or(u64::MAX),
             );
-            send(&sink, Control::Goal(goal.get()));
+            send_turn(&sink, id, Control::Goal(goal.get()));
         }
         match result {
             Ok(answer) => {
@@ -494,15 +582,30 @@ impl Session {
                 // nothing else: an empty answer stays empty rather than
                 // becoming a sentence somebody could read as a reply.
                 if !answer.is_empty() && !streamed.load(Ordering::Relaxed) {
-                    send(&sink, Control::Chunk(answer));
+                    send_turn(&sink, id, Control::Chunk(answer));
                 }
             }
-            Err(error) => send(&sink, Control::Failed(error.to_string())),
+            Err(error) => send_turn(&sink, id, Control::Failed(error.to_string())),
         }
         for failure in self.inner.record_failures.drain(..) {
-            send(&sink, Control::Notice(failure));
+            send_turn(&sink, id, Control::Notice(failure));
         }
-        send(&sink, Control::Done);
+        if let Ok(mut turns) = self.turn_router.lock() {
+            turns.finish(id);
+        }
+        send_turn(&sink, id, Control::Done);
+    }
+
+    /// The observer fence shared with the terminal loop.
+    pub fn turn_router(&self) -> SharedTurnRouter {
+        Arc::clone(&self.turn_router)
+    }
+
+    /// Record an interrupted turn after its transport future has stopped.
+    pub async fn note_cancellation(&mut self) {
+        self.inner
+            .note_interruption("The turn was canceled before it finished.")
+            .await;
     }
 
     /// End this session's thread by saying what it did, and say what the

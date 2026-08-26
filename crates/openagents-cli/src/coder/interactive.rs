@@ -13,10 +13,16 @@
 //! [`crate::composer`], which handles it; `/help` lists exactly that
 //! set and nothing else.
 
+use crate::auth::{CredentialStore, DeviceClient, Secret, open_browser};
 use crate::coder::commands;
 use crate::coder::export::{export_trajectory, git_info};
 use crate::coder::runtime::{Control, Session, tool_title};
 use crate::coder::tui::{CoderUi, Entry, Role, ToolCall};
+use crate::coder::turn::{TurnAction, TurnEffect, TurnId, TurnState};
+use crate::composer::ComposerAction;
+use crate::composer::complete::{Completion, complete};
+use crate::composer::history::History;
+use crate::runtime::Lane;
 use crossterm::{
     ExecutableCommand,
     event::{
@@ -26,11 +32,6 @@ use crossterm::{
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use crate::auth::{CredentialStore, DeviceClient, Secret, open_browser};
-use crate::composer::ComposerAction;
-use crate::composer::complete::{Completion, complete};
-use crate::composer::history::History;
-use crate::runtime::Lane;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io::{stderr, stdout};
@@ -39,6 +40,12 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 use std::time::Duration;
 use tokio::sync::Mutex;
+
+struct ActiveTurn {
+    id: TurnId,
+    task: tokio::task::JoinHandle<()>,
+    router: crate::coder::runtime::SharedTurnRouter,
+}
 
 /// How long the exit waits for a thread to be revoked before it says it could
 /// not be. A turn still streaming would otherwise hold the exit for as long as
@@ -167,16 +174,39 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // Keep its one transcript entry so rapid Shift+Tab presses do not bury the
     // conversation beneath stale selections.
     let mut lane_notice = None;
+    let mut turns = TurnState::default();
+    let mut active_turn: Option<ActiveTurn> = None;
 
     loop {
         while let Ok(control) = rx.try_recv() {
-            // A turn that has stopped, either way, is the moment the server's
-            // figure can have moved. Read it again rather than adjusting the
-            // one on screen: this terminal is not the only thing spending.
-            let settled = matches!(control, Control::Done | Control::Failed(_));
-            apply(&mut ui, control);
-            if settled {
-                refresh_credit(&tx);
+            match control {
+                Control::Turn { id, event } => {
+                    if !turns.accepts(id) {
+                        continue;
+                    }
+                    let terminal = matches!(*event, Control::Done);
+                    apply(&mut ui, *event);
+                    if terminal {
+                        turns.apply(TurnAction::ObserveTerminal(id));
+                        active_turn = None;
+                        refresh_credit(&tx);
+                    }
+                }
+                Control::CancelComplete { id, diagnostic } => {
+                    if matches!(
+                        turns.apply(TurnAction::CompleteCancel(id)),
+                        TurnEffect::ReturnedIdle(_)
+                    ) {
+                        ui.loading = false;
+                        ui.waiting = None;
+                        ui.entries.push(Entry::new(Role::Notice, "Turn canceled."));
+                        if let Some(diagnostic) = diagnostic {
+                            ui.entries.push(Entry::new(Role::Notice, diagnostic));
+                        }
+                        refresh_credit(&tx);
+                    }
+                }
+                control => apply(&mut ui, control),
             }
         }
 
@@ -233,8 +263,16 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
 
         let width = composer_width(terminal.size()?.width);
 
+        // Escape requests turn cancellation. It never exits Coder, and the
+        // reducer makes a repeated request idempotent.
+        if key.code == KeyCode::Esc {
+            request_cancel(&mut ui, &mut turns, &mut active_turn, session.as_ref(), &tx);
+            continue;
+        }
+
         // Leaving is checked before the composer sees the key, so Ctrl+C is
-        // never swallowed by an editing chord.
+        // never swallowed by an editing chord. Exit remains a separate action
+        // from Escape's turn cancellation.
         if is_quit(&key) {
             break;
         }
@@ -246,8 +284,15 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 let mut asked_to_log_out = false;
                 if let Some(session) = &session {
                     if !text.trim().is_empty() {
-                        asked_to_log_out =
-                            submit(&mut ui, text, session, &tx, &cwd) == commands::Outcome::Logout;
+                        asked_to_log_out = submit(
+                            &mut ui,
+                            text,
+                            session,
+                            &tx,
+                            &cwd,
+                            &mut turns,
+                            &mut active_turn,
+                        ) == commands::Outcome::Logout;
                     }
                 } else if text.trim().is_empty() || text.trim() == "/login" {
                     ui.entries.push(Entry::new(
@@ -509,9 +554,6 @@ fn is_quit(key: &KeyEvent) -> bool {
     matches!(
         key,
         KeyEvent {
-            code: KeyCode::Esc,
-            ..
-        } | KeyEvent {
             code: KeyCode::Char('c' | 'd' | 'q'),
             modifiers: KeyModifiers::CONTROL,
             ..
@@ -532,6 +574,7 @@ fn normalize_paste(text: &str) -> String {
 /// Split out of the loop so a test can drive it without a terminal.
 pub fn apply(ui: &mut CoderUi, control: Control) {
     match control {
+        Control::Turn { .. } | Control::CancelComplete { .. } => {}
         Control::Chunk(chunk) => {
             if !chunk.is_empty() {
                 // Create the answer where its text actually arrives. A turn
@@ -760,6 +803,8 @@ fn submit(
     session: &Arc<Mutex<Session>>,
     tx: &Sender<Control>,
     cwd: &std::path::Path,
+    turns: &mut TurnState,
+    active_turn: &mut Option<ActiveTurn>,
 ) -> commands::Outcome {
     ui.scroll_override = None;
     ui.show_welcome = false;
@@ -785,12 +830,86 @@ fn submit(
     ui.loading = true;
     ui.waiting = None;
 
+    let TurnEffect::Started(id) = turns.apply(TurnAction::Start) else {
+        ui.loading = false;
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            "A turn is already running. Press Esc to cancel it.",
+        ));
+        return commands::Outcome::Done;
+    };
+
+    let router = match session.try_lock() {
+        Ok(session) => session.turn_router(),
+        Err(_) => {
+            turns.apply(TurnAction::ObserveTerminal(id));
+            ui.loading = false;
+            ui.entries.push(Entry::new(
+                Role::Notice,
+                "The previous turn is still releasing its session. Try again.",
+            ));
+            return commands::Outcome::Done;
+        }
+    };
+
     let session = Arc::clone(session);
     let tx = tx.clone();
-    tokio::spawn(async move {
-        session.lock().await.execute_turn(&text, tx).await;
+    let task = tokio::spawn(async move {
+        session
+            .lock()
+            .await
+            .execute_turn_with_id(id, &text, tx)
+            .await;
     });
+    *active_turn = Some(ActiveTurn { id, task, router });
     commands::Outcome::Done
+}
+
+fn request_cancel(
+    ui: &mut CoderUi,
+    turns: &mut TurnState,
+    active_turn: &mut Option<ActiveTurn>,
+    session: Option<&Arc<Mutex<Session>>>,
+    tx: &Sender<Control>,
+) {
+    let TurnEffect::AbortTransport(id) = turns.apply(TurnAction::RequestCancel) else {
+        return;
+    };
+
+    ui.loading = true;
+    ui.waiting = Some("Canceling turn...".to_string());
+
+    let Some(active) = active_turn.take().filter(|active| active.id == id) else {
+        let _ = tx.send(Control::CancelComplete {
+            id,
+            diagnostic: Some("The turn task was already gone.".to_string()),
+        });
+        return;
+    };
+    if let Ok(mut router) = active.router.lock() {
+        router.cancel(id);
+    }
+    active.task.abort();
+
+    let Some(session) = session.cloned() else {
+        let _ = tx.send(Control::CancelComplete {
+            id,
+            diagnostic: None,
+        });
+        return;
+    };
+    let tx = tx.clone();
+    tokio::spawn(async move {
+        let _ = active.task.await;
+        let recorded = tokio::time::timeout(Duration::from_secs(3), async {
+            session.lock().await.note_cancellation().await;
+        })
+        .await;
+        let diagnostic = recorded
+            .is_err()
+            .then(|| "The canceled turn could not be recorded within 3 seconds.".to_string());
+        let _ = tx.send(Control::CancelComplete { id, diagnostic });
+    });
 }
 
 /// `/export` is here rather than in `commands` because it reads the whole

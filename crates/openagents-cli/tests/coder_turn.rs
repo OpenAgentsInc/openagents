@@ -260,7 +260,10 @@ fn dev_session(base: &str, tx: Sender<Control>) -> Session {
 fn drain(rx: &Receiver<Control>) -> Vec<Control> {
     let mut seen = Vec::new();
     while let Ok(control) = rx.try_recv() {
-        seen.push(control);
+        match control {
+            Control::Turn { event, .. } => seen.push(*event),
+            control => seen.push(control),
+        }
     }
     seen
 }
@@ -328,8 +331,14 @@ async fn a_turn_opens_a_thread_runs_a_tool_and_streams_the_answer() {
     let answered = seen
         .iter()
         .position(|c| matches!(c, Control::ToolOutput { .. }));
-    assert!(announced.is_some(), "no tool call reached the frame: {seen:?}");
-    assert!(announced < answered, "the result preceded the call: {seen:?}");
+    assert!(
+        announced.is_some(),
+        "no tool call reached the frame: {seen:?}"
+    );
+    assert!(
+        announced < answered,
+        "the result preceded the call: {seen:?}"
+    );
 
     // And it really ran: this is the command's own output.
     assert!(
@@ -337,8 +346,13 @@ async fn a_turn_opens_a_thread_runs_a_tool_and_streams_the_answer() {
         "the shell tool did not run: {seen:?}"
     );
     assert!(
-        seen.iter()
-            .any(|c| matches!(c, Control::ToolDone { is_error: false, .. })),
+        seen.iter().any(|c| matches!(
+            c,
+            Control::ToolDone {
+                is_error: false,
+                ..
+            }
+        )),
         "the call was not settled: {seen:?}"
     );
 
@@ -391,7 +405,10 @@ async fn an_active_goal_rides_the_turn_and_accounts_for_usage() {
         .find(|request| request.contains("/api/inference/proxy"))
         .expect("proxy request");
     assert!(request.contains("finish the native port"), "{request}");
-    assert!(request.contains("Token budget remaining: 40 tokens"), "{request}");
+    assert!(
+        request.contains("Token budget remaining: 40 tokens"),
+        "{request}"
+    );
     assert!(request.contains("\"name\":\"goal\""), "{request}");
 
     let seen = drain(&rx);
@@ -429,10 +446,7 @@ async fn a_silent_first_response_is_shown_cancelled_and_retried_once() {
 
     let (tx, rx) = channel();
     let mut session = session(&stub.base, tx.clone());
-    session.set_first_response_policy(
-        Duration::from_millis(5),
-        Duration::from_millis(20),
-    );
+    session.set_first_response_policy(Duration::from_millis(5), Duration::from_millis(20));
     let started = std::time::Instant::now();
     session.execute_turn("hello", tx).await;
 
@@ -456,7 +470,11 @@ async fn a_silent_first_response_is_shown_cancelled_and_retried_once() {
             .any(|control| matches!(control, Control::Waiting(None))),
         "the waiting state was not cleared: {seen:?}"
     );
-    assert_eq!(reply_text(&seen), "retried", "the late answer leaked: {seen:?}");
+    assert_eq!(
+        reply_text(&seen),
+        "retried",
+        "the late answer leaked: {seen:?}"
+    );
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     assert!(
         started.elapsed() < Duration::from_millis(150),
@@ -486,14 +504,15 @@ async fn a_silent_openresponses_turn_is_cancelled_and_retried_once() {
 
     let (tx, rx) = channel();
     let mut session = dev_session(&stub.base, tx.clone());
-    session.set_first_response_policy(
-        Duration::from_millis(5),
-        Duration::from_millis(20),
-    );
+    session.set_first_response_policy(Duration::from_millis(5), Duration::from_millis(20));
     session.execute_turn("hello", tx).await;
 
     let seen = drain(&rx);
-    assert_eq!(reply_text(&seen), "retried", "the late answer leaked: {seen:?}");
+    assert_eq!(
+        reply_text(&seen),
+        "retried",
+        "the late answer leaked: {seen:?}"
+    );
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     assert!(
         seen.iter().any(|control| matches!(
@@ -504,13 +523,14 @@ async fn a_silent_openresponses_turn_is_cancelled_and_retried_once() {
     );
     assert!(seen.iter().any(|control| matches!(control, Control::Done)));
     assert!(
-        !seen.iter().any(|control| matches!(control, Control::Failed(_))),
+        !seen
+            .iter()
+            .any(|control| matches!(control, Control::Failed(_))),
         "the retried turn failed: {seen:?}"
     );
     assert!(
-        seen.iter().any(
-            |control| matches!(control, Control::Model(model) if model == "glm-5.3-flash")
-        ),
+        seen.iter()
+            .any(|control| matches!(control, Control::Model(model) if model == "glm-5.3-flash")),
         "dev mode did not report the model that answered: {seen:?}"
     );
 }
@@ -534,10 +554,7 @@ async fn a_silent_retry_fails_after_the_second_deadline() {
 
     let (tx, rx) = channel();
     let mut session = session(&stub.base, tx.clone());
-    session.set_first_response_policy(
-        Duration::from_millis(5),
-        Duration::from_millis(20),
-    );
+    session.set_first_response_policy(Duration::from_millis(5), Duration::from_millis(20));
     session.execute_turn("hello", tx).await;
 
     let seen = drain(&rx);
@@ -566,7 +583,10 @@ async fn a_tool_that_failed_is_settled_as_a_failure() {
             let mut at = step.lock().unwrap();
             *at += 1;
             return if *at == 1 {
-                Reply::Sse(vec![call("shell", serde_json::json!({"command": "exit 7"}))])
+                Reply::Sse(vec![call(
+                    "shell",
+                    serde_json::json!({"command": "exit 7"}),
+                )])
             } else {
                 Reply::Sse(vec![text("it failed")])
             };
@@ -599,7 +619,10 @@ async fn a_destructive_command_is_refused_and_the_refusal_says_why() {
             let mut at = step.lock().unwrap();
             *at += 1;
             return if *at == 1 {
-                Reply::Sse(vec![call("shell", serde_json::json!({"command": "rm -rf ~/"}))])
+                Reply::Sse(vec![call(
+                    "shell",
+                    serde_json::json!({"command": "rm -rf ~/"}),
+                )])
             } else {
                 Reply::Sse(vec![text("understood")])
             };
