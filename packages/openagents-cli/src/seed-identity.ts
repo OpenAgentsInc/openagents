@@ -23,7 +23,7 @@
  * `@noble/hashes` 1.7.1, `@scure/bip32` 1.6.2, `@scure/bip39` 1.5.4.
  *
  * SECRETS. This module returns the mnemonic from exactly one function,
- * {@link readSeedPhrase}, and derives from it in memory. It never logs and never
+ * {@link loadSeed}, and derives from it in memory. It never logs and never
  * returns an `nsec` or a raw private key. The public manifest
  * {@link SeedIdentity} carries public identifiers only and is safe to print,
  * store, and export.
@@ -507,25 +507,6 @@ export const noKeyStore: SeedKeyStore = {
   delete: () => {},
 };
 
-/**
- * A keychain that lives for the length of one test, so the seal, open, and
- * migration paths are exercised for real without writing to the developer's own
- * keychain or depending on one existing.
- */
-export const inMemoryKeyStore = (): SeedKeyStore => {
-  let held: Uint8Array | undefined;
-  return {
-    available: () => true,
-    get: () => held,
-    put: (key) => {
-      held = Uint8Array.from(key);
-    },
-    delete: () => {
-      held = undefined;
-    },
-  };
-};
-
 /** True when the environment asks for the plaintext store. */
 const plaintextRequested = (): boolean => {
   const value = (process.env[PLAINTEXT_ENV] ?? "").trim().toLowerCase();
@@ -574,8 +555,8 @@ export const seedProtectionOnDisk = (): SeedProtection | undefined => {
 };
 
 /**
- * Read the stored seed and report what was protecting it. This and
- * {@link readSeedPhrase} are the only functions that return secret material.
+ * Read the stored seed and report what was protecting it. It is the only
+ * function in this module that returns secret material.
  */
 export const loadSeed = (
   keyStore: SeedKeyStore = defaultSeedKeyStore(),
@@ -597,17 +578,6 @@ export const loadSeed = (
     );
   }
   return { phrase: openEnvelope(text, key, path), protection: "os_keychain" };
-};
-
-/**
- * Read the stored mnemonic. Every caller either derives from it or hands it to
- * the reader who asked for a backup. Returns `undefined` when no seed is stored.
- */
-export const readSeedPhrase = (
-  keyStore: SeedKeyStore = defaultSeedKeyStore(),
-): string | undefined => {
-  const stored = loadSeed(keyStore);
-  return stored === undefined || stored.phrase.length === 0 ? undefined : stored.phrase;
 };
 
 const writeAtomic = (body: string): string => {
@@ -661,12 +631,6 @@ export const storeSeedPhrase = (
   }
   return { path: writeAtomic(`${sealPhrase(normalized, key)}\n`), protection };
 };
-
-/** {@link storeSeedPhrase}, for callers that only need the path. */
-export const writeSeedPhrase = (
-  phrase: string,
-  keyStore: SeedKeyStore = defaultSeedKeyStore(),
-): string => storeSeedPhrase(phrase, keyStore).path;
 
 /**
  * Move a plaintext seed under the OS keychain, and report what is protecting it

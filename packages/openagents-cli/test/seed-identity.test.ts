@@ -42,18 +42,15 @@ import {
   generateSeedPhrase,
   identityKeychainCommandFor,
   IDENTITY_KEYCHAIN_SERVICE,
-  inMemoryKeyStore,
   isValidSeedPhrase,
   loadSeed,
   noKeyStore,
   protectSeed,
-  readSeedPhrase,
   seedEncryptedAtRest,
   seedPath,
   seedPresent,
   seedProtectionOnDisk,
   storeSeedPhrase,
-  writeSeedPhrase,
   type SeedKeyStore,
 } from "../src/seed-identity.js";
 
@@ -75,6 +72,27 @@ const FROZEN = {
   walletAddress: "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA",
   walletDerivationPath: "m/44'/0'/0'/0/0",
 } as const;
+
+/**
+ * A keychain that lives for the length of one test, so the seal, open, and
+ * migration paths are exercised for real without writing to the developer's own
+ * keychain or depending on one existing. It lives here rather than in `src`
+ * because production has no use for it: the real stores are the OS keychain and
+ * the plaintext file.
+ */
+const inMemoryKeyStore = (): SeedKeyStore => {
+  let held: Uint8Array | undefined;
+  return {
+    available: () => true,
+    get: () => held,
+    put: (key) => {
+      held = Uint8Array.from(key);
+    },
+    delete: () => {
+      held = undefined;
+    },
+  };
+};
 
 const isolatedIdentityDirectory = () => {
   const directory = mkdtempSync(join(tmpdir(), "openagents-identity-"));
@@ -139,35 +157,35 @@ describe("seed storage", () => {
   it("writes the phrase 0600 and reads it back unchanged", () => {
     isolatedIdentityDirectory();
     expect(seedPresent()).toBe(false);
-    const path = writeSeedPhrase(`  ${TEST_PHRASE}  `, keys);
+    const path = storeSeedPhrase(`  ${TEST_PHRASE}  `, keys).path;
     expect(path).toBe(seedPath());
     expect(seedPresent()).toBe(true);
     expect(statSync(path).mode & 0o777).toBe(0o600);
-    expect(readSeedPhrase(keys)).toBe(TEST_PHRASE);
-    expect(deriveSeedIdentity(readSeedPhrase(keys) ?? "").npub).toBe(FROZEN.npub);
+    expect(loadSeed(keys)?.phrase).toBe(TEST_PHRASE);
+    expect(deriveSeedIdentity(loadSeed(keys)?.phrase ?? "").npub).toBe(FROZEN.npub);
   });
 
   it("restores 0600 when the file on disk was left readable", () => {
     isolatedIdentityDirectory();
-    const path = writeSeedPhrase(TEST_PHRASE, keys);
+    const path = storeSeedPhrase(TEST_PHRASE, keys).path;
     chmodSync(path, 0o644);
-    writeSeedPhrase(TEST_PHRASE, keys);
+    storeSeedPhrase(TEST_PHRASE, keys);
     expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
   it("writes nothing when the phrase is not a valid mnemonic", () => {
     isolatedIdentityDirectory();
-    expect(() => writeSeedPhrase("not a seed phrase at all", keys)).toThrow(/valid English BIP-39/);
+    expect(() => storeSeedPhrase("not a seed phrase at all", keys)).toThrow(/valid English BIP-39/);
     expect(seedPresent()).toBe(false);
   });
 
   it("reports no seed for an absent or empty file, and forgets idempotently", () => {
     const directory = isolatedIdentityDirectory();
-    expect(readSeedPhrase(keys)).toBeUndefined();
+    expect(loadSeed(keys)?.phrase).toBeUndefined();
     expect(forgetSeedPhrase(keys)).toBe(false);
     writeFileSync(join(directory, "seed"), "   \n", { mode: 0o600 });
-    expect(readSeedPhrase(keys)).toBeUndefined();
-    writeSeedPhrase(TEST_PHRASE, keys);
+    expect(loadSeed(keys)?.phrase).toBeUndefined();
+    storeSeedPhrase(TEST_PHRASE, keys);
     expect(keys.get()).toBeDefined();
     expect(forgetSeedPhrase(keys)).toBe(true);
     expect(seedPresent()).toBe(false);
@@ -179,7 +197,7 @@ describe("seed storage", () => {
 
   it("keeps the seed out of the derived identity", () => {
     isolatedIdentityDirectory();
-    writeSeedPhrase(TEST_PHRASE, keys);
+    storeSeedPhrase(TEST_PHRASE, keys);
     const identity = deriveSeedIdentity(TEST_PHRASE);
     expect(JSON.stringify(identity)).not.toContain("abandon");
     expect(JSON.stringify(identity)).not.toContain("nsec");
@@ -213,7 +231,7 @@ describe("seed protection at rest", () => {
     // The wrapping key is not in the identity directory. If it were, the file
     // and the key would travel together and the encryption would be theatre.
     expect(readdirSync(directory)).toEqual(["seed"]);
-    expect(readSeedPhrase(keys)).toBe(TEST_PHRASE);
+    expect(loadSeed(keys)?.phrase).toBe(TEST_PHRASE);
   });
 
   it("uses a fresh nonce for every seal", () => {
@@ -225,7 +243,7 @@ describe("seed protection at rest", () => {
     const second = readFileSync(path, "utf8");
 
     expect(second).not.toBe(first);
-    expect(readSeedPhrase(keys)).toBe(TEST_PHRASE);
+    expect(loadSeed(keys)?.phrase).toBe(TEST_PHRASE);
   });
 
   /**
@@ -239,9 +257,9 @@ describe("seed protection at rest", () => {
     keys.delete();
 
     expect(seedPresent()).toBe(true);
-    expect(() => readSeedPhrase(keys)).toThrow(/encrypted/);
+    expect(() => loadSeed(keys)).toThrow(/encrypted/);
     try {
-      readSeedPhrase(keys);
+      loadSeed(keys);
     } catch (cause) {
       expect(String(cause)).not.toContain("abandon");
     }
@@ -253,7 +271,7 @@ describe("seed protection at rest", () => {
     storeSeedPhrase(TEST_PHRASE, keys);
     keys.put(new Uint8Array(32).fill(7));
 
-    expect(() => readSeedPhrase(keys)).toThrow(/does not open it/);
+    expect(() => loadSeed(keys)).toThrow(/does not open it/);
   });
 
   /**
@@ -268,7 +286,7 @@ describe("seed protection at rest", () => {
     expect(protection).toBe("plaintext_file");
     expect(seedEncryptedAtRest(protection)).toBe(false);
     expect(readFileSync(path, "utf8")).toContain(TEST_PHRASE);
-    expect(readSeedPhrase(noKeyStore)).toBe(TEST_PHRASE);
+    expect(loadSeed(noKeyStore)?.phrase).toBe(TEST_PHRASE);
     expect(seedProtectionOnDisk()).toBe("plaintext_file");
 
     // The sentence a person sees must name the file and say what is not covered.
@@ -303,7 +321,7 @@ describe("seed protection at rest", () => {
     expect(protectSeed(keys)).toBe("os_keychain");
 
     // The identity did not move.
-    const after = deriveSeedIdentity(readSeedPhrase(keys) ?? "");
+    const after = deriveSeedIdentity(loadSeed(keys)?.phrase ?? "");
     expect(after).toEqual(before);
     expect(after.npub).toBe(FROZEN.npub);
 
@@ -328,7 +346,7 @@ describe("seed protection at rest", () => {
 
     expect(protectSeed(noKeyStore)).toBe("plaintext_file");
     expect(readFileSync(path, "utf8")).toContain(TEST_PHRASE);
-    expect(readSeedPhrase(noKeyStore)).toBe(TEST_PHRASE);
+    expect(loadSeed(noKeyStore)?.phrase).toBe(TEST_PHRASE);
   });
 
   /**
@@ -347,8 +365,8 @@ describe("seed protection at rest", () => {
 
     const reader = inMemoryKeyStore();
     reader.put(key);
-    expect(readSeedPhrase(reader)).toBe(TEST_PHRASE);
-    expect(deriveSeedIdentity(readSeedPhrase(reader) ?? "").npub).toBe(FROZEN.npub);
+    expect(loadSeed(reader)?.phrase).toBe(TEST_PHRASE);
+    expect(deriveSeedIdentity(loadSeed(reader)?.phrase ?? "").npub).toBe(FROZEN.npub);
   });
 
   /**
