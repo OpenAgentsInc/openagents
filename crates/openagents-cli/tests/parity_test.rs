@@ -830,3 +830,297 @@ fn a_trailing_global_flag_is_not_stored_as_data() {
         )
     });
 }
+
+// ---------------------------------------------------------------------------
+// 6. The forum read half: one topic, later pages, and the fields search drops
+// ---------------------------------------------------------------------------
+
+/// `forum topic` asks for the route the TypeScript client asks for.
+///
+/// The path is built at `packages/openagents-cli/src/forum-client.ts:176`:
+/// `${API_VERSION_PATH}/forum/topics/${encodeURIComponent(id)}`. Reading the
+/// request the stub received is what separates "parsed the subcommand" from
+/// "asked the server for the topic".
+#[test]
+fn forum_topic_asks_for_the_topic_route() {
+    let body = br#"{"topic":{"id":"9946bf38-788b","title":"Why not?","state":"open",
+        "slug":"why-not","posts_count":1},
+        "posts":[{"id":"p1","post_number":1,"state":"visible",
+                  "author":{"display_name":"Sneaky","ref":"agent:user_b3ce"},
+                  "body_text":"A quiet observation."}],
+        "pagination":{"total":1,"page":1,"per_page":50,"total_pages":1}}"#;
+    let server = StubServer::always(200, "application/json", body.to_vec());
+    let run = oa(&server.origin(), &["forum", "topic", "9946bf38-788b"]);
+    assert_eq!(run.code(), 0, "stderr: {}", run.stderr);
+
+    let routes: Vec<String> = server.hits().iter().map(Hit::route).collect();
+    assert_eq!(routes, vec!["GET /api/v1/forum/topics/9946bf38-788b"]);
+
+    // The title, then one line per post. Recorded from `openagents forum topic
+    // 9946bf38-788b-45f3-b17b-b0e36bb8dc60` at 0.4.0:
+    //   Why are you not running agents around the clock?
+    //   #1 Sneaky: A quiet observation for the agents arriving today: …
+    let lines: Vec<&str> = run.stdout.lines().collect();
+    assert_eq!(lines[0], "Why not?");
+    assert_eq!(lines[1], "#1 Sneaky: A quiet observation.");
+}
+
+/// A topic the server refuses is a refusal, not an empty topic.
+#[test]
+fn a_refused_topic_read_exits_non_zero_with_the_server_status() {
+    let server = StubServer::always(
+        404,
+        "application/json",
+        br#"{"error":"not_found"}"#.to_vec(),
+    );
+    let run = oa(
+        &server.origin(),
+        &["forum", "topic", "deadbeef-0000-0000-0000-000000000000"],
+    );
+    assert_ne!(run.code(), 0, "a 404 must not read as a topic");
+    assert!(
+        run.stderr.contains("404"),
+        "the status the server sent is missing: {}",
+        run.stderr
+    );
+    assert!(
+        run.stdout.trim().is_empty(),
+        "a refused read printed topic-shaped output: {}",
+        run.stdout
+    );
+}
+
+/// `--page 2` is sent, and the page it returns is not the page 1 returned.
+///
+/// The regression this guards is silence, not absence: `forum topics` returned
+/// the server's first page — 25 rows of a 107-topic board — with nothing saying
+/// the other four pages existed. Asserting that rows came back passes against
+/// exactly that bug, so this asserts three things it cannot satisfy: the page
+/// number reaches the query string, page 2 differs from page 1, and both runs
+/// report the server's own total.
+#[test]
+fn forum_topics_pages_and_says_how_much_it_is_not_showing() {
+    let page_one = br#"{"topics":[{"id":"415e16a7-183c","title":"first page topic",
+        "state":"open","slug":"a","posts_count":132}],
+        "pagination":{"total":107,"page":1,"per_page":25,"total_pages":5}}"#;
+    let page_two = br#"{"topics":[{"id":"9e7b4f18-0000","title":"second page topic",
+        "state":"open","slug":"b","posts_count":12}],
+        "pagination":{"total":107,"page":2,"per_page":25,"total_pages":5}}"#;
+    let server = StubServer::start(vec![
+        (200, "application/json", page_one.to_vec()),
+        (200, "application/json", page_two.to_vec()),
+    ]);
+
+    let first = oa(
+        &server.origin(),
+        &["forum", "topics", "--board", "product-promises"],
+    );
+    assert_eq!(first.code(), 0, "stderr: {}", first.stderr);
+    let second = oa(
+        &server.origin(),
+        &[
+            "forum",
+            "topics",
+            "--board",
+            "product-promises",
+            "--page",
+            "2",
+        ],
+    );
+    assert_eq!(second.code(), 0, "stderr: {}", second.stderr);
+
+    let routes: Vec<String> = server.hits().iter().map(Hit::route).collect();
+    assert_eq!(
+        routes,
+        vec![
+            "GET /api/v1/forum/topics?forum=product-promises",
+            "GET /api/v1/forum/topics?forum=product-promises&page=2",
+        ],
+        "the page number never reached the server"
+    );
+
+    assert!(
+        first.stdout.contains("first page topic"),
+        "page 1 rows: {}",
+        first.stdout
+    );
+    assert!(
+        second.stdout.contains("second page topic"),
+        "page 2 rows: {}",
+        second.stdout
+    );
+    assert_ne!(
+        first.stdout, second.stdout,
+        "page 2 returned page 1; the flag was parsed and dropped"
+    );
+    assert!(
+        !second.stdout.contains("first page topic"),
+        "page 2 still carries page 1's rows: {}",
+        second.stdout
+    );
+
+    // The total, and the next page to ask for, are the server's own numbers.
+    assert!(
+        first.stdout.contains("Page 1 of 5 — 107 topics"),
+        "page 1 did not say how much of the board it was not showing: {}",
+        first.stdout
+    );
+    assert!(
+        first.stdout.contains("--page 2"),
+        "page 1 named no next page: {}",
+        first.stdout
+    );
+    assert!(
+        second.stdout.contains("Page 2 of 5 — 107 topics"),
+        "page 2 did not report its place: {}",
+        second.stdout
+    );
+}
+
+/// `forum topics --json` carries the server's pagination block.
+#[test]
+fn forum_topics_json_carries_the_servers_pagination() {
+    let body = br#"{"topics":[{"id":"415e16a7-183c","title":"t","state":"open",
+        "slug":"a","posts_count":2}],
+        "pagination":{"total":107,"page":1,"per_page":25,"total_pages":5}}"#;
+    let server = StubServer::always(200, "application/json", body.to_vec());
+    let run = oa(
+        &server.origin(),
+        &["--json", "forum", "topics", "--board", "product-promises"],
+    );
+    assert_eq!(run.code(), 0, "stderr: {}", run.stderr);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&run.stdout).expect("--json must print one JSON document");
+    assert_eq!(parsed["pagination"]["total"], 107);
+    assert_eq!(parsed["pagination"]["total_pages"], 5);
+    assert_eq!(parsed["pagination"]["page"], 1);
+    assert_eq!(parsed["pagination"]["per_page"], 25);
+}
+
+/// `forum search` keeps the six fields it dropped, in both renderings.
+///
+/// The client decoded into a struct that modelled eight fields and re-encoded
+/// it, so `board`, `url`, `pinned`, `tip_count`, `tip_sats`, and `actor_ref`
+/// never reached `--json`, and the `[board]` suffix never reached the human
+/// line. Every value asserted below is one this fixture sent.
+#[test]
+fn forum_search_keeps_the_fields_the_server_sent() {
+    let body = br#"{"query":"acceptance gate","topics":[
+        {"id":"9946bf38-788b","slug":"why-not","title":"Why not?","state":"open",
+         "author":{"ref":"agent:user_b3ce","display_name":"Sneaky","is_agent":true},
+         "url":"https://openagents.com/forum/t/9946bf38","actor_ref":"agent:user_b3ce",
+         "pinned":true,"tip_count":3,"tip_sats":210,"posts_count":14,
+         "board":{"title":"Work Requests","slug":"work-requests"}}],
+        "pagination":{"total":1,"page":1,"per_page":25,"total_pages":1},"board":null}"#;
+
+    let human_server = StubServer::always(200, "application/json", body.to_vec());
+    let human = oa(
+        &human_server.origin(),
+        &["forum", "search", "acceptance gate"],
+    );
+    assert_eq!(human.code(), 0, "stderr: {}", human.stderr);
+    // Recorded from `openagents forum search "acceptance gate"` at 0.4.0:
+    //   9946bf38 — Why are you not running agents … — Sneaky [work-requests]
+    assert_eq!(
+        human.stdout.trim(),
+        "9946bf38 — Why not? — Sneaky [work-requests]"
+    );
+
+    let routes: Vec<String> = human_server.hits().iter().map(Hit::route).collect();
+    assert_eq!(routes, vec!["GET /api/v1/forum/topics?q=acceptance%20gate"]);
+
+    let json_server = StubServer::always(200, "application/json", body.to_vec());
+    let json = oa(
+        &json_server.origin(),
+        &["--json", "forum", "search", "acceptance gate"],
+    );
+    assert_eq!(json.code(), 0, "stderr: {}", json.stderr);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json.stdout).expect("--json must print one JSON document");
+    let row = &parsed["topics"][0];
+    assert_eq!(row["board"]["slug"], "work-requests");
+    assert_eq!(row["url"], "https://openagents.com/forum/t/9946bf38");
+    assert_eq!(row["pinned"], true);
+    assert_eq!(row["tip_count"], 3);
+    assert_eq!(row["tip_sats"], 210);
+    assert_eq!(row["actor_ref"], "agent:user_b3ce");
+}
+
+/// `forum search --board` narrows the query the way the TypeScript client does.
+///
+/// `packages/openagents-cli/src/forum-client.ts:167` appends `&forum=<slug>`
+/// after `q`, in that order.
+#[test]
+fn forum_search_can_narrow_to_one_board() {
+    let server = StubServer::always(200, "application/json", br#"{"topics":[]}"#.to_vec());
+    let run = oa(
+        &server.origin(),
+        &[
+            "forum",
+            "search",
+            "gate",
+            "--board",
+            "work-requests",
+            "--page",
+            "3",
+        ],
+    );
+    assert_eq!(run.code(), 0, "stderr: {}", run.stderr);
+    let routes: Vec<String> = server.hits().iter().map(Hit::route).collect();
+    assert_eq!(
+        routes,
+        vec!["GET /api/v1/forum/topics?q=gate&forum=work-requests&page=3"]
+    );
+}
+
+/// An empty page of a board that has topics is not reported as an empty board.
+///
+/// The live route answers `?page=9` on a five-page board with `topics: []` and
+/// the same pagination block. Printing "No topics found." there claims the
+/// server said the board is empty, which it did not.
+#[test]
+fn an_empty_page_does_not_claim_the_board_is_empty() {
+    let body = br#"{"topics":[],
+        "pagination":{"total":107,"page":9,"per_page":25,"total_pages":5}}"#;
+    let server = StubServer::always(200, "application/json", body.to_vec());
+    let run = oa(
+        &server.origin(),
+        &[
+            "forum",
+            "topics",
+            "--board",
+            "product-promises",
+            "--page",
+            "9",
+        ],
+    );
+    assert_eq!(run.code(), 0, "stderr: {}", run.stderr);
+    assert!(
+        run.stdout.contains("107") && run.stdout.contains("page 9"),
+        "the server's own numbers are missing: {}",
+        run.stdout
+    );
+    assert!(
+        !run.stdout.contains("No topics found."),
+        "an empty page claimed the board is empty: {}",
+        run.stdout
+    );
+}
+
+/// A body with no `topics` array is a malformed answer, not an empty board.
+#[test]
+fn a_two_hundred_without_topics_is_refused_rather_than_rendered_empty() {
+    let server = StubServer::always(200, "application/json", br#"{"ok":true}"#.to_vec());
+    let run = oa(&server.origin(), &["forum", "topics", "--board", "general"]);
+    assert_ne!(
+        run.code(),
+        0,
+        "a body with no `topics` array printed a board listing: {}",
+        run.stdout
+    );
+    assert!(
+        !run.stdout.contains("No topics found."),
+        "an unreadable body was rendered as an empty board: {}",
+        run.stdout
+    );
+}

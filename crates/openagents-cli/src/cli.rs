@@ -1137,11 +1137,26 @@ pub enum ForumAction {
     Topics {
         #[arg(long, help = "Board slug, as `oa forum boards` reports it")]
         board: String,
+        // The server pages this route at 25 rows. Without the flag a caller
+        // could read the first page and never learn the other four existed.
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..), help = "One-based page number")]
+        page: Option<u32>,
     },
     /// Search topics across boards
     Search {
         #[arg(help = "Search query")]
         query: String,
+        #[arg(long, help = "Narrow the search to one board slug")]
+        board: Option<String>,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..), help = "One-based page number")]
+        page: Option<u32>,
+    },
+    /// Read one topic and its posts
+    Topic {
+        #[arg(help = "Topic id (the prefix a topic URL starts with works too)")]
+        id: String,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..), help = "One-based page number")]
+        page: Option<u32>,
     },
 }
 
@@ -1443,49 +1458,41 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     });
                     emit(cli.json, &value, &human);
                 }
-                ForumAction::Topics { board } => {
-                    let topics = client
-                        .list_topics(&board)
+                ForumAction::Topics { board, page } => {
+                    let list = client
+                        .list_topics(&board, page)
                         .await
                         .unwrap_or_else(|e| fail(&e.to_string()));
-                    let human: Vec<String> = if topics.is_empty() {
-                        vec!["No topics found.".to_string()]
-                    } else {
-                        topics
-                            .iter()
-                            .map(|t| {
-                                format!(
-                                    "{} — {} ({} posts)",
-                                    short_id(&t.id),
-                                    t.title,
-                                    t.posts_count
-                                )
-                            })
-                            .collect()
-                    };
-                    emit(cli.json, &forum_topics_value(&topics), &human);
+                    emit(
+                        cli.json,
+                        &crate::forum::topic_list_value(&list),
+                        &crate::forum::topic_rows(&list),
+                    );
                 }
-                ForumAction::Search { query } => {
-                    let topics = client
-                        .search_topics(&query)
+                ForumAction::Search { query, board, page } => {
+                    if query.trim().is_empty() {
+                        fail("Pass the words to search for.");
+                    }
+                    let list = client
+                        .search_topics(&query, board.as_deref(), page)
                         .await
                         .unwrap_or_else(|e| fail(&e.to_string()));
-                    let human: Vec<String> = if topics.is_empty() {
-                        vec!["No topics match.".to_string()]
-                    } else {
-                        topics
-                            .iter()
-                            .map(|t| {
-                                format!(
-                                    "{} — {} — {}",
-                                    short_id(&t.id),
-                                    t.title,
-                                    t.author.as_deref().unwrap_or("?")
-                                )
-                            })
-                            .collect()
-                    };
-                    emit(cli.json, &forum_topics_value(&topics), &human);
+                    emit(
+                        cli.json,
+                        &crate::forum::topic_list_value(&list),
+                        &crate::forum::search_rows(&list),
+                    );
+                }
+                ForumAction::Topic { id, page } => {
+                    let topic = client
+                        .read_topic(&id, page)
+                        .await
+                        .unwrap_or_else(|e| fail(&e.to_string()));
+                    emit(
+                        cli.json,
+                        &crate::forum::topic_page_value(&topic),
+                        &crate::forum::topic_page_rows(&topic),
+                    );
                 }
             }
         }
@@ -2075,16 +2082,6 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
     }
 }
 
-/// The first eight characters of a UUID, which is how the TypeScript CLI renders
-/// topic ids in a listing.
-///
-/// The id comes from the server, so the eight-byte bound is floored to a
-/// character boundary. An id that is not a UUID would otherwise panic the
-/// listing rather than render short.
-fn short_id(id: &str) -> &str {
-    &id[..crate::tracker::floor_char_boundary(id, 8)]
-}
-
 fn home_directory() -> std::path::PathBuf {
     std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
 }
@@ -2092,29 +2089,6 @@ fn home_directory() -> std::path::PathBuf {
 // ---------------------------------------------------------------------------
 // tracker: issues, projects, milestones
 // ---------------------------------------------------------------------------
-
-/// The `--json` shape for a forum topic list.
-///
-/// The forum client parses the server's body into typed rows, so unlike the
-/// tracker there is no verbatim body to hand back; this rebuilds the fields it
-/// kept, which are the fields the human lines print.
-fn forum_topics_value(topics: &[crate::forum::ForumTopic]) -> serde_json::Value {
-    serde_json::json!({
-        "topics": topics
-            .iter()
-            .map(|t| serde_json::json!({
-                "id": t.id,
-                "slug": t.slug,
-                "title": t.title,
-                "state": t.state,
-                "author": t.author,
-                "created_at": t.created_at,
-                "updated_at": t.updated_at,
-                "posts_count": t.posts_count,
-            }))
-            .collect::<Vec<_>>()
-    })
-}
 
 /// Print the server's body verbatim under `--json`, or the human lines.
 fn emit(json: bool, value: &serde_json::Value, human: &[String]) {
