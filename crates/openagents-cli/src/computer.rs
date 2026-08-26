@@ -13,6 +13,7 @@
 //! so no working directory is reachable — and widens only where the owner
 //! declares it. The version this replaces held three unconditional `true`s.
 
+use crate::acp::{AcpEvent, AcpFailure, AcpHarness, PermissionQuery};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -92,12 +93,35 @@ impl ComputerPaths {
     }
 }
 
+/// An ACP agent the owner declared in `computer.json`.
+///
+/// A declared agent widens what may be delegated here, so it is the owner's
+/// statement rather than the server's: the controller runs `argv` and passes
+/// through only the environment variables named in `env`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentEntry {
+    pub argv: Vec<String>,
+    #[serde(default)]
+    pub env: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PolicyConfig {
     pub tier: Tier,
     pub roots: Vec<PathBuf>,
     pub pre_approved: Vec<String>,
     pub curated_execute: Vec<String>,
+    /// ACP agents the owner declared, by id.
+    pub agents: BTreeMap<String, AgentEntry>,
+    /// Whether a forge credential the server delivers with a delegation may be
+    /// used for a delegated push from this machine.
+    ///
+    /// The Computers page has an `Allow scoped forge credentials on this
+    /// computer` checkbox, and the server withholds the credential entirely
+    /// unless it is ticked. This is the same decision made again on this side,
+    /// because the machine is what decides what runs here — and like every
+    /// other part of this policy it starts closed.
+    pub scoped_forge_credentials: bool,
     pub paths: ComputerPaths,
 }
 
@@ -110,6 +134,8 @@ impl PolicyConfig {
             roots: Vec::new(),
             pre_approved: Vec::new(),
             curated_execute: default_curated_execute(),
+            agents: BTreeMap::new(),
+            scoped_forge_credentials: false,
             paths,
         }
     }
@@ -138,7 +164,9 @@ struct StoredConfiguration {
     #[serde(skip_serializing_if = "Option::is_none")]
     registry_agents: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    agents: Option<serde_json::Value>,
+    agents: Option<BTreeMap<String, AgentEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scoped_forge_credentials: Option<bool>,
 }
 
 const MAXIMUM_CONFIGURATION_BYTES: u64 = 16_384;
@@ -204,11 +232,22 @@ pub fn load_config(paths: &ComputerPaths) -> Result<PolicyConfig, String> {
             break;
         }
     }
+    let mut agents: BTreeMap<String, AgentEntry> = BTreeMap::new();
+    for (id, entry) in stored.agents.unwrap_or_default() {
+        // A declared agent with no command names nothing. Dropping it is not a
+        // silent narrowing: it never widened anything to begin with.
+        if id.is_empty() || entry.argv.is_empty() || agents.len() >= 32 {
+            continue;
+        }
+        agents.insert(id, entry);
+    }
     Ok(PolicyConfig {
         tier,
         roots: resolve_roots(&stored.roots.unwrap_or_default()),
         pre_approved,
         curated_execute,
+        agents,
+        scoped_forge_credentials: stored.scoped_forge_credentials.unwrap_or(false),
         paths: paths.clone(),
     })
 }
@@ -226,7 +265,8 @@ pub fn write_config(config: &PolicyConfig) -> Result<(), String> {
         pre_approved: Some(config.pre_approved.clone()),
         curated_execute: Some(config.curated_execute.clone()),
         registry_agents: Some(false),
-        agents: Some(serde_json::json!({})),
+        agents: Some(config.agents.clone()),
+        scoped_forge_credentials: Some(config.scoped_forge_credentials),
     };
     let encoded = serde_json::to_string_pretty(&stored)
         .map_err(|error| format!("the Computer configuration could not be encoded: {error}"))?;
@@ -1277,6 +1317,600 @@ fn spawn_reader<R: Read + Send + 'static>(
 }
 
 // ---------------------------------------------------------------------------
+// ACP delegation
+// ---------------------------------------------------------------------------
+
+/// The longest prompt a delegation may carry, matching the TypeScript
+/// controller and the tool's own input ceiling.
+pub const MAXIMUM_PROMPT_LENGTH: usize = 32_768;
+/// What a delegation gets when the server names no timeout.
+pub const AGENT_DEFAULT_TIMEOUT_MS: u64 = 300_000;
+/// The most a delegation may ask for. `OpenAgents.Computer` waits an hour at
+/// most, so a longer local run would only outlive the caller.
+pub const AGENT_MAXIMUM_TIMEOUT_MS: u64 = 3_600_000;
+/// The most streamed output one delegation may send. `OpenAgents.Computer`
+/// collects 64 KiB and drops the rest, so this is where the truncation is
+/// decided rather than discovered.
+pub const AGENT_MAXIMUM_OUTPUT_BYTES: usize = 64 * 1024;
+pub const MAXIMUM_SESSION_ID_LENGTH: usize = 128;
+
+/// How a known coding agent is put into ACP mode.
+///
+/// Every one of these is a binary the probe already looks for. An agent that is
+/// installed but has no ACP mode this build knows is not delegable by name; the
+/// owner declares it in `computer.json` instead, which is the honest way to
+/// widen what this machine runs.
+pub fn acp_invocation(agent_id: &str) -> Option<Vec<String>> {
+    let argv: &[&str] = match agent_id {
+        "devin" => &["devin", "acp"],
+        "opencode" => &["opencode", "acp"],
+        "gemini" => &["gemini", "--experimental-acp"],
+        _ => return None,
+    };
+    Some(argv.iter().map(|part| part.to_string()).collect())
+}
+
+/// An agent this machine can actually run, and how.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedAgent {
+    pub id: String,
+    pub argv: Vec<String>,
+    /// Environment variable names passed through to the child on top of the
+    /// scrubbed set. Only what the owner declared.
+    pub env: Vec<String>,
+    /// `configured` when the owner declared it, `local` when the probe found it.
+    pub source: &'static str,
+}
+
+/// Which agents this machine will delegate to.
+///
+/// Two sources, and neither is the server: what the owner declared in
+/// `computer.json`, and what the probe actually found installed. An agent that
+/// is not on this list is refused by name — the alternative is spawning
+/// whatever string the server sent.
+pub fn agent_catalog(config: &PolicyConfig, installed: &[ToolReport]) -> Vec<ResolvedAgent> {
+    let mut catalog: Vec<ResolvedAgent> = Vec::new();
+    for tool in installed {
+        if !tool.present {
+            continue;
+        }
+        if let Some(argv) = acp_invocation(&tool.name) {
+            catalog.push(ResolvedAgent {
+                id: tool.name.clone(),
+                argv,
+                env: Vec::new(),
+                source: "local",
+            });
+        }
+    }
+    // A declared agent wins over a discovered one of the same id: the owner
+    // said how to run it.
+    for (id, entry) in &config.agents {
+        catalog.retain(|found| &found.id != id);
+        catalog.push(ResolvedAgent {
+            id: id.clone(),
+            argv: entry.argv.clone(),
+            env: entry.env.clone(),
+            source: "configured",
+        });
+    }
+    catalog.sort_by(|left, right| left.id.cmp(&right.id));
+    catalog
+}
+
+/// Resolve one requested agent, or say what this machine does have.
+pub fn resolve_agent(catalog: &[ResolvedAgent], requested: &str) -> Result<ResolvedAgent, String> {
+    if let Some(found) = catalog.iter().find(|entry| entry.id == requested) {
+        // A declared `argv` is still an argv this machine runs. The same
+        // metacharacter rule every other command gets applies to it, so a
+        // configuration cannot become a shell.
+        if found.argv.iter().any(|part| has_shell_metacharacter(part)) {
+            return Err(format!(
+                "the declared command for agent {requested} contains shell metacharacters"
+            ));
+        }
+        return Ok(found.clone());
+    }
+    let available: Vec<&str> = catalog.iter().map(|entry| entry.id.as_str()).collect();
+    Err(format!(
+        "agent {requested} is unavailable; available agents: {}",
+        if available.is_empty() {
+            "(none)".to_string()
+        } else {
+            available.join(", ")
+        }
+    ))
+}
+
+/// Every string in a JSON value, so a policy decision reads the whole tool
+/// input rather than the keys it happened to expect.
+fn strings_within(value: &serde_json::Value, depth: usize, found: &mut Vec<String>) {
+    if depth > 6 || found.len() > 64 {
+        return;
+    }
+    match value {
+        serde_json::Value::String(text) => found.push(text.clone()),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                strings_within(item, depth + 1, found);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for item in fields.values() {
+                strings_within(item, depth + 1, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn first_string(value: &serde_json::Value, names: &[&str]) -> Option<String> {
+    for name in names {
+        if let Some(found) = value.get(*name).and_then(|found| found.as_str()) {
+            if !found.is_empty() {
+                return Some(found.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn mentions_word(haystack: &str, word: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let mut from = 0usize;
+    while let Some(offset) = haystack[from..].find(word) {
+        let start = from + offset;
+        let end = start + word.len();
+        let before_ok = start == 0 || !(bytes[start - 1] as char).is_ascii_alphanumeric();
+        let after_ok = end == bytes.len() || !(bytes[end] as char).is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
+}
+
+/// Metacharacters that defeat a per-segment allowlist rather than separate
+/// segments. `ls $(curl http://x)` has `ls` as its first word and runs `curl`;
+/// `cat > /etc/hosts` has `cat` as its first word and writes a protected file.
+/// Neither is decidable by splitting, so both are refused outright.
+fn has_substitution_or_redirection(command: &str) -> bool {
+    command.contains('`')
+        || command.contains("$(")
+        || command.contains("${")
+        || command.contains('>')
+        || command.contains('<')
+        || command.contains('\\')
+        || command.contains('\n')
+        || command.contains('\r')
+}
+
+/// The shell segments a command runs, split on the operators that chain them.
+fn command_segments(command: &str) -> Vec<String> {
+    let mut segments: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut rest = command;
+    while let Some(index) = rest.find(['&', '|', ';']) {
+        current.push_str(&rest[..index]);
+        segments.push(std::mem::take(&mut current));
+        let tail = &rest[index..];
+        let skip = if tail.starts_with("&&") || tail.starts_with("||") {
+            2
+        } else {
+            1
+        };
+        rest = &tail[skip..];
+    }
+    current.push_str(rest);
+    segments.push(current);
+    segments
+}
+
+/// Decide one thing a delegated agent asked permission to do.
+///
+/// This is the same policy the `run` path applies, read through the agent's
+/// own vocabulary: the tier ceiling decides whether anything at all is
+/// permitted, a denied binary or a protected path is refused before the tier
+/// is consulted, an edit must land inside a declared root, and an execute must
+/// be an allowlisted binary in every segment it chains. A delegated agent is
+/// not a way around any of it.
+pub fn agent_permission(config: &PolicyConfig, cwd: &Path, query: &PermissionQuery) -> Decision {
+    let mut material: Vec<String> = vec![query.title.clone()];
+    strings_within(&query.raw_input, 0, &mut material);
+
+    for text in &material {
+        let lowered = text.to_ascii_lowercase();
+        if let Some(denied) = DENIED_COMMANDS
+            .iter()
+            .find(|candidate| mentions_word(&lowered, candidate))
+        {
+            return refuse(
+                RefusalReason::DeniedCommand,
+                &format!("{denied} is denied on this machine"),
+            );
+        }
+        if let Some(fragment) = DENIED_PATH_FRAGMENTS
+            .iter()
+            .chain(std::iter::once(&DENIED_PATH_FRAGMENT_KEYCHAINS))
+            .find(|candidate| text.contains(**candidate))
+        {
+            return refuse(
+                RefusalReason::DeniedArgument,
+                &format!("the request references a protected path: {fragment}"),
+            );
+        }
+    }
+
+    if !tier_allows(config.tier, Tier::Curated) {
+        return refuse(
+            RefusalReason::TierInsufficient,
+            "probe tier permits fixed discovery only",
+        );
+    }
+    if tier_allows(config.tier, Tier::Shell) {
+        return Decision::Allowed {
+            needs_confirmation: false,
+        };
+    }
+
+    let within_declared = |candidate: &str| {
+        let resolved = if candidate.starts_with('~') {
+            resolve_root(candidate)
+        } else if Path::new(candidate).is_absolute() {
+            normalize_path(Path::new(candidate))
+        } else {
+            normalize_path(&cwd.join(candidate))
+        };
+        !config.roots.is_empty() && config.roots.iter().any(|root| within_root(&resolved, root))
+    };
+
+    match query.kind.as_str() {
+        "read" | "search" | "fetch" | "think" => Decision::Allowed {
+            needs_confirmation: false,
+        },
+        "edit" | "write" | "delete" | "move" => {
+            let Some(path) =
+                first_string(&query.raw_input, &["path", "file_path", "filePath", "file"])
+            else {
+                return refuse(
+                    RefusalReason::RootNotDeclared,
+                    "the agent named no path to write, so it cannot be placed inside a root",
+                );
+            };
+            if within_declared(&path) {
+                Decision::Allowed {
+                    needs_confirmation: false,
+                }
+            } else {
+                refuse(
+                    RefusalReason::RootNotDeclared,
+                    "the path is outside every declared root",
+                )
+            }
+        }
+        "execute" => {
+            let command = first_string(&query.raw_input, &["command", "cmd", "commandLine"])
+                .unwrap_or_else(|| query.title.clone());
+            if command.trim().is_empty() {
+                return refuse(
+                    RefusalReason::EmptyCommand,
+                    "the agent named no command to run",
+                );
+            }
+            if has_substitution_or_redirection(&command) {
+                return refuse(
+                    RefusalReason::ShellMetacharacter,
+                    "the command uses substitution or redirection, which no allowlist can bound",
+                );
+            }
+            for segment in command_segments(&command) {
+                let mut words = segment.split_whitespace();
+                let Some(first) = words.next() else {
+                    // An empty segment is what a trailing `&&` leaves. It runs
+                    // nothing, so it decides nothing.
+                    continue;
+                };
+                let name = command_name(first);
+                if name == "cd" {
+                    // `cd` is permitted only where the policy already reaches.
+                    // Otherwise it is the first half of an escape from every
+                    // declared root.
+                    let target = words.next().unwrap_or("");
+                    if target.is_empty() || !within_declared(target) {
+                        return refuse(
+                            RefusalReason::RootNotDeclared,
+                            "the command changes directory outside every declared root",
+                        );
+                    }
+                    continue;
+                }
+                if !config.curated_execute.contains(&name) {
+                    return refuse(
+                        RefusalReason::NotAllowlisted,
+                        &format!("{name} is not in the curated allowlist"),
+                    );
+                }
+            }
+            Decision::Allowed {
+                needs_confirmation: false,
+            }
+        }
+        other => refuse(
+            RefusalReason::NotAllowlisted,
+            &format!(
+                "{} is not a permitted action at the curated tier",
+                if other.is_empty() {
+                    "an unnamed action"
+                } else {
+                    other
+                }
+            ),
+        ),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// delegated push
+// ---------------------------------------------------------------------------
+
+/// A forge credential the server delivered with one delegation.
+///
+/// It is scoped to a single repository and a single branch, and it lives only
+/// as long as the delegation. It never reaches the child's environment, the
+/// journal, or the wire: the only thing that ever reads it is the credential
+/// helper this machine writes for one `git push`.
+#[derive(Clone)]
+pub struct ForgeCredentials {
+    pub token: crate::auth::Secret,
+    pub repository: String,
+    pub branch: String,
+}
+
+impl std::fmt::Debug for ForgeCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ForgeCredentials")
+            .field("repository", &self.repository)
+            .field("branch", &self.branch)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Read the credential out of a delegation payload, if it carries a whole one.
+///
+/// A token without the repository and branch it is scoped to is not usable:
+/// there would be nothing to check the push against. That is reported as
+/// incomplete rather than quietly ignored.
+pub fn forge_credentials(payload: &serde_json::Value) -> Option<ForgeCredentials> {
+    let raw = payload
+        .get("assignment_credential")
+        .or_else(|| payload.get("forge_credentials"))?;
+    let (token, repository, branch) = if let Some(text) = raw.as_str() {
+        (
+            text.to_string(),
+            first_string(payload, &["assignment_repository", "repository"])?,
+            first_string(payload, &["assignment_branch", "branch"])?,
+        )
+    } else {
+        let token = first_string(raw, &["token", "value", "password", "access_token"])?;
+        let repository = first_string(raw, &["repository"])
+            .or_else(|| first_string(payload, &["assignment_repository", "repository"]))?;
+        let branch = first_string(raw, &["branch"])
+            .or_else(|| first_string(payload, &["assignment_branch", "branch"]))?;
+        (token, repository, branch)
+    };
+    if token.trim().is_empty() || repository.is_empty() || branch.is_empty() {
+        return None;
+    }
+    Some(ForgeCredentials {
+        token: crate::auth::Secret::new(token),
+        repository,
+        branch,
+    })
+}
+
+fn canonical_branch(branch: &str) -> String {
+    if branch.starts_with("refs/heads/") {
+        branch.to_string()
+    } else {
+        format!("refs/heads/{branch}")
+    }
+}
+
+/// A refspec is the assigned branch, pushed forward, and nothing else.
+///
+/// A scoped credential that could push any ref would not be scoped. Force,
+/// deletion, multi-ref, and any other branch are all refused here rather than
+/// at the forge, so this machine is not the thing that tried.
+pub fn validate_refspec(refspec: &str, branch: &str) -> Result<(), String> {
+    if refspec.is_empty() {
+        return Err("the refspec is empty".to_string());
+    }
+    if refspec.chars().any(|c| c.is_whitespace() || c == ',') {
+        return Err("a multi-ref push is not allowed".to_string());
+    }
+    if refspec.starts_with('+') || refspec.starts_with('-') {
+        return Err("a force or option refspec is not allowed".to_string());
+    }
+    let target = canonical_branch(branch);
+    let matches = |value: &str| value == branch || value == target;
+    match refspec.split_once(':') {
+        Some((source, destination)) => {
+            if destination.is_empty() {
+                return Err("a refspec with an empty destination is not allowed".to_string());
+            }
+            if !matches(source) || !matches(destination) {
+                return Err(format!("the refspec is not the assigned branch {target}"));
+            }
+        }
+        None => {
+            if !matches(refspec) {
+                return Err(format!("the refspec is not the assigned branch {target}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Push the assigned branch with the delivered credential.
+///
+/// The token never becomes an argument, an environment variable, or part of a
+/// URL. It is written to a file only this user can read, inside a directory
+/// only this user can enter, and a helper script hands it over only when git
+/// asks for exactly the host and path of the assigned repository. Everything
+/// is removed when the push ends, whichever way it ends.
+pub fn push_delegated(
+    directory: &Path,
+    remote: &str,
+    refspec: &str,
+    credentials: &ForgeCredentials,
+    origin: &str,
+) -> Result<(), String> {
+    validate_refspec(refspec, &credentials.branch)?;
+    let remote = crate::repo::validate_remote_name(remote).map_err(|error| error.to_string())?;
+    let listed = Command::new("git")
+        .args(["remote", "get-url", "--", &remote])
+        .current_dir(directory)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|error| format!("git remote get-url could not start: {error}"))?;
+    if !listed.status.success() {
+        return Err(format!("this checkout has no {remote} remote"));
+    }
+    let url = String::from_utf8_lossy(&listed.stdout).trim().to_string();
+    let actual =
+        crate::repo::repository_from_remote_url(origin, &url).map_err(|error| error.to_string())?;
+    if actual != credentials.repository {
+        return Err(format!(
+            "the remote repository is {actual}, not the assigned {}",
+            credentials.repository
+        ));
+    }
+    let parsed =
+        reqwest::Url::parse(&url).map_err(|_| "that remote URL cannot be read".to_string())?;
+    let host = parsed.host_str().unwrap_or_default().to_string();
+    let host = match parsed.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    };
+    let path = parsed.path().trim_start_matches('/').to_string();
+    let url_origin = format!("{}://{host}", parsed.scheme());
+
+    let workspace = private_temporary_directory()?;
+    let outcome = (|| -> Result<(), String> {
+        let helper = write_credential_helper(&workspace, credentials.token.expose(), &host, &path)?;
+        let mut command = Command::new("git");
+        command
+            .args([
+                "-c",
+                "credential.helper=",
+                "-c",
+                &format!("credential.{url_origin}.helper=!{}", helper.display()),
+                "push",
+                "--",
+                &remote,
+                refspec,
+            ])
+            .current_dir(directory)
+            .env_clear()
+            .envs(scrubbed_environment())
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        let output = command
+            .output()
+            .map_err(|error| format!("git push could not start: {error}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let stderr = redact(&String::from_utf8_lossy(&output.stderr));
+        Err(format!("git push failed: {}", bounded(stderr.trim(), 400)))
+    })();
+    let _ = std::fs::remove_dir_all(&workspace);
+    outcome
+}
+
+fn private_temporary_directory() -> Result<PathBuf, String> {
+    let base = std::env::temp_dir();
+    let unique = format!(
+        "oa-delegated-push-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default()
+    );
+    let directory = base.join(unique);
+    std::fs::create_dir(&directory)
+        .map_err(|error| format!("could not create a private working directory: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("could not secure the private working directory: {error}"))?;
+    }
+    Ok(directory)
+}
+
+/// Stage the token and the helper that hands it over.
+///
+/// Public because the helper is a security boundary rather than an
+/// implementation detail: what it answers for, and what it stays silent for,
+/// is asserted directly by running it.
+pub fn write_credential_helper(
+    workspace: &Path,
+    token: &str,
+    host: &str,
+    path: &str,
+) -> Result<PathBuf, String> {
+    let token_path = workspace.join("token");
+    let helper_path = workspace.join("helper");
+    std::fs::write(&token_path, format!("{token}\n"))
+        .map_err(|error| format!("could not stage the delegated credential: {error}"))?;
+    let script = format!(
+        r#"#!/bin/sh
+if [ "$1" != "get" ]; then
+  exit 0
+fi
+host=""
+path=""
+while IFS= read -r line; do
+  [ -z "$line" ] && break
+  case "$line" in
+    host=*) host="${{line#host=}}" ;;
+    path=*) path="${{line#path=}}" ;;
+  esac
+done
+if [ "$host" != {host} ] || [ "$path" != {path} ]; then
+  exit 0
+fi
+PASSWORD=$(tr -d '\n' < {token_path})
+printf 'username=openagents\npassword=%s\n\n' "$PASSWORD"
+"#,
+        host = shell_quote(host),
+        path = shell_quote(path),
+        token_path = shell_quote(&token_path.display().to_string()),
+    );
+    std::fs::write(&helper_path, script)
+        .map_err(|error| format!("could not stage the credential helper: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("could not secure the delegated credential: {error}"))?;
+        std::fs::set_permissions(&helper_path, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("could not secure the credential helper: {error}"))?;
+    }
+    Ok(helper_path)
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+// ---------------------------------------------------------------------------
 // probe
 // ---------------------------------------------------------------------------
 
@@ -1307,6 +1941,18 @@ pub struct WorktreeReport {
     pub git: bool,
 }
 
+/// One delegable ACP agent, as the server records it.
+///
+/// `OpenAgents.ComputerAgentJobs.start/4` refuses any `agent_id` that is not in
+/// `last_probe["acp_agents"]`, so a report without this list is a machine the
+/// server will not delegate to at all — whatever is installed on it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcpAgentReport {
+    pub id: String,
+    pub source: String,
+    pub version: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeReport {
     pub schema: String,
@@ -1316,6 +1962,7 @@ pub struct ProbeReport {
     pub toolchains: Vec<ToolReport>,
     pub roots: Vec<String>,
     pub worktrees: Vec<WorktreeReport>,
+    pub acp_agents: Vec<AcpAgentReport>,
 }
 
 pub const CODING_AGENT_CATALOG: [(&str, &str); 11] = [
@@ -1507,7 +2154,38 @@ pub fn probe(roots: &[PathBuf]) -> ProbeReport {
             .map(|root| root.display().to_string())
             .collect(),
         worktrees: roots.iter().map(|root| worktree_report(root)).collect(),
+        // Filled in by `probe_for`, which is the only caller that knows what
+        // the owner declared. A probe with no policy in hand reports no
+        // delegable agents rather than guessing at the catalog.
+        acp_agents: Vec::new(),
     }
+}
+
+/// The same probe, carrying the delegation catalog this machine will honour.
+///
+/// The server refuses an `agent_id` that is not in this list, so what it says
+/// is what can be delegated — and it is built from the same two sources the
+/// controller resolves against, not from a hardcoded roster.
+pub fn probe_for(config: &PolicyConfig) -> ProbeReport {
+    let mut report = probe(&config.roots);
+    let versions: BTreeMap<&str, &str> = report
+        .coding_agents
+        .iter()
+        .map(|tool| (tool.name.as_str(), tool.version.as_str()))
+        .collect();
+    report.acp_agents = agent_catalog(config, &report.coding_agents)
+        .into_iter()
+        .map(|entry| AcpAgentReport {
+            version: versions
+                .get(entry.id.as_str())
+                .copied()
+                .unwrap_or_default()
+                .to_string(),
+            source: entry.source.to_string(),
+            id: entry.id,
+        })
+        .collect();
+    report
 }
 
 /// The bare host facts, kept for callers that only want the machine shape.
@@ -2065,6 +2743,7 @@ pub fn reconnectable_transport_reason(reason: &str) -> bool {
 /// Everything the server asks for goes through [`decide`] first and lands in the
 /// journal either way. A frame this build has no handler for is refused as
 /// `unsupported` rather than silently ignored.
+#[allow(clippy::too_many_arguments)]
 fn serve_connection(
     origin: &str,
     token: &crate::auth::Secret,
@@ -2072,6 +2751,7 @@ fn serve_connection(
     hello: &serde_json::Value,
     config: &PolicyConfig,
     journal: &Journal,
+    catalog: &[ResolvedAgent],
     mut on_event: impl FnMut(&str),
 ) -> ConnectionEnd {
     use tungstenite::{client::IntoClientRequest, Message};
@@ -2110,11 +2790,13 @@ fn serve_connection(
     let mut heartbeat_pending = false;
     let mut heartbeat_ref = String::new();
     let mut joined = false;
+    let mut hello_ref = String::new();
 
     let (sender, receiver): (Sender<Outgoing>, Receiver<Outgoing>) = std::sync::mpsc::channel();
     let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let cancellations: Arc<Mutex<BTreeMap<String, Cancellation>>> =
         Arc::new(Mutex::new(BTreeMap::new()));
+    let agent_jobs: Arc<Mutex<BTreeMap<String, AgentJob>>> = Arc::new(Mutex::new(BTreeMap::new()));
 
     let send_join = phoenix_frame(
         Some(join_ref),
@@ -2232,6 +2914,43 @@ fn serve_connection(
             continue;
         }
         if event == "phx_reply" {
+            // The server's answer to `hello` carries whether it accepted this
+            // machine's probe report — the inventory it later decides
+            // delegation against. A rejected hello used to be invisible here,
+            // which made a machine that had announced nothing look identical
+            // to one that had announced everything.
+            if !hello_ref.is_empty() && response_ref == hello_ref {
+                let accepted = payload.get("status").and_then(|v| v.as_str()) == Some("ok");
+                let detail = if accepted {
+                    "hello accepted".to_string()
+                } else {
+                    format!(
+                        "hello refused: {}",
+                        payload
+                            .get("response")
+                            .and_then(|value| value.get("reason"))
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("unknown")
+                    )
+                };
+                on_event(if accepted {
+                    "hello_ok"
+                } else {
+                    "hello_refused"
+                });
+                let announcement = CommandRequest {
+                    argv: vec!["<hello>".to_string()],
+                    cwd: String::new(),
+                };
+                let _ = journal.append(
+                    "connection",
+                    &announcement,
+                    "transport",
+                    if accepted { "accepted" } else { "refused" },
+                    &detail,
+                );
+                continue;
+            }
             if response_ref != join_ref {
                 continue;
             }
@@ -2239,13 +2958,8 @@ fn serve_connection(
                 joined = true;
                 on_event("joined");
                 reference += 1;
-                let frame = phoenix_frame(
-                    Some(join_ref),
-                    &reference.to_string(),
-                    &topic,
-                    "hello",
-                    hello,
-                );
+                hello_ref = reference.to_string();
+                let frame = phoenix_frame(Some(join_ref), &hello_ref, &topic, "hello", hello);
                 let _ = socket.send(Message::Text(frame.into()));
             } else {
                 let refusal = payload
@@ -2297,7 +3011,7 @@ fn serve_connection(
                     "pending",
                     "read-only probe requested",
                 );
-                let report = probe(&config.roots);
+                let report = probe_for(config);
                 let _ = journal.append(
                     &request_id,
                     &request,
@@ -2329,48 +3043,35 @@ fn serve_connection(
                     &cancellations,
                 );
             }
-            // ACP delegation is a separate subsystem this build does not carry,
-            // and `devin` is a second delegation kind it does not carry either.
-            // Saying so is the honest answer; pretending to accept either would
-            // leave the server waiting for output that never comes.
-            //
             // `OpenAgentsWeb.ComputerChannel` pushes a request by the name of
             // its kind — `handle_info({:computer_request, kind, …})` for `kind
             // in [:run, :devin, :agent]` does `push(socket,
             // Atom.to_string(kind), …)` — so every one of those names arrives
             // here as an event carrying a `request_id` the server is tracking.
-            // `devin` used to fall through to the catch-all below and be
-            // dropped without a frame or a journal line, which is the exact
-            // failure this arm was written to prevent, one kind over.
+            // `devin` once fell through to the catch-all below and was dropped
+            // without a frame or a journal line, leaving the server blocked on
+            // a request this side had already thrown away. Both names are
+            // served, and both end in a terminal frame.
             "agent" | "devin" => {
-                let request = CommandRequest {
-                    argv: vec![format!("<{event}>")],
-                    cwd: String::new(),
-                };
-                let _ = journal.append(
+                handle_agent(
+                    &event,
                     &request_id,
-                    &request,
-                    "unsupported",
-                    "refused",
-                    "ACP delegation is unavailable",
+                    &payload,
+                    origin,
+                    config,
+                    journal,
+                    &sender,
+                    &active,
+                    &agent_jobs,
+                    catalog,
                 );
-                reference += 1;
-                let frame = phoenix_frame(
-                    Some(join_ref),
-                    &reference.to_string(),
-                    &topic,
-                    "refused",
-                    &serde_json::json!({
-                        "request_id": request_id,
-                        "reason": "unsupported",
-                        "detail": "ACP delegation is unavailable",
-                    }),
-                );
-                let _ = socket.send(Message::Text(frame.into()));
             }
             "cancel" => {
                 if let Some(cancellation) = cancellations.lock().unwrap().get(&request_id) {
                     cancellation.cancel();
+                }
+                if let Some(job) = agent_jobs.lock().unwrap().get(&request_id) {
+                    let _ = job.cancel.send(true);
                 }
                 let request = CommandRequest {
                     argv: vec!["<cancel>".to_string()],
@@ -2395,6 +3096,12 @@ fn serve_connection(
     let _ = journal.append("connection", &closing, "transport", "closed", &end.reason);
     for cancellation in cancellations.lock().unwrap().values() {
         cancellation.cancel();
+    }
+    // A delegation whose channel is gone has nowhere to report. Stopping the
+    // agent is what keeps a lost connection from leaving a coding agent running
+    // in the owner's checkout with nothing listening.
+    for job in agent_jobs.lock().unwrap().values() {
+        let _ = job.cancel.send(true);
     }
     let _ = socket.close(None);
     end
@@ -2620,6 +3327,618 @@ fn handle_run(
     });
 }
 
+// ---------------------------------------------------------------------------
+// serving one delegation
+// ---------------------------------------------------------------------------
+
+/// One live ACP delegation.
+///
+/// `route` is the request the channel currently answers on, which a reattach
+/// moves: the delegation outlives the request that started it, and a caller
+/// that comes back after a reconnect gets the same session's output on its own
+/// `request_id` rather than a second agent.
+struct AgentJob {
+    session: Arc<Mutex<String>>,
+    route: Arc<Mutex<String>>,
+    cancel: tokio::sync::watch::Sender<bool>,
+}
+
+/// What the delegated agent may be told about this machine.
+///
+/// The scrubbed set every command gets, plus exactly the variable names the
+/// owner declared for this agent. This process's own credentials are not in
+/// either list, and neither is the machine token.
+fn agent_environment(entry: &ResolvedAgent) -> Vec<(String, String)> {
+    let mut environment = scrubbed_environment();
+    for name in &entry.env {
+        if ENVIRONMENT_NAMES.contains(&name.as_str()) {
+            continue;
+        }
+        if let Ok(value) = std::env::var(name) {
+            environment.push((name.clone(), value));
+        }
+    }
+    environment
+}
+
+/// The coding agents this host actually has, for the delegation catalog.
+pub fn installed_coding_agents(roots: &[PathBuf]) -> Vec<ToolReport> {
+    let cwd = roots
+        .first()
+        .filter(|root| root.is_dir())
+        .cloned()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    probe_catalog(&CODING_AGENT_CATALOG, &cwd)
+}
+
+/// Serve one `agent` (or legacy `devin`) request.
+///
+/// Every path through this function ends in exactly one terminal frame —
+/// `refused` or `exit` — carrying the `request_id` the server is waiting on,
+/// and every refusal is journaled with the reason that produced it. A request
+/// that reached here and got neither is the defect this shape exists to
+/// prevent.
+#[allow(clippy::too_many_arguments)]
+fn handle_agent(
+    event: &str,
+    request_id: &str,
+    payload: &serde_json::Value,
+    origin: &str,
+    config: &PolicyConfig,
+    journal: &Journal,
+    sender: &Sender<Outgoing>,
+    active: &Arc<std::sync::atomic::AtomicUsize>,
+    agents: &Arc<Mutex<BTreeMap<String, AgentJob>>>,
+    catalog: &[ResolvedAgent],
+) {
+    use std::sync::atomic::Ordering;
+
+    // `OpenAgents.Computer.request_devin/3` now sets `agent_id` itself, but the
+    // legacy shape reached this machine as the `devin` event with a
+    // `session_id` and no agent named. Reading both is what keeps an older
+    // caller from being answered `invalid_request` for asking the old way.
+    let agent_id = payload
+        .get("agent_id")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if event == "devin" {
+                "devin".to_string()
+            } else {
+                String::new()
+            }
+        });
+    let prompt = payload
+        .get("prompt")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let requested_cwd = payload
+        .get("cwd")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let resume = payload
+        .get("resume_session_id")
+        .or_else(|| payload.get("session_id"))
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .chars()
+                .take(MAXIMUM_SESSION_ID_LENGTH)
+                .collect::<String>()
+        });
+
+    let request = CommandRequest {
+        argv: vec![
+            format!("<{event}>"),
+            agent_id.chars().take(64).collect::<String>(),
+        ],
+        cwd: requested_cwd.clone(),
+    };
+    let _ = journal.append(
+        request_id,
+        &request,
+        "received",
+        "pending",
+        "ACP delegation received",
+    );
+
+    let refuse_now = |reason: &str, detail: &str| {
+        let _ = journal.append(request_id, &request, reason, "refused", detail);
+        let _ = sender.send(Outgoing::Frame {
+            event: "refused".to_string(),
+            payload: serde_json::json!({
+                "request_id": request_id,
+                "reason": reason,
+                "detail": detail,
+            }),
+        });
+    };
+
+    // The credential is read before anything can refuse, so its delivery is
+    // recorded even on a request that never runs. The token itself is never
+    // written anywhere: only whether one arrived whole.
+    let delivered = forge_credentials(payload);
+    let credentials = match (&delivered, config.scoped_forge_credentials) {
+        (Some(found), true) => {
+            let _ = journal.append(
+                request_id,
+                &request,
+                "credentials_delivered",
+                "configured",
+                &format!(
+                    "scoped forge credentials for {} on {}",
+                    found.repository, found.branch
+                ),
+            );
+            delivered.clone()
+        }
+        (Some(_), false) => {
+            // The server only sends one when the owner ticked the box on the
+            // Computers page. This machine has not been told the same thing,
+            // and the machine is what decides what runs here.
+            let _ = journal.append(
+                request_id,
+                &request,
+                "credentials_refused",
+                "refused",
+                "scoped forge credentials are not enabled in the local Computer configuration",
+            );
+            None
+        }
+        (None, _) => {
+            if payload.get("assignment_credential").is_some()
+                || payload.get("forge_credentials").is_some()
+            {
+                let _ = journal.append(
+                    request_id,
+                    &request,
+                    "credentials_delivered",
+                    "incomplete",
+                    "a forge credential arrived without the repository and branch it is scoped to",
+                );
+            }
+            None
+        }
+    };
+
+    if agent_id.is_empty() || prompt.trim().is_empty() || prompt.len() > MAXIMUM_PROMPT_LENGTH {
+        refuse_now(
+            "invalid_request",
+            "agent_id, prompt, and cwd are required and must be bounded",
+        );
+        return;
+    }
+    if agent_id.len() > 64
+        || has_shell_metacharacter(&agent_id)
+        || agent_id.contains('/')
+        || agent_id.contains('\\')
+    {
+        refuse_now(
+            "invalid_request",
+            "the agent id is not a name this machine can resolve",
+        );
+        return;
+    }
+    if requested_cwd.is_empty() || requested_cwd.len() > 4_096 {
+        refuse_now(
+            "invalid_request",
+            "agent_id, prompt, and cwd are required and must be bounded",
+        );
+        return;
+    }
+
+    // The tier the server asked for cannot exceed the local ceiling, and the
+    // ceiling itself has to reach past `probe` before anything is delegated at
+    // all: a probe-tier machine answers fixed discovery and nothing else.
+    if let Some(requested) = payload.get("tier").and_then(|value| value.as_str()) {
+        if let Some(requested) = Tier::parse(requested) {
+            if !tier_allows(config.tier, requested) {
+                refuse_now(
+                    "tier_insufficient",
+                    "the requested tier exceeds the local ceiling",
+                );
+                return;
+            }
+        }
+    }
+    if !tier_allows(config.tier, Tier::Curated) {
+        refuse_now(
+            "tier_insufficient",
+            "probe tier permits fixed discovery only",
+        );
+        return;
+    }
+
+    let cwd = if requested_cwd.starts_with('~') {
+        resolve_root(&requested_cwd)
+    } else {
+        normalize_path(Path::new(&requested_cwd))
+    };
+    if config.roots.is_empty() || !config.roots.iter().any(|root| within_root(&cwd, root)) {
+        refuse_now(
+            "root_not_declared",
+            "the working directory is outside every declared root",
+        );
+        return;
+    }
+    if !cwd.is_dir() {
+        refuse_now("root_not_declared", "the working directory does not exist");
+        return;
+    }
+
+    let entry = match resolve_agent(catalog, &agent_id) {
+        Ok(entry) => entry,
+        Err(detail) => {
+            refuse_now("agent_unavailable", &detail);
+            return;
+        }
+    };
+
+    // A resume that names a session still running here rebinds the live
+    // delegation onto this request rather than starting a second agent in the
+    // same checkout. The old request id is dropped from the map first: its
+    // caller is gone, and a cancel arriving late on a dead request must not
+    // stop the delegation that replaced it.
+    if let Some(resume) = &resume {
+        let mut live = agents.lock().unwrap();
+        let existing = live
+            .iter()
+            .find(|(_, job)| job.session.lock().unwrap().as_str() == resume.as_str())
+            .map(|(key, _)| key.clone());
+        if let Some(previous) = existing {
+            let job = live.remove(&previous).expect("the job was just found");
+            *job.route.lock().unwrap() = request_id.to_string();
+            let session = job.session.lock().unwrap().clone();
+            live.insert(request_id.to_string(), job);
+            drop(live);
+            let _ = journal.append(
+                request_id,
+                &request,
+                "reattached",
+                "running",
+                "reattached to the live ACP session",
+            );
+            let _ = sender.send(Outgoing::Frame {
+                event: "session".to_string(),
+                payload: serde_json::json!({
+                    "request_id": request_id,
+                    "session_id": session,
+                }),
+            });
+            return;
+        }
+    }
+
+    if active.load(Ordering::SeqCst) >= MAXIMUM_CONCURRENCY {
+        let _ = journal.append(
+            request_id,
+            &request,
+            "allowed",
+            "refused",
+            "local delegation concurrency limit reached",
+        );
+        let _ = sender.send(Outgoing::Frame {
+            event: "refused".to_string(),
+            payload: serde_json::json!({
+                "request_id": request_id,
+                "reason": "busy",
+                "detail": "the local delegation limit is reached",
+            }),
+        });
+        return;
+    }
+
+    let timeout = Duration::from_millis(bounded_number(
+        payload,
+        &["timeout_ms", "timeout"],
+        AGENT_DEFAULT_TIMEOUT_MS,
+        AGENT_MAXIMUM_TIMEOUT_MS,
+    ));
+    let output_ceiling = bounded_number(
+        payload,
+        &[
+            "maximum_output_bytes",
+            "max_output_bytes",
+            "output_max_bytes",
+        ],
+        AGENT_MAXIMUM_OUTPUT_BYTES as u64,
+        AGENT_MAXIMUM_OUTPUT_BYTES as u64,
+    ) as usize;
+
+    let (cancel_sender, cancel_receiver) = tokio::sync::watch::channel(false);
+    let route = Arc::new(Mutex::new(request_id.to_string()));
+    let session = Arc::new(Mutex::new(resume.clone().unwrap_or_default()));
+    agents.lock().unwrap().insert(
+        request_id.to_string(),
+        AgentJob {
+            session: Arc::clone(&session),
+            route: Arc::clone(&route),
+            cancel: cancel_sender.clone(),
+        },
+    );
+    active.fetch_add(1, Ordering::SeqCst);
+    let _ = journal.append(
+        request_id,
+        &request,
+        "allowed",
+        "running",
+        &format!("agent={} source={}", entry.id, entry.source),
+    );
+
+    let gate_journal = journal.clone();
+    let gate_config = config.clone();
+    let gate_request = request.clone();
+    let gate_id = request_id.to_string();
+    let gate_cwd = cwd.clone();
+    let permission = Arc::new(move |query: &PermissionQuery| {
+        let decision = agent_permission(&gate_config, &gate_cwd, query);
+        let (label, outcome, detail) = match &decision {
+            Decision::Allowed { .. } => (
+                "permission_granted",
+                "running",
+                format!("{}: {}", query.kind, query.title),
+            ),
+            Decision::Refused { reason, detail } => {
+                (reason.label(), "permission_refused", detail.clone())
+            }
+        };
+        // Both answers are journaled. A delegated agent that was stopped from
+        // doing something is exactly what the owner needs to be able to read
+        // back, and a granted one is how they see what it did.
+        let _ = gate_journal.append(&gate_id, &gate_request, label, outcome, &detail);
+        decision.allowed()
+    });
+
+    let push_journal = journal.clone();
+    let push_request = request.clone();
+    let push_id = request_id.to_string();
+    let push_cwd = cwd.clone();
+    let push_origin = origin.to_string();
+    let on_request: Option<crate::acp::ReverseHandler> = match credentials {
+        None => None,
+        Some(credentials) => Some(Arc::new(move |method: &str, params: &serde_json::Value| {
+            if method != "git/push" {
+                return None;
+            }
+            let remote = first_string(params, &["remote"]).unwrap_or_else(|| "origin".to_string());
+            let Some(refspec) = first_string(params, &["refspec", "branch", "ref"]) else {
+                let _ = push_journal.append(
+                    &push_id,
+                    &push_request,
+                    "push_refused",
+                    "refused",
+                    "a delegated push named no refspec",
+                );
+                return Some(serde_json::json!({
+                    "ok": false,
+                    "error": "a delegated push requires a refspec",
+                }));
+            };
+            match push_delegated(&push_cwd, &remote, &refspec, &credentials, &push_origin) {
+                Ok(()) => {
+                    let _ = push_journal.append(
+                        &push_id,
+                        &push_request,
+                        "push_completed",
+                        "completed",
+                        &format!("{} to {}", credentials.repository, credentials.branch),
+                    );
+                    Some(serde_json::json!({"ok": true}))
+                }
+                Err(detail) => {
+                    let detail = redact(&detail);
+                    let _ = push_journal.append(
+                        &push_id,
+                        &push_request,
+                        "push_refused",
+                        "refused",
+                        &detail,
+                    );
+                    Some(serde_json::json!({"ok": false, "error": detail}))
+                }
+            }
+        })),
+    };
+
+    let harness = AcpHarness {
+        command: entry.argv[0].clone(),
+        args: entry.argv[1..].to_vec(),
+        // Ask, so the gate below gets to answer. An agent left in its own
+        // default mode may be in a bypass mode that never sends
+        // `session/request_permission` at all, and a gate nothing consults
+        // decides nothing. Best effort — a build that does not know this mode
+        // keeps its own, and what still holds either way is where the agent
+        // runs: the cwd was checked against the declared roots before the
+        // child was started.
+        mode: Some(crate::acp::PermissionMode::Prompt),
+        permission: Some(permission),
+        on_request,
+        resume_session_id: resume.clone(),
+        env: Some(agent_environment(&entry)),
+    };
+
+    let sender = sender.clone();
+    let journal = journal.clone();
+    let active = Arc::clone(active);
+    let agents = Arc::clone(agents);
+    let owning_id = request_id.to_string();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        let runtime = match tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                // Even this ends in a terminal frame. A server waiting on a
+                // request the controller silently dropped is the failure this
+                // whole path is shaped to avoid.
+                active.fetch_sub(1, Ordering::SeqCst);
+                agents.lock().unwrap().remove(&owning_id);
+                let detail = format!("the delegation runtime could not start: {error}");
+                let _ = journal.append(&owning_id, &request, "failed", "failed", &detail);
+                let _ = sender.send(Outgoing::Frame {
+                    event: "exit".to_string(),
+                    payload: serde_json::json!({
+                        "request_id": *route.lock().unwrap(),
+                        "status": "failed",
+                        "session_id": "",
+                        "detail": detail,
+                        "truncated": false,
+                        "duration_ms": 0,
+                    }),
+                });
+                return;
+            }
+        };
+
+        let streamed = Arc::new(Mutex::new(0usize));
+        let truncated = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let outcome = runtime.block_on(async {
+            let mut cancel = cancel_receiver;
+            let chunk_sender = sender.clone();
+            let chunk_route = Arc::clone(&route);
+            let chunk_session = Arc::clone(&session);
+            let chunk_bytes = Arc::clone(&streamed);
+            let chunk_truncated = Arc::clone(&truncated);
+            let run = harness.run_detailed(
+                &prompt,
+                &cwd,
+                move |event| {
+                    let text = match event {
+                        AcpEvent::Session { id } => {
+                            *chunk_session.lock().unwrap() = id.clone();
+                            let _ = chunk_sender.send(Outgoing::Frame {
+                                event: "session".to_string(),
+                                payload: serde_json::json!({
+                                    "request_id": *chunk_route.lock().unwrap(),
+                                    "session_id": id,
+                                }),
+                            });
+                            return;
+                        }
+                        AcpEvent::Text { chunk } => chunk,
+                        AcpEvent::Tool { kind, title } => format!("[{kind}] {title}\n"),
+                        AcpEvent::Tokens { input, output } => {
+                            format!("[{input} in / {output} out tokens]\n")
+                        }
+                    };
+                    // Redacted before it leaves this machine, and bounded, so
+                    // a talkative agent cannot become an unbounded upload.
+                    let text = redact(&text);
+                    let mut sent = chunk_bytes.lock().unwrap();
+                    if *sent >= output_ceiling {
+                        chunk_truncated.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                    let remaining = output_ceiling - *sent;
+                    let mut end = remaining.min(text.len());
+                    while end > 0 && !text.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    if end < text.len() {
+                        chunk_truncated.store(true, Ordering::SeqCst);
+                    }
+                    *sent += end;
+                    drop(sent);
+                    if end == 0 {
+                        return;
+                    }
+                    let _ = chunk_sender.send(Outgoing::Frame {
+                        event: "chunk".to_string(),
+                        payload: serde_json::json!({
+                            "request_id": *chunk_route.lock().unwrap(),
+                            "text": &text[..end],
+                        }),
+                    });
+                },
+                &mut cancel,
+            );
+            match tokio::time::timeout(timeout, run).await {
+                Ok(result) => result,
+                Err(_elapsed) => {
+                    // Stop the child, then report the timeout as the reason
+                    // rather than whatever the cancellation looked like.
+                    let _ = cancel_sender.send(true);
+                    Err(AcpFailure::Refused(format!(
+                        "the delegation did not finish within {}s",
+                        timeout.as_secs()
+                    )))
+                }
+            }
+        });
+
+        active.fetch_sub(1, Ordering::SeqCst);
+        // By the route, not by the request this started on: a reattach moved
+        // the job to the resuming request's id, and removing the id it no
+        // longer lives under would leave a finished delegation in the map for
+        // as long as the connection lasts. The route is read and released
+        // before the map is locked — the reattach path locks the map first, so
+        // taking them in the other order here is a deadlock.
+        let current = route.lock().unwrap().clone();
+        let cancelled = agents
+            .lock()
+            .unwrap()
+            .remove(&current)
+            .map(|job| *job.cancel.borrow())
+            .unwrap_or(false);
+        let session_id = session.lock().unwrap().clone();
+        let truncated = truncated.load(Ordering::SeqCst);
+        let (status, stop_reason, detail) = match &outcome {
+            Ok(finished) => {
+                let status = match finished.stop_reason.as_str() {
+                    "cancelled" => "cancelled",
+                    "refusal" => "refused",
+                    _ if truncated => "truncated",
+                    _ => "completed",
+                };
+                (
+                    status,
+                    finished.stop_reason.clone(),
+                    if truncated {
+                        "output truncated".to_string()
+                    } else {
+                        String::new()
+                    },
+                )
+            }
+            Err(AcpFailure::Cancelled) => (
+                "cancelled",
+                String::new(),
+                "the delegation was stopped".to_string(),
+            ),
+            Err(AcpFailure::Unstartable(why)) => ("unavailable", String::new(), redact(why)),
+            Err(AcpFailure::Refused(why)) => {
+                let status = if cancelled {
+                    "cancelled"
+                } else if why.starts_with("the delegation did not finish within") {
+                    "timeout"
+                } else {
+                    "failed"
+                };
+                (status, String::new(), redact(why))
+            }
+        };
+        let _ = journal.append(&owning_id, &request, "allowed", status, &detail);
+        let _ = sender.send(Outgoing::Frame {
+            event: "exit".to_string(),
+            payload: serde_json::json!({
+                "request_id": current,
+                "status": status,
+                "session_id": session_id,
+                "stop_reason": stop_reason,
+                "truncated": truncated,
+                "detail": bounded(&detail, 400),
+                "duration_ms": started.elapsed().as_millis() as u64,
+            }),
+        });
+    });
+}
+
 fn request_fields(payload: &serde_json::Value) -> Option<CommandRequest> {
     let argv = payload.get("argv")?.as_array()?;
     if argv.is_empty() || argv.len() > MAXIMUM_ARGV_LENGTH {
@@ -2665,6 +3984,10 @@ pub fn serve(
     journal: &Journal,
     mut on_event: impl FnMut(&str),
 ) -> String {
+    // Which agents this machine will delegate to is decided once, here, from
+    // what the owner declared and what is actually installed. It is not read
+    // from the request, and a reconnect does not widen it.
+    let catalog = agent_catalog(config, &installed_coding_agents(&config.roots));
     let mut attempts: u32 = 0;
     loop {
         let end = serve_connection(
@@ -2674,6 +3997,7 @@ pub fn serve(
             hello,
             config,
             journal,
+            &catalog,
             &mut on_event,
         );
         if !end.retryable || attempts >= MAXIMUM_RECONNECT_ATTEMPTS {
@@ -2773,7 +4097,10 @@ pub async fn run(args: ComputerArgs, endpoint: &crate::auth::Endpoint, json: boo
     match args.action {
         ComputerAction::Probe { root } => {
             let roots = roots_for(&config, &root);
-            let report = probe(&roots);
+            let report = probe_for(&PolicyConfig {
+                roots: roots.clone(),
+                ..config.clone()
+            });
             if json {
                 println!(
                     "{}",
@@ -2801,12 +4128,18 @@ pub async fn run(args: ComputerArgs, endpoint: &crate::auth::Endpoint, json: boo
         }
         ComputerAction::Policy { root } => {
             let roots = roots_for(&config, &root);
+            let catalog = agent_catalog(&config, &installed_coding_agents(&roots));
             if json {
                 let value = serde_json::json!({
                     "schema": "openagents.computer_policy.v1",
                     "tier": config.tier.label(),
                     "roots": roots.iter().map(|r| r.display().to_string()).collect::<Vec<_>>(),
                     "pre_approved": config.pre_approved,
+                    "delegable_agents": catalog
+                        .iter()
+                        .map(|entry| serde_json::json!({"id": entry.id, "source": entry.source}))
+                        .collect::<Vec<_>>(),
+                    "scoped_forge_credentials": config.scoped_forge_credentials,
                     "authority": "local_machine",
                     "paths": {
                         "config": paths.config.display().to_string(),
@@ -2831,6 +4164,30 @@ pub async fn run(args: ComputerArgs, endpoint: &crate::auth::Endpoint, json: boo
             for line in format_allowlist() {
                 println!("  {line}");
             }
+            println!(
+                "Delegable ACP agents: {}",
+                if catalog.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    catalog
+                        .iter()
+                        .map(|entry| format!("{} ({})", entry.id, entry.source))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            );
+            println!(
+                "A delegated agent runs under this same policy: the tier ceiling, the declared \
+                 roots, and the curated allowlist decide every action it asks to take."
+            );
+            println!(
+                "Scoped forge credentials: {}",
+                if config.scoped_forge_credentials {
+                    "allowed for delegated pushes"
+                } else {
+                    "not allowed; a delivered credential is refused and journaled"
+                }
+            );
             println!("Configuration: {}", paths.config.display());
             println!("No account, pairing, or network is needed for this command.");
         }
@@ -2940,7 +4297,7 @@ pub async fn run(args: ComputerArgs, endpoint: &crate::auth::Endpoint, json: boo
                 )),
                 Err(reason) => fail(&reason),
             };
-            let initial = probe(&config.roots);
+            let initial = probe_for(&config);
             let hello = serde_json::json!({
                 "agent_version": crate::VERSION,
                 "tier": config.tier.label(),

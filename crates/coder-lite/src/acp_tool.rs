@@ -49,7 +49,9 @@ pub const ACP_TOOL: &str = "acp";
 /// result is how a session comes to believe a file was edited when nothing
 /// touched it.
 fn is_refusal(answer: &str) -> bool {
-    answer.to_lowercase().contains("upgrade your plan to continue")
+    answer
+        .to_lowercase()
+        .contains("upgrade your plan to continue")
 }
 
 /// The `acp` tool for `agents`, or `None` when none are installed.
@@ -182,37 +184,47 @@ pub fn acp_host_tool(
                                  `dangerous`, or omit it for the agent's own default."
                             ),
                             true,
-                        )
+                        );
                     }
                 },
             };
 
             let streaming = Arc::clone(&sink);
             let id = call_id.clone();
+            // Nothing here stops the child early, so the cancellation channel
+            // is held open for the length of the run: dropping the sender
+            // would signal a cancel the reader never asked for.
+            let (_stop, mut cancel) = tokio::sync::watch::channel(false);
             let result = AcpHarness {
                 command: agent.command,
                 args: agent.args,
                 mode,
+                ..AcpHarness::default()
             }
-            .run(&prompt, &cwd, move |event| {
-                // What the child is doing, into the box under its header,
-                // while it is still doing it.
-                let chunk = match event {
-                    AcpEvent::Text { chunk } => chunk,
-                    AcpEvent::Tool { kind, title } => format!("[{kind}] {title}\n"),
-                    AcpEvent::Tokens { input, output } => {
-                        format!("[{input} in / {output} out tokens]\n")
-                    }
-                    AcpEvent::Session { .. } => return,
-                };
-                send(
-                    &streaming,
-                    Control::ToolOutput {
-                        call_id: id.clone(),
-                        chunk,
-                    },
-                );
-            })
+            .run(
+                &prompt,
+                &cwd,
+                move |event| {
+                    // What the child is doing, into the box under its header,
+                    // while it is still doing it.
+                    let chunk = match event {
+                        AcpEvent::Text { chunk } => chunk,
+                        AcpEvent::Tool { kind, title } => format!("[{kind}] {title}\n"),
+                        AcpEvent::Tokens { input, output } => {
+                            format!("[{input} in / {output} out tokens]\n")
+                        }
+                        AcpEvent::Session { .. } => return,
+                    };
+                    send(
+                        &streaming,
+                        Control::ToolOutput {
+                            call_id: id.clone(),
+                            chunk,
+                        },
+                    );
+                },
+                &mut cancel,
+            )
             .await;
 
             match result {
@@ -220,10 +232,9 @@ pub fn acp_host_tool(
                     format!("`{wanted}` refused the task rather than doing it: {answer}"),
                     true,
                 ),
-                Ok(answer) if answer.trim().is_empty() => (
-                    format!("`{wanted}` finished and said nothing."),
-                    false,
-                ),
+                Ok(answer) if answer.trim().is_empty() => {
+                    (format!("`{wanted}` finished and said nothing."), false)
+                }
                 Ok(answer) => (answer, false),
                 Err(AcpFailure::Unstartable(why)) => {
                     (format!("`{wanted}` could not be started: {why}"), true)
@@ -231,9 +242,13 @@ pub fn acp_host_tool(
                 Err(AcpFailure::Refused(why)) => {
                     (format!("`{wanted}` did not finish the task: {why}"), true)
                 }
+                Err(AcpFailure::Cancelled) => {
+                    (format!("`{wanted}` was stopped before it finished."), true)
+                }
             }
         };
-        Box::pin(future) as std::pin::Pin<Box<dyn std::future::Future<Output = (String, bool)> + Send>>
+        Box::pin(future)
+            as std::pin::Pin<Box<dyn std::future::Future<Output = (String, bool)> + Send>>
     });
 
     Some(HostTool { definition, run })

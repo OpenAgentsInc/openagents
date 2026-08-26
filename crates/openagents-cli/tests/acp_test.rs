@@ -85,6 +85,7 @@ fn harness(name: &str, body: &str) -> AcpHarness {
         command: stand_in(name, body).to_string_lossy().to_string(),
         args: Vec::new(),
         mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
     }
 }
 
@@ -112,7 +113,10 @@ async fn a_turn_over_acp_streams_and_answers() {
 
     // The permission answer is in the text, so the answer proves the client
     // both replied to the request and picked the option that allows.
-    assert_eq!(answer, "the answer in two pieces, permitted by allow-always");
+    assert_eq!(
+        answer,
+        "the answer in two pieces, permitted by allow-always"
+    );
 
     let events = seen.lock().unwrap();
     let session = events
@@ -134,7 +138,10 @@ async fn a_turn_over_acp_streams_and_answers() {
     assert!(
         events.iter().any(|(_, event)| matches!(
             event,
-            AcpEvent::Tokens { input: 120, output: 34 }
+            AcpEvent::Tokens {
+                input: 120,
+                output: 34
+            }
         )),
         "the token counts were not reported"
     );
@@ -164,6 +171,7 @@ async fn a_missing_agent_is_reported_as_missing() {
         command: "/nonexistent/no-such-agent".to_string(),
         args: Vec::new(),
         mode: None,
+        ..AcpHarness::default()
     };
     let (_stop, mut cancel) = watch::channel(false);
     let failure = harness
@@ -179,10 +187,7 @@ async fn a_missing_agent_is_reported_as_missing() {
 /// An agent that exits without answering is a failure, not an empty answer.
 #[tokio::test]
 async fn an_agent_that_exits_early_is_a_failure() {
-    let harness = harness(
-        "acp-quitter",
-        "#!/bin/sh\necho 'not json'\nexit 0\n",
-    );
+    let harness = harness("acp-quitter", "#!/bin/sh\necho 'not json'\nexit 0\n");
     let (_stop, mut cancel) = watch::channel(false);
     let failure = harness
         .run("hello", &std::env::temp_dir(), |_| {}, &mut cancel)

@@ -639,6 +639,34 @@ fn start_stub_controller_pushing(
     }
 }
 
+/// The one frame the server is actually waiting for: `refused` or `exit`.
+///
+/// Which of the two a delegation ends in depends on what is installed on the
+/// host running the test, and that is not what these assertions are about —
+/// the invariant is that a tracked `request_id` is always answered.
+fn next_terminal_frame(frames: &Receiver<serde_json::Value>) -> (String, serde_json::Value) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(25);
+    while std::time::Instant::now() < deadline {
+        match frames.recv_timeout(Duration::from_secs(25)) {
+            Ok(frame) => {
+                let event = frame
+                    .get(3)
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if event == "refused" || event == "exit" {
+                    return (
+                        event,
+                        frame.get(4).cloned().unwrap_or(serde_json::Value::Null),
+                    );
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    panic!("the client never sent a terminal frame");
+}
+
 fn next_frame(frames: &Receiver<serde_json::Value>, event: &str) -> serde_json::Value {
     let deadline = std::time::Instant::now() + Duration::from_secs(25);
     while std::time::Instant::now() < deadline {
@@ -728,14 +756,18 @@ fn test_up_refuses_a_command_outside_the_allowlist_and_journals_it() {
 /// and then waits for a terminal frame carrying that `request_id`:
 /// `handle_info({:computer_request, kind, request_id, payload, from})` accepts
 /// `kind in [:run, :devin, :agent]` and tracks the caller until an `exit` or a
-/// `refused` comes back. This build carries neither ACP delegation nor Devin,
-/// so both must answer `refused`.
+/// `refused` comes back.
 ///
-/// `agent` did. `devin` fell through the frame match's catch-all arm and was
-/// dropped: no frame, no journal line, and a server left waiting on a request
-/// the controller had already thrown away. A silent drop is the one answer a
-/// request kind must never get, which is why this walks the kinds rather than
-/// asserting the one that happened to be handled.
+/// `agent` was answered. `devin` fell through the frame match's catch-all arm
+/// and was dropped: no frame, no journal line, and a server left waiting on a
+/// request the controller had already thrown away. A silent drop is the one
+/// answer a request kind must never get, which is why this walks the kinds
+/// rather than asserting the one that happened to be handled.
+///
+/// The payload here names no agent, so both kinds are refused — the point is
+/// that the refusal arrives at all, on the request the server is waiting on,
+/// and reaches the journal. What a well-formed delegation does is
+/// `computer_agent_test.rs`.
 #[test]
 fn test_up_refuses_every_delegation_kind_it_cannot_serve() {
     for (index, event) in ["agent", "devin"].into_iter().enumerate() {
@@ -767,24 +799,46 @@ fn test_up_refuses_every_delegation_kind_it_cannot_serve() {
             |_| {},
         );
 
-        let refused = next_frame(&stub.frames, "refused");
+        let (kind, answer) = next_terminal_frame(&stub.frames);
         assert_eq!(
-            refused.get("request_id").and_then(|v| v.as_str()),
+            answer.get("request_id").and_then(|v| v.as_str()),
             Some(request_id.as_str()),
-            "a `{event}` request must be answered on its own request_id: {refused}"
+            "a `{event}` request must be answered on its own request_id: {answer}"
         );
-        assert_eq!(
-            refused.get("reason").and_then(|v| v.as_str()),
-            Some("unsupported"),
-            "a `{event}` request this build cannot serve must say so: {refused}"
-        );
+        if kind == "refused" {
+            assert!(
+                !answer
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .is_empty(),
+                "a `{event}` refusal must name why: {answer}"
+            );
+            assert!(
+                !answer
+                    .get("detail")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .is_empty(),
+                "a `{event}` refusal must carry a detail the owner can read: {answer}"
+            );
+        } else {
+            assert!(
+                !answer
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .is_empty(),
+                "a `{event}` exit must name how it ended: {answer}"
+            );
+        }
 
         let entries = journal.read(50).unwrap();
         assert!(
-            entries
-                .iter()
-                .any(|entry| entry.request_id == request_id && entry.outcome == "refused"),
-            "the `{event}` refusal must reach the local journal too"
+            entries.iter().any(|entry| entry.request_id == request_id
+                && entry.decision != "received"
+                && entry.outcome != "pending"),
+            "the `{event}` decision must reach the local journal too"
         );
     }
 }
