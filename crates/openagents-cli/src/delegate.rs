@@ -95,6 +95,16 @@ pub enum ChildEvent {
     Finished(Box<ChildWorkerResult>),
 }
 
+/// The lane a fan-out runs on when `--lane` names none.
+///
+/// It is not a neutral choice: `ox-alpha` is this process on the OpenAgents
+/// proxy, so every child on it opens a thread and spends this account's grant.
+/// The other lanes shell out to a harness the reader installed and pays for
+/// themselves. That is why omitting `--lane` is reported at the point of
+/// spending rather than left to be inferred from the header — see
+/// [`run_delegation`].
+pub const DEFAULT_CHILD_LANE: &str = "ox-alpha";
+
 /// Which harness and model a child runs on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChildLane {
@@ -334,6 +344,40 @@ impl DelegationSupervisor {
         results.unwrap_or_default()
     }
 
+    /// Where children will work, or why there is nowhere for them to.
+    ///
+    /// `--dir` names it. It has to exist before a worktree can be prepared
+    /// under it, so a path that is not a directory is a refusal rather than a
+    /// fan-out that silently ran somewhere else.
+    fn workdir(&self) -> Result<PathBuf, String> {
+        match &self.directory {
+            Some(directory) => {
+                if !directory.is_dir() {
+                    return Err(format!(
+                        "{} is not a directory, so there is nowhere for the children to work.",
+                        directory.display()
+                    ));
+                }
+                Ok(directory.clone())
+            }
+            None => Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
+        }
+    }
+
+    /// Work out where every child will go, without building anything yet.
+    ///
+    /// Separate from the dispatch so a caller can read
+    /// [`WorkspacePlan::isolation`] — the isolation children will *actually*
+    /// get — before it announces one. `oa delegate` printed the isolation it
+    /// was asked for, which outside a git checkout was `worktree` over a run
+    /// that gave each child a plain empty directory.
+    ///
+    /// Nothing is written to disk here; the plan only names a base directory.
+    /// [`WorkspacePlan::prepare`] is what creates anything.
+    pub async fn plan(&self) -> Result<WorkspacePlan, String> {
+        Ok(WorkspacePlan::resolve(self.workdir()?, self.isolation).await)
+    }
+
     /// Run the fan-out, reporting each child as it goes.
     ///
     /// Returns `Err` only when no child could be started at all — a workspace
@@ -346,23 +390,22 @@ impl DelegationSupervisor {
         events: mpsc::UnboundedSender<ChildEvent>,
         cancel: watch::Receiver<bool>,
     ) -> Result<Vec<ChildWorkerResult>, String> {
+        let plan = self.plan().await?;
+        self.dispatch_with_plan(plan, prompt, events, cancel).await
+    }
+
+    /// The same fan-out, over a plan the caller already resolved.
+    ///
+    /// A caller that reported the isolation runs the plan it reported, rather
+    /// than resolving a second one that could answer differently.
+    pub async fn dispatch_with_plan(
+        &self,
+        plan: WorkspacePlan,
+        prompt: &str,
+        events: mpsc::UnboundedSender<ChildEvent>,
+        cancel: watch::Receiver<bool>,
+    ) -> Result<Vec<ChildWorkerResult>, String> {
         let lane = ChildLane::parse(&self.lane);
-        // `--dir` names where children work. It has to exist before a worktree
-        // can be prepared under it, so a path that is not a directory is a
-        // refusal rather than a fan-out that silently ran somewhere else.
-        let cwd = match &self.directory {
-            Some(directory) => {
-                if !directory.is_dir() {
-                    return Err(format!(
-                        "{} is not a directory, so there is nowhere for the children to work.",
-                        directory.display()
-                    ));
-                }
-                directory.clone()
-            }
-            None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        };
-        let plan = WorkspacePlan::resolve(cwd, self.isolation).await;
         let workspaces = plan.prepare(self.count).await?;
 
         let gate = Arc::new(Semaphore::new(self.max_parallel.max(1)));
@@ -1262,11 +1305,47 @@ pub async fn run_delegation(
             "{requested} children were asked for and this command runs at most {MAX_DELEGATE_COUNT}."
         ));
     }
-    let lane_name = args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
-    let prompt = args
+    // Refused before anything is prepared, spawned, or billed. A missing
+    // prompt used to become the literal `Analyze workspace and run tests`,
+    // which every child then ran: N `git worktree add`s on disk and, on the
+    // default lane, N threads and N grants spent on an instruction nobody
+    // gave. `describe()` even named the run "delegated task", so the header
+    // read plausibly while it happened.
+    //
+    // The same operation exposed as a model tool already refuses this:
+    // `tools.rs` answers `No children were started: \`prompt\` is required and
+    // must say what the child does.`, and trims before it decides. A CLI more
+    // permissive than the model-facing surface is backwards, so both now
+    // answer the omission the same way — whitespace included, which is the
+    // same omission with a space in it.
+    let Some(prompt) = args
         .prompt
-        .clone()
-        .unwrap_or_else(|| "Analyze workspace and run tests".to_string());
+        .as_deref()
+        .map(str::trim)
+        .filter(|given| !given.is_empty())
+        .map(str::to_string)
+    else {
+        fail(
+            "a delegation runs one prompt in every child, and there is nothing to run \
+             without one. Give it one: `oa delegate \"<prompt>\"`, or \
+             `oa coder --delegate \"<prompt>\"`",
+        );
+    };
+    // The lane decides who pays. Naming none is not refused — `oa coder`
+    // defaults its lane too, and a fan-out with no lane is a reasonable
+    // thing to ask for — but it is said out loud, here, before a child
+    // exists. The header below names the lane either way and so cannot
+    // distinguish a lane that was chosen from one that was assumed.
+    let lane_name = match args.lane.clone() {
+        Some(named) => named,
+        None => {
+            say(format!(
+                "No --lane given, so children run on {DEFAULT_CHILD_LANE}, which opens a \
+                 thread per child and spends this account's grant. Name another with --lane."
+            ));
+            DEFAULT_CHILD_LANE.to_string()
+        }
+    };
 
     if !ChildLane::known(&lane_name) {
         fail(&format!(
@@ -1275,7 +1354,7 @@ pub async fn run_delegation(
     }
     let lane = ChildLane::parse(&lane_name);
 
-    let isolation = match args.isolation.as_deref() {
+    let asked_isolation = match args.isolation.as_deref() {
         None => Isolation::Worktree,
         Some(named) => match Isolation::parse(named) {
             Some(isolation) => isolation,
@@ -1301,11 +1380,30 @@ pub async fn run_delegation(
     let description = describe(args.description.as_deref(), &prompt);
 
     let supervisor = DelegationSupervisor::new(requested, &lane_name, user_token)
-        .with_isolation(isolation)
+        .with_isolation(asked_isolation)
         .with_max_parallel(args.max_parallel.unwrap_or(requested))
         .keeping_workspaces(args.keep_workspaces)
         .in_directory(args.directory.as_deref().map(PathBuf::from))
         .with_child_options(child);
+
+    // Resolved before the header, and the header reports the resolution.
+    // `worktree` outside a git checkout is a plain empty directory per child;
+    // this used to print the value that was asked for, so a run announced an
+    // isolation it did not have and nothing later said otherwise. The plan is
+    // then handed to the dispatch, so what was reported is what runs.
+    let plan = match supervisor.plan().await {
+        Ok(plan) => plan,
+        Err(error) => fail(&format!("no children were started: {error}")),
+    };
+    let isolation = plan.isolation();
+    if isolation != asked_isolation {
+        say(format!(
+            "`{}` isolation is not available here — this is not a git checkout — so children get \
+             `{}` instead.",
+            asked_isolation.name(),
+            isolation.name(),
+        ));
+    }
 
     say(format!(
         "Delegating {}: {} {} on {}, {} at a time, isolation: {}.",
@@ -1368,7 +1466,10 @@ pub async fn run_delegation(
         }
     });
 
-    let results = match supervisor.dispatch_streaming(&prompt, events, cancel).await {
+    let results = match supervisor
+        .dispatch_with_plan(plan, &prompt, events, cancel)
+        .await
+    {
         Ok(results) => results,
         // No child ran at all, so there is nothing to report but the reason.
         Err(error) => fail(&format!("no children were started: {error}")),

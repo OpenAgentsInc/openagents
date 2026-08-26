@@ -516,7 +516,7 @@ pub enum RepoAction {
         name: String,
         #[arg(long, help = "Set the repository description")]
         description: Option<String>,
-        #[arg(long, help = "Create a public repository (the default)")]
+        #[arg(long, help = "Create a public repository")]
         public: bool,
         #[arg(long, help = "Create a private repository")]
         private: bool,
@@ -906,7 +906,7 @@ pub struct DelegateArgs {
 
     #[arg(
         long,
-        help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex)"
+        help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex). Defaults to ox-alpha, which spends this account's grant"
     )]
     pub lane: Option<String>,
 
@@ -2073,7 +2073,18 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
                 )));
             }
 
-            let is_private = visibility(public, private).unwrap_or(false);
+            // Naming neither flag used to create a *public* repository, a
+            // default disclosed only in `--public`'s own help text. Publishing
+            // a repository is not undoable by the reader who did not know they
+            // asked for it, so the omission is refused here — before the
+            // create, like the two checks above — rather than resolved in the
+            // direction that exposes it.
+            let Some(is_private) = visibility(public, private) else {
+                fail(
+                    "say whether the repository is public or private: \
+                     `oa repo create <name> --private` or `--public`",
+                );
+            };
             let (owner, repository_name) = if name.contains('/') {
                 let (owner, repository_name) = or_fail(crate::repo::parse_repository_target(&name));
                 (Some(owner), repository_name)

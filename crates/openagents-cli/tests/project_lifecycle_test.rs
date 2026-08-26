@@ -311,7 +311,7 @@ fn a_named_owner_is_sent_to_the_server_rather_than_routed_on_a_guess() {
         let server = StubServer::start(vec![(201, ready_repository(&full_name))]);
         let origin = server.origin();
 
-        let run = oa(&origin, &["repo", "create", &full_name]);
+        let run = oa(&origin, &["repo", "create", &full_name, "--private"]);
         assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
 
         let hits = server.hits();
@@ -332,10 +332,58 @@ fn a_bare_name_carries_no_owner() {
     let server = StubServer::start(vec![(201, ready_repository("octavia/thing"))]);
     let origin = server.origin();
 
-    let run = oa(&origin, &["repo", "create", "thing"]);
+    let run = oa(&origin, &["repo", "create", "thing", "--private"]);
     assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
 
     let hits = server.hits();
     assert_eq!(hits[0].route(), "POST /api/v1/repos");
     assert_eq!(hits[0].json().get("owner"), None);
+}
+
+/// `repo create` will not choose the visibility for you, and what it sends is
+/// what you named.
+///
+/// Naming neither flag used to send `"private": false` — a public repository,
+/// on a default disclosed only in `--public`'s help. The exit code alone does
+/// not catch that: it is the absence of a request that says nothing was
+/// created, and the body of the requests that do go out that says the flags
+/// are read rather than merely accepted.
+#[test]
+fn create_refuses_to_pick_a_visibility_and_sends_the_one_it_was_given() {
+    let server = StubServer::start(vec![(201, ready_repository("octavia/thing"))]);
+    let origin = server.origin();
+
+    let silent = oa(&origin, &["repo", "create", "thing"]);
+    // Asserted first, and about the server rather than the exit code: a
+    // create that posts and then fails afterwards exits non-zero too, and the
+    // repository is on the server either way.
+    let asked_for: Vec<String> = server.hits().iter().map(Hit::route).collect();
+    assert_eq!(
+        asked_for,
+        Vec::<String>::new(),
+        "a repository was created without anyone saying whether it is public"
+    );
+    assert_eq!(silent.status, Some(2), "stdout: {}", silent.stdout);
+    assert!(
+        silent.stderr.contains("--private") && silent.stderr.contains("--public"),
+        "the refusal did not name the two flags that answer it: {}",
+        silent.stderr
+    );
+
+    // Both flags reach the wire, and they disagree with each other — which is
+    // what a test that only asserted "some `private` field was sent" would
+    // miss.
+    for (flag, expected) in [("--private", true), ("--public", false)] {
+        let server = StubServer::start(vec![(201, ready_repository("octavia/thing"))]);
+        let origin = server.origin();
+        let run = oa(&origin, &["repo", "create", "thing", flag]);
+        assert_eq!(run.status, Some(0), "{flag} stderr: {}", run.stderr);
+        let hits = server.hits();
+        assert_eq!(hits.len(), 1, "{flag}: unexpected requests: {hits:?}");
+        assert_eq!(
+            hits[0].json()["private"],
+            serde_json::json!(expected),
+            "{flag} sent the wrong visibility"
+        );
+    }
 }

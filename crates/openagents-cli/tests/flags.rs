@@ -1088,6 +1088,305 @@ fn a_missing_prompt_is_refused_the_same_way_offline_and_headless() {
     }
 }
 
+// ------------------------------------------------- `oa delegate` with no prompt
+
+/// A directory of this test's own, empty, and not a git checkout.
+fn scratch(name: &str) -> PathBuf {
+    let at = std::env::temp_dir().join(format!(
+        "oa-flags-{name}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&at).expect("make a scratch directory");
+    at
+}
+
+/// Every entry a fan-out left in the temporary directory it was pointed at.
+///
+/// `WorkspacePlan` lays its children out under `std::env::temp_dir()` as
+/// `oa-delegate-<pid>-…`, and `TMPDIR` is what decides where that is. Pointing
+/// it at a directory this test owns turns "was a workspace built on disk" into
+/// something readable.
+fn delegate_workspaces(tmp: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(tmp) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("oa-delegate-"))
+        .collect();
+    found.sort();
+    found
+}
+
+/// `oa delegate` with no prompt starts no child: no worktree, no thread.
+///
+/// It used to substitute the literal `Analyze workspace and run tests` and run
+/// it in every child — a real `git worktree add` each, and on the default lane
+/// a thread and a grant each, spent on an instruction nobody gave. The exit
+/// code alone does not catch that; a fan-out that spawns and then fails exits
+/// non-zero too. What catches it is the disk and the server, so both are
+/// asserted before the status is.
+///
+/// The same omission is refused through `oa coder --delegate`, which is the
+/// other door onto the same engine.
+#[test]
+fn delegate_without_a_prompt_starts_no_child_and_opens_no_thread() {
+    let server = RouteServer::start(coder_routes);
+    let origin = server.origin();
+    let api_base = format!("{origin}/api/v1");
+    let tmp = scratch("delegate-refused");
+    let tmp_path = tmp.to_string_lossy().into_owned();
+
+    for bare in [
+        vec!["--api-url", origin.as_str(), "delegate"],
+        // Whitespace is the same omission with a space in it. Untrimmed, this
+        // shipped `   ` to every child.
+        vec!["--api-url", origin.as_str(), "delegate", "   "],
+        // Two children, so a version that spawns first would leave two
+        // workspaces and open two threads rather than one of each.
+        vec!["--api-url", origin.as_str(), "delegate", "--agents", "2"],
+        vec!["--api-url", origin.as_str(), "coder", "--delegate"],
+    ] {
+        let run = oa_env(
+            &bare,
+            &[
+                ("OPENAGENTS_TOKEN", "t"),
+                ("OPENAGENTS_API_BASE", api_base.as_str()),
+                ("TMPDIR", tmp_path.as_str()),
+                ("HOME", &isolated_home().to_string_lossy()),
+            ],
+        );
+        assert_eq!(
+            delegate_workspaces(&tmp),
+            Vec::<String>::new(),
+            "{bare:?} built a workspace for a prompt nobody gave"
+        );
+        let paths: Vec<String> = server.hits().into_iter().map(|hit| hit.path).collect();
+        assert!(
+            !paths.iter().any(|p| p == "/api/v1/threads"),
+            "{bare:?} still opened a thread: {paths:?}"
+        );
+        assert!(
+            !run.stdout.contains("Analyze workspace"),
+            "a prompt nobody gave was run anyway: {}",
+            run.stdout
+        );
+        assert_eq!(run.status, Some(2), "{bare:?} stdout: {}", run.stdout);
+        assert!(
+            run.stderr.contains("<prompt>"),
+            "the refusal did not show the form that works: {}",
+            run.stderr
+        );
+    }
+
+    // The control, on the same fixture and the same temporary directory: with
+    // a prompt, a child does start. Without this the assertions above would
+    // also pass against a binary that could reach neither the server nor the
+    // disk.
+    let given = oa_env(
+        &["--api-url", &origin, "delegate", "hello"],
+        &[
+            ("OPENAGENTS_TOKEN", "t"),
+            ("OPENAGENTS_API_BASE", api_base.as_str()),
+            ("TMPDIR", tmp_path.as_str()),
+            ("HOME", &isolated_home().to_string_lossy()),
+        ],
+    );
+    assert_eq!(given.status, Some(0), "stderr: {}", given.stderr);
+    let paths: Vec<String> = server.hits().into_iter().map(|hit| hit.path).collect();
+    assert!(
+        paths.iter().any(|p| p == "/api/v1/threads"),
+        "the fixture never opens a thread, so the test proves nothing: {paths:?}"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+// ------------------------------------------- the isolation a fan-out reports
+
+/// The isolation in the header is the one the children got.
+///
+/// `worktree` outside a git checkout is silently a plain empty directory —
+/// [`WorkspacePlan::resolve`]'s only substitution — and the header printed the
+/// value that was *asked* for, so the run announced isolation it did not have.
+/// Each case below reads two things the binary printed: the header, and the
+/// `[child 1] started … in …` line, which names the workspace kind the child
+/// was actually handed. A run whose header disagrees with its own child line
+/// is the defect.
+#[test]
+fn the_reported_isolation_is_the_one_the_children_get() {
+    let server = RouteServer::start(coder_routes);
+    let origin = server.origin();
+    let api_base = format!("{origin}/api/v1");
+    let tmp = scratch("delegate-isolation");
+    let tmp_path = tmp.to_string_lossy().into_owned();
+
+    // Not a git checkout, so `worktree` is not available here.
+    let plain = scratch("delegate-plain");
+    // A checkout of its own, so it is. Made here rather than borrowed from the
+    // repository this test runs in: registering a worktree in that one would
+    // leave the developer's `git worktree list` holding this test's children.
+    let repo = scratch("delegate-repo");
+    for argv in [
+        vec!["init", "--quiet", "-b", "main"],
+        vec!["config", "user.email", "test@example.test"],
+        vec!["config", "user.name", "Test"],
+        vec!["commit", "--quiet", "--allow-empty", "-m", "root"],
+    ] {
+        let done = Command::new("git")
+            .args(&argv)
+            .current_dir(&repo)
+            .output()
+            .expect("run git");
+        assert!(done.status.success(), "git {argv:?}: {done:?}");
+    }
+
+    for (directory, expected, workspace_line) in [
+        (&plain, "directory", "in directory "),
+        (&repo, "worktree", "in git worktree "),
+    ] {
+        let run = oa_env(
+            &[
+                "--api-url",
+                &origin,
+                "delegate",
+                "hello",
+                "--dir",
+                &directory.to_string_lossy(),
+            ],
+            &[
+                ("OPENAGENTS_TOKEN", "t"),
+                ("OPENAGENTS_API_BASE", api_base.as_str()),
+                ("TMPDIR", tmp_path.as_str()),
+                ("HOME", &isolated_home().to_string_lossy()),
+            ],
+        );
+        assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
+        // What the child was handed, read from the child's own line.
+        assert!(
+            run.stdout.contains(workspace_line),
+            "no child reported a `{workspace_line}` workspace in {}: {}",
+            directory.display(),
+            run.stdout
+        );
+        // And what the header claimed, which has to be the same word.
+        assert!(
+            run.stdout.contains(&format!("isolation: {expected}.")),
+            "the header did not report `{expected}` in {}: {}",
+            directory.display(),
+            run.stdout
+        );
+        for other in ["directory", "worktree", "none"] {
+            if other != expected {
+                assert!(
+                    !run.stdout.contains(&format!("isolation: {other}.")),
+                    "the header reported `{other}` as well as `{expected}`: {}",
+                    run.stdout
+                );
+            }
+        }
+    }
+
+    // The substitution is not merely reported in the header; it is said out
+    // loud, because `--isolation worktree` was asked for by default and was
+    // not what happened.
+    let run = oa_env(
+        &[
+            "--api-url",
+            &origin,
+            "delegate",
+            "hello",
+            "--dir",
+            &plain.to_string_lossy(),
+        ],
+        &[
+            ("OPENAGENTS_TOKEN", "t"),
+            ("OPENAGENTS_API_BASE", api_base.as_str()),
+            ("TMPDIR", tmp_path.as_str()),
+            ("HOME", &isolated_home().to_string_lossy()),
+        ],
+    );
+    assert!(
+        run.stdout.contains("not a git checkout"),
+        "the run substituted an isolation without saying so: {}",
+        run.stdout
+    );
+
+    for at in [&tmp, &plain, &repo] {
+        let _ = std::fs::remove_dir_all(at);
+    }
+}
+
+// -------------------------------------------- the lane a fan-out bills
+
+/// A fan-out that was given no `--lane` says which one it chose, and why that
+/// matters, before a child exists.
+///
+/// `ox-alpha` is the one lane that opens a thread per child and spends this
+/// account's grant; the others shell out to a harness the reader installed.
+/// The header names the lane either way, so it cannot distinguish a lane that
+/// was chosen from one that was assumed — this line is what does.
+#[test]
+fn a_fan_out_with_no_lane_says_which_lane_it_picked() {
+    let server = RouteServer::start(coder_routes);
+    let origin = server.origin();
+    let api_base = format!("{origin}/api/v1");
+    let tmp = scratch("delegate-lane");
+    let tmp_path = tmp.to_string_lossy().into_owned();
+    let plain = scratch("delegate-lane-dir");
+
+    let run = |lane: Option<&str>| {
+        let directory = plain.to_string_lossy().into_owned();
+        let mut argv = vec![
+            "--api-url",
+            origin.as_str(),
+            "delegate",
+            "hello",
+            "--dir",
+            directory.as_str(),
+        ];
+        if let Some(lane) = lane {
+            argv.extend_from_slice(&["--lane", lane]);
+        }
+        oa_env(
+            &argv,
+            &[
+                ("OPENAGENTS_TOKEN", "t"),
+                ("OPENAGENTS_API_BASE", api_base.as_str()),
+                ("TMPDIR", tmp_path.as_str()),
+                ("HOME", &isolated_home().to_string_lossy()),
+            ],
+        )
+    };
+
+    let assumed = run(None);
+    assert_eq!(assumed.status, Some(0), "stderr: {}", assumed.stderr);
+    assert!(
+        assumed.stdout.contains("No --lane given")
+            && assumed.stdout.contains("spends this account's grant"),
+        "the run chose the billing lane without saying so: {}",
+        assumed.stdout
+    );
+
+    // Named explicitly, it is not a substitution and there is nothing to
+    // report — otherwise this line would be noise on every run.
+    let named = run(Some("ox-alpha"));
+    assert_eq!(named.status, Some(0), "stderr: {}", named.stderr);
+    assert!(
+        !named.stdout.contains("No --lane given"),
+        "a lane the caller named was reported as a default: {}",
+        named.stdout
+    );
+
+    for at in [&tmp, &plain] {
+        let _ = std::fs::remove_dir_all(at);
+    }
+}
+
 // ----------------------------------------------------------------- `--model`
 
 /// `--model` decides the id sent at thread open; without it the default lane's
