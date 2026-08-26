@@ -9,10 +9,13 @@ use ratatui::{
 };
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
+use unicode_width::UnicodeWidthStr;
 
 use crate::composer::Composer;
 
-use crate::coder::markdown::theme::{BACKGROUND_COLOR, DIM_TEXT_COLOR, TEXT_COLOR, USER_TEXT_COLOR};
+use crate::coder::markdown::theme::{
+    BACKGROUND_COLOR, DIM_TEXT_COLOR, MODEL_TEXT_COLOR, TEXT_COLOR, USER_TEXT_COLOR,
+};
 use crate::coder::osc8::PlacedLink;
 use crate::coder::transcript::MarkdownContent;
 use crate::runtime::TurnUsage;
@@ -107,6 +110,8 @@ pub struct ToolCall {
 pub struct Entry {
     pub role: Role,
     pub text: String,
+    /// The model that produced this assistant entry, once the runtime reports it.
+    pub model: Option<String>,
     /// Tool output text, rendered as a box of up to five lines split by newlines.
     pub output: Option<String>,
     pub tool: Option<ToolCall>,
@@ -133,6 +138,7 @@ impl Entry {
         Self {
             role,
             text: text.into(),
+            model: None,
             output: None,
             tool: None,
             at: now_ms(),
@@ -149,6 +155,7 @@ impl Entry {
         Self {
             role: Role::Tool,
             text: text.into(),
+            model: None,
             output: Some(String::new()),
             tool: None,
             at: now_ms(),
@@ -221,6 +228,8 @@ pub struct CoderUi {
     pub scroll_max: u16,
     pub transcript_height: u16,
     pub loading: bool,
+    /// Temporary first-response state shown beside the spinner.
+    pub waiting: Option<String>,
     pub tick: u64,
     /// Who the session is signed in as, as the server confirmed it.
     ///
@@ -311,6 +320,7 @@ impl CoderUi {
             scroll_max: 0,
             transcript_height: 0,
             loading: false,
+            waiting: None,
             tick: 0,
             identity: Identity::Anonymous,
             endpoint: String::new(),
@@ -456,7 +466,13 @@ impl CoderUi {
 
         if self.loading {
             let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
-            all_lines.push(Line::from(vec![Span::styled(spinner.to_string(), style)]));
+            let status = self.waiting.as_deref().unwrap_or_default();
+            let text = if status.is_empty() {
+                spinner.to_string()
+            } else {
+                format!("{spinner} {status}")
+            };
+            all_lines.push(Line::from(vec![Span::styled(text, style)]));
         }
 
         let total = all_lines.len() as u16;
@@ -589,11 +605,19 @@ fn render_entry(
     width: usize,
 ) -> (Vec<Line<'static>>, Vec<crate::coder::transcript::ScreenLink>) {
     let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+    let model = (entry.role == Role::Assistant)
+        .then(|| entry.model.clone())
+        .flatten()
+        .filter(|model| model.width() + 2 <= width);
+    let body_width = model
+        .as_ref()
+        .map(|model| width.saturating_sub(model.width() + 1))
+        .unwrap_or(width);
 
-    match entry.role {
+    let (mut lines, links) = match entry.role {
         Role::Assistant if !entry.text.is_empty() && entry.text.starts_with("[error:") => {
             let mut lines = Vec::new();
-            for chunk in wrap_text(&entry.text, width) {
+            for chunk in wrap_text(&entry.text, body_width) {
                 lines.push(Line::from(vec![Span::styled(
                     chunk,
                     text_style.add_modifier(Modifier::BOLD),
@@ -602,7 +626,12 @@ fn render_entry(
             (lines, Vec::new())
         }
         ref role if role.is_markdown() && !entry.text.is_empty() => {
-            let width = width.max(1);
+            let width = if *role == Role::Assistant {
+                body_width
+            } else {
+                width
+            }
+            .max(1);
             let md = entry.markdown_mut();
             let mut lines = md.lines(width).to_vec();
             let links = md.links(width).to_vec();
@@ -691,5 +720,24 @@ fn render_entry(
             }
             (lines, Vec::new())
         }
+    };
+
+    if let (Some(model), Some(first)) = (model, lines.first_mut()) {
+        let line_width = first
+            .spans
+            .iter()
+            .map(|span| span.content.width())
+            .sum::<usize>();
+        let padding = width.saturating_sub(line_width + model.width());
+        first.spans.push(Span::styled(
+            " ".repeat(padding),
+            Style::default().fg(MODEL_TEXT_COLOR).bg(BACKGROUND_COLOR),
+        ));
+        first.spans.push(Span::styled(
+            model,
+            Style::default().fg(MODEL_TEXT_COLOR).bg(BACKGROUND_COLOR),
+        ));
     }
+
+    (lines, links)
 }

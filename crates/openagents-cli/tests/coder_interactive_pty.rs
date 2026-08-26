@@ -300,21 +300,28 @@ mod unix_pty {
         /// command set instead, and this harness has nothing to say about
         /// that surface.
         fn start() -> Self {
-            Self::start_sized(ROWS, COLS)
+            Self::start_full(ROWS, COLS, STUB_CREDIT, false)
+        }
+
+        /// Start the bare binary with an exhausted pipe as standard input,
+        /// which is how `curl … | sh` hands control to Coder after install.
+        fn start_with_piped_stdin() -> Self {
+            Self::start_full(ROWS, COLS, STUB_CREDIT, true)
         }
 
         /// A session whose deployment answers `GET /api/v1/credit` with one
         /// named body, so a test can drive the status bar's states from the
         /// wire rather than from the renderer.
         fn start_with_credit(credit: &'static str) -> Self {
-            Self::start_full(ROWS, COLS, credit)
+            Self::start_full(ROWS, COLS, credit, false)
         }
 
-        fn start_sized(rows: u16, cols: u16) -> Self {
-            Self::start_full(rows, cols, STUB_CREDIT)
-        }
-
-        fn start_full(rows: u16, cols: u16, credit: &'static str) -> Self {
+        fn start_full(
+            rows: u16,
+            cols: u16,
+            credit: &'static str,
+            piped_stdin: bool,
+        ) -> Self {
             let stub = Stub::start_with_credit(credit);
             let home = scratch_dir();
             let workdir = home.join("workdir");
@@ -330,8 +337,18 @@ mod unix_pty {
                 })
                 .expect("open a pseudo-terminal");
 
-            // No `.arg(…)` call anywhere in this function, deliberately.
-            let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_openagents"));
+            let executable = env!("CARGO_BIN_EXE_openagents");
+            let mut command = if piped_stdin {
+                let escaped = executable.replace('\'', "'\\''");
+                let mut command = CommandBuilder::new("/bin/sh");
+                command.arg("-c");
+                command.arg(format!("printf '' | exec '{escaped}'"));
+                command
+            } else {
+                // No arguments: a bare invocation must remain the Coder front
+                // door rather than dispatching to another CLI surface.
+                CommandBuilder::new(executable)
+            };
             command.cwd(&workdir);
             command.env("HOME", &home);
             command.env("TERM", "xterm-256color");
@@ -569,6 +586,32 @@ mod unix_pty {
             "the session heading should label the current Coder version.\n{}",
             frame.dump()
         );
+    }
+
+    /// The installer itself runs from a pipe, then starts Coder from the same
+    /// process. The binary must read keys from the controlling terminal rather
+    /// than trying to register that exhausted pipe as its input source.
+    #[test]
+    fn an_installer_pipe_still_accepts_terminal_input() {
+        let mut tui = Tui::start_with_piped_stdin();
+        let _ = tui.wait_for_composer();
+
+        tui.type_text("pipe-ok");
+        let frame = tui.wait_for("piped Coder to accept terminal input", REDRAW, |frame| {
+            frame
+                .composer()
+                .is_some_and(|composer| composer.first().contains("pipe-ok"))
+        });
+        assert!(
+            !frame
+                .transcript()
+                .contains("Failed to initialize input reader"),
+            "Coder lost its terminal input after an installer pipe.\n{}",
+            frame.dump()
+        );
+
+        let status = tui.quit();
+        assert!(status.success(), "piped Coder did not exit cleanly: {status:?}");
     }
 
     /// The one the postmortem is about: is there anywhere to type.

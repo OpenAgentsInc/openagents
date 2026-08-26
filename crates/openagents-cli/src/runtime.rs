@@ -79,13 +79,122 @@
 
 use crate::tools::{HarnessToolRegistry, ToolCall, ToolDefinition};
 use eventsource_stream::Eventsource;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 
 type Failure = Box<dyn std::error::Error + Send + Sync>;
+const FIRST_RESPONSE_RETRIES: usize = 1;
+
+/// How a turn's first-response watchdog changes while the model is silent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnProgress {
+    /// The model has produced no content, reasoning, or tool call yet.
+    Waiting { retry: usize, max_retries: usize },
+    /// The silent request reached its deadline and the runtime is replacing it.
+    Retrying { retry: usize, max_retries: usize },
+    /// The model responded or the turn ended, so the waiting state can leave.
+    Clear,
+}
+
+pub type TurnProgressObserver = Arc<dyn Fn(TurnProgress) + Send + Sync>;
+
+#[derive(Debug, Clone, Copy)]
+struct FirstResponsePolicy {
+    waiting_after: Duration,
+    timeout_after: Duration,
+}
+
+impl Default for FirstResponsePolicy {
+    fn default() -> Self {
+        Self {
+            waiting_after: Duration::from_secs(3),
+            timeout_after: Duration::from_secs(10),
+        }
+    }
+}
+
+enum WatchdogNext<T> {
+    Item(Option<T>),
+    Waiting,
+    TimedOut,
+}
+
+async fn next_before_first_response<S>(
+    stream: &mut S,
+    policy: FirstResponsePolicy,
+    started: tokio::time::Instant,
+    waiting_sent: &mut bool,
+    retry: usize,
+    observer: Option<&TurnProgressObserver>,
+) -> WatchdogNext<S::Item>
+where
+    S: Stream + Unpin,
+{
+    let waiting_at = started + policy.waiting_after;
+    let timeout_at = started + policy.timeout_after;
+
+    if *waiting_sent {
+        tokio::select! {
+            item = stream.next() => WatchdogNext::Item(item),
+            _ = tokio::time::sleep_until(timeout_at) => WatchdogNext::TimedOut,
+        }
+    } else {
+        tokio::select! {
+            item = stream.next() => WatchdogNext::Item(item),
+            _ = tokio::time::sleep_until(waiting_at) => {
+                *waiting_sent = true;
+                if let Some(observer) = observer {
+                    observer(TurnProgress::Waiting {
+                        retry,
+                        max_retries: FIRST_RESPONSE_RETRIES,
+                    });
+                }
+                WatchdogNext::Waiting
+            }
+            _ = tokio::time::sleep_until(timeout_at) => WatchdogNext::TimedOut,
+        }
+    }
+}
+
+fn openai_response_started(value: &serde_json::Value) -> bool {
+    let Some(delta) = value
+        .get("choices")
+        .and_then(|choices| choices.as_array())
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("delta"))
+    else {
+        return false;
+    };
+
+    delta
+        .get("content")
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.is_empty())
+        || delta
+            .get("reasoning")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| !value.is_empty())
+        || delta
+            .get("tool_calls")
+            .and_then(|value| value.as_array())
+            .is_some_and(|calls| !calls.is_empty())
+}
+
+fn responses_response_started(value: &serde_json::Value) -> bool {
+    matches!(
+        value.get("type").and_then(|value| value.as_str()),
+        Some(
+            "response.output_text.delta"
+                | "response.reasoning_summary_text.delta"
+                | "response.output_item.done"
+                | "response.completed"
+                | "response.failed"
+        )
+    )
+}
 
 /// What a session says about the tools it runs, while it runs them.
 ///
@@ -758,6 +867,9 @@ pub struct CoderRuntimeSession {
     /// `None` by default: a caller that does not draw a frame has nothing to
     /// do with the events, and the turn behaves exactly as it did before.
     pub tool_observer: Option<ToolObserver>,
+    /// Told when a model has not begun its response within the watchdog window.
+    pub progress_observer: Option<TurnProgressObserver>,
+    first_response: FirstResponsePolicy,
     /// The thread to revoke when the session closes.
     thread_id: Option<String>,
     /// What this session would report if it ended now.
@@ -818,6 +930,8 @@ impl CoderRuntimeSession {
             tools,
             messages: Vec::new(),
             tool_observer: None,
+            progress_observer: None,
+            first_response: FirstResponsePolicy::default(),
             thread_id: None,
             outcome: None,
             pending_failure: None,
@@ -830,6 +944,26 @@ impl CoderRuntimeSession {
         self
     }
 
+    /// Report first-response waiting and retry state to a caller that draws it.
+    pub fn observing_progress(mut self, observer: TurnProgressObserver) -> Self {
+        self.progress_observer = Some(observer);
+        self
+    }
+
+    /// Change the first-response watchdog on an existing session.
+    #[doc(hidden)]
+    pub fn set_first_response_policy(
+        &mut self,
+        waiting_after: Duration,
+        timeout_after: Duration,
+    ) {
+        assert!(waiting_after < timeout_after);
+        self.first_response = FirstResponsePolicy {
+            waiting_after,
+            timeout_after,
+        };
+    }
+
     /// Use the OpenResponses streaming surface for this session's turns.
     pub fn use_openresponses(mut self, yes: bool) -> Self {
         self.use_openresponses = yes;
@@ -839,6 +973,12 @@ impl CoderRuntimeSession {
     fn tell(&self, event: ToolEvent) {
         if let Some(observer) = &self.tool_observer {
             observer(event);
+        }
+    }
+
+    fn tell_progress(&self, progress: TurnProgress) {
+        if let Some(observer) = &self.progress_observer {
+            observer(progress);
         }
     }
 
@@ -1514,75 +1654,131 @@ impl CoderRuntimeSession {
                 "stream": true
             });
 
-            let mut headers = HeaderMap::new();
-            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-            headers.insert(
-                AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {}", grant.token))?,
-            );
-
-            let resp = self
-                .http
-                .post(&grant.proxy_url)
-                .headers(headers)
-                .json(&req_body)
-                .send()
-                .await;
-
-            // A refused or unreachable proxy is a failed turn. The version
-            // this replaces streamed the words `Completed autonomous reasoning
-            // turn (offline fallback).` and returned success, so a rejected
-            // request and a finished one looked the same on screen.
-            let resp = match resp {
-                Ok(r) if r.status().is_success() => r,
-                Ok(r) => {
-                    let status = r.status();
-                    let body = r.text().await.unwrap_or_default();
-                    let why = format!(
-                        "{} refused the turn: {status} {}",
-                        grant.proxy_url,
-                        snippet(&body)
+            let (step, deferred_text) = 'attempt: {
+                let retry = FIRST_RESPONSE_RETRIES;
+                for attempt in 0..=retry {
+                    let mut headers = HeaderMap::new();
+                    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+                    headers.insert(
+                        AUTHORIZATION,
+                        HeaderValue::from_str(&format!("Bearer {}", grant.token))?,
                     );
-                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
-                }
-                Err(error) => {
-                    let why = format!("{} could not be reached: {error}", grant.proxy_url);
-                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
-                }
-            };
 
-            let mut stream = resp.bytes_stream().eventsource();
-            let mut step = StepAccumulator::default();
-            // A model can emit prose before it finishes declaring a tool call.
-            // Hold that prose until this round is known to be its final answer;
-            // otherwise the reader sees an unsupported answer before the tools
-            // that were meant to establish it have run.
-            let mut deferred_text = String::new();
+                    let resp = self
+                        .http
+                        .post(&grant.proxy_url)
+                        .headers(headers)
+                        .json(&req_body)
+                        .send()
+                        .await;
 
-            while let Some(event) = stream.next().await {
-                let event = match event {
-                    Ok(event) => event,
-                    Err(error) => {
-                        let why = format!(
-                            "the reply from {} stopped mid-stream: {error}",
-                            grant.proxy_url
-                        );
-                        // What streamed before the break is part of what
-                        // happened and is kept, but the turn still records as
-                        // failed: an incomplete answer is not an answer.
-                        self.last_usage.add(step.usage);
-                        self.last_reasoning.push_str(&step.reasoning);
-                        return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
+                    // A refused or unreachable proxy is a failed turn. The version
+                    // this replaces streamed the words `Completed autonomous reasoning
+                    // turn (offline fallback).` and returned success, so a rejected
+                    // request and a finished one looked the same on screen.
+                    let resp = match resp {
+                        Ok(r) if r.status().is_success() => r,
+                        Ok(r) => {
+                            self.tell_progress(TurnProgress::Clear);
+                            let status = r.status();
+                            let body = r.text().await.unwrap_or_default();
+                            let why = format!(
+                                "{} refused the turn: {status} {}",
+                                grant.proxy_url,
+                                snippet(&body)
+                            );
+                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                        }
+                        Err(error) => {
+                            self.tell_progress(TurnProgress::Clear);
+                            let why = format!("{} could not be reached: {error}", grant.proxy_url);
+                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                        }
+                    };
+
+                    let mut stream = resp.bytes_stream().eventsource();
+                    let mut step = StepAccumulator::default();
+                    // A model can emit prose before it finishes declaring a tool call.
+                    // Hold that prose until this round is known to be its final answer;
+                    // otherwise the reader sees an unsupported answer before the tools
+                    // that were meant to establish it have run.
+                    let mut deferred_text = String::new();
+                    let started = tokio::time::Instant::now();
+                    let mut waiting_sent = false;
+                    let mut response_started = false;
+                    let mut timed_out = false;
+
+                    loop {
+                        let next = if response_started {
+                            WatchdogNext::Item(stream.next().await)
+                        } else {
+                            next_before_first_response(
+                                &mut stream,
+                                self.first_response,
+                                started,
+                                &mut waiting_sent,
+                                attempt,
+                                self.progress_observer.as_ref(),
+                            )
+                            .await
+                        };
+                        let event = match next {
+                            WatchdogNext::Waiting => continue,
+                            WatchdogNext::TimedOut => {
+                                timed_out = true;
+                                break;
+                            }
+                            WatchdogNext::Item(Some(Ok(event))) => event,
+                            WatchdogNext::Item(Some(Err(error))) => {
+                                self.tell_progress(TurnProgress::Clear);
+                                let why = format!(
+                                    "the reply from {} stopped mid-stream: {error}",
+                                    grant.proxy_url
+                                );
+                                self.last_usage.add(step.usage);
+                                self.last_reasoning.push_str(&step.reasoning);
+                                return Err(
+                                    self.record_failure(error_code::STREAM_BROKEN, why).await
+                                );
+                            }
+                            WatchdogNext::Item(None) => break,
+                        };
+                        if event.data == "[DONE]" {
+                            break;
+                        }
+                        let Ok(json) = serde_json::from_str::<serde_json::Value>(&event.data) else {
+                            continue;
+                        };
+                        if !response_started && openai_response_started(&json) {
+                            response_started = true;
+                            self.tell_progress(TurnProgress::Clear);
+                        }
+                        step.absorb_openai(&json, &mut |chunk| deferred_text.push_str(chunk));
                     }
-                };
-                if event.data == "[DONE]" {
-                    break;
+
+                    if timed_out {
+                        if attempt < retry {
+                            self.tell_progress(TurnProgress::Retrying {
+                                retry: attempt + 1,
+                                max_retries: retry,
+                            });
+                            continue;
+                        }
+                        self.tell_progress(TurnProgress::Clear);
+                        let why = format!(
+                            "{} produced no response within {} seconds after {} retry",
+                            grant.proxy_url,
+                            self.first_response.timeout_after.as_secs(),
+                            retry
+                        );
+                        return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                    }
+
+                    self.tell_progress(TurnProgress::Clear);
+                    break 'attempt (step, deferred_text);
                 }
-                let Ok(json) = serde_json::from_str::<serde_json::Value>(&event.data) else {
-                    continue;
-                };
-                step.absorb_openai(&json, &mut |chunk| deferred_text.push_str(chunk));
-            }
+                unreachable!("the first-response attempt loop always returns or breaks")
+            };
 
             self.last_usage.add(step.usage);
             self.last_reasoning.push_str(&step.reasoning);
@@ -1647,6 +1843,10 @@ impl CoderRuntimeSession {
     {
         let mut final_answer = String::new();
         let mut answered = false;
+        // Resolve a switchable lane once per turn. A tool loop stays on the
+        // same model, and the frame can label the answer with the exact model
+        // this request named after the answer completes.
+        let resolved_model = self.lane_model().await?;
 
         for _ in 0..MAX_TOOL_STEPS {
             let input = messages_to_responses_input(&self.messages);
@@ -1662,8 +1862,8 @@ impl CoderRuntimeSession {
                 })).collect::<Vec<_>>(),
                 "stream": true
             });
-            if let Some(model) = self.lane_model().await? {
-                body["model"] = serde_json::Value::String(model);
+            if let Some(model) = &resolved_model {
+                body["model"] = serde_json::Value::String(model.clone());
             }
 
             let url = format!("{}/responses", self.api_base);
@@ -1676,64 +1876,131 @@ impl CoderRuntimeSession {
                 );
             }
 
-            let resp = self
-                .http
-                .post(&url)
-                .headers(headers)
-                .json(&body)
-                .send()
-                .await;
-            let resp = match resp {
-                Ok(r) if r.status().is_success() => r,
-                Ok(r) => {
-                    let status = r.status();
-                    let body = r.text().await.unwrap_or_default();
-                    let why = format!("{url} refused the turn: {status} {}", snippet(&body));
-                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
-                }
-                Err(error) => {
-                    let why = format!("{url} could not be reached: {error}");
-                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
-                }
-            };
+            let (step, deferred_text, completed) = 'attempt: {
+                let retry = FIRST_RESPONSE_RETRIES;
+                for attempt in 0..=retry {
+                    let resp = self
+                        .http
+                        .post(&url)
+                        .headers(headers.clone())
+                        .json(&body)
+                        .send()
+                        .await;
+                    let resp = match resp {
+                        Ok(r) if r.status().is_success() => r,
+                        Ok(r) => {
+                            self.tell_progress(TurnProgress::Clear);
+                            let status = r.status();
+                            let body = r.text().await.unwrap_or_default();
+                            let why =
+                                format!("{url} refused the turn: {status} {}", snippet(&body));
+                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                        }
+                        Err(error) => {
+                            self.tell_progress(TurnProgress::Clear);
+                            let why = format!("{url} could not be reached: {error}");
+                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                        }
+                    };
 
-            let mut stream = resp.bytes_stream().eventsource();
-            let mut step = StepAccumulator::default();
-            let mut deferred_text = String::new();
-            let mut completed = false;
+                    let mut stream = resp.bytes_stream().eventsource();
+                    let mut step = StepAccumulator::default();
+                    let mut deferred_text = String::new();
+                    let mut completed = false;
+                    let started = tokio::time::Instant::now();
+                    let mut waiting_sent = false;
+                    let mut response_started = false;
+                    let mut timed_out = false;
 
-            while let Some(event) = stream.next().await {
-                let event = match event {
-                    Ok(event) => event,
-                    Err(error) => {
-                        let why = format!("the reply from {url} stopped mid-stream: {error}");
-                        self.last_usage.add(step.usage);
-                        self.last_reasoning.push_str(&step.reasoning);
-                        return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
+                    loop {
+                        let next = if response_started {
+                            WatchdogNext::Item(stream.next().await)
+                        } else {
+                            next_before_first_response(
+                                &mut stream,
+                                self.first_response,
+                                started,
+                                &mut waiting_sent,
+                                attempt,
+                                self.progress_observer.as_ref(),
+                            )
+                            .await
+                        };
+                        let event = match next {
+                            WatchdogNext::Waiting => continue,
+                            WatchdogNext::TimedOut => {
+                                timed_out = true;
+                                break;
+                            }
+                            WatchdogNext::Item(Some(Ok(event))) => event,
+                            WatchdogNext::Item(Some(Err(error))) => {
+                                self.tell_progress(TurnProgress::Clear);
+                                let why = format!("the reply from {url} stopped mid-stream: {error}");
+                                self.last_usage.add(step.usage);
+                                self.last_reasoning.push_str(&step.reasoning);
+                                return Err(
+                                    self.record_failure(error_code::STREAM_BROKEN, why).await
+                                );
+                            }
+                            WatchdogNext::Item(None) => break,
+                        };
+
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.data) {
+                            if !response_started && responses_response_started(&value) {
+                                response_started = true;
+                                self.tell_progress(TurnProgress::Clear);
+                            }
+                            if event.event == "response.completed" {
+                                step.absorb_responses(
+                                    &value,
+                                    &mut |chunk| deferred_text.push_str(chunk),
+                                );
+                                completed = true;
+                                break;
+                            }
+                            if event.event == "response.failed" {
+                                self.tell_progress(TurnProgress::Clear);
+                                let message = value
+                                    .get("response")
+                                    .and_then(|r| r.get("error"))
+                                    .and_then(|e| e.get("message"))
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("response failed");
+                                let why = format!("{url} reported a failed response: {message}");
+                                self.last_usage.add(step.usage);
+                                self.last_reasoning.push_str(&step.reasoning);
+                                return Err(
+                                    self.record_failure(error_code::PROVIDER_FAILED, why).await
+                                );
+                            }
+                            step.absorb_responses(
+                                &value,
+                                &mut |chunk| deferred_text.push_str(chunk),
+                            );
+                        }
                     }
-                };
 
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.data) {
-                    if event.event == "response.completed" {
-                        step.absorb_responses(&value, &mut |chunk| deferred_text.push_str(chunk));
-                        completed = true;
-                        break;
-                    }
-                    if event.event == "response.failed" {
-                        let message = value
-                            .get("response")
-                            .and_then(|r| r.get("error"))
-                            .and_then(|e| e.get("message"))
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("response failed");
-                        let why = format!("{url} reported a failed response: {message}");
-                        self.last_usage.add(step.usage);
-                        self.last_reasoning.push_str(&step.reasoning);
+                    if timed_out {
+                        if attempt < retry {
+                            self.tell_progress(TurnProgress::Retrying {
+                                retry: attempt + 1,
+                                max_retries: retry,
+                            });
+                            continue;
+                        }
+                        self.tell_progress(TurnProgress::Clear);
+                        let why = format!(
+                            "{url} produced no response within {} seconds after one retry",
+                            self.first_response.timeout_after.as_secs()
+                        );
                         return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
                     }
-                    step.absorb_responses(&value, &mut |chunk| deferred_text.push_str(chunk));
+
+                    self.tell_progress(TurnProgress::Clear);
+                    break 'attempt (step, deferred_text, completed);
                 }
-            }
+                unreachable!("the first-response attempt loop always returns or breaks")
+            };
 
             if !completed {
                 let why = format!("the reply from {url} ended without response.completed");
@@ -1765,6 +2032,7 @@ impl CoderRuntimeSession {
                     tool_calls: None,
                     tool_call_id: None,
                 });
+                self.last_model = resolved_model.clone();
                 answered = true;
                 break;
             }

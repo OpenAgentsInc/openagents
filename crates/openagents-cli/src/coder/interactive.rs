@@ -562,8 +562,20 @@ fn normalize_paste(text: &str) -> String {
 pub fn apply(ui: &mut CoderUi, control: Control) {
     match control {
         Control::Chunk(chunk) => {
-            if let Some(last) = ui.entries.iter_mut().rfind(|e| e.role == Role::Assistant) {
-                last.push_text(&chunk);
+            if !chunk.is_empty() {
+                // Create the answer where its text actually arrives. A turn
+                // can run tools first; filling an assistant placeholder made
+                // the final answer appear above those calls on screen and in
+                // the exported trajectory even though it was produced last.
+                if let Some(last) = ui
+                    .entries
+                    .last_mut()
+                    .filter(|entry| entry.role == Role::Assistant)
+                {
+                    last.push_text(&chunk);
+                } else {
+                    ui.entries.push(Entry::new(Role::Assistant, chunk));
+                }
                 ui.scroll_override = None;
             }
         }
@@ -617,7 +629,16 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         }
         // What answered, from the grant. Recorded on the frame's own field,
         // which stays empty until something has actually answered.
-        Control::Model(model) => ui.model = model,
+        Control::Model(model) => {
+            ui.model = model.clone();
+            if let Some(entry) = ui
+                .entries
+                .iter_mut()
+                .rfind(|entry| entry.role == Role::Assistant)
+            {
+                entry.model = Some(model);
+            }
+        }
         // The thread the server opened, so `/info` can name it without asking
         // the session for it behind a lock the turn is holding.
         Control::Thread(thread) => ui.thread = Some(thread),
@@ -638,6 +659,10 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 ui.scroll_override = None;
             }
         }
+        Control::Waiting(message) => {
+            ui.waiting = message;
+            ui.scroll_override = None;
+        }
         Control::Output(text) => {
             if !text.trim().is_empty() {
                 ui.entries.push(Entry::new(Role::Output, text));
@@ -652,6 +677,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             }
             ui.entries.push(Entry::new(Role::Notice, why));
             ui.loading = false;
+            ui.waiting = None;
             ui.scroll_override = None;
         }
         Control::Done => {
@@ -659,6 +685,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 last.finish_text();
             }
             ui.loading = false;
+            ui.waiting = None;
         }
     }
 }
@@ -763,8 +790,8 @@ fn submit(
         return commands::run(ui, text.trim(), tx, cwd);
     }
 
-    ui.entries.push(Entry::new(Role::Assistant, String::new()));
     ui.loading = true;
+    ui.waiting = None;
 
     let session = Arc::clone(session);
     let tx = tx.clone();
@@ -806,9 +833,9 @@ fn atty_is_terminal() -> bool {
     }
 
     // The installer runs from a pipe. stdin is therefore exhausted, but the
-    // controlling terminal remains available and Crossterm opens it for raw
-    // mode and input. Redirecting stdin to `/dev/tty` beforehand breaks its
-    // input reader on macOS, so detect the terminal without changing stdin.
+    // controlling terminal remains available. Crossterm's `use-dev-tty`
+    // feature opens it for input instead of trying to register the exhausted
+    // pipe with the macOS event reader.
     #[cfg(unix)]
     {
         std::fs::File::open("/dev/tty").is_ok()
@@ -897,5 +924,64 @@ mod tests {
 
         assert_eq!(ui.entries.len(), 1);
         assert_eq!(ui.entries[0].text, "Lane: Coder Free");
+    }
+
+    #[test]
+    fn the_waiting_status_is_replaced_and_cleared_with_the_turn() {
+        let mut ui = CoderUi::new();
+        ui.loading = true;
+
+        apply(
+            &mut ui,
+            Control::Waiting(Some("Waiting for the model...".to_string())),
+        );
+        assert_eq!(ui.waiting.as_deref(), Some("Waiting for the model..."));
+
+        apply(
+            &mut ui,
+            Control::Waiting(Some(
+                "No response after 10 seconds. Retrying (1 of 1)...".to_string(),
+            )),
+        );
+        assert!(ui.waiting.as_deref().unwrap().contains("Retrying"));
+
+        apply(&mut ui, Control::Done);
+        assert!(!ui.loading);
+        assert_eq!(ui.waiting, None);
+    }
+
+    #[test]
+    fn the_final_answer_is_created_after_its_tool_calls() {
+        let mut ui = CoderUi::new();
+        ui.entries.push(Entry::new(Role::You, "test the CLI"));
+
+        apply(
+            &mut ui,
+            Control::Tool {
+                call_id: "call_1".to_string(),
+                name: "openagents".to_string(),
+                arguments: r#"{"args":["--version"]}"#.to_string(),
+            },
+        );
+        apply(
+            &mut ui,
+            Control::ToolDone {
+                call_id: "call_1".to_string(),
+                is_error: false,
+            },
+        );
+        apply(&mut ui, Control::Chunk("All green.".to_string()));
+        apply(&mut ui, Control::Model("glm-5.3-flash".to_string()));
+        apply(&mut ui, Control::Done);
+
+        assert_eq!(
+            ui.entries
+                .iter()
+                .map(|entry| entry.role.clone())
+                .collect::<Vec<_>>(),
+            vec![Role::You, Role::Tool, Role::Assistant]
+        );
+        assert_eq!(ui.entries[2].text, "All green.");
+        assert_eq!(ui.entries[2].model.as_deref(), Some("glm-5.3-flash"));
     }
 }

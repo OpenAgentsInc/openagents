@@ -31,12 +31,15 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
     let mut entries = vec![
         Entry::new(Role::Notice, "found ACP agents: devin"),
         Entry::new(Role::You, "explain rust"),
-        Entry::new(Role::Assistant, "Rust is a systems language."),
     ];
     let mut tool = Entry::tool_call("delegate devin: Read src/main.rs");
     tool.tool = Some(delegate_call());
     tool.output = Some("Reading file...\nDone".to_string());
     entries.push(tool);
+    entries.push(Entry::new(
+        Role::Assistant,
+        "Rust is a systems language.",
+    ));
     // `/export` itself is an interface command and must not become a step.
     entries.push(Entry::new(Role::You, "/export"));
 
@@ -63,6 +66,9 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
         "expected user + assistant + tool steps, got {steps:#?}"
     );
     assert_eq!(result.steps, 3);
+    assert_eq!(steps[0]["source"], "user");
+    assert!(steps[1].get("tool_calls").is_some());
+    assert_eq!(steps[2]["message"], "Rust is a systems language.");
 
     let tool_step = steps
         .iter()

@@ -6,7 +6,9 @@
 //! answer, and nothing the session prints leaves the palette.
 
 use openagents_cli::coder::interactive::apply;
-use openagents_cli::coder::markdown::theme::{DIM_TEXT_COLOR, USER_TEXT_COLOR};
+use openagents_cli::coder::markdown::theme::{
+    DIM_TEXT_COLOR, MODEL_TEXT_COLOR, USER_TEXT_COLOR,
+};
 use openagents_cli::coder::runtime::Control;
 use openagents_cli::coder::tui::{CoderUi, Entry, Role};
 use openagents_cli::runtime::TurnUsage;
@@ -36,6 +38,57 @@ fn the_model_field_is_empty_until_a_model_answers() {
     assert_eq!(ui.model, "", "a model was named before one answered");
     apply(&mut ui, Control::Model("gemini-3.7-flash".to_string()));
     assert_eq!(ui.model, "gemini-3.7-flash");
+}
+
+#[test]
+fn an_assistant_message_shows_its_model_at_the_top_right() {
+    let mut ui = CoderUi::new();
+    ui.entries.push(Entry::new(
+        Role::Assistant,
+        "A concise answer that continues onto another line because its model label owns the \
+         right edge of the first row.",
+    ));
+    apply(&mut ui, Control::Model("glm-5.3-flash".to_string()));
+
+    let buffer = draw(&mut ui);
+    let model = "glm-5.3-flash";
+    let model_x = buffer.area.width - model.len() as u16;
+    let model_y = (0..buffer.area.height)
+        .find(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer.cell((x, *y)).unwrap().symbol())
+                .collect::<String>()
+                .contains(model)
+        })
+        .expect("the model label is visible");
+
+    assert_eq!(model_x, 67, "the label is not flush right");
+    assert_eq!(model_y, 0, "the model label is not on the message's top row");
+    assert!(
+        (0..model.len() as u16)
+            .all(|offset| buffer.cell((model_x + offset, model_y)).unwrap().fg == MODEL_TEXT_COLOR),
+        "the model label does not use 25% amber"
+    );
+    let row = (0..buffer.area.width)
+        .map(|x| buffer.cell((x, model_y)).unwrap().symbol())
+        .collect::<String>();
+    assert!(row.starts_with("A concise answer"), "{row}");
+    let next_row = (0..buffer.area.width)
+        .map(|x| buffer.cell((x, model_y + 1)).unwrap().symbol())
+        .collect::<String>();
+    assert!(!next_row.trim().is_empty(), "the test message did not wrap");
+}
+
+#[test]
+fn each_assistant_entry_keeps_the_model_that_answered_it() {
+    let mut ui = CoderUi::new();
+    ui.entries.push(Entry::new(Role::Assistant, "first"));
+    apply(&mut ui, Control::Model("glm-5.3-flash".to_string()));
+    ui.entries.push(Entry::new(Role::Assistant, "second"));
+    apply(&mut ui, Control::Model("openrouter/free".to_string()));
+
+    assert_eq!(ui.entries[0].model.as_deref(), Some("glm-5.3-flash"));
+    assert_eq!(ui.entries[1].model.as_deref(), Some("openrouter/free"));
 }
 
 /// A turn that failed does not read afterwards as one that answered.

@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::surfaces::system_prompt as prompt;
 use crate::runtime::{
-    ChatMessage, CoderRuntimeSession, Lane, ToolEvent, TurnUsage,
+    ChatMessage, CoderRuntimeSession, Lane, ToolEvent, TurnProgress, TurnUsage,
 };
 use crate::tools::{DelegationGate, HarnessToolRegistry, ToolDefinition};
 
@@ -75,6 +75,8 @@ pub enum Control {
     Billed(u64),
     /// Something worth saying that is not the model talking.
     Notice(String),
+    /// Replace the temporary first-response status, or clear it with `None`.
+    Waiting(Option<String>),
     /// What one of the session's own commands printed. Markdown, rendered the
     /// way an answer is, and exported as a notice rather than a model step.
     Output(String),
@@ -229,6 +231,7 @@ impl Session {
 
         let sink: Sink = Arc::new(Mutex::new(tx));
         let observed = Arc::clone(&sink);
+        let progress = Arc::clone(&sink);
 
         // Coder's own capability, declared only where there is one to
         // declare: `find_agents` reports installed agents, so a machine with
@@ -284,6 +287,25 @@ impl Session {
                 send(&observed, Control::ToolDone { call_id, is_error });
             }
         }))
+        .observing_progress(Arc::new(move |event| {
+            let message = match event {
+                TurnProgress::Waiting {
+                    retry: 0,
+                    max_retries: _,
+                } => Some("Waiting for the model...".to_string()),
+                TurnProgress::Waiting {
+                    retry,
+                    max_retries,
+                } => Some(format!(
+                    "Waiting for the model (retry {retry} of {max_retries})..."
+                )),
+                TurnProgress::Retrying { retry, max_retries } => Some(format!(
+                    "No response after 10 seconds. Retrying ({retry} of {max_retries})..."
+                )),
+                TurnProgress::Clear => None,
+            };
+            send(&progress, Control::Waiting(message));
+        }))
         .use_openresponses(dev);
         inner.reasoning = reasoning;
         inner.repository = repository();
@@ -321,6 +343,17 @@ impl Session {
     pub fn set_lane(&mut self, lane: Lane) {
         self.lane = lane.clone();
         self.inner.set_lane(lane);
+    }
+
+    /// Change the first-response watchdog on an existing session.
+    #[doc(hidden)]
+    pub fn set_first_response_policy(
+        &mut self,
+        waiting_after: std::time::Duration,
+        timeout_after: std::time::Duration,
+    ) {
+        self.inner
+            .set_first_response_policy(waiting_after, timeout_after);
     }
 
     /// Run one turn, streaming everything it does down `tx`.

@@ -28,6 +28,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 enum Reply {
     Body(u16, &'static str, String),
     Sse(Vec<String>),
+    DelayedSse(Duration, Vec<String>),
+    ResponsesSse(Duration, String),
 }
 
 struct Stub {
@@ -118,6 +120,50 @@ where
                         }
                         let _ = socket.write_all(b"data: [DONE]\n\n").await;
                     }
+                    Reply::DelayedSse(delay, frames) => {
+                        let _ = socket
+                            .write_all(
+                                b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\
+                                  connection: close\r\n\r\n",
+                            )
+                            .await;
+                        let _ = socket.flush().await;
+                        tokio::time::sleep(delay).await;
+                        for frame in frames {
+                            let _ = socket
+                                .write_all(format!("data: {frame}\n\n").as_bytes())
+                                .await;
+                            let _ = socket.flush().await;
+                        }
+                        let _ = socket.write_all(b"data: [DONE]\n\n").await;
+                    }
+                    Reply::ResponsesSse(delay, text) => {
+                        let _ = socket
+                            .write_all(
+                                b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\
+                                  connection: close\r\n\r\n",
+                            )
+                            .await;
+                        let _ = socket.flush().await;
+                        tokio::time::sleep(delay).await;
+                        let delta = serde_json::json!({
+                            "type": "response.output_text.delta",
+                            "delta": text
+                        });
+                        let completed = serde_json::json!({
+                            "type": "response.completed",
+                            "response": {"usage": {}}
+                        });
+                        let _ = socket
+                            .write_all(
+                                format!(
+                                    "event: response.output_text.delta\ndata: {delta}\n\n\
+                                     event: response.completed\ndata: {completed}\n\n"
+                                )
+                                .as_bytes(),
+                            )
+                            .await;
+                    }
                 }
                 let _ = socket.flush().await;
                 let _ = socket.shutdown().await;
@@ -193,6 +239,19 @@ fn session(base: &str, tx: Sender<Control>) -> Session {
         base.to_string(),
         Some("oat_test".to_string()),
         false,
+        tx,
+    )
+}
+
+fn dev_session(base: &str, tx: Sender<Control>) -> Session {
+    Session::open_at(
+        Lane::Flash,
+        "flash",
+        None,
+        Vec::new(),
+        base.to_string(),
+        Some("oat_test".to_string()),
+        true,
         tx,
     )
 }
@@ -300,6 +359,154 @@ async fn a_turn_opens_a_thread_runs_a_tool_and_streams_the_answer() {
 
     let lines = stub.request_lines();
     assert!(lines.iter().any(|l| l.starts_with("POST /api/v1/threads")));
+}
+
+/// A silent provider becomes visible, loses its request at the deadline, and
+/// gets one replacement request. The replacement's answer is the only answer
+/// that reaches the frame.
+#[tokio::test]
+async fn a_silent_first_response_is_shown_cancelled_and_retried_once() {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let stub = start(move |request, origin| {
+        if request.contains("POST /api/v1/threads ") {
+            return Reply::Body(200, "application/json", grant(origin));
+        }
+        if request.starts_with("POST /api/inference/proxy ") {
+            let call = counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return if call == 0 {
+                Reply::DelayedSse(Duration::from_millis(250), vec![text("too late")])
+            } else {
+                Reply::Sse(vec![text("retried")])
+            };
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let (tx, rx) = channel();
+    let mut session = session(&stub.base, tx.clone());
+    session.set_first_response_policy(
+        Duration::from_millis(5),
+        Duration::from_millis(20),
+    );
+    let started = std::time::Instant::now();
+    session.execute_turn("hello", tx).await;
+
+    let seen = drain(&rx);
+    assert!(
+        seen.iter().any(|control| matches!(
+            control,
+            Control::Waiting(Some(message)) if message == "Waiting for the model..."
+        )),
+        "the silent request was not shown: {seen:?}"
+    );
+    assert!(
+        seen.iter().any(|control| matches!(
+            control,
+            Control::Waiting(Some(message)) if message.contains("Retrying (1 of 1)")
+        )),
+        "the retry was not shown: {seen:?}"
+    );
+    assert!(
+        seen.iter()
+            .any(|control| matches!(control, Control::Waiting(None))),
+        "the waiting state was not cleared: {seen:?}"
+    );
+    assert_eq!(reply_text(&seen), "retried", "the late answer leaked: {seen:?}");
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert!(
+        started.elapsed() < Duration::from_millis(150),
+        "the first request was not cancelled: {:?}",
+        started.elapsed()
+    );
+}
+
+/// Dev mode uses `POST /responses`, the path that produced the 158-second
+/// wait. It has the same first-response deadline and bounded retry as a grant
+/// proxy turn.
+#[tokio::test]
+async fn a_silent_openresponses_turn_is_cancelled_and_retried_once() {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let stub = start(move |request, _origin| {
+        if request.contains("POST /api/v1/responses") {
+            let call = counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return if call == 0 {
+                Reply::ResponsesSse(Duration::from_millis(250), "too late".to_string())
+            } else {
+                Reply::ResponsesSse(Duration::ZERO, "retried".to_string())
+            };
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let (tx, rx) = channel();
+    let mut session = dev_session(&stub.base, tx.clone());
+    session.set_first_response_policy(
+        Duration::from_millis(5),
+        Duration::from_millis(20),
+    );
+    session.execute_turn("hello", tx).await;
+
+    let seen = drain(&rx);
+    assert_eq!(reply_text(&seen), "retried", "the late answer leaked: {seen:?}");
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert!(
+        seen.iter().any(|control| matches!(
+            control,
+            Control::Waiting(Some(message)) if message.contains("Retrying (1 of 1)")
+        )),
+        "the retry was not shown: {seen:?}"
+    );
+    assert!(seen.iter().any(|control| matches!(control, Control::Done)));
+    assert!(
+        !seen.iter().any(|control| matches!(control, Control::Failed(_))),
+        "the retried turn failed: {seen:?}"
+    );
+    assert!(
+        seen.iter().any(
+            |control| matches!(control, Control::Model(model) if model == "glm-5.3-flash")
+        ),
+        "dev mode did not report the model that answered: {seen:?}"
+    );
+}
+
+/// The retry budget is one. A provider that stays silent cannot create an
+/// unbounded request or credit loop.
+#[tokio::test]
+async fn a_silent_retry_fails_after_the_second_deadline() {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let stub = start(move |request, origin| {
+        if request.contains("POST /api/v1/threads ") {
+            return Reply::Body(200, "application/json", grant(origin));
+        }
+        if request.starts_with("POST /api/inference/proxy ") {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return Reply::DelayedSse(Duration::from_millis(250), vec![text("too late")]);
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let (tx, rx) = channel();
+    let mut session = session(&stub.base, tx.clone());
+    session.set_first_response_policy(
+        Duration::from_millis(5),
+        Duration::from_millis(20),
+    );
+    session.execute_turn("hello", tx).await;
+
+    let seen = drain(&rx);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(reply_text(&seen), "");
+    assert!(
+        seen.iter().any(|control| matches!(
+            control,
+            Control::Failed(message) if message.contains("after 1 retry")
+        )),
+        "the exhausted retry was not reported: {seen:?}"
+    );
+    assert!(seen.iter().any(|control| matches!(control, Control::Done)));
 }
 
 /// A failing command is a failing command. Reporting it as a success is how a
