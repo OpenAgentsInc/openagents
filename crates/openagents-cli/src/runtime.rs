@@ -291,7 +291,7 @@ pub struct TurnUsage {
 }
 
 impl TurnUsage {
-    fn add(&mut self, other: TurnUsage) {
+    pub fn add(&mut self, other: TurnUsage) {
         self.prompt_tokens += other.prompt_tokens;
         self.completion_tokens += other.completion_tokens;
         self.total_tokens += other.total_tokens;

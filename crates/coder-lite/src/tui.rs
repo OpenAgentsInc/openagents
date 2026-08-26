@@ -15,6 +15,7 @@ use openagents_cli::composer::Composer;
 use crate::markdown::theme::{BACKGROUND_COLOR, DIM_TEXT_COLOR, TEXT_COLOR};
 use crate::osc8::PlacedLink;
 use crate::transcript::MarkdownContent;
+use openagents_cli::runtime::TurnUsage;
 
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -172,6 +173,7 @@ pub struct CoderUi {
     pub transcript_height: u16,
     pub loading: bool,
     pub tick: u64,
+    pub total_usage: TurnUsage,
     pub agents: Vec<crate::acp::Agent>,
     /// Hyperlinks on the last rendered frame, in absolute screen coordinates.
     ///
@@ -230,9 +232,15 @@ impl CoderUi {
             transcript_height: 0,
             loading: false,
             tick: 0,
+            total_usage: TurnUsage::default(),
             agents: Vec::new(),
             links: Vec::new(),
         }
+    }
+
+    /// Add a turn's reported usage to the running conversation total.
+    pub fn add_usage(&mut self, usage: TurnUsage) {
+        self.total_usage.add(usage);
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
@@ -262,12 +270,16 @@ impl CoderUi {
         let input_scroll = total_input_lines.saturating_sub(visible_input_lines);
         let input_box_height = visible_input_lines + 2;
 
-        let main_bottom = Layout::default()
+        let main = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(input_box_height)])
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(input_box_height),
+                Constraint::Length(1),
+            ])
             .split(area);
 
-        let transcript_area = main_bottom[0];
+        let transcript_area = main[0];
         let width = transcript_area.width as usize;
 
         let mut all_lines: Vec<Line<'static>> = Vec::new();
@@ -300,7 +312,7 @@ impl CoderUi {
             .style(style);
         frame.render_widget(transcript, transcript_area);
 
-        let input_area = main_bottom[1];
+        let input_area = main[1];
 
         let mut input_lines = Vec::new();
         for (i, chunk) in input_chunks.iter().enumerate().skip(input_scroll as usize) {
@@ -326,6 +338,18 @@ impl CoderUi {
         let cursor_x = input_area.x + 1 + 3 + caret_col as u16;
         let cursor_y = input_area.y + 1 + caret_screen_row.min(visible_input_lines.saturating_sub(1));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
+
+        let status_area = main[2];
+        let status = format!(
+            "{} prompt + {} completion = {} tokens",
+            self.total_usage.prompt_tokens,
+            self.total_usage.completion_tokens,
+            self.total_usage.total_tokens
+        );
+        let status_widget = Paragraph::new(status)
+            .style(style)
+            .alignment(ratatui::layout::Alignment::Right);
+        frame.render_widget(status_widget, status_area);
         // A block cursor, as grok-build's textarea draws one: the hardware
         // cursor alone is easy to lose in the alternate screen, and a trailing
         // space with nothing over it looks like a line that ends earlier than

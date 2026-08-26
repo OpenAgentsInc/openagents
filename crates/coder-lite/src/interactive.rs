@@ -397,7 +397,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         Control::Model(model) => ui.model = model,
         Control::Usage(usage) => {
             if usage.reported() {
-                ui.entries.push(Entry::new(Role::Notice, usage.line()));
+                ui.add_usage(usage);
             }
         }
         Control::Notice(text) => {

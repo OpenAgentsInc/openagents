@@ -121,12 +121,13 @@ fn output_for_an_unknown_call_lands_on_nothing() {
     );
 }
 
-/// Usage is shown only when the server reported some.
+/// Usage is accumulated and never added to the transcript.
 #[test]
 fn an_unreported_usage_is_not_printed_as_zero() {
     let mut ui = CoderUi::new();
     apply(&mut ui, Control::Usage(TurnUsage::default()));
     assert!(ui.entries.is_empty(), "a zero was reported as a figure");
+    assert!(!ui.total_usage.reported());
 
     apply(
         &mut ui,
@@ -136,8 +137,9 @@ fn an_unreported_usage_is_not_printed_as_zero() {
             total_tokens: 15,
         }),
     );
-    assert_eq!(ui.entries.len(), 1);
-    assert!(ui.entries[0].text.contains("15 tokens"), "{:?}", ui.entries[0].text);
+    assert!(ui.entries.is_empty(), "usage was pushed as a transcript entry");
+    assert!(ui.total_usage.reported());
+    assert_eq!(ui.total_usage.total_tokens, 15);
 }
 
 /// What `/diff` and `/help` print is still coder-lite.
