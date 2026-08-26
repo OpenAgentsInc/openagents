@@ -384,7 +384,7 @@ fn render_entry(
     match entry.role {
         Role::Assistant if !entry.text.is_empty() && entry.text.starts_with("[error:") => {
             let mut lines = Vec::new();
-            for chunk in wrap_input(&entry.text, width) {
+            for chunk in wrap_text(&entry.text, width) {
                 lines.push(Line::from(vec![Span::styled(
                     chunk,
                     text_style.add_modifier(Modifier::BOLD),
