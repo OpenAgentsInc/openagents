@@ -23,6 +23,23 @@ pub async fn start(
     chunks: Vec<&'static str>,
     gate: Option<tokio::sync::oneshot::Receiver<()>>,
 ) -> StubProxy {
+    start_with(chunks, gate, None).await
+}
+
+/// The same stub, with a final `usage` chunk of (prompt, completion, total).
+///
+/// The real proxy sends usage on a chunk of its own with an empty `choices`
+/// array, after the content and before `[DONE]`; this sends it the same way,
+/// so what a test asserts about the status bar went through the same parse.
+pub async fn start_reporting_usage(chunks: Vec<&'static str>, usage: (u64, u64, u64)) -> StubProxy {
+    start_with(chunks, None, Some(usage)).await
+}
+
+async fn start_with(
+    chunks: Vec<&'static str>,
+    gate: Option<tokio::sync::oneshot::Receiver<()>>,
+    usage: Option<(u64, u64, u64)>,
+) -> StubProxy {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let base = format!("http://127.0.0.1:{port}/api/v1");
@@ -69,6 +86,21 @@ pub async fn start(
                             let _ = gate.await;
                         }
                     }
+                }
+                if let Some((prompt, completion, total)) = usage {
+                    let frame = format!(
+                        "data: {}\n\n",
+                        serde_json::json!({
+                            "choices": [],
+                            "usage": {
+                                "prompt_tokens": prompt,
+                                "completion_tokens": completion,
+                                "total_tokens": total,
+                            }
+                        })
+                    );
+                    let _ = socket.write_all(frame.as_bytes()).await;
+                    let _ = socket.flush().await;
                 }
                 let _ = socket.write_all(b"data: [DONE]\n\n").await;
                 let _ = socket.flush().await;

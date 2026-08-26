@@ -8,8 +8,9 @@
 //! - [`run_loop`] joins that state machine to a stream of terminal events and
 //!   a channel of turn events. It is generic over both, so the loop a test
 //!   runs is the loop production runs.
-//! - [`runtime_actor`] owns the [`CoderRuntimeSession`] and does the turns.
-//!   It is a task rather than a call inside the loop because
+//! - [`runtime_actor`] owns the [`CoderRuntimeSession`] and does the work the
+//!   app asks for: turns, diffs, and starting programs under a
+//!   pseudoterminal. It is a task rather than a call inside the loop because
 //!   `execute_turn` borrows the session for the length of a turn, and the
 //!   frame has to keep drawing while that turn streams.
 //!
@@ -17,12 +18,28 @@
 //! which cannot borrow the transcript. It sends each chunk down a channel
 //! instead, and the loop appends it on arrival — so the reply appears as it is
 //! written rather than in one block at the end.
+//!
+//! ## The three panes
+//!
+//! The middle of the frame shows the transcript, the diff inspector, or a
+//! program running under a pseudoterminal. Only one of them is up at a time
+//! and only the one that is up takes keys, which is why [`CoderApp::on_key`]
+//! dispatches on the pane before it looks at the key.
+
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::cli::CoderArgs;
+use crate::composer::complete::{complete, Completion};
+use crate::composer::history::History;
 use crate::composer::{Composer, ComposerAction};
-use crate::runtime::{CoderRuntimeSession, Lane};
+use crate::diff::{DiffMode, FileDiff};
+use crate::pty::{PtyControl, PtyEvent, PtyScreen, PtySession, DETACH};
+use crate::runtime::{CoderRuntimeSession, Lane, TurnUsage};
 use crate::tools::{DelegationGate, HarnessToolRegistry};
-use crate::tui::{composer_text_width, BoxFrame, ChromeView, Entry, Role};
+use crate::tui::{
+    composer_text_width, pty_viewport, BoxFrame, ChromeView, DiffPane, Entry, Middle, PtyPane, Role,
+};
 
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
@@ -31,16 +48,50 @@ use crossterm::{
 };
 use futures::{Stream, StreamExt};
 use ratatui::backend::{Backend, CrosstermBackend};
+use ratatui::layout::Rect;
+use ratatui::text::Line;
 use ratatui::Terminal;
 use std::io::{stdout, IsTerminal};
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+
+/// The commands the composer takes, and what each one does.
+///
+/// One list, read by three things: the `/help` output, Tab completion, and the
+/// dispatch in [`CoderApp::run_command`]. A command that is not handled cannot
+/// be in this list without failing `every_listed_command_is_handled`.
+pub const COMMANDS: &[(&str, &str)] = &[
+    ("clear", "clear the transcript"),
+    (
+        "diff",
+        "what changed: /diff, /diff --staged, /diff <path>, /diff <old> <new>",
+    ),
+    ("export", "write the transcript to a file: /export <path>"),
+    ("help", "list these commands"),
+    (
+        "run",
+        "run a program under a terminal in this frame: /run <command>",
+    ),
+];
+
+fn command_names() -> Vec<&'static str> {
+    COMMANDS.iter().map(|(name, _)| *name).collect()
+}
 
 /// A message for the runtime task.
 #[derive(Debug, Clone)]
 pub enum Control {
     /// Run a turn on this prompt.
     Prompt(String),
+    /// Collect a diff. The words are `/diff`'s arguments, already split.
+    Diff(Vec<String>),
+    /// Start a program under a pseudoterminal of this size.
+    Run {
+        command: Vec<String>,
+        label: String,
+        cols: u16,
+        rows: u16,
+    },
 }
 
 /// A message from the runtime task.
@@ -53,39 +104,113 @@ pub enum TurnEvent {
     Done(String),
     /// The turn failed. The session stays open.
     Failed(String),
-    /// The model the server's grant named for that turn.
+    /// The model that answered the last turn.
     ///
     /// Reported rather than assumed. `POST /api/v1/threads` does take a
     /// `model`, but what answers is whatever the returned grant pins — a value
     /// outside the enum is refused, and a listed model whose provider is not
     /// configured is refused as `model_unavailable`. So the request is a
     /// preference and the grant is the fact, and this carries the fact.
+    ///
+    /// Read from `CoderRuntimeSession::last_model` rather than from the grant,
+    /// because the local lane has no grant: it resolves its model with Ollama
+    /// and `last_grant` stays `None` there for good reasons of its own.
     Model(String),
+    /// What the last turn spent, as the server reported it.
+    Usage(TurnUsage),
+    /// A diff to inspect.
+    Diff(Vec<FileDiff>),
+    /// Something worth putting on the transcript that was not a turn.
+    Notice(String),
+    /// A program started, and this is how to talk to it.
+    PtyOpen {
+        label: String,
+        control: Arc<dyn PtyControl>,
+    },
+    /// Bytes the program wrote.
+    PtyOutput(Vec<u8>),
+    /// The program ended.
+    PtyExit(u32),
 }
 
 /// How often the streaming bullet flips.
 const PULSE: Duration = Duration::from_millis(400);
 
+/// The diff inspector's state.
+struct DiffView {
+    files: Vec<FileDiff>,
+    index: usize,
+    mode: DiffMode,
+    scroll: usize,
+    /// The rows as last rendered, and the width and mode they were rendered
+    /// for. Kept so scrolling does not re-diff, and rebuilt when any of the
+    /// three change.
+    rows: Vec<Line<'static>>,
+    rendered_for: (usize, usize, DiffMode),
+}
+
+impl DiffView {
+    fn new(files: Vec<FileDiff>) -> Self {
+        Self {
+            files,
+            index: 0,
+            mode: DiffMode::Unified,
+            scroll: 0,
+            rows: Vec::new(),
+            rendered_for: (usize::MAX, usize::MAX, DiffMode::Unified),
+        }
+    }
+
+    fn rows(&mut self, width: usize) -> &[Line<'static>] {
+        let key = (self.index, width, self.mode);
+        if key != self.rendered_for {
+            self.rows = crate::diff::render(&self.files[self.index], self.mode, width);
+            self.rendered_for = key;
+        }
+        &self.rows
+    }
+}
+
+/// A program running under a pseudoterminal, inside the frame.
+struct PtyView {
+    label: String,
+    screen: PtyScreen,
+    control: Arc<dyn PtyControl>,
+    exit: Option<u32>,
+}
+
 pub struct CoderApp {
     title: String,
     entries: Vec<Entry>,
     composer: Composer,
-    /// The model the last grant named. Unknown until a turn has opened one.
+    history: History,
+    /// What Tab last found, when it found more than one candidate.
+    completions: Vec<String>,
+    /// The directory paths are completed in and commands are run in.
+    cwd: PathBuf,
+    /// The lane this session was started on, as the status bar names it.
+    lane: String,
+    /// The model the last turn answered from. Unknown until a turn has run.
     model: Option<String>,
+    usage: TurnUsage,
     busy: bool,
     pulse: bool,
     scrollback: usize,
     should_exit: bool,
+    /// The size of the last frame drawn, which is what a child is told.
+    size: Rect,
+    diff: Option<DiffView>,
+    pty: Option<PtyView>,
 }
 
 impl CoderApp {
-    pub fn new(title: &str) -> Self {
+    pub fn new(title: &str, lane: &Lane) -> Self {
         let entries = vec![Entry {
             role: Role::Notice,
             // Every claim here is one this screen keeps. The old welcome text
             // invited the reader to type into a session that discarded keys.
             text: "Type a prompt and press Enter. The reply streams in below \
-                   as the model writes it."
+                   as the model writes it. `/help` lists the commands."
                 .to_string(),
             settled: true,
         }];
@@ -93,17 +218,44 @@ impl CoderApp {
             title: title.to_string(),
             entries,
             composer: Composer::new(),
+            history: History::new(),
+            completions: Vec::new(),
+            cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            lane: lane_label(lane),
             model: None,
+            usage: TurnUsage::default(),
             busy: false,
             pulse: true,
             scrollback: 0,
             should_exit: false,
+            size: Rect::new(0, 0, 80, 24),
+            diff: None,
+            pty: None,
         }
     }
 
-    /// The model the last turn's grant named, if a turn has opened one.
+    /// Keep this session's prompts in `path` and start with what is in it.
+    ///
+    /// Separate from [`CoderApp::new`] so that a test drives a session whose
+    /// history is in memory and writes nothing to the reader's home.
+    pub fn with_history_file(mut self, path: PathBuf) -> Self {
+        self.history = History::load(path);
+        self
+    }
+
+    /// Complete paths in `cwd` and run commands there.
+    pub fn with_working_directory(mut self, cwd: PathBuf) -> Self {
+        self.cwd = cwd;
+        self
+    }
+
+    /// The model the last turn answered from, if a turn has run.
     pub fn model(&self) -> Option<&str> {
         self.model.as_deref()
+    }
+
+    pub fn usage(&self) -> TurnUsage {
+        self.usage
     }
 
     pub fn busy(&self) -> bool {
@@ -118,7 +270,30 @@ impl CoderApp {
         &self.entries
     }
 
-    /// The transcript as text, for `--export`.
+    /// Whether a program is running under a pseudoterminal in this frame.
+    pub fn running(&self) -> bool {
+        self.pty.as_ref().is_some_and(|pty| pty.exit.is_none())
+    }
+
+    /// The exit code of the program in the pane, once it has one.
+    ///
+    /// For a caller waiting on a program rather than asserting about one: what
+    /// the reader sees is the frame, and the frame is what the tests assert.
+    pub fn pty_exit(&self) -> Option<u32> {
+        self.pty.as_ref().and_then(|pty| pty.exit)
+    }
+
+    /// What the program has drawn so far, as text.
+    pub fn pty_text(&self) -> Option<String> {
+        self.pty.as_ref().map(|pty| pty.screen.text())
+    }
+
+    /// Whether the diff inspector is up.
+    pub fn inspecting(&self) -> bool {
+        self.diff.is_some()
+    }
+
+    /// The transcript as text, for `--export` and `/export`.
     pub fn transcript(&self) -> String {
         self.entries
             .iter()
@@ -149,6 +324,14 @@ impl CoderApp {
         if prompt.is_empty() {
             return;
         }
+        self.history.record(&prompt);
+        self.completions.clear();
+
+        if prompt.starts_with('/') {
+            self.run_command(&prompt, control);
+            return;
+        }
+
         self.push(Role::You, prompt.clone());
         self.entries.push(Entry::streaming(Role::Assistant));
         self.busy = true;
@@ -159,6 +342,83 @@ impl CoderApp {
                 Role::Error,
                 "The runtime task is gone, so this prompt was not sent. Restart the session.",
             );
+        }
+    }
+
+    /// Run one of the session's own commands.
+    ///
+    /// Anything starting with `/` comes here. A name this does not know is
+    /// refused rather than sent to the model, because a mistyped `/diff` that
+    /// silently became a prompt is a worse answer than being told.
+    fn run_command(&mut self, line: &str, control: &UnboundedSender<Control>) {
+        let words = crate::pty::split_command(line.trim_start_matches('/'));
+        let Some(name) = words.first().cloned() else {
+            self.push(Role::Error, "A command needs a name. Try `/help`.");
+            return;
+        };
+        let arguments = &words[1..];
+        self.push(Role::You, line.to_string());
+
+        match name.as_str() {
+            "help" => {
+                let listed = COMMANDS
+                    .iter()
+                    .map(|(name, what)| format!("/{name} — {what}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.push(Role::Notice, listed);
+            }
+            "clear" => {
+                self.entries.clear();
+                self.scrollback = 0;
+            }
+            "export" => match arguments.first() {
+                None => self.push(Role::Error, "`/export` needs a path: `/export notes.txt`."),
+                Some(path) => match std::fs::write(path, self.transcript()) {
+                    Ok(()) => self.push(Role::Notice, format!("Transcript written to {path}.")),
+                    Err(error) => {
+                        self.push(Role::Error, format!("Could not write {path}: {error}"))
+                    }
+                },
+            },
+            "diff" => {
+                if control.send(Control::Diff(arguments.to_vec())).is_err() {
+                    self.push(Role::Error, "The runtime task is gone.");
+                }
+            }
+            "run" => {
+                // The words after `/run` are the command, but a line a shell
+                // would change the meaning of is given to a shell instead, so
+                // `/run ls | wc -l` runs what it looks like it runs.
+                let rest = line
+                    .trim_start_matches('/')
+                    .strip_prefix("run")
+                    .unwrap_or("")
+                    .trim();
+                if rest.is_empty() {
+                    self.push(Role::Error, "`/run` needs a command: `/run git status`.");
+                    return;
+                }
+                let command = if crate::pty::needs_a_shell(rest) {
+                    crate::pty::shell_command(rest)
+                } else {
+                    crate::pty::split_command(rest)
+                };
+                let (cols, rows) = pty_viewport(self.size);
+                let message = Control::Run {
+                    command,
+                    label: rest.to_string(),
+                    cols,
+                    rows,
+                };
+                if control.send(message).is_err() {
+                    self.push(Role::Error, "The runtime task is gone.");
+                }
+            }
+            other => self.push(
+                Role::Error,
+                format!("There is no `/{other}`. `/help` lists the commands."),
+            ),
         }
     }
 
@@ -203,6 +463,34 @@ impl CoderApp {
                 self.push(Role::Error, format!("Turn failed: {message}"));
             }
             TurnEvent::Model(model) => self.model = Some(model),
+            TurnEvent::Usage(usage) => self.usage = usage,
+            TurnEvent::Notice(message) => self.push(Role::Notice, message),
+            TurnEvent::Diff(files) => {
+                if files.is_empty() {
+                    self.push(Role::Notice, "Nothing has changed.");
+                } else {
+                    self.diff = Some(DiffView::new(files));
+                }
+            }
+            TurnEvent::PtyOpen { label, control } => {
+                let (cols, rows) = pty_viewport(self.size);
+                self.pty = Some(PtyView {
+                    label,
+                    screen: PtyScreen::new(cols, rows),
+                    control,
+                    exit: None,
+                });
+            }
+            TurnEvent::PtyOutput(bytes) => {
+                if let Some(pty) = self.pty.as_mut() {
+                    pty.screen.feed(&bytes);
+                }
+            }
+            TurnEvent::PtyExit(code) => {
+                if let Some(pty) = self.pty.as_mut() {
+                    pty.exit = Some(code);
+                }
+            }
         }
     }
 
@@ -214,12 +502,130 @@ impl CoderApp {
         }
     }
 
+    /// Note the size of the frame, and tell a running program about it.
+    ///
+    /// This is where a terminal resize becomes a `SIGWINCH` for the child: the
+    /// emulated screen is resized, and only if that changed anything is the
+    /// pseudoterminal's own window size set, which is the call the kernel
+    /// turns into the signal.
+    pub fn on_size(&mut self, area: Rect) {
+        self.size = area;
+        let (cols, rows) = pty_viewport(area);
+        if let Some(pty) = self.pty.as_mut() {
+            if pty.screen.resize(cols, rows) {
+                pty.control.resize(cols, rows);
+            }
+        }
+    }
+
     pub fn on_key(&mut self, key: &KeyEvent, width: u16, control: &UnboundedSender<Control>) {
         // A key release reported by an enhanced protocol is not a keystroke.
         if key.kind == KeyEventKind::Release {
             return;
         }
+        // Whichever pane is up takes the keyboard first. A program under a
+        // pseudoterminal takes all of it — including Esc and Ctrl+C, which a
+        // full-screen program needs — so the only key held back is the one
+        // that takes the keyboard away again.
+        if self.pty.is_some() {
+            self.on_pty_key(key);
+            return;
+        }
+        if self.diff.is_some() {
+            self.on_diff_key(key, width);
+            return;
+        }
+        self.on_transcript_key(key, width, control);
+    }
 
+    fn on_pty_key(&mut self, key: &KeyEvent) {
+        let detach = key.code == DETACH.code && key.modifiers == DETACH.modifiers;
+        let exit = self.pty.as_ref().and_then(|pty| pty.exit);
+
+        // A program that has ended leaves its screen up, because that screen
+        // is usually the answer. Dismissing it is what these keys do.
+        if let Some(code) = exit {
+            if detach || matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+                let label = self.pty.take().map(|pty| pty.label).unwrap_or_default();
+                self.push(
+                    Role::Notice,
+                    if code == 0 {
+                        format!("`{label}` finished.")
+                    } else {
+                        format!("`{label}` exited with code {code}.")
+                    },
+                );
+            }
+            return;
+        }
+
+        if detach {
+            if let Some(pty) = self.pty.take() {
+                pty.control.kill();
+                self.push(Role::Notice, format!("Stopped `{}`.", pty.label));
+            }
+            return;
+        }
+
+        // Everything else is the program's. It is encoded as the bytes a
+        // terminal would have sent, in the cursor mode the program asked for.
+        if let Some(pty) = self.pty.as_ref() {
+            if let Some(bytes) = crate::pty::encode_key(key, pty.screen.application_cursor()) {
+                pty.control.write(&bytes);
+            }
+        }
+    }
+
+    fn on_diff_key(&mut self, key: &KeyEvent, width: u16) {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.diff = None;
+                return;
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.should_exit = true;
+                return;
+            }
+            _ => {}
+        }
+
+        let page = usize::from(self.size.height.saturating_sub(10)).max(1);
+        let Some(diff) = self.diff.as_mut() else {
+            return;
+        };
+        match key.code {
+            KeyCode::Char('v') => {
+                diff.mode = diff.mode.toggled();
+                diff.scroll = 0;
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                let total = diff.files.len();
+                diff.index = if key.code == KeyCode::Tab {
+                    (diff.index + 1) % total
+                } else {
+                    (diff.index + total - 1) % total
+                };
+                diff.scroll = 0;
+            }
+            KeyCode::Down => diff.scroll = diff.scroll.saturating_add(1),
+            KeyCode::Up => diff.scroll = diff.scroll.saturating_sub(1),
+            KeyCode::PageDown => diff.scroll = diff.scroll.saturating_add(page),
+            KeyCode::PageUp => diff.scroll = diff.scroll.saturating_sub(page),
+            KeyCode::Home => diff.scroll = 0,
+            _ => {}
+        }
+        // Scrolling past the last row would leave an empty pane with no way of
+        // telling that it is the end rather than a failure to draw.
+        let last = diff.rows(diff_body_width(width)).len().saturating_sub(1);
+        diff.scroll = diff.scroll.min(last);
+    }
+
+    fn on_transcript_key(
+        &mut self,
+        key: &KeyEvent,
+        width: u16,
+        control: &UnboundedSender<Control>,
+    ) {
         match key.code {
             KeyCode::Esc => {
                 self.should_exit = true;
@@ -246,39 +652,128 @@ impl CoderApp {
             return;
         }
 
+        if key.code == KeyCode::Tab && key.modifiers.is_empty() {
+            self.on_tab();
+            return;
+        }
+
         match self.composer.handle_key(key, composer_text_width(width)) {
             ComposerAction::Submit(text) => self.submit(text, control),
-            ComposerAction::Redraw => self.scrollback = 0,
+            ComposerAction::Redraw => {
+                // Editing ends a history walk: the next Up starts again from
+                // what is now in the composer rather than from where the walk
+                // had got to.
+                self.history.stop_walking();
+                self.completions.clear();
+                self.scrollback = 0;
+            }
+            ComposerAction::Moved => self.completions.clear(),
             ComposerAction::Ignored => match key.code {
-                // Up and Down reach the transcript once the caret has run out
-                // of composer to move through.
-                KeyCode::Up => self.scrollback = self.scrollback.saturating_add(1),
-                KeyCode::Down => self.scrollback = self.scrollback.saturating_sub(1),
+                // Up and Down reach the input history once the caret has run
+                // out of composer to move through. Scrolling the transcript is
+                // PgUp and PgDn, which the status bar names.
+                KeyCode::Up => {
+                    if let Some(prompt) = self.history.previous(self.composer.text()) {
+                        self.composer.set_text(&prompt);
+                        self.completions.clear();
+                    }
+                }
+                KeyCode::Down => {
+                    if let Some(prompt) = self.history.forward() {
+                        self.composer.set_text(&prompt);
+                        self.completions.clear();
+                    }
+                }
                 _ => {}
             },
         }
     }
 
+    /// Tab: complete the word at the caret.
+    fn on_tab(&mut self) {
+        let Completion { insert, candidates } = complete(
+            self.composer.text(),
+            self.composer.cursor_byte(),
+            &command_names(),
+            &self.cwd,
+        );
+        if !insert.is_empty() {
+            self.composer.insert_str(&insert);
+            self.history.stop_walking();
+        }
+        self.completions = candidates;
+    }
+
     /// Draw one frame.
-    pub fn draw<B: Backend>(&self, terminal: &mut Terminal<B>) -> std::io::Result<()> {
+    pub fn draw<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()> {
+        let area = terminal
+            .size()
+            .map(|size| Rect::new(0, 0, size.width, size.height))?;
+        self.on_size(area);
+
+        // The diff rows are built before the frame because the renderer takes
+        // them borrowed, and building them needs the view mutably.
+        let body = diff_body_width(area.width);
+        let diff_rows: Vec<Line<'static>> = match self.diff.as_mut() {
+            Some(diff) => diff.rows(body).to_vec(),
+            None => Vec::new(),
+        };
+
+        let text_width = composer_text_width(area.width);
+        let rows = self.composer.rows(text_width);
+        let cursor = self.composer.cursor_rowcol(text_width);
+        let completions = self.completions.clone();
+
+        let middle = match (&self.diff, &self.pty) {
+            (_, Some(pty)) => Middle::Pty(PtyPane {
+                command: &pty.label,
+                screen: &pty.screen,
+                exit: pty.exit,
+            }),
+            (Some(diff), None) => Middle::Diff(DiffPane {
+                path: &diff.files[diff.index].path,
+                position: (diff.index, diff.files.len()),
+                mode: diff.mode,
+                rows: &diff_rows,
+                scroll: diff.scroll,
+            }),
+            (None, None) => Middle::Transcript,
+        };
+
         let frame = BoxFrame::new(&self.title);
-        terminal.draw(|f| {
-            let area = f.area();
-            let rows = self.composer.rows(composer_text_width(area.width));
-            let cursor = self.composer.cursor_rowcol(composer_text_width(area.width));
-            let view = ChromeView {
-                title: &self.title,
-                entries: &self.entries,
-                composer_rows: &rows,
-                composer_cursor: cursor,
-                model: self.model.as_deref(),
-                busy: self.busy,
-                pulse: self.pulse,
-                scrollback: self.scrollback,
-            };
-            frame.render(f, area, &view);
-        })?;
+        let view = ChromeView {
+            title: &self.title,
+            entries: &self.entries,
+            middle,
+            composer_rows: &rows,
+            composer_cursor: cursor,
+            completions: &completions,
+            model: self.model.as_deref(),
+            lane: &self.lane,
+            usage: self.usage,
+            busy: self.busy,
+            pulse: self.pulse,
+            scrollback: self.scrollback,
+        };
+        terminal.draw(|f| frame.render(f, f.area(), &view))?;
         Ok(())
+    }
+}
+
+/// The width the diff inspector's rows are built for, inside a frame that wide.
+fn diff_body_width(frame_width: u16) -> usize {
+    usize::from(frame_width).saturating_sub(2).max(8)
+}
+
+/// The lane, as the status bar names it: what it is called, and its tier when
+/// it belongs to one.
+///
+/// A model named directly belongs to no tier, which is a different answer from
+/// `auto` and is worth not inventing one for.
+fn lane_label(lane: &Lane) -> String {
+    match lane.tier() {
+        Some(tier) => format!("{} ({tier})", lane.label()),
+        None => lane.label(),
     }
 }
 
@@ -314,6 +809,9 @@ where
         tokio::select! {
             event = events.next() => match event {
                 Some(Ok(Event::Key(key))) => app.on_key(&key, width, &control),
+                // A resize is drawn on the next pass, and `draw` is what tells
+                // a running child its new size.
+                Some(Ok(Event::Resize(_, _))) => {}
                 Some(Ok(_)) => {}
                 // A terminal that has gone away is an exit, not an error to
                 // report into a screen nobody can see.
@@ -329,12 +827,13 @@ where
     }
 }
 
-/// Own the session and run the turns it is asked for.
+/// Own the session and do what the app asks for.
 pub async fn runtime_actor(
     mut session: CoderRuntimeSession,
     mut control: UnboundedReceiver<Control>,
     events: UnboundedSender<TurnEvent>,
 ) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     while let Some(message) = control.recv().await {
         match message {
             Control::Prompt(prompt) => {
@@ -344,11 +843,14 @@ pub async fn runtime_actor(
                         let _ = sink.send(TurnEvent::Chunk(chunk.to_string()));
                     })
                     .await;
-                // Report the grant's model before the turn settles, so the
-                // status bar names what answered rather than what was asked.
-                if let Some(grant) = &session.last_grant {
-                    let _ = events.send(TurnEvent::Model(grant.model.clone()));
+                // Report what answered and what it cost before the turn
+                // settles, so the status bar is right by the time the composer
+                // comes off hold. `last_model` and not the grant: the local
+                // lane resolves its model with Ollama and holds no grant.
+                if let Some(model) = &session.last_model {
+                    let _ = events.send(TurnEvent::Model(model.clone()));
                 }
+                let _ = events.send(TurnEvent::Usage(session.last_usage));
                 let event = match result {
                     Ok(answer) => TurnEvent::Done(answer),
                     Err(error) => TurnEvent::Failed(error.to_string()),
@@ -357,8 +859,118 @@ pub async fn runtime_actor(
                     return;
                 }
             }
+            Control::Diff(arguments) => {
+                let event = match collect_diff(&arguments, &cwd).await {
+                    Ok(files) => TurnEvent::Diff(files),
+                    Err(why) => TurnEvent::Notice(why),
+                };
+                if events.send(event).is_err() {
+                    return;
+                }
+            }
+            Control::Run {
+                command,
+                label,
+                cols,
+                rows,
+            } => match PtySession::spawn(&command, Some(cwd.clone()), cols, rows) {
+                Err(error) => {
+                    let _ = events.send(TurnEvent::Notice(format!("Could not run it: {error}")));
+                }
+                Ok((session, mut output)) => {
+                    let opened = events.send(TurnEvent::PtyOpen {
+                        label,
+                        control: session,
+                    });
+                    if opened.is_err() {
+                        return;
+                    }
+                    // Forwarded from a task of its own so this actor stays
+                    // able to answer while the program runs.
+                    let sink = events.clone();
+                    tokio::spawn(async move {
+                        while let Some(event) = output.recv().await {
+                            let message = match event {
+                                PtyEvent::Output(bytes) => TurnEvent::PtyOutput(bytes),
+                                PtyEvent::Exit(code) => TurnEvent::PtyExit(code),
+                            };
+                            if sink.send(message).is_err() {
+                                return;
+                            }
+                        }
+                    });
+                }
+            },
         }
     }
+}
+
+/// Collect the diff `/diff` asked for.
+///
+/// With two paths that both exist, the two files are compared directly. With
+/// anything else, git is asked — because for a working tree git already knows
+/// what the index and `HEAD` hold, and recomputing that from files on disk
+/// would answer a different question.
+pub async fn collect_diff(
+    arguments: &[String],
+    cwd: &std::path::Path,
+) -> Result<Vec<FileDiff>, String> {
+    if arguments.len() == 2 {
+        let (old, new) = (cwd.join(&arguments[0]), cwd.join(&arguments[1]));
+        if old.is_file() && new.is_file() {
+            let read = |path: &std::path::Path| {
+                std::fs::read_to_string(path)
+                    .map_err(|error| format!("Could not read {}: {error}", path.display()))
+            };
+            let (before, after) = (read(&old)?, read(&new)?);
+            return Ok(vec![FileDiff {
+                path: arguments[1].clone(),
+                renamed_from: Some(arguments[0].clone()),
+                hunks: crate::diff::compare(&before, &after, crate::diff::CONTEXT),
+                note: None,
+            }]);
+        }
+    }
+
+    let mut git: Vec<String> = vec!["--no-pager".into(), "diff".into()];
+    let staged = arguments
+        .iter()
+        .any(|word| word == "--staged" || word == "--cached");
+    if staged {
+        git.push("--cached".into());
+    } else {
+        // Against `HEAD` rather than the index, so `/diff` answers "what have
+        // I changed since the last commit" whether or not anything is staged.
+        git.push("HEAD".into());
+    }
+    let paths: Vec<&String> = arguments
+        .iter()
+        .filter(|word| !word.starts_with("--"))
+        .collect();
+    if !paths.is_empty() {
+        git.push("--".into());
+        git.extend(paths.into_iter().cloned());
+    }
+
+    let output = tokio::process::Command::new("git")
+        .args(&git)
+        .current_dir(cwd)
+        .output()
+        .await
+        .map_err(|error| format!("Could not run git: {error}"))?;
+
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr);
+        let message = message.trim();
+        return Err(if message.is_empty() {
+            "git could not produce a diff here.".to_string()
+        } else {
+            format!("git said: {message}")
+        });
+    }
+    Ok(crate::diff::parse_unified(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
 }
 
 /// Put the terminal back however this function is left, including by a panic
@@ -453,7 +1065,8 @@ pub async fn run_tui(
     let (event_tx, mut event_rx) = unbounded_channel::<TurnEvent>();
     let runtime = tokio::spawn(runtime_actor(session, control_rx, event_tx.clone()));
 
-    let mut app = CoderApp::new("openagents coder");
+    let mut app =
+        CoderApp::new("openagents coder", &lane).with_history_file(History::default_path());
     if let Some(prompt) = args.prompt.clone() {
         app.submit(prompt, &control_tx);
     }
@@ -606,5 +1219,39 @@ mod tests {
         assert_eq!(gate.lane, "claude");
         assert_eq!(gate.user_token.as_deref(), Some("secret-token"));
         assert_eq!(gate.max_count, crate::delegate::MAX_DELEGATE_COUNT);
+    }
+
+    /// The status bar names the lane and, when the lane has one, its tier.
+    #[test]
+    fn the_lane_label_carries_the_tier_only_when_there_is_one() {
+        assert_eq!(lane_label(&Lane::Flash), "Coder Flash (flash)");
+        assert_eq!(lane_label(&Lane::Auto), "Coder Auto (auto)");
+        assert_eq!(
+            lane_label(&Lane::Local(String::new())),
+            "Coder Local (local)"
+        );
+        // A model named directly belongs to no tier, so none is invented.
+        assert_eq!(lane_label(&Lane::OxAlpha), "Coder (ox-alpha)");
+        assert_eq!(
+            lane_label(&Lane::Named("some-model".to_string())),
+            "Coder (some-model)"
+        );
+    }
+
+    /// Every command the composer offers has to be one the dispatch handles.
+    /// `/help` lists this table and Tab completes from it, so an entry with no
+    /// arm behind it would be advertised and inert.
+    #[test]
+    fn every_listed_command_is_handled() {
+        let (tx, _rx) = unbounded_channel();
+        for (name, _) in COMMANDS {
+            let mut app = CoderApp::new("t", &Lane::OxAlpha);
+            app.run_command(&format!("/{name}"), &tx);
+            let said = app.transcript();
+            assert!(
+                !said.contains(&format!("There is no `/{name}`")),
+                "`/{name}` is listed and not handled"
+            );
+        }
     }
 }

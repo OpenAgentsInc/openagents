@@ -52,6 +52,8 @@ wasmtime = { version = "36", default-features = false, features = ["cranelift", 
 # `ring` is already in the tree underneath `rustls`, so this adds an audited
 # AEAD and CSPRNG without adding a crate to the lock.
 ring = "0.17"
+vt100 = "0.15"
+portable-pty = "0.9"
 
 [dev-dependencies]
 tempfile = "3"

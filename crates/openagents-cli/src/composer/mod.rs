@@ -6,7 +6,9 @@
 //! the composer draws itself with, vertical motion over those rows, and the
 //! small dispatch that turns a key into an edit, a newline, or a submission.
 
+pub mod complete;
 pub mod edit;
+pub mod history;
 pub mod keys;
 
 use std::ops::Range;
@@ -22,7 +24,13 @@ use edit::EditBuffer;
 pub enum ComposerAction {
     /// The key meant nothing here; the caller may still want it.
     Ignored,
-    /// The composer changed and the frame is stale.
+    /// The caret moved and the text did not.
+    ///
+    /// Told apart from [`ComposerAction::Redraw`] because a caller walking the
+    /// input history has to know whether the reader has started editing: a
+    /// caret move continues the walk, and a change to the text ends it.
+    Moved,
+    /// The composer's text changed and the frame is stale.
     Redraw,
     /// Enter, with the text that was in the composer. The composer is now empty.
     Submit(String),
@@ -65,6 +73,17 @@ impl Composer {
     pub fn insert_str(&mut self, text: &str) {
         self.preferred_col = None;
         let _ = self.buffer.insert_str(text);
+    }
+
+    /// Replace everything in the composer, leaving the caret at the end.
+    ///
+    /// What walking the input history does. The caret goes to the end because
+    /// a recalled prompt is nearly always being added to.
+    pub fn set_text(&mut self, text: &str) {
+        self.preferred_col = None;
+        self.buffer = EditBuffer::from_text(text);
+        let end = self.buffer.text().len();
+        let _ = self.buffer.set_cursor_byte(end);
     }
 
     /// The rows the composer draws, soft-wrapped to `width` columns.
@@ -126,8 +145,12 @@ impl Composer {
         self.preferred_col = None;
         // The key was the composer's even when the caret was already at the
         // edge it was asked to move to, so the caller does not also get it.
-        let _ = self.buffer.apply(command);
-        ComposerAction::Redraw
+        let outcome = self.buffer.apply(command);
+        if outcome.text_changed() {
+            ComposerAction::Redraw
+        } else {
+            ComposerAction::Moved
+        }
     }
 
     /// Move the caret one wrapped row up or down, holding the preferred column.
@@ -151,7 +174,7 @@ impl Composer {
         let row = &rows[target as usize];
         let byte = byte_at_column(self.text(), row.clone(), column);
         let _ = self.buffer.set_cursor_byte(byte);
-        ComposerAction::Redraw
+        ComposerAction::Moved
     }
 }
 
@@ -402,6 +425,33 @@ mod tests {
     #[test]
     fn wrap_covers_an_empty_buffer() {
         assert_eq!(wrap_rows("", 10), vec![0..0]);
+    }
+
+    /// The caller walking the input history needs these two apart, so they are
+    /// asserted apart here rather than left to whatever the caller assumes.
+    #[test]
+    fn moving_the_caret_and_changing_the_text_are_different_answers() {
+        let mut c = Composer::new();
+        typed(&mut c, "abc");
+        assert_eq!(c.handle_key(&key(KeyCode::Left), 40), ComposerAction::Moved);
+        assert_eq!(
+            c.handle_key(&key(KeyCode::Backspace), 40),
+            ComposerAction::Redraw
+        );
+        // A motion that had nowhere to go is still a motion, not an edit.
+        c.handle_key(&key(KeyCode::Home), 40);
+        assert_eq!(c.handle_key(&key(KeyCode::Left), 40), ComposerAction::Moved);
+    }
+
+    #[test]
+    fn setting_the_text_replaces_it_and_leaves_the_caret_at_the_end() {
+        let mut c = Composer::new();
+        typed(&mut c, "draft");
+        c.set_text("a recalled prompt");
+        assert_eq!(c.text(), "a recalled prompt");
+        assert_eq!(c.cursor_rowcol(40), (0, 17));
+        typed(&mut c, "!");
+        assert_eq!(c.text(), "a recalled prompt!");
     }
 
     #[test]
