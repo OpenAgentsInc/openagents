@@ -359,7 +359,7 @@ impl CoderUi {
                 let (first_prefix, marker, marker_space, rest_indent, first_body) = match entry.role {
                     Role::You => ("", ">", " ", "  ", width.saturating_sub(2)),
                     Role::Assistant => ("", "", "", "", width),
-                    _ => ("  ", "⏺", " ", "     ", width.saturating_sub(4)),
+                    _ => ("", "⏺", " ", "  ", width.saturating_sub(2)),
                 };
 
                 let chunks = wrap_text(&entry.text, first_body);
