@@ -125,12 +125,6 @@ impl CoderRuntimeSession {
 
             if let Some((call_id, agent_id, task)) = pending_tool.take() {
                 if let Some(agent) = self.agents.iter().find(|a| a.id == agent_id).cloned() {
-                    let title = task.chars().take(80).collect::<String>();
-                    let _ = tx.send(Control::Tool {
-                        agent: agent_id.clone(),
-                        title: title.clone(),
-                    });
-
                     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                     let result = {
                         let tx = tx.clone();
