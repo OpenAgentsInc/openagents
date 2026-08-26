@@ -9,6 +9,8 @@ use ratatui::{
 };
 use ratatui_markdown::markdown::MarkdownRenderer;
 use ratatui_markdown::theme::{CodeColors, Generation, RichTextTheme};
+use serde_json::Value;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const TEXT_COLOR: Color = Color::Rgb(255, 176, 0);
 const BACKGROUND_COLOR: Color = Color::Rgb(8, 6, 0);
@@ -97,12 +99,32 @@ pub enum Role {
     Notice,
 }
 
+/// One tool call captured for ATIF export.
+#[derive(Debug, Clone)]
+pub struct ToolCall {
+    pub call_id: String,
+    pub function_name: String,
+    pub arguments: Value,
+    pub output: Option<String>,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Entry {
     pub role: Role,
     pub text: String,
     /// Tool output text, rendered as a ~5-line box split by newlines.
     pub output: Option<String>,
+    pub tool: Option<ToolCall>,
+    pub at: u64,
+}
+
+/// Current time as epoch milliseconds.
+pub fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 #[derive(Debug)]

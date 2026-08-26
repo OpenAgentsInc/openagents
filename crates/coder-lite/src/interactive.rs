@@ -5,8 +5,10 @@
 //! `modifiers` so control chords do not fall through to plain character input.
 
 use crate::acp;
+use crate::export::{export_trajectory, git_info};
 use crate::runtime::{CoderRuntimeSession, Control};
-use crate::tui::{CoderUi, Entry, Role};
+use crate::tui::{now_ms, CoderUi, Entry, Role, ToolCall};
+use std::env;
 use std::sync::mpsc;
 use crossterm::{
     event::{
@@ -55,6 +57,8 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 role: Role::Notice,
                 text: format!("found ACP agents: {}", list),
                 output: None,
+                tool: None,
+                at: now_ms(),
             });
             ui.agents = agents;
         }
@@ -63,9 +67,16 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                 role: Role::Notice,
                 text: "found ACP agents: none".to_string(),
                 output: None,
+                tool: None,
+                at: now_ms(),
             });
         }
     }
+
+    let (repo, branch) = git_info().unwrap_or(("unknown".to_string(), "unknown".to_string()));
+    ui.repo = repo;
+    ui.branch = branch;
+    ui.model = env::var("OPENAGENTS_MODEL").unwrap_or_default();
 
     loop {
         while let Ok(control) = rx.try_recv() {
@@ -82,12 +93,48 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Control::Done => ui.loading = false,
-                Control::Tool { agent, title } => {
+                Control::Tool {
+                    function_name,
+                    arguments,
+                    title,
+                } => {
+                    let parsed = serde_json::from_str(&arguments).unwrap_or_else(|_| {
+                        serde_json::json!({ "unparsed_arguments": arguments })
+                    });
+                    let call_id = format!("call-{}", ui.entries.len());
+                    let agent = parsed
+                        .get("agent")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
                     ui.entries.push(Entry {
                         role: Role::Tool,
                         text: format!("delegate {}: {}", agent, title),
                         output: Some(String::new()),
+                        tool: Some(ToolCall {
+                            call_id,
+                            function_name,
+                            arguments: parsed,
+                            output: None,
+                            error: None,
+                        }),
+                        at: now_ms(),
                     });
+                    ui.scroll_override = None;
+                }
+                Control::ToolTitle(title) => {
+                    if let Some(last) = ui.entries.last_mut() {
+                        if last.role == Role::Tool {
+                            let agent = last
+                                .text
+                                .split_whitespace()
+                                .nth(1)
+                                .and_then(|s| s.strip_suffix(':'))
+                                .unwrap_or("unknown")
+                                .to_string();
+                            last.text = format!("delegate {}: {}", agent, title);
+                        }
+                    }
                     ui.scroll_override = None;
                 }
                 Control::ToolText(chunk) => {
@@ -96,6 +143,9 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                             last.output
                                 .get_or_insert_with(String::new)
                                 .push_str(&chunk);
+                            if let Some(ref mut tool) = last.tool {
+                                tool.output = last.output.clone();
+                            }
                         }
                     }
                     ui.scroll_override = None;
@@ -133,26 +183,56 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
                             ui.composer.push('\n');
                         } else if !ui.composer.trim().is_empty() {
                             let prompt = ui.composer.clone();
-                            ui.entries.push(Entry {
-                                role: Role::You,
-                                text: prompt.clone(),
-                                output: None,
-                            });
-                            ui.entries.push(Entry {
-                                role: Role::Assistant,
-                                text: String::new(),
-                                output: None,
-                            });
                             ui.composer.clear();
                             ui.scroll_override = None;
-                            ui.loading = true;
 
-                            let mut session = CoderRuntimeSession::new();
-                            session.agents = ui.agents.clone();
-                            let tx = tx.clone();
-                            tokio::spawn(async move {
-                                let _ = session.execute_turn(&prompt, tx).await;
-                            });
+                            if prompt.trim() == "/export" {
+                                ui.entries.push(Entry {
+                                    role: Role::You,
+                                    text: prompt,
+                                    output: None,
+                                    tool: None,
+                                    at: now_ms(),
+                                });
+                                let model = ui.model.clone();
+                                let result =
+                                    export_trajectory(&ui.entries, &model, &ui.repo, &ui.branch);
+                                ui.entries.push(Entry {
+                                    role: Role::Notice,
+                                    text: format!(
+                                        "exported {} steps to {} (copied: {})",
+                                        result.steps,
+                                        result.path,
+                                        result.copied
+                                    ),
+                                    output: None,
+                                    tool: None,
+                                    at: now_ms(),
+                                });
+                            } else {
+                                ui.entries.push(Entry {
+                                    role: Role::You,
+                                    text: prompt.clone(),
+                                    output: None,
+                                    tool: None,
+                                    at: now_ms(),
+                                });
+                                ui.entries.push(Entry {
+                                    role: Role::Assistant,
+                                    text: String::new(),
+                                    output: None,
+                                    tool: None,
+                                    at: now_ms(),
+                                });
+                                ui.loading = true;
+
+                                let mut session = CoderRuntimeSession::new();
+                                session.agents = ui.agents.clone();
+                                let tx = tx.clone();
+                                tokio::spawn(async move {
+                                    let _ = session.execute_turn(&prompt, tx).await;
+                                });
+                            }
                         }
                     }
                     KeyEvent {

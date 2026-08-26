@@ -9,6 +9,8 @@ fn renders_markdown_bold_and_italic() {
         role: Role::Assistant,
         text: "**bold** and *italic*".to_string(),
         output: None,
+        tool: None,
+        at: 0,
     });
 
     let backend = TestBackend::new(80, 24);

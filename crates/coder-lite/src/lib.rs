@@ -2,6 +2,7 @@
 
 pub mod acp;
 pub mod acp_harness;
+pub mod export;
 pub mod interactive;
 pub mod runtime;
 pub mod tui;

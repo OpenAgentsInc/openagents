@@ -16,7 +16,12 @@ const SYSTEM_INSTRUCTIONS: &str = "You are OpenAgents Coder. Do not say you are 
 pub enum Control {
     Chunk(String),
     Done,
-    Tool { agent: String, title: String },
+    Tool {
+        function_name: String,
+        arguments: String,
+        title: String,
+    },
+    ToolTitle(String),
     ToolText(String),
     ToolDone,
 }
@@ -76,7 +81,7 @@ impl CoderRuntimeSession {
             };
 
             let mut collected = String::new();
-            let mut pending_tool: Option<(String, String, String)> = None;
+            let mut pending_tool: Option<(String, String, String, String)> = None;
 
             while let Some(event) = stream.next().await {
                 match event {
@@ -108,7 +113,7 @@ impl CoderRuntimeSession {
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        pending_tool = Some((call_id, agent, task));
+                        pending_tool = Some((call_id, agent, task, arguments));
                     }
                     Ok(StreamingEvent::Error { error, .. }) => {
                         let msg = format!("[error: {:?}]", error);
@@ -123,8 +128,14 @@ impl CoderRuntimeSession {
                 }
             }
 
-            if let Some((call_id, agent_id, task)) = pending_tool.take() {
+            if let Some((call_id, agent_id, task, raw_args)) = pending_tool.take() {
                 if let Some(agent) = self.agents.iter().find(|a| a.id == agent_id).cloned() {
+                    let _ = tx.send(Control::Tool {
+                        function_name: "delegate".to_string(),
+                        arguments: raw_args,
+                        title: task.clone(),
+                    });
+
                     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                     let mut header_sent = false;
                     let result = {
@@ -137,10 +148,7 @@ impl CoderRuntimeSession {
                             match event {
                                 AcpEvent::Tool { title, .. } => {
                                     header_sent = true;
-                                    let _ = tx.send(Control::Tool {
-                                        agent: agent_id.clone(),
-                                        title,
-                                    });
+                                    let _ = tx.send(Control::ToolTitle(title));
                                 }
                                 AcpEvent::Text { chunk } => {
                                     let _ = tx.send(Control::ToolText(chunk));
@@ -153,21 +161,10 @@ impl CoderRuntimeSession {
 
                     match &result {
                         Ok(_) if !header_sent => {
-                            let _ = tx.send(Control::Tool {
-                                agent: agent_id.clone(),
-                                title: "completed".to_string(),
-                            });
-                        }
-                        Err(_) if !header_sent => {
-                            let _ = tx.send(Control::Tool {
-                                agent: agent_id.clone(),
-                                title: "error".to_string(),
-                            });
-                            let _ = tx.send(Control::ToolText(
-                                result.as_ref().err().unwrap().to_string(),
-                            ));
+                            let _ = tx.send(Control::ToolTitle("completed".to_string()));
                         }
                         Err(_) => {
+                            let _ = tx.send(Control::ToolTitle("error".to_string()));
                             let _ = tx.send(Control::ToolText(
                                 result.as_ref().err().unwrap().to_string(),
                             ));

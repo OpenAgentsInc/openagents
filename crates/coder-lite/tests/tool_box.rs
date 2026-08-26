@@ -9,6 +9,8 @@ fn renders_delegate_tool_call_and_five_line_box() {
         role: Role::Tool,
         text: "delegate devin: Read src/main.rs".to_string(),
         output: Some("Reading file...\nFound main()\nDone".to_string()),
+        tool: None,
+        at: 0,
     });
 
     let backend = TestBackend::new(80, 24);
