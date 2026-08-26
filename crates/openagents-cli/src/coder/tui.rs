@@ -24,7 +24,7 @@ const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦
 const TOOL_RAIL_WAVE_ROWS: f32 = 32.0;
 const TOOL_RAIL_WAVE_SPEED: f32 = 0.15;
 const TOOL_OUTPUT_ROWS: usize = 5;
-const TOOL_OUTPUT_SCROLL_FRAMES: u64 = 8;
+const TOOL_OUTPUT_SCROLL_FRAMES: u64 = 24;
 const TOOL_SETTLE_FRAMES: u64 = 10;
 
 /// Who this session is signed in as.
@@ -967,7 +967,7 @@ fn tool_header_text(entry: &Entry) -> String {
 
 /// Whether tool output carries CommonMark structure instead of plain logs.
 fn tool_output_is_markdown(output: &str) -> bool {
-    output.lines().any(|line| {
+    let block_markdown = output.lines().any(|line| {
         let trimmed = line.trim_start();
         trimmed.starts_with("# ")
             || trimmed.starts_with("## ")
@@ -980,12 +980,21 @@ fn tool_output_is_markdown(output: &str) -> bool {
             || trimmed
                 .split_once(". ")
                 .is_some_and(|(number, _)| number.chars().all(|c| c.is_ascii_digit()))
-            || trimmed.contains("**")
-            || trimmed.contains("__")
-            || trimmed.contains("~~")
-            || trimmed.contains('`')
-            || (trimmed.contains('[') && trimmed.contains("]("))
-    })
+    });
+    if block_markdown {
+        return true;
+    }
+
+    // A short prose result can consist only of inline markdown. Do not apply
+    // this test to longer terminal output: CLI help commonly contains
+    // backticks and angle-bracket placeholders that are literal syntax, not a
+    // markdown document.
+    output.lines().count() <= 3
+        && (output.contains("**")
+            || output.contains("__")
+            || output.contains("~~")
+            || output.contains('`')
+            || (output.contains('[') && output.contains("](")))
 }
 
 /// Grok's active-tool rail: a brightness wave that travels down the rows.

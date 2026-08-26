@@ -469,10 +469,54 @@ fn long_tool_output_sweeps_from_its_first_rows_to_its_last_rows() {
     for _ in 0..8 {
         draw(&mut ui);
     }
+    let slower_frame = text_of(&draw(&mut ui));
+    assert!(!slower_frame.contains("line 20"), "{slower_frame}");
+    assert!(
+        slower_frame.contains("line 14") || slower_frame.contains("line 15"),
+        "the preview reached its final five rows too quickly: {slower_frame}"
+    );
+
+    for _ in 0..16 {
+        draw(&mut ui);
+    }
     let settled_frame = text_of(&draw(&mut ui));
     assert!(!settled_frame.contains("line 01"), "{settled_frame}");
     assert!(settled_frame.contains("line 16"), "{settled_frame}");
     assert!(settled_frame.contains("line 20"), "{settled_frame}");
+}
+
+#[test]
+fn cli_help_with_inline_code_stays_literal() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "help".to_string(),
+            name: "shell".to_string(),
+            arguments: r#"{"command":"openagents issue --help"}"#.to_string(),
+        },
+    );
+    apply(
+        &mut ui,
+        Control::ToolOutput {
+            call_id: "help".to_string(),
+            chunk: [
+                "Options:",
+                "  --no-color          Disable ANSI output",
+                "  --api-url <API_URL> API origin to talk to, such as https://openagents.com",
+                "  --profile <PROFILE> Named API endpoint: `production`, staging, or local",
+            ]
+            .join("\n"),
+        },
+    );
+
+    let frame = draw(&mut ui);
+    let screen = text_of(&frame);
+    assert!(screen.contains("such as https://openagents.com"), "{screen}");
+    assert!(screen.contains("`production`"), "{screen}");
+    for cell in frame.content.iter().filter(|cell| cell.symbol() != " ") {
+        assert_eq!(cell.bg, Color::Rgb(8, 6, 0));
+    }
 }
 
 #[test]
