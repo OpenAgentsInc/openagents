@@ -21,6 +21,9 @@ path = "src/main.rs"
 # from it. What coder-lite owns is the front: the frame, the palette, the
 # spinner, the system prompt, and the session loop in `interactive.rs`.
 openagents-cli = { path = "../openagents-cli" }
+# Only to read the CLI surface's own subcommand set and parse into it, so this
+# binary can answer the commands `openagents-cli` defines without restating them.
+clap = { version = "4", features = ["derive", "cargo"] }
 tokio = { version = "1", features = ["full"] }
 crossterm = { version = "0.28", features = ["event-stream"] }
 ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }

@@ -62,9 +62,43 @@ and does not take that name.
 Inside the session, `/help` lists the commands and the keys.
 ";
 
+/// True when the first argument names a command the CLI surface answers.
+///
+/// The set is read out of clap rather than kept by hand here, so a subcommand
+/// added to `openagents-cli` is reachable from this binary the moment it
+/// exists, and one removed stops being claimed. A hand-kept list is how the
+/// two surfaces would drift.
+fn names_a_cli_command(arguments: &[String]) -> bool {
+    use clap::CommandFactory;
+    let Some(first) = arguments.first() else {
+        return false;
+    };
+    if first.starts_with('-') {
+        return false;
+    }
+    openagents_cli::cli::Cli::command()
+        .get_subcommands()
+        .any(|sub| sub.get_name() == first || sub.get_all_aliases().any(|alias| alias == first))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<String> = env::args().skip(1).collect();
+
+    // One binary, two surfaces. Bare, it is the coder session; given a command
+    // the CLI answers, it is that command. Without this, shipping this binary
+    // would drop `issue`, `repo`, `auth` and the rest from the release --
+    // including `update`, so an installed build could not replace itself.
+    if names_a_cli_command(&arguments) {
+        use clap::Parser;
+        let cli = openagents_cli::cli::Cli::parse();
+        if let Err(error) = openagents_cli::cli::run(cli).await {
+            openagents_cli::errors::fail(&openagents_cli::errors::CliError::Internal(
+                error.to_string(),
+            ));
+        }
+        return Ok(());
+    }
     let options = match parse(&arguments) {
         Ok(Parsed::Run(mut options, dev)) => {
             if dev {
@@ -126,7 +160,7 @@ fn parse(arguments: &[String]) -> Result<Parsed, String> {
                 return Ok(Parsed::Said);
             }
             "-V" | "--version" => {
-                println!("coder-lite {}", env!("CARGO_PKG_VERSION"));
+                println!("coder-lite {}", openagents_cli::VERSION);
                 return Ok(Parsed::Said);
             }
             "--dev" => dev = true,

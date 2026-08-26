@@ -414,6 +414,7 @@ dependencies = [
  "anstyle",
  "anstyle-lossy",
  "anstyle-syntect",
+ "clap",
  "crossterm",
  "futures",
  "html-escape",
