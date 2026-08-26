@@ -279,10 +279,16 @@ impl AcpHarness {
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // Its own process group, so stopping the child stops what the
-            // child started.
-            .process_group(0);
+            .stderr(Stdio::piped());
+        // Its own process group, so stopping the child stops what the child
+        // started. `process_group` is a Unix extension and does not exist on
+        // Windows, where the whole crate fails to compile if it is called
+        // unconditionally.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
         if let Some(environment) = &self.env {
             command.env_clear().envs(environment.iter().cloned());
         }

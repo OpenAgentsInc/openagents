@@ -696,7 +696,8 @@ async fn run_cli_child(
     let id = task.id;
     let (command, args) = harness_command(lane, &task.prompt, &workspace.path, options);
 
-    let mut child = match Command::new(&command)
+    let mut spawn = Command::new(&command);
+    spawn
         .args(&args)
         .envs(options.child_env())
         .current_dir(&workspace.path)
@@ -704,10 +705,15 @@ async fn run_cli_child(
         // than a wait nobody can see.
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn()
+        .stderr(Stdio::piped());
+    // Its own process group, so cancelling a fan-out stops what the children
+    // started. `process_group` is a Unix extension and is absent on Windows.
+    #[cfg(unix)]
     {
+        use std::os::unix::process::CommandExt;
+        spawn.process_group(0);
+    }
+    let mut child = match spawn.spawn() {
         Ok(child) => child,
         Err(error) => {
             let why = if error.kind() == std::io::ErrorKind::NotFound {
