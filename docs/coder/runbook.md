@@ -270,15 +270,23 @@ an evidence pointer is rejected at the adopt step. Save the output to
   trials, 221.9s, gate passed (2026-08-26, #118). The proxy row is the
   iteration baseline; cost is `null` because `gpt-5.6-luna` is unpriced.
   No cross-section rows recorded on any lane yet.
-- `tb2-cross-section` has not been recorded. The 2026-08-26 proxy attempt
-  reached 1 of 12 tasks and was recorded `abandoned` when Docker Desktop
-  failed to start mid-suite (the host volume was full); the local-lane
-  cross-section run was never started. Both remain open on #118.
-- The `tb2-cross-section` thresholds declare
-  `maxCostPerAcceptedOutcomeUsd: 2.0`, but `gpt-5.6-luna` is unpriced, so
-  that criterion is unverifiable and the whole gate exits 2 on every proxy
-  run. Filed as #125 rather than edited alongside a run it would flatter
-  (best practice M4).
+- `tb2-cross-section`, proxy lane, `gpt-5.6-luna`: 9 of 12 accepted, 0.75
+  success over 12 graded trials, 0 ungraded, 12 of 12 pinned tasks covered,
+  3151.4s, 6,006,329 prompt and 88,163 output tokens over 250 tool calls
+  (2026-08-26, #118). Rejected: `count-dataset-tokens`,
+  `fix-code-vulnerability`, `sanitize-git-repo`. An earlier attempt the same
+  day reached 1 of 12 and was recorded `abandoned` when Docker Desktop failed
+  to start mid-suite (the host volume was full); that row is not in the store,
+  only on the Gym.
+- **That run's gate is `unverifiable`, not passed, and the report exits 2.**
+  Four of five criteria pass. `maxCostPerAcceptedOutcomeUsd: 2.0` cannot be
+  measured because `gpt-5.6-luna` is unpriced, and `failed` beats
+  `unverifiable` beats `passed`, so a fully covered, fully graded, healthy
+  run still cannot exit 0. This is #125, now confirmed by a completed run
+  rather than predicted from the code. The threshold was not edited to make
+  the run pass (best practice M4).
+- No `tb2-cross-section` row on the local lane yet, so the store holds one
+  run shape and `effectiveness:compare` has nothing to compare it against.
 - Rosetta note, measured 2026-08-26: on this rig the verifier's `uv`/
   `pytest` does **not** segfault under emulation. `uv 0.9.5` plus
   `uvx pytest` returned `pytest 9.1.1` in an amd64 container with
