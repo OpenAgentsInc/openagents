@@ -1,21 +1,31 @@
 //! Open Responses streaming client for coder-lite.
 
 use futures::StreamExt;
-use openresponses_rust::{CreateResponseBody, Input, Item, StreamingClient, StreamingEvent};
+use openresponses_rust::{
+    CreateResponseBody, FunctionOutput, Input, Item, StreamingClient, StreamingEvent, Tool,
+};
 use std::env;
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
+
+use crate::acp::Agent;
+use crate::acp_harness::{AcpEvent, AcpHarness};
 
 const SYSTEM_INSTRUCTIONS: &str = "You are OpenAgents Coder. Do not say you are from Google, Anthropic, OpenAI, or any other company. Do not mention your model, training, or architecture. Respond as a neutral, terse terminal: no greetings, no \"As an AI\", no explanations of your role, and no unnecessary padding. Use short sentences and dense, factual output. Answer questions directly. Output only code and minimal context when asked for code.";
 
 pub enum Control {
     Chunk(String),
     Done,
+    Tool { agent: String, title: String },
+    ToolText(String),
+    ToolDone,
 }
 
 pub struct CoderRuntimeSession {
     pub api_key: String,
     pub base_url: String,
     pub history: Vec<Item>,
+    pub agents: Vec<Agent>,
 }
 
 impl CoderRuntimeSession {
@@ -25,6 +35,7 @@ impl CoderRuntimeSession {
             base_url: env::var("OPENAGENTS_BASE_URL")
                 .unwrap_or_else(|_| "https://openagents.com/api/v1".to_string()),
             history: vec![Item::system_message(SYSTEM_INSTRUCTIONS)],
+            agents: Vec::new(),
         }
     }
 
@@ -44,56 +55,158 @@ impl CoderRuntimeSession {
         self.history.push(Item::user_message(prompt));
 
         let client = StreamingClient::with_base_url(&self.api_key, &self.base_url);
+        let tools = self.delegate_tool();
 
-        let request = CreateResponseBody {
-            model: env::var("OPENAGENTS_MODEL").ok(),
-            input: Some(Input::Items(self.history.clone())),
-            stream: Some(true),
-            ..Default::default()
-        };
+        loop {
+            let request = CreateResponseBody {
+                model: env::var("OPENAGENTS_MODEL").ok(),
+                input: Some(Input::Items(self.history.clone())),
+                tools: tools.clone(),
+                stream: Some(true),
+                ..Default::default()
+            };
 
-        let mut stream = match client.stream_response(request).await {
-            Ok(s) => s,
-            Err(e) => {
-                let _ = tx.send(Control::Chunk(format!("[error: {}]", e)));
-                let _ = tx.send(Control::Done);
-                return Err(e.into());
-            }
-        };
-
-        let mut collected = String::new();
-
-        while let Some(event) = stream.next().await {
-            match event {
-                Ok(StreamingEvent::OutputTextDelta { delta, .. }) => {
-                    collected.push_str(&delta);
-                    let _ = tx.send(Control::Chunk(delta));
-                }
-                Ok(StreamingEvent::ReasoningDelta { delta, .. }) => {
-                    collected.push_str(&delta);
-                    let _ = tx.send(Control::Chunk(delta));
-                }
-                Ok(StreamingEvent::RefusalDelta { delta, .. }) => {
-                    let _ = tx.send(Control::Chunk(delta));
-                }
-                Ok(StreamingEvent::Error { error, .. }) => {
-                    let msg = format!("[error: {:?}]", error);
-                    let _ = tx.send(Control::Chunk(msg));
-                }
-                Ok(_) => {}
+            let mut stream = match client.stream_response(request).await {
+                Ok(s) => s,
                 Err(e) => {
                     let _ = tx.send(Control::Chunk(format!("[error: {}]", e)));
                     let _ = tx.send(Control::Done);
                     return Err(e.into());
                 }
-            }
-        }
+            };
 
-        if !collected.is_empty() {
-            self.history.push(Item::assistant_message(collected));
+            let mut collected = String::new();
+            let mut pending_tool: Option<(String, String, String)> = None;
+
+            while let Some(event) = stream.next().await {
+                match event {
+                    Ok(StreamingEvent::OutputTextDelta { delta, .. }) => {
+                        collected.push_str(&delta);
+                        let _ = tx.send(Control::Chunk(delta));
+                    }
+                    Ok(StreamingEvent::ReasoningDelta { delta, .. }) => {
+                        let _ = tx.send(Control::Chunk(delta));
+                    }
+                    Ok(StreamingEvent::OutputItemDone {
+                        item: Some(Item::FunctionCall {
+                            call_id,
+                            name,
+                            arguments,
+                            ..
+                        }),
+                        ..
+                    }) if name == "delegate" => {
+                        let args = serde_json::from_str::<serde_json::Value>(&arguments)
+                            .unwrap_or(serde_json::json!({}));
+                        let agent = args
+                            .get("agent")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let task = args
+                            .get("prompt")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        pending_tool = Some((call_id, agent, task));
+                    }
+                    Ok(StreamingEvent::Error { error, .. }) => {
+                        let msg = format!("[error: {:?}]", error);
+                        let _ = tx.send(Control::Chunk(msg));
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        let _ = tx.send(Control::Chunk(format!("[error: {}]", e)));
+                        let _ = tx.send(Control::Done);
+                        return Err(e.into());
+                    }
+                }
+            }
+
+            if let Some((call_id, agent_id, task)) = pending_tool.take() {
+                if let Some(agent) = self.agents.iter().find(|a| a.id == agent_id).cloned() {
+                    let title = task.chars().take(80).collect::<String>();
+                    let _ = tx.send(Control::Tool {
+                        agent: agent_id.clone(),
+                        title: title.clone(),
+                    });
+
+                    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                    let result = {
+                        let tx = tx.clone();
+                        AcpHarness {
+                            command: agent.command,
+                            args: agent.args,
+                        }
+                        .run(&task, &cwd, move |event| match event {
+                            AcpEvent::Tool { title, .. } => {
+                                let _ = tx.send(Control::Tool {
+                                    agent: agent_id.clone(),
+                                    title,
+                                });
+                            }
+                            AcpEvent::Text { chunk } => {
+                                let _ = tx.send(Control::ToolText(chunk));
+                            }
+                            _ => {}
+                        })
+                        .await
+                    };
+
+                    let _ = tx.send(Control::ToolDone);
+                    let output = result.unwrap_or_else(|e| e.to_string());
+                    self.history.push(Item::FunctionCallOutput {
+                        id: None,
+                        call_id,
+                        output: FunctionOutput::Text(output),
+                        status: None,
+                    });
+                    continue;
+                } else {
+                    let msg = format!("unknown ACP agent: {}", agent_id);
+                    let _ = tx.send(Control::Chunk(msg.clone()));
+                    self.history.push(Item::FunctionCallOutput {
+                        id: None,
+                        call_id,
+                        output: FunctionOutput::Text(msg),
+                        status: None,
+                    });
+                    continue;
+                }
+            }
+
+            if !collected.is_empty() {
+                self.history.push(Item::assistant_message(collected));
+            }
+            break;
         }
 
         let _ = tx.send(Control::Done);
         Ok(())
+    }
+
+    fn delegate_tool(&self) -> Option<Vec<Tool>> {
+        if self.agents.is_empty() {
+            return None;
+        }
+        let ids: Vec<String> = self.agents.iter().map(|a| a.id.clone()).collect();
+        let tool = Tool::function("delegate")
+            .with_description("Delegate a coding task to an ACP agent on this machine.")
+            .with_parameters(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "agent": {
+                        "type": "string",
+                        "enum": ids,
+                        "description": "the ACP agent to delegate to"
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "the task for the child agent"
+                    }
+                },
+                "required": ["agent", "prompt"]
+            }));
+        Some(vec![tool])
     }
 }

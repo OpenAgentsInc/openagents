@@ -29,6 +29,7 @@ async fn smoke_openresponses_stream() {
                 collected.push_str(&c);
             }
             Ok(Control::Done) => done = true,
+            Ok(_) => {}
             Err(_) => tokio::time::sleep(Duration::from_millis(100)).await,
         }
     }
