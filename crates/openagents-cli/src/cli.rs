@@ -861,8 +861,13 @@ pub enum BoxAction {
     },
     /// Request a multi-box fanout admission plan
     Fanout {
-        #[arg(long, help = "Number of boxes to request")]
-        count: u64,
+        // Optional, not required, because `--request-id` reads a plan that
+        // already exists and has a count of its own. While this was
+        // `count: u64`, clap refused every `--request-id` invocation for a
+        // missing `--count`, and the only way to reach the read path was to
+        // pass a number the command then ignored.
+        #[arg(long, help = "Number of boxes to request; required without --request-id")]
+        count: Option<u64>,
         #[arg(long, help = "Comma-separated labels for the fanout boxes")]
         labels: Option<String>,
         #[arg(long, help = "Allow scaling up to the budgeted limit")]
@@ -2914,6 +2919,9 @@ async fn run_box(action: BoxAction, api_base: &str, token: Option<String>, json:
                                 .collect()
                         })
                         .unwrap_or_default();
+                    let Some(count) = count else {
+                        fail("pass --count <n> to request a fanout, or --request-id <id> to read an existing plan");
+                    };
                     or_fail(client.fanout(&id, count, &parsed, budgeted).await)
                 }
             };

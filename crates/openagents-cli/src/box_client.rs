@@ -65,10 +65,21 @@ pub struct BoxRunRecord {
 
 impl BoxRunRecord {
     /// True once the server will produce no further output for this run.
+    ///
+    /// These are the server's own terminal states, from
+    /// `OpenAgents.Box.Run`'s `@terminal_states` — `completed failed cancelled
+    /// timed_out lost`. Getting this list wrong is not cosmetic: the whole
+    /// list existed to end `--follow`, and an earlier version of it matched
+    /// `succeeded`, `canceled`, and `expired`, none of which the server ever
+    /// sends, while missing `completed`, which is what a run that worked ends
+    /// in. Against production that made `oa box runs output --follow` spin
+    /// past the end of a successful run until the API refused a request. The
+    /// spellings that never appear are deliberately not kept "just in case":
+    /// carrying them is what made the mistake survive a passing test.
     pub fn finished(&self) -> bool {
         matches!(
             self.state.as_str(),
-            "succeeded" | "failed" | "cancelled" | "canceled" | "timed_out" | "expired"
+            "completed" | "failed" | "cancelled" | "timed_out" | "lost"
         )
     }
 }
@@ -306,11 +317,28 @@ impl BoxClient {
             }
         }
 
-        let status = match (&named, &user) {
-            (Err(ApiError::Refused { status, .. }), _) => *status,
-            (_, Err(ApiError::Refused { status, .. })) => *status,
-            _ => 200,
-        };
+        // A route that broke is not a deployment that has no conversation.
+        // Only a refusal the *server* authored — it read the token and said no
+        // — means "ask for the conversation another way". A 5xx, a gateway
+        // error page, or a dead socket means the request never got an answer,
+        // and reporting either of those as "this deployment does not report a
+        // conversation for the account" sends the reader to fix a
+        // configuration that was never wrong. Observed against production: a
+        // transient 502 on `GET /api/v1/conversation` printed exactly that
+        // sentence, for an account whose conversation resolved fine a minute
+        // earlier and a minute later.
+        let mut status = 200;
+        for outcome in [named, user] {
+            match outcome {
+                Ok(_) => {}
+                Err(ApiError::Refused { status: code, .. }) if code < 500 => {
+                    if status == 200 {
+                        status = code;
+                    }
+                }
+                Err(error) => return Err(error),
+            }
+        }
         Err(ApiError::Refused {
             operation: "resolve user conversation".to_string(),
             status,
@@ -608,7 +636,6 @@ impl BoxClient {
                 .run_output(conversation, box_id, run_id, cursor)
                 .await?;
             sink(&chunk);
-            let advanced = Some(chunk.next_offset) != cursor;
             cursor = Some(chunk.next_offset);
 
             let run = self.view_run(conversation, box_id, run_id).await?;
@@ -621,9 +648,13 @@ impl BoxClient {
                 }
                 return Ok((run, tail.next_offset));
             }
-            if !advanced {
-                tokio::time::sleep(interval).await;
-            }
+            // Sleep on every pass, including the ones that carried output.
+            // This used to sleep only when the offset had not advanced, so a
+            // run that printed steadily was followed by an unthrottled loop
+            // issuing two requests per iteration as fast as the network
+            // allowed. `--interval-ms` is the poll rate the caller asked for;
+            // it is not a rate that applies only when nothing is happening.
+            tokio::time::sleep(interval).await;
         }
     }
 
@@ -760,9 +791,32 @@ mod tests {
             cancellation_requested_at: None,
             cancellation_effective_at: None,
         };
-        assert!(run("succeeded").finished());
-        assert!(run("failed").finished());
-        assert!(!run("running").finished());
-        assert!(!run("queued").finished());
+        // `OpenAgents.Box.Run` declares
+        //   @states          admitted dispatched running completed failed
+        //                    cancelled timed_out lost
+        //   @terminal_states completed failed cancelled timed_out lost
+        // Nothing else is a run state, so every state is checked here and the
+        // split is asserted both ways. The version of this test that only
+        // asserted `succeeded` and `failed` passed while `--follow` could not
+        // end a successful run, because `succeeded` is not a state the server
+        // has and `completed`, the one it uses, was not in the list.
+        for state in ["completed", "failed", "cancelled", "timed_out", "lost"] {
+            assert!(run(state).finished(), "{state} is a terminal run state");
+        }
+        for state in ["admitted", "dispatched", "running"] {
+            assert!(
+                !run(state).finished(),
+                "{state} is a live run state and must keep --follow polling"
+            );
+        }
+        // Spellings the server never sends. Treating one as terminal would end
+        // a follow early on a run that was still producing output; the reason
+        // they are named is that three of them were once in the list.
+        for state in ["succeeded", "canceled", "expired", "queued", ""] {
+            assert!(
+                !run(state).finished(),
+                "{state:?} is not a state OpenAgents.Box.Run can hold"
+            );
+        }
     }
 }

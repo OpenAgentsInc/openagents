@@ -74,9 +74,20 @@ async fn start_stub() -> Stub {
                 }
             } else {
                 // The run reports `running` until both of the first two windows
-                // have been read, then `succeeded`.
+                // have been read, then `completed`.
+                //
+                // `completed` is what `OpenAgents.Box.Run` actually sets, and
+                // saying so here is the point of this line. This stub used to
+                // answer `succeeded`, which no deployment has ever sent, and
+                // the client agreed with the stub instead of the server: it
+                // treated `succeeded` as terminal and `completed` as still
+                // running. Both sides were self-consistently wrong, this test
+                // passed, and against production `oa box runs output --follow`
+                // ran past the end of every successful run until the API
+                // refused a request. A stub that invents the server's
+                // vocabulary tests the stub.
                 let state = if reads.load(Ordering::SeqCst) >= 2 {
-                    "succeeded"
+                    "completed"
                 } else {
                     "running"
                 };
@@ -143,7 +154,7 @@ async fn following_a_run_reads_past_the_first_window_and_past_the_terminal_state
         "the follow must read every window, in order, including the one the box \
          wrote after the run turned terminal"
     );
-    assert_eq!(run.state, "succeeded");
+    assert_eq!(run.state, "completed");
     assert!(run.finished());
     assert_eq!(next_offset, 18);
 }
@@ -166,5 +177,42 @@ async fn a_refused_read_ends_the_follow_rather_than_truncating_it() {
     assert!(
         result.is_err(),
         "an unreachable box must not produce a finished run"
+    );
+}
+
+/// The poll interval applies to every pass, not only to the ones that found
+/// nothing new.
+///
+/// The loop used to skip its sleep whenever the offset had advanced, so a run
+/// that printed steadily was followed by an unthrottled loop issuing two
+/// requests per pass — an output read and a run read — as fast as the network
+/// allowed. Against production that is what a `--follow` looked like right up
+/// until the edge answered 502 mid-stream.
+///
+/// The stub advances the offset on every read and only turns terminal on the
+/// second pass, so the fixed loop sleeps exactly once — on a pass that carried
+/// output, which is the pass the old code skipped. Before the fix this whole
+/// follow finished in single-digit milliseconds over loopback; after it, it
+/// cannot finish in less than one interval. That gap is what is asserted, and
+/// it is wide enough not to turn into a timing flake on a loaded machine.
+#[tokio::test]
+async fn following_sleeps_between_passes_even_while_output_is_arriving() {
+    let stub = start_stub().await;
+    let client = BoxClient::new(&stub.base, None);
+    let interval = std::time::Duration::from_millis(250);
+
+    let started = std::time::Instant::now();
+    let (run, _next_offset) = client
+        .follow_run_output("conv_1", "bx_1", "run_1", Some(0), interval, |_| {})
+        .await
+        .expect("the follow failed");
+    let elapsed = started.elapsed();
+
+    assert_eq!(run.state, "completed");
+    assert!(
+        elapsed >= interval,
+        "the pass that carried output must still wait out the poll interval; \
+         this follow took {elapsed:?}, under the {interval:?} it asked for, \
+         which means the loop is spinning on the API while output arrives"
     );
 }
