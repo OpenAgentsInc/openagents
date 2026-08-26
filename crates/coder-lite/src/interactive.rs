@@ -20,9 +20,8 @@ use crate::tui::{CoderUi, Entry, Role, ToolCall};
 use crossterm::{
     ExecutableCommand,
     event::{
-        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
+        KeyModifiers, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -145,11 +144,10 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     enable_raw_mode()?;
     let mut stdout = stdout();
     stdout.execute(EnterAlternateScreen)?;
-    // Two-finger trackpad scroll is how a Mac scrolls. Without capture those
-    // events go to the terminal emulator, which in the alternate screen has
-    // nothing to scroll, so the transcript looked frozen. `PageUp` worked all
-    // along -- as Fn+Up, which is not a thing anyone should have to know.
-    let _ = stdout.execute(EnableMouseCapture);
+    // Keep mouse reporting off so the terminal owns drag-selection and copying
+    // throughout the transcript. This follows grok-build's native-selection
+    // mode: application mouse capture and normal terminal text selection are
+    // mutually exclusive. Keyboard scrolling remains available.
 
     let mut stderr = stderr();
     let flags = event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
@@ -222,15 +220,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 continue;
             }
             Event::Key(key) => key,
-            Event::Mouse(mouse) => {
-                // Three rows a notch, which is what a terminal scrolls.
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => ui.scroll_by(-3),
-                    MouseEventKind::ScrollDown => ui.scroll_by(3),
-                    _ => {}
-                }
-                continue;
-            }
+            Event::Mouse(_) => continue,
             _ => continue,
         };
         if key.kind == KeyEventKind::Repeat
@@ -385,7 +375,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
 
     terminal.hide_cursor()?;
     let _ = crossterm::execute!(stderr, DisableBracketedPaste, PopKeyboardEnhancementFlags);
-    let _ = std::io::stdout().execute(DisableMouseCapture);
     disable_raw_mode()?;
     std::io::stdout().execute(LeaveAlternateScreen)?;
 
