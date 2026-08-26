@@ -119,15 +119,9 @@ pub enum ToolEvent {
 /// and the observer usually outlives the call that installed it.
 pub type ToolObserver = Arc<dyn Fn(ToolEvent) + Send + Sync>;
 
-pub const THREAD_LANE_NOTICE: &str =
-    "You answer through the OpenAgents inference proxy, on a thread opened for this session. \
-    Every round of tool calls re-sends the whole conversation to a metered model, so batch \
-    independent commands into one call and keep large dumps out of the transcript.";
+pub const THREAD_LANE_NOTICE: &str = crate::surfaces::system_prompt::CODER_LANE_THREAD;
 
-pub const LOCAL_LANE_NOTICE: &str =
-    "You answer from a model running on this machine through Ollama. Nothing in this \
-    conversation leaves the machine and nothing is metered, but the context window is a \
-    fraction of a hosted model's, so keep large dumps out of the transcript.";
+pub const LOCAL_LANE_NOTICE: &str = crate::surfaces::system_prompt::CODER_LANE_LOCAL_RUST;
 
 /// Where an Ollama server listens unless `OPENAGENTS_OLLAMA_HOST` says otherwise.
 pub const OLLAMA_HOST: &str = "http://127.0.0.1:11434";
@@ -719,34 +713,26 @@ impl CoderRuntimeSession {
         } else {
             THREAD_LANE_NOTICE
         };
+        use crate::surfaces::system_prompt as prompt;
         let mut lines = vec![
-            format!("You are `openagents coder`, a coding assistant in a terminal. {notice}"),
+            prompt::CODER_OPENING.replace("{lane}", notice),
             "".to_string(),
-            "Answer very concisely unless the reader asks for a longer response.".to_string(),
+            prompt::CODER_CONCISION.to_string(),
             "".to_string(),
         ];
 
         if tool_defs.is_empty() {
-            lines.push(
-                "You have no tools in this session: you cannot read or write files, run commands, or \
-                reach anything outside this conversation. Answer from what the reader tells you, and \
-                say plainly when something would need a tool you do not have.".to_string()
-            );
+            lines.push(prompt::CODER_NO_TOOLS.to_string());
         } else {
-            lines.push(format!(
-                "You have {} tools, and no others:",
-                tool_defs.len()
-            ));
+            lines.push(
+                prompt::CODER_TOOL_LIST_HEADER_RUST
+                    .replace("{count}", &tool_defs.len().to_string()),
+            );
             for t in tool_defs {
                 lines.push(format!("- `{}`", t.name));
             }
             lines.push("".to_string());
-            lines.push(
-                "That list is complete: a capability not on it is one you do not have, whatever a model \
-                like you usually has. Read a tool's description before assuming what it covers. Where \
-                a description says what a child agent can do, that is the child's capability and not \
-                yours. Never say you ran something you did not run.".to_string()
-            );
+            lines.push(prompt::CODER_TOOL_LIST_CLOSING.to_string());
         }
 
         // Skill injection. The `skill` tool's catalog is names and

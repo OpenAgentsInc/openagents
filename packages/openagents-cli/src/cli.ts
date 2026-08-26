@@ -84,6 +84,7 @@ import {
 } from "./coder-resume.js";
 import { toolFamilyOf } from "./coder-tool-families.js";
 import { openLocalThread, threadAnnouncement, threadSyncWanted } from "./coder-local-thread.js";
+import { surfaceAnnouncement } from "./coder-system.js";
 import { ThreadTranscriptWriter } from "./coder-transcript.js";
 import { delegateTool, openagentsTool, shellTool, skillTool } from "./coder-tools.js";
 import { InMemoryGoalStore, goalTool } from "./coder-goals.js";
@@ -2531,6 +2532,15 @@ const coderCommand = Command.make(
       // is not an error.
       if (plain && transcriptThreadId !== undefined) {
         process.stderr.write(`${threadAnnouncement(transcriptThreadId)}\n`);
+      }
+
+      // The staged text this session composed from
+      // (OpenAgentsInc/openagents#122), announced the same way and for the
+      // same reason: a bench row that cannot name the prompt it measured
+      // cannot tell a text change from noise. Unconditional in plain mode,
+      // because the surfaces are known whether or not a thread opened.
+      if (plain) {
+        process.stderr.write(`${surfaceAnnouncement()}\n`);
       }
 
       // The model is told what it can do rather than the reader being asked to

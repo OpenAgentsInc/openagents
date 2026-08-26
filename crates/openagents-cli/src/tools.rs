@@ -174,6 +174,8 @@ pub struct DelegationGate {
     pub child: crate::delegate::ChildOptions,
 }
 
+use crate::surfaces::tool_descriptions as text;
+
 pub struct HarnessToolRegistry {
     pub cwd: PathBuf,
     /// Discovered skills by name, in catalog order.
@@ -380,13 +382,7 @@ impl HarnessToolRegistry {
         let mut tools = vec![
             ToolDefinition {
                 name: "shell".to_string(),
-                description: format!(
-                    "Run a shell command on this machine. The working directory is {}, so paths are \
-                    relative to it and you do not need to ask where you are. Returns combined stdout \
-                    and stderr with the exit code. Batch independent commands into one call with && \
-                    instead of one call each: every call replays the conversation so far.",
-                    self.cwd.display()
-                ),
+                description: text::RUST_SHELL.replace("{cwd}", &self.cwd.display().to_string()),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -398,7 +394,7 @@ impl HarnessToolRegistry {
             },
             ToolDefinition {
                 name: "skill".to_string(),
-                description: format!("Read one of this repository skill procedures: a written procedure with conventions, commands, and rules. Call it before doing work a skill covers. Skills available:{}", skill_list),
+                description: text::RUST_SKILL.replace("{skills}", &skill_list),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -409,7 +405,7 @@ impl HarnessToolRegistry {
             },
             ToolDefinition {
                 name: "openagents".to_string(),
-                description: "Run the OpenAgents CLI commands (issue, project, repo, auth, etc.). Pass the arguments as a list without openagents itself.".to_string(),
+                description: text::RUST_OPENAGENTS.to_string(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -433,22 +429,9 @@ impl HarnessToolRegistry {
         if let Some(gate) = &self.delegation {
             tools.push(ToolDefinition {
                 name: "delegate".to_string(),
-                description: format!(
-                    "Run one prompt on independent child coding agents in parallel and return what \
-                    each one found or did. Use it when work splits into parts that do not depend on \
-                    each other: several files to change the same way, several hypotheses to check, \
-                    several tests to run down. Each child is a full coding agent with its own shell \
-                    tool, working in a git worktree of its own so children cannot overwrite each \
-                    other, and it starts with no context from this conversation and cannot ask \
-                    questions — so the prompt has to be self-contained. Every child runs the same \
-                    prompt and each is told separately which number it is, so write the prompt for \
-                    whichever child reads it: say \"read the file at your own number\" rather than \
-                    naming one child. Children run on {} and on this session's budget. Prefer one \
-                    call with a count over several calls, and prefer `shell` over this for a single \
-                    command — a child agent is for work worth a whole agent, not one line of \
-                    output. At most {} children.",
-                    gate.lane, gate.max_count
-                ),
+                description: text::RUST_DELEGATE
+                    .replace("{lane}", &gate.lane)
+                    .replace("{max_count}", &gate.max_count.to_string()),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {

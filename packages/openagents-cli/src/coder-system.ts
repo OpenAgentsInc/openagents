@@ -1,4 +1,5 @@
 import type { CoderTool } from "./coder-tools.js";
+import { CODER_SURFACE_DIGESTS, SYSTEM_PROMPT_SURFACE } from "./coder-surfaces.generated.js";
 
 /**
  * What a coder session tells the model about itself, on every lane.
@@ -24,21 +25,19 @@ export const systemPrompt = (
   standing?: string,
 ): string => {
   const lines = [
-    `You are \`openagents coder\`, a coding assistant in a terminal. ${lane}`,
+    SYSTEM_PROMPT_SURFACE["coder.opening"].replace("{lane}", lane),
     "",
-    "Answer very concisely unless the reader asks for a longer response.",
+    SYSTEM_PROMPT_SURFACE["coder.concision"],
     "",
   ];
 
   if (tools.length === 0) {
-    lines.push(
-      "You have no tools in this session: you cannot read or write files, run commands, or " +
-        "reach anything outside this conversation. Answer from what the reader tells you, and " +
-        "say plainly when something would need a tool you do not have.",
-    );
+    lines.push(SYSTEM_PROMPT_SURFACE["coder.no_tools"]);
   } else {
     lines.push(
-      `You have ${String(tools.length)} tool${tools.length === 1 ? "" : "s"}, and no others:`,
+      SYSTEM_PROMPT_SURFACE["coder.tool_list_header.node"]
+        .replace("{count}", String(tools.length))
+        .replace("{plural}", tools.length === 1 ? "" : "s"),
       ...tools.map((tool) => `- \`${tool.name}\``),
       "",
       // Stated as a closed list rather than by naming the capabilities that are
@@ -46,10 +45,7 @@ export const systemPrompt = (
       // there was no shell, and then there was one — and a system message that
       // has to be edited when the tool list changes is one that will be wrong
       // in between.
-      "That list is complete: a capability not on it is one you do not have, whatever a model " +
-        "like you usually has. Read a tool's description before assuming what it covers. Where " +
-        "a description says what a child agent can do, that is the child's capability and not " +
-        "yours. Never say you ran something you did not run.",
+      SYSTEM_PROMPT_SURFACE["coder.tool_list_closing"],
     );
   }
 
@@ -59,13 +55,28 @@ export const systemPrompt = (
 };
 
 /** The lane sentence for a session answering from a model on this machine. */
-export const LOCAL_LANE =
-  "You answer from a model running locally on this machine through Ollama. Tokens here cost " +
-  "nothing, but generation is slow: prefer a few composite tool calls over many small ones, " +
-  "keep narration brief, and verify in one final pass rather than several.";
+export const LOCAL_LANE = SYSTEM_PROMPT_SURFACE["coder.lane.local.node"];
 
 /** The lane sentence for a session answering through the account's thread. */
-export const THREAD_LANE =
-  "You answer through the OpenAgents inference proxy, on a thread opened for this session. " +
-  "Every round of tool calls re-sends the whole conversation to a metered model, so batch " +
-  "independent commands into one call and keep large dumps out of the transcript.";
+export const THREAD_LANE = SYSTEM_PROMPT_SURFACE["coder.lane.thread"];
+
+/**
+ * The machine-readable staged-text announcement.
+ *
+ * A bench row records which text produced it (OpenAgentsInc/openagents#122).
+ * The digests cannot be read off the repository at scoring time — a run scored
+ * a week later would be pinned to whatever the tree says then — so the session
+ * names them itself, on stderr, in the same shape and the same place as the
+ * thread announcement (`[oa:thread <uuid>]`, #38): one line, parsed by
+ * `packages/coder-effectiveness/src/harbor-job.ts` with
+ * `\[oa:surfaces ([^\]]+)\]`.
+ *
+ * Absent from an older CLI, which is not an error: the row then records no
+ * surface pin rather than a wrong one.
+ */
+export const surfaceAnnouncement = (
+  digests: Readonly<Record<string, string>> = CODER_SURFACE_DIGESTS,
+): string =>
+  `[oa:surfaces ${Object.entries(digests)
+    .map(([id, digest]) => `${id}=${digest}`)
+    .join(",")}]`;

@@ -1229,14 +1229,7 @@ pub fn plugin_tool_definition(plugin: &LoadedPlugin) -> crate::tools::ToolDefini
 pub fn capability_tool_definition() -> crate::tools::ToolDefinition {
     crate::tools::ToolDefinition {
         name: "capability".to_string(),
-        description: "Discover and load installed plugin capabilities: sandboxed, digest-pinned \
-             WebAssembly programs this machine already holds for common agent work. Before writing \
-             a script for a task, search here first — a capability that covers it is bounded, \
-             reviewable, and returns structured output. Call with `query` describing what you need \
-             to get the best matches; then call again with `name` set to the exact returned name \
-             to load it and make its dedicated tool available. Every later call to the loaded \
-             capability uses that exact name as the tool name."
-            .to_string(),
+        description: crate::surfaces::tool_descriptions::RUST_CAPABILITY.to_string(),
         parameters: serde_json::json!({
             "type": "object",
             "properties": {

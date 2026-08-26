@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { CoderTool } from "./coder-tools.js";
+import { TOOL_DESCRIPTION_SURFACE } from "./coder-surfaces.generated.js";
 import {
   describeLoad,
   isRefusal,
@@ -213,14 +214,7 @@ export function capabilityTool(options: CapabilityOptions): CoderTool {
     // Constant-size on purpose (OpenAgentsInc/openagents#42): the catalog is
     // searched, never enumerated here, so the standing prompt does not grow
     // as capabilities are installed.
-    description:
-      "Discover and load installed plugin capabilities: sandboxed, sealed programs this " +
-      "machine already holds for common agent work. Before writing a script for a task, " +
-      "search here first — a capability that covers it is bounded, reviewable, and returns " +
-      "structured output. Call with `query` describing what you need to get the best " +
-      "matches; then call again with `name` set to the exact returned name to load it and " +
-      "make its dedicated tool available. Every later call to the loaded capability uses " +
-      "that exact name as the tool name.",
+    description: TOOL_DESCRIPTION_SURFACE["node.capability"],
     parameters: {
       type: "object",
       properties: {

@@ -186,7 +186,9 @@ describe("what the store refuses", () => {
   test("throws on a row written under another schema", () => {
     writeFileSync(store, `${JSON.stringify({ schema: "something.else.v1" })}\n`, "utf8");
 
-    expect(() => readResultRows(store)).toThrow(/expected openagents\.bench_result\.v2/u);
+    expect(() => readResultRows(store)).toThrow(
+      /expected openagents\.bench_result\.v3 or openagents\.bench_result\.v2/u,
+    );
   });
 
   test("names a v1 row for what it is rather than reading it as a v2 one", () => {

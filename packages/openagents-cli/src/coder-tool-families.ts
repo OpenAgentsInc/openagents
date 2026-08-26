@@ -19,6 +19,7 @@
  */
 
 import type { CoderTool } from "./coder-tools.js";
+import { TOOL_DESCRIPTION_SURFACE } from "./coder-surfaces.generated.js";
 
 /** The families with distinct declared emphasis. `default` adds nothing. */
 export type ToolFamily = "default" | "gemini" | "local";
@@ -45,21 +46,8 @@ export const toolFamilyOf = (model: string | undefined): ToolFamily => {
  * the same suite, and the analysis document above records why each exists.
  */
 const emphasis: Partial<Record<ToolFamily, Partial<Record<string, string>>>> = {
-  gemini: {
-    shell:
-      " IMPORTANT: batch independent commands into ONE call joined with && — " +
-      "each separate call replays the whole conversation to the model, so ten " +
-      "one-line calls cost several times what one composite call costs. Never " +
-      "run one small inspection per call. Read only the region you need; prefer " +
-      "offset/limit ranged reads or summaries over whole-file dumps, which are " +
-      "token-inefficient.",
-  },
-  local: {
-    shell:
-      " This session's model generates slowly on this machine: prefer a few " +
-      "composite calls over many small ones, and keep verification to one " +
-      "final pass.",
-  },
+  gemini: { shell: TOOL_DESCRIPTION_SURFACE["node.family.gemini.shell"] },
+  local: { shell: TOOL_DESCRIPTION_SURFACE["node.family.local.shell"] },
 };
 
 /** A tool's description as declared to this family's model. */

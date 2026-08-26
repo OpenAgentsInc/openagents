@@ -26,6 +26,7 @@
  */
 
 import type { CoderTool } from "./coder-tools.js";
+import { TOOL_DESCRIPTION_SURFACE } from "./coder-surfaces.generated.js";
 import { MEMORIES_PATH } from "./constants.js";
 import { trackerErrorDetails } from "./tracker-request.js";
 
@@ -73,17 +74,7 @@ export function rememberTool(options: RememberOptions): CoderTool {
 
   return {
     name: "remember",
-    description:
-      "Store one thing the reader has explicitly asked you to remember, in their account's " +
-      "memory. Call it when they say to remember, note, or keep something — a preference, a " +
-      "constraint, a fact about how they work.\n\n" +
-      "Explicit requests only. Do not call this because a conversation revealed a preference, " +
-      "because something seemed worth keeping, or to summarize a session. A memory exists " +
-      "because somebody asked for it.\n\n" +
-      "There is no matching read: the account's relevant memories are attached to your context " +
-      "by the server before you see the turn, so what is remembered already reaches you without " +
-      "a tool call. To correct a memory you were shown, call this with the corrected sentence " +
-      "and pass the old memory's id as `supersedes`; memories are never edited in place.",
+    description: TOOL_DESCRIPTION_SURFACE["node.remember"],
     parameters: {
       type: "object",
       properties: {

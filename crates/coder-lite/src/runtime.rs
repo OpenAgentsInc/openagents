@@ -7,7 +7,9 @@
 //!
 //! What this file owns is the part that is coder-lite's:
 //!
-//! - [`SYSTEM_INSTRUCTIONS`], carried verbatim. It is the reason the session
+//! - The system prompt, composed from the staged `system-prompt` surface
+//!   (`surfaces/coder/system-prompt.v1.json`) and carried verbatim. It is
+//!   the reason the session
 //!   answers as a terminal rather than as an assistant, and a merge that
 //!   reworded it would have changed the product.
 //! - [`Control`], the one-way channel the TUI loop reads. Text, tool calls,
@@ -27,14 +29,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
+use openagents_cli::surfaces::system_prompt as prompt;
 use openagents_cli::runtime::{
     ChatMessage, CoderRuntimeSession, Lane, ToolEvent, TurnUsage,
 };
 use openagents_cli::tools::{DelegationGate, HarnessToolRegistry, ToolDefinition};
 
-/// coder-lite's voice. Carried verbatim from the first version of this file;
-/// see the module header for why it does not move.
-const SYSTEM_INSTRUCTIONS: &str = "You are OpenAgents Coder. Do not say you are from Google, Anthropic, OpenAI, or any other company. Do not mention your model, training, or architecture. Respond as a neutral, terse terminal: no greetings, no \"As an AI\", no explanations of your role, and no unnecessary padding. Use short sentences and dense, factual output. Answer questions directly. Output only code and minimal context when asked for code.";
 
 type Failure = Box<dyn std::error::Error + Send + Sync>;
 
@@ -82,32 +82,24 @@ pub fn send(sink: &Sink, message: Control) {
 
 /// The system message this session opens with.
 ///
-/// [`SYSTEM_INSTRUCTIONS`] first and unchanged, then the tools — because a
+/// The staged instructions first and unchanged, then the tools — because a
 /// model that is told it has no tools when it has five will not use them, and
 /// one told it has tools it does not have will claim to have run them. The
 /// list is generated from what was actually declared, so the two cannot
 /// disagree.
 pub fn system_prompt(tools: &[ToolDefinition]) -> String {
-    let mut lines = vec![SYSTEM_INSTRUCTIONS.to_string(), String::new()];
+    let mut lines = vec![prompt::CODER_LITE_INSTRUCTIONS.to_string(), String::new()];
     if tools.is_empty() {
-        lines.push(
-            "You have no tools in this session: you cannot read or write files, run commands, or \
-             reach anything outside this conversation. Say plainly when something would need a \
-             tool you do not have."
-                .to_string(),
-        );
+        lines.push(prompt::CODER_LITE_NO_TOOLS.to_string());
     } else {
-        lines.push(format!("You have {} tools, and no others:", tools.len()));
+        lines.push(
+            prompt::CODER_LITE_TOOL_LIST_HEADER.replace("{count}", &tools.len().to_string()),
+        );
         for tool in tools {
             lines.push(format!("- `{}`", tool.name));
         }
         lines.push(String::new());
-        lines.push(
-            "That list is complete: a capability not on it is one you do not have. Read a tool's \
-             description before assuming what it covers. Never say you ran something you did not \
-             run."
-                .to_string(),
-        );
+        lines.push(prompt::CODER_LITE_TOOL_LIST_CLOSING.to_string());
     }
     lines.join("\n")
 }
@@ -446,11 +438,11 @@ mod tests {
     fn the_system_prompt_opens_with_the_terse_instructions_unchanged() {
         let prompt = system_prompt(&[]);
         assert!(
-            prompt.starts_with(SYSTEM_INSTRUCTIONS),
+            prompt.starts_with(prompt::CODER_LITE_INSTRUCTIONS),
             "the instructions were not carried verbatim: {prompt}"
         );
-        assert!(SYSTEM_INSTRUCTIONS.contains("no greetings"));
-        assert!(SYSTEM_INSTRUCTIONS.contains("no unnecessary padding"));
+        assert!(prompt::CODER_LITE_INSTRUCTIONS.contains("no greetings"));
+        assert!(prompt::CODER_LITE_INSTRUCTIONS.contains("no unnecessary padding"));
     }
 
     /// A model told it has tools it does not have will claim to have run them.

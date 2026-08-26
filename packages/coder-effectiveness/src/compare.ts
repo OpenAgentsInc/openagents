@@ -30,6 +30,7 @@
  *    job, and it already has a third verdict for the cases nothing measured.
  */
 
+import { surfacePinOf } from "./results-store.ts";
 import type { BenchResultRow } from "./results-store.ts";
 
 export type DeltaDirection = "better" | "worse" | "unchanged" | "unpriced" | "unknown";
@@ -278,6 +279,17 @@ const confoundersOf = (
   }
   if (axis === "recordedAt" && models.length > 1) {
     notes.push(`model also varies (${models.join(", ")})`);
+  }
+  // The staged text is a variable like any other (OpenAgentsInc/openagents#122).
+  // Named on both axes: a lane comparison assumes the prompt is held still
+  // while the lane changes, and a trend step that changed the prompt is a
+  // cycle whose delta belongs to that change and to nothing else in the step.
+  const pins = distinct(rows.map(surfacePinOf));
+  if (pins.length > 1) {
+    notes.push(`staged text also varies (${pins.join(" | ")})`);
+  }
+  if (rows.some((row) => surfacePinOf(row) === null) && pins.length > 0) {
+    notes.push("at least one row names no staged text, so what it measured cannot be identified");
   }
   if (bases.includes("operator_placeholder")) {
     notes.push(

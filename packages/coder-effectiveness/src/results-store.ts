@@ -48,12 +48,26 @@ import type { RunClassification } from "./suite-manifest.ts";
 import type { CriterionVerdict, ThresholdGate } from "./thresholds.ts";
 
 /**
- * Bumped from v1 when the suite pin became mandatory. A v1 row carried no
- * `suiteId` or `suiteDigest`, so nothing in it says which pinned task list it
- * measured — readable as history, not comparable to a v2 row, and
- * {@link readResultRows} says so by name rather than by silently coercing it.
+ * Bumped from v2 when a row had to name the staged text it measured
+ * (OpenAgentsInc/openagents#122). A v3 row carries `surfaceDigests`; a v2 row
+ * does not, and the difference is exactly "we did not record this" rather than
+ * "this run used no staged text".
+ *
+ * v1 was the bump before it, when the suite pin became mandatory.
  */
-export const BENCH_RESULT_SCHEMA = "openagents.bench_result.v2";
+export const BENCH_RESULT_SCHEMA = "openagents.bench_result.v3";
+
+/**
+ * The predecessor this store still reads.
+ *
+ * A v2 row is comparable to a v3 row on every column both carry, so it is not
+ * refused the way a v1 row is: what a v2 row cannot do is say which prompt
+ * produced it, and {@link surfacePinOf} answers `null` for it rather than
+ * inventing one. Its receipt is unaffected — {@link receiptOf} digests the
+ * keys a row actually has, so adding a column to the writer does not rewrite
+ * what an already-written row asserts.
+ */
+export const BENCH_RESULT_SCHEMA_V2 = "openagents.bench_result.v2";
 
 /** The v1 rows this store used to write, kept only to name them in an error. */
 const BENCH_RESULT_SCHEMA_V1 = "openagents.bench_result.v1";
@@ -67,13 +81,31 @@ const BENCH_RESULT_SCHEMA_V1 = "openagents.bench_result.v1";
  * is here is what two runs can be compared on.
  */
 export interface BenchResultRow {
-  readonly schema: typeof BENCH_RESULT_SCHEMA;
+  readonly schema: typeof BENCH_RESULT_SCHEMA | typeof BENCH_RESULT_SCHEMA_V2;
   readonly recordedAt: string;
 
   readonly suite: string;
   readonly lane: string;
-  /** The report's pin over suite, lane, tasks, CLI version, model, and rates. */
+  /**
+   * The report's pin over suite, lane, tasks, CLI version, model, rates, and
+   * the staged text surfaces.
+   */
   readonly runDigest: string;
+  /**
+   * The staged text this run composed from, by content digest
+   * (`surfaces/coder/index.json`).
+   *
+   * Three distinguishable states, on purpose:
+   *
+   * - a record — the run announced this text, and the row names it;
+   * - `null` — the writer records the column, and this run announced no text
+   *   or its trials disagreed;
+   * - absent — a v2 row, written before the column existed.
+   *
+   * Optional in the type because a v2 row read off disk genuinely lacks the
+   * key, and giving it a default here would turn "not recorded" into a claim.
+   */
+  readonly surfaceDigests?: Readonly<Record<string, string>> | null | undefined;
   /**
    * The narrower pin two rows must share to be comparable at all: the suite,
    * the sorted task list, and the rate catalog. Lane, model, and CLI version
@@ -178,6 +210,7 @@ export const buildResultRow = (
     suite: report.suite,
     lane: report.lane,
     runDigest: report.runDigest,
+    surfaceDigests: report.surfaceDigests,
     suiteKey: suiteKeyOf(report, classification),
     jobId: report.jobId,
 
@@ -235,6 +268,22 @@ export const receiptOf = (row: UnreceiptedRow): string => {
   return `receipt:${createHash("sha256").update(source).digest("hex")}`;
 };
 
+/**
+ * A short, comparable rendering of a row's staged text pin.
+ *
+ * `null` for a row that names none — a v2 row, or a run whose trials did not
+ * announce or did not agree. Two rows with equal non-null pins ran the same
+ * text; two with different pins did not, and a comparison across them varies
+ * the prompt as well as whatever it meant to vary.
+ */
+export const surfacePinOf = (row: BenchResultRow): string | null => {
+  const digests = row.surfaceDigests;
+  if (digests === undefined || digests === null) return null;
+  const entries = Object.entries(digests).toSorted();
+  if (entries.length === 0) return null;
+  return entries.map(([id, digest]) => `${id}:${digest.replace(/^sha256:/u, "").slice(0, 8)}`).join(" ");
+};
+
 export type ChainBreak =
   | { readonly kind: "receipt_mismatch"; readonly index: number; readonly detail: string }
   | { readonly kind: "chain_broken"; readonly index: number; readonly detail: string };
@@ -289,6 +338,11 @@ export const verifyResultChain = (rows: ReadonlyArray<BenchResultRow>): ChainVer
  * corrupted store into a shorter, apparently valid one, and a trend that
  * silently drops the rows it could not parse is the worst of both worlds.
  * A store that does not exist yet reads as no rows, which is not a corruption.
+ *
+ * A v2 row is read as itself. The store is append-only and hash-chained, so a
+ * schema bump cannot rewrite the rows already in it — every existing row keeps
+ * the receipt it was written with, and {@link verifyResultChain} recomputes
+ * that receipt over the keys the row actually carries.
  */
 export const readResultRows = (storePath: string): ReadonlyArray<BenchResultRow> => {
   if (!existsSync(storePath)) return [];
@@ -306,6 +360,12 @@ export const readResultRows = (storePath: string): ReadonlyArray<BenchResultRow>
     // Deliberately widened: a row on disk can carry any schema string, and the
     // point of the next two checks is to find out which.
     const row = parsed as { schema: string } as BenchResultRow;
+    if ((row.schema as string) === BENCH_RESULT_SCHEMA_V2) {
+      // Readable and comparable, minus the column it predates. Returned as-is:
+      // filling `surfaceDigests` in here would make a row assert something it
+      // never recorded, and its receipt would then stop verifying.
+      return row;
+    }
     if ((row.schema as string) === BENCH_RESULT_SCHEMA_V1) {
       throw new Error(
         `${storePath} line ${String(index + 1)} is a ${BENCH_RESULT_SCHEMA_V1} row, written before a run had to name the suite manifest it covered. It carries no suite digest, so nothing in it says which pinned task list it measured and it cannot be compared to a ${BENCH_RESULT_SCHEMA} row. Move it to an archive file rather than migrating it: a digest cannot be invented for a run that never recorded one.`,
@@ -313,7 +373,7 @@ export const readResultRows = (storePath: string): ReadonlyArray<BenchResultRow>
     }
     if (row.schema !== BENCH_RESULT_SCHEMA) {
       throw new Error(
-        `${storePath} line ${String(index + 1)} has schema ${String(row.schema)}, expected ${BENCH_RESULT_SCHEMA}`,
+        `${storePath} line ${String(index + 1)} has schema ${String(row.schema)}, expected ${BENCH_RESULT_SCHEMA} or ${BENCH_RESULT_SCHEMA_V2}`,
       );
     }
     return row;

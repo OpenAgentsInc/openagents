@@ -33,6 +33,17 @@ import { join } from "node:path";
 /** The coder's `--plain` thread announcement, the same contract bench parses. */
 const THREAD_LINE = /\[oa:thread ([0-9a-fA-F-]{36})\]/u;
 
+/**
+ * The coder's `--plain` staged-text announcement
+ * (OpenAgentsInc/openagents#122), emitted beside the thread line.
+ *
+ * Read from the trial rather than from the repository, because the repository
+ * at scoring time is not the repository the run happened on. A trial from a
+ * CLI that predates the announcement carries no pin, and the row then records
+ * none rather than a borrowed one.
+ */
+const SURFACES_LINE = /\[oa:surfaces ([^\]]+)\]/u;
+
 /** What a verifier decided about one trial. */
 export type TrialOutcome = "accepted" | "rejected" | "ungraded";
 
@@ -51,6 +62,12 @@ export interface TrialRecord {
   readonly wallClockSeconds: number | null;
   /** The forge thread the trial ran in, when the coder announced one. */
   readonly threadId: string | null;
+  /**
+   * The staged text surfaces this trial composed its prompt and tool
+   * declarations from, by content digest. `null` when the trial announced
+   * none.
+   */
+  readonly surfaceDigests: Readonly<Record<string, string>> | null;
   /** The typed error Harbor classified, when the trial raised one. */
   readonly exception: string | null;
 }
@@ -66,6 +83,16 @@ export interface GradedRun {
    * report says so rather than letting a reader assume.
    */
   readonly runDigest: string;
+  /**
+   * The staged text every trial agreed on, or `null` when the trials announced
+   * none or disagreed.
+   *
+   * Disagreement is recorded as absence rather than as one of the two answers:
+   * a job whose trials ran different prompts measured no single prompt, and a
+   * row that named either half would be naming text that produced some of the
+   * outcomes it reports.
+   */
+  readonly surfaceDigests: Readonly<Record<string, string>> | null;
   readonly trials: ReadonlyArray<TrialRecord>;
 }
 
@@ -97,11 +124,13 @@ export const readHarborJob = (jobDir: string, options: ReadHarborJobOptions): Gr
     trials.push(readTrial(entry, trialDir, trialResult));
   }
 
+  const surfaceDigests = agreedSurfaceDigests(trials);
   return {
     jobId: readString(readField(jobResult, "id")),
     suite: options.suite,
     lane: options.lane,
-    runDigest: runDigestOf(trials, options),
+    runDigest: runDigestOf(trials, options, surfaceDigests),
+    surfaceDigests,
     trials,
   };
 };
@@ -124,6 +153,7 @@ const readTrial = (dirName: string, trialDir: string, trialResult: unknown): Tri
     toolCalls: usage.toolCalls,
     wallClockSeconds: wallClockOf(trialResult),
     threadId: threadIdOf(trialDir),
+    surfaceDigests: surfaceDigestsOf(trialDir),
     exception: readString(readField(readField(trialResult, "exception_info"), "exception_type")),
   };
 };
@@ -244,13 +274,54 @@ const threadIdOf = (trialDir: string): string | null => {
   return match?.[1] ?? null;
 };
 
+/** The staged text one trial announced, or `null` when it announced none. */
+const surfaceDigestsOf = (trialDir: string): Readonly<Record<string, string>> | null => {
+  const path = join(trialDir, "agent", "coder.txt");
+  if (!existsSync(path)) return null;
+  const match = SURFACES_LINE.exec(readFileSync(path, "utf8"));
+  if (match?.[1] === undefined) return null;
+  const digests: Record<string, string> = {};
+  for (const pair of match[1].split(",")) {
+    const at = pair.indexOf("=");
+    if (at <= 0) continue;
+    digests[pair.slice(0, at).trim()] = pair.slice(at + 1).trim();
+  }
+  return Object.keys(digests).length === 0 ? null : digests;
+};
+
 /**
- * The recipe pin. Deliberately independent of the `harbor:` digest
+ * The staged text the whole job ran on, when every trial agrees.
+ *
+ * One disagreeing trial makes the job's pin `null`. Two prompts in one job is
+ * a job that measured neither of them, and the honest column for that is
+ * empty.
+ */
+const agreedSurfaceDigests = (
+  trials: ReadonlyArray<TrialRecord>,
+): Readonly<Record<string, string>> | null => {
+  const announced = trials
+    .map((trial) => trial.surfaceDigests)
+    .filter((digests): digests is Readonly<Record<string, string>> => digests !== null);
+  if (announced.length === 0 || announced.length !== trials.length) return null;
+  const first = JSON.stringify(Object.entries(announced[0]!).toSorted());
+  const agreed = announced.every(
+    (digests) => JSON.stringify(Object.entries(digests).toSorted()) === first,
+  );
+  return agreed ? announced[0]! : null;
+};
+
+/**
+ * The recipe pin, including the staged text surfaces. Deliberately
+ * independent of the `harbor:` digest
  * `bench/post_gym_run.py` computes: that one hashes a Python-serialised config
  * and this one hashes an explicit list of the facts that make two runs
  * comparable, so claiming they agree would be a claim neither can keep.
  */
-const runDigestOf = (trials: ReadonlyArray<TrialRecord>, options: ReadHarborJobOptions): string => {
+const runDigestOf = (
+  trials: ReadonlyArray<TrialRecord>,
+  options: ReadHarborJobOptions,
+  surfaceDigests: Readonly<Record<string, string>> | null,
+): string => {
   const source = JSON.stringify({
     suite: options.suite,
     lane: options.lane,
@@ -258,6 +329,9 @@ const runDigestOf = (trials: ReadonlyArray<TrialRecord>, options: ReadHarborJobO
     tasks: trials.map((trial) => trial.task).toSorted(),
     agentVersions: distinct(trials.map((trial) => trial.agentVersion)),
     models: distinct(trials.map((trial) => trial.modelId)),
+    // The staged text is part of the recipe, so two runs that differ only in
+    // the prompt do not share a digest and are not read as the same run.
+    surfaces: surfaceDigests === null ? null : Object.entries(surfaceDigests).toSorted(),
   });
   return `effectiveness:${createHash("sha256").update(source).digest("hex")}`;
 };

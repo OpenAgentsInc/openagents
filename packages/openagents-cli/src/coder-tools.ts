@@ -18,6 +18,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { TOOL_DESCRIPTION_SURFACE } from "./coder-surfaces.generated.js";
 import type { CoderDelegation } from "./coder-session.js";
 import type { CoderTaskRegistry } from "./coder-tasks.js";
 import {
@@ -66,26 +67,21 @@ export function delegateTool(delegation: CoderDelegation): CoderTool {
   return {
     name: "delegate",
     description:
-      "Run one prompt on independent child coding agents in parallel, in this repository, and " +
-      "return what each one found or did. Use it whenever work splits into parts that do not " +
-      "depend on each other: several files to change the same way, several hypotheses to check, " +
-      "several tests to run down. Each child is a full coding agent with its own file and shell " +
-      "tools, it starts with no context from this conversation, and it cannot ask questions, so " +
-      "the prompt has to be self-contained. Children run on this session's budget. Every child " +
-      "runs the same prompt, and each is told separately which number it is, so write the prompt " +
-      'for whichever child reads it: say "read the file at your own number" rather than naming ' +
-      'one child ("you are child 1"), which gives every child the same work and wastes the ' +
-      "fan-out. Prefer one call with a count over several calls. At most " +
-      `${String(MAX_DELEGATE_COUNT)} children.` +
+      TOOL_DESCRIPTION_SURFACE["node.delegate.head"].replace(
+        "{max_count}",
+        String(MAX_DELEGATE_COUNT),
+      ) +
       (models.length === 0
         ? ""
-        : ` Children run on ${delegation.label} unless \`model\` names another lane.\n\n` +
+        : TOOL_DESCRIPTION_SURFACE["node.delegate.lane_default"].replace(
+            "{label}",
+            delegation.label,
+          ) +
           // Named in full, because the enum alone reads as a list of models and
           // it is not one: two of these lanes are the same model under
           // different harnesses, and a session that could not tell described
           // one of them as a "fast preview / experimental" model it is not.
-          "A lane is a harness and a model together. The harness runs the child and gives it " +
-          "its tools; the model is what answers. Choosing a lane chooses both:\n" +
+          TOOL_DESCRIPTION_SURFACE["node.delegate.lane_preamble"] +
           CHILD_LANES.filter((lane) => models.includes(lane.name))
             .map((lane) => `- ${describeChildLane(lane)}`)
             .join("\n")),
@@ -261,11 +257,7 @@ export function skillTool(skills: ReadonlyArray<CoderSkill>): CoderTool {
   const catalog = skills.map((skill) => catalogEntry(skill)).join("\n");
   return {
     name: "skill",
-    description:
-      "Read one of this repository's skills: a written procedure for a kind of work, with the " +
-      "conventions, commands, and rules it needs. Call it before doing work a skill covers, and " +
-      "follow what it says over your own habits. Skills available:\n" +
-      catalog,
+    description: TOOL_DESCRIPTION_SURFACE["node.skill"].replace("{catalog}", catalog),
     parameters: {
       type: "object",
       properties: {
@@ -402,19 +394,11 @@ export function openagentsTool(): CoderTool {
   return {
     name: "openagents",
     description:
-      "Run the OpenAgents CLI: issues, projects, repositories, the forum, authentication, and " +
-      "any API route through `api`. Pass the arguments after `openagents` as a list, without " +
-      "`openagents` itself.\n\n" +
-      (tree === undefined ? "" : `Commands:\n${tree}\n\n`) +
-      "Run `<command> --help` when you need a flag you do not know; the commands above are the " +
-      "whole set, so you do not need to go looking for them.\n\n" +
-      "Read the plain output. It is what a person reads and it is small: a list of three issues " +
-      "is 442 bytes plain and 20,000 as JSON, because the JSON carries every issue's whole body. " +
-      "Add `--json` only when you need one field out of one record, and prefer a narrower " +
-      "command over a wider one you then have to read past.\n\n" +
-      "Reads are free; a write is visible to other people at once, so say what you are about to " +
-      "write before the first one. Read the `openagents-cli` skill for the auth model and what " +
-      "works with no credential.",
+      TOOL_DESCRIPTION_SURFACE["node.openagents.head"] +
+      (tree === undefined
+        ? ""
+        : TOOL_DESCRIPTION_SURFACE["node.openagents.commands"].replace("{tree}", tree)) +
+      TOOL_DESCRIPTION_SURFACE["node.openagents.body"],
     parameters: {
       type: "object",
       properties: {
@@ -533,26 +517,7 @@ export function openagentsTool(): CoderTool {
 export function shellTool(cwd: string): CoderTool {
   return {
     name: "shell",
-    description:
-      `Run a shell command on this machine. The working directory is ${cwd}, so paths are ` +
-      "relative to it and you do not need to ask where you are. Returns what the command " +
-      "printed. Use it for anything you would type at a terminal: reading files, listing " +
-      "directories, searching, git, running builds and tests. For the `openagents` CLI use the " +
-      "`openagents` tool instead — it carries the list of commands, so running it through here " +
-      "costs a turn finding out what exists. When an installed capability covers the task — " +
-      "the `capability` tool names what is installed — load and call it instead of scripting " +
-      "the same thing here: it is sandboxed, bounded, and returns structured output. " +
-      "Prefer it over `delegate` for " +
-      "single commands -- a child agent is for work worth a whole agent, not for one line of " +
-      "output. Both output streams come back together with the exit code. There is no terminal, " +
-      "so a command that would prompt gets end-of-file instead of waiting; pass a flag that " +
-      "answers the prompt. A few commands that cannot be undone are refused, such as erasing a " +
-      "root or a home directory, reformatting a disk, or halting the machine. Work economically: " +
-      "batch independent commands into one call with && instead of one call each — every call " +
-      "replays the conversation so far. Disable pagers and prefer quiet flags (for example " +
-      "`git --no-pager`, `PAGER=cat`), and ask for summaries before full dumps: get the shape " +
-      "of a thing (a stat, a listing, a count) before printing all of it, and print all of it " +
-      "only for what you are actually deciding about.",
+    description: TOOL_DESCRIPTION_SURFACE["node.shell"].replace("{cwd}", cwd),
     parameters: {
       type: "object",
       properties: {

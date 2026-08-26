@@ -14,6 +14,7 @@
  */
 
 import type { CoderTool } from "./coder-tools.js";
+import { TOOL_DESCRIPTION_SURFACE } from "./coder-surfaces.generated.js";
 
 export type GoalStatus =
   | "active"
@@ -227,10 +228,7 @@ export function goalBudgetExhaustedPrompt(goal: PersistentGoal): string {
 export function goalTool(goalStore: GoalStore): CoderTool {
   return {
     name: "goal",
-    description:
-      "Report a state change on the active persistent task goal for this session. " +
-      "The goal's objective, status, and budget already accompany each turn; " +
-      "call this with action='complete' when the goal is done and verified, or 'block'/'pause'/'resume' to update its status.",
+    description: TOOL_DESCRIPTION_SURFACE["node.goal"],
     parameters: {
       type: "object",
       properties: {

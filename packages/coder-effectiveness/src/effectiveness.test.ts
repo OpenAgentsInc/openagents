@@ -171,6 +171,7 @@ describe("cost per accepted outcome", () => {
       suite: "tb2-cross-section",
       lane: "proxy",
       runDigest: "effectiveness:test",
+        surfaceDigests: null,
       trials: [
         {
           task: "fix-git",
@@ -183,6 +184,7 @@ describe("cost per accepted outcome", () => {
           toolCalls: 1,
           wallClockSeconds: 60,
           threadId: null,
+          surfaceDigests: null,
           exception: null,
         },
       ],

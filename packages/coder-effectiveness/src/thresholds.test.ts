@@ -182,6 +182,7 @@ describe("evaluateThresholds", () => {
       suite: "tb2-cross-section",
       lane: "proxy",
       runDigest: "effectiveness:test",
+        surfaceDigests: null,
       trials: [
         {
           task: "fix-git",
@@ -194,6 +195,7 @@ describe("evaluateThresholds", () => {
           toolCalls: 1,
           wallClockSeconds: 10,
           threadId: null,
+          surfaceDigests: null,
           exception: "VerifierCrashedError",
         },
       ],

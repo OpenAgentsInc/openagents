@@ -86,6 +86,11 @@ export interface EffectivenessReport {
   readonly suite: string;
   readonly lane: string;
   readonly runDigest: string;
+  /**
+   * The staged text surfaces the run composed from, by content digest, or
+   * `null` when the trials announced none or disagreed.
+   */
+  readonly surfaceDigests: Readonly<Record<string, string>> | null;
   readonly jobId: string | null;
   readonly models: ReadonlyArray<string>;
   readonly agentVersions: ReadonlyArray<string>;
@@ -172,6 +177,7 @@ export const summarizeRun = (
     suite: run.suite,
     lane: run.lane,
     runDigest: run.runDigest,
+    surfaceDigests: run.surfaceDigests,
     jobId: run.jobId,
     models: distinct(run.trials.map((trial) => trial.modelId)),
     agentVersions: distinct(run.trials.map((trial) => trial.agentVersion)),

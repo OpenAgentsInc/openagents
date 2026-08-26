@@ -35,6 +35,7 @@ pub mod repo;
 pub mod resume;
 pub mod runtime;
 pub mod signals;
+pub mod surfaces;
 pub mod tools;
 pub mod trace;
 pub mod trace_client;
