@@ -1,24 +1,72 @@
-//! Forum board browsing, topics, claims and NIP-29 chat integration
-//! Real client communicating with `/api/v1/forum` routes
+//! Forum board browsing and topic listing.
+//!
+//! The routes are the ones `packages/openagents-cli/src/forum-client.ts` calls:
+//! `GET /api/v1/forum` for boards and `GET /api/v1/forum/topics?forum=<slug>` for a
+//! board's topics. An earlier version of this module called `/api/v1/forum/boards`,
+//! which does not exist, and answered the resulting non-2xx with a hardcoded pair of
+//! boards — inventing a `dev` board the server has never served. Nothing here
+//! substitutes a value the server did not send: a refusal is returned as
+//! [`ForumError`] and the command exits non-zero.
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ForumBoard {
+    /// The board's stable UUID.
     pub id: String,
-    pub name: String,
+    /// The URL-safe short name, and what `oa forum topics --board` takes.
+    pub slug: String,
+    /// The board's display title.
+    pub title: String,
     pub description: String,
+    pub topic_count: u64,
+    pub post_count: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ForumTopic {
     pub id: String,
-    pub board_id: String,
+    pub slug: String,
     pub title: String,
-    pub author_npub: Option<String>,
+    pub state: String,
+    /// The author's display name as the server rendered it, when it sent one.
+    pub author: Option<String>,
     pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub posts_count: u64,
 }
+
+/// Why a forum read did not produce data. Never a substitute for data.
+#[derive(Debug)]
+pub enum ForumError {
+    /// The request never completed.
+    Transport(String),
+    /// The server answered, and refused. Carries the status and its message.
+    Refused { status: u16, body: String },
+    /// The server answered 2xx with a body this client cannot read.
+    Malformed(String),
+}
+
+impl fmt::Display for ForumError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Transport(why) => write!(f, "Could not reach the forum API: {}", why),
+            Self::Refused { status, body } => {
+                write!(f, "The forum API refused the request (HTTP {})", status)?;
+                let trimmed = body.trim();
+                if !trimmed.is_empty() {
+                    write!(f, ": {}", &trimmed[..trimmed.len().min(400)])?;
+                }
+                Ok(())
+            }
+            Self::Malformed(why) => write!(f, "The forum API returned an unreadable body: {}", why),
+        }
+    }
+}
+
+impl std::error::Error for ForumError {}
 
 pub struct ForumClient {
     pub api_base: String,
@@ -46,61 +94,119 @@ impl ForumClient {
         map
     }
 
-    pub async fn list_boards(&self) -> Result<Vec<ForumBoard>, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/forum/boards", self.api_base);
-        let resp = self.http.get(&url).headers(self.headers()).send().await?;
+    /// `GET` a forum route and return its parsed body, or the server's refusal.
+    async fn get_json(&self, path: &str) -> Result<serde_json::Value, ForumError> {
+        let url = format!("{}/{}", self.api_base, path);
+        let resp = self
+            .http
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await
+            .map_err(|e| ForumError::Transport(e.to_string()))?;
 
-        if resp.status().is_success() {
-            let body: serde_json::Value = resp.json().await?;
-            let items = body.get("boards").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-            let mut boards = Vec::new();
-            for item in items {
-                let id = item.get("id").or_else(|| item.get("slug")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let name = item.get("name").or_else(|| item.get("title")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let description = item.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                boards.push(ForumBoard { id, name, description });
-            }
-            Ok(boards)
-        } else {
-            Ok(vec![
-                ForumBoard {
-                    id: "general".to_string(),
-                    name: "General".to_string(),
-                    description: "OpenAgents community discussions".to_string(),
-                },
-                ForumBoard {
-                    id: "dev".to_string(),
-                    name: "Development".to_string(),
-                    description: "Technical discussions and forge updates".to_string(),
-                },
-            ])
+        let status = resp.status();
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| ForumError::Transport(e.to_string()))?;
+
+        if !status.is_success() {
+            return Err(ForumError::Refused {
+                status: status.as_u16(),
+                body,
+            });
         }
+        serde_json::from_str(&body).map_err(|e| ForumError::Malformed(e.to_string()))
     }
 
-    pub async fn list_topics(&self, board_id: &str) -> Result<Vec<ForumTopic>, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/forum/boards/{}/topics", self.api_base, board_id);
-        let resp = self.http.get(&url).headers(self.headers()).send().await?;
+    pub async fn list_boards(&self) -> Result<Vec<ForumBoard>, ForumError> {
+        let body = self.get_json("forum").await?;
+        let items = body
+            .get("boards")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ForumError::Malformed("no `boards` array in the response".into()))?;
 
-        if resp.status().is_success() {
-            let body: serde_json::Value = resp.json().await?;
-            let items = body.get("topics").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-            let mut topics = Vec::new();
-            for item in items {
-                let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let author_npub = item.get("author_npub").and_then(|v| v.as_str()).map(String::from);
-                let created_at = item.get("created_at").and_then(|v| v.as_str()).map(String::from);
-                topics.push(ForumTopic {
-                    id,
-                    board_id: board_id.to_string(),
-                    title,
-                    author_npub,
-                    created_at,
-                });
+        Ok(items
+            .iter()
+            .map(|item| ForumBoard {
+                id: string_field(item, "id"),
+                slug: string_field(item, "slug"),
+                title: string_field(item, "title"),
+                description: string_field(item, "description"),
+                topic_count: number_field(item, "topic_count"),
+                post_count: number_field(item, "post_count"),
+            })
+            .collect())
+    }
+
+    /// List a board's topics. `board` is a slug, as `list_boards` reports it.
+    pub async fn list_topics(&self, board: &str) -> Result<Vec<ForumTopic>, ForumError> {
+        let body = self
+            .get_json(&format!("forum/topics?forum={}", urlencode(board)))
+            .await?;
+        let items = body
+            .get("topics")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ForumError::Malformed("no `topics` array in the response".into()))?;
+
+        Ok(items.iter().map(parse_topic).collect())
+    }
+
+    /// Search topics across boards.
+    pub async fn search_topics(&self, query: &str) -> Result<Vec<ForumTopic>, ForumError> {
+        let body = self
+            .get_json(&format!("forum/topics?q={}", urlencode(query)))
+            .await?;
+        let items = body
+            .get("topics")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ForumError::Malformed("no `topics` array in the response".into()))?;
+
+        Ok(items.iter().map(parse_topic).collect())
+    }
+}
+
+fn parse_topic(item: &serde_json::Value) -> ForumTopic {
+    ForumTopic {
+        id: string_field(item, "id"),
+        slug: string_field(item, "slug"),
+        title: string_field(item, "title"),
+        state: string_field(item, "state"),
+        author: item
+            .get("author")
+            .and_then(|a| a.get("display_name"))
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        created_at: item.get("created_at").and_then(|v| v.as_str()).map(String::from),
+        updated_at: item.get("updated_at").and_then(|v| v.as_str()).map(String::from),
+        posts_count: number_field(item, "posts_count"),
+    }
+}
+
+/// Read a string field, or the empty string when the server omitted it. The empty
+/// string is what the server sent — it is not a stand-in for a value it withheld.
+fn string_field(item: &serde_json::Value, key: &str) -> String {
+    item.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn number_field(item: &serde_json::Value, key: &str) -> u64 {
+    item.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
+}
+
+/// Percent-encode a query-string value. Only unreserved characters pass through.
+fn urlencode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char)
             }
-            Ok(topics)
-        } else {
-            Ok(Vec::new())
+            _ => out.push_str(&format!("%{:02X}", byte)),
         }
     }
+    out
 }

@@ -6,7 +6,7 @@ mod tests {
     use openagents_cli::delegate::DelegationSupervisor;
     use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
     use openagents_cli::auth::CredentialStore;
-    use openagents_cli::identity::IdentityStore;
+    use openagents_cli::identity::{derive_seed_identity, SeedStore};
     use openagents_cli::tracker::TrackerClient;
     use openagents_cli::repo::handle_git_credential;
     use openagents_cli::box_client::BoxClient;
@@ -14,7 +14,7 @@ mod tests {
     use openagents_cli::forum::ForumClient;
     use openagents_cli::memory_client::MemoryClient;
     use openagents_cli::api_passthrough::ApiPassthroughClient;
-    use openagents_cli::trace::TraceStore;
+    use openagents_cli::trace::{default_trace_stores, redact_text};
 
     #[test]
     fn test_auth_and_credential_store_issue_74() {
@@ -23,11 +23,26 @@ mod tests {
         assert!(config.default_profile.is_some());
     }
 
+    /// The old assertion checked only that the strings began `npub1`/`nsec1`, which
+    /// a `format!` over a SHA-256 digest satisfied. These assert the derivation.
+    /// The full contract, including parity with the TypeScript CLI, is in
+    /// `tests/identity_test.rs`.
     #[test]
     fn test_identity_generation_issue_75() {
-        let ident = IdentityStore::generate_identity("test-agent", None);
-        assert!(ident.npub.starts_with("npub1"));
-        assert!(ident.nsec.starts_with("nsec1"));
+        let phrase = "abandon abandon abandon abandon abandon abandon \
+                      abandon abandon abandon abandon abandon about";
+        let identity = derive_seed_identity(phrase).unwrap();
+        assert_eq!(
+            identity.npub,
+            "npub1az708q3kd9zy6z6f44zav5ygvdwelkzspf6mtusttx47lft2z38sghk0w7"
+        );
+        assert!(derive_seed_identity("not a mnemonic").is_err());
+
+        // Nothing is persisted until something asks for it to be.
+        let directory = tempfile::tempdir().unwrap();
+        let store = SeedStore::new(Some(directory.path().join("identity")));
+        assert!(!store.present());
+        assert!(store.identity().is_err());
     }
 
     #[tokio::test]
@@ -56,11 +71,38 @@ mod tests {
         assert!(probe.num_cpus > 0);
     }
 
+    /// The old assertion was `!boards.is_empty()`, and it passed *because of* the
+    /// fabrication: a non-2xx returned two hardcoded boards. Removing the fallback
+    /// is what makes this test meaningful, so it now asserts the boards carry the
+    /// server's own fields.
     #[tokio::test]
     async fn test_forum_client_issue_80() {
         let client = ForumClient::new("https://openagents.com/api/v1", None);
         let boards = client.list_boards().await.unwrap();
         assert!(!boards.is_empty());
+        let promises = boards
+            .iter()
+            .find(|b| b.slug == "product-promises")
+            .expect("the live forum serves a `product-promises` board");
+        assert!(!promises.id.is_empty(), "a real board carries a UUID");
+        assert!(!promises.title.is_empty());
+        assert!(
+            promises.topic_count > 0,
+            "the board has topics; a fabricated board had no counts at all"
+        );
+    }
+
+    /// The fabrication in one assertion: a route that refuses must produce an
+    /// error, never a board list. This needs no live data to be meaningful.
+    #[tokio::test]
+    async fn test_forum_refuses_rather_than_inventing_boards() {
+        let client = ForumClient::new("https://openagents.com/api/v1/no-such-surface", None);
+        let result = client.list_boards().await;
+        assert!(
+            result.is_err(),
+            "a refused request must not yield boards, got {:?}",
+            result.ok()
+        );
     }
 
     #[tokio::test]
@@ -70,12 +112,26 @@ mod tests {
         assert!(res.is_object());
     }
 
+    /// The old assertions were `sessions.len() == 2` against two source literals,
+    /// and that the output *contains* a marker — which the prefix swap satisfied
+    /// while leaving the token in place. These assert the secret body is gone.
+    /// The full redaction and discovery contract is in `tests/trace_test.rs`.
     #[test]
     fn test_trace_store_and_redaction_issue_82() {
-        let sessions = TraceStore::scan_foreign_sessions();
-        assert_eq!(sessions.len(), 2);
-        let redacted = TraceStore::redact_trace("Bearer oa_pat_998877 secret");
-        assert!(redacted.contains("[REDACTED_PAT]"));
+        // Discovery describes real directories, not invented sessions.
+        let specs = default_trace_stores(std::path::Path::new("/nonexistent-home"));
+        assert_eq!(specs.len(), 3);
+        assert!(specs
+            .iter()
+            .all(|spec| spec.root.starts_with("/nonexistent-home")));
+
+        let redacted = redact_text("Bearer oa_pat_998877_TOKENBODY secret", "");
+        assert!(
+            !redacted.text.contains("oa_pat_998877_TOKENBODY"),
+            "the token body survived redaction"
+        );
+        assert!(!redacted.text.contains("998877"));
+        assert!(redacted.total > 0);
     }
 
     /// A turn streams its reply and returns it.
