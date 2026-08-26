@@ -21,7 +21,7 @@
 use crate::cli::CoderArgs;
 use crate::composer::{Composer, ComposerAction};
 use crate::runtime::{CoderRuntimeSession, Lane};
-use crate::tools::HarnessToolRegistry;
+use crate::tools::{DelegationGate, HarnessToolRegistry};
 use crate::tui::{composer_text_width, BoxFrame, ChromeView, Entry, Role};
 
 use crossterm::{
@@ -395,17 +395,37 @@ fn install_panic_hook() {
     });
 }
 
+/// The tools a session a person sits in gets.
+///
+/// An interactive session may start children on the same terms a headless one
+/// does: same lane, same credential, and the children do not get the tool
+/// themselves. This lives in one function so both entry points here share it —
+/// they each built the registry separately before, both passed `None`, and the
+/// result was that `delegate` worked headless and was missing from the only
+/// session anyone actually types into.
+fn session_tools(lane_name: &str, token: &Option<String>) -> HarnessToolRegistry {
+    HarnessToolRegistry::with_delegation(
+        None,
+        DelegationGate {
+            lane: lane_name.to_string(),
+            user_token: token.clone(),
+            max_count: crate::delegate::MAX_DELEGATE_COUNT,
+        },
+    )
+}
+
 pub async fn run_tui(
     args: CoderArgs,
     token: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let lane = Lane::from_str(&args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string()));
+    let lane_name = args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
+    let lane = Lane::from_str(&lane_name);
 
     if !is_terminal() {
         return run_without_a_terminal(args, token, lane).await;
     }
 
-    let tools = HarnessToolRegistry::new(None);
+    let tools = session_tools(&lane_name, &token);
     let session = CoderRuntimeSession::new(lane.clone(), None, token, tools);
 
     let (control_tx, control_rx) = unbounded_channel::<Control>();
@@ -454,6 +474,7 @@ async fn run_without_a_terminal(
     token: Option<String>,
     lane: Lane,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let lane_name = args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
     let Some(prompt) = args.prompt else {
         eprintln!(
             "`oa coder` needs a terminal for an interactive session. \
@@ -462,7 +483,7 @@ async fn run_without_a_terminal(
         return Ok(());
     };
 
-    let tools = HarnessToolRegistry::new(None);
+    let tools = session_tools(&lane_name, &token);
     let mut session = CoderRuntimeSession::new(lane, None, token, tools);
     // The reply is printed as it streams. `execute_turn` also returns the last
     // step's text, which is the same text — so it is printed only when nothing
@@ -487,4 +508,40 @@ async fn run_without_a_terminal(
 
 fn is_terminal() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both entry points in this file once built their own registry with
+    /// `HarnessToolRegistry::new(None)`, which carries no delegation gate. The
+    /// symptom was subtle: `oa coder --headless` could start children and the
+    /// interactive session silently could not, because a missing tool looks
+    /// exactly like a model choosing not to call it.
+    #[test]
+    fn an_interactive_session_can_delegate() {
+        let tools = session_tools("ox-alpha", &Some("token".to_string()));
+        let names: Vec<String> = tools.list_tools().into_iter().map(|t| t.name).collect();
+        assert!(
+            names.iter().any(|n| n == "delegate"),
+            "an interactive session got no `delegate` tool; it has {:?}",
+            names
+        );
+    }
+
+    /// The gate carries the lane and credential children spend against. A gate
+    /// that exists but names the wrong lane would start children on the default
+    /// lane while the session runs on another, which is worse than no gate.
+    #[test]
+    fn the_gate_carries_this_sessions_lane_and_credential() {
+        let tools = session_tools("claude", &Some("secret-token".to_string()));
+        let gate = tools
+            .delegation
+            .as_ref()
+            .expect("an interactive session must carry a delegation gate");
+        assert_eq!(gate.lane, "claude");
+        assert_eq!(gate.user_token.as_deref(), Some("secret-token"));
+        assert_eq!(gate.max_count, crate::delegate::MAX_DELEGATE_COUNT);
+    }
 }
