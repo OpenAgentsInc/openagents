@@ -420,18 +420,34 @@ pub async fn run_tui(
     args: CoderArgs,
     api_base: String,
     token: Option<String>,
+    repository: Option<String>,
+    resumed: Option<crate::resume::Resumption>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let lane_name = args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
+    let lane_name = args.lane_name()?;
     let lane = Lane::from_str(&lane_name);
 
     // `--plain` asks for the line-oriented path even on a terminal. Without a
     // terminal there is no full-screen session to run either way.
     if args.plain || !is_terminal() {
-        return run_without_a_terminal(args, api_base, token, lane).await;
+        return run_without_a_terminal(args, api_base, token, repository, lane, resumed).await;
     }
 
     let tools = session_tools(&lane_name, &token);
-    let session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
+    let mut session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
+    session.reasoning = args.reasoning.clone();
+    session.repository = repository;
+    // A resumed thread is adopted before the screen is entered, so its refusal
+    // is readable rather than painted over and wiped on exit.
+    if let Some(resumption) = &resumed {
+        crate::resume::apply(&mut session, resumption).await?;
+        println!(
+            "{}",
+            crate::resume::resumed_line(
+                resumption,
+                session.last_model.as_deref().unwrap_or("an unnamed model")
+            )
+        );
+    }
 
     let (control_tx, control_rx) = unbounded_channel::<Control>();
     let (event_tx, mut event_rx) = unbounded_channel::<TurnEvent>();
@@ -496,9 +512,11 @@ async fn run_without_a_terminal(
     args: CoderArgs,
     api_base: String,
     token: Option<String>,
+    repository: Option<String>,
     lane: Lane,
+    resumed: Option<crate::resume::Resumption>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let lane_name = args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
+    let lane_name = args.lane_name()?;
     let Some(prompt) = args.prompt.clone() else {
         eprintln!(
             "`oa coder` needs a terminal for an interactive session. \
@@ -509,6 +527,18 @@ async fn run_without_a_terminal(
 
     let tools = session_tools(&lane_name, &token);
     let mut session = CoderRuntimeSession::new(lane, Some(api_base), token, tools);
+    session.reasoning = args.reasoning.clone();
+    session.repository = repository;
+    if let Some(resumption) = &resumed {
+        crate::resume::apply(&mut session, resumption).await?;
+        println!(
+            "{}",
+            crate::resume::resumed_line(
+                resumption,
+                session.last_model.as_deref().unwrap_or("an unnamed model")
+            )
+        );
+    }
     // The reply is printed as it streams. `execute_turn` also returns the last
     // step's text, which is the same text — so it is printed only when nothing
     // streamed, which is how the offline paths still say something.

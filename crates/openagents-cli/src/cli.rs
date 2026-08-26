@@ -576,6 +576,70 @@ pub struct CoderArgs {
     #[arg(long, help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex)")]
     pub lane: Option<String>,
 
+    /// Pick the model a turn runs on by its catalog id.
+    ///
+    /// `--lane` deals in tiers; this deals in ids, settled against `GET
+    /// /api/v1/models` before a thread is opened, so an id this deployment
+    /// does not serve is refused by name rather than quietly replaced with the
+    /// default. `ollama:<model>` names a model on this machine.
+    #[arg(
+        long,
+        help = "Model id to answer on, or ollama:<model> for one on this machine"
+    )]
+    pub model: Option<String>,
+
+    /// Answer from an Ollama server on this machine.
+    ///
+    /// The same lane `--lane local` selects. Nothing in the conversation
+    /// leaves the machine and nothing is metered.
+    #[arg(long, help = "Answer from a model running on this machine through Ollama")]
+    pub local: bool,
+
+    /// Answer from the built-in stand-in instead of reaching a model.
+    ///
+    /// A deliberate mode, not a failure path. The live path fails loudly when
+    /// it cannot reach a model — this is the only way to get the stand-in, and
+    /// it opens no thread, spends nothing, and says on every reply that it is
+    /// not a model.
+    #[arg(long, help = "Answer from the built-in stand-in instead of reaching a model")]
+    pub offline: bool,
+
+    /// The effort recorded on the thread as its admitted execution shape.
+    #[arg(
+        long,
+        value_parser = ["minimal", "low", "medium", "high", "max"],
+        help = "Reasoning effort recorded on the thread as its admitted execution shape"
+    )]
+    pub reasoning: Option<String>,
+
+    /// Continue a thread of the account's instead of opening a new one.
+    ///
+    /// Bare `--resume` shows a picker over this repository's recent threads;
+    /// `--resume <id>` names one; `--resume --last` continues the most recent
+    /// without asking.
+    ///
+    /// The id is the flag's own value rather than the positional argument.
+    /// `openagents coder` reads the positional as the id under `--resume`,
+    /// which costs it the ability to resume and say something in the same
+    /// breath; here `oa coder --resume <id> "what did we conclude?"` is both.
+    #[arg(
+        long,
+        num_args = 0..=1,
+        default_missing_value = "",
+        value_name = "ID",
+        help = "Continue a thread instead of opening one. Bare: a picker over this repository's threads"
+    )]
+    pub resume: Option<String>,
+
+    #[arg(long, help = "With --resume, continue the most recent thread without asking")]
+    pub last: bool,
+
+    #[arg(
+        long,
+        help = "With --resume, list every thread on the account rather than this repository's"
+    )]
+    pub all: bool,
+
     #[arg(long, help = "Run in non-interactive headless mode")]
     pub headless: bool,
 
@@ -608,6 +672,116 @@ pub struct CoderArgs {
     )]
     pub dev_port: u16,
 }
+
+/// The lane name `oa coder` runs on when nothing names another.
+const DEFAULT_LANE: &str = "ox-alpha";
+
+impl CoderArgs {
+    /// The lane this invocation asked for, as a name [`crate::runtime::Lane`]
+    /// understands.
+    ///
+    /// Three flags reach the same setting — `--lane` names a tier, `--model`
+    /// names a catalog id, `--local` names this machine — so two of them
+    /// naming different things is a refusal rather than a silent precedence
+    /// order. A reader who wrote both meant one of them and cannot tell which
+    /// one won.
+    pub fn lane_name(&self) -> Result<String, String> {
+        let mut asked: Vec<(&str, String)> = Vec::new();
+        if let Some(lane) = self.lane.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            asked.push(("--lane", lane.to_string()));
+        }
+        if let Some(model) = self.model.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            asked.push(("--model", model.to_string()));
+        }
+        if self.local {
+            asked.push(("--local", "local".to_string()));
+        }
+
+        match asked.len() {
+            0 => Ok(DEFAULT_LANE.to_string()),
+            1 => Ok(asked.remove(0).1),
+            _ => {
+                let resolved: Vec<crate::runtime::Lane> = asked
+                    .iter()
+                    .map(|(_, value)| crate::runtime::Lane::from_str(value))
+                    .collect();
+                // `--local --model ollama:x` is one intent written twice, and
+                // is the one combination that is not a contradiction: `--local`
+                // names the lane and the other names the model on it, so the
+                // more specific one is what was meant. Bare `--local` alone
+                // means "whatever is installed", which contradicts nothing.
+                if resolved.iter().all(crate::runtime::Lane::is_local) {
+                    let named: Vec<&str> = resolved
+                        .iter()
+                        .filter_map(|lane| match lane {
+                            crate::runtime::Lane::Local(model) if !model.is_empty() => {
+                                Some(model.as_str())
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    match named.as_slice() {
+                        [] => return Ok("local".to_string()),
+                        [only] => return Ok(format!("ollama:{only}")),
+                        _ if named.windows(2).all(|pair| pair[0] == pair[1]) => {
+                            return Ok(format!("ollama:{}", named[0]))
+                        }
+                        _ => {}
+                    }
+                }
+                // Two names for one hosted lane is agreement, not a conflict:
+                // `--lane pro` and `--model gpt-5.6-luna` are the same thing
+                // said twice.
+                if resolved.windows(2).all(|pair| pair[0] == pair[1]) {
+                    return Ok(asked.remove(0).1);
+                }
+                let names: Vec<String> = asked
+                    .iter()
+                    .map(|(flag, value)| format!("{flag} {value}"))
+                    .collect();
+                Err(format!(
+                    "{} name different lanes. Give one of them.",
+                    names.join(" and ")
+                ))
+            }
+        }
+    }
+
+    /// Whether any of `--lane`, `--model` or `--local` was written.
+    ///
+    /// A resumed thread already holds the model its grant pins, so naming one
+    /// on the same command line is a flag with nothing to do.
+    pub fn named_a_lane(&self) -> bool {
+        self.lane.is_some() || self.model.is_some() || self.local
+    }
+}
+
+// ---------------------------------------------------------------------------
+// coder: the offline stand-in
+// ---------------------------------------------------------------------------
+
+/// What `--offline` answers with.
+///
+/// A deliberate mode. This text is reachable only when someone asks for it:
+/// the live path fails loudly when it cannot reach a model, and there is no
+/// branch that falls back here. The reply names itself as a stand-in on every
+/// turn, because a reply that reads like a model's and is not one is the
+/// failure this whole flag exists to keep visible.
+pub fn standin_reply(prompt: &str) -> String {
+    let asked = prompt.trim();
+    format!(
+        "[stand-in] No model answered this. `--offline` asked for the built-in \
+         stand-in, so nothing was sent anywhere, no thread was opened, and \
+         nothing was spent.\n\n\
+         You asked: {asked}\n\n\
+         What works without a model: the composer, the transcript, `--plain`, \
+         `--export`, and the tool registry. Drop `--offline` to reach a model, \
+         or use `--local` for one on this machine."
+    )
+}
+
+/// The label a stand-in session reports where a model id would go.
+pub const STANDIN_MODEL: &str = "stand-in (no model attached)";
 
 // ---------------------------------------------------------------------------
 // delegate
@@ -1107,16 +1281,89 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 api_base.clone()
             };
+            // Flags that name the same setting differently are refused before
+            // anything runs. Every one of these is a combination where one
+            // flag would have to be ignored, and a flag that is ignored is a
+            // flag that lied.
+            if let Err(reason) = coder.lane_name() {
+                fail(&reason);
+            }
+            let resuming = coder.resume.is_some();
+            if coder.offline && resuming {
+                fail("--resume reads the thread from the server; it cannot combine with --offline");
+            }
+            if coder.offline && coder.named_a_lane() {
+                fail(
+                    "--offline answers from the built-in stand-in and reaches no model, \
+                     so it cannot combine with --lane, --model or --local",
+                );
+            }
+            if coder.offline && coder.reasoning.is_some() {
+                fail(
+                    "--offline opens no thread, and --reasoning is recorded on a thread. \
+                     Drop one of them.",
+                );
+            }
+            if (coder.last || coder.all) && !resuming {
+                fail("--last and --all say which thread to continue, so they need --resume");
+            }
+            if resuming && coder.named_a_lane() {
+                fail(
+                    "a resumed thread answers on the model its own grant pins, \
+                     so --resume cannot combine with --lane, --model or --local",
+                );
+            }
+            if resuming && coder.reasoning.is_some() {
+                fail(
+                    "a resumed thread already carries the effort it was opened with, \
+                     so --resume cannot combine with --reasoning",
+                );
+            }
+
             if coder.delegate {
                 crate::delegate::run_delegation(
                     crate::delegate::DelegationRequest::from_coder(coder),
                     token,
                 )
                 .await?;
-            } else if coder.headless {
-                run_headless_coder(coder, &session_base, token).await?;
+            } else if coder.offline {
+                run_offline_coder(coder);
             } else {
-                crate::interactive::run_tui(coder, session_base, token).await?;
+                // What a thread is recorded against, and what `--resume`
+                // filters the picker to. A directory that is not an OpenAgents
+                // checkout has none, which is not an error: the thread is
+                // simply not attributable to a repository.
+                let repository = crate::repo::infer_repository(&endpoint.origin, None).ok();
+                // `--resume` is settled before anything draws: the picker
+                // prints to the normal screen, and a refusal has to be
+                // readable rather than painted over by the full-screen
+                // session and wiped on exit.
+                let resumed = if let Some(named) = coder.resume.as_deref() {
+                    let interactive =
+                        !coder.plain && !cli.json && std::io::IsTerminal::is_terminal(&std::io::stdin());
+                    let request = crate::resume::ResumeRequest {
+                        thread_id: Some(named).filter(|id| !id.is_empty()),
+                        last: coder.last,
+                        all: coder.all,
+                        repository: repository.clone(),
+                        interactive,
+                    };
+                    match crate::resume::resolve(&session_base, token.as_deref(), request).await {
+                        Ok(Some(resumption)) => Some(resumption),
+                        // An empty answer at the picker cancels, and cancelling
+                        // is not a failure.
+                        Ok(None) => return Ok(()),
+                        Err(reason) => fail(&reason),
+                    }
+                } else {
+                    None
+                };
+                if coder.headless {
+                    run_headless_coder(coder, &session_base, token, repository, resumed).await?;
+                } else {
+                    crate::interactive::run_tui(coder, session_base, token, repository, resumed)
+                        .await?;
+                }
             }
         }
         Commands::Delegate(args) => {
@@ -1410,6 +1657,10 @@ async fn run_auth_login(
             verification_uri_complete: pending.verification_uri_complete.clone(),
             expires_in: remaining,
             interval: pending.interval,
+            // The pending record predates the scope field and holds no scope.
+            // The authorization the server already opened decides it, and this
+            // path only waits for that one to be approved.
+            scope: None,
         };
         let token = or_fail(devices.wait(&authorization).await);
         or_fail(store.store(&token));
@@ -1444,12 +1695,18 @@ async fn run_auth_login(
                 "verification_url": authorization.verification_uri_complete,
                 "user_code": authorization.user_code,
                 "expires_in": authorization.expires_in,
+                "scope": authorization.scope,
                 "resume_command": resume_command,
             }));
         } else {
             println!("OpenAgents authorization is ready.");
             println!("Open this URL: {}", authorization.verification_uri_complete);
             println!("Authorization code: {}", authorization.user_code);
+            // What the approval page will ask the reader to grant. The server
+            // settles this: `--scope` asks and the deployment decides.
+            if let Some(scope) = authorization.scope.as_deref().filter(|s| !s.is_empty()) {
+                println!("Scope requested: {scope}");
+            }
             println!("After you approve the request, run: {resume_command}");
         }
         return;
@@ -1460,6 +1717,9 @@ async fn run_auth_login(
         authorization.verification_uri_complete
     );
     eprintln!("OpenAgents authorization code: {}", authorization.user_code);
+    if let Some(scope) = authorization.scope.as_deref().filter(|s| !s.is_empty()) {
+        eprintln!("Scope requested: {scope}");
+    }
     if !crate::auth::open_browser(&authorization.verification_uri_complete) {
         eprintln!("The browser did not open. Open the authorization URL above.");
     }
@@ -3874,6 +4134,43 @@ fn run_provider(action: ProviderAction, json: bool) {
 }
 
 // ---------------------------------------------------------------------------
+// coder: the offline stand-in
+// ---------------------------------------------------------------------------
+
+/// `oa coder --offline`.
+///
+/// One turn, line-oriented, from [`standin_reply`]. It opens no socket at all,
+/// so it answers with the network down — which is the whole point, and the
+/// only reason the stand-in exists.
+///
+/// This is a mode someone asked for, not a fallback someone landed in. The
+/// live path in [`crate::runtime`] fails loudly when it cannot reach a model
+/// and there is no branch from there to here. The inversion this replaces was
+/// the reverse: a rejected request answered with the sentence `Completed
+/// autonomous reasoning turn (offline fallback).` and exit 0, with no flag
+/// that could ask for it.
+fn run_offline_coder(coder: CoderArgs) {
+    let Some(prompt) = coder.prompt.as_deref().map(str::trim).filter(|p| !p.is_empty()) else {
+        fail(
+            "--offline answers one prompt from the built-in stand-in. Give it one: \
+             `oa coder --offline \"<prompt>\"`",
+        );
+    };
+    let answer = standin_reply(prompt);
+    println!("{answer}");
+    println!("\nModel: {STANDIN_MODEL}");
+    if let Some(path) = coder.export.as_deref() {
+        let transcript = crate::interactive::transcript_of(prompt, &answer);
+        if let Err(error) = std::fs::write(path, &transcript) {
+            fail(&format!(
+                "could not write the transcript to {path}: {error}"
+            ));
+        }
+        println!("Transcript written to {path}");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // coder: headless
 // ---------------------------------------------------------------------------
 
@@ -3886,13 +4183,15 @@ async fn run_headless_coder(
     coder: CoderArgs,
     api_base: &str,
     token: Option<String>,
+    repository: Option<String>,
+    resumed: Option<crate::resume::Resumption>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let prompt = coder
         .prompt
         .clone()
         .unwrap_or_else(|| "Analyze workspace and run tests".to_string());
     println!("Executing coder prompt headlessly: {}", prompt);
-    let lane_name = coder.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
+    let lane_name = coder.lane_name().unwrap_or_else(|reason| fail(&reason));
     // A headless session may start children. They run on the same lane and the
     // same credential, and they do not get the tool themselves.
     let tools = crate::tools::HarnessToolRegistry::with_delegation(
@@ -3910,6 +4209,20 @@ async fn run_headless_coder(
         token,
         tools,
     );
+    runtime.reasoning = coder.reasoning.clone();
+    runtime.repository = repository;
+    if let Some(resumption) = &resumed {
+        if let Err(reason) = crate::resume::apply(&mut runtime, resumption).await {
+            fail(&reason);
+        }
+        println!(
+            "{}",
+            crate::resume::resumed_line(
+                resumption,
+                runtime.last_model.as_deref().unwrap_or("an unnamed model")
+            )
+        );
+    }
     let result = runtime
         .execute_turn(&prompt, |chunk| {
             print!("{}", chunk);

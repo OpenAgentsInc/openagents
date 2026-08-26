@@ -28,6 +28,7 @@ pub mod memory_client;
 pub mod plugins;
 pub mod provider;
 pub mod repo;
+pub mod resume;
 pub mod runtime;
 pub mod signals;
 pub mod tools;

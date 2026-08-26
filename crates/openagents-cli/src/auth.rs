@@ -847,6 +847,17 @@ pub struct DeviceAuthorization {
     pub verification_uri_complete: String,
     pub expires_in: i64,
     pub interval: u64,
+    /// The scopes this authorization was opened for, as the server settled
+    /// them.
+    ///
+    /// The server's answer, not the request: `--scope` asks, and the
+    /// deployment decides — an unknown scope is refused outright, and asking
+    /// for nothing takes the server's own default set. Carried here and
+    /// reported so `--scope` has a visible effect. Without it the flag reached
+    /// the wire and nothing a reader could see ever changed, which is
+    /// indistinguishable from the flag not being read at all.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 /// One poll of the token endpoint.

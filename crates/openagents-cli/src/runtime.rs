@@ -267,6 +267,19 @@ pub struct CoderRuntimeSession {
     /// answer. It is parsed, summed and kept here so a caller that wants to
     /// show it can, and the transcript stays the answer.
     pub last_reasoning: String,
+    /// The effort recorded on the thread as its admitted execution shape.
+    ///
+    /// `--reasoning`. Sent as the thread's `reasoning` at open, which is the
+    /// only place the server takes it: `GET /api/v1/threads` reports it back
+    /// as `reasoning_effort`, and the proxy reads it from the thread rather
+    /// than from each request. `None` leaves the deployment's own default.
+    pub reasoning: Option<String>,
+    /// The repository this session was opened from, as `owner/name`.
+    ///
+    /// Recorded on the thread so `--resume` has something to filter on. A
+    /// thread with no repository is not attributable to a checkout and shows
+    /// up only under `--resume --all`.
+    pub repository: Option<String>,
     pub api_base: String,
     pub user_token: Option<String>,
     pub ollama_host: String,
@@ -290,6 +303,8 @@ impl CoderRuntimeSession {
             last_model: None,
             last_usage: TurnUsage::default(),
             last_reasoning: String::new(),
+            reasoning: None,
+            repository: None,
             // `OPENAGENTS_API_BASE` points the session at another host. A test
             // that has to prove the streaming path end to end needs somewhere
             // to point it that is not production, and an operator on staging
@@ -483,6 +498,17 @@ impl CoderRuntimeSession {
         if let Some(model) = self.lane.model_id() {
             body["model"] = serde_json::json!(model);
         }
+        // `--reasoning`. The thread carries the effort; the proxy reads it from
+        // there. Omitted, the deployment's own default stands, which is a
+        // different answer from naming one and worth keeping separate.
+        if let Some(effort) = &self.reasoning {
+            body["reasoning"] = serde_json::json!(effort);
+        }
+        // What `--resume` filters on. A thread with no repository is not
+        // attributable to a checkout.
+        if let Some(repository) = &self.repository {
+            body["repository"] = serde_json::json!(repository);
+        }
 
         let resp = self
             .http
@@ -548,6 +574,70 @@ impl CoderRuntimeSession {
             proxy_url,
             model,
         })
+    }
+
+    /// Continue an existing thread by asking the server to re-mint its
+    /// authority.
+    ///
+    /// `POST /api/v1/threads/{id}/grants` is the server's resume fence: it
+    /// revokes every active grant naming the thread, bumps the thread's
+    /// generation, and mints fresh authority against the same thread. That is
+    /// the only honest way to spend a thread that already exists — the grant's
+    /// plaintext token exists exactly once, at minting, so `GET
+    /// /api/v1/threads/{id}` reports the grant's status and never its token.
+    ///
+    /// After this the session holds the resumed thread the way it would hold
+    /// one it opened: [`Self::close`] revokes it and turns spend against it.
+    pub async fn adopt_thread(&mut self, thread_id: &str) -> Result<InferenceGrant, Failure> {
+        let url = format!("{}/threads/{thread_id}/grants", self.api_base);
+        let mut request = self.http.post(&url).json(&serde_json::json!({}));
+        if let Some(token) = &self.user_token {
+            request = request.bearer_auth(token);
+        }
+        let resp = request
+            .send()
+            .await
+            .map_err(|error| -> Failure { format!("{url} could not be reached: {error}").into() })?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!(
+                "{url} refused to re-mint the thread's grant: {status} {}",
+                snippet(&text)
+            )
+            .into());
+        }
+        let body: serde_json::Value = resp.json().await?;
+        let grant = body.get("grant").cloned().unwrap_or(serde_json::json!({}));
+        let field = |name: &str| -> Result<String, Failure> {
+            grant
+                .get(name)
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| -> Failure {
+                    format!(
+                        "{url} re-minted thread {thread_id} but the grant names no {name}, \
+                         so there is no authority to spend it with"
+                    )
+                    .into()
+                })
+        };
+        let grant = InferenceGrant {
+            thread_id: body
+                .get("thread")
+                .and_then(|t| t.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(thread_id)
+                .to_string(),
+            token: field("token")?,
+            proxy_url: field("url")?,
+            model: field("model")?,
+        };
+        self.thread_id = Some(grant.thread_id.clone());
+        self.last_model = Some(grant.model.clone());
+        self.last_grant = Some(grant.clone());
+        Ok(grant)
     }
 
     /// Revoke this session's thread.
