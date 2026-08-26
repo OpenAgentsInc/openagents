@@ -289,18 +289,18 @@ where
 
     match update.get("sessionUpdate").and_then(|v| v.as_str()) {
         Some("tool_call") => {
-            on_event(AcpEvent::Tool {
-                kind: update
-                    .get("kind")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("tool")
-                    .to_string(),
-                title: update
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            });
+            let kind = update
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("tool")
+                .to_string();
+            let title = update
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            answer.push_str(&format!("[{}] {}\n", kind, title));
+            on_event(AcpEvent::Tool { kind, title });
         }
         Some("usage_update") => {
             let meta = update.get("_meta").cloned().unwrap_or(serde_json::json!({}));
