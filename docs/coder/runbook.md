@@ -64,6 +64,7 @@ it by hand and say in the issue that you did.
   ```
 
   `pnpm pack`, never `npm pack` (best practice R1).
+
 - **Ollama** with the local-lane model pulled, for local-lane runs. Local
   runs need no token; keep `--n-concurrent 1` because the model owns the
   cores.
@@ -159,6 +160,7 @@ measuring suite, the lever is not ready for a cycle.
    axis: rounds, prompt tokens, and wall clock per accepted outcome are
    where process levers show first (the fix-git analysis is the worked
    example).
+
 5. **Decide.** Improved or neutral-but-simpler: keep. Worse: revert the
    lever, keep the recorded row (best practice M3), and write the refutation
    into the review. Timeout-shaped failures are not efficiency signal —
@@ -202,31 +204,49 @@ agent context whose only inputs are the artifacts:
 - the two store rows (before and after),
 - the current `docs/coder/best-practices.md`.
 
-Review prompt skeleton:
+Assembling those by hand is what `coder:review` does mechanically
+(OpenAgentsInc/openagents#121):
 
-```
-You are reviewing one autoimprovement cycle of `openagents coder`.
-
-<lever>{what changed, and the predicted delta}</lever>
-<baseline-row>{jsonl row}</baseline-row>
-<result-row>{jsonl row}</result-row>
-<trials>{per-trial: instruction, verifier decision, ATIF metrics,
-notable transcript spans}</trials>
-<diff>{the lever's diff}</diff>
-<practices>{docs/coder/best-practices.md}</practices>
-
-Score the cycle 0–10 with specific evidence for each point gained or
-lost. Answer: did the lever cause the delta, or does a confounder
-explain it? Were any ledger practices violated (cite the entry and the
-transcript step)? Propose one to three changes, each typed as
-{lever, evidence: trajectory steps, risk, verification: suite and
-expected delta direction}. Finally, list ledger entries to add, promote,
-demote, or refute, with provenance.
+```sh
+pnpm run coder:review -- /tmp/gym-jobs/<job>/<run> \
+  --suite tb2-quick --lane proxy --lever HEAD~1 \
+  --slug <lever-slug> \
+  --reviewer-model <a model from a different family than the cycle ran on>
 ```
 
-The review must cite trajectory steps for every claim; a proposal without
-an evidence pointer is rejected at the adopt step. Save the output to
-`docs/coder/reviews/YYYY-MM-DD-<lever-slug>.md`.
+It reads the job directory, redacts everything through the one ATIF rule
+list before it leaves the process, renders the prompt with the citable
+evidence refs printed in it, asks the reviewer, checks every citation, and
+writes `docs/coder/reviews/YYYY-MM-DD-<lever-slug>.md` plus the
+machine-readable review beside it. Name the lever with `--lever <ref>`,
+`--diff <file>`, or `--no-diff` for a baseline: a review that cannot see the
+change cannot attribute the delta to it. The reviewer is reached over
+`/api/v1/responses` at `--api-url` (default `$OPENAGENTS_CODER_API_URL`,
+else `http://localhost:4000`) with `$OPENAGENTS_TOKEN`.
+
+**Every claim carries refs, and the refs are checked.** The grammar is
+`trial:<task>#step-<id>`, `trial:<task>#outcome`, `row:<suite>#<recordedAt>`,
+`ledger:<id>`, and `diff:<path>`, resolved against the artifacts the
+reviewer actually read — a truncated trajectory's dropped steps are not
+citable, and the prompt says so. Every proposal must cite at least one
+trajectory step: a store row or a ledger entry says what changed, never
+what the coder did. A review with an unresolvable ref is refused whole,
+by name, and nothing is written.
+
+Exit codes: `0` accepted and written, `1` the reviewer answered and the
+answer was refused (the named reasons are on stderr), `2` the review could
+not be run at all — no job directory, no lever, no reviewer.
+
+Two flags matter for the lanes below the live one:
+
+- `--print-prompt` renders the prompt and exits without asking anyone. This
+  is the manual §6 lane: paste it into a fresh agent context and save the
+  answer.
+- `--offline <file>` **replays** a recorded reviewer response instead of
+  asking a model. It replays; it never generates. Its ref says `replay:` in
+  the review file, so a replayed review cannot be read as a fresh judgment.
+  There is no third behavior — a canned score would be the exact failure
+  this command exists to prevent.
 
 ## 7. Record, adopt, land
 
@@ -234,10 +254,10 @@ an evidence pointer is rejected at the adopt step. Save the output to
    `docs/coder/best-practices.md` (checking new entries against existing
    ones for contradiction), carry rejected proposals into the review file
    with a one-line reason.
-2. **Commit** the cycle as one unit: the lever, the review file, the ledger
-   change, and the appended store rows. The commit message states the lever
-   and the measured delta with its suite — a number, not an adjective
-   (best practice V3).
+2. **Commit** the cycle as one unit: the lever, the review file and the JSON
+   written beside it, the ledger change, and the appended store rows. The
+   commit message states the lever and the measured delta with its suite — a
+   number, not an adjective (best practice V3).
 3. **Push to the forge** (`git push openagents HEAD:main`), reconcile the
    canonical checkout, remove the worktree.
 
@@ -299,9 +319,19 @@ an evidence pointer is rejected at the adopt step. Save the output to
   (OpenAgentsInc/openagents.com#220); until then, metered-lane dollar
   figures are ceilings, and lane comparisons lean on success rate and
   rounds.
-- The PTY-driven interactive harness (autoimprove §7.4) does not exist
-  yet; best practice V2 is enforced by rule, not by gate.
-- The optimizer lane (autoimprove §2.4) does not exist yet. The text
-  surfaces it would mutate are still string literals in the two CLIs
-  rather than staged artifacts; until that lands, every cycle is a
-  hand-written lever and the ledger's O-series applies to nothing running.
+- The PTY-driven interactive harness (autoimprove §7.4) exists for
+  coder-lite as `cargo test -p coder-lite --test interactive_pty` (§0). The
+  completion gate does not run it (#124), so best practice V2 is enforced by
+  rule for every surface the gate does reach, and by that harness for the
+  one it does not.
+- The automated review (autoimprove §7.5) exists as `pnpm run coder:review`
+  (#121). Its candidate schema, `openagents.coder_candidate.v1` in
+  `packages/openagents-cli/src/coder-review-candidate.ts`, is the object
+  #122 staged surfaces for and #123's optimizer will mutate; a review
+  proposal and an optimizer mutation are the same type, documented in
+  `docs/coder/candidate-format.md`. No review has been recorded through it
+  yet, so `docs/coder/reviews/` holds only its README.
+- The optimizer lane (autoimprove §2.4) does not exist yet, but the text it
+  would mutate is now staged (#122): `surfaces/coder/`, pinned by digest and
+  guarded by `check:coder-surfaces`. Until #123 lands, every cycle is still a
+  hand-written lever, and the ledger's O-series applies to nothing running.

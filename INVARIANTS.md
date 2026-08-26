@@ -1085,11 +1085,13 @@ come from the Freerange teardown
   `openagents-cli-identity`, keyed by the identity directory; the key never
   enters the identity directory, so a copy of that directory is not an identity.
   The envelope (`openagents.cli_identity_seed.v1`), the AEAD, the keychain
-  service, and the account key are one contract across
-  `crates/openagents-cli/src/identity.rs` and
-  `packages/openagents-cli/src/seed-identity.ts`: a format only one CLI
-  understands makes the other a downgrade attack on it, because both read one
-  file at one path.
+  service, and the account key are one contract, owned by
+  `packages/openagents-cli/src/seed-identity.ts`. It was written as a contract
+  across two CLIs because both read one file at one path, so a format only one
+  of them understood would be a downgrade attack on the other. The Rust CLI's
+  identity surface was removed on 2026-08-26 in `02cdaea275` — nothing consumed
+  the identity it derived — which leaves one reader. Any second reader of that
+  path re-enters the contract exactly as written above.
 - Where no keychain exists — CI, a container, an unattended agent host — the
   phrase is stored as plaintext `0600` and every surface that shows an identity
   must say so. `identity show`, `create`, `import`, and `backup` carry the
@@ -1100,10 +1102,10 @@ come from the Freerange teardown
 - A plaintext seed written before this was migrated on the next `identity`
   command by renaming the sealed envelope over the same path, so the phrase is
   never in two places at once. Coverage is
-  `crates/openagents-cli/tests/identity_test.rs` and
-  `packages/openagents-cli/test/seed-identity.test.ts`, which assert the bytes on
-  disk carry no word of the phrase, and that migration preserves the `npub`
-  while removing the plaintext.
+  `packages/openagents-cli/test/seed-identity.test.ts`, which asserts the bytes
+  on disk carry no word of the phrase, and that migration preserves the `npub`
+  while removing the plaintext. Its Rust counterpart went with the surface it
+  covered in `02cdaea275`.
 - The wallet receives; it does not spend. The spending rail is an owner decision
   that is not recorded, so no CLI surface may imply a spend path exists until it
   is.

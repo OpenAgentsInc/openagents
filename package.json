@@ -176,6 +176,7 @@
     "check:assure-repo-audit": "node --import tsx packages/assure-repo/src/cli.ts audit-check",
     "effectiveness:compare": "node --import tsx packages/coder-effectiveness/src/compare-cli.ts",
     "effectiveness:report": "node --import tsx packages/coder-effectiveness/src/cli.ts",
+    "coder:review": "node --import tsx packages/openagents-cli/src/coder-review-cli.ts",
     "effectiveness:suites": "node bench/build-suites.mjs",
     "test:coder-effectiveness": "vp test --run packages/coder-effectiveness/src",
     "test:product-spec": "vp test --run packages/product-spec",

@@ -419,11 +419,16 @@ export class PostgresCloudComputerCommandStore {
     assertDigest(input.capabilityDigest, "capability digest");
     assertDigest(input.budgetSnapshotDigest, "budget snapshot digest");
     input.capabilityRefs.forEach((ref) => assertRef(ref, "capability ref"));
+    // `budgetLimits` is an open record, so its `outputBytes` may be absent.
+    // An absent output bound is already rejected by the safe-integer test; it is
+    // named here so the type says what the test was always enforcing.
+    const outputBytes: number | undefined = input.budgetLimits["outputBytes"];
     if (
       !input.workingDirectory.startsWith("/") ||
       input.workingDirectory.includes("\0") ||
-      !Number.isSafeInteger(input.budgetLimits.outputBytes) ||
-      input.budgetLimits.outputBytes < 0 ||
+      outputBytes === undefined ||
+      !Number.isSafeInteger(outputBytes) ||
+      outputBytes < 0 ||
       Object.values(input.budgetLimits).some((value) => !Number.isSafeInteger(value) || value < 0)
     )
       throw new CloudComputerCommandStoreError("invalid", "request authority is invalid");

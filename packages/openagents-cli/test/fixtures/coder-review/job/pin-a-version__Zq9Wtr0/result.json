@@ -1,0 +1,14 @@
+{
+  "id": "f1x7u12e-0000-4000-8000-00000000000b",
+  "task_name": "pin-a-version",
+  "trial_name": "pin-a-version__Zq9Wtr0",
+  "source": "terminal-bench",
+  "verifier_result": { "rewards": { "reward": 0.0 } },
+  "exception_info": null,
+  "started_at": "2026-08-26T09:03:10.000000Z",
+  "finished_at": "2026-08-26T09:06:40.000000Z",
+  "agent_execution": {
+    "started_at": "2026-08-26T09:03:20.000000Z",
+    "finished_at": "2026-08-26T09:06:20.000000Z"
+  }
+}

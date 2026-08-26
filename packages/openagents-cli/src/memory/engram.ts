@@ -206,7 +206,11 @@ export const redactEngramContent = (
   }
 
   const categories = Object.keys(counts);
-  const hard = new Set(ENGRAM_HARD_UNSAFE_CATEGORIES as unknown as ReadonlyArray<string>);
+  // `new Set(...)` on an `as const` tuple infers a set of the literal union,
+  // whose `has` then refuses the `string` keys it is being asked about. Widening
+  // the element type at construction says the same thing without a cast, which
+  // AFS authority code may not use to recover type safety.
+  const hard = new Set<string>(ENGRAM_HARD_UNSAFE_CATEGORIES);
   const storable = categories.every((category) => !hard.has(category));
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -365,7 +369,7 @@ export const verifyEngramEventId = (event: EngramEvent): boolean =>
  */
 export const verifySupersessionChain = (events: ReadonlyArray<EngramEvent>): boolean => {
   for (let i = 0; i < events.length; i += 1) {
-    const event = events[i];
+    const event = events[i]!;
     if (!verifyEngramEventId(event)) {
       return false;
     }

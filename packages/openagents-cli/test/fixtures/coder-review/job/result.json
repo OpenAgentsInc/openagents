@@ -1,0 +1,26 @@
+{
+  "id": "f1x7u12e-0000-4000-8000-000000000001",
+  "started_at": "2026-08-26T09:00:00.000000",
+  "finished_at": "2026-08-26T09:06:40.000000",
+  "n_total_trials": 2,
+  "stats": {
+    "n_completed_trials": 2,
+    "n_errored_trials": 0,
+    "evals": {
+      "openagents-coder__fixture-model__terminal-bench": {
+        "n_trials": 2,
+        "n_errors": 0,
+        "reward_stats": {
+          "reward": {
+            "1.0": ["regex-log__F1xTur3"],
+            "0.0": ["pin-a-version__Zq9Wtr0"]
+          }
+        }
+      }
+    },
+    "n_input_tokens": null,
+    "n_cache_tokens": null,
+    "n_output_tokens": null,
+    "cost_usd": null
+  }
+}

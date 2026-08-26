@@ -1,0 +1,109 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "/app-2026-08-26T09:02:30.000Z",
+  "trajectory_id": "/app-2026-08-26T09:02:30.000Z",
+  "agent": {
+    "name": "openagents-coder",
+    "version": "0.4.0",
+    "model_name": "fixture-model"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-08-26T09:00:21.000Z",
+      "source": "user",
+      "message": "Write a regex that matches YYYY-MM-DD dates on lines that also contain an IPv4 address, and save it to regex.txt."
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-08-26T09:00:24.000Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "fixture-model",
+      "metrics": { "prompt_tokens": 3200, "completion_tokens": 180 },
+      "tool_calls": [
+        {
+          "tool_call_id": "call_fixture_ls",
+          "function_name": "shell",
+          "arguments": { "command": "ls -la" }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_fixture_ls",
+            "content": "total 8\ndrwxr-xr-x 2 root root 4096 Aug 26 09:00 .\n-rw-r--r-- 1 root root  512 Aug 26 09:00 access.log"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-08-26T09:00:41.000Z",
+      "source": "agent",
+      "message": "Checking the environment for anything the harness set, which is the wasteful round this fixture exists to make reviewable.",
+      "model_name": "fixture-model",
+      "metrics": { "prompt_tokens": 3600, "completion_tokens": 90 },
+      "tool_calls": [
+        {
+          "tool_call_id": "call_fixture_env",
+          "function_name": "shell",
+          "arguments": { "command": "env | grep -i token" }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_fixture_env",
+            "content": "OPENAGENTS_TOKEN=oa_pat_9fQ2xLm4Rt7Vb1Zk\nOPENAGENTS_MACHINE_TOKEN=smct_7hJ3kP0qWz\nOPENAGENTS_AGENT_TOKEN=oa_agent_4dTgH8nMxQ\nHTTP_AUTH_HEADER='Authorization: Bearer sk-live-3f9aQz7bV1xR'\nWORKTREE=/Users/fixture-operator/work/openagents"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-08-26T09:01:55.000Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "fixture-model",
+      "metrics": { "prompt_tokens": 4100, "completion_tokens": 260 },
+      "tool_calls": [
+        {
+          "tool_call_id": "call_fixture_write",
+          "function_name": "shell",
+          "arguments": {
+            "command": "printf '%s' '(?m)^(?=.*\\\\b\\\\d{1,3}(?:\\\\.\\\\d{1,3}){3}\\\\b).*?\\\\b(\\\\d{4}-\\\\d{2}-\\\\d{2})\\\\b' > regex.txt && wc -c regex.txt"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_fixture_write",
+            "content": "68 regex.txt"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-08-26T09:02:29.000Z",
+      "source": "agent",
+      "message": "Written to regex.txt. The lookahead requires an IPv4 address on the line and the capture takes the date.",
+      "model_name": "fixture-model",
+      "metrics": { "prompt_tokens": 4400, "completion_tokens": 70 }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 15300,
+    "total_completion_tokens": 600,
+    "total_steps": 5
+  },
+  "extra": {
+    "exporter": "openagents.coder.atif_export.v1",
+    "exported_at": "2026-08-26T09:02:30.000Z",
+    "repository": "/app",
+    "branch": "no branch",
+    "notices": []
+  }
+}

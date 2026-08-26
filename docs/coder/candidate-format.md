@@ -46,7 +46,7 @@ CoderCandidate {
   lineage: {
     origin:      "review" | "optimizer" | "human"
     parent:      string | null            // the candidateId this came from
-    producedBy:  string                   // e.g. "coder review-run:<reviewId>"
+    producedBy:  string                   // e.g. "coder-review:<jobDir>:<reviewer ref>"
   }
   transferLabel: { modelFamily: string, lane: string }
   evidence:      [{ ref: string, note: string }]
@@ -79,11 +79,11 @@ pool entry, not a receipt. `bench-results` owns tamper-evidence; borrowing its
 `surfaces[].surface` names a staged artifact from `surfaces/coder/index.json`.
 The whole current vocabulary:
 
-| `surface` | Artifact | What it holds |
-| --- | --- | --- |
-| `system-prompt` | `surfaces/coder/system-prompt.v1.json` | The instructions, the concision sentence, the no-tools and tool-list sentences, and the lane notices, for all three harnesses |
-| `tool-descriptions` | `surfaces/coder/tool-descriptions.v1.json` | The description of each declared tool, plus the per-model-family emphasis overrides |
-| `catalog-lines` | `surfaces/coder/catalog-lines.v1.json` | Each installed plugin's catalog line, keyed by plugin id |
+| `surface`           | Artifact                                   | What it holds                                                                                                                 |
+| ------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `system-prompt`     | `surfaces/coder/system-prompt.v1.json`     | The instructions, the concision sentence, the no-tools and tool-list sentences, and the lane notices, for all three harnesses |
+| `tool-descriptions` | `surfaces/coder/tool-descriptions.v1.json` | The description of each declared tool, plus the per-model-family emphasis overrides                                           |
+| `catalog-lines`     | `surfaces/coder/catalog-lines.v1.json`     | Each installed plugin's catalog line, keyed by plugin id                                                                      |
 
 `diff` is a unified diff over that artifact file where one exists, and the
 proposed text otherwise. The artifact's `text` map is flat and keyed, so a
