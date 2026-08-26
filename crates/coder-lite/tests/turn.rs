@@ -178,6 +178,7 @@ fn session(base: &str, tx: Sender<Control>) -> Session {
         Vec::new(),
         base.to_string(),
         Some("oat_test".to_string()),
+        false,
         tx,
     )
 }

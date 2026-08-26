@@ -40,10 +40,9 @@ Options:
                      that already is.
   --lane <name>      Which model answers. `auto` leaves it to the deployment;
                      `flash` and `pro` are tiers; `local` or `ollama:<model>`
-                     answers from this machine; `openresponses` or
-                     `openresponses:<model>` uses the OpenResponses surface;
-                     any other name is checked against GET /api/v1/models and
-                     refused if it is not served. Defaults to `auto`.
+                     answers from this machine; any other name is checked
+                     against GET /api/v1/models and refused if it is not
+                     served. Defaults to `auto`.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to
                      leave the deployment's own default.
   -h, --help         Print this and exit.
@@ -78,13 +77,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     env::set_var("OPENAGENTS_API_URL", DEV_API_URL);
                     env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
                 }
-                // --dev routes through the OpenResponses streaming surface.
-                options.lane_name = if options.lane_name == "auto" {
-                    "openresponses".to_string()
-                } else {
-                    format!("openresponses:{}", options.lane_name)
-                };
             }
+            options.dev = dev;
             options
         }
         Ok(Parsed::Said) => return Ok(()),
@@ -112,6 +106,7 @@ fn parse(arguments: &[String]) -> Result<Parsed, String> {
     let mut options = SessionOptions {
         lane_name: "auto".to_string(),
         reasoning: None,
+        dev: false,
     };
     let mut dev = false;
     let mut index = 0;

@@ -171,6 +171,7 @@ impl Session {
         lane_name: &str,
         reasoning: Option<String>,
         agents: Vec<crate::acp::Agent>,
+        dev: bool,
         tx: Sender<Control>,
     ) -> Self {
         Self::open_at(
@@ -180,6 +181,7 @@ impl Session {
             agents,
             api_base(),
             user_token(),
+            dev,
             tx,
         )
     }
@@ -198,6 +200,7 @@ impl Session {
         agents: Vec<crate::acp::Agent>,
         api_base: String,
         token: Option<String>,
+        dev: bool,
         tx: Sender<Control>,
     ) -> Self {
         let mut tools = HarnessToolRegistry::with_delegation(
@@ -270,7 +273,8 @@ impl Session {
                 );
                 send(&observed, Control::ToolDone { call_id, is_error });
             }
-        }));
+        }))
+        .use_openresponses(dev);
         inner.reasoning = reasoning;
         inner.repository = repository();
 

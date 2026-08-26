@@ -52,6 +52,8 @@ pub struct SessionOptions {
     /// `--reasoning`, recorded on the thread at open. `None` leaves the
     /// deployment's own default, which is a different answer from naming one.
     pub reasoning: Option<String>,
+    /// `--dev` routes to the OpenResponses streaming surface.
+    pub dev: bool,
 }
 
 pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -99,6 +101,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 &options.lane_name,
                 options.reasoning.clone(),
                 agents.clone(),
+                options.dev,
                 tx.clone(),
             ))));
             ui.entries.push(Entry::new(
@@ -196,6 +199,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 &options.lane_name,
                                 options.reasoning.clone(),
                                 agents.clone(),
+                                options.dev,
                                 tx.clone(),
                             ))));
                             ui.entries.push(Entry::new(

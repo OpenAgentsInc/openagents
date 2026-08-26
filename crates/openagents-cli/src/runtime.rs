@@ -189,10 +189,6 @@ pub enum Lane {
     Pro,
     /// A model id named directly, checked against `GET /api/v1/models`.
     Named(String),
-    /// The OpenResponses surface (`POST /api/v1/responses`), optionally pinned
-    /// to a model id. No thread is opened; the whole conversation is sent each
-    /// turn and the response streams as server-sent events.
-    OpenResponses(Option<String>),
     /// Ollama on this machine. An empty string means "whatever is installed".
     Local(String),
 }
@@ -203,25 +199,16 @@ impl Lane {
     /// settles it and the refusal can name what this deployment serves.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
-        let lower = s.trim().to_lowercase();
-        match lower.as_str() {
+        match s.trim().to_lowercase().as_str() {
             "" | "auto" => Lane::Auto,
             "ox-alpha" | "ox" | "openagents" => Lane::OxAlpha,
             "flash" | "coder-flash" | "gemini" | "gemini-flash" | "gemini-3.7-flash" => Lane::Flash,
             "pro" | "coder-pro" | "gpt-5.6-luna" | "luna" => Lane::Pro,
-            "openresponses" | "dev" => Lane::OpenResponses(None),
             "local" | "ollama" => Lane::Local(String::new()),
-            other => {
-                if let Some(tail) = other.strip_prefix("ollama:") {
-                    Lane::Local(tail.trim().to_string())
-                } else if let Some(tail) = other.strip_prefix("openresponses:") {
-                    Lane::OpenResponses(Some(tail.trim().to_string()))
-                } else if let Some(tail) = other.strip_prefix("dev:") {
-                    Lane::OpenResponses(Some(tail.trim().to_string()))
-                } else {
-                    Lane::Named(other.to_string())
-                }
+            other if other.starts_with("ollama:") => {
+                Lane::Local(other.trim_start_matches("ollama:").trim().to_string())
             }
+            other => Lane::Named(other.to_string()),
         }
     }
 
@@ -233,8 +220,6 @@ impl Lane {
             Lane::Flash => Some(TIERS[0].1),
             Lane::Pro => Some(TIERS[1].1),
             Lane::Named(id) => Some(id.as_str()),
-            Lane::OpenResponses(Some(id)) => Some(id.as_str()),
-            Lane::OpenResponses(None) => None,
             // The local lane names its model to Ollama, never to the server.
             Lane::Local(_) => None,
         }
@@ -243,11 +228,6 @@ impl Lane {
     /// Whether this lane answers from this machine.
     pub fn is_local(&self) -> bool {
         matches!(self, Lane::Local(_))
-    }
-
-    /// Whether this lane talks to the OpenResponses streaming surface.
-    pub fn is_openresponses(&self) -> bool {
-        matches!(self, Lane::OpenResponses(_))
     }
 
     /// The tier this lane belongs to: `auto`, `flash`, `pro`, or `local`.
@@ -261,7 +241,6 @@ impl Lane {
             Lane::Flash => Some("flash"),
             Lane::Pro => Some("pro"),
             Lane::Local(_) => Some("local"),
-            Lane::OpenResponses(_) => Some("openresponses"),
             Lane::OxAlpha | Lane::Named(_) => None,
         }
     }
@@ -274,8 +253,6 @@ impl Lane {
             Lane::Pro => "Coder Pro".to_string(),
             Lane::Local(model) if model.is_empty() => "Coder Local".to_string(),
             Lane::Local(model) => format!("Coder Local ({model})"),
-            Lane::OpenResponses(None) => "Coder OpenResponses".to_string(),
-            Lane::OpenResponses(Some(model)) => format!("Coder OpenResponses ({model})"),
             Lane::OxAlpha => "Coder (ox-alpha)".to_string(),
             Lane::Named(id) => format!("Coder ({id})"),
         }
@@ -587,6 +564,10 @@ pub struct ChatMessage {
 
 pub struct CoderRuntimeSession {
     pub lane: Lane,
+    /// Whether turns talk to the OpenResponses streaming surface instead of
+    /// opening a thread. `Lane` still names the model; this flag only picks the
+    /// transport.
+    pub use_openresponses: bool,
     /// The grant this session opened, reused across its turns.
     ///
     /// `None` on the local lane, always: there is no grant to hold, and
@@ -675,6 +656,7 @@ impl CoderRuntimeSession {
     ) -> Self {
         Self {
             lane,
+            use_openresponses: false,
             last_grant: None,
             last_model: None,
             last_usage: TurnUsage::default(),
@@ -716,6 +698,12 @@ impl CoderRuntimeSession {
     /// Report every tool this session runs to `observer`.
     pub fn observing_tools(mut self, observer: ToolObserver) -> Self {
         self.tool_observer = Some(observer);
+        self
+    }
+
+    /// Use the OpenResponses streaming surface for this session's turns.
+    pub fn use_openresponses(mut self, yes: bool) -> Self {
+        self.use_openresponses = yes;
         self
     }
 
@@ -1277,10 +1265,10 @@ impl CoderRuntimeSession {
              reported an outcome.",
         ));
 
-        let answered = if self.lane.is_local() {
-            self.run_local_turn(&tool_defs, chunk_callback).await
-        } else if self.lane.is_openresponses() {
+        let answered = if self.use_openresponses {
             self.run_responses_turn(&tool_defs, chunk_callback).await
+        } else if self.lane.is_local() {
+            self.run_local_turn(&tool_defs, chunk_callback).await
         } else {
             self.run_thread_turn(prompt, &tool_defs, chunk_callback)
                 .await
