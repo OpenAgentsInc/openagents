@@ -3,10 +3,11 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
-    style::Style,
+    style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
+use unicode_width::UnicodeWidthStr;
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -194,30 +195,25 @@ fn wrap_input(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
 
     for paragraph in text.split('\n') {
-        if paragraph.is_empty() {
-            lines.push(String::new());
-            continue;
-        }
-
         let mut current = String::new();
         let mut current_width = 0;
-        for word in paragraph.split_whitespace() {
-            let word_width = word.chars().count();
-            if current.is_empty() {
-                current.push_str(word);
-                current_width = word_width;
-            } else if current_width + 1 + word_width <= width {
-                current.push(' ');
-                current.push_str(word);
-                current_width += 1 + word_width;
+        for c in paragraph.chars() {
+            let w = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+            if current_width + w <= width {
+                current.push(c);
+                current_width += w;
             } else {
                 lines.push(current);
-                current = word.to_string();
-                current_width = word_width;
+                current = c.to_string();
+                current_width = w;
             }
         }
 
-        if !current.is_empty() {
+        if current.is_empty() {
+            if lines.is_empty() {
+                lines.push(String::new());
+            }
+        } else {
             lines.push(current);
         }
     }
@@ -328,9 +324,17 @@ impl CoderUi {
         frame.render_widget(input, input_area);
 
         let last_chunk = input_chunks.last().map(|s| s.as_str()).unwrap_or("");
-        let cursor_x = input_area.x + 1 + 3 + last_chunk.chars().count() as u16;
+        let last_prefix_width: u16 = 3;
+        let cursor_x = input_area.x
+            + 1
+            + last_prefix_width
+            + last_chunk.width().min(input_width as usize) as u16;
         let cursor_y = input_area.y + 1 + visible_input_lines.saturating_sub(1);
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
+        let buf = frame.buffer_mut();
+        if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
+            cell.modifier.insert(Modifier::REVERSED);
+        }
     }
 
     /// Calculate the scroll offset that keeps the viewport at the bottom
