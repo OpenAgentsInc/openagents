@@ -205,6 +205,24 @@ fn a_failed_tool_call_says_so_on_its_header() {
 }
 
 #[test]
+fn a_shell_tool_uses_a_prompt_marker_on_screen() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "c1".to_string(),
+            name: "shell".to_string(),
+            arguments: r#"{"command":"cargo test"}"#.to_string(),
+        },
+    );
+
+    let screen = text_of(&draw(&mut ui));
+    assert!(screen.starts_with("○ > cargo test"), "{screen}");
+    assert!(!screen.contains("shell cargo test"), "{screen}");
+    assert_eq!(ui.entries[0].tool.as_ref().unwrap().function_name, "shell");
+}
+
+#[test]
 fn an_active_tool_rail_moves_until_the_call_finishes() {
     let mut ui = CoderUi::new();
     apply(
@@ -283,7 +301,7 @@ fn reduced_motion_keeps_the_active_tool_state_static() {
         first.cell((0, 1)).unwrap().fg,
         second.cell((0, 1)).unwrap().fg
     );
-    assert!(text_of(&second).starts_with("○ shell cargo test"));
+    assert!(text_of(&second).starts_with("○ > cargo test"));
 }
 
 /// Output for a call the frame never saw start goes nowhere rather than onto

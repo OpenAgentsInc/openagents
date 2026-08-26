@@ -795,7 +795,8 @@ fn render_entry(
                 text_style.fg(tool_rail_wave_color(tick, 0))
             };
             let header_body = width.saturating_sub(2);
-            let header_chunks = wrap_text(&entry.text, header_body);
+            let header_text = tool_header_text(entry);
+            let header_chunks = wrap_text(&header_text, header_body);
             let header = header_chunks.first().cloned().unwrap_or_default();
             lines.push(Line::from(vec![
                 Span::styled(marker, marker_style),
@@ -886,6 +887,19 @@ fn render_entry(
     }
 
     (lines, links)
+}
+
+/// Use a prompt marker for shell calls without changing their stored tool name.
+fn tool_header_text(entry: &Entry) -> String {
+    if entry
+        .tool
+        .as_ref()
+        .is_some_and(|tool| tool.function_name == "shell")
+    {
+        format!(">{}", entry.text.strip_prefix("shell").unwrap_or(&entry.text))
+    } else {
+        entry.text.clone()
+    }
 }
 
 /// Grok's active-tool rail: a brightness wave that travels down the rows.
