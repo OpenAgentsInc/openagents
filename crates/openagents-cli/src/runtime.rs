@@ -189,6 +189,10 @@ pub enum Lane {
     Pro,
     /// A model id named directly, checked against `GET /api/v1/models`.
     Named(String),
+    /// The OpenResponses surface (`POST /api/v1/responses`), optionally pinned
+    /// to a model id. No thread is opened; the whole conversation is sent each
+    /// turn and the response streams as server-sent events.
+    OpenResponses(Option<String>),
     /// Ollama on this machine. An empty string means "whatever is installed".
     Local(String),
 }
@@ -199,16 +203,25 @@ impl Lane {
     /// settles it and the refusal can name what this deployment serves.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
-        match s.trim().to_lowercase().as_str() {
+        let lower = s.trim().to_lowercase();
+        match lower.as_str() {
             "" | "auto" => Lane::Auto,
             "ox-alpha" | "ox" | "openagents" => Lane::OxAlpha,
             "flash" | "coder-flash" | "gemini" | "gemini-flash" | "gemini-3.7-flash" => Lane::Flash,
             "pro" | "coder-pro" | "gpt-5.6-luna" | "luna" => Lane::Pro,
+            "openresponses" | "dev" => Lane::OpenResponses(None),
             "local" | "ollama" => Lane::Local(String::new()),
-            other if other.starts_with("ollama:") => {
-                Lane::Local(other.trim_start_matches("ollama:").trim().to_string())
+            other => {
+                if let Some(tail) = other.strip_prefix("ollama:") {
+                    Lane::Local(tail.trim().to_string())
+                } else if let Some(tail) = other.strip_prefix("openresponses:") {
+                    Lane::OpenResponses(Some(tail.trim().to_string()))
+                } else if let Some(tail) = other.strip_prefix("dev:") {
+                    Lane::OpenResponses(Some(tail.trim().to_string()))
+                } else {
+                    Lane::Named(other.to_string())
+                }
             }
-            other => Lane::Named(other.to_string()),
         }
     }
 
@@ -220,6 +233,8 @@ impl Lane {
             Lane::Flash => Some(TIERS[0].1),
             Lane::Pro => Some(TIERS[1].1),
             Lane::Named(id) => Some(id.as_str()),
+            Lane::OpenResponses(Some(id)) => Some(id.as_str()),
+            Lane::OpenResponses(None) => None,
             // The local lane names its model to Ollama, never to the server.
             Lane::Local(_) => None,
         }
@@ -228,6 +243,11 @@ impl Lane {
     /// Whether this lane answers from this machine.
     pub fn is_local(&self) -> bool {
         matches!(self, Lane::Local(_))
+    }
+
+    /// Whether this lane talks to the OpenResponses streaming surface.
+    pub fn is_openresponses(&self) -> bool {
+        matches!(self, Lane::OpenResponses(_))
     }
 
     /// The tier this lane belongs to: `auto`, `flash`, `pro`, or `local`.
@@ -241,6 +261,7 @@ impl Lane {
             Lane::Flash => Some("flash"),
             Lane::Pro => Some("pro"),
             Lane::Local(_) => Some("local"),
+            Lane::OpenResponses(_) => Some("openresponses"),
             Lane::OxAlpha | Lane::Named(_) => None,
         }
     }
@@ -253,6 +274,8 @@ impl Lane {
             Lane::Pro => "Coder Pro".to_string(),
             Lane::Local(model) if model.is_empty() => "Coder Local".to_string(),
             Lane::Local(model) => format!("Coder Local ({model})"),
+            Lane::OpenResponses(None) => "Coder OpenResponses".to_string(),
+            Lane::OpenResponses(Some(model)) => format!("Coder OpenResponses ({model})"),
             Lane::OxAlpha => "Coder (ox-alpha)".to_string(),
             Lane::Named(id) => format!("Coder ({id})"),
         }
@@ -1256,6 +1279,8 @@ impl CoderRuntimeSession {
 
         let answered = if self.lane.is_local() {
             self.run_local_turn(&tool_defs, chunk_callback).await
+        } else if self.lane.is_openresponses() {
+            self.run_responses_turn(&tool_defs, chunk_callback).await
         } else {
             self.run_thread_turn(prompt, &tool_defs, chunk_callback)
                 .await
@@ -1426,6 +1451,149 @@ impl CoderRuntimeSession {
                 answered = true;
                 break;
             }
+            let ran = self.run_tools(step).await;
+            self.last_calls += ran.len();
+            self.note(ran).await;
+        }
+
+        if !answered {
+            let why = format!(
+                "the turn used all {MAX_TOOL_STEPS} tool steps without producing an answer; \
+                 nothing was returned rather than an empty answer that reads as success"
+            );
+            return Err(self.record_failure(error_code::MAX_STEPS, why).await);
+        }
+        Ok(final_answer)
+    }
+
+    async fn run_responses_turn<F>(
+        &mut self,
+        tool_defs: &[ToolDefinition],
+        mut chunk_callback: F,
+    ) -> Result<String, Failure>
+    where
+        F: FnMut(&str) + Send + 'static,
+    {
+        let mut final_answer = String::new();
+        let mut answered = false;
+
+        for _ in 0..MAX_TOOL_STEPS {
+            let input = messages_to_responses_input(&self.messages);
+            let mut body = serde_json::json!({
+                "input": input,
+                "tools": tool_defs.iter().map(|t| serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters
+                    }
+                })).collect::<Vec<_>>(),
+                "stream": true
+            });
+            if let Some(model) = self.lane.model_id() {
+                body["model"] = serde_json::Value::String(model.to_string());
+            }
+
+            let url = format!("{}/responses", self.api_base);
+            let mut headers = HeaderMap::new();
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            if let Some(token) = &self.user_token {
+                headers.insert(
+                    AUTHORIZATION,
+                    HeaderValue::from_str(&format!("Bearer {token}"))?,
+                );
+            }
+
+            let resp = self
+                .http
+                .post(&url)
+                .headers(headers)
+                .json(&body)
+                .send()
+                .await;
+            let resp = match resp {
+                Ok(r) if r.status().is_success() => r,
+                Ok(r) => {
+                    let status = r.status();
+                    let body = r.text().await.unwrap_or_default();
+                    let why = format!("{url} refused the turn: {status} {}", snippet(&body));
+                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                }
+                Err(error) => {
+                    let why = format!("{url} could not be reached: {error}");
+                    return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                }
+            };
+
+            let mut stream = resp.bytes_stream().eventsource();
+            let mut step = StepAccumulator::default();
+            let mut completed = false;
+
+            while let Some(event) = stream.next().await {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(error) => {
+                        let why = format!("the reply from {url} stopped mid-stream: {error}");
+                        self.last_usage.add(step.usage);
+                        self.last_reasoning.push_str(&step.reasoning);
+                        return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
+                    }
+                };
+
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.data) {
+                    if event.event == "response.completed" {
+                        step.absorb_responses(&value, &mut chunk_callback);
+                        completed = true;
+                        break;
+                    }
+                    if event.event == "response.failed" {
+                        let message = value
+                            .get("response")
+                            .and_then(|r| r.get("error"))
+                            .and_then(|e| e.get("message"))
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("response failed");
+                        let why = format!("{url} reported a failed response: {message}");
+                        self.last_usage.add(step.usage);
+                        self.last_reasoning.push_str(&step.reasoning);
+                        return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                    }
+                    step.absorb_responses(&value, &mut chunk_callback);
+                }
+            }
+
+            if !completed {
+                let why = format!("the reply from {url} ended without response.completed");
+                self.last_usage.add(step.usage);
+                self.last_reasoning.push_str(&step.reasoning);
+                return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
+            }
+
+            self.last_usage.add(step.usage);
+            self.last_reasoning.push_str(&step.reasoning);
+
+            if !step.reasoning.trim().is_empty() {
+                let thought = ThreadRecord::reasoning(&step.reasoning);
+                self.note(vec![thought]).await;
+            }
+
+            if step.tool_calls.is_empty() {
+                final_answer = step.content;
+                self.messages.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: if final_answer.is_empty() {
+                        None
+                    } else {
+                        Some(final_answer.clone())
+                    },
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+                answered = true;
+                break;
+            }
+
             let ran = self.run_tools(step).await;
             self.last_calls += ran.len();
             self.note(ran).await;
@@ -1860,6 +2028,54 @@ impl StepAccumulator {
         }
     }
 
+    /// One OpenResponses-shaped streaming event.
+    fn absorb_responses<F: FnMut(&str)>(&mut self, value: &serde_json::Value, on_chunk: &mut F) {
+        let Some(event_type) = value.get("type").and_then(|v| v.as_str()) else {
+            return;
+        };
+
+        match event_type {
+            "response.output_text.delta" => {
+                if let Some(delta) = value.get("delta").and_then(|v| v.as_str()) {
+                    if !delta.is_empty() {
+                        on_chunk(delta);
+                        self.content.push_str(delta);
+                    }
+                }
+            }
+            "response.reasoning_summary_text.delta" => {
+                if let Some(delta) = value.get("delta").and_then(|v| v.as_str()) {
+                    self.reasoning.push_str(delta);
+                }
+            }
+            "response.output_item.done" => {
+                if let Some(item) = value.get("item") {
+                    if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                        if let (Some(call_id), Some(name), Some(arguments), Some(index)) = (
+                            item.get("call_id").and_then(|v| v.as_str()),
+                            item.get("name").and_then(|v| v.as_str()),
+                            item.get("arguments").and_then(|v| v.as_str()),
+                            value.get("output_index").and_then(|v| v.as_u64()),
+                        ) {
+                            self.tool_calls
+                                .insert(index as usize, (call_id.to_string(), name.to_string(), arguments.to_string()));
+                        }
+                    }
+                }
+            }
+            "response.completed" => {
+                if let Some(usage) = value.get("response").and_then(|r| r.get("usage")) {
+                    self.usage.add(TurnUsage {
+                        prompt_tokens: field(usage, "input_tokens"),
+                        completion_tokens: field(usage, "output_tokens"),
+                        total_tokens: field(usage, "total_tokens"),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// One Ollama-shaped streaming line.
     ///
     /// The counts arrive on the `done` line, the model's scratch work under
@@ -1928,6 +2144,75 @@ fn grant_spend(body: &serde_json::Value) -> Option<TurnUsage> {
 
 fn field(value: &serde_json::Value, key: &str) -> u64 {
     value.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
+}
+
+/// Convert the session's message list to OpenResponses input items.
+///
+/// The OpenResponses surface takes a flat list of `input` items — `user`,
+/// `assistant`, and `system` messages plus `function_call` and
+/// `function_call_output` replay items — so a multi-turn conversation can be
+/// sent again on each stateless request.
+fn messages_to_responses_input(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    let mut items = Vec::new();
+    for message in messages {
+        match message.role.as_str() {
+            "system" | "user" => {
+                if let Some(content) = &message.content {
+                    items.push(serde_json::json!({
+                        "role": message.role,
+                        "content": content
+                    }));
+                }
+            }
+            "assistant" => {
+                let content = message.content.as_deref().unwrap_or("");
+                if let Some(calls) = &message.tool_calls {
+                    for (i, call) in calls.iter().enumerate() {
+                        let call_id = call
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let function = call.get("function").unwrap_or(&serde_json::Value::Null);
+                        let name = function
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let arguments = function
+                            .get("arguments")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("{}")
+                            .to_string();
+                        let text = if i == 0 { content } else { "" };
+                        items.push(serde_json::json!({
+                            "type": "function_call",
+                            "content": text,
+                            "call_id": call_id,
+                            "name": name,
+                            "arguments": arguments
+                        }));
+                    }
+                } else if !content.is_empty() {
+                    items.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": content
+                    }));
+                }
+            }
+            "tool" => {
+                if let Some(content) = &message.content {
+                    items.push(serde_json::json!({
+                        "type": "function_call_output",
+                        "call_id": message.tool_call_id.as_deref().unwrap_or(""),
+                        "output": content
+                    }));
+                }
+            }
+            _ => {}
+        }
+    }
+    items
 }
 
 /// One message in the shape Ollama's chat API takes back.

@@ -34,14 +34,16 @@ coder-lite — the OpenAgents coder, in a terminal.
 Usage: coder-lite [options]
 
 Options:
-  --dev              Talk to a server on this machine at http://127.0.0.1:4000.
-                     Starts one from ../openagents.com if none is running, and
-                     tolerates one that already is.
+  --dev              Talk to a server on this machine at http://127.0.0.1:4000
+                     over the OpenResponses streaming surface. Starts one from
+                     ../openagents.com if none is running, and tolerates one
+                     that already is.
   --lane <name>      Which model answers. `auto` leaves it to the deployment;
                      `flash` and `pro` are tiers; `local` or `ollama:<model>`
-                     answers from this machine; any other name is checked
-                     against GET /api/v1/models and refused if it is not
-                     served. Defaults to `auto`.
+                     answers from this machine; `openresponses` or
+                     `openresponses:<model>` uses the OpenResponses surface;
+                     any other name is checked against GET /api/v1/models and
+                     refused if it is not served. Defaults to `auto`.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to
                      leave the deployment's own default.
   -h, --help         Print this and exit.
@@ -65,7 +67,7 @@ Inside the session, `/help` lists the commands and the keys.
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<String> = env::args().skip(1).collect();
     let options = match parse(&arguments) {
-        Ok(Parsed::Run(options, dev)) => {
+        Ok(Parsed::Run(mut options, dev)) => {
             if dev {
                 boot_dev_server().await?;
                 // SAFETY: edition 2024 marks `set_var` unsafe because another
@@ -76,6 +78,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     env::set_var("OPENAGENTS_API_URL", DEV_API_URL);
                     env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
                 }
+                // --dev routes through the OpenResponses streaming surface.
+                options.lane_name = if options.lane_name == "auto" {
+                    "openresponses".to_string()
+                } else {
+                    format!("openresponses:{}", options.lane_name)
+                };
             }
             options
         }
