@@ -128,6 +128,7 @@ impl CoderRuntimeSession {
                 }
             }
 
+            let mut turn_failed = false;
             if let Some((call_id, agent_id, task, raw_args)) = pending_tool.take() {
                 if let Some(agent) = self.agents.iter().find(|a| a.id == agent_id).cloned() {
                     let _ = tx.send(Control::Tool {
@@ -160,6 +161,15 @@ impl CoderRuntimeSession {
                     };
 
                     match &result {
+                        Ok(answer)
+                            if answer
+                                .to_lowercase()
+                                .contains("upgrade your plan to continue") =>
+                        {
+                            let _ = tx.send(Control::ToolTitle("refused".to_string()));
+                            let _ = tx.send(Control::ToolText(answer.clone()));
+                            turn_failed = true;
+                        }
                         Ok(_) if !header_sent => {
                             let _ = tx.send(Control::ToolTitle("completed".to_string()));
                         }
@@ -168,6 +178,7 @@ impl CoderRuntimeSession {
                             let _ = tx.send(Control::ToolText(
                                 result.as_ref().err().unwrap().to_string(),
                             ));
+                            turn_failed = true;
                         }
                         _ => {}
                     }
@@ -180,6 +191,9 @@ impl CoderRuntimeSession {
                         output: FunctionOutput::Text(output),
                         status: None,
                     });
+                    if turn_failed {
+                        break;
+                    }
                     continue;
                 } else {
                     let msg = format!("unknown ACP agent: {}", agent_id);
