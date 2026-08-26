@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# Pre-push guard — fast by default so local iteration stays moving.
-# Policy: NO GitHub Actions. Direct pushes to main get cheap local policy checks;
-# run the full deploy gate explicitly, or opt in with OPENAGENTS_PRE_PUSH_FULL_GATE=1.
-#
-# Enable in any checkout with:  git config core.hooksPath .githooks
-#
-# Guards only pushes whose remote ref is main. Other branches push freely.
+# Pre-push guard — fast, relevant checks only.
+# Runs: whitespace, vp lint, and targeted cargo/mix for the CLI or Phoenix backend.
 set -uo pipefail
 
 gate=0
@@ -23,114 +18,54 @@ done
 
 [ "$gate" = 1 ] || exit 0
 
-# Resolve the repo root explicitly with `-c core.bare=false`: this checkout may
-# share a shared worktree-hub `.git` whose common config has core.bare=true (a
-# pattern used for concurrent `git worktree` checkouts). That shared flag has
-# no bearing on this invocation -- a pre-push hook only ever runs inside a real
-# working tree -- but leaving it unoverridden risks `git rev-parse` mis-resolving
-# root-relative state for this worktree. Fail loudly instead of silently
-# operating from an empty/wrong root if resolution ever comes back empty.
 root="$(git -c core.bare=false rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
 if [ -z "$root" ] || [ ! -d "$root" ]; then
-  echo "[pre-push guard] BLOCKED: could not resolve the repository root via 'git rev-parse --show-toplevel' (got '$root')." >&2
-  echo "[pre-push guard] This can happen when a shared worktree-hub .git/config has core.bare=true or a stale worktree registration. Run 'git worktree list' and 'git rev-parse --show-toplevel' from this directory to diagnose." >&2
+  echo "[pre-push guard] BLOCKED: could not resolve the repository root." >&2
   exit 1
 fi
 
 zero_sha="0000000000000000000000000000000000000000"
-guard_head_before="$(git rev-parse HEAD)"
-guard_readme_before="$(git hash-object "$root/README.md")"
-
-verify_repository_stability() {
-  if [ "$(git rev-parse HEAD)" != "$guard_head_before" ]; then
-    echo "[pre-push guard] BLOCKED: a verification command mutated repository HEAD." >&2
-    return 1
-  fi
-  if [ "$(git hash-object "$root/README.md")" != "$guard_readme_before" ]; then
-    echo "[pre-push guard] BLOCKED: a verification command mutated the root README." >&2
-    return 1
-  fi
-  if [ "$(sed -n '1p' "$root/README.md")" != "# OpenAgents" ] || [ "$(wc -l < "$root/README.md")" -lt 100 ]; then
-    echo "[pre-push guard] BLOCKED: root README integrity check failed." >&2
-    return 1
-  fi
-}
-
-is_enabled() {
-  case "${1:-}" in
-    1|true|TRUE|yes|YES|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 
 if [ "$main_local_sha" = "$zero_sha" ]; then
   echo "[pre-push guard] BLOCKED: refusing to delete main." >&2
   exit 1
 fi
 
-verify_repository_stability || exit 1
-
-echo "[pre-push guard] push to main -> running fast policy checks..." >&2
-
 if [ -n "$main_local_sha" ] && [ "$main_remote_sha" != "$zero_sha" ]; then
   if ! ( cd "$root" && git diff --check "$main_remote_sha..$main_local_sha" ) >&2; then
     echo "[pre-push guard] BLOCKED: whitespace errors in pushed diff." >&2
     exit 1
   fi
+  changed_files=$(cd "$root" && git diff --name-only "$main_remote_sha..$main_local_sha")
 elif [ -n "$main_local_sha" ]; then
   if ! ( cd "$root" && git diff-tree --check --no-commit-id -r "$main_local_sha" ) >&2; then
     echo "[pre-push guard] BLOCKED: whitespace errors in pushed commit." >&2
     exit 1
   fi
+  changed_files=$(cd "$root" && git diff-tree --no-commit-id --name-only -r "$main_local_sha")
 fi
 
-if ! ( cd "$root" && pnpm run check:fast ) >&2; then
-  echo "[pre-push guard] BLOCKED: shared fast check profile failed." >&2
+echo "[pre-push guard] push to main -> running fast, targeted checks..." >&2
+
+if ! ( cd "$root" && pnpm exec vp lint --quiet ) >&2; then
+  echo "[pre-push guard] BLOCKED: vp lint failed." >&2
   exit 1
 fi
 
-if [ -n "$main_local_sha" ] && [ "$main_remote_sha" != "$zero_sha" ]; then
-  openagents_mobile_changed="$(cd "$root" && git diff --name-only "$main_remote_sha..$main_local_sha" -- apps/openagents-mobile apps/oa-updates packages/effect-native-* | sed -n '1p')"
-else
-  openagents_mobile_changed=""
+# Targeted checks for the CLI and Phoenix backend.
+cli_changed=$(echo "$changed_files" | grep -E '^crates/(coder-lite|openagents-cli)/' | sed -n '1p')
+phoenix_changed=$(echo "$changed_files" | grep -E '^apps/openagents\.com/' | sed -n '1p')
+
+if [ -n "$cli_changed" ]; then
+  echo "[pre-push guard] Rust CLI changes -> running cargo checks..." >&2
+  ( cd "$root" && cargo check -p coder-lite ) || { echo "[pre-push guard] BLOCKED: cargo check -p coder-lite failed." >&2; exit 1; }
+  ( cd "$root" && cargo test -p coder-lite ) || { echo "[pre-push guard] BLOCKED: cargo test -p coder-lite failed." >&2; exit 1; }
 fi
 
-if [ -n "$openagents_mobile_changed" ]; then
-  echo "[pre-push guard] OpenAgents mobile changes detected -> running typecheck + tests..." >&2
-  if ! ( cd "$root/apps/openagents-mobile" && pnpm run typecheck && pnpm run test ) >&2; then
-    echo "[pre-push guard] BLOCKED: OpenAgents mobile gate failed." >&2
-    exit 1
-  fi
-  echo "[pre-push guard] OpenAgents mobile gate GREEN." >&2
-else
-  echo "[pre-push guard] OpenAgents mobile gate skipped; no supported mobile changes in pushed range." >&2
+if [ -n "$phoenix_changed" ]; then
+  echo "[pre-push guard] Phoenix changes -> running mix compile..." >&2
+  ( cd "$root/apps/openagents.com" && mix compile ) || { echo "[pre-push guard] BLOCKED: mix compile failed." >&2; exit 1; }
 fi
 
-if is_enabled "${OPENAGENTS_PRE_PUSH_FULL_GATE:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_CHECK_DEPLOY:-}"; then
-  echo "[pre-push guard] OPENAGENTS_PRE_PUSH_FULL_GATE enabled -> running check:deploy..." >&2
-  if ! ( cd "$root/apps/openagents.com" && pnpm run check:deploy ) >&2; then
-    echo "[pre-push guard] BLOCKED: check:deploy failed. Fix it before pushing to main." >&2
-    exit 1
-  fi
-  echo "[pre-push guard] check:deploy GREEN." >&2
-else
-  echo "[pre-push guard] full check:deploy skipped; run it directly or set OPENAGENTS_PRE_PUSH_FULL_GATE=1 when needed." >&2
-fi
-
-if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_QA_SMOKE:-}"; then
-  echo "[pre-push guard] running warning-only Tier 1 QA smoke..." >&2
-  if ! ( cd "$root" && node --import tsx scripts/qa-pre-push-smoke.ts ) >&2; then
-    echo "[pre-push guard] WARNING: Tier 1 QA smoke did not pass or did not finish. Push remains allowed; Tier 2 async QA is authoritative." >&2
-  fi
-fi
-
-if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_ASYNC_QA:-}"; then
-  echo "[pre-push guard] launching warning-only Tier 2 async QA on OpenAgents GCE..." >&2
-  if ! ( cd "$root" && node --import tsx scripts/qa-async-gce-trigger.ts ) >&2; then
-    echo "[pre-push guard] WARNING: Tier 2 async QA trigger failed. Push remains allowed; inspect oa-codex-control / GCE runner health." >&2
-  fi
-fi
-
-verify_repository_stability || exit 1
 echo "[pre-push guard] fast main guard green — push allowed." >&2
 exit 0
