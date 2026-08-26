@@ -166,7 +166,8 @@ impl HarnessToolRegistry {
     }
 
     fn build(cwd: Option<PathBuf>, delegation: Option<DelegationGate>) -> Self {
-        let root = cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let root =
+            cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let catalog = plugins::discover_catalog(&root);
         let mut registry = Self {
             cwd: root,
@@ -189,7 +190,12 @@ impl HarnessToolRegistry {
             dirs.push(PathBuf::from(home).join(".agents").join("skills"));
         }
         // The skills this CLI ships, read from the package they live in.
-        dirs.push(self.cwd.join("packages").join("openagents-cli").join("skills"));
+        dirs.push(
+            self.cwd
+                .join("packages")
+                .join("openagents-cli")
+                .join("skills"),
+        );
         dirs
     }
 
@@ -265,7 +271,10 @@ impl HarnessToolRegistry {
 
     /// The plugins loaded into this session so far.
     pub fn loaded_plugins(&self) -> Vec<Arc<LoadedPlugin>> {
-        self.loaded.lock().map(|held| held.clone()).unwrap_or_default()
+        self.loaded
+            .lock()
+            .map(|held| held.clone())
+            .unwrap_or_default()
     }
 
     pub fn list_tools(&self) -> Vec<ToolDefinition> {
@@ -379,8 +388,14 @@ impl HarnessToolRegistry {
     pub async fn execute_tool(&self, call: &ToolCall) -> ToolOutput {
         match call.name.as_str() {
             "shell" => {
-                let cmd = call.arguments.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                let timeout_secs = call.arguments.get("timeout_seconds")
+                let cmd = call
+                    .arguments
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let timeout_secs = call
+                    .arguments
+                    .get("timeout_seconds")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(DEFAULT_TIMEOUT_SECS)
                     .min(MAXIMUM_TIMEOUT_SECS);
@@ -401,7 +416,11 @@ impl HarnessToolRegistry {
                 }
             }
             "skill" => {
-                let name = call.arguments.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let name = call
+                    .arguments
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if let Some(skill_info) = self.skills.get(name) {
                     ToolOutput {
                         call_id: call.id.clone(),
@@ -417,9 +436,16 @@ impl HarnessToolRegistry {
                 }
             }
             "openagents" => {
-                let args_array = call.arguments.get("args")
+                let args_array = call
+                    .arguments
+                    .get("args")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect::<Vec<_>>())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(String::from)
+                            .collect::<Vec<_>>()
+                    })
                     .unwrap_or_default();
 
                 let (output_str, failed) = run_openagents_cli(&args_array).await;
@@ -487,7 +513,11 @@ impl HarnessToolRegistry {
                 // turn dies of; the only `is_error` here is the absence of a
                 // plugin where one was named.
                 let is_error = loaded.is_none()
-                    && call.arguments.get("name").and_then(|v| v.as_str()).is_some();
+                    && call
+                        .arguments
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .is_some();
                 if let Some(plugin) = loaded {
                     if let Ok(mut held) = self.loaded.lock() {
                         held.retain(|existing| existing.manifest.name != plugin.manifest.name);
@@ -639,7 +669,12 @@ pub fn render_skill(skill: &SkillInfo) -> String {
     } else {
         skill.body.clone()
     };
-    format!("Skill `{}` ({}):\n\n{}", skill.name, skill.path.display(), body)
+    format!(
+        "Skill `{}` ({}):\n\n{}",
+        skill.name,
+        skill.path.display(),
+        body
+    )
 }
 
 /// What the two OpenAgents repositories are, when the session is in one.
@@ -678,7 +713,10 @@ fn openagents_workspace_note(cwd: &Path) -> Option<String> {
     // whole workspace root, which holds every read-only reference clone, and
     // it spent the tool's whole budget before being stopped.
     if let Some(sibling) = sibling_checkout(cwd) {
-        let parent = sibling.parent().map(|p| p.display().to_string()).unwrap_or_default();
+        let parent = sibling
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
         lines.push(String::new());
         lines.push(format!(
             "The other one is checked out at `{}`. To search or read it, change directory first — \
@@ -810,8 +848,7 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
-    let child = match command.spawn()
-    {
+    let child = match command.spawn() {
         Ok(c) => c,
         Err(e) => return (format!("Failed to spawn shell command: {}", e), true),
     };
@@ -837,21 +874,31 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
 
             if output.status.success() {
                 if bounded.trim().is_empty() {
-                    ("The command succeeded and printed nothing.".to_string(), false)
+                    (
+                        "The command succeeded and printed nothing.".to_string(),
+                        false,
+                    )
                 } else {
                     (bounded.trim().to_string(), false)
                 }
             } else {
                 let code = output.status.code().unwrap_or(1);
                 (
-                    format!("The command exited with code {}.\n\n{}", code, bounded.trim()),
+                    format!(
+                        "The command exited with code {}.\n\n{}",
+                        code,
+                        bounded.trim()
+                    ),
                     true,
                 )
             }
         }
         Ok(Err(e)) => (format!("Shell execution error: {}", e), true),
         Err(_) => (
-            format!("The command timed out after {} seconds and was stopped.", timeout_secs),
+            format!(
+                "The command timed out after {} seconds and was stopped.",
+                timeout_secs
+            ),
             true,
         ),
     }
@@ -859,8 +906,88 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
 
 /// As [`run_real_shell`]: the text, and whether it worked. A CLI that could
 /// not even be spawned was previously reported to the model as a success.
+/// Where the program behind the `openagents` tool came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenAgentsCliSource {
+    /// A program named `openagents` found on `PATH`.
+    Path,
+    /// Nothing on `PATH`, so this binary answers for it.
+    ThisBinary,
+}
+
+/// The program the `openagents` tool runs, and where it was found.
+///
+/// `PATH` first, deliberately: the CLI installed under that name is the
+/// TypeScript one, and it covers more subcommands than this binary does, so
+/// where both exist the model should reach the fuller of the two.
+///
+/// This binary is the fallback rather than the first choice because it is
+/// installed as `oa`. On a machine carrying only the Rust CLI there is nothing
+/// named `openagents` anywhere on `PATH`, and this used to be
+/// `Command::new("openagents")` — so every call the model made failed with
+/// `No such file or directory` while the very binary that could have answered
+/// was the one running the tool.
+pub fn resolve_openagents_cli() -> Result<(PathBuf, OpenAgentsCliSource), String> {
+    let name = format!("openagents{}", std::env::consts::EXE_SUFFIX);
+    let on_path = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|dir| dir.join(&name))
+        .find(|candidate| is_executable_file(candidate));
+    if let Some(found) = on_path {
+        return Ok((found, OpenAgentsCliSource::Path));
+    }
+    match std::env::current_exe() {
+        Ok(exe) => Ok((exe, OpenAgentsCliSource::ThisBinary)),
+        // Neither resolves. This is an error rather than an empty success: a
+        // tool result that says nothing reads to a model as a command that ran
+        // and printed nothing.
+        Err(error) => Err(format!(
+            "No `openagents` CLI is available: nothing named `openagents` is on PATH, \
+             and this binary's own path could not be read: {error}"
+        )),
+    }
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
 async fn run_openagents_cli(args: &[String]) -> (String, bool) {
-    let mut cmd = Command::new("openagents");
+    let (program, source) = match resolve_openagents_cli() {
+        Ok(resolved) => resolved,
+        Err(error) => return (error, true),
+    };
+
+    // Which program answered is part of the result. The two differ in what
+    // they support, so a model reading `unknown command` needs to know which
+    // CLI said it rather than guessing.
+    let note = match source {
+        OpenAgentsCliSource::Path => {
+            format!("[ran the `openagents` CLI on PATH: {}]", program.display())
+        }
+        OpenAgentsCliSource::ThisBinary => format!(
+            "[no `openagents` on PATH; ran this binary instead: {}]",
+            program.display()
+        ),
+    };
+
+    let mut cmd = Command::new(&program);
     cmd.args(args);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -870,9 +997,15 @@ async fn run_openagents_cli(args: &[String]) -> (String, bool) {
             let mut combined = String::new();
             combined.push_str(&String::from_utf8_lossy(&output.stdout));
             combined.push_str(&String::from_utf8_lossy(&output.stderr));
-            (combined.trim().to_string(), !output.status.success())
+            (
+                format!("{note}\n\n{}", combined.trim()),
+                !output.status.success(),
+            )
         }
-        Err(e) => (format!("Failed to run openagents CLI: {}", e), true),
+        Err(e) => (
+            format!("{note}\n\nFailed to run the openagents CLI: {e}"),
+            true,
+        ),
     }
 }
 
@@ -933,7 +1066,10 @@ mod tests {
     #[test]
     fn a_refusal_says_what_the_command_would_have_done() {
         let refusal = check_shell_refusal("rm -rf ~/").expect("refused");
-        assert!(refusal.contains("erase a root or a home directory"), "{refusal}");
+        assert!(
+            refusal.contains("erase a root or a home directory"),
+            "{refusal}"
+        );
         assert!(refusal.contains("name the directory"), "{refusal}");
     }
 
@@ -956,7 +1092,8 @@ mod tests {
 
     #[test]
     fn a_folded_block_description_is_one_paragraph() {
-        let source = "---\nname: folded\ndescription: >-\n  First line\n  second line.\n---\nBody.\n";
+        let source =
+            "---\nname: folded\ndescription: >-\n  First line\n  second line.\n---\nBody.\n";
         let (_, description, _) = parse_skill_front_matter(source).expect("parsed");
         assert_eq!(description, "First line second line.");
     }
@@ -972,8 +1109,17 @@ mod tests {
     #[test]
     fn the_nearest_skills_directory_keeps_a_contested_name() {
         let root = tempfile::tempdir().unwrap();
-        write_skill(root.path(), "shared", "---\nname: shared\ndescription: The repository's.\n---\nRepo body.\n");
-        let shipped = root.path().join("packages").join("openagents-cli").join("skills").join("shared");
+        write_skill(
+            root.path(),
+            "shared",
+            "---\nname: shared\ndescription: The repository's.\n---\nRepo body.\n",
+        );
+        let shipped = root
+            .path()
+            .join("packages")
+            .join("openagents-cli")
+            .join("skills")
+            .join("shared");
         std::fs::create_dir_all(&shipped).unwrap();
         std::fs::write(
             shipped.join("SKILL.md"),
@@ -999,7 +1145,9 @@ mod tests {
         let tools = registry.list_tools();
         let skill_tool = tools.iter().find(|t| t.name == "skill").expect("declared");
 
-        assert!(skill_tool.description.contains("`brewing`: How to make tea."));
+        assert!(skill_tool
+            .description
+            .contains("`brewing`: How to make tea."));
         // The catalog is what a session pays for on every turn; a body in it
         // is 46 KB of instructions the model may never use.
         assert!(
@@ -1026,7 +1174,11 @@ mod tests {
             })
             .await;
         assert!(!out.is_error);
-        assert!(out.output.contains("STEEP_FOR_FOUR_MINUTES"), "{}", out.output);
+        assert!(
+            out.output.contains("STEEP_FOR_FOUR_MINUTES"),
+            "{}",
+            out.output
+        );
         assert!(out.output.contains("SKILL.md"), "{}", out.output);
 
         let missing = registry
@@ -1054,7 +1206,9 @@ mod tests {
         );
         let registry = HarnessToolRegistry::new(Some(root.path().to_path_buf()));
 
-        let context = registry.standing_context().expect("an auto skill is injected");
+        let context = registry
+            .standing_context()
+            .expect("an auto skill is injected");
         assert!(context.contains("WORK_THIS_WAY"), "{context}");
         assert!(
             !context.contains("ONLY_ON_REQUEST"),
@@ -1065,7 +1219,11 @@ mod tests {
     #[test]
     fn a_workspace_with_no_auto_skill_injects_nothing() {
         let root = tempfile::tempdir().unwrap();
-        write_skill(root.path(), "plain", "---\nname: plain\ndescription: Read on request.\n---\nBody.\n");
+        write_skill(
+            root.path(),
+            "plain",
+            "---\nname: plain\ndescription: Read on request.\n---\nBody.\n",
+        );
         // A temporary directory is not named for either OpenAgents repository,
         // so the workspace note does not apply either.
         assert!(HarnessToolRegistry::new(Some(root.path().to_path_buf()))
@@ -1097,11 +1255,17 @@ mod tests {
         // context this session starts with.
         let context = registry.standing_context().expect("something is injected");
         assert!(
-            registry.skills.get("superdelegate").is_some_and(|skill| skill.auto),
+            registry
+                .skills
+                .get("superdelegate")
+                .is_some_and(|skill| skill.auto),
             "superdelegate is the repository's auto skill"
         );
         let body = &registry.skills["superdelegate"].body;
-        assert!(context.contains(&body[..80.min(body.len())]), "the auto body was not injected");
+        assert!(
+            context.contains(&body[..80.min(body.len())]),
+            "the auto body was not injected"
+        );
     }
 
     // ───────────────────────────────────────────── the capability tool wiring
@@ -1113,10 +1277,17 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let registry = HarnessToolRegistry::with_delegation(
             Some(root.path().to_path_buf()),
-            DelegationGate { lane: "test".to_string(), user_token: None, max_count: 2 },
+            DelegationGate {
+                lane: "test".to_string(),
+                user_token: None,
+                max_count: 2,
+            },
         );
         let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
-        assert_eq!(names, vec!["shell", "skill", "openagents", "capability", "delegate"]);
+        assert_eq!(
+            names,
+            vec!["shell", "skill", "openagents", "capability", "delegate"]
+        );
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
         for name in &names {
@@ -1138,11 +1309,19 @@ mod tests {
     #[tokio::test]
     async fn a_capability_search_names_a_plugin_and_loading_it_declares_its_tool() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        if !repo.join("plugins").join("word-stats").join("manifest.json").is_file() {
+        if !repo
+            .join("plugins")
+            .join("word-stats")
+            .join("manifest.json")
+            .is_file()
+        {
             return;
         }
         let registry = HarnessToolRegistry::new(Some(repo));
-        assert!(!registry.catalog.is_empty(), "the checked-in catalog was not discovered");
+        assert!(
+            !registry.catalog.is_empty(),
+            "the checked-in catalog was not discovered"
+        );
 
         let search = registry
             .execute_tool(&ToolCall {
@@ -1168,7 +1347,10 @@ mod tests {
             .into_iter()
             .find(|t| t.name == "word_stats")
             .expect("the loaded plugin declares its tool");
-        assert_eq!(word_stats.parameters["properties"]["text"]["type"], "string");
+        assert_eq!(
+            word_stats.parameters["properties"]["text"]["type"],
+            "string"
+        );
 
         // And the tool the plugin declared runs the plugin.
         let ran = registry
@@ -1186,7 +1368,12 @@ mod tests {
     #[tokio::test]
     async fn a_mounted_capability_refuses_to_load_without_an_operator() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        if !repo.join("plugins").join("file-stats").join("manifest.json").is_file() {
+        if !repo
+            .join("plugins")
+            .join("file-stats")
+            .join("manifest.json")
+            .is_file()
+        {
             return;
         }
         let unattended = HarnessToolRegistry::new(Some(repo.clone()));
@@ -1197,8 +1384,15 @@ mod tests {
                 arguments: serde_json::json!({"name": "file_stats"}),
             })
             .await;
-        assert!(refused.output.contains("approval_unavailable"), "{}", refused.output);
-        assert!(unattended.list_tools().iter().all(|t| t.name != "file_stats"));
+        assert!(
+            refused.output.contains("approval_unavailable"),
+            "{}",
+            refused.output
+        );
+        assert!(unattended
+            .list_tools()
+            .iter()
+            .all(|t| t.name != "file_stats"));
 
         let attended = HarnessToolRegistry::new(Some(repo)).allowing_plugin_mounts();
         let loaded = attended
@@ -1208,7 +1402,11 @@ mod tests {
                 arguments: serde_json::json!({"name": "file_stats"}),
             })
             .await;
-        assert!(loaded.output.contains("digest verified"), "{}", loaded.output);
+        assert!(
+            loaded.output.contains("digest verified"),
+            "{}",
+            loaded.output
+        );
         assert!(attended.list_tools().iter().any(|t| t.name == "file_stats"));
     }
 
@@ -1242,7 +1440,10 @@ mod defect_tests {
         // 29,999 ASCII bytes, then a 3-byte character straddling byte 30,000.
         let mut text = "a".repeat(OUTPUT_LIMIT - 1);
         text.push_str("€€€");
-        assert!(!text.is_char_boundary(OUTPUT_LIMIT), "the probe must straddle");
+        assert!(
+            !text.is_char_boundary(OUTPUT_LIMIT),
+            "the probe must straddle"
+        );
 
         let cut = floor_char_boundary(&text, OUTPUT_LIMIT);
         // The old code did `&text[..OUTPUT_LIMIT]`, which panics here.
