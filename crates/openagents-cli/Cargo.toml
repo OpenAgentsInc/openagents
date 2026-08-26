@@ -35,6 +35,7 @@ bech32 = "0.11"
 ripemd = "0.1"
 bs58 = { version = "0.5", features = ["check"] }
 regex = "1"
+zeroize = "1"
 
 [dev-dependencies]
 tempfile = "3"

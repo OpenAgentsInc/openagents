@@ -9,7 +9,7 @@ mod tests {
     use openagents_cli::auth::CredentialStore;
     use openagents_cli::identity::{derive_seed_identity, SeedStore};
     use openagents_cli::tracker::{slug_from_remote_url, IssueListOptions, RepoTarget, TrackerClient};
-    use openagents_cli::repo::handle_git_credential;
+    use openagents_cli::repo::{admitted_credential_request, parse_git_credential_request};
     use openagents_cli::box_client::BoxClient;
     use openagents_cli::computer::probe_host;
     use openagents_cli::forum::ForumClient;
@@ -17,11 +17,23 @@ mod tests {
     use openagents_cli::api_passthrough::ApiPassthroughClient;
     use openagents_cli::trace::{default_trace_stores, redact_text};
 
+    /// The old assertion read `store.load().unwrap().default_profile.is_some()`,
+    /// which was true because `load` synthesizes a default profile when the file
+    /// is absent. It would have passed against a store that could neither read
+    /// nor write a token. The contract now lives in `tests/auth_repo_test.rs`;
+    /// this keeps a round trip through the real store here.
     #[test]
     fn test_auth_and_credential_store_issue_74() {
-        let store = CredentialStore::new(None);
-        let config = store.load().unwrap();
-        assert!(config.default_profile.is_some());
+        let directory = tempfile::tempdir().unwrap();
+        let store = CredentialStore::isolated("https://openagents.com", directory.path());
+        assert!(store.find_token().unwrap().is_none());
+        store
+            .store(&openagents_cli::auth::Secret::new("oa_pat_roundtrip"))
+            .unwrap();
+        let held = store.find_token().unwrap().expect("the token just stored");
+        assert_eq!(held.token.expose(), "oa_pat_roundtrip");
+        assert!(store.remove().unwrap());
+        assert!(store.find_token().unwrap().is_none());
     }
 
     /// The old assertion checked only that the strings began `npub1`/`nsec1`, which
@@ -154,10 +166,19 @@ mod tests {
         );
     }
 
+    /// The old assertion checked that the helper output named a username. It
+    /// passed against a function that answered *every* host with the token,
+    /// including github.com, because it never read git's request. The helper now
+    /// parses the request and admits only the selected origin, which is what
+    /// `tests/auth_repo_test.rs` asserts end to end.
     #[test]
     fn test_repo_and_git_credential_issue_77() {
-        let cred_str = handle_git_credential("get", "openagents.com", Some("oa_pat_12345"));
-        assert!(cred_str.contains("username=openagents-token"));
+        let request = parse_git_credential_request("protocol=https\nhost=openagents.com\n\n");
+        assert!(admitted_credential_request(
+            "https://openagents.com",
+            &request
+        ));
+        assert!(!admitted_credential_request("https://github.com", &request));
     }
 
     /// The old assertion was `boxes.is_empty() || !boxes.is_empty()` against the

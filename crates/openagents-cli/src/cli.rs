@@ -11,6 +11,20 @@ pub struct Cli {
 
     #[arg(short, long, global = true, help = "Verbose logging output")]
     pub verbose: bool,
+
+    #[arg(
+        long,
+        global = true,
+        help = "API origin to talk to, such as https://openagents.com"
+    )]
+    pub api_url: Option<String>,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Named API endpoint: production, staging, or local"
+    )]
+    pub profile: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -67,11 +81,42 @@ pub struct AuthArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum AuthAction {
-    Login,
+    /// Authorize this CLI in your browser and store the resulting token
+    Login {
+        #[arg(
+            long,
+            help = "Read and store a token from standard input instead of opening a browser"
+        )]
+        token_stdin: bool,
+        #[arg(
+            long,
+            help = "Print an authorization URL and code without waiting for approval"
+        )]
+        headless: bool,
+        #[arg(long, help = "Complete the pending device authorization")]
+        resume: bool,
+        #[arg(
+            long,
+            help = "Request a scope for the new token; repeatable. Omit to take the server's default"
+        )]
+        scope: Vec<String>,
+    },
+    /// Read a token from standard input and store it for the selected API
     TokenStdin,
+    /// Show authentication status for the selected API
     Status,
+    /// Remove the stored token for the selected API
     Logout,
-    SetupGit,
+    /// Configure git to obtain OpenAgents credentials from this CLI
+    SetupGit {
+        #[arg(long, help = "Configure the current git repository")]
+        local: bool,
+        #[arg(long, help = "Configure your global git settings")]
+        global: bool,
+        #[arg(long, help = "Confirm a global git credential-helper change")]
+        yes: bool,
+    },
+    /// Internal git credential-helper protocol endpoint
     GitCredential {
         #[arg(default_value = "get")]
         operation: String,
@@ -337,18 +382,93 @@ pub struct RepoArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum RepoAction {
-    List,
+    /// List repositories available to you
+    List {
+        #[arg(long, help = "Filter by a GitHub-backed namespace")]
+        namespace: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 30,
+            help = "Return between 1 and 100 repositories"
+        )]
+        limit: u32,
+        #[arg(long, help = "Continue from an opaque repository cursor")]
+        after: Option<String>,
+    },
+    /// Show one repository, or infer it from this checkout's git remotes
     View {
-        #[arg(help = "Repository slug")]
-        slug: String,
+        #[arg(help = "Repository in OWNER/REPO format")]
+        repository: Option<String>,
+        #[arg(
+            short = 'R',
+            long,
+            help = "Select OWNER/REPO instead of inferring the remote"
+        )]
+        repo: Option<String>,
     },
+    /// Create an empty OpenAgents repository
     Create {
-        #[arg(long)]
+        #[arg(help = "Repository name, or OWNER/NAME")]
         name: String,
+        #[arg(long, help = "Set the repository description")]
+        description: Option<String>,
+        #[arg(long, help = "Create a public repository (the default)")]
+        public: bool,
+        #[arg(long, help = "Create a private repository")]
+        private: bool,
+        #[arg(long, default_value = "main", help = "Set the initial default branch")]
+        default_branch: String,
+        #[arg(
+            long,
+            default_value_t = 300,
+            help = "Seconds to wait for durable provisioning (0 does not wait)"
+        )]
+        wait_timeout: u64,
     },
+    /// Import a GitHub repository once
+    Import {
+        #[arg(help = "GitHub repository in OWNER/REPO format")]
+        source: String,
+        #[arg(long, help = "Override the destination repository name")]
+        name: Option<String>,
+        #[arg(long, help = "Import into an eligible GitHub organization namespace")]
+        namespace: Option<String>,
+        #[arg(long, help = "Import as a public repository")]
+        public: bool,
+        #[arg(long, help = "Import as a private repository")]
+        private: bool,
+        #[arg(
+            long,
+            default_value_t = 300,
+            help = "Seconds to wait for the import (0 does not wait)"
+        )]
+        wait_timeout: u64,
+    },
+    /// Clone a repository with git
     Clone {
-        #[arg(help = "Repository slug")]
-        slug: String,
+        #[arg(help = "Repository in OWNER/REPO format")]
+        repository: Option<String>,
+        #[arg(help = "Directory to clone into")]
+        directory: Option<String>,
+        #[arg(
+            short = 'R',
+            long,
+            help = "Select OWNER/REPO instead of inferring the remote"
+        )]
+        repo: Option<String>,
+    },
+    /// Permanently delete a repository you own
+    Delete {
+        #[arg(help = "Repository in OWNER/REPO format")]
+        repository: Option<String>,
+        #[arg(
+            short = 'R',
+            long,
+            help = "Select OWNER/REPO instead of inferring the remote"
+        )]
+        repo: Option<String>,
+        #[arg(long, help = "Confirm permanent repository deletion")]
+        yes: bool,
     },
 }
 
@@ -622,64 +742,20 @@ pub enum TraceAction {
 }
 
 pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    let cred_store = crate::auth::CredentialStore::new(None);
+    let endpoint =
+        match crate::auth::resolve_endpoint(cli.api_url.as_deref(), cli.profile.as_deref()) {
+            Ok(endpoint) => endpoint,
+            Err(error) => fail(&error.to_string()),
+        };
+    let cred_store = crate::auth::CredentialStore::for_origin(&endpoint.origin);
     let token = cred_store.get_token();
 
     match cli.command {
-        Commands::Auth(auth) => match auth.action {
-            AuthAction::Login => {
-                println!("Auth login initialized");
-            }
-            AuthAction::TokenStdin => {
-                let mut buffer = String::new();
-                std::io::stdin().read_line(&mut buffer)?;
-                cred_store.set_token(buffer.trim())?;
-                println!("Token saved successfully.");
-            }
-            AuthAction::Status => {
-                if let Some(tok) = token {
-                    println!("Authenticated (token present, prefix: {}...)", &tok[..tok.len().min(8)]);
-                } else {
-                    println!("Not authenticated. No token found in config or environment.");
-                }
-            }
-            AuthAction::Logout => {
-                cred_store.clear_token()?;
-                println!("Logged out successfully.");
-            }
-            AuthAction::SetupGit => {
-                println!("Configured git credentials helper for OpenAgents.");
-            }
-            AuthAction::GitCredential { operation } => {
-                let output = crate::repo::handle_git_credential(&operation, "openagents.com", token.as_deref());
-                print!("{}", output);
-            }
-        },
+        Commands::Auth(auth) => run_auth(auth.action, &endpoint, &cred_store, cli.json).await,
         Commands::Identity(identity) => run_identity(identity.action, cli.json),
         Commands::Issue(issue) => run_issue(issue.action, token, cli.json).await,
         Commands::Project(project) => run_project(project.action, token, cli.json).await,
-        Commands::Repo(repo) => {
-            let repo_client = crate::repo::RepoClient::new("https://openagents.com/api/v1", token);
-            match repo.action {
-                RepoAction::List => {
-                    let repos = repo_client.list_repos().await.map_err(|e| e.to_string())?;
-                    for r in repos {
-                        println!("{}\t(branch: {})", r.slug, r.default_branch);
-                    }
-                }
-                RepoAction::View { slug } => println!("Viewing repository {}", slug),
-                RepoAction::Create { name } => {
-                    if repo_client.create_repo(&name, false).await.map_err(|e| e.to_string())? {
-                        println!("Created repository {}", name);
-                    }
-                }
-                RepoAction::Clone { slug } => {
-                    if crate::repo::RepoClient::clone_repo(&slug, None).await.map_err(|e| e.to_string())? {
-                        println!("Cloned repository {}", slug);
-                    }
-                }
-            }
-        }
+        Commands::Repo(repo) => run_repo(repo.action, &endpoint, &cred_store, cli.json).await,
         Commands::Coder(coder) => {
             if coder.delegate {
                 crate::delegate::run_delegation(coder, token).await?;
@@ -790,6 +866,558 @@ pub(crate) fn fail(message: &str) -> ! {
     std::process::exit(2)
 }
 
+// ---------------------------------------------------------------------------
+// auth
+// ---------------------------------------------------------------------------
+
+use crate::auth::{
+    CredentialStore, DeviceClient, Endpoint, PendingDeviceAuthorization, PendingStore,
+    Secret,
+};
+
+/// Unwrap or refuse. Every auth, repository, tracker, box, and memory path
+/// funnels through this, so a store that could not be read, or a server that
+/// answered with anything other than success, ends the command instead of
+/// continuing with a value nobody provided.
+///
+/// That is the whole difference between reporting what the server said and
+/// printing an empty list that reads as "there is nothing".
+fn or_fail<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => fail(&error.to_string()),
+    }
+}
+
+/// Read a token from standard input, keeping it out of the process table and
+/// the shell history.
+fn read_token_from_stdin() -> Secret {
+    use std::io::BufRead;
+    let mut buffer = String::new();
+    if std::io::stdin().lock().read_line(&mut buffer).is_err() {
+        fail("could not read a token from standard input");
+    }
+    let trimmed = buffer.trim().to_string();
+    if trimmed.is_empty() {
+        fail("standard input carried no token");
+    }
+    Secret::new(trimmed)
+}
+
+async fn run_auth(action: AuthAction, endpoint: &Endpoint, store: &CredentialStore, json: bool) {
+    match action {
+        AuthAction::Login {
+            token_stdin,
+            headless,
+            resume,
+            scope,
+        } => run_auth_login(endpoint, store, token_stdin, headless, resume, &scope, json).await,
+        AuthAction::TokenStdin => {
+            let token = read_token_from_stdin();
+            let source = or_fail(store.store(&token));
+            if json {
+                print_json(&serde_json::json!({
+                    "origin": endpoint.origin,
+                    "stored": true,
+                    "token_source": source.label(),
+                }));
+            } else {
+                println!("Stored an OpenAgents token for {}.", endpoint.origin);
+            }
+        }
+        AuthAction::Status => run_auth_status(endpoint, store, json).await,
+        AuthAction::Logout => {
+            let removed = or_fail(store.remove());
+            if json {
+                print_json(&serde_json::json!({
+                    "origin": endpoint.origin,
+                    "removed": removed,
+                }));
+            } else if removed {
+                println!(
+                    "Removed the stored OpenAgents token for {}.",
+                    endpoint.origin
+                );
+            } else {
+                println!("No OpenAgents token was stored for {}.", endpoint.origin);
+            }
+        }
+        AuthAction::SetupGit { local, global, yes } => {
+            if local == global {
+                fail("choose exactly one of --local or --global");
+            }
+            if global && !yes {
+                fail("global setup requires --yes confirmation");
+            }
+            let scope = if local { "local" } else { "global" };
+            or_fail(crate::repo::configure_credential_helper(
+                &endpoint.origin,
+                scope,
+                None,
+            ));
+            if json {
+                print_json(&serde_json::json!({
+                    "origin": endpoint.origin,
+                    "scope": scope,
+                    "configured": true,
+                }));
+            } else {
+                println!(
+                    "Configured the {scope} git credential helper for {}.",
+                    endpoint.origin
+                );
+            }
+        }
+        AuthAction::GitCredential { operation } => {
+            let input = or_fail(crate::repo::read_credential_stdin());
+            let answer = or_fail(crate::repo::run_git_credential_helper(
+                &endpoint.origin,
+                &operation,
+                &input,
+                store,
+            ));
+            print!("{answer}");
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_auth_login(
+    endpoint: &Endpoint,
+    store: &CredentialStore,
+    token_stdin: bool,
+    headless: bool,
+    resume: bool,
+    scope: &[String],
+    json: bool,
+) {
+    if [token_stdin, headless, resume]
+        .iter()
+        .filter(|f| **f)
+        .count()
+        > 1
+    {
+        fail("use only one of --token-stdin, --headless, or --resume");
+    }
+
+    let announce = |source: &str| {
+        if json {
+            print_json(&serde_json::json!({
+                "origin": endpoint.origin,
+                "authenticated": true,
+                "token_source": source,
+            }));
+        } else {
+            println!("Authenticated with {}.", endpoint.origin);
+            println!("The token is stored in your OS credential store.");
+            println!("Run oa auth setup-git --local to configure git for this repository.");
+        }
+    };
+
+    if token_stdin {
+        let token = read_token_from_stdin();
+        or_fail(store.store(&token));
+        announce("token_stdin");
+        return;
+    }
+
+    let pending_store = PendingStore::new();
+    let devices = DeviceClient::new(&endpoint.origin);
+
+    if resume {
+        let pending = match or_fail(pending_store.get(&endpoint.origin)) {
+            Some(pending) => pending,
+            None => fail(&format!(
+                "no pending authorization exists for {}. Run {} first",
+                endpoint.origin,
+                crate::auth::login_command_for(endpoint)
+            )),
+        };
+        let remaining = (pending.expires_at_ms - crate::auth::now_ms()) / 1_000;
+        if remaining <= 0 {
+            let _ = pending_store.remove(&endpoint.origin);
+            fail(&format!(
+                "the pending authorization expired. Run {} again",
+                crate::auth::login_command_for(endpoint)
+            ));
+        }
+        let authorization = crate::auth::DeviceAuthorization {
+            device_code: pending.device_code.clone(),
+            user_code: pending.user_code.clone(),
+            verification_uri: pending.verification_uri.clone(),
+            verification_uri_complete: pending.verification_uri_complete.clone(),
+            expires_in: remaining,
+            interval: pending.interval,
+        };
+        let token = or_fail(devices.wait(&authorization).await);
+        or_fail(store.store(&token));
+        or_fail(pending_store.remove(&endpoint.origin));
+        announce("device_authorization");
+        return;
+    }
+
+    let authorization = or_fail(devices.start(scope).await);
+
+    // A session with no terminal cannot wait for a person to click, and a
+    // session asked for JSON cannot interleave a wait with its single object.
+    // Both hand the approval back and record it for `--resume`.
+    let interactive = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    if headless || json || !interactive {
+        let resume_command = crate::auth::resume_command_for(endpoint);
+        or_fail(pending_store.set(&PendingDeviceAuthorization {
+            origin: endpoint.origin.clone(),
+            device_code: authorization.device_code.clone(),
+            user_code: authorization.user_code.clone(),
+            verification_uri: authorization.verification_uri.clone(),
+            verification_uri_complete: authorization.verification_uri_complete.clone(),
+            expires_at_ms: crate::auth::now_ms() + authorization.expires_in * 1_000,
+            interval: authorization.interval,
+            kind: Some("device".to_string()),
+        }));
+        if json {
+            print_json(&serde_json::json!({
+                "origin": endpoint.origin,
+                "authenticated": false,
+                "authorization_pending": true,
+                "verification_url": authorization.verification_uri_complete,
+                "user_code": authorization.user_code,
+                "expires_in": authorization.expires_in,
+                "resume_command": resume_command,
+            }));
+        } else {
+            println!("OpenAgents authorization is ready.");
+            println!("Open this URL: {}", authorization.verification_uri_complete);
+            println!("Authorization code: {}", authorization.user_code);
+            println!("After you approve the request, run: {resume_command}");
+        }
+        return;
+    }
+
+    eprintln!(
+        "OpenAgents authorization URL: {}",
+        authorization.verification_uri_complete
+    );
+    eprintln!("OpenAgents authorization code: {}", authorization.user_code);
+    if !crate::auth::open_browser(&authorization.verification_uri_complete) {
+        eprintln!("The browser did not open. Open the authorization URL above.");
+    }
+    eprintln!("Waiting for approval...");
+    let token = or_fail(devices.wait(&authorization).await);
+    or_fail(store.store(&token));
+    announce("device_authorization");
+}
+
+async fn run_auth_status(endpoint: &Endpoint, store: &CredentialStore, json: bool) {
+    let held = or_fail(store.find_token());
+    let (local_helper, global_helper) =
+        crate::repo::credential_helper_state(&endpoint.origin, None);
+
+    let Some(held) = held else {
+        if json {
+            print_json(&serde_json::json!({
+                "origin": endpoint.origin,
+                "profile": endpoint.profile,
+                "authenticated": false,
+                "token_source": serde_json::Value::Null,
+                "account": serde_json::Value::Null,
+                "namespaces": [],
+                "token_expires_at": serde_json::Value::Null,
+                "git_helper": { "local": local_helper, "global": global_helper },
+            }));
+        } else {
+            println!("API: {}", endpoint.origin);
+            println!("No token is available.");
+            println!(
+                "Set OPENAGENTS_TOKEN or run {}.",
+                crate::auth::login_command_for(endpoint)
+            );
+        }
+        return;
+    };
+
+    // The token is only evidence that something is stored. Whether it still
+    // authenticates anyone is a question only the server can answer, so ask it.
+    // A revoked token reports as revoked here rather than at some later command.
+    let client = crate::repo::RepoClient::new(&endpoint.origin, Some(held.token.clone()));
+    let user = or_fail(client.authenticated_user().await);
+
+    if json {
+        print_json(&serde_json::json!({
+            "origin": endpoint.origin,
+            "profile": endpoint.profile,
+            "authenticated": true,
+            "token_source": held.source.label(),
+            "account": { "id": user.id, "login": user.login },
+            "namespaces": user.namespaces,
+            "token_expires_at": user.token_expires_at,
+            "git_helper": { "local": local_helper, "global": global_helper },
+        }));
+    } else {
+        println!("API: {}", endpoint.origin);
+        println!(
+            "Authenticated as {} ({}) with a {} token.",
+            user.login,
+            user.id,
+            held.source.label()
+        );
+        println!(
+            "Eligible namespaces: {}.",
+            user.namespaces
+                .iter()
+                .map(|namespace| namespace.login.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        println!("Token expires: {}.", user.token_expires_at);
+        println!(
+            "Git helper: local {}; global {}.",
+            if local_helper {
+                "configured"
+            } else {
+                "not configured"
+            },
+            if global_helper {
+                "configured"
+            } else {
+                "not configured"
+            }
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// repo
+// ---------------------------------------------------------------------------
+
+fn print_json(value: &serde_json::Value) {
+    match serde_json::to_string_pretty(value) {
+        Ok(text) => println!("{text}"),
+        Err(error) => fail(&format!("could not render JSON output: {error}")),
+    }
+}
+
+/// The token every repository command needs, or a refusal naming the login.
+fn require_token(endpoint: &Endpoint, store: &CredentialStore) -> Secret {
+    match or_fail(store.find_token()) {
+        Some(held) => held.token,
+        None => fail(&format!(
+            "no OpenAgents token for {}. Set OPENAGENTS_TOKEN or run {}",
+            endpoint.origin,
+            crate::auth::login_command_for(endpoint)
+        )),
+    }
+}
+
+/// Resolve `OWNER/REPO` from the positional argument, `--repo`, or this
+/// checkout's git remotes. When none of the three answers, the command refuses
+/// rather than picking a repository nobody named.
+fn resolve_repository(
+    positional: Option<String>,
+    override_flag: Option<String>,
+    origin: &str,
+) -> (String, String) {
+    if positional.is_some() && override_flag.is_some() {
+        fail("pass a repository argument or --repo, not both");
+    }
+    let selected = match override_flag.or(positional) {
+        Some(value) => value,
+        None => or_fail(crate::repo::infer_repository(origin, None)),
+    };
+    or_fail(crate::repo::parse_repository_target(&selected))
+}
+
+fn visibility(public: bool, private: bool) -> Option<bool> {
+    if public && private {
+        fail("use either --public or --private, not both");
+    }
+    if public {
+        return Some(false);
+    }
+    if private {
+        return Some(true);
+    }
+    None
+}
+
+async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialStore, json: bool) {
+    let token = require_token(endpoint, store);
+    let client = crate::repo::RepoClient::new(&endpoint.origin, Some(token));
+
+    match action {
+        RepoAction::List {
+            namespace,
+            limit,
+            after,
+        } => {
+            let listed = or_fail(
+                client
+                    .list(namespace.as_deref(), limit, after.as_deref())
+                    .await,
+            );
+            if json {
+                print_json(&serde_json::json!({
+                    "repositories": listed.repositories,
+                    "next_cursor": listed.next_cursor,
+                }));
+            } else if listed.repositories.is_empty() {
+                println!("No repositories found.");
+            } else {
+                for repository in &listed.repositories {
+                    println!(
+                        "{}\t(branch: {})",
+                        repository.full_name, repository.default_branch
+                    );
+                }
+                if let Some(cursor) = listed.next_cursor {
+                    println!("Next cursor: {cursor}");
+                }
+            }
+        }
+        RepoAction::View { repository, repo } => {
+            let (owner, name) = resolve_repository(repository, repo, &endpoint.origin);
+            let value = or_fail(client.view(&owner, &name).await);
+            if json {
+                print_json(&serde_json::to_value(&value).unwrap_or(serde_json::Value::Null));
+            } else {
+                for line in value.human_lines() {
+                    println!("{line}");
+                }
+            }
+        }
+        RepoAction::Create {
+            name,
+            description,
+            public,
+            private,
+            default_branch,
+            wait_timeout,
+        } => {
+            let is_private = visibility(public, private).unwrap_or(false);
+            let (owner, repository_name) = if name.contains('/') {
+                let (owner, repository_name) = or_fail(crate::repo::parse_repository_target(&name));
+                (Some(owner), repository_name)
+            } else {
+                (None, name.clone())
+            };
+            let created = or_fail(
+                client
+                    .create(
+                        owner.as_deref(),
+                        &repository_name,
+                        is_private,
+                        description.as_deref(),
+                        &default_branch,
+                        std::time::Duration::from_secs(wait_timeout),
+                    )
+                    .await,
+            );
+            if json {
+                print_json(&serde_json::to_value(&created).unwrap_or(serde_json::Value::Null));
+            } else {
+                println!("Repository created.");
+                for line in created.human_lines() {
+                    println!("{line}");
+                }
+            }
+        }
+        RepoAction::Import {
+            source,
+            name,
+            namespace,
+            public,
+            private,
+            wait_timeout,
+        } => {
+            let is_private = visibility(public, private);
+            let (source_owner, source_repo) =
+                or_fail(crate::repo::parse_repository_target(&source));
+            let destination = namespace.clone().unwrap_or_else(|| source_owner.clone());
+            if !destination.eq_ignore_ascii_case(&source_owner) {
+                fail("--namespace must match the GitHub source owner");
+            }
+            // Eligibility is the server's fact, so read it rather than assume it.
+            let user = or_fail(client.authenticated_user().await);
+            let personal = destination.eq_ignore_ascii_case(&user.login);
+            if !personal
+                && !user.namespaces.iter().any(|candidate| {
+                    candidate.r#type == "organization"
+                        && candidate.login.eq_ignore_ascii_case(&destination)
+                })
+            {
+                fail(&format!(
+                    "{destination} is not an eligible GitHub namespace for this account"
+                ));
+            }
+            let (repository, repository_import) = or_fail(
+                client
+                    .import(
+                        if personal {
+                            None
+                        } else {
+                            Some(destination.as_str())
+                        },
+                        &format!("{source_owner}/{source_repo}"),
+                        name.as_deref(),
+                        is_private,
+                        std::time::Duration::from_secs(wait_timeout),
+                    )
+                    .await,
+            );
+            if json {
+                print_json(&serde_json::json!({
+                    "repository": repository,
+                    "import": repository_import,
+                }));
+            } else {
+                println!(
+                    "Imported {source_owner}/{source_repo} into {}.",
+                    repository.full_name
+                );
+                println!("Import state: {}", repository_import.state);
+                println!("This is a one-time import. Later GitHub changes do not sync.");
+            }
+        }
+        RepoAction::Clone {
+            repository,
+            directory,
+            repo,
+        } => {
+            let (owner, name) = resolve_repository(repository, repo, &endpoint.origin);
+            let (value, clone_url) = or_fail(client.clone_info(&owner, &name).await);
+            or_fail(crate::repo::git_clone(&clone_url, directory.as_deref()).await);
+            if json {
+                print_json(&serde_json::json!({
+                    "repository": value,
+                    "clone_url": clone_url,
+                    "cloned": true,
+                }));
+            } else {
+                println!("Cloned {}.", value.full_name);
+            }
+        }
+        RepoAction::Delete {
+            repository,
+            repo,
+            yes,
+        } => {
+            if !yes {
+                fail("repository deletion requires --yes confirmation");
+            }
+            let (owner, name) = resolve_repository(repository, repo, &endpoint.origin);
+            or_fail(client.remove(&owner, &name).await);
+            if json {
+                print_json(&serde_json::json!({
+                    "full_name": format!("{owner}/{name}"),
+                    "deleted": true,
+                }));
+            } else {
+                println!("Deleted {owner}/{name}.");
+            }
+        }
+    }
+}
+
 /// The first eight characters of a UUID, which is how the TypeScript CLI renders
 /// topic ids in a listing.
 fn short_id(id: &str) -> &str {
@@ -805,18 +1433,6 @@ fn home_directory() -> std::path::PathBuf {
 // ---------------------------------------------------------------------------
 
 const API_BASE: &str = "https://openagents.com/api/v1";
-
-/// Unwrap a client result, or print the server's own refusal and exit non-zero.
-///
-/// Every tracker, box, and memory command ends here rather than in an
-/// `unwrap_or_default`. That is the whole difference between reporting what the
-/// server said and printing an empty list that reads as "there is nothing".
-fn or_fail<T>(result: Result<T, crate::tracker::ApiError>) -> T {
-    match result {
-        Ok(value) => value,
-        Err(error) => fail(&error.to_string()),
-    }
-}
 
 /// Print the server's body verbatim under `--json`, or the human lines.
 fn emit(json: bool, value: &serde_json::Value, human: &[String]) {
