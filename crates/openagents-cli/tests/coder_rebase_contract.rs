@@ -188,7 +188,7 @@ fn a_delegate_error_is_visible_in_the_tool_box() {
 
 #[test]
 fn a_long_delegate_error_sweeps_to_and_keeps_its_last_lines() {
-    // The box starts at the top, then settles on the trailing five lines,
+    // The box starts at the top, then settles on the trailing four lines,
     // which is where a stack trace's actual cause lives.
     let mut ui = CoderUi::new();
     let mut tool = Entry::tool_call("delegate devin: error");
@@ -206,14 +206,14 @@ fn a_long_delegate_error_sweeps_to_and_keeps_its_last_lines() {
         "the sweep did not start at the top:\n{first_screen}"
     );
 
-    for _ in 0..8 {
+    for _ in 0..24 {
         draw(&mut ui, 80, 24);
     }
     let screen = draw(&mut ui, 80, 24).join("\n");
     assert!(screen.contains("frame 9"), "lost the last line:\n{screen}");
-    assert!(screen.contains("frame 5"), "lost the window:\n{screen}");
+    assert!(screen.contains("frame 6"), "lost the window:\n{screen}");
     assert!(
         !screen.contains("frame 1\n"),
-        "the box grew past five lines:\n{screen}"
+        "the box grew past four lines:\n{screen}"
     );
 }

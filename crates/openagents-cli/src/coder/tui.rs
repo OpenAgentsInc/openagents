@@ -23,7 +23,7 @@ use crate::runtime::TurnUsage;
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const TOOL_RAIL_WAVE_ROWS: f32 = 32.0;
 const TOOL_RAIL_WAVE_SPEED: f32 = 0.15;
-const TOOL_OUTPUT_ROWS: usize = 5;
+const TOOL_OUTPUT_ROWS: usize = 4;
 const TOOL_OUTPUT_SCROLL_FRAMES: u64 = 24;
 const TOOL_SETTLE_FRAMES: u64 = 10;
 
@@ -119,7 +119,7 @@ pub struct Entry {
     pub text: String,
     /// The model that produced this assistant entry, once the runtime reports it.
     pub model: Option<String>,
-    /// Tool output text, rendered as a box of up to five lines split by newlines.
+    /// Tool output text, rendered as a box of up to four lines.
     pub output: Option<String>,
     pub tool: Option<ToolCall>,
     pub at: u64,
@@ -513,8 +513,11 @@ impl CoderUi {
         let mut all_lines: Vec<Line<'static>> = Vec::new();
         let mut links = Vec::new();
         for index in 0..self.entries.len() {
-            let offset = all_lines.len();
             let entry = &mut self.entries[index];
+            if entry.role == Role::Tool {
+                all_lines.push(Line::default());
+            }
+            let offset = all_lines.len();
             let (lines, entry_links) = render_entry(entry, width, self.tick, self.motion_enabled);
             for mut link in entry_links {
                 link.row += offset;

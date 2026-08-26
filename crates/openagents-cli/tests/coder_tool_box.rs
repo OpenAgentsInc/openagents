@@ -3,7 +3,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 #[test]
-fn renders_delegate_tool_call_and_five_line_box() {
+fn renders_delegate_tool_call_and_four_line_box() {
     let mut ui = CoderUi::new();
     let mut call = Entry::tool_call("delegate devin: Read src/main.rs");
     call.output = Some("Reading file...\nFound main()\nDone".to_string());

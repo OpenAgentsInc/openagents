@@ -217,7 +217,7 @@ fn a_shell_tool_uses_a_prompt_marker_on_screen() {
     );
 
     let screen = text_of(&draw(&mut ui));
-    assert!(screen.starts_with("○ > cargo test"), "{screen}");
+    assert!(screen.starts_with(&format!("{}○ > cargo test", " ".repeat(80))), "{screen}");
     assert!(!screen.contains("shell cargo test"), "{screen}");
     assert_eq!(ui.entries[0].tool.as_ref().unwrap().function_name, "shell");
 }
@@ -243,11 +243,11 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
 
     let first = draw(&mut ui);
     let second = draw(&mut ui);
-    let first_rail = first.cell((0, 1)).unwrap();
-    let second_rail = second.cell((0, 1)).unwrap();
+    let first_rail = first.cell((0, 2)).unwrap();
+    let second_rail = second.cell((0, 2)).unwrap();
     assert_eq!(first_rail.symbol(), "│");
     assert_eq!(
-        first.cell((2, 1)).unwrap().fg,
+        first.cell((2, 2)).unwrap().fg,
         DIM_TEXT_COLOR,
         "tool output text is not 50% amber"
     );
@@ -266,15 +266,15 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
     let settled = draw(&mut ui);
     let settled_again = draw(&mut ui);
     assert_ne!(
-        settled.cell((0, 1)).unwrap().fg,
-        settled_again.cell((0, 1)).unwrap().fg,
+        settled.cell((0, 2)).unwrap().fg,
+        settled_again.cell((0, 2)).unwrap().fg,
         "the completion settle animation did not advance"
     );
     for _ in 0..10 {
         let _ = draw(&mut ui);
     }
     let resting = draw(&mut ui);
-    assert_eq!(resting.cell((0, 1)).unwrap().fg, DIM_TEXT_COLOR);
+    assert_eq!(resting.cell((0, 2)).unwrap().fg, DIM_TEXT_COLOR);
     assert!(ui.entries[0].tool.as_ref().unwrap().done);
 }
 
@@ -334,12 +334,14 @@ fn reduced_motion_keeps_the_active_tool_state_static() {
 
     let first = draw(&mut ui);
     let second = draw(&mut ui);
-    assert_eq!(first.cell((0, 1)).unwrap().fg, TEXT_COLOR);
+    assert_eq!(first.cell((0, 2)).unwrap().fg, TEXT_COLOR);
     assert_eq!(
-        first.cell((0, 1)).unwrap().fg,
-        second.cell((0, 1)).unwrap().fg
+        first.cell((0, 2)).unwrap().fg,
+        second.cell((0, 2)).unwrap().fg
     );
-    assert!(text_of(&second).starts_with("○ > cargo test"));
+    assert!(
+        text_of(&second).starts_with(&format!("{}○ > cargo test", " ".repeat(80)))
+    );
 }
 
 /// Output for a call the frame never saw start goes nowhere rather than onto
@@ -463,7 +465,8 @@ fn long_tool_output_sweeps_from_its_first_rows_to_its_last_rows() {
 
     let first_frame = text_of(&draw(&mut ui));
     assert!(first_frame.contains("line 01"), "{first_frame}");
-    assert!(first_frame.contains("line 05"), "{first_frame}");
+    assert!(first_frame.contains("line 04"), "{first_frame}");
+    assert!(!first_frame.contains("line 05"), "{first_frame}");
     assert!(!first_frame.contains("line 20"), "{first_frame}");
 
     for _ in 0..8 {
@@ -481,7 +484,7 @@ fn long_tool_output_sweeps_from_its_first_rows_to_its_last_rows() {
     }
     let settled_frame = text_of(&draw(&mut ui));
     assert!(!settled_frame.contains("line 01"), "{settled_frame}");
-    assert!(settled_frame.contains("line 16"), "{settled_frame}");
+    assert!(settled_frame.contains("line 17"), "{settled_frame}");
     assert!(settled_frame.contains("line 20"), "{settled_frame}");
 }
 
@@ -544,7 +547,7 @@ fn reduced_motion_opens_long_tool_output_at_its_last_rows() {
 
     let frame = text_of(&draw(&mut ui));
     assert!(!frame.contains("line 01"), "{frame}");
-    assert!(frame.contains("line 16"), "{frame}");
+    assert!(frame.contains("line 17"), "{frame}");
     assert!(frame.contains("line 20"), "{frame}");
 }
 
