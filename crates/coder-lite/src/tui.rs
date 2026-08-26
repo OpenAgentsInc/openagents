@@ -19,6 +19,70 @@ use openagents_cli::runtime::TurnUsage;
 
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+/// Columns the row under the composer keeps clear on the right.
+///
+/// That row is shared: the identity draws on the left and the credit balance
+/// draws on the right, because both change what the reader should do next.
+/// Reserving the columns rather than painting the whole width is what keeps
+/// the two fields from erasing each other.
+///
+/// 26 is measured against the strings [`crate::credit::CreditField::status`]
+/// actually formats, not chosen round. The widest is the unpriced-call state:
+/// `credit: 3 unpriced calls` is 24 columns and `credit: 12 unpriced calls` is
+/// 25, and a benchmark run on this lane came back with 12 unpriced calls — so
+/// 24 would truncate the very case the field exists to report. 26 leaves a
+/// column of air between the identity and the figure.
+const BALANCE_COLUMNS: u16 = 26;
+
+/// Who this session is signed in as.
+///
+/// Three states rather than a string, and the middle one is the reason this is
+/// an enum. A token sitting in the keychain is a *claim* that the session is
+/// signed in, not a fact: it may be revoked, expired, or for another
+/// deployment. Rendering that claim as a normal-looking account row is how a
+/// reader watches every turn fail while the screen says they are `AtlantisPleb`.
+///
+/// So [`Identity::Named`] is built only from what `GET /api/v1/user` answered
+/// **this session**. A credential nobody confirmed is [`Identity::Unverified`]
+/// and says so; no credential at all is [`Identity::Anonymous`] and says that.
+/// The three read differently on screen, on purpose.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Identity {
+    /// No credential at all. What the row says, and where the sign-in prompt
+    /// belongs.
+    #[default]
+    Anonymous,
+    /// A credential this session holds that the server has not confirmed —
+    /// unreachable, refused, or expired. Never rendered as an account: an
+    /// unconfirmed login name is worse than no name, because it reads as a
+    /// working session.
+    Unverified,
+    /// The account the server named for this session's credential, this
+    /// session.
+    Named {
+        login: String,
+        id: i64,
+        /// The namespaces this account may act in, as the server listed them.
+        namespaces: Vec<String>,
+        /// When the credential stops working, as the server stated it.
+        expires_at: String,
+    },
+}
+
+impl Identity {
+    /// The account, in the words the row uses.
+    ///
+    /// Three distinct sentences, because two of these states are failures and
+    /// a reader has to be able to tell which one they are looking at.
+    pub fn line(&self) -> String {
+        match self {
+            Identity::Anonymous => "not signed in".to_string(),
+            Identity::Unverified => "credential unverified".to_string(),
+            Identity::Named { login, .. } => login.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Role {
     You,
@@ -173,6 +237,24 @@ pub struct CoderUi {
     pub transcript_height: u16,
     pub loading: bool,
     pub tick: u64,
+    /// Who the session is signed in as, as the server confirmed it.
+    ///
+    /// The left field of the row under the composer. Defaults to
+    /// [`Identity::Anonymous`], which is the honest starting state: nothing has
+    /// confirmed anything yet.
+    pub identity: Identity,
+    /// The `/api/v1` base this session talks to, as it was resolved.
+    ///
+    /// Empty until something sets it, and an empty one is left off the row
+    /// rather than drawn as a dangling separator.
+    pub endpoint: String,
+    /// The lane the session was opened on — what was asked for, where
+    /// [`Self::model`] is what answered.
+    pub lane: String,
+    /// The thread this session holds, once the server has opened one.
+    pub thread: Option<String>,
+    /// What the last turn spent, as the server reported it for that turn.
+    pub last_usage: TurnUsage,
     pub total_usage: TurnUsage,
     /// What the last read of the account's credit found, or that it found
     /// nothing.
@@ -180,7 +262,16 @@ pub struct CoderUi {
     /// Nothing here derives it from [`Self::total_usage`]: that total is this
     /// session's, and the credit is the account's. See [`crate::credit`] for
     /// why a failed read clears this rather than leaving the last figure up.
+    ///
+    /// Drawn on the right of the row under the composer, in the columns
+    /// [`BALANCE_COLUMNS`] keeps clear of the identity.
     pub credit: crate::credit::CreditField,
+    /// What the server billed this session's thread, once it has said.
+    ///
+    /// `None` until a figure arrives, and `/info` says "not reported yet"
+    /// rather than printing a zero: a zero here reads as a measurement and it
+    /// would not be one.
+    pub billed: Option<u64>,
     pub agents: Vec<crate::acp::Agent>,
     /// Hyperlinks on the last rendered frame, in absolute screen coordinates.
     ///
@@ -239,42 +330,75 @@ impl CoderUi {
             transcript_height: 0,
             loading: false,
             tick: 0,
+            identity: Identity::Anonymous,
+            endpoint: String::new(),
+            lane: String::new(),
+            thread: None,
+            last_usage: TurnUsage::default(),
             total_usage: TurnUsage::default(),
             credit: crate::credit::CreditField::Unread,
+            billed: None,
             agents: Vec::new(),
             links: Vec::new(),
         }
     }
 
-    /// Add a turn's reported usage to the running conversation total.
+    /// Record a turn's reported usage: the last turn, and the running total.
+    ///
+    /// Both are kept because `/info` reports both, and because the total is
+    /// the figure the server's billed spend is held against.
     pub fn add_usage(&mut self, usage: TurnUsage) {
+        self.last_usage = usage;
         self.total_usage.add(usage);
     }
 
-    /// The bottom row, as a `·`-joined list of the fields that have something
-    /// to say.
+    /// The left field of the row under the composer: who, and where.
     ///
-    /// The credit and the tokens are facts about two different things, which
-    /// is why they are separate fields rather than one combined figure: the
-    /// tokens are this terminal's turn totals, and the credit is the account's,
-    /// read from the server, and possibly moved by another terminal since. A
-    /// field with nothing to report contributes nothing, so the row never
-    /// carries a placeholder that could be read as a value.
-    pub fn status_line(credit: &crate::credit::CreditField, usage: &TurnUsage) -> String {
-        let fields = [
-            credit.status(),
-            format!(
-                "{} prompt + {} completion = {} tokens",
-                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
-            ),
-        ];
+    /// Never a token count — those moved to `/info`, where they can be read
+    /// deliberately instead of glanced past. Never a name the server did not
+    /// confirm this session; see [`Identity`].
+    ///
+    /// The endpoint appears as its host, because that is the part that tells a
+    /// deployment from a laptop and the row shares its width with the balance.
+    /// `/info` carries the whole URL.
+    pub fn status_line(&self) -> String {
+        let who = self.identity.line();
+        match self.endpoint_host() {
+            Some(host) => format!("{who} · {host}"),
+            None => who,
+        }
+    }
 
-        fields
-            .iter()
-            .filter(|field| !field.is_empty())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" · ")
+    /// The right field of the same row: what the account has left.
+    ///
+    /// The identity and the balance stay separate fields rather than one
+    /// joined string because they are facts about different things and are
+    /// drawn into different rectangles — the identity is this session's, and
+    /// the credit is the account's, read from the server and possibly moved by
+    /// another terminal since. A field with nothing to report contributes an
+    /// empty string, so the row never carries a placeholder that could be read
+    /// as a value; see [`crate::credit::CreditField::status`].
+    ///
+    /// The token counts this row used to carry are not here. They are this
+    /// session's spend, not the account's, and they moved to `/info`.
+    pub fn balance_line(&self) -> String {
+        self.credit.status()
+    }
+
+    /// The host of [`Self::endpoint`], scheme and path removed.
+    ///
+    /// `None` when nothing set an endpoint, so the row draws the identity
+    /// alone rather than a separator with nothing after it.
+    pub fn endpoint_host(&self) -> Option<&str> {
+        let host = self
+            .endpoint
+            .trim()
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .split('/')
+            .next()
+            .unwrap_or_default();
+        (!host.is_empty()).then_some(host)
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
@@ -373,12 +497,37 @@ impl CoderUi {
         let cursor_y = input_area.y + 1 + caret_screen_row.min(visible_input_lines.saturating_sub(1));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 
+        // The row under the composer is what you can do next, not what you
+        // already spent: who you are acting as, and — on the right, drawn by
+        // the balance field — whether you can afford the next turn. The token
+        // counts that used to live here moved to `/info`.
+        //
+        // The identity takes the left columns and stops there. A full-width
+        // paragraph would paint over the balance, and a right-aligned one over
+        // this, so the two fields have their own rectangles.
         let status_area = main[2];
-        let status = Self::status_line(&self.credit, &self.total_usage);
-        let status_widget = Paragraph::new(status)
+        // The split is exact rather than two overlapping full-width
+        // paragraphs: the identity gets everything up to the reserved columns
+        // and the balance gets the rest, so the two rectangles cannot overlap
+        // at any width. On a terminal narrower than BALANCE_COLUMNS the
+        // identity is squeezed to nothing and the balance keeps the row,
+        // because the balance is the field that changes what you do next.
+        let identity_width = status_area.width.saturating_sub(BALANCE_COLUMNS);
+        let identity_area = Rect {
+            width: identity_width,
+            ..status_area
+        };
+        let balance_area = Rect {
+            x: status_area.x + identity_width,
+            width: status_area.width - identity_width,
+            ..status_area
+        };
+        let status_widget = Paragraph::new(self.status_line()).style(style);
+        frame.render_widget(status_widget, identity_area);
+        let balance_widget = Paragraph::new(self.balance_line())
             .style(style)
             .alignment(ratatui::layout::Alignment::Right);
-        frame.render_widget(status_widget, status_area);
+        frame.render_widget(balance_widget, balance_area);
         // A block cursor, as grok-build's textarea draws one: the hardware
         // cursor alone is easy to lose in the alternate screen, and a trailing
         // space with nothing over it looks like a line that ends earlier than

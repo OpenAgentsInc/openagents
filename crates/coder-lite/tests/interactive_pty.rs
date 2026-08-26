@@ -734,29 +734,92 @@ mod unix_pty {
                 frame.dump()
             );
             assert!(
-                frame.status_bar().contains("tokens"),
+                frame.status_bar().contains("127.0.0.1"),
                 "the status bar should still be on the bottom row after a resize.\n{}",
                 frame.dump()
             );
         }
     }
 
-    /// The bottom row carries the usage, where 7ad52a0c8d moved it.
+    /// Columns the renderer keeps clear on the right of the bottom row for the
+    /// balance, mirroring `tui::BALANCE_COLUMNS`.
+    ///
+    /// Duplicated rather than imported because this harness drives the binary
+    /// through a PTY and reads cells, so it has no access to a private
+    /// constant. If the two drift, `the_bottom_row_carries_the_identity_and_the_balance`
+    /// fails on the column assertion rather than passing quietly.
+    const BALANCE_COLUMNS: usize = 26;
+
+    /// The bottom row carries who the session is and what the account has
+    /// left — two fields, one row, neither painting over the other.
+    ///
+    /// This is the seam where #130 and the balance field met: #130 moved the
+    /// token counts to `/info` and put the identity on the left, and the
+    /// balance had already claimed the right. A renderer that drew either as a
+    /// full-width paragraph would erase the other, and both halves are
+    /// asserted here so that regression is a red test rather than a screenshot
+    /// somebody notices later.
+    ///
+    /// The stub deployment names no account for the harness token, so the
+    /// identity is in its `Unverified` state: a credential nobody confirmed is
+    /// said to be unconfirmed, never drawn as a working account.
     #[test]
-    fn the_bottom_status_bar_reports_usage() {
+    fn the_bottom_row_carries_the_identity_and_the_balance() {
         let tui = Tui::start();
-        let frame = tui.wait_for("the status bar to report usage", FIRST_FRAME, |frame| {
-            let status = frame.status_bar();
-            status.contains("prompt") && status.contains("completion") && status.contains("tokens")
-        });
+        // Both halves, because they arrive at different times: the identity is
+        // on the first frame and the balance lands when `GET /api/v1/credit`
+        // answers. Waiting on the identity alone would read the row in the
+        // window before the balance exists and call the reserved columns empty.
+        let frame = tui.wait_for(
+            "the status bar to report the identity and the balance",
+            FIRST_FRAME,
+            |frame| {
+                let status = frame.status_bar();
+                status.contains("127.0.0.1") && status.contains("$18.40")
+            },
+        );
 
         let status = frame.status_bar();
         assert!(
-            status.trim_end().ends_with("tokens"),
-            "the usage line is right-aligned on the bottom row, and held {:?}.\n{}",
+            status.contains("unverified"),
+            "the stub names no account, so the row must not claim one, and held {:?}.\n{}",
             status,
             frame.dump()
         );
+        assert!(
+            !status.contains("tokens"),
+            "the token count is still on the row it was moved off, and held {:?}.\n{}",
+            status,
+            frame.dump()
+        );
+
+        // The other half of the same row. The identity must not have painted
+        // over it, and it must sit inside the reserved columns rather than
+        // wherever a right-aligned full-width paragraph would have put it.
+        let balance = status
+            .find("$18.40 left")
+            .unwrap_or_else(|| panic!(
+                "the balance should share the bottom row with the identity, \
+                 and the row held {status:?}.\n{}",
+                frame.dump()
+            ));
+        let identity = status
+            .find("unverified")
+            .expect("the identity was asserted present just above");
+        assert!(
+            identity < balance,
+            "the identity takes the left of the row and the balance the right, \
+             but they came back at {identity} and {balance}: {status:?}.\n{}",
+            frame.dump()
+        );
+        assert!(
+            balance >= status.trim_end().len() - BALANCE_COLUMNS,
+            "the balance should be drawn inside the {BALANCE_COLUMNS} columns \
+             reserved on the right, and started at {balance} of {:?}.\n{}",
+            status.trim_end().len(),
+            frame.dump()
+        );
+
         let composer = frame.composer().expect("a composer above the status bar");
         assert!(
             composer.bottom < frame.rows.len() - 1,
@@ -787,9 +850,22 @@ mod unix_pty {
             status,
             frame.dump()
         );
+        // Until #130 this read `status.contains("tokens")`: the balance was
+        // added beside the token counts, because that is what the row held at
+        // the time. The counts moved to `/info` and the identity took their
+        // place, so the neighbour the balance must not have erased is now the
+        // identity — the assertion is the same one, against the field that is
+        // actually there.
         assert!(
-            status.contains("tokens"),
-            "the balance goes beside the token counts, not instead of them: {:?}.\n{}",
+            status.contains("unverified"),
+            "the balance goes beside the identity, not instead of it: {:?}.\n{}",
+            status,
+            frame.dump()
+        );
+        assert!(
+            !status.contains("tokens"),
+            "the token counts moved to `/info` and must not be back on the \
+             bottom row: {:?}.\n{}",
             status,
             frame.dump()
         );

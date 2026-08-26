@@ -56,6 +56,8 @@ pub enum Control {
     ToolDone { call_id: String, is_error: bool },
     /// The model that actually answered, as its grant pins it.
     Model(String),
+    /// The thread the server opened for this session, once it has one.
+    Thread(String),
     /// What the turn spent, as the server reported it.
     Usage(TurnUsage),
     /// What one read of `GET /api/v1/credit` found, and `None` when it found
@@ -64,6 +66,13 @@ pub enum Control {
     /// failure travels too, because the frame has to stop showing the previous
     /// answer rather than leave it up.
     Credit(Option<crate::credit::Credit>),
+    /// What the server billed this session's thread, in tokens.
+    ///
+    /// Sent when the ending hands the figure back, and never otherwise: the
+    /// grant's spend is a value only the server produces, and there is no
+    /// route that reports it mid-thread. Distinct from [`Control::Credit`]:
+    /// this is what this thread cost, that is what the account has left.
+    Billed(u64),
     /// Something worth saying that is not the model talking.
     Notice(String),
     /// What one of the session's own commands printed. Markdown, rendered the
@@ -150,6 +159,9 @@ pub fn user_token() -> Option<String> {
 pub struct Session {
     inner: CoderRuntimeSession,
     lane: Lane,
+    /// The frame's channel, kept so the ending can report what the server
+    /// billed. Turns carry their own sender; this one outlives them.
+    sink: Sink,
     /// Whether this user turn has already handed work to an ACP agent.
     ///
     /// Cleared at the top of every turn and set by the `acp` tool itself; see
@@ -290,6 +302,7 @@ impl Session {
         Self {
             inner,
             lane,
+            sink,
             acp_spent,
         }
     }
@@ -329,6 +342,9 @@ impl Session {
         if let Some(model) = &self.inner.last_model {
             send(&sink, Control::Model(model.clone()));
         }
+        if let Some(thread) = self.inner.thread() {
+            send(&sink, Control::Thread(thread.to_string()));
+        }
         if self.inner.last_usage.reported() {
             send(&sink, Control::Usage(self.inner.last_usage));
         }
@@ -362,6 +378,9 @@ impl Session {
     /// spawn an ending this process may exit before polling.
     pub async fn finish(&mut self) -> Result<Option<String>, Failure> {
         let spent = self.inner.finish().await?;
+        if let Some(spent) = spent {
+            send(&self.sink, Control::Billed(spent.total_tokens));
+        }
         Ok(self.inner.spend_line(spent))
     }
 

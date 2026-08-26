@@ -71,6 +71,10 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     ui.repo = repo;
     ui.branch = branch;
     ui.reasoning = options.reasoning.clone();
+    // The two facts the row under the composer needs that do not depend on a
+    // credential: where this session is talking, and what it asked for.
+    ui.endpoint = crate::runtime::api_base();
+    ui.lane = lane.label();
 
     // Only agents that are actually installed. `find_agents` checks each one
     // before reporting it, so the `acp` tool is declared over a list of
@@ -95,7 +99,12 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
 
     if let Some(token) = crate::runtime::user_token() {
         let endpoint = openagents_cli::auth::resolve_endpoint(None, None)?;
-        if validate_token(&endpoint.origin, &Secret::new(token)).await.is_ok() {
+        let token = Secret::new(token);
+        if validate_token(&endpoint.origin, &token).await.is_ok() {
+            // Who, before the screen opens. A token that authenticates is not
+            // yet an account name, and the row may only show one the server
+            // gave.
+            ui.identity = resolve_identity(&endpoint.origin, &token).await;
             session = Some(Arc::new(Mutex::new(Session::open(
                 lane.clone(),
                 &options.lane_name,
@@ -114,6 +123,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 ),
             ));
         } else {
+            // A stored token the deployment refused. The row says the
+            // credential is unverified rather than naming whoever it was
+            // issued to: a login drawn over a dead token is a session that
+            // looks live while every turn fails.
+            ui.identity = crate::tui::Identity::Unverified;
             ui.entries.push(Entry::new(
                 Role::Notice,
                 "Stored token did not authenticate. Press Enter to sign in to OpenAgents.",
@@ -226,6 +240,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                     match do_login().await {
                         Ok(message) => {
                             ui.entries.push(Entry::new(Role::Notice, message));
+                            // The row was saying "not signed in" a moment ago,
+                            // and now it has an account to name — asked for
+                            // once, here, rather than assumed from the login
+                            // having returned.
+                            ui.identity = current_identity().await;
                             session = Some(Arc::new(Mutex::new(Session::open(
                                 lane.clone(),
                                 &options.lane_name,
@@ -273,7 +292,29 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                     })
                     .await;
                     match notice {
-                        Ok(notice) => ui.entries.push(Entry::new(Role::Notice, notice)),
+                        Ok(notice) => {
+                            // The credential is gone, so the row must stop
+                            // naming the account it belonged to. Neither of
+                            // these lines existed in the commit that added
+                            // `/logout`: the row carried token counts then, and
+                            // nothing on it survived a logout. Now it carries
+                            // the two facts that do — who you are and what the
+                            // account has left — and leaving either up after
+                            // the token went is the failure both fields were
+                            // built to prevent. An account name nobody can
+                            // authenticate reads as a working session, and a
+                            // balance that has stopped refreshing looks exactly
+                            // like a current one.
+                            //
+                            // `Unread` rather than `Unavailable`: there is no
+                            // account to have failed to read. The field goes
+                            // absent, which is what it says before the first
+                            // read and what it should say once there is nothing
+                            // to read.
+                            ui.identity = crate::tui::Identity::Anonymous;
+                            ui.credit = crate::credit::CreditField::Unread;
+                            ui.entries.push(Entry::new(Role::Notice, notice));
+                        }
                         Err(_) => {
                             session = Some(active);
                             ui.entries.push(Entry::new(
@@ -369,6 +410,45 @@ async fn validate_token(origin: &str, token: &Secret) -> Result<(), Box<dyn std:
     }
     let body = response.text().await.unwrap_or_default();
     Err(format!("token rejected by {origin} ({status}): {body}").into())
+}
+
+/// Who the credential now in hand belongs to, resolved from scratch.
+///
+/// Called after a login, where the row has just stopped being able to say
+/// "not signed in" and has to be told what to say instead. The endpoint and
+/// the token are re-read rather than carried, because the login wrote both.
+async fn current_identity() -> crate::tui::Identity {
+    let Ok(endpoint) = openagents_cli::auth::resolve_endpoint(None, None) else {
+        return crate::tui::Identity::Unverified;
+    };
+    let Some(token) = crate::runtime::user_token() else {
+        return crate::tui::Identity::Anonymous;
+    };
+    resolve_identity(&endpoint.origin, &Secret::new(token)).await
+}
+
+/// Ask the server who this credential belongs to.
+///
+/// The same `GET /api/v1/user` that `openagents auth status` reads, so the row
+/// under the composer and that command cannot disagree about who is signed in.
+/// A refusal or an unreachable server is [`crate::tui::Identity::Unverified`]
+/// — the credential exists, nobody confirmed it, and that is what the row will
+/// say. It is never an account name.
+async fn resolve_identity(origin: &str, token: &Secret) -> crate::tui::Identity {
+    let client = openagents_cli::repo::RepoClient::new(origin, Some(token.clone()));
+    match client.authenticated_user().await {
+        Ok(user) => crate::tui::Identity::Named {
+            login: user.login,
+            id: user.id,
+            namespaces: user
+                .namespaces
+                .into_iter()
+                .map(|namespace| namespace.login)
+                .collect(),
+            expires_at: user.token_expires_at,
+        },
+        Err(_) => crate::tui::Identity::Unverified,
+    }
 }
 
 /// Start the GitHub device-authorization flow against the current endpoint,
@@ -481,6 +561,11 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         // What answered, from the grant. Recorded on the frame's own field,
         // which stays empty until something has actually answered.
         Control::Model(model) => ui.model = model,
+        // The thread the server opened, so `/info` can name it without asking
+        // the session for it behind a lock the turn is holding.
+        Control::Thread(thread) => ui.thread = Some(thread),
+        // What the server billed. Only ever a figure it sent.
+        Control::Billed(billed) => ui.billed = Some(billed),
         Control::Usage(usage) => {
             if usage.reported() {
                 ui.add_usage(usage);

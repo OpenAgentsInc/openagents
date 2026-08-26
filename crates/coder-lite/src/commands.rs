@@ -32,6 +32,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "write the transcript to ~/.openagents/exports as an ATIF document",
     ),
     ("help", "list these commands and the keys"),
+    (
+        "info",
+        "what this session has spent: tokens, model, lane, thread",
+    ),
     ("login", "sign in to OpenAgents and store the token"),
     (
         "logout",
@@ -73,7 +77,7 @@ pub fn names() -> Vec<&'static str> {
 pub fn handles(name: &str) -> bool {
     matches!(
         name,
-        "clear" | "diff" | "export" | "help" | "login" | "logout" | "resume" | "run"
+        "clear" | "diff" | "export" | "help" | "info" | "login" | "logout" | "resume" | "run"
     )
 }
 
@@ -103,6 +107,10 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
 
     match name {
         "help" => output(ui, &help()),
+        "info" => {
+            let text = info(ui);
+            output(ui, &text);
+        }
         "clear" => {
             ui.entries.clear();
             ui.scroll_override = None;
@@ -295,6 +303,95 @@ fn help() -> String {
         lines.push(format!("- `{key}` — {what}"));
     }
     lines.join("\n")
+}
+
+/// What `/info` prints: the numbers that used to sit under the composer, plus
+/// the facts that say which session produced them.
+///
+/// Every line is read from a value the session was *given* — `ui.model` is the
+/// model the grant named, `ui.thread` is the thread the server opened,
+/// `ui.last_usage` and `ui.total_usage` are what the server reported per turn.
+/// Nothing here re-parses a transcript line, and nothing here is a name
+/// compiled into this file: a default model that moved in the catalog would
+/// otherwise be reported by a session that was never given it.
+///
+/// A field nothing has reported says so in words. A zero printed where no
+/// measurement exists reads as a measurement, and this is the pane someone
+/// opens precisely because they want the real figure.
+fn info(ui: &CoderUi) -> String {
+    let mut lines = vec!["**This session**".to_string(), String::new()];
+
+    lines.push(format!("- Account — {}", ui.identity.line()));
+    lines.push(match ui.endpoint.is_empty() {
+        true => "- Endpoint — not resolved".to_string(),
+        false => format!("- Endpoint — {}", ui.endpoint),
+    });
+    if let crate::tui::Identity::Named {
+        id,
+        namespaces,
+        expires_at,
+        ..
+    } = &ui.identity
+    {
+        lines.push(format!("- Account id — {id}"));
+        lines.push(match namespaces.is_empty() {
+            true => "- Namespaces — none".to_string(),
+            false => format!("- Namespaces — {}", namespaces.join(", ")),
+        });
+        lines.push(format!("- Credential expires — {expires_at}"));
+    }
+
+    lines.push(match ui.model.is_empty() {
+        // What answered, or nothing. Never the lane's preference: that is what
+        // was asked for, and the two are not the same fact.
+        true => "- Model — no model has answered yet".to_string(),
+        false => format!("- Model — `{}`", ui.model),
+    });
+    lines.push(match ui.lane.is_empty() {
+        true => "- Lane — not recorded".to_string(),
+        false => format!("- Lane — {}", ui.lane),
+    });
+    lines.push(match &ui.thread {
+        Some(thread) => format!("- Thread — `{thread}`"),
+        None => "- Thread — none open".to_string(),
+    });
+
+    lines.push(match ui.last_usage.reported() {
+        true => format!("- Last turn — {}", ui.last_usage.line()),
+        false => "- Last turn — nothing reported".to_string(),
+    });
+    lines.push(match ui.total_usage.reported() {
+        true => format!("- This session counted — {}", ui.total_usage.line()),
+        false => "- This session counted — nothing reported".to_string(),
+    });
+    lines.push(billed_line(ui));
+
+    lines.join("\n")
+}
+
+/// The server's billed figure against what this session counted.
+///
+/// The two disagree often enough that the gap is worth a sentence, and until
+/// now it was only visible for the half-second after the screen closed. The
+/// server's figure is the one the account is charged against, so it is named
+/// as such rather than left for the reader to rank.
+fn billed_line(ui: &CoderUi) -> String {
+    let Some(billed) = ui.billed else {
+        return "- Billed by the server — not reported yet; the figure arrives when the thread \
+                ends"
+            .to_string();
+    };
+    let counted = ui.total_usage.total_tokens;
+    if billed == counted {
+        return format!(
+            "- Billed by the server — {billed} tokens, which is what this session counted"
+        );
+    }
+    format!(
+        "- Billed by the server — {billed} tokens; this session counted {counted}, a difference \
+         of {}. The server's figure is the one the account is charged against.",
+        billed.abs_diff(counted)
+    )
 }
 
 /// The call id a command's own output box is filed under.
