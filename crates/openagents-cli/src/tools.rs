@@ -139,6 +139,14 @@ pub struct DelegationGate {
     pub user_token: Option<String>,
     /// The most children one call may start.
     pub max_count: usize,
+    /// The `--child-*` flags the session was started with.
+    ///
+    /// Carried here so `/delegate` and the `delegate` tool start children the
+    /// same way `--delegate` does. Without it `oa coder --child-config f`
+    /// parsed, said nothing, and started a child that never saw the file —
+    /// which is the only route a provider credential has to one, since this
+    /// CLI stores none.
+    pub child: crate::delegate::ChildOptions,
 }
 
 pub struct HarnessToolRegistry {
@@ -509,6 +517,8 @@ impl HarnessToolRegistry {
                     count,
                     &gate.lane,
                     gate.user_token.clone(),
+                    gate.child.clone(),
+                    Some(self.cwd.clone()),
                 )
                 .await;
 
@@ -1297,6 +1307,7 @@ mod tests {
                 lane: "test".to_string(),
                 user_token: None,
                 max_count: 2,
+                child: Default::default(),
             },
         );
         let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();

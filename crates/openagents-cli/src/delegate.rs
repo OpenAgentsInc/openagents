@@ -1166,9 +1166,10 @@ impl Printer {
 ///
 /// `oa delegate` and `oa coder --delegate` run the same engine, so they resolve
 /// to the same request rather than each carrying its own copy of the argument
-/// handling. The coder flag reaches only the fields the coder command declares;
-/// the `--child-*` and `--dir` flags exist on `oa delegate` alone, which is why
-/// they are `None` on that side rather than silently defaulted.
+/// handling. Both commands now declare the `--child-*` flags, so a fan-out
+/// started from either can be given a harness, a model, and a config file;
+/// `--dir` and `--description` remain `oa delegate`'s alone, which is why they
+/// are `None` on the coder side rather than silently defaulted.
 #[derive(Debug, Clone)]
 pub struct DelegationRequest {
     pub prompt: Option<String>,
@@ -1196,10 +1197,10 @@ impl DelegationRequest {
             keep_workspaces: args.keep_workspaces,
             directory: None,
             description: None,
-            child_model: None,
-            child_command: None,
-            child_config: None,
-            child_ask: false,
+            child_model: args.child_model,
+            child_command: args.child_command,
+            child_config: args.child_config,
+            child_ask: args.child_ask,
         }
     }
 
@@ -1471,6 +1472,8 @@ pub fn fanout_for_tool(
     count: usize,
     lane: &str,
     user_token: Option<String>,
+    child: ChildOptions,
+    directory: Option<PathBuf>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
     let prompt = prompt.to_string();
     let lane = lane.to_string();
@@ -1478,7 +1481,18 @@ pub fn fanout_for_tool(
     let prompt = prompt.as_str();
     let lane = lane.as_str();
     let count = count.clamp(1, MAX_DELEGATE_COUNT);
-    let supervisor = DelegationSupervisor::new(count, lane, user_token);
+    // A flag the lane cannot honour is reported to the caller rather than
+    // dropped: the session asked for a model or a dry run and would otherwise
+    // get a fan-out without either, with nothing said.
+    if let Err(why) = child.check(&ChildLane::parse(lane)) {
+        return format!("No children were started: {why}");
+    }
+    // Children work where the session works. The version this replaces took
+    // whatever the process's own directory happened to be, which is the same
+    // thing only until something changes it.
+    let supervisor = DelegationSupervisor::new(count, lane, user_token)
+        .with_child_options(child)
+        .in_directory(directory);
     let results = supervisor.dispatch(prompt).await;
 
     let succeeded = results.iter().filter(|result| result.success).count();
@@ -1670,9 +1684,9 @@ mod child_option_tests {
 
     /// The two commands that run a fan-out resolve to the same request.
     ///
-    /// `oa coder --delegate` declares none of the `--child-*` flags, so they
-    /// arrive as `None` rather than as a default that would be indistinguishable
-    /// from the reader having chosen it.
+    /// Including the `--child-*` flags: `oa coder --delegate --child-config f`
+    /// used to drop the config on the floor, which is the only route a provider
+    /// credential has to a child.
     #[test]
     fn both_entry_points_resolve_to_one_request() {
         let request = DelegationRequest::from_delegate(DelegateArgs {
@@ -1698,9 +1712,13 @@ mod child_option_tests {
             prompt: Some("go".to_string()),
             delegate: true,
             count: 3,
-            max_parallel: None,
+            max_parallel: Some(2),
             isolation: None,
             keep_workspaces: false,
+            child_model: Some("anthropic/claude".to_string()),
+            child_command: Some("opencode".to_string()),
+            child_config: Some("/tmp/harness.json".to_string()),
+            child_ask: true,
             lane: None,
             model: None,
             local: false,
@@ -1716,8 +1734,13 @@ mod child_option_tests {
             dev_port: 4000,
         });
         assert_eq!(request.count, 3);
-        assert!(request.child_model.is_none());
-        assert!(!request.child_ask);
+        assert_eq!(request.max_parallel, Some(2));
+        assert_eq!(request.child_model.as_deref(), Some("anthropic/claude"));
+        assert_eq!(request.child_command.as_deref(), Some("opencode"));
+        assert_eq!(request.child_config.as_deref(), Some("/tmp/harness.json"));
+        assert!(request.child_ask);
+        // `--dir` and `--description` are still `oa delegate`'s alone.
         assert!(request.directory.is_none());
+        assert!(request.description.is_none());
     }
 }

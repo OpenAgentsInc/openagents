@@ -507,3 +507,229 @@ async fn a_delegated_child_revokes_its_own_thread() {
         REVOCATION_HELD.as_millis()
     );
 }
+
+// ──────────────────────────────────────── the `--child-*` flags on `oa coder`
+
+/// Parse a real `oa coder` command line and give back the child options a
+/// fan-out started from it would run with.
+///
+/// The whole chain, argv first: clap parses the flags, `DelegationRequest`
+/// carries them off the coder command, and `ChildOptions::resolve` settles
+/// them. `oa coder --delegate` declared none of these flags, so every one of
+/// them used to stop at the parser — or rather never reach it.
+fn child_options_from(argv: &[&str]) -> openagents_cli::delegate::ChildOptions {
+    use clap::Parser;
+    let parsed = openagents_cli::cli::Cli::parse_from(argv);
+    let Some(openagents_cli::cli::Commands::Coder(coder)) = parsed.command else {
+        panic!("{argv:?} did not parse as `oa coder`");
+    };
+    let request = openagents_cli::delegate::DelegationRequest::from_coder(coder);
+    openagents_cli::delegate::ChildOptions::resolve(
+        request.child_model,
+        request.child_command,
+        request.child_config,
+        request.child_ask,
+    )
+}
+
+/// A stand-in that reports the argv and the `OPENCODE_CONFIG` it was started
+/// with, in the claude lane's wire shape.
+///
+/// The marker is the point: if `--child-command` did not reach the child, the
+/// `claude` on this machine ran instead and the marker is absent.
+fn reporting_stand_in(name: &str) -> PathBuf {
+    stand_in(
+        name,
+        r#"#!/bin/sh
+printf '{"type":"result","is_error":false,"result":"MARK argv=%s config=%s END"}\n' \
+  "$*" "${OPENCODE_CONFIG:-unset}"
+"#,
+    )
+}
+
+/// What one child of a fan-out configured by `argv` actually reported.
+///
+/// Under the shared guard: these start real child processes, and the streaming
+/// test above asserts against a wall clock, so a fan-out running alongside it
+/// is measured as its latency.
+async fn one_child_reports(argv: &[&str]) -> String {
+    let _exclusive = exclusive();
+    let options = child_options_from(argv);
+    let supervisor = DelegationSupervisor::new(1, "claude", None)
+        .with_isolation(Isolation::Directory)
+        .with_child_options(options);
+    let (results, _) = run(&supervisor, "ignored", None).await;
+    assert!(results[0].success, "the child failed: {}", results[0].output);
+    let said = results[0].output.clone();
+    assert!(
+        said.contains("MARK"),
+        "the stand-in did not run, so --child-command never reached the child: {said}"
+    );
+    said
+}
+
+/// `--child-config` reaches the child's environment.
+///
+/// This is the one with consequences: the CLI deliberately stores no provider
+/// credential, so a harness config passed as `OPENCODE_CONFIG` is the only
+/// route one has to a delegated child. Asserted against the environment of a
+/// real process, not against the parsed flag.
+#[tokio::test]
+async fn child_config_reaches_a_real_child_process() {
+    let harness = reporting_stand_in("config-reporting-claude");
+    let config = std::env::temp_dir().join("oa-child-harness-config.json");
+    std::fs::write(&config, "{}").unwrap();
+
+    let said = one_child_reports(&[
+        "oa",
+        "coder",
+        "--delegate",
+        "--child-command",
+        harness.to_str().unwrap(),
+        "--child-config",
+        config.to_str().unwrap(),
+        "do the thing",
+    ])
+    .await;
+
+    assert!(
+        said.contains(&format!("config={}", config.display())),
+        "OPENCODE_CONFIG did not reach the child: {said}"
+    );
+}
+
+/// `--child-model` reaches the child's argument list, and `--child-ask`
+/// changes the mode it is started in.
+#[tokio::test]
+async fn child_model_and_child_ask_reach_a_real_child_process() {
+    let harness = reporting_stand_in("model-reporting-claude");
+    let command = harness.to_str().unwrap();
+
+    let said = one_child_reports(&[
+        "oa",
+        "coder",
+        "--delegate",
+        "--child-command",
+        command,
+        "--child-model",
+        "claude-sonnet-4-5",
+        "go",
+    ])
+    .await;
+    assert!(
+        said.contains("--model claude-sonnet-4-5"),
+        "--child-model did not reach the child's argv: {said}"
+    );
+    // Without --child-ask a delegated child has nobody to ask, so it accepts
+    // its own edits.
+    assert!(
+        said.contains("--permission-mode acceptEdits"),
+        "{said}"
+    );
+
+    let asking = one_child_reports(&[
+        "oa",
+        "coder",
+        "--delegate",
+        "--child-command",
+        command,
+        "--child-ask",
+        "go",
+    ])
+    .await;
+    assert!(
+        asking.contains("--permission-mode default"),
+        "--child-ask did not change the mode the child was started in: {asking}"
+    );
+    assert!(
+        !asking.contains("acceptEdits"),
+        "--child-ask left the child accepting its own edits: {asking}"
+    );
+}
+
+/// `--concurrency` on `oa coder` is the cap, under the name the TypeScript CLI
+/// and `oa delegate` both use for it.
+#[test]
+fn concurrency_is_the_cap_on_the_coder_command_too() {
+    use clap::Parser;
+    for flag in ["--concurrency", "--max-parallel"] {
+        let parsed =
+            openagents_cli::cli::Cli::parse_from(["oa", "coder", "--delegate", flag, "3", "go"]);
+        let Some(openagents_cli::cli::Commands::Coder(coder)) = parsed.command else {
+            panic!("{flag} did not parse as `oa coder`");
+        };
+        assert_eq!(
+            openagents_cli::delegate::DelegationRequest::from_coder(coder).max_parallel,
+            Some(3),
+            "{flag} did not reach the cap"
+        );
+    }
+}
+
+/// The `delegate` tool a session runs starts children on the session's own
+/// `--child-*` flags.
+///
+/// `oa coder --child-config f` with no `--delegate` opens a session that can
+/// still fan out — through `/delegate` or the model calling the tool — and that
+/// path built its supervisor with no child options at all. The flag parsed,
+/// said nothing, and the child never saw the file.
+#[tokio::test]
+async fn the_delegate_tool_carries_the_sessions_child_options() {
+    let _exclusive = exclusive();
+    let harness = reporting_stand_in("tool-reporting-claude");
+    let config = std::env::temp_dir().join("oa-tool-harness-config.json");
+    std::fs::write(&config, "{}").unwrap();
+
+    let options = child_options_from(&[
+        "oa",
+        "coder",
+        "--child-command",
+        harness.to_str().unwrap(),
+        "--child-config",
+        config.to_str().unwrap(),
+        "--child-model",
+        "claude-sonnet-4-5",
+    ]);
+
+    // A directory of its own rather than this checkout: the tool's children
+    // work where the session works, and a temporary directory keeps this test
+    // from making a git worktree of the whole repository.
+    let cwd = tempfile::tempdir().unwrap();
+    let report = openagents_cli::delegate::fanout_for_tool(
+        "do the thing",
+        1,
+        "claude",
+        None,
+        options,
+        Some(cwd.path().to_path_buf()),
+    )
+    .await;
+
+    assert!(
+        report.contains("MARK"),
+        "--child-command never reached the tool's child: {report}"
+    );
+    assert!(
+        report.contains(&format!("config={}", config.display())),
+        "OPENCODE_CONFIG never reached the tool's child: {report}"
+    );
+    assert!(
+        report.contains("--model claude-sonnet-4-5"),
+        "--child-model never reached the tool's child: {report}"
+    );
+}
+
+/// A `--child-*` flag the session's lane cannot honour is said, not dropped.
+#[tokio::test]
+async fn the_delegate_tool_refuses_a_flag_its_lane_cannot_honour() {
+    let options = child_options_from(&["oa", "coder", "--child-model", "gpt-5"]);
+    // ox-alpha children run on the grant the server issues, which pins the
+    // model. There is no honouring `--child-model` there.
+    let report =
+        openagents_cli::delegate::fanout_for_tool("go", 1, "ox-alpha", None, options, None).await;
+    assert!(
+        report.starts_with("No children were started:"),
+        "the tool ran a fan-out without the model it was given: {report}"
+    );
+    assert!(report.contains("--child-model"), "{report}");
+}

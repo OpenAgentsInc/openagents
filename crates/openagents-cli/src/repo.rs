@@ -599,43 +599,71 @@ fn idempotency_key() -> String {
 // git
 // ---------------------------------------------------------------------------
 
-/// Quote a value for the shell git runs a `!`-prefixed helper through.
-fn shell_argument(value: &str) -> String {
-    let plain = !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@=-".contains(&byte));
-    if plain {
-        value.to_string()
-    } else {
-        format!("'{}'", value.replace('\'', "'\"'\"'"))
-    }
-}
-
-/// The path of the running binary, which is the program the credential helper
-/// names.
+/// The program name the credential helper is installed under.
 ///
-/// A bare `oa` would be resolved by the shell against `PATH`, and on a machine
-/// that also has an older `oa` installed — the common case while this port
-/// lands — git would run that one instead, which does not understand
-/// `--api-url` and answers nothing. Naming the path makes the helper this CLI.
-pub fn cli_program_path() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.canonicalize().ok())
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "oa".to_string())
-}
+/// A stable name, resolved on `PATH` by the shell git runs a `!`-prefixed
+/// helper through — deliberately not the path of the running binary. What goes
+/// into git config outlives the process that wrote it: a helper installed from
+/// `target/debug/oa` has to keep working after that build is rebuilt
+/// elsewhere, moved, or replaced by an installed release, and an absolute path
+/// stops resolving the moment any of that happens. The TypeScript CLI installs
+/// itself under `!openagents` for the same reason.
+pub const CLI_PROGRAM_NAME: &str = "oa";
 
 /// The git credential helper line this CLI installs.
 ///
 /// The `!` makes git run it as a shell command with the operation appended, so
-/// `credential.<origin>.helper` resolves to `<oa> --api-url <origin> auth
+/// `credential.<origin>.helper` resolves to `oa --api-url <origin> auth
 /// git-credential get`.
 pub fn credential_helper_command(origin: &str) -> String {
-    format!(
-        "!{} --api-url {origin} auth git-credential",
-        shell_argument(&cli_program_path())
+    format!("!{CLI_PROGRAM_NAME} --api-url {origin} auth git-credential")
+}
+
+/// Undo the shell quoting an older build wrote a helper path with.
+///
+/// Only the single-quoted form is unwound, because it is the only one this CLI
+/// ever produced.
+fn unquote(value: &str) -> String {
+    match value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
+        Some(inner) if value.len() >= 2 => inner.replace("'\"'\"'", "'"),
+        _ => value.to_string(),
+    }
+}
+
+/// Whether one `credential.<origin>.helper` line is an OpenAgents helper for
+/// this origin.
+///
+/// A helper is recognised by what it *does* — it answers `--api-url <origin>
+/// auth git-credential` — and by the program being one of ours, rather than by
+/// string equality against the line this build would write today. Three forms
+/// are the same working helper and all three must read as configured:
+///
+/// - `!oa …`, which this CLI now installs.
+/// - `!openagents …`, which the TypeScript CLI installs. It is a live helper
+///   for the same origin; calling it absent is a false report about the
+///   machine.
+/// - `!/some/path/to/oa …`, which older builds of this CLI installed. Still
+///   configured, whether or not that path is the binary asking.
+///
+/// The version this replaces compared against its own canonicalized
+/// `current_exe()`, so every one of these read as "not configured" — and two
+/// `oa` builds in different directories disagreed about the same config line.
+fn helper_line_matches(line: &str, origin: &str) -> bool {
+    let Some(rest) = line.trim().strip_prefix('!') else {
+        return false;
+    };
+    let Some(program) = rest.strip_suffix(&format!(" --api-url {origin} auth git-credential"))
+    else {
+        return false;
+    };
+    let program = unquote(program.trim());
+    let name = Path::new(&program)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    matches!(
+        name.strip_suffix(".exe").unwrap_or(&name),
+        CLI_PROGRAM_NAME | "openagents"
     )
 }
 
@@ -694,14 +722,146 @@ pub fn configure_credential_helper(
 
 /// Whether the helper is configured locally, globally, or not at all.
 pub fn credential_helper_state(origin: &str, directory: Option<&Path>) -> (bool, bool) {
-    let expected = credential_helper_command(origin);
     let key = credential_helper_key(origin);
     let configured = |scope: &str| {
         run_git_sync(&["config", scope, "--get-all", &key], directory)
-            .map(|(code, out)| code == 0 && out.lines().any(|line| line == expected))
+            .map(|(code, out)| {
+                code == 0 && out.lines().any(|line| helper_line_matches(line, origin))
+            })
             .unwrap_or(false)
     };
     (configured("--local"), configured("--global"))
+}
+
+/// What `oa repo create --source` did to the checkout it was pointed at.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AttachedRemote {
+    /// The remote the new repository was attached as.
+    pub remote: String,
+    /// The `git` arguments that push this checkout to it, so the reader is told
+    /// the next command rather than left to work it out.
+    pub next_push_arguments: Vec<String>,
+}
+
+impl AttachedRemote {
+    /// The full argv of the next push, `git -C <directory> push -u <remote> HEAD`.
+    pub fn next_push_argv(&self, directory: &Path) -> Vec<String> {
+        let mut argv = vec![
+            "git".to_string(),
+            "-C".to_string(),
+            directory.to_string_lossy().into_owned(),
+        ];
+        argv.extend(self.next_push_arguments.iter().cloned());
+        argv
+    }
+
+    /// That argv as one line a reader can paste back into a shell.
+    pub fn next_push_command(&self, directory: &Path) -> String {
+        self.next_push_argv(directory)
+            .iter()
+            .map(|argument| shell_argument(argument))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+/// Quote one argument so a printed command line can be pasted back into a
+/// shell. Display only — nothing here is handed to a shell by this process.
+fn shell_argument(value: &str) -> String {
+    let plain = !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@=-".contains(&byte));
+    if plain {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+}
+
+/// A name git will accept as a remote, on the same terms the TypeScript CLI
+/// admits one: `remoteNamePattern` in `git-runner.ts`.
+pub fn validate_remote_name(remote: &str) -> Result<String, AuthError> {
+    let admitted = |remote: &str| {
+        let mut bytes = remote.bytes();
+        let Some(first) = bytes.next() else {
+            return false;
+        };
+        first.is_ascii_alphanumeric()
+            && remote.len() <= 64
+            && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+            && !remote.contains("..")
+            && !remote.ends_with('.')
+            && !remote.ends_with(".lock")
+    };
+    if !admitted(remote) {
+        return Err(AuthError::new(format!("invalid git remote name: {remote}")));
+    }
+    Ok(remote.to_string())
+}
+
+/// Refuse a directory that is not a git worktree, saying which one.
+///
+/// Called once before the repository is created — so a mistyped `--source`
+/// costs nothing — and again inside [`attach_remote`], which is the call that
+/// actually depends on it.
+pub fn require_worktree(directory: &Path) -> Result<(), AuthError> {
+    let (code, inside) = run_git_sync(&["rev-parse", "--is-inside-work-tree"], Some(directory))?;
+    if code != 0 || inside.trim() != "true" {
+        return Err(AuthError::new(format!(
+            "{} is not a git worktree",
+            directory.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Point an existing checkout at a repository that was just created.
+///
+/// Mirrors `GitRunner.attachRemote`. Three refusals, each of them a thing this
+/// command must not do silently: a URL that is not a repository on the origin
+/// in use, because the credential helper would then hand this origin's token to
+/// whatever host the URL named; a directory that is not a worktree, because
+/// there is nothing to attach and the repository already exists remotely; and a
+/// remote of that name already pointing somewhere else, because overwriting it
+/// would detach the checkout from whatever it was pushing to. A remote already
+/// pointing at this URL is not an error — it is the state being asked for.
+pub fn attach_remote(
+    origin: &str,
+    url: &str,
+    directory: &Path,
+    remote: &str,
+) -> Result<AttachedRemote, AuthError> {
+    let remote = validate_remote_name(remote)?;
+    repository_from_remote_url(origin, url)?;
+    require_worktree(directory)?;
+
+    let (existing, existing_url) =
+        run_git_sync(&["remote", "get-url", "--", &remote], Some(directory))?;
+    if existing == 0 && existing_url.trim() != url {
+        return Err(AuthError::new(format!(
+            "remote {remote} already points to {}. The CLI did not overwrite it",
+            existing_url.trim()
+        )));
+    }
+    if existing != 0 {
+        let (added, _) = run_git_sync(&["remote", "add", &remote, url], Some(directory))?;
+        if added != 0 {
+            return Err(AuthError::new(format!(
+                "git remote add exited with status {added}"
+            )));
+        }
+    }
+
+    Ok(AttachedRemote {
+        next_push_arguments: vec![
+            "push".to_string(),
+            "-u".to_string(),
+            remote.clone(),
+            "HEAD".to_string(),
+        ],
+        remote,
+    })
 }
 
 /// `git clone` with this CLI wired in as the only credential helper for the
@@ -1017,9 +1177,14 @@ mod tests {
                 credential_helper_command("https://openagents.com")
             )
         );
-        // The helper names this binary, not a bare `oa` the shell would resolve
-        // against PATH — where an older install would answer instead.
-        assert!(argv[3].contains(&cli_program_path()), "{}", argv[3]);
+        // The helper names `oa` by its stable name, not the path of whichever
+        // build wrote it: a clone command that embedded `target/debug/oa`
+        // stops working the moment that build moves.
+        assert!(
+            argv[3].ends_with("=!oa --api-url https://openagents.com auth git-credential"),
+            "{}",
+            argv[3]
+        );
         assert_eq!(argv[argv.len() - 1], "dest");
     }
 }

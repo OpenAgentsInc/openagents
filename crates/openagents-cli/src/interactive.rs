@@ -1099,13 +1099,18 @@ fn install_panic_hook() {
 /// they each built the registry separately before, both passed `None`, and the
 /// result was that `delegate` worked headless and was missing from the only
 /// session anyone actually types into.
-fn session_tools(lane_name: &str, token: &Option<String>) -> HarnessToolRegistry {
+fn session_tools(
+    lane_name: &str,
+    token: &Option<String>,
+    child: crate::delegate::ChildOptions,
+) -> HarnessToolRegistry {
     HarnessToolRegistry::with_delegation(
         None,
         DelegationGate {
             lane: lane_name.to_string(),
             user_token: token.clone(),
             max_count: crate::delegate::MAX_DELEGATE_COUNT,
+            child,
         },
     )
 }
@@ -1126,7 +1131,7 @@ pub async fn run_tui(
         return run_without_a_terminal(args, api_base, token, repository, lane, resumed).await;
     }
 
-    let tools = session_tools(&lane_name, &token);
+    let tools = session_tools(&lane_name, &token, args.child_options());
     let mut session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
     session.repository = repository;
@@ -1236,7 +1241,7 @@ async fn run_without_a_terminal(
         return Ok(());
     };
 
-    let tools = session_tools(&lane_name, &token);
+    let tools = session_tools(&lane_name, &token, args.child_options());
     let mut session = CoderRuntimeSession::new(lane, Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
     session.repository = repository;
@@ -1301,7 +1306,7 @@ mod tests {
     /// exactly like a model choosing not to call it.
     #[test]
     fn an_interactive_session_can_delegate() {
-        let tools = session_tools("ox-alpha", &Some("token".to_string()));
+        let tools = session_tools("ox-alpha", &Some("token".to_string()), Default::default());
         let names: Vec<String> = tools.list_tools().into_iter().map(|t| t.name).collect();
         assert!(
             names.iter().any(|n| n == "delegate"),
@@ -1315,7 +1320,7 @@ mod tests {
     /// lane while the session runs on another, which is worse than no gate.
     #[test]
     fn the_gate_carries_this_sessions_lane_and_credential() {
-        let tools = session_tools("claude", &Some("secret-token".to_string()));
+        let tools = session_tools("claude", &Some("secret-token".to_string()), Default::default());
         let gate = tools
             .delegation
             .as_ref()

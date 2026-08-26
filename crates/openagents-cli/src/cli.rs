@@ -528,6 +528,16 @@ pub enum RepoAction {
             help = "Seconds to wait for durable provisioning (0 does not wait)"
         )]
         wait_timeout: u64,
+        #[arg(
+            long,
+            help = "Attach the new repository to an existing git worktree"
+        )]
+        source: Option<String>,
+        #[arg(
+            long,
+            help = "Name the git remote attached with --source (defaults to origin)"
+        )]
+        remote: Option<String>,
     },
     /// Import a GitHub repository once
     Import {
@@ -587,7 +597,15 @@ pub struct CoderArgs {
     #[arg(long, default_value_t = 1, help = "How many child agents run the prompt")]
     pub count: usize,
 
-    #[arg(long, help = "How many children run at once. Defaults to all of them")]
+    /// `--concurrency` is the name the TypeScript CLI gives this, and the name
+    /// `oa delegate` already gives it. An alias rather than a second field:
+    /// two flags that both set one value can be written together and then
+    /// disagree, and nothing would say which one won.
+    #[arg(
+        long,
+        visible_alias = "concurrency",
+        help = "How many children run at once. Defaults to all of them"
+    )]
     pub max_parallel: Option<usize>,
 
     #[arg(
@@ -598,6 +616,36 @@ pub struct CoderArgs {
 
     #[arg(long, help = "Leave the children's worktrees on disk so their work can be read")]
     pub keep_workspaces: bool,
+
+    // The four `--child-*` flags. `oa delegate` declared them and `oa coder
+    // --delegate` did not, so a fan-out started from the coder command could
+    // not be given a harness, a model, or a config file — and `--child-config`
+    // is the only route a provider credential has to a child, because this CLI
+    // deliberately never stores one. A lane that needed its own credential was
+    // therefore unreachable from `oa coder` at all.
+    #[arg(
+        long,
+        help = "Run children on this model instead of the lane's own, as `provider/model`. Defaults to OPENAGENTS_DELEGATE_MODEL"
+    )]
+    pub child_model: Option<String>,
+
+    #[arg(
+        long,
+        help = "The harness that runs a child. Defaults to OPENAGENTS_DELEGATE_COMMAND, or the lane's own binary"
+    )]
+    pub child_command: Option<String>,
+
+    #[arg(
+        long,
+        help = "A harness config file for children, passed as OPENCODE_CONFIG. This is how a provider credential reaches a child without being stored by the CLI"
+    )]
+    pub child_config: Option<String>,
+
+    #[arg(
+        long,
+        help = "Make children ask before using a tool. A delegated child has nobody to ask, so this stops it at its first edit; it exists for a dry run over a directory you do not want touched"
+    )]
+    pub child_ask: bool,
 
     #[arg(long, help = "Target harness lane (e.g. ox-alpha, gemini, devin, claude, codex)")]
     pub lane: Option<String>,
@@ -771,6 +819,19 @@ impl CoderArgs {
                 ))
             }
         }
+    }
+
+    /// The four `--child-*` flags, resolved with their environment fallbacks.
+    ///
+    /// One place, so a session that delegates through `/delegate` or the
+    /// `delegate` tool starts its children on exactly what `--delegate` would.
+    pub fn child_options(&self) -> crate::delegate::ChildOptions {
+        crate::delegate::ChildOptions::resolve(
+            self.child_model.clone(),
+            self.child_command.clone(),
+            self.child_config.clone(),
+            self.child_ask,
+        )
     }
 
     /// Whether any of `--lane`, `--model` or `--local` was written.
@@ -1958,11 +2019,11 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
             } else if listed.repositories.is_empty() {
                 println!("No repositories found.");
             } else {
+                // The slug alone, as the TypeScript CLI prints it. This output
+                // is piped, and a trailing `\t(branch: main)` makes every
+                // consumer of it cut a field off first.
                 for repository in &listed.repositories {
-                    println!(
-                        "{}\t(branch: {})",
-                        repository.full_name, repository.default_branch
-                    );
+                    println!("{}", repository.full_name);
                 }
                 if let Some(cursor) = listed.next_cursor {
                     println!("Next cursor: {cursor}");
@@ -1987,7 +2048,31 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
             private,
             default_branch,
             wait_timeout,
+            source,
+            remote,
         } => {
+            // Both checked before the repository is created, not after: a
+            // refusal that has already made a repository on the server is not
+            // a refusal.
+            //
+            // `--remote` names the remote `--source` attaches; on its own it
+            // has nothing to name. The TypeScript CLI ignores it silently,
+            // which leaves a reader believing they configured something.
+            if remote.is_some() && source.is_none() {
+                fail("--remote names the remote --source attaches. Give --source too");
+            }
+            if let Some(remote) = remote.as_deref() {
+                or_fail(crate::repo::validate_remote_name(remote));
+            }
+            // A `--source` that is not a worktree cannot be attached, and
+            // finding that out after the create leaves a repository on the
+            // server that the reader did not get told how to push to.
+            if let Some(directory) = source.as_deref() {
+                or_fail(crate::repo::require_worktree(std::path::Path::new(
+                    directory,
+                )));
+            }
+
             let is_private = visibility(public, private).unwrap_or(false);
             let (owner, repository_name) = if name.contains('/') {
                 let (owner, repository_name) = or_fail(crate::repo::parse_repository_target(&name));
@@ -2007,12 +2092,55 @@ async fn run_repo(action: RepoAction, endpoint: &Endpoint, store: &CredentialSto
                     )
                     .await,
             );
+            // A repository still provisioning has no clone URL to attach yet,
+            // so `--source` is reported as not done rather than done wrong.
+            let attached = match source.as_deref() {
+                Some(directory) if created.lifecycle_state == "ready" => {
+                    let (_, clone_url) = or_fail(
+                        client
+                            .clone_info(&created.owner.login, &created.name)
+                            .await,
+                    );
+                    let path = std::path::PathBuf::from(directory);
+                    let remote = remote.as_deref().unwrap_or("origin");
+                    Some((
+                        or_fail(crate::repo::attach_remote(
+                            &endpoint.origin,
+                            &clone_url,
+                            &path,
+                            remote,
+                        )),
+                        path,
+                    ))
+                }
+                _ => None,
+            };
+
             if json {
-                print_json(&serde_json::to_value(&created).unwrap_or(serde_json::Value::Null));
+                let mut value =
+                    serde_json::to_value(&created).unwrap_or(serde_json::Value::Null);
+                if let Some((attached, path)) = &attached {
+                    value = serde_json::json!({
+                        "repository": value,
+                        "remote": attached.remote,
+                        "next_push": attached.next_push_argv(path),
+                    });
+                }
+                print_json(&value);
             } else {
                 println!("Repository created.");
                 for line in created.human_lines() {
                     println!("{line}");
+                }
+                match (&attached, source.as_deref()) {
+                    (Some((attached, path)), Some(directory)) => {
+                        println!("Configured remote {} in {directory}.", attached.remote);
+                        println!("Next: {}", attached.next_push_command(path));
+                    }
+                    (None, Some(_)) => println!(
+                        "The repository is still provisioning, so the CLI did not configure a remote."
+                    ),
+                    _ => {}
                 }
             }
         }
@@ -4439,6 +4567,7 @@ async fn run_headless_coder(
             lane: lane_name.clone(),
             user_token: token.clone(),
             max_count: crate::delegate::MAX_DELEGATE_COUNT,
+            child: coder.child_options(),
         },
     );
     let lane = crate::runtime::Lane::from_str(&lane_name);

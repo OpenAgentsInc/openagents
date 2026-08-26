@@ -10,9 +10,10 @@ use openagents_cli::auth::{
     PendingDeviceAuthorization, PendingStore, Secret, TokenSource,
 };
 use openagents_cli::repo::{
-    admitted_credential_request, cli_program_path, configure_credential_helper,
+    admitted_credential_request, attach_remote, configure_credential_helper,
     credential_helper_command, credential_helper_state, git_clone_argv, infer_repository,
-    parse_repository_target, repository_from_remote_url, run_git_credential_helper, RepoClient,
+    parse_repository_target, repository_from_remote_url, require_worktree,
+    run_git_credential_helper, validate_remote_name, RepoClient,
 };
 use std::path::Path;
 use std::process::Command;
@@ -338,10 +339,25 @@ fn setup_git_writes_the_credential_helper_into_git_config() {
     );
     assert!(values[1].starts_with('!'), "{after}");
     assert!(values[1].ends_with(" --api-url https://openagents.com auth git-credential"));
-    // The helper names this binary. A bare `oa` would be resolved against PATH,
-    // where an older install answers nothing and the clone falls back to a
-    // password prompt.
-    assert!(values[1].contains(&cli_program_path()), "{after}");
+    // The exact value written, asserted as a whole: a stable program name, not
+    // the path of the build that ran setup-git. The version this replaces wrote
+    // `current_exe()` canonicalized, so a helper installed from a debug build
+    // stopped resolving as soon as that build moved.
+    assert_eq!(
+        values[1], "!oa --api-url https://openagents.com auth git-credential",
+        "{after}"
+    );
+    assert!(
+        !values[1].contains(
+            &std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .display()
+                .to_string()
+        ),
+        "the helper embedded the running build's directory: {after}"
+    );
     assert!(credential_helper_state(ORIGIN, Some(directory.path())).0);
 
     // Running it twice must not stack a second copy, which would make git ask
@@ -357,6 +373,135 @@ fn setup_git_writes_the_credential_helper_into_git_config() {
         1,
         "{again}"
     );
+}
+
+/// A local origin no keychain on this machine holds a token for, so `oa auth
+/// status` answers from the git config alone and reaches no network.
+const OFFLINE_ORIGIN: &str = "http://127.0.0.1:59999";
+
+/// Run the real `oa` binary in `directory`, with a `HOME` of its own so
+/// nothing here reads or writes the developer's `~/.gitconfig` or token store.
+fn oa(directory: &Path, home: &Path, args: &[&str]) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_oa"))
+        .current_dir(directory)
+        .env("HOME", home)
+        .env_remove("OPENAGENTS_TOKEN")
+        .args(args)
+        .output()
+        .expect("oa runs");
+    assert!(
+        output.status.success(),
+        "oa {args:?} exited {:?}: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+/// What `oa auth status` says about the local helper, through the real binary.
+fn reported_local_helper(directory: &Path, home: &Path) -> bool {
+    let status = oa(
+        directory,
+        home,
+        &["--api-url", OFFLINE_ORIGIN, "auth", "status", "--json"],
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&status).expect("status is JSON");
+    parsed["git_helper"]["local"]
+        .as_bool()
+        .expect("status reports the local helper")
+}
+
+/// `setup-git` writes a helper and `auth status` then reports it configured.
+///
+/// Round-tripped through the real binary rather than asserted as a string,
+/// because the defect was exactly a disagreement between the two halves:
+/// `setup-git` wrote `current_exe()` canonicalized, `status` compared the
+/// config against *its own* `current_exe()`, and a helper installed by one
+/// build read as absent to another. Either half alone looked right.
+#[test]
+fn setup_git_and_auth_status_agree_about_the_helper() {
+    let home = tempfile::tempdir().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    init_repository(directory.path());
+    let key = format!("credential.{OFFLINE_ORIGIN}.helper");
+
+    assert!(
+        !reported_local_helper(directory.path(), home.path()),
+        "the checkout starts unconfigured"
+    );
+
+    oa(
+        directory.path(),
+        home.path(),
+        &["--api-url", OFFLINE_ORIGIN, "auth", "setup-git", "--local"],
+    );
+
+    // The value that actually landed in git config, in full.
+    let written = git(directory.path(), &["config", "--local", "--get-all", &key]);
+    let values: Vec<&str> = written.trim_end_matches('\n').split('\n').collect();
+    assert_eq!(
+        values,
+        vec![
+            "",
+            "!oa --api-url http://127.0.0.1:59999 auth git-credential"
+        ],
+        "{written}"
+    );
+
+    assert!(
+        reported_local_helper(directory.path(), home.path()),
+        "auth status called a helper it had just written absent: {written}"
+    );
+}
+
+/// A helper this CLI did not write, but which works, reads as configured.
+///
+/// `!openagents …` is what the TypeScript CLI installs, and older builds of
+/// this one wrote an absolute path. All three answer the same origin, so all
+/// three are configured; the version this replaces recognised only a line
+/// equal to its own path and called the other two absent, which is a false
+/// statement about the machine the command is running on.
+#[test]
+fn a_helper_written_by_another_build_reads_as_configured() {
+    let home = tempfile::tempdir().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    init_repository(directory.path());
+    let key = format!("credential.{OFFLINE_ORIGIN}.helper");
+
+    let install = |helper: &str| {
+        git(directory.path(), &["config", "--local", "--unset-all", &key]);
+        git(directory.path(), &["config", "--local", "--add", &key, helper]);
+    };
+
+    for helper in [
+        // The TypeScript CLI's.
+        &format!("!openagents --api-url {OFFLINE_ORIGIN} auth git-credential"),
+        // An older build of this CLI's, and a moved one.
+        &format!("!/opt/openagents/bin/oa --api-url {OFFLINE_ORIGIN} auth git-credential"),
+        &format!("!'/a path/with spaces/oa' --api-url {OFFLINE_ORIGIN} auth git-credential"),
+    ] {
+        install(helper);
+        assert!(
+            reported_local_helper(directory.path(), home.path()),
+            "auth status called `{helper}` absent"
+        );
+    }
+
+    for helper in [
+        // Somebody else's credential helper.
+        "!gh auth git-credential",
+        "osxkeychain",
+        // Ours, but answering a different origin. Not configured for this one.
+        "!oa --api-url https://staging.openagents.com auth git-credential",
+        // A program that is not ours, whatever it is called after.
+        &format!("!curl --api-url {OFFLINE_ORIGIN} auth git-credential"),
+    ] {
+        install(helper);
+        assert!(
+            !reported_local_helper(directory.path(), home.path()),
+            "auth status called `{helper}` this CLI's helper"
+        );
+    }
 }
 
 /// A clone carries the helper on the command line, so a private repository
@@ -548,4 +693,152 @@ fn the_legacy_profile_token_is_admitted_only_for_the_endpoint_it_names() {
         "a staging-labelled legacy token must not answer for production"
     );
     assert!(staging.find_token().unwrap().is_some());
+}
+
+// ---------------------------------------------------------------------------
+// #88 `repo create --source` / `--remote`
+// ---------------------------------------------------------------------------
+
+/// `--source` attaches the new repository to a checkout and names the push.
+///
+/// The remote is written for real and read back with `git remote get-url`, so
+/// the claim is about the checkout rather than about the return value.
+#[test]
+fn create_source_attaches_the_remote_and_names_the_next_push() {
+    let directory = tempfile::tempdir().unwrap();
+    init_repository(directory.path());
+    let url = format!("{ORIGIN}/AtlantisPleb/thing.git");
+
+    let attached = attach_remote(ORIGIN, &url, directory.path(), "origin").unwrap();
+    assert_eq!(attached.remote, "origin");
+    assert_eq!(
+        attached.next_push_arguments,
+        vec!["push", "-u", "origin", "HEAD"]
+    );
+    assert_eq!(
+        git(directory.path(), &["remote", "get-url", "origin"]).trim(),
+        url,
+        "the remote was not written into the checkout"
+    );
+    assert_eq!(
+        attached.next_push_argv(directory.path()),
+        vec![
+            "git".to_string(),
+            "-C".to_string(),
+            directory.path().display().to_string(),
+            "push".to_string(),
+            "-u".to_string(),
+            "origin".to_string(),
+            "HEAD".to_string(),
+        ]
+    );
+
+    // Running it again is the state being asked for, not a conflict.
+    attach_remote(ORIGIN, &url, directory.path(), "origin").unwrap();
+    assert_eq!(
+        git(directory.path(), &["remote"]).lines().count(),
+        1,
+        "a second attach added a second remote"
+    );
+
+    // `--remote` names it something else, alongside the first.
+    let second = attach_remote(ORIGIN, &url, directory.path(), "openagents").unwrap();
+    assert_eq!(second.remote, "openagents");
+    assert_eq!(
+        git(directory.path(), &["remote", "get-url", "openagents"]).trim(),
+        url
+    );
+}
+
+/// A directory that is quoted in the printed command stays one word.
+#[test]
+fn the_printed_next_push_can_be_pasted_back_into_a_shell() {
+    let directory = tempfile::tempdir().unwrap();
+    let spaced = directory.path().join("a checkout");
+    std::fs::create_dir(&spaced).unwrap();
+    init_repository(&spaced);
+
+    let attached =
+        attach_remote(ORIGIN, &format!("{ORIGIN}/a/b.git"), &spaced, "origin").unwrap();
+    let line = attached.next_push_command(&spaced);
+    assert!(line.starts_with("git -C '"), "{line}");
+    assert!(line.ends_with("' push -u origin HEAD"), "{line}");
+}
+
+/// Three things `--source` refuses rather than does badly.
+#[test]
+fn attach_remote_refuses_what_it_must_not_do_silently() {
+    let directory = tempfile::tempdir().unwrap();
+    init_repository(directory.path());
+    let url = format!("{ORIGIN}/AtlantisPleb/thing.git");
+
+    // A URL off this origin. Attaching it would point the credential helper —
+    // which answers with this origin's token — at somebody else's host.
+    let elsewhere = attach_remote(
+        ORIGIN,
+        "https://github.com/AtlantisPleb/thing.git",
+        directory.path(),
+        "origin",
+    )
+    .unwrap_err();
+    assert!(
+        elsewhere.to_string().contains("OpenAgents repository URL"),
+        "{elsewhere}"
+    );
+    assert_eq!(
+        git(directory.path(), &["remote"]).trim(),
+        "",
+        "a refused attach still wrote a remote"
+    );
+
+    // A remote of that name already pointing somewhere else.
+    git(
+        directory.path(),
+        &["remote", "add", "origin", "https://example.com/other.git"],
+    );
+    let taken = attach_remote(ORIGIN, &url, directory.path(), "origin").unwrap_err();
+    assert!(taken.to_string().contains("did not overwrite"), "{taken}");
+    assert_eq!(
+        git(directory.path(), &["remote", "get-url", "origin"]).trim(),
+        "https://example.com/other.git",
+        "the existing remote was overwritten"
+    );
+
+    // A directory that is not a worktree.
+    let bare = tempfile::tempdir().unwrap();
+    let outside = attach_remote(ORIGIN, &url, bare.path(), "origin").unwrap_err();
+    assert!(outside.to_string().contains("not a git worktree"), "{outside}");
+
+    // A name git will not take as a remote.
+    for name in ["", "-dash", "a..b", "trailing.", "a.lock", "with space"] {
+        assert!(
+            attach_remote(ORIGIN, &url, directory.path(), name).is_err(),
+            "`{name}` was admitted as a remote name"
+        );
+    }
+}
+
+/// Both `--source` refusals are reachable before the repository is created.
+///
+/// `repo create` calls these two first for that reason: a refusal that has
+/// already made a repository on the server is not a refusal, and the reader is
+/// left with one they were never told how to push to.
+#[test]
+fn a_bad_source_or_remote_is_refusable_without_creating_anything() {
+    let not_a_worktree = tempfile::tempdir().unwrap();
+    let error = require_worktree(not_a_worktree.path()).unwrap_err();
+    assert!(error.to_string().contains("not a git worktree"), "{error}");
+
+    let directory = tempfile::tempdir().unwrap();
+    init_repository(directory.path());
+    require_worktree(directory.path()).expect("a checkout is a worktree");
+
+    assert_eq!(validate_remote_name("origin").unwrap(), "origin");
+    assert_eq!(validate_remote_name("openagents").unwrap(), "openagents");
+    for name in ["", "bad name", "-dash", "a..b", "trailing.", "a.lock"] {
+        assert!(
+            validate_remote_name(name).is_err(),
+            "`{name}` was admitted as a remote name"
+        );
+    }
 }
