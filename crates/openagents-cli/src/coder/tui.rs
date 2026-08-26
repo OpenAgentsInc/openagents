@@ -822,7 +822,7 @@ fn render_entry(
                     Span::styled(
                         clipped,
                         Style::default()
-                            .fg(USER_TEXT_COLOR)
+                            .fg(DIM_TEXT_COLOR)
                             .bg(BACKGROUND_COLOR),
                     ),
                 ]));

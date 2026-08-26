@@ -248,8 +248,8 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
     assert_eq!(first_rail.symbol(), "│");
     assert_eq!(
         first.cell((2, 1)).unwrap().fg,
-        USER_TEXT_COLOR,
-        "tool output text is not 75% amber"
+        DIM_TEXT_COLOR,
+        "tool output text is not 50% amber"
     );
     assert_ne!(
         first_rail.fg, second_rail.fg,
