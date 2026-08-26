@@ -8,12 +8,12 @@ mod tests {
     use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
     use openagents_cli::auth::CredentialStore;
     use openagents_cli::identity::{derive_seed_identity, SeedStore};
-    use openagents_cli::tracker::TrackerClient;
+    use openagents_cli::tracker::{slug_from_remote_url, IssueListOptions, RepoTarget, TrackerClient};
     use openagents_cli::repo::handle_git_credential;
     use openagents_cli::box_client::BoxClient;
     use openagents_cli::computer::probe_host;
     use openagents_cli::forum::ForumClient;
-    use openagents_cli::memory_client::MemoryClient;
+    use openagents_cli::memory_client::{read_bucket, MemoryClient};
     use openagents_cli::api_passthrough::ApiPassthroughClient;
     use openagents_cli::trace::{default_trace_stores, redact_text};
 
@@ -46,11 +46,112 @@ mod tests {
         assert!(store.identity().is_err());
     }
 
+    /// The old assertion was `issues.is_empty() || !issues.is_empty()`, which is
+    /// true of every value of every list and so held while the client asked for
+    /// a route that does not exist and answered the refusal with `Ok(vec![])`.
+    /// These assert the two things that were actually broken: that paging
+    /// crosses the server's 25-row page, and that the row is the server's row.
     #[tokio::test]
     async fn test_tracker_client_issue_76() {
         let client = TrackerClient::new("https://openagents.com/api/v1", None);
-        let issues = client.list_issues("OpenAgentsInc/openagents").await.unwrap();
-        assert!(issues.is_empty() || !issues.is_empty());
+        let target = RepoTarget::parse("OpenAgentsInc/openagents").unwrap();
+        let options = IssueListOptions {
+            limit: 30,
+            state: Some("closed".to_string()),
+            ..IssueListOptions::default()
+        };
+        let result = client.list_issues(&target, &options).await.unwrap();
+
+        // The route holds 25 to a page and publishes no `per_page`, so 30 rows
+        // is only reachable by asking for the second page.
+        assert_eq!(
+            result.issues.len(),
+            30,
+            "a limit above one page must page; got {} rows",
+            result.issues.len()
+        );
+        let total = result
+            .pagination
+            .get("total")
+            .and_then(|v| v.as_u64())
+            .expect("the server sends its own pagination total");
+        assert!(total >= 30, "total was {total}");
+        let first = &result.issues[0];
+        assert!(first.get("number").and_then(|v| v.as_u64()).unwrap_or(0) > 0);
+        assert_eq!(
+            first.get("state").and_then(|v| v.as_str()),
+            Some("closed"),
+            "--state closed must reach the server, not be dropped"
+        );
+        assert!(!result.issues[0]
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .is_empty());
+    }
+
+    /// `projectsV2` is the route. `projects` is what the client used to ask for,
+    /// and the 4xx it earned was returned as an empty list — so this repository's
+    /// four boards read as none, with exit status 0.
+    #[tokio::test]
+    async fn test_tracker_lists_the_projects_the_repository_has() {
+        let client = TrackerClient::new("https://openagents.com/api/v1", None);
+        let target = RepoTarget::parse("OpenAgentsInc/openagents").unwrap();
+        let value = client.list_projects(&target, false).await.unwrap();
+        let boards = value
+            .get("projects")
+            .and_then(|v| v.as_array())
+            .expect("the response carries a `projects` array");
+        assert!(
+            boards.len() >= 4,
+            "the live repository has at least four boards; got {}",
+            boards.len()
+        );
+        assert!(boards
+            .iter()
+            .any(|b| b.get("number").and_then(|n| n.as_u64()) == Some(4)));
+    }
+
+    /// A route that does not exist must produce an error. This is the assertion
+    /// the empty-vector fallback made unwritable, and it needs no live data.
+    #[tokio::test]
+    async fn test_tracker_refuses_rather_than_reporting_an_empty_repository() {
+        let client = TrackerClient::new("https://openagents.com/api/v1/no-such-surface", None);
+        let target = RepoTarget::parse("OpenAgentsInc/openagents").unwrap();
+        let options = IssueListOptions {
+            limit: 5,
+            ..IssueListOptions::default()
+        };
+        let listed = client.list_issues(&target, &options).await;
+        assert!(
+            listed.is_err(),
+            "a refused list must not yield rows, got {:?}",
+            listed.ok().map(|r| r.issues.len())
+        );
+        let projects = client.list_projects(&target, false).await;
+        assert!(projects.is_err(), "a refused project list must not yield an empty board set");
+    }
+
+    /// `-R` is parsed, not guessed; a slug that is not `owner/repo` is refused.
+    #[test]
+    fn test_tracker_repo_target_parsing() {
+        assert_eq!(
+            RepoTarget::parse("OpenAgentsInc/openagents").unwrap(),
+            RepoTarget {
+                owner: "OpenAgentsInc".to_string(),
+                repo: "openagents".to_string()
+            }
+        );
+        assert!(RepoTarget::parse("openagents").is_err());
+        assert!(RepoTarget::parse("a/b/c").is_err());
+        assert_eq!(
+            slug_from_remote_url("https://openagents.com/OpenAgentsInc/openagents.git").as_deref(),
+            Some("OpenAgentsInc/openagents")
+        );
+        assert_eq!(
+            slug_from_remote_url("git@github.com:OpenAgentsInc/openagents.git").as_deref(),
+            Some("OpenAgentsInc/openagents")
+        );
     }
 
     #[test]
@@ -59,11 +160,48 @@ mod tests {
         assert!(cred_str.contains("username=openagents-token"));
     }
 
+    /// The old assertion was `boxes.is_empty() || !boxes.is_empty()` against the
+    /// literal conversation `main`, which is not a conversation id. It held
+    /// because the client answered the resulting non-2xx with an empty vector —
+    /// so a caller could not tell "no boxes" from "the request was refused",
+    /// against a surface with a hard two-box quota. Boxes are billed cloud VMs,
+    /// so this asserts the refusal rather than provisioning one.
     #[tokio::test]
     async fn test_box_client_issue_78() {
         let client = BoxClient::new("https://openagents.com/api/v1", None);
-        let boxes = client.list_boxes("main").await.unwrap();
-        assert!(boxes.is_empty() || !boxes.is_empty());
+        let listed = client.list_boxes("main").await;
+        assert!(
+            listed.is_err(),
+            "an unauthenticated read of a conversation that is not this account's \
+             must refuse, got {:?}",
+            listed.ok()
+        );
+        let message = listed.unwrap_err().to_string();
+        assert!(
+            message.contains("list conversation boxes"),
+            "the refusal must name what failed: {message}"
+        );
+
+        // And with no conversation named, the refusal names the flag that gets
+        // the caller unblocked, the way the TypeScript CLI's does.
+        let unresolved = client.conversation_id(None).await;
+        let refusal = unresolved
+            .expect_err("no deployment reports a conversation for an anonymous caller")
+            .to_string();
+        assert!(
+            refusal.contains("--conversation"),
+            "the refusal must name --conversation: {refusal}"
+        );
+    }
+
+    /// A named conversation is used verbatim; it is never replaced by a default.
+    #[tokio::test]
+    async fn test_box_client_uses_the_conversation_it_was_given() {
+        let client = BoxClient::new("https://openagents.com/api/v1", None);
+        assert_eq!(
+            client.conversation_id(Some("conv_abc123")).await.unwrap(),
+            "conv_abc123"
+        );
     }
 
     #[test]
@@ -219,10 +357,37 @@ mod tests {
         assert!(cargo_toml.contains("name = \"oa\""));
     }
 
+    /// The old assertion was `mems.is_empty() || !mems.is_empty()`, true of
+    /// every list, and it held against an unauthenticated client that answered
+    /// the 401 with an empty vector. Memories are account-scoped, so an
+    /// anonymous read has no rows to assert on — what there is to assert is
+    /// that the refusal is a refusal.
     #[tokio::test]
     async fn test_memory_client_parity() {
         let client = MemoryClient::new("https://openagents.com/api/v1", None);
-        let mems = client.list_memories(None).await.unwrap();
-        assert!(mems.is_empty() || !mems.is_empty());
+        let listed = client.list_memories(None, None, false).await;
+        assert!(
+            listed.is_err(),
+            "an unauthenticated memory read must refuse, got {:?}",
+            listed.ok()
+        );
+
+        // Deleting is the subcommand issue #96 was filed for. An empty id is
+        // refused before the round trip rather than sent as `/memories/`, which
+        // is the list route and would answer 200.
+        let removed = client.delete_memory("   ").await;
+        assert!(removed.is_err(), "an empty memory id must not be sent");
+
+        // And a correction carries the id it replaces, which the Rust client
+        // had no way to send at all.
+        let superseding = client
+            .add_memory("corrected", Some("user"), Some("mem_1"), None)
+            .await;
+        assert!(
+            superseding.is_err(),
+            "an unauthenticated write must refuse, got {:?}",
+            superseding.ok()
+        );
+        assert!(read_bucket("nonsense").is_err());
     }
 }
