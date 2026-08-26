@@ -383,7 +383,6 @@ dependencies = [
  "futures",
  "openresponses-rust",
  "ratatui",
- "reqwest 0.12.28",
  "tokio",
 ]
 

@@ -3,8 +3,9 @@
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::net::TcpStream;
 use tokio::process::Command;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 
 const DEV_BASE_URL: &str = "http://localhost:4000/api/v1";
 const DEV_API_KEY: &str = "fake";
@@ -51,16 +52,9 @@ async fn boot_dev_server() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn is_dev_server_up() -> bool {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .unwrap_or_default();
-    let url = format!("{}/health", DEV_BASE_URL);
-    if let Ok(resp) = client.get(&url).send().await {
-        resp.status().is_success()
-    } else {
-        false
-    }
+    timeout(Duration::from_secs(2), TcpStream::connect("127.0.0.1:4000"))
+        .await
+        .is_ok()
 }
 
 fn web_repo() -> Result<PathBuf, Box<dyn std::error::Error>> {
