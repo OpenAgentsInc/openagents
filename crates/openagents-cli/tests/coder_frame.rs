@@ -228,6 +228,11 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
     let first_rail = first.cell((0, 1)).unwrap();
     let second_rail = second.cell((0, 1)).unwrap();
     assert_eq!(first_rail.symbol(), "│");
+    assert_eq!(
+        first.cell((2, 1)).unwrap().fg,
+        USER_TEXT_COLOR,
+        "tool output text is not 75% amber"
+    );
     assert_ne!(
         first_rail.fg, second_rail.fg,
         "the active rail did not move"

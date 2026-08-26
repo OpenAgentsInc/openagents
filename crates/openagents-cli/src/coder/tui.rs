@@ -805,7 +805,12 @@ fn render_entry(
                 };
                 lines.push(Line::from(vec![
                     Span::styled("│ ", rail_style),
-                    Span::styled(clipped, text_style),
+                    Span::styled(
+                        clipped,
+                        Style::default()
+                            .fg(USER_TEXT_COLOR)
+                            .bg(BACKGROUND_COLOR),
+                    ),
                 ]));
             }
 
