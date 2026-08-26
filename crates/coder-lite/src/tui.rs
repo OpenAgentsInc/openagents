@@ -19,16 +19,6 @@ use openagents_cli::runtime::TurnUsage;
 
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-/// Columns the row under the composer keeps clear on the right.
-///
-/// That row is shared: the identity draws on the left and the credit balance
-/// draws on the right, because both change what the reader should do next.
-/// Reserving the columns rather than painting the whole width is what keeps
-/// the two fields from erasing each other.
-///
-/// 32 leaves room for the identity and a model id on an 80-column terminal.
-const BALANCE_COLUMNS: u16 = 32;
-
 /// Who this session is signed in as.
 ///
 /// Three states rather than a string, and the middle one is the reason this is
@@ -234,14 +224,12 @@ pub struct CoderUi {
     pub tick: u64,
     /// Who the session is signed in as, as the server confirmed it.
     ///
-    /// The left field of the row under the composer. Defaults to
-    /// [`Identity::Anonymous`], which is the honest starting state: nothing has
-    /// confirmed anything yet.
+    /// Defaults to [`Identity::Anonymous`], which is the honest starting
+    /// state: nothing has confirmed anything yet. `/info` displays it.
     pub identity: Identity,
     /// The `/api/v1` base this session talks to, as it was resolved.
     ///
-    /// Empty until something sets it, and an empty one is left off the row
-    /// rather than drawn as a dangling separator.
+    /// Empty until something sets it. `/info` displays the resolved endpoint.
     pub endpoint: String,
     /// The lane the session was opened on — what was asked for, where
     /// [`Self::model`] is what answered.
@@ -258,8 +246,7 @@ pub struct CoderUi {
     /// session's, and the credit is the account's. See [`crate::credit`] for
     /// why a failed read clears this rather than leaving the last figure up.
     ///
-    /// Drawn on the right of the row under the composer, in the columns
-    /// [`BALANCE_COLUMNS`] keeps clear of the identity.
+    /// Drawn on the left of the row under the composer.
     pub credit: crate::credit::CreditField,
     /// What the server billed this session's thread, once it has said.
     ///
@@ -347,32 +334,14 @@ impl CoderUi {
         self.total_usage.add(usage);
     }
 
-    /// The left field of the row under the composer: who, and where.
+    /// The left field of the row under the composer: what the account has left.
     ///
-    /// Never a token count — those moved to `/info`, where they can be read
-    /// deliberately instead of glanced past. Never a name the server did not
-    /// confirm this session; see [`Identity`].
-    ///
-    /// The endpoint appears as its host, because that is the part that tells a
-    /// deployment from a laptop and the row shares its width with the balance.
-    /// `/info` carries the whole URL.
-    pub fn status_line(&self) -> String {
-        let who = self.identity.line();
-        match self.endpoint_host() {
-            Some(host) => format!("{who} · {host}"),
-            None => who,
-        }
-    }
-
-    /// The right field of the same row: what the account has left.
-    ///
-    /// The identity and the balance stay separate fields rather than one
-    /// joined string because they are facts about different things and are
-    /// drawn into different rectangles — the identity is this session's, and
-    /// the credit is the account's, read from the server and possibly moved by
-    /// another terminal since. A field with nothing to report contributes an
-    /// empty string, so the row never carries a placeholder that could be read
-    /// as a value; see [`crate::credit::CreditField::status`].
+    /// The credit stays separate from the lane/model because each refreshes at
+    /// a different time. The credit is the account's, read from the server and
+    /// possibly moved by another terminal since. A field with nothing to
+    /// report contributes an empty string, so the row never carries a
+    /// placeholder that could be read as a value; see
+    /// [`crate::credit::CreditField::status`].
     ///
     /// The token counts this row used to carry are not here. They are this
     /// session's spend, not the account's, and they moved to `/info`.
@@ -380,7 +349,7 @@ impl CoderUi {
         self.credit.status()
     }
 
-    /// What the row says about the lane, between the identity and the balance.
+    /// What the row says about the lane and model on the right.
     ///
     /// The lane name alone until a model has answered, and the lane name plus
     /// **the model that answered** from then on — [`Self::model`] is what the
@@ -396,13 +365,7 @@ impl CoderUi {
         self.lane_field_within(u16::MAX)
     }
 
-    /// The same field, narrowed to what will actually fit beside its
-    /// neighbours.
-    ///
-    /// The row has three fields and a fixed width, and at 70 columns a full
-    /// account, a full endpoint, a lane name, a catalog id and the reserved
-    /// balance columns do not all fit. Something has to give, and *which*
-    /// thing gives is the decision this method makes.
+    /// The same field, narrowed to what will fit beside the credit figure.
     ///
     /// It gives up the lane name before the model, because the model is the
     /// load-bearing half: `Coder Flash` while Gemini is answering is the
@@ -437,22 +400,6 @@ impl CoderUi {
             return self.model.clone();
         }
         String::new()
-    }
-
-    /// The host of [`Self::endpoint`], scheme and path removed.
-    ///
-    /// `None` when nothing set an endpoint, so the row draws the identity
-    /// alone rather than a separator with nothing after it.
-    pub fn endpoint_host(&self) -> Option<&str> {
-        let host = self
-            .endpoint
-            .trim()
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .split('/')
-            .next()
-            .unwrap_or_default();
-        (!host.is_empty()).then_some(host)
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
@@ -552,64 +499,42 @@ impl CoderUi {
             input_area.y + 1 + caret_screen_row.min(visible_input_lines.saturating_sub(1));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 
-        // The row under the composer is what you can do next, not what you
-        // already spent: who you are acting as, and — on the right, drawn by
-        // the balance field — whether you can afford the next turn. The token
-        // counts that used to live here moved to `/info`.
-        //
-        // The identity takes the left columns and stops there. A full-width
-        // paragraph would paint over the balance, and a right-aligned one over
-        // this, so the two fields have their own rectangles.
+        // The row under the composer shows the two live facts that matter
+        // during a session: the remaining credit on the left and the active
+        // lane/model on the right. Account and endpoint details stay in
+        // `/info`, where they do not consume persistent screen space.
         let status_area = main[2];
         // The status row is supporting context beneath the composer. Keep it
         // at the same 50% amber intensity as notices so the active transcript
         // and input remain the visual focus.
         let status_style = Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR);
-        // The split is exact rather than overlapping full-width paragraphs:
-        // each field gets its own rectangle, so no two can overlap at any
-        // width. Right to left, the balance keeps its reserved columns, the
-        // lane takes what its own text needs from what is left, and the
-        // identity takes the remainder.
-        //
-        // The lane is sized to its content rather than given a fixed block
-        // because its text grows by the length of a catalog id the moment a
-        // fallback answers, and a fixed block would clip exactly the case the
-        // field exists to report. On a terminal narrower than BALANCE_COLUMNS
-        // the identity and the lane are squeezed to nothing and the balance
-        // keeps the row, because the balance is the field that changes what
-        // you do next.
-        let shared = status_area.width.saturating_sub(BALANCE_COLUMNS);
-        // The identity is measured first and keeps what it needs, because a
-        // clipped account or a half-written host is a field reporting
-        // something it was never given — `openagents.c` is not a host. The
-        // lane then takes what is genuinely spare, and shortens itself to fit
-        // rather than pushing into its neighbour.
-        let identity_wants = self.status_line().chars().count() as u16;
-        let spare = shared.saturating_sub(identity_wants).saturating_sub(1);
-        let lane = self.lane_field_within(spare);
-        let lane_width = (lane.chars().count() as u16).min(shared);
-        let identity_width = shared.saturating_sub(lane_width);
-        let identity_area = Rect {
-            width: identity_width,
+        // The lane takes exactly the columns it needs and is right-aligned to
+        // the edge. The balance gets the remaining columns on the left; no
+        // fixed gutter survives when either field is short.
+        let balance = self.balance_line();
+        let balance_width = (balance.chars().count() as u16).min(status_area.width);
+        let gap = u16::from(balance_width > 0);
+        let lane = self.lane_field_within(
+            status_area
+                .width
+                .saturating_sub(balance_width.saturating_add(gap)),
+        );
+        let lane_width = (lane.chars().count() as u16).min(status_area.width);
+        let balance_area = Rect {
+            width: status_area.width.saturating_sub(lane_width),
             ..status_area
         };
         let lane_area = Rect {
-            x: status_area.x + identity_width,
+            x: status_area.x + balance_area.width,
             width: lane_width,
             ..status_area
         };
-        let balance_area = Rect {
-            x: status_area.x + shared,
-            width: status_area.width - shared,
-            ..status_area
-        };
-        let status_widget = Paragraph::new(self.status_line()).style(status_style);
-        frame.render_widget(status_widget, identity_area);
-        frame.render_widget(Paragraph::new(lane).style(status_style), lane_area);
-        let balance_widget = Paragraph::new(self.balance_line())
+        let balance_widget = Paragraph::new(balance).style(status_style);
+        frame.render_widget(balance_widget, balance_area);
+        let lane_widget = Paragraph::new(lane)
             .style(status_style)
             .alignment(ratatui::layout::Alignment::Right);
-        frame.render_widget(balance_widget, balance_area);
+        frame.render_widget(lane_widget, lane_area);
         // A block cursor, as grok-build's textarea draws one: the hardware
         // cursor alone is easy to lose in the alternate screen, and a trailing
         // space with nothing over it looks like a line that ends earlier than

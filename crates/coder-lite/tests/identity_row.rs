@@ -67,75 +67,22 @@ fn command(ui: &mut CoderUi, line: &str) -> String {
     text_of(&draw(ui, 100, 40))
 }
 
-// ─────────────────────────────────────────────────────────── the identity row
+// ───────────────────────────────────────────────────────────── footer fields
 
-/// The account, where the token count used to be.
+/// The footer leaves account and endpoint details to `/info`.
 #[test]
-fn the_row_names_the_account_the_server_confirmed() {
+fn the_footer_omits_account_and_endpoint_details() {
     let mut ui = CoderUi::new();
     ui.identity = signed_in();
     ui.endpoint = "https://openagents.com/api/v1".to_string();
+    ui.credit = priced();
+    ui.lane = "Coder Flash".to_string();
 
     let row = status_row(&mut ui);
-    assert!(row.contains("AtlantisPleb"), "{row}");
-    assert!(row.contains("openagents.com"), "{row}");
-}
-
-/// No credential is said out loud, not left blank.
-#[test]
-fn the_row_says_not_signed_in_when_there_is_no_credential() {
-    let mut ui = CoderUi::new();
-    ui.endpoint = "https://openagents.com/api/v1".to_string();
-
-    let row = status_row(&mut ui);
-    assert!(row.contains("not signed in"), "{row}");
-    assert!(row.contains("openagents.com"), "{row}");
-}
-
-/// The one that bites: a token in the keychain that nothing confirmed.
-///
-/// A stored credential is a claim, not a fact. Drawn as an account it makes a
-/// dead session look live, and the reader finds out three failed turns later.
-#[test]
-fn an_unverified_credential_is_never_drawn_as_an_account() {
-    let mut ui = CoderUi::new();
-    ui.identity = Identity::Unverified;
-    ui.endpoint = "https://openagents.com/api/v1".to_string();
-
-    let row = status_row(&mut ui);
-    assert!(row.contains("unverified"), "{row}");
-    // Not any account name, and not the wording that means "there is no
-    // credential" either — this state is neither of those.
     assert!(!row.contains("AtlantisPleb"), "{row}");
-    assert!(!row.contains("not signed in"), "{row}");
-}
-
-/// The three states have to be told apart on screen, not just in the enum.
-///
-/// A test that only asserts "the row shows the account" passes against a row
-/// that shows a stale one. This is the assertion that does not.
-#[test]
-fn the_three_identity_states_read_differently() {
-    let render = |identity: Identity| {
-        let mut ui = CoderUi::new();
-        ui.identity = identity;
-        ui.endpoint = "https://openagents.com/api/v1".to_string();
-        status_row(&mut ui)
-    };
-
-    let named = render(signed_in());
-    let unverified = render(Identity::Unverified);
-    let anonymous = render(Identity::Anonymous);
-
-    assert_ne!(
-        named, unverified,
-        "a dead credential reads as a live account"
-    );
-    assert_ne!(named, anonymous);
-    assert_ne!(
-        unverified, anonymous,
-        "a refused credential reads as no credential at all"
-    );
+    assert!(!row.contains("openagents.com"), "{row}");
+    assert!(row.starts_with("$18.40 left"), "{row}");
+    assert!(row.ends_with("Coder Flash"), "{row}");
 }
 
 /// The row is about what you can do next. A token count is not that.
@@ -158,29 +105,6 @@ fn the_row_carries_no_token_count() {
     for figure in ["4321", "1234", "5555"] {
         assert!(!row.contains(figure), "the row still counts tokens: {row}");
     }
-}
-
-/// The row is shared. The identity takes the left and stops.
-///
-/// The credit balance draws on the right of this same row, and a full-width
-/// paragraph would paint over it.
-#[test]
-fn the_identity_leaves_the_right_of_the_row_clear() {
-    let mut ui = CoderUi::new();
-    ui.identity = signed_in();
-    // Long enough to run the whole width if nothing stopped it.
-    ui.endpoint =
-        "https://a-very-long-deployment-name-that-runs-on-and-on.openagents.com/api/v1".to_string();
-
-    let buffer = draw(&mut ui, 80, 24);
-    let y = buffer.area.height - 1;
-    let written = (0..buffer.area.width)
-        .filter(|x| buffer.cell((*x, y)).unwrap().symbol().trim() != "")
-        .count() as u16;
-    assert!(
-        written as usize <= 80 - BALANCE_COLUMNS,
-        "the identity claimed {written} of 80 columns, leaving nothing for the balance"
-    );
 }
 
 // ───────────────────────────────────────────────────────────────────── /info
@@ -312,11 +236,7 @@ fn info_reports_the_same_identity_the_row_does() {
     assert!(!text.contains("AtlantisPleb"), "{text}");
 }
 
-// ───────────────────────────────────── the row the identity shares with money
-
-/// Columns the renderer keeps clear on the right of the row for the balance,
-/// mirroring `tui::BALANCE_COLUMNS`.
-const BALANCE_COLUMNS: usize = 32;
+// ───────────────────────────────────────────────────────────── credit footer
 
 fn priced() -> coder_lite::credit::CreditField {
     coder_lite::credit::CreditField::Known(coder_lite::credit::Credit {
@@ -338,62 +258,27 @@ fn unpriced(calls: u64) -> coder_lite::credit::CreditField {
     })
 }
 
-/// Both fields are on the row, and neither has painted over the other.
-///
-/// This is the seam where #130 and `7cbe78af4f` met. #130 moved the token
-/// counts to `/info` and put the identity on the left; the balance had already
-/// taken the right. Each was correct against the tree it was written on, and
-/// the failure that only exists once both are on one tree is a renderer that
-/// draws either as a full-width paragraph and erases the other.
-///
-/// All three identity states are checked against a balance, because the states
-/// are different lengths and a bug that only truncates the longest one would
-/// pass a single-case test.
+/// Credit begins at the left edge and the lane/model ends at the right edge.
 #[test]
-fn the_row_carries_the_identity_and_the_balance_without_either_erasing_the_other() {
-    for (identity, who) in [
-        (Identity::Anonymous, "not signed in"),
-        (Identity::Unverified, "credential unverified"),
-        (signed_in(), "AtlantisPleb"),
-    ] {
-        let mut ui = CoderUi::new();
-        ui.identity = identity;
-        ui.endpoint = "https://openagents.com/api/v1".to_string();
-        ui.credit = priced();
+fn the_footer_aligns_credit_left_and_the_effective_model_right() {
+    let mut ui = CoderUi::new();
+    ui.credit = priced();
+    ui.lane = "Coder Flash".to_string();
+    apply(&mut ui, Control::Model("gemini-3.7-flash".to_string()));
 
-        let row = status_row(&mut ui);
-        let left = row.find(who).unwrap_or_else(|| {
-            panic!("the row should name the account state {who:?}, and held {row:?}")
-        });
-        let right = row
-            .find("$18.40 left")
-            .unwrap_or_else(|| panic!("the row should carry the balance, and held {row:?}"));
-
-        assert!(
-            left < right,
-            "the identity takes the left of the row and the balance the right, \
-             but {who:?} and the balance came back at {left} and {right}: {row:?}"
-        );
-        assert!(
-            row.contains("openagents.com"),
-            "the endpoint host belongs beside the account, and the row held {row:?}"
-        );
-        assert!(
-            right >= row.len() - BALANCE_COLUMNS,
-            "the balance should be drawn inside the {BALANCE_COLUMNS} columns \
-             reserved on the right of a {} column row, and started at {right}: {row:?}",
-            row.len()
-        );
-    }
+    let row = status_row(&mut ui);
+    assert_eq!(row.find("$18.40 left"), Some(0), "{row}");
+    assert!(
+        row.ends_with("Coder Flash · gemini-3.7-flash"),
+        "the model should end at the footer edge: {row}"
+    );
 }
 
-/// The balance fits its reserved columns without erasing the account identity.
+/// An incomplete server price does not add an `unpriced calls` disclosure.
 #[test]
 fn an_unpriced_balance_shows_only_the_credit_figure() {
     for calls in [3, 12, 999] {
         let mut ui = CoderUi::new();
-        ui.identity = signed_in();
-        ui.endpoint = "https://openagents.com/api/v1".to_string();
         ui.credit = unpriced(calls);
 
         let row = status_row(&mut ui);
@@ -402,10 +287,7 @@ fn an_unpriced_balance_shows_only_the_credit_figure() {
             row.contains(&expected),
             "the row should carry {expected:?} untruncated, and held {row:?}"
         );
-        assert!(
-            row.contains("AtlantisPleb"),
-            "the balance must not have erased the account, and the row held {row:?}"
-        );
+        assert!(row.starts_with(expected), "{row}");
         assert!(
             !row.contains("unpriced"),
             "the status row must not show unpriced calls: {row:?}"
@@ -578,36 +460,19 @@ fn cycling_the_lane_changes_both_the_lane_and_the_row() {
     assert_eq!(back, first, "the cycle does not return to the first lane");
 }
 
-/// The row is three fields and the lane does not erase either neighbour.
-///
-/// The balance draws into the rightmost columns and the identity into the
-/// left; a lane indicator that painted the full width would cover both.
+/// The active lane/model occupies the final footer columns without a gutter.
 #[test]
-fn the_lane_leaves_the_balance_columns_clear() {
+fn the_lane_is_flush_against_the_footer_right_edge() {
     let mut ui = CoderUi::new();
-    ui.identity = signed_in();
+    ui.credit = priced();
     ui.lane = "Coder Flash".to_string();
     apply(&mut ui, Control::Model("gemini-3.7-flash".to_string()));
 
     let buffer = draw(&mut ui, 120, 24);
     let y = buffer.area.height - 1;
-    // The reserved columns on the right belong to the balance.
-    for x in ((120 - BALANCE_COLUMNS) as u16)..120u16 {
-        let cell = buffer.cell((x, y)).unwrap().symbol().to_string();
-        assert_eq!(
-            cell.trim(),
-            "",
-            "the lane painted column {x}, which is reserved for the balance"
-        );
-    }
     let row = row(&buffer, y);
-    // Both neighbours survive.
-    assert!(
-        row.contains("AtlantisPleb"),
-        "the identity was erased: {row}"
-    );
-    assert!(row.contains("Coder Flash"), "{row}");
-    assert!(row.contains("gemini-3.7-flash"), "{row}");
+    assert_eq!(row.find("$18.40 left"), Some(0), "{row}");
+    assert!(row.ends_with("Coder Flash · gemini-3.7-flash"), "{row}");
 }
 
 /// A narrow row drops the lane name before the model, and never truncates.
@@ -619,8 +484,7 @@ fn the_lane_leaves_the_balance_columns_clear() {
 #[test]
 fn a_narrow_row_gives_up_the_lane_name_before_the_model() {
     let mut ui = CoderUi::new();
-    ui.identity = signed_in();
-    ui.endpoint = "https://openagents.com/api/v1".to_string();
+    ui.credit = priced();
     ui.lane = "Coder Flash".to_string();
     apply(&mut ui, Control::Model("gemini-3.7-flash".to_string()));
 
@@ -629,7 +493,7 @@ fn a_narrow_row_gives_up_the_lane_name_before_the_model() {
     assert!(wide.contains("Coder Flash · gemini-3.7-flash"), "{wide}");
 
     // Narrower: the model survives, the lane name goes.
-    let narrow = row(&draw(&mut ui, 80, 24), 23);
+    let narrow = row(&draw(&mut ui, 30, 24), 23);
     assert!(
         narrow.contains("gemini-3.7-flash"),
         "the model that answered was dropped before the lane name: {narrow}"
@@ -639,13 +503,9 @@ fn a_narrow_row_gives_up_the_lane_name_before_the_model() {
         "both halves were kept on a row too narrow for them: {narrow}"
     );
 
-    // At every width, the identity is whole and no id is cut in half.
-    for width in [70u16, 74, 80, 90, 100, 120] {
+    // At every width, no model id is cut in half.
+    for width in [30u16, 70, 74, 80, 90, 100, 120] {
         let row_at = row(&draw(&mut ui, width, 24), 23);
-        assert!(
-            row_at.contains("AtlantisPleb · openagents.com"),
-            "the lane clipped the identity at {width} columns: {row_at}"
-        );
         let cut = ["gemini-3.7-flas", "gemini-3.7-", "emini-3.7-flash"]
             .iter()
             .any(|piece| row_at.contains(piece) && !row_at.contains("gemini-3.7-flash"));
