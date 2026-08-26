@@ -121,7 +121,7 @@ pub struct ToolCall {
 pub struct Entry {
     pub role: Role,
     pub text: String,
-    /// Tool output text, rendered as a ~5-line box split by newlines.
+    /// Tool output text, rendered as a box of up to five lines split by newlines.
     pub output: Option<String>,
     pub tool: Option<ToolCall>,
     pub at: u64,
@@ -697,23 +697,27 @@ fn render_entry(
         Role::Tool => {
             let mut lines = Vec::new();
 
-            // One-line tool call header, flush left.
-            let header_body = width.saturating_sub(2);
-            let header_chunks = wrap_text(&entry.text, header_body);
-            let header = header_chunks.first().cloned().unwrap_or_default();
-            lines.push(Line::from(vec![
-                Span::styled("⏺ ", text_style),
-                Span::styled(header, text_style),
-            ]));
-
-            // ~5-line output box, split by actual newlines.
+            // ~5-line output box, split by actual newlines. Empty output means
+            // the call is still pending or produced nothing, so the box is not
+            // drawn at all and the marker is an empty circle.
             let out = entry.output.as_deref().unwrap_or("");
             let out_lines: Vec<&str> = out.lines().collect();
             let start = out_lines.len().saturating_sub(5);
             let window = &out_lines[start..];
-            for i in 0..5 {
-                let text = if i < window.len() { window[i] } else { "" };
-                let clipped = text
+
+            // One-line tool call header, flush left.
+            let marker = if out.is_empty() { "○ " } else { "⏺ " };
+            let header_body = width.saturating_sub(2);
+            let header_chunks = wrap_text(&entry.text, header_body);
+            let header = header_chunks.first().cloned().unwrap_or_default();
+            lines.push(Line::from(vec![
+                Span::styled(marker, text_style),
+                Span::styled(header, text_style),
+            ]));
+
+            // Only draw the vertical bar for lines that actually exist.
+            for line in window {
+                let clipped = line
                     .chars()
                     .take(width.saturating_sub(2))
                     .collect::<String>();
