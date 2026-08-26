@@ -205,6 +205,12 @@ describe("runCoderUi", () => {
     expect(painted).toContain("\x1b[1mox-alpha\x1b[0m");
   });
 
+  it("renders user turns at 75% amber intensity", async () => {
+    const { painted } = await drive([{ type: "text", value: "answer" }], "question");
+
+    expect(painted).toContain("\x1b[38;2;193;134;0mquestion\x1b[0m");
+  });
+
   it("streams reasoning dim and italic, above the text of the same turn", async () => {
     const { painted, rows } = await drive([
       { type: "reasoning", value: "I should check first." },

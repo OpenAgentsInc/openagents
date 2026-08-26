@@ -19,31 +19,8 @@
 //! - **Read, and the answer did not come back.** The row says the balance is
 //!   unavailable. It does **not** keep showing the last figure it saw: a stale
 //!   number beside a live session is indistinguishable from a current one.
-//! - **Read, and the server answered.** Now there is a figure — with one
-//!   exception below.
-//!
-//! ## Why an answer is sometimes still not a figure
-//!
-//! `remaining_microusd` is a ceiling, not a balance. A model this deployment
-//! declares no rates for records no cost, so its calls draw nothing down and
-//! the remainder does not move — and the lane the coder runs on is one of them
-//! today. A status bar that printed the remainder anyway would sit at `$20.00`
-//! through an afternoon of real work, and a figure a reader can watch not move
-//! is worse than no figure: it does not read as "unknown", it reads as "you
-//! have spent nothing". A 12-task benchmark run on 2026-08-26 returned 0 of 12
-//! calls priced, so this is the measured state of the lane rather than a
-//! precaution.
-//!
-//! So a figure is printed only while the server says the spend behind it is
-//! complete. The moment an unpriced call is metered, the row says how many
-//! calls the server could not price and prints no number. That is the same
-//! rule the server's own `Credit.balance/1` documents (METER-001).
-//!
-//! The two no-figure states are worded differently on purpose. "Unavailable"
-//! is *we did not hear back*; "N calls unpriced" is *we heard back and the
-//! deployment cannot price part of this*. They are different failures, they
-//! are fixed by different people, and a reader has to be able to tell them
-//! apart.
+//! - **Read, and the server answered.** The status bar shows the reported
+//!   remaining credit.
 
 use std::time::Duration;
 
@@ -107,25 +84,14 @@ impl CreditField {
 
     /// What the status bar prints for the balance, or nothing.
     ///
-    /// Three answers for three states, and no two of them can be mistaken for
-    /// each other: nothing at all before a read, `credit: unavailable` when a
-    /// read failed, and a dollar figure once the server answers. When the
-    /// server also reports unpriced calls, the figure is followed by the count
-    /// so the reader can tell the remainder did not move because some calls
-    /// had no rate to draw from.
+    /// Three answers for three states: nothing at all before a read,
+    /// `credit: unavailable` when a read failed, and a dollar figure once the
+    /// server answers. The status bar shows only the credit figure.
     pub fn status(&self) -> String {
         match self {
             CreditField::Unread => String::new(),
             CreditField::Unavailable => "credit: unavailable".to_string(),
-            CreditField::Known(credit) => {
-                let mut status = format!("{} left", dollars(credit.remaining_microusd));
-                if !credit.complete {
-                    let calls = credit.unpriced_calls;
-                    let plural = if calls == 1 { "call" } else { "calls" };
-                    status = format!("{status}, {calls} unpriced {plural}");
-                }
-                status
-            }
+            CreditField::Known(credit) => format!("{} left", dollars(credit.remaining_microusd)),
         }
     }
 }
@@ -165,8 +131,7 @@ mod tests {
         "spent_microusd":1600000,"remaining_microusd":18400000,
         "unpriced_calls":0,"complete":true}}"#;
 
-    /// The same account after turns on the coder's own unpriced lane: the
-    /// remainder did not move, and the server says why.
+    /// The same account after turns on an unpriced lane.
     const UNPRICED: &str = r#"{"credit":{"allowance_microusd":20000000,
         "spent_microusd":0,"remaining_microusd":20000000,
         "unpriced_calls":3,"complete":false}}"#;
@@ -192,27 +157,24 @@ mod tests {
     }
 
     #[test]
-    fn an_incomplete_balance_prints_the_figure_and_the_unpriced_count() {
+    fn an_incomplete_balance_prints_only_the_figure() {
         let status = known(UNPRICED).status();
 
-        assert_eq!(status, "$20.00 left, 3 unpriced calls");
+        assert_eq!(status, "$20.00 left");
         assert!(
-            status.contains('$'),
-            "an unpriced balance still prints a dollar figure: {status:?}"
+            !status.contains("unpriced"),
+            "an unpriced call must not appear in the status bar: {status:?}"
         );
     }
 
     #[test]
-    fn one_unpriced_call_reads_as_one_call() {
+    fn one_unpriced_call_does_not_change_the_status_text() {
         let CreditField::Known(mut credit) = known(UNPRICED) else {
             unreachable!("known/1 returns a known field")
         };
         credit.unpriced_calls = 1;
 
-        assert_eq!(
-            CreditField::Known(credit).status(),
-            "$20.00 left, 1 unpriced call"
-        );
+        assert_eq!(CreditField::Known(credit).status(), "$20.00 left");
     }
 
     #[test]

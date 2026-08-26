@@ -24,6 +24,9 @@ pub const TEXT_COLOR: Color = Color::Rgb(255, 176, 0);
 /// reads at half the intensity of the main text.
 pub const DIM_TEXT_COLOR: Color = Color::Rgb(131, 91, 0);
 
+/// Amber composited at 75% opacity over [`BACKGROUND_COLOR`] for user turns.
+pub const USER_TEXT_COLOR: Color = Color::Rgb(193, 134, 0);
+
 /// coder-lite's single background.
 pub const BACKGROUND_COLOR: Color = Color::Rgb(8, 6, 0);
 

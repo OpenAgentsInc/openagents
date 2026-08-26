@@ -887,26 +887,20 @@ mod unix_pty {
         );
     }
 
-    /// The other display state, and the one the coder's own lane is in today.
-    ///
-    /// The deployment answers with a remainder of $20.00 that three unpriced
-    /// calls did not move, and says so. The bottom row now reports the dollar
-    /// figure alongside the calls it cannot price, so the reader can see the
-    /// remainder and why it has not moved.
+    /// An unpriced lane still shows only the remaining credit.
     #[test]
-    fn an_unpriced_lane_reports_the_figure_alongside_the_unpriced_calls() {
+    fn an_unpriced_lane_shows_only_the_credit_figure() {
         let tui = Tui::start_with_credit(STUB_CREDIT_UNPRICED);
         let frame = tui.wait_for(
-            "the status bar to report the unpriced calls",
+            "the status bar to report the remaining credit",
             FIRST_FRAME,
-            |frame| frame.status_bar().contains("unpriced"),
+            |frame| frame.status_bar().contains("$20.00 left"),
         );
 
         let status = frame.status_bar();
         assert!(
-            status.contains("$20.00 left, 3 unpriced calls"),
-            "the bottom row should carry the remainder and the unpriced calls, \
-             and held {:?}.\n{}",
+            status.contains("$20.00 left") && !status.contains("unpriced"),
+            "the bottom row should carry only the remaining credit, and held {:?}.\n{}",
             status,
             frame.dump()
         );

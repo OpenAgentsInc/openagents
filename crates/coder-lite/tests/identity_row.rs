@@ -387,14 +387,9 @@ fn the_row_carries_the_identity_and_the_balance_without_either_erasing_the_other
     }
 }
 
-/// The widest thing the balance field ever says still fits its columns.
-///
-/// `BALANCE_COLUMNS` is 32 because the unpriced state now prints the dollar
-/// figure plus the call count (e.g. `$20.00 left, 999 unpriced calls`), and
-/// that is exactly 32 columns — the tightest reservation that still lets an
-/// 80-column row hold a typical identity and a model id beside it.
+/// The balance fits its reserved columns without erasing the account identity.
 #[test]
-fn the_widest_balance_string_fits_the_columns_reserved_for_it() {
+fn an_unpriced_balance_shows_only_the_credit_figure() {
     for calls in [3, 12, 999] {
         let mut ui = CoderUi::new();
         ui.identity = signed_in();
@@ -402,7 +397,7 @@ fn the_widest_balance_string_fits_the_columns_reserved_for_it() {
         ui.credit = unpriced(calls);
 
         let row = status_row(&mut ui);
-        let expected = format!("$20.00 left, {calls} unpriced calls");
+        let expected = "$20.00 left";
         assert!(
             row.contains(&expected),
             "the row should carry {expected:?} untruncated, and held {row:?}"
@@ -410,6 +405,10 @@ fn the_widest_balance_string_fits_the_columns_reserved_for_it() {
         assert!(
             row.contains("AtlantisPleb"),
             "the balance must not have erased the account, and the row held {row:?}"
+        );
+        assert!(
+            !row.contains("unpriced"),
+            "the status row must not show unpriced calls: {row:?}"
         );
     }
 }

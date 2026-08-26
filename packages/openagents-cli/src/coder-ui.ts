@@ -103,6 +103,13 @@ const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
 const MAGENTA = "\x1b[35m";
 const RED = "\x1b[31m";
+/**
+ * User turns use the amber foreground at 75% intensity.
+ *
+ * ANSI has no alpha channel, so this is the 75%-intensity amber value against
+ * the terminal's black transcript surface.
+ */
+const AMBER_75 = "\x1b[38;2;193;134;0m";
 
 const STATUS_ROWS = 1;
 /**
@@ -617,7 +624,7 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
     ): ReadonlyArray<string> => {
       const color =
         entry.role === "you"
-          ? CYAN
+          ? AMBER_75
           : entry.role === "assistant"
             ? GREEN
             : entry.role === "tool"
@@ -663,7 +670,11 @@ export function runCoderUi(session: CoderSession, options: CoderUiOptions): Prom
       if (entry.role === "you" && entry.pending === true) {
         return wrapStyled(entry.text, width, `${DIM}${ITALIC}`);
       }
-      return wrapStyled(entry.text, width, entry.role === "notice" ? DIM : "");
+      return wrapStyled(
+        entry.text,
+        width,
+        entry.role === "notice" ? DIM : entry.role === "you" ? AMBER_75 : "",
+      );
     };
 
     const toolRows = (

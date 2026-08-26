@@ -6,6 +6,7 @@
 //! answer, and nothing the session prints leaves the palette.
 
 use coder_lite::interactive::apply;
+use coder_lite::markdown::theme::{DIM_TEXT_COLOR, USER_TEXT_COLOR};
 use coder_lite::runtime::Control;
 use coder_lite::tui::{CoderUi, Entry, Role};
 use openagents_cli::runtime::TurnUsage;
@@ -59,7 +60,9 @@ fn a_failure_settles_the_stream_and_is_not_written_into_it() {
         "the failure was appended to the reply"
     );
     assert!(
-        ui.entries.iter().any(|e| e.role == Role::Notice && e.text.contains("503")),
+        ui.entries
+            .iter()
+            .any(|e| e.role == Role::Notice && e.text.contains("503")),
         "the failure was swallowed"
     );
     assert!(!ui.loading, "the frame kept spinning over a finished turn");
@@ -97,7 +100,13 @@ fn a_failed_tool_call_says_so_on_its_header() {
 
     let entry = ui.entries.last().unwrap();
     assert_eq!(entry.text, "shell cargo test — failed");
-    assert!(entry.output.as_deref().unwrap().contains("exited with code 1"));
+    assert!(
+        entry
+            .output
+            .as_deref()
+            .unwrap()
+            .contains("exited with code 1")
+    );
     // And the ATIF record carries the failure too, not just the screen.
     assert!(entry.tool.as_ref().unwrap().error.is_some());
 }
@@ -137,7 +146,10 @@ fn an_unreported_usage_is_not_printed_as_zero() {
             total_tokens: 15,
         }),
     );
-    assert!(ui.entries.is_empty(), "usage was pushed as a transcript entry");
+    assert!(
+        ui.entries.is_empty(),
+        "usage was pushed as a transcript entry"
+    );
     assert!(ui.total_usage.reported());
     assert_eq!(ui.total_usage.total_tokens, 15);
 }
@@ -148,7 +160,9 @@ fn a_command_s_output_keeps_the_amber_palette() {
     let mut ui = CoderUi::new();
     apply(
         &mut ui,
-        Control::Output("**Commands**\n\n- `/help` — list them\n\n```diff\n+added\n-removed\n```".to_string()),
+        Control::Output(
+            "**Commands**\n\n- `/help` — list them\n\n```diff\n+added\n-removed\n```".to_string(),
+        ),
     );
     let buffer = draw(&mut ui);
 
@@ -157,13 +171,56 @@ fn a_command_s_output_keeps_the_amber_palette() {
     for y in 0..buffer.area.height {
         for x in 0..buffer.area.width {
             let cell = buffer.cell((x, y)).unwrap();
-            assert_eq!(cell.fg, amber, "cell ({x},{y}) {:?} drifted off amber", cell.fg);
-            assert_eq!(cell.bg, ground, "cell ({x},{y}) {:?} drifted off ground", cell.bg);
+            assert_eq!(
+                cell.fg, amber,
+                "cell ({x},{y}) {:?} drifted off amber",
+                cell.fg
+            );
+            assert_eq!(
+                cell.bg, ground,
+                "cell ({x},{y}) {:?} drifted off ground",
+                cell.bg
+            );
         }
     }
     let text = text_of(&buffer);
     assert!(text.contains("+added"), "{text}");
     assert!(text.contains("Commands"), "{text}");
+}
+
+#[test]
+fn a_user_turn_uses_75_percent_amber() {
+    let mut ui = CoderUi::new();
+    ui.entries.push(Entry::new(Role::You, "user turn"));
+
+    let buffer = draw(&mut ui);
+    let cells = &buffer.content;
+    let start = cells
+        .windows(4)
+        .position(|cells| {
+            cells
+                .iter()
+                .map(|cell| cell.symbol())
+                .eq(["u", "s", "e", "r"])
+        })
+        .expect("the user turn is visible");
+
+    assert_eq!(cells[start].fg, USER_TEXT_COLOR);
+}
+
+#[test]
+fn the_status_row_uses_50_percent_amber() {
+    let mut ui = CoderUi::new();
+    ui.identity = coder_lite::tui::Identity::Named {
+        login: "user".to_string(),
+        id: 1,
+        namespaces: vec![],
+        expires_at: "".to_string(),
+    };
+
+    let buffer = draw(&mut ui);
+    let y = buffer.area.height - 1;
+    assert_eq!(buffer.cell((0, y)).unwrap().fg, DIM_TEXT_COLOR);
 }
 
 /// Typing goes into the composer and the caret follows it.
@@ -210,7 +267,11 @@ fn trailing_spaces_are_kept_and_the_block_cursor_sits_after_them() {
         ui.composer
             .handle_key(&KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE), width);
     }
-    assert_eq!(ui.composer.text(), "ab   ", "the trailing spaces were eaten");
+    assert_eq!(
+        ui.composer.text(),
+        "ab   ",
+        "the trailing spaces were eaten"
+    );
     // Five columns in, not two: the caret is past the spaces.
     assert_eq!(ui.composer.cursor_rowcol(width), (0, 5));
 

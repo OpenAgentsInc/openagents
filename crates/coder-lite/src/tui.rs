@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use openagents_cli::composer::Composer;
 
-use crate::markdown::theme::{BACKGROUND_COLOR, DIM_TEXT_COLOR, TEXT_COLOR};
+use crate::markdown::theme::{BACKGROUND_COLOR, DIM_TEXT_COLOR, TEXT_COLOR, USER_TEXT_COLOR};
 use crate::osc8::PlacedLink;
 use crate::transcript::MarkdownContent;
 use openagents_cli::runtime::TurnUsage;
@@ -26,11 +26,7 @@ const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦
 /// Reserving the columns rather than painting the whole width is what keeps
 /// the two fields from erasing each other.
 ///
-/// 32 is the tightest the balance can be on an 80-column terminal while still
-/// leaving room for the identity and a model id on the left. The unpriced
-/// state now carries the dollar figure plus the call count, e.g.
-/// `$20.00 left, 12 unpriced calls` (31 columns), and the three-digit case
-/// is exactly 32 columns, so 32 is the reservation that fits the worst case.
+/// 32 leaves room for the identity and a model id on an 80-column terminal.
 const BALANCE_COLUMNS: u16 = 32;
 
 /// Who this session is signed in as.
@@ -565,6 +561,10 @@ impl CoderUi {
         // paragraph would paint over the balance, and a right-aligned one over
         // this, so the two fields have their own rectangles.
         let status_area = main[2];
+        // The status row is supporting context beneath the composer. Keep it
+        // at the same 50% amber intensity as notices so the active transcript
+        // and input remain the visual focus.
+        let status_style = Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR);
         // The split is exact rather than overlapping full-width paragraphs:
         // each field gets its own rectangle, so no two can overlap at any
         // width. Right to left, the balance keeps its reserved columns, the
@@ -603,11 +603,11 @@ impl CoderUi {
             width: status_area.width - shared,
             ..status_area
         };
-        let status_widget = Paragraph::new(self.status_line()).style(style);
+        let status_widget = Paragraph::new(self.status_line()).style(status_style);
         frame.render_widget(status_widget, identity_area);
-        frame.render_widget(Paragraph::new(lane).style(style), lane_area);
+        frame.render_widget(Paragraph::new(lane).style(status_style), lane_area);
         let balance_widget = Paragraph::new(self.balance_line())
-            .style(style)
+            .style(status_style)
             .alignment(ratatui::layout::Alignment::Right);
         frame.render_widget(balance_widget, balance_area);
         // A block cursor, as grok-build's textarea draws one: the hardware
@@ -738,10 +738,12 @@ fn render_entry(
                 _ => ("", "⏺", " ", "  ", width.saturating_sub(2)),
             };
 
-            let role_style = if matches!(entry.role, Role::Notice | Role::Reasoning) {
-                Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR)
-            } else {
-                text_style
+            let role_style = match entry.role {
+                Role::Notice | Role::Reasoning => {
+                    Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR)
+                }
+                Role::You => Style::default().fg(USER_TEXT_COLOR).bg(BACKGROUND_COLOR),
+                _ => text_style,
             };
 
             let chunks = wrap_text(&entry.text, first_body);
