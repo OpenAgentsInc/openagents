@@ -26,3 +26,5 @@ ratatui = { version = "0.29", default-features = false, features = ["crossterm"]
 futures = "0.3"
 async-trait = "0.1"
 eventsource-stream = "0.2.3"
+unicode-width = "0.2"
+unicode-segmentation = "1"

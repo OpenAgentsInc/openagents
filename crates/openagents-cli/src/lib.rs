@@ -16,6 +16,7 @@ pub mod api_passthrough;
 pub mod auth;
 pub mod box_client;
 pub mod cli;
+pub mod composer;
 pub mod computer;
 pub mod delegate;
 pub mod forum;

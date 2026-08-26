@@ -1,3 +1,5 @@
+mod support;
+
 #[cfg(test)]
 mod tests {
     use openagents_cli::runtime::{CoderRuntimeSession, Lane};
@@ -76,12 +78,46 @@ mod tests {
         assert!(redacted.contains("[REDACTED_PAT]"));
     }
 
+    /// A turn streams its reply and returns it.
+    ///
+    /// This used to run against production with no credentials and assert
+    /// success. It passed because a refusal was answered with a fabricated
+    /// grant and the words `Completed autonomous reasoning turn (offline
+    /// fallback).` — so the test asserted the fallback, not a turn. It now
+    /// runs against a local proxy that streams real server-sent events.
     #[tokio::test]
     async fn test_live_inference_loop_issue_83() {
-        let tools = HarnessToolRegistry::new(None);
-        let mut session = CoderRuntimeSession::new(Lane::OxAlpha, None, None, tools);
-        let res = session.execute_turn("hello", |_| {}).await;
-        assert!(res.is_ok());
+        let stub = crate::support::start(vec!["four ", "chunks ", "in ", "order"], None).await;
+        let tools = HarnessToolRegistry::new(Some(std::env::temp_dir()));
+        let mut session = CoderRuntimeSession::new(Lane::OxAlpha, Some(stub.base), None, tools);
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = std::sync::Arc::clone(&seen);
+        let answer = session
+            .execute_turn("hello", move |chunk| {
+                sink.lock().unwrap().push_str(chunk);
+            })
+            .await
+            .expect("the turn failed");
+
+        assert_eq!(*seen.lock().unwrap(), "four chunks in order");
+        assert_eq!(answer, "four chunks in order");
+    }
+
+    /// And a refused turn is reported as one.
+    #[tokio::test]
+    async fn a_refused_turn_is_an_error_not_a_finished_turn() {
+        let stub = crate::support::start_refusing().await;
+        let tools = HarnessToolRegistry::new(Some(std::env::temp_dir()));
+        let mut session = CoderRuntimeSession::new(Lane::OxAlpha, Some(stub.base), None, tools);
+
+        let error = session
+            .execute_turn("hello", |_| {})
+            .await
+            .expect_err("a 401 was reported as a finished turn");
+        let message = error.to_string();
+        assert!(message.contains("401"), "{message}");
+        assert!(!message.contains("offline fallback"), "{message}");
     }
 
     #[tokio::test]
@@ -97,12 +133,25 @@ mod tests {
         assert!(out.output.contains("test_output_123"));
     }
 
+    /// Delegation runs a child turn and reports what it produced.
+    ///
+    /// Like the test above, this passed against production with no
+    /// credentials only because a refusal read as success.
+    /// `DelegationSupervisor` builds its own session, so the local proxy is
+    /// named through `OPENAGENTS_API_BASE`; no other test in this binary reads
+    /// that variable without also passing an explicit base, which wins over it.
     #[tokio::test]
     async fn test_real_multi_lane_delegation_issue_85() {
+        let stub = crate::support::start(vec!["child ", "did the work"], None).await;
+        std::env::set_var("OPENAGENTS_API_BASE", &stub.base);
+
         let supervisor = DelegationSupervisor::new(1, "ox-alpha", None);
         let results = supervisor.dispatch("test task").await;
+
+        std::env::remove_var("OPENAGENTS_API_BASE");
         assert_eq!(results.len(), 1);
-        assert!(results[0].success);
+        assert!(results[0].success, "{}", results[0].output);
+        assert_eq!(results[0].output, "child did the work");
     }
 
     #[test]
