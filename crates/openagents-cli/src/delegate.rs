@@ -39,7 +39,7 @@ use tokio::process::Command;
 use tokio::sync::{mpsc, watch, Semaphore};
 
 use crate::acp::{AcpEvent, AcpFailure, AcpHarness, PermissionMode};
-use crate::cli::{fail, CoderArgs};
+use crate::cli::{fail, CoderArgs, DelegateArgs};
 use crate::runtime::{CoderRuntimeSession, Lane};
 use crate::signals::stop_tree;
 use crate::tools::HarnessToolRegistry;
@@ -163,6 +163,106 @@ impl ChildLane {
     }
 }
 
+/// How a delegated child is configured.
+///
+/// The four `--child-*` flags, resolved once with their environment fallbacks
+/// so the values a child is started with are decided in one place instead of
+/// re-read at each spawn site.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChildOptions {
+    /// Run children on this model instead of the lane's own.
+    pub model: Option<String>,
+    /// The harness binary that runs a child.
+    pub command: Option<String>,
+    /// A harness config file, passed as `OPENCODE_CONFIG`. This is how a
+    /// provider credential reaches a child without the CLI storing it.
+    pub config: Option<String>,
+    /// Make children ask before using a tool.
+    pub ask: bool,
+}
+
+impl ChildOptions {
+    /// Flags first, then the environment, then nothing.
+    pub fn resolve(
+        model: Option<String>,
+        command: Option<String>,
+        config: Option<String>,
+        ask: bool,
+    ) -> Self {
+        let from_env = |name: &str| {
+            std::env::var(name)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        };
+        Self {
+            model: model.or_else(|| from_env("OPENAGENTS_DELEGATE_MODEL")),
+            command: command.or_else(|| from_env("OPENAGENTS_DELEGATE_COMMAND")),
+            config,
+            ask,
+        }
+    }
+
+    /// The environment additions a child is started with.
+    ///
+    /// `OPENCODE_CONFIG` is the whole point of `--child-config`: the harness
+    /// reads its provider credential from that file, so the credential reaches
+    /// the child without ever passing through this CLI's own storage.
+    pub fn child_env(&self) -> Vec<(String, String)> {
+        let mut env = Vec::new();
+        if let Some(config) = &self.config {
+            env.push(("OPENCODE_CONFIG".to_string(), config.clone()));
+        }
+        env
+    }
+
+    /// Refuse a flag the chosen lane cannot honour.
+    ///
+    /// A lane that quietly ignored `--child-model` or `--child-ask` would be
+    /// the same lie as a flag that is never read: the reader asked for a model
+    /// or for a dry run and got neither, with nothing said.
+    pub fn check(&self, lane: &ChildLane) -> Result<(), String> {
+        if self.model.is_some() {
+            match lane {
+                ChildLane::Claude | ChildLane::Codex | ChildLane::Opencode { .. } => {}
+                other => {
+                    return Err(format!(
+                        "--child-model cannot be honoured on the {} lane: its model is pinned by \
+                         the grant the server issues, not chosen here. Use a claude, codex, or \
+                         opencode/<model> lane.",
+                        other.label()
+                    ))
+                }
+            }
+        }
+        if self.ask {
+            match lane {
+                ChildLane::Claude | ChildLane::Codex => {}
+                other => {
+                    return Err(format!(
+                        "--child-ask cannot be honoured on the {} lane: it has no \
+                         ask-before-a-tool mode this command can select. Use a claude or codex \
+                         lane.",
+                        other.label()
+                    ))
+                }
+            }
+        }
+        if self.config.is_some() {
+            match lane {
+                ChildLane::Opencode { .. } | ChildLane::Claude | ChildLane::Codex => {}
+                other => {
+                    return Err(format!(
+                        "--child-config cannot be honoured on the {} lane: it runs in this \
+                         process and reads no harness config file.",
+                        other.label()
+                    ))
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 pub struct DelegationSupervisor {
     pub count: usize,
     pub lane: String,
@@ -174,6 +274,10 @@ pub struct DelegationSupervisor {
     /// Leave the children's worktrees on disk when the fan-out is over, so
     /// what they wrote can be read or merged.
     pub keep_workspaces: bool,
+    /// Where children work. `None` means the current directory.
+    pub directory: Option<PathBuf>,
+    /// How each child is configured.
+    pub child: ChildOptions,
 }
 
 impl DelegationSupervisor {
@@ -186,6 +290,8 @@ impl DelegationSupervisor {
             isolation: Isolation::Worktree,
             max_parallel: count,
             keep_workspaces: false,
+            directory: None,
+            child: ChildOptions::default(),
         }
     }
 
@@ -201,6 +307,17 @@ impl DelegationSupervisor {
 
     pub fn keeping_workspaces(mut self, keep: bool) -> Self {
         self.keep_workspaces = keep;
+        self
+    }
+
+    /// Where children work. `--dir`.
+    pub fn in_directory(mut self, directory: Option<PathBuf>) -> Self {
+        self.directory = directory;
+        self
+    }
+
+    pub fn with_child_options(mut self, child: ChildOptions) -> Self {
+        self.child = child;
         self
     }
 
@@ -230,7 +347,21 @@ impl DelegationSupervisor {
         cancel: watch::Receiver<bool>,
     ) -> Result<Vec<ChildWorkerResult>, String> {
         let lane = ChildLane::parse(&self.lane);
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // `--dir` names where children work. It has to exist before a worktree
+        // can be prepared under it, so a path that is not a directory is a
+        // refusal rather than a fan-out that silently ran somewhere else.
+        let cwd = match &self.directory {
+            Some(directory) => {
+                if !directory.is_dir() {
+                    return Err(format!(
+                        "{} is not a directory, so there is nowhere for the children to work.",
+                        directory.display()
+                    ));
+                }
+                directory.clone()
+            }
+            None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        };
         let plan = WorkspacePlan::resolve(cwd, self.isolation).await;
         let workspaces = plan.prepare(self.count).await?;
 
@@ -249,12 +380,14 @@ impl DelegationSupervisor {
             let events = events.clone();
             let cancel = cancel.clone();
             let gate = Arc::clone(&gate);
+            let child_options = self.child.clone();
 
             handles.push(tokio::spawn(async move {
                 // The cap is here rather than around the spawn so a child that
                 // is waiting for a slot still exists and still reports.
                 let _slot = gate.acquire().await;
-                let result = run_child(task, lane, workspace, token, &events, cancel).await;
+                let result =
+                    run_child(task, lane, workspace, token, &child_options, &events, cancel).await;
                 let _ = events.send(ChildEvent::Finished(Box::new(result.clone())));
                 result
             }));
@@ -311,6 +444,7 @@ async fn run_child(
     lane: ChildLane,
     workspace: ChildWorkspace,
     user_token: Option<String>,
+    options: &ChildOptions,
     events: &mpsc::UnboundedSender<ChildEvent>,
     cancel: watch::Receiver<bool>,
 ) -> ChildWorkerResult {
@@ -328,10 +462,10 @@ async fn run_child(
             run_proxy_child(&task, &workspace, user_token, events, cancel).await
         }
         ChildLane::Devin => {
-            run_devin_child(&task, &lane, &workspace, events, cancel).await
+            run_devin_child(&task, &lane, &workspace, options, events, cancel).await
         }
         ChildLane::Claude | ChildLane::Codex | ChildLane::Opencode { .. } => {
-            run_cli_child(&task, &lane, &workspace, events, cancel).await
+            run_cli_child(&task, &lane, &workspace, options, events, cancel).await
         }
     };
 
@@ -410,6 +544,7 @@ async fn run_devin_child(
     task: &ChildWorkerTask,
     lane: &ChildLane,
     workspace: &ChildWorkspace,
+    options: &ChildOptions,
     events: &mpsc::UnboundedSender<ChildEvent>,
     mut cancel: watch::Receiver<bool>,
 ) -> Result<ChildAnswer, ChildFailure> {
@@ -422,7 +557,10 @@ async fn run_devin_child(
     });
 
     let harness = AcpHarness {
-        command: harness_binary(lane),
+        command: options
+            .command
+            .clone()
+            .unwrap_or_else(|| harness_binary(lane)),
         mode: Some(PermissionMode::Dangerous),
         ..AcpHarness::default()
     };
@@ -479,14 +617,16 @@ async fn run_cli_child(
     task: &ChildWorkerTask,
     lane: &ChildLane,
     workspace: &ChildWorkspace,
+    options: &ChildOptions,
     events: &mpsc::UnboundedSender<ChildEvent>,
     mut cancel: watch::Receiver<bool>,
 ) -> Result<ChildAnswer, ChildFailure> {
     let id = task.id;
-    let (command, args) = harness_command(lane, &task.prompt, &workspace.path);
+    let (command, args) = harness_command(lane, &task.prompt, &workspace.path, options);
 
     let mut child = match Command::new(&command)
         .args(&args)
+        .envs(options.child_env())
         .current_dir(&workspace.path)
         // No terminal, so a harness that would prompt gets end-of-file rather
         // than a wait nobody can see.
@@ -647,53 +787,84 @@ pub fn harness_binary(lane: &ChildLane) -> String {
 }
 
 /// The binary and arguments each CLI lane runs, following `coder-delegate.ts`.
-fn harness_command(lane: &ChildLane, prompt: &str, cwd: &std::path::Path) -> (String, Vec<String>) {
+///
+/// `options` is where the four `--child-*` flags land: the binary comes from
+/// `--child-command` when one was given, `--child-model` replaces the lane's
+/// model, and `--child-ask` selects the harness's own ask-before-a-tool mode
+/// instead of the mode a child with nobody to ask normally runs in.
+pub fn harness_command(
+    lane: &ChildLane,
+    prompt: &str,
+    cwd: &std::path::Path,
+    options: &ChildOptions,
+) -> (String, Vec<String>) {
+    let binary = options
+        .command
+        .clone()
+        .unwrap_or_else(|| harness_binary(lane));
     match lane {
-        ChildLane::Claude => (
-            harness_binary(lane),
-            vec![
+        ChildLane::Claude => {
+            let mut args = vec![
                 "-p".to_string(),
                 prompt.to_string(),
                 "--output-format".to_string(),
                 "stream-json".to_string(),
                 // `stream-json` requires it.
                 "--verbose".to_string(),
-                // A delegated child has nobody to ask.
                 "--permission-mode".to_string(),
-                "acceptEdits".to_string(),
-            ],
-        ),
-        ChildLane::Codex => (
-            harness_binary(lane),
-            vec![
+                // A delegated child normally has nobody to ask; `--child-ask`
+                // is the dry run that stops it at its first edit instead.
+                if options.ask {
+                    "default".to_string()
+                } else {
+                    "acceptEdits".to_string()
+                },
+            ];
+            if let Some(model) = &options.model {
+                args.push("--model".to_string());
+                args.push(model.clone());
+            }
+            (binary, args)
+        }
+        ChildLane::Codex => {
+            let mut args = vec![
                 "exec".to_string(),
                 "--json".to_string(),
                 // A child's worktree is a checkout but not one Codex has been
                 // told to trust, and without this it refuses before it starts.
                 "--skip-git-repo-check".to_string(),
-                // The child may edit the checkout it was pointed at and
-                // nothing outside it.
                 "--sandbox".to_string(),
-                "workspace-write".to_string(),
-                prompt.to_string(),
-            ],
-        ),
+                // The child may edit the checkout it was pointed at and
+                // nothing outside it — unless it was asked to touch nothing.
+                if options.ask {
+                    "read-only".to_string()
+                } else {
+                    "workspace-write".to_string()
+                },
+            ];
+            if let Some(model) = &options.model {
+                args.push("--model".to_string());
+                args.push(model.clone());
+            }
+            args.push(prompt.to_string());
+            (binary, args)
+        }
         ChildLane::Opencode { model } => (
-            harness_binary(lane),
+            binary,
             vec![
                 "run".to_string(),
                 "--format".to_string(),
                 "json".to_string(),
                 "--model".to_string(),
-                model.clone(),
+                options.model.clone().unwrap_or_else(|| model.clone()),
                 "--dir".to_string(),
                 cwd.to_string_lossy().to_string(),
                 prompt.to_string(),
             ],
         ),
         // Handled by their own runners; unreachable through this function.
-        ChildLane::OxAlpha => ("".to_string(), Vec::new()),
-        ChildLane::Devin => (harness_binary(lane), vec!["acp".to_string()]),
+        ChildLane::OxAlpha => (String::new(), Vec::new()),
+        ChildLane::Devin => (binary, vec!["acp".to_string()]),
     }
 }
 
@@ -964,8 +1135,85 @@ impl Printer {
 }
 
 /// `oa coder --delegate`.
+/// What a fan-out was asked for, whichever command asked.
+///
+/// `oa delegate` and `oa coder --delegate` run the same engine, so they resolve
+/// to the same request rather than each carrying its own copy of the argument
+/// handling. The coder flag reaches only the fields the coder command declares;
+/// the `--child-*` and `--dir` flags exist on `oa delegate` alone, which is why
+/// they are `None` on that side rather than silently defaulted.
+#[derive(Debug, Clone)]
+pub struct DelegationRequest {
+    pub prompt: Option<String>,
+    pub count: usize,
+    pub max_parallel: Option<usize>,
+    pub lane: Option<String>,
+    pub isolation: Option<String>,
+    pub keep_workspaces: bool,
+    pub directory: Option<String>,
+    pub description: Option<String>,
+    pub child_model: Option<String>,
+    pub child_command: Option<String>,
+    pub child_config: Option<String>,
+    pub child_ask: bool,
+}
+
+impl DelegationRequest {
+    pub fn from_coder(args: CoderArgs) -> Self {
+        Self {
+            prompt: args.prompt,
+            count: args.count,
+            max_parallel: args.max_parallel,
+            lane: args.lane,
+            isolation: args.isolation,
+            keep_workspaces: args.keep_workspaces,
+            directory: None,
+            description: None,
+            child_model: None,
+            child_command: None,
+            child_config: None,
+            child_ask: false,
+        }
+    }
+
+    pub fn from_delegate(args: DelegateArgs) -> Self {
+        Self {
+            prompt: args.prompt,
+            count: args.agents,
+            max_parallel: args.concurrency,
+            lane: args.lane,
+            isolation: args.isolation,
+            keep_workspaces: args.keep_workspaces,
+            directory: args.dir,
+            description: args.description,
+            child_model: args.child_model,
+            child_command: args.child_command,
+            child_config: args.child_config,
+            child_ask: args.child_ask,
+        }
+    }
+}
+
+/// Three to five words naming the task, from `--description` or the prompt.
+///
+/// Mirrors `describePrompt` in `coder-delegate.ts`: the first words of the
+/// prompt, so a fan-out with no description is still named by what it does.
+pub fn describe(description: Option<&str>, prompt: &str) -> String {
+    if let Some(given) = description {
+        let trimmed = given.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let words: Vec<&str> = prompt.split_whitespace().take(5).collect();
+    if words.is_empty() {
+        return "delegated task".to_string();
+    }
+    words.join(" ")
+}
+
 pub async fn run_delegation(
-    args: CoderArgs,
+    args: DelegationRequest,
     user_token: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let requested = args.count.max(1);
@@ -997,19 +1245,40 @@ pub async fn run_delegation(
         },
     };
 
+    let child = ChildOptions::resolve(
+        args.child_model.clone(),
+        args.child_command.clone(),
+        args.child_config.clone(),
+        args.child_ask,
+    );
+    // A flag the chosen lane cannot honour ends the command. Running anyway
+    // would give the reader the fan-out they asked for without the model, the
+    // config, or the dry run they asked for it with.
+    if let Err(why) = child.check(&lane) {
+        fail(&why);
+    }
+
+    let description = describe(args.description.as_deref(), &prompt);
+
     let supervisor = DelegationSupervisor::new(requested, &lane_name, user_token)
         .with_isolation(isolation)
         .with_max_parallel(args.max_parallel.unwrap_or(requested))
-        .keeping_workspaces(args.keep_workspaces);
+        .keeping_workspaces(args.keep_workspaces)
+        .in_directory(args.directory.as_deref().map(PathBuf::from))
+        .with_child_options(child);
 
     println!(
-        "Delegating to {} {} on {}, {} at a time, isolation: {}.",
+        "Delegating {}: {} {} on {}, {} at a time, isolation: {}.",
+        description,
         supervisor.count,
         if supervisor.count == 1 { "child" } else { "children" },
         lane.label(),
         supervisor.max_parallel,
         isolation.name(),
     );
+    if let Some(directory) = &supervisor.directory {
+        println!("Children work under {}.", directory.display());
+    }
 
     // `ctrl+c` is the only stop signal a running fan-out has. Without it a
     // reader who changed their mind had to kill the terminal, and the
@@ -1162,4 +1431,210 @@ pub fn fanout_for_tool(
     }
     lines.join("\n")
     })
+}
+
+#[cfg(test)]
+mod child_option_tests {
+    use super::*;
+    use std::path::Path;
+
+    fn argv(lane: &ChildLane, options: &ChildOptions) -> (String, Vec<String>) {
+        harness_command(lane, "do the thing", Path::new("/tmp/work"), options)
+    }
+
+    /// `--child-command` has to change which binary a child is started as.
+    #[test]
+    fn child_command_replaces_the_harness_binary() {
+        let default = argv(&ChildLane::Claude, &ChildOptions::default());
+        let overridden = argv(
+            &ChildLane::Claude,
+            &ChildOptions {
+                command: Some("/opt/stub-claude".to_string()),
+                ..ChildOptions::default()
+            },
+        );
+        assert_ne!(default.0, overridden.0);
+        assert_eq!(overridden.0, "/opt/stub-claude");
+        // Only the binary moves; the arguments are the lane's own.
+        assert_eq!(default.1, overridden.1);
+    }
+
+    /// `--child-model` has to reach the harness's own model argument.
+    #[test]
+    fn child_model_reaches_the_harness_argument() {
+        for lane in [ChildLane::Claude, ChildLane::Codex] {
+            let plain = argv(&lane, &ChildOptions::default());
+            assert!(
+                !plain.1.iter().any(|a| a == "--model"),
+                "{lane:?} named a model with none asked for"
+            );
+            let chosen = argv(
+                &lane,
+                &ChildOptions {
+                    model: Some("anthropic/opus".to_string()),
+                    ..ChildOptions::default()
+                },
+            );
+            let at = chosen
+                .1
+                .iter()
+                .position(|a| a == "--model")
+                .unwrap_or_else(|| panic!("{lane:?} did not pass --model: {:?}", chosen.1));
+            assert_eq!(chosen.1[at + 1], "anthropic/opus");
+        }
+
+        // The opencode lane already carries a model; the flag replaces it
+        // rather than adding a second one.
+        let lane = ChildLane::Opencode {
+            model: "gemini-3.7-flash".to_string(),
+        };
+        let chosen = argv(
+            &lane,
+            &ChildOptions {
+                model: Some("openai/gpt-5".to_string()),
+                ..ChildOptions::default()
+            },
+        );
+        assert_eq!(chosen.1.iter().filter(|a| *a == "--model").count(), 1);
+        assert!(chosen.1.contains(&"openai/gpt-5".to_string()));
+        assert!(!chosen.1.contains(&"gemini-3.7-flash".to_string()));
+    }
+
+    /// `--child-ask` has to select the harness's ask-before-a-tool mode.
+    ///
+    /// The whole point of the flag is a dry run over a directory the reader
+    /// does not want touched, so the argument that lets a child edit has to be
+    /// the one that changes.
+    #[test]
+    fn child_ask_selects_the_harness_ask_mode() {
+        let asking = ChildOptions {
+            ask: true,
+            ..ChildOptions::default()
+        };
+
+        let claude_default = argv(&ChildLane::Claude, &ChildOptions::default()).1;
+        let claude_asking = argv(&ChildLane::Claude, &asking).1;
+        assert!(claude_default.contains(&"acceptEdits".to_string()));
+        assert!(!claude_asking.contains(&"acceptEdits".to_string()));
+        assert!(claude_asking.contains(&"default".to_string()));
+
+        let codex_default = argv(&ChildLane::Codex, &ChildOptions::default()).1;
+        let codex_asking = argv(&ChildLane::Codex, &asking).1;
+        assert!(codex_default.contains(&"workspace-write".to_string()));
+        assert!(!codex_asking.contains(&"workspace-write".to_string()));
+        assert!(codex_asking.contains(&"read-only".to_string()));
+    }
+
+    /// `--child-config` reaches the child as `OPENCODE_CONFIG`, which is how a
+    /// provider credential gets there without this CLI storing it.
+    #[test]
+    fn child_config_reaches_the_child_environment() {
+        assert!(ChildOptions::default().child_env().is_empty());
+        let options = ChildOptions {
+            config: Some("/tmp/opencode.json".to_string()),
+            ..ChildOptions::default()
+        };
+        assert_eq!(
+            options.child_env(),
+            vec![(
+                "OPENCODE_CONFIG".to_string(),
+                "/tmp/opencode.json".to_string()
+            )]
+        );
+    }
+
+    /// A lane that cannot honour a flag says so instead of ignoring it.
+    #[test]
+    fn a_lane_that_cannot_honour_a_flag_refuses_it() {
+        let model = ChildOptions {
+            model: Some("anything".to_string()),
+            ..ChildOptions::default()
+        };
+        assert!(model.check(&ChildLane::OxAlpha).is_err());
+        assert!(model.check(&ChildLane::Devin).is_err());
+        assert!(model.check(&ChildLane::Claude).is_ok());
+
+        let ask = ChildOptions {
+            ask: true,
+            ..ChildOptions::default()
+        };
+        assert!(ask.check(&ChildLane::OxAlpha).is_err());
+        assert!(ask.check(&ChildLane::Codex).is_ok());
+
+        let config = ChildOptions {
+            config: Some("/tmp/c.json".to_string()),
+            ..ChildOptions::default()
+        };
+        assert!(config.check(&ChildLane::OxAlpha).is_err());
+        assert!(config
+            .check(&ChildLane::Opencode {
+                model: "m".to_string()
+            })
+            .is_ok());
+
+        // Nothing asked for, nothing refused, on any lane.
+        for lane in [
+            ChildLane::OxAlpha,
+            ChildLane::Devin,
+            ChildLane::Claude,
+            ChildLane::Codex,
+        ] {
+            assert!(ChildOptions::default().check(&lane).is_ok());
+        }
+    }
+
+    /// `--description` names the run; without one the prompt does.
+    #[test]
+    fn a_run_is_named_by_its_description_or_its_prompt() {
+        assert_eq!(describe(Some("port the flags"), "anything"), "port the flags");
+        assert_eq!(describe(Some("   "), "one two three four five six"), "one two three four five");
+        assert_eq!(describe(None, "one two three four five six"), "one two three four five");
+        assert_eq!(describe(None, "   "), "delegated task");
+    }
+
+    /// The two commands that run a fan-out resolve to the same request.
+    ///
+    /// `oa coder --delegate` declares none of the `--child-*` flags, so they
+    /// arrive as `None` rather than as a default that would be indistinguishable
+    /// from the reader having chosen it.
+    #[test]
+    fn both_entry_points_resolve_to_one_request() {
+        let request = DelegationRequest::from_delegate(DelegateArgs {
+            prompt: Some("go".to_string()),
+            agents: 4,
+            dir: Some("/tmp/here".to_string()),
+            description: Some("a run".to_string()),
+            concurrency: Some(2),
+            lane: Some("claude".to_string()),
+            isolation: None,
+            keep_workspaces: true,
+            child_model: Some("m".to_string()),
+            child_command: Some("c".to_string()),
+            child_config: Some("f".to_string()),
+            child_ask: true,
+        });
+        assert_eq!(request.count, 4);
+        assert_eq!(request.max_parallel, Some(2));
+        assert_eq!(request.directory.as_deref(), Some("/tmp/here"));
+        assert!(request.child_ask);
+
+        let request = DelegationRequest::from_coder(CoderArgs {
+            prompt: Some("go".to_string()),
+            delegate: true,
+            count: 3,
+            max_parallel: None,
+            isolation: None,
+            keep_workspaces: false,
+            lane: None,
+            headless: false,
+            export: None,
+            plain: false,
+            dev: false,
+            dev_port: 4000,
+        });
+        assert_eq!(request.count, 3);
+        assert!(request.child_model.is_none());
+        assert!(!request.child_ask);
+        assert!(request.directory.is_none());
+    }
 }

@@ -20,7 +20,24 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+use ratatui::buffer::Buffer;
 use unicode_width::UnicodeWidthStr;
+
+/// Reset every foreground and background in an area to the terminal's own.
+///
+/// What `--no-color` does. It runs over the finished buffer, so it covers
+/// every widget this module draws — including any added after it was written —
+/// rather than depending on each colour site to remember the flag.
+pub fn drain_color(buffer: &mut Buffer, area: Rect) {
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(cell) = buffer.cell_mut(Position::new(x, y)) {
+                cell.set_fg(Color::Reset);
+                cell.set_bg(Color::Reset);
+            }
+        }
+    }
+}
 
 /// Columns reserved for the bullet before a turn's first line.
 pub const GUTTER: usize = 4;
@@ -159,6 +176,14 @@ impl BoxFrame {
         render_transcript(f, chunks[1], view);
         render_composer(f, chunks[2], view);
         render_status(f, chunks[3], view);
+
+        // `--no-color` is applied here rather than at each of the twenty-odd
+        // places that name a colour, so a colour added later cannot escape it.
+        // Bold and the other modifiers stay: they are structure, not colour,
+        // and a terminal that renders no colour still renders them.
+        if !crate::diag::color() {
+            drain_color(f.buffer_mut(), area);
+        }
     }
 
     fn render_header(&self, f: &mut Frame, area: Rect) {
@@ -461,5 +486,79 @@ mod tests {
     #[test]
     fn wrap_keeps_hard_newlines() {
         assert_eq!(wrap("a\nb", 10), vec!["a".to_string(), "b".to_string()]);
+    }
+
+    /// Draw the whole chrome into a buffer and report every foreground colour
+    /// that is not the terminal's own.
+    fn foregrounds(colour: bool) -> std::collections::BTreeSet<String> {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        // The flag is process-wide, so it is set for the length of the draw
+        // and put back. These two cases never run at the same time because
+        // both live in this one test.
+        crate::diag::set_color(colour);
+        let entries = vec![
+            Entry::new(Role::You, "a question"),
+            Entry::new(Role::Assistant, "an answer"),
+            Entry::new(Role::Error, "a failure"),
+        ];
+        let rows = ["typing"];
+        let view = ChromeView {
+            title: "openagents coder",
+            entries: &entries,
+            composer_rows: &rows,
+            composer_cursor: (0, 6),
+            model: Some("ox-alpha"),
+            busy: false,
+            pulse: true,
+            scrollback: 0,
+        };
+        let mut terminal = Terminal::new(TestBackend::new(60, 24)).expect("a test terminal");
+        terminal
+            .draw(|frame| BoxFrame::new("openagents coder").render(frame, frame.area(), &view))
+            .expect("draw the chrome");
+        let buffer = terminal.backend().buffer().clone();
+        // Put the flag back before anything else reads it.
+        crate::diag::set_color(true);
+
+        let mut seen = std::collections::BTreeSet::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                if let Some(cell) = buffer.cell(Position::new(x, y)) {
+                    if cell.fg != Color::Reset {
+                        seen.insert(format!("{:?}", cell.fg));
+                    }
+                    if cell.bg != Color::Reset {
+                        seen.insert(format!("{:?}", cell.bg));
+                    }
+                }
+            }
+        }
+        seen
+    }
+
+    /// `--no-color` has to leave no colour in the drawn frame.
+    ///
+    /// Asserted against the same frame drawn both ways, so a test that could
+    /// pass by the chrome having been colourless all along cannot: the
+    /// coloured draw is required to carry several distinct colours.
+    #[test]
+    fn no_color_leaves_no_colour_in_the_frame() {
+        let coloured = foregrounds(true);
+        assert!(
+            coloured.len() >= 3,
+            "the coloured frame should carry several colours, it carried {coloured:?}"
+        );
+        assert!(
+            coloured.contains("Cyan"),
+            "the coloured frame lost its cyan: {coloured:?}"
+        );
+
+        let drained = foregrounds(false);
+        assert!(
+            drained.is_empty(),
+            "--no-color left colours in the frame: {drained:?}"
+        );
     }
 }

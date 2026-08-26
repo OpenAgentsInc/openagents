@@ -416,17 +416,20 @@ fn session_tools(lane_name: &str, token: &Option<String>) -> HarnessToolRegistry
 
 pub async fn run_tui(
     args: CoderArgs,
+    api_base: String,
     token: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let lane_name = args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
     let lane = Lane::from_str(&lane_name);
 
-    if !is_terminal() {
-        return run_without_a_terminal(args, token, lane).await;
+    // `--plain` asks for the line-oriented path even on a terminal. Without a
+    // terminal there is no full-screen session to run either way.
+    if args.plain || !is_terminal() {
+        return run_without_a_terminal(args, api_base, token, lane).await;
     }
 
     let tools = session_tools(&lane_name, &token);
-    let session = CoderRuntimeSession::new(lane.clone(), None, token, tools);
+    let session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
 
     let (control_tx, control_rx) = unbounded_channel::<Control>();
     let (event_tx, mut event_rx) = unbounded_channel::<TurnEvent>();
@@ -464,18 +467,37 @@ pub async fn run_tui(
     Ok(())
 }
 
-/// Without a terminal there is no session to run, so run the prompt straight
-/// through and stream the reply to stdout.
+/// The `--export` transcript for a one-turn run.
+///
+/// The same two-role, `[who] text` shape [`CoderApp::transcript`] writes, so a
+/// transcript from a plain or headless run reads like one from the session.
+pub fn transcript_of(prompt: &str, answer: &str) -> String {
+    let mut parts = Vec::new();
+    if !prompt.is_empty() {
+        parts.push(format!("[you] {prompt}"));
+    }
+    if !answer.trim().is_empty() {
+        parts.push(format!("[coder] {}", answer.trim_end()));
+    }
+    parts.join("\n\n")
+}
+
+/// Line-oriented output: one turn, printed as lines, with no cursor control.
+///
+/// This is both the no-terminal path and what `--plain` asks for on a
+/// terminal. It emits no escape sequences at all, so it can be piped to a file
+/// or read by something that is not a terminal emulator.
 ///
 /// The version this replaces printed `Coder response: Interactive session
 /// initialized in non-TTY mode.` and never called the runtime at all.
 async fn run_without_a_terminal(
     args: CoderArgs,
+    api_base: String,
     token: Option<String>,
     lane: Lane,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let lane_name = args.lane.clone().unwrap_or_else(|| "ox-alpha".to_string());
-    let Some(prompt) = args.prompt else {
+    let Some(prompt) = args.prompt.clone() else {
         eprintln!(
             "`oa coder` needs a terminal for an interactive session. \
              Give it a prompt, or use `--headless`, to run one turn here."
@@ -484,7 +506,7 @@ async fn run_without_a_terminal(
     };
 
     let tools = session_tools(&lane_name, &token);
-    let mut session = CoderRuntimeSession::new(lane, None, token, tools);
+    let mut session = CoderRuntimeSession::new(lane, Some(api_base), token, tools);
     // The reply is printed as it streams. `execute_turn` also returns the last
     // step's text, which is the same text — so it is printed only when nothing
     // streamed, which is how the offline paths still say something.
@@ -503,6 +525,15 @@ async fn run_without_a_terminal(
         print!("{answer}");
     }
     println!();
+
+    // `--export` used to be read only by the full-screen session, so a plain,
+    // piped, or headless run that asked for a transcript got none and was told
+    // nothing.
+    if let Some(path) = args.export.as_deref() {
+        std::fs::write(path, transcript_of(&prompt, &answer))
+            .map_err(|error| format!("could not write the transcript to {path}: {error}"))?;
+        println!("Transcript written to {path}");
+    }
     Ok(())
 }
 

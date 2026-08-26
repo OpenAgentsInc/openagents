@@ -105,21 +105,28 @@ impl MemoryClient {
             builder = builder.json(&payload);
         }
 
-        let response = builder.send().await.map_err(|e| ApiError::Transport {
-            operation: operation.to_string(),
-            why: e.to_string(),
+        crate::diag::request(method, &url);
+        let response = builder.send().await.map_err(|e| {
+            crate::diag::transport(&url, &e.to_string());
+            ApiError::Transport {
+                operation: operation.to_string(),
+                why: e.to_string(),
+            }
         })?;
         let status = response.status().as_u16();
+        crate::diag::response(status, &url);
         let text = response.text().await.map_err(|e| ApiError::Transport {
             operation: operation.to_string(),
             why: e.to_string(),
         })?;
 
         if !accepted.contains(&status) {
+            let message = error_sentence(&text, status);
+            crate::diag::refused(status, &message);
             return Err(ApiError::Refused {
                 operation: operation.to_string(),
                 status,
-                message: error_sentence(&text, status),
+                message,
             });
         }
         serde_json::from_str(&text).map_err(|e| ApiError::Malformed {

@@ -11,10 +11,12 @@ mod tests {
     use openagents_cli::tracker::{slug_from_remote_url, IssueListOptions, RepoTarget, TrackerClient};
     use openagents_cli::repo::{admitted_credential_request, parse_git_credential_request};
     use openagents_cli::box_client::BoxClient;
-    use openagents_cli::computer::probe_host;
+    use openagents_cli::computer::{
+        decide, probe_host, CommandRequest, ComputerPaths, PolicyConfig, Tier,
+    };
     use openagents_cli::forum::ForumClient;
     use openagents_cli::memory_client::{read_bucket, MemoryClient};
-    use openagents_cli::api_passthrough::ApiPassthroughClient;
+    use openagents_cli::api_passthrough::{resolve_api_path, ApiPassthroughClient};
     use openagents_cli::trace::{default_trace_stores, redact_text};
 
     /// The old assertion read `store.load().unwrap().default_profile.is_some()`,
@@ -225,10 +227,26 @@ mod tests {
         );
     }
 
+    /// The old assertion was `probe.num_cpus > 0` against a four-field struct,
+    /// beside a policy of three unconditional `true`s. The policy contract and
+    /// the full probe live in `tests/computer_api_test.rs`; this keeps the
+    /// closed default here, because it is the whole point of the subsystem.
     #[test]
     fn test_computer_probe_issue_79() {
         let probe = probe_host();
         assert!(probe.num_cpus > 0);
+
+        // The default policy reaches nothing: no root is declared, so no
+        // working directory is reachable and no command is permitted.
+        let directory = tempfile::tempdir().unwrap();
+        let config = PolicyConfig::closed(ComputerPaths::in_directory(directory.path()));
+        assert_eq!(config.tier, Tier::Probe);
+        assert!(config.roots.is_empty());
+        let request = CommandRequest {
+            argv: vec!["git".to_string(), "status".to_string()],
+            cwd: directory.path().display().to_string(),
+        };
+        assert!(!decide(&request, &config).allowed());
     }
 
     /// The old assertion was `!boards.is_empty()`, and it passed *because of* the
@@ -265,11 +283,42 @@ mod tests {
         );
     }
 
+    /// The old assertion was `res.is_object()` against `execute_request("GET",
+    /// "status", None)`. It held for any JSON object, including the
+    /// `{"status": N}` stub the client returned for every request it could not
+    /// parse — so it passed while `/api/v1/user` 404ed. These name the field
+    /// the route returns, and assert that a refused route is an error.
     #[tokio::test]
     async fn test_api_passthrough_issue_81() {
-        let client = ApiPassthroughClient::new("https://openagents.com/api/v1", None);
-        let res = client.execute_request("GET", "status", None).await.unwrap();
-        assert!(res.is_object());
+        let client = ApiPassthroughClient::new("https://openagents.com", None);
+
+        // Both spellings of the same route resolve to it.
+        assert_eq!(
+            resolve_api_path("https://openagents.com", "/api/v1/user").unwrap(),
+            "/api/v1/user"
+        );
+        assert_eq!(
+            resolve_api_path("https://openagents.com", "user").unwrap(),
+            "/api/v1/user"
+        );
+
+        let value = client
+            .execute_request("GET", "repos/OpenAgentsInc/openagents", None)
+            .await
+            .unwrap();
+        assert_eq!(
+            value.get("full_name").and_then(|v| v.as_str()),
+            Some("OpenAgentsInc/openagents")
+        );
+
+        let refused = client
+            .execute_request("GET", "repos/OpenAgentsInc/no-such-repository-here", None)
+            .await;
+        assert!(
+            refused.is_err(),
+            "a 404 must not read as a value, got {:?}",
+            refused.ok()
+        );
     }
 
     /// The old assertions were `sessions.len() == 2` against two source literals,

@@ -313,6 +313,26 @@ impl TrackerClient {
         body: Option<Value>,
         accepted: &[u16],
     ) -> Result<Value, ApiError> {
+        self.request_with_status(operation, method, path, body, accepted)
+            .await
+            .map(|(_, value)| value)
+    }
+
+    /// The same request, with the accepted status the server actually chose.
+    ///
+    /// Needed where two accepted statuses mean different things: a fleet
+    /// promotion answers `202` for a new target and `200` for one an
+    /// idempotency key already named, and "did I just deploy, or had I
+    /// already?" cannot be read off the body — the server returns the target
+    /// either way.
+    pub async fn request_with_status(
+        &self,
+        operation: &str,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+        accepted: &[u16],
+    ) -> Result<(u16, Value), ApiError> {
         let url = format!("{}/{}", self.api_base, path.trim_start_matches('/'));
         let mut builder = match method {
             "GET" => self.http.get(&url),
@@ -332,32 +352,40 @@ impl TrackerClient {
             builder = builder.json(&payload);
         }
 
-        let response = builder.send().await.map_err(|e| ApiError::Transport {
-            operation: operation.to_string(),
-            why: e.to_string(),
+        crate::diag::request(method, &url);
+        let response = builder.send().await.map_err(|e| {
+            crate::diag::transport(&url, &e.to_string());
+            ApiError::Transport {
+                operation: operation.to_string(),
+                why: e.to_string(),
+            }
         })?;
         let status = response.status().as_u16();
+        crate::diag::response(status, &url);
         let text = response.text().await.map_err(|e| ApiError::Transport {
             operation: operation.to_string(),
             why: e.to_string(),
         })?;
 
         if !accepted.contains(&status) {
+            let message = error_sentence(&text, status);
+            crate::diag::refused(status, &message);
             return Err(ApiError::Refused {
                 operation: operation.to_string(),
                 status,
-                message: error_sentence(&text, status),
+                message,
             });
         }
         if text.trim().is_empty() {
             // A 204 carries no body, and that is the server's answer, not a
             // stand-in for one.
-            return Ok(Value::Null);
+            return Ok((status, Value::Null));
         }
-        serde_json::from_str(&text).map_err(|e| ApiError::Malformed {
+        let value = serde_json::from_str(&text).map_err(|e| ApiError::Malformed {
             operation: operation.to_string(),
             why: e.to_string(),
-        })
+        })?;
+        Ok((status, value))
     }
 
     // ---------------------------------------------------------------- issues

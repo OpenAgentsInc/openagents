@@ -97,21 +97,27 @@ impl ForumClient {
     /// `GET` a forum route and return its parsed body, or the server's refusal.
     async fn get_json(&self, path: &str) -> Result<serde_json::Value, ForumError> {
         let url = format!("{}/{}", self.api_base, path);
+        crate::diag::request("GET", &url);
         let resp = self
             .http
             .get(&url)
             .headers(self.headers())
             .send()
             .await
-            .map_err(|e| ForumError::Transport(e.to_string()))?;
+            .map_err(|e| {
+                crate::diag::transport(&url, &e.to_string());
+                ForumError::Transport(e.to_string())
+            })?;
 
         let status = resp.status();
+        crate::diag::response(status.as_u16(), &url);
         let body = resp
             .text()
             .await
             .map_err(|e| ForumError::Transport(e.to_string()))?;
 
         if !status.is_success() {
+            crate::diag::refused(status.as_u16(), &body);
             return Err(ForumError::Refused {
                 status: status.as_u16(),
                 body,
