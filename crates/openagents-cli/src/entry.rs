@@ -4,6 +4,8 @@
 //! Coder. Named OpenAgents commands dispatch to the shared CLI runtime.
 
 use std::env;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -280,13 +282,24 @@ fn parse(arguments: &[String]) -> Result<Parsed, String> {
 }
 
 async fn boot_dev_server() -> Result<(), Box<dyn std::error::Error>> {
-    if is_dev_server_up().await {
-        eprintln!("dev server already running at {}", DEV_BASE_URL);
-        return Ok(());
+    let repo = web_repo()?;
+    match probe_dev_server().await {
+        DevServerProbe::Ready => {
+            eprintln!("dev server already running at {}", DEV_BASE_URL);
+            return Ok(());
+        }
+        DevServerProbe::Http(status) => {
+            return Err(
+                dev_server_failure(&repo, &format!("the health check returned {status}")).into(),
+            );
+        }
+        DevServerProbe::Unreachable => {}
     }
 
-    let repo = web_repo()?;
+    let log_path = repo.join("dev_server.log");
     eprintln!("starting dev server in {}", repo.display());
+    eprintln!("waiting for {}", DEV_BASE_URL);
+    eprintln!("server log: {}", log_path.display());
 
     let mut command = Command::new("sh");
     command
@@ -300,29 +313,115 @@ async fn boot_dev_server() -> Result<(), Box<dyn std::error::Error>> {
     command.process_group(0);
     let _child = command.spawn()?;
 
-    for _ in 0..300 {
-        if is_dev_server_up().await {
-            return Ok(());
+    let mut unhealthy_responses = 0;
+    for attempt in 1..=300 {
+        match probe_dev_server().await {
+            DevServerProbe::Ready => {
+                eprintln!("dev server ready at {}", DEV_BASE_URL);
+                return Ok(());
+            }
+            DevServerProbe::Http(status) => {
+                unhealthy_responses += 1;
+                eprintln!("dev server health check returned {status}");
+                if unhealthy_responses >= 2 {
+                    return Err(dev_server_failure(
+                        &repo,
+                        &format!("the health check returned {status} twice"),
+                    )
+                    .into());
+                }
+            }
+            DevServerProbe::Unreachable => {
+                unhealthy_responses = 0;
+                if attempt % 10 == 0 {
+                    eprintln!("still waiting for the dev server ({} seconds)", attempt / 2);
+                }
+            }
         }
         sleep(Duration::from_millis(500)).await;
     }
 
-    Err("dev server did not become ready in 150 seconds".into())
+    Err(dev_server_failure(&repo, "it did not become ready in 150 seconds").into())
 }
 
-async fn is_dev_server_up() -> bool {
+#[derive(Debug, PartialEq, Eq)]
+enum DevServerProbe {
+    Ready,
+    Unreachable,
+    Http(String),
+}
+
+async fn probe_dev_server() -> DevServerProbe {
     timeout(Duration::from_secs(2), async {
-        let mut stream = TcpStream::connect("127.0.0.1:4000").await.ok()?;
+        let Ok(mut stream) = TcpStream::connect("127.0.0.1:4000").await else {
+            return DevServerProbe::Unreachable;
+        };
         let request = "GET /health HTTP/1.1\r\nHost: 127.0.0.1:4000\r\nConnection: close\r\n\r\n";
-        stream.write_all(request.as_bytes()).await.ok()?;
+        if stream.write_all(request.as_bytes()).await.is_err() {
+            return DevServerProbe::Unreachable;
+        }
         let mut buf = [0u8; 256];
-        let n = stream.read(&mut buf).await.ok()?;
+        let Ok(n) = stream.read(&mut buf).await else {
+            return DevServerProbe::Unreachable;
+        };
         let head = std::str::from_utf8(&buf[..n]).unwrap_or("");
-        Some(head.starts_with("HTTP/1.1 200") || head.contains(" 200 "))
+        classify_health_response(head)
     })
     .await
-    .unwrap_or(Some(false))
-    .unwrap_or(false)
+    .unwrap_or(DevServerProbe::Unreachable)
+}
+
+fn classify_health_response(response: &str) -> DevServerProbe {
+    let status = response.lines().next().unwrap_or("").trim();
+    if status.split_whitespace().nth(1) == Some("200") {
+        DevServerProbe::Ready
+    } else if status.starts_with("HTTP/") {
+        DevServerProbe::Http(status.to_string())
+    } else {
+        DevServerProbe::Unreachable
+    }
+}
+
+fn dev_server_failure(repo: &std::path::Path, reason: &str) -> String {
+    let log_path = repo.join("dev_server.log");
+    let mut message = format!(
+        "dev server is not ready because {reason}.\nserver log: {}",
+        log_path.display()
+    );
+
+    if let Some(excerpt) = dev_log_excerpt(&log_path) {
+        message.push_str("\n\nlatest server error:\n");
+        message.push_str(&excerpt);
+        if excerpt.contains("PendingMigrationError") {
+            message.push_str(&format!(
+                "\n\nRun `cd {} && mix ecto.migrate`, then retry.",
+                repo.display()
+            ));
+        }
+    }
+
+    message
+}
+
+fn dev_log_excerpt(path: &std::path::Path) -> Option<String> {
+    const MAX_LOG_BYTES: u64 = 64 * 1024;
+    const MAX_ERROR_LINES: usize = 5;
+
+    let mut file = File::open(path).ok()?;
+    let length = file.metadata().ok()?.len();
+    file.seek(SeekFrom::Start(length.saturating_sub(MAX_LOG_BYTES)))
+        .ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    let text = String::from_utf8_lossy(&bytes);
+    let error_start = text.rfind("[error]").or_else(|| text.rfind("** ("))?;
+    Some(
+        text[error_start..]
+            .lines()
+            .take(MAX_ERROR_LINES)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 fn web_repo() -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -339,4 +438,42 @@ fn web_repo() -> Result<PathBuf, Box<dyn std::error::Error>> {
         return Err(format!("{} has no start_server.sh", canonical.display()).into());
     }
     Ok(canonical)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn health_responses_distinguish_ready_unhealthy_and_unreachable() {
+        assert_eq!(
+            classify_health_response("HTTP/1.1 200 OK\r\ncontent-length: 2\r\n"),
+            DevServerProbe::Ready
+        );
+        assert_eq!(
+            classify_health_response("HTTP/1.1 503 Service Unavailable\r\n"),
+            DevServerProbe::Http("HTTP/1.1 503 Service Unavailable".to_string())
+        );
+        assert_eq!(
+            classify_health_response("not an HTTP response"),
+            DevServerProbe::Unreachable
+        );
+    }
+
+    #[test]
+    fn failure_reports_the_log_and_pending_migration_remedy() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        fs::write(
+            directory.path().join("dev_server.log"),
+            "[debug] booting\n[error] ** (Phoenix.Ecto.PendingMigrationError) migrate first\n    stack line\n",
+        )
+        .expect("write log");
+
+        let failure = dev_server_failure(directory.path(), "the health check returned HTTP 503");
+        assert!(failure.contains("HTTP 503"), "{failure}");
+        assert!(failure.contains("PendingMigrationError"), "{failure}");
+        assert!(failure.contains("mix ecto.migrate"), "{failure}");
+        assert!(failure.contains("dev_server.log"), "{failure}");
+    }
 }

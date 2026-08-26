@@ -1,6 +1,9 @@
 //! OpenAgents CLI entry point.
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    openagents_cli::entry::run().await
+async fn main() {
+    if let Err(error) = openagents_cli::entry::run().await {
+        eprintln!("openagents: {error}");
+        std::process::exit(1);
+    }
 }
