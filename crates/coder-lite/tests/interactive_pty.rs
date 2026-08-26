@@ -970,11 +970,8 @@ mod unix_pty {
             "the session should enable bracketed paste while it owns the terminal and disable it on exit"
         );
         assert!(
-            !contains(&output, b"\x1b[?1000h")
-                && !contains(&output, b"\x1b[?1002h")
-                && !contains(&output, b"\x1b[?1003h")
-                && !contains(&output, b"\x1b[?1006h"),
-            "the session must leave terminal mouse reporting off so native drag-selection works"
+            contains(&output, b"\x1b[?1000h") && contains(&output, b"\x1b[?1000l"),
+            "the session should capture ordinary mouse gestures for trackpad scrolling and release them on exit"
         );
     }
 
