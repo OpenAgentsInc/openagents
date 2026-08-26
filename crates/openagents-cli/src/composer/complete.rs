@@ -60,7 +60,10 @@ pub fn complete(text: &str, caret: usize, commands: &[&str], cwd: &Path) -> Comp
     }
 
     let word = word_at(head);
-    if word.is_empty() && head.ends_with(char::is_whitespace) {
+    // An empty composer has no path prefix to complete. Listing the whole
+    // working directory from a stray Tab fills the transcript with unrelated
+    // names, so wait until the reader has typed a path prefix.
+    if word.is_empty() {
         return Completion::none();
     }
     paths(word, cwd)
@@ -265,13 +268,14 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_composer_does_not_list_the_working_directory() {
+        let dir = scratch();
+        assert!(at("", dir.path()).is_empty());
+    }
+
+    #[test]
     fn a_dotfile_is_offered_only_once_the_dot_is_typed() {
         let dir = scratch();
-        let bare = at("", dir.path());
-        assert!(
-            !bare.candidates.iter().any(|name| name == ".hidden"),
-            "{bare:?}"
-        );
         assert_eq!(at(".hid", dir.path()).insert, "den ");
     }
 
