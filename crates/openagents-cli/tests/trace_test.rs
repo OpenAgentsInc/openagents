@@ -428,3 +428,124 @@ fn the_openagents_personal_access_token_is_redacted() {
         assert!(redacted.total > 0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// The shared planted-secret fixture
+// ---------------------------------------------------------------------------
+//
+// `fixtures/redaction/planted-secrets.json` is the one place a token family is
+// written down. `packages/atif/src/redaction.ts` asserts against it, so does
+// `packages/openagents-cli`, and so does this crate — which is the point. The
+// three redaction paths restate the same patterns in three languages, and twice
+// now a family was added to one and forgotten in another, producing a redaction
+// that reported success over live tokens rather than an error.
+//
+// Every assertion below is that the secret BODY is gone. Asserting that a marker
+// appeared would pass for the original defect, which swapped `sk-` for a marker
+// and left `liveSECRETVALUE123` sitting in the file.
+
+#[derive(serde::Deserialize)]
+struct PlantedSecret {
+    label: String,
+    category: String,
+    credential: bool,
+    raw: String,
+    leak: String,
+}
+
+#[derive(serde::Deserialize)]
+struct PlantedSecrets {
+    secrets: Vec<PlantedSecret>,
+}
+
+/// Read the fixture from the repository root. A missing or unreadable fixture is a
+/// hard failure: a suite that silently checks nothing is the defect, not the guard.
+fn planted_from_fixture() -> Vec<PlantedSecret> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/redaction/planted-secrets.json");
+    let text = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "the shared redaction fixture is unreadable at {}: {error}. \
+             Every language's redaction guard reads this file; without it nothing is asserted.",
+            path.display()
+        )
+    });
+    let parsed: PlantedSecrets = serde_json::from_str(&text).expect("fixture is not valid JSON");
+    parsed.secrets
+}
+
+/// Only the credential entries are a floor for this CLI. The rest of the fixture is
+/// PII and location shapes that the ATIF export path removes and a local trace
+/// deliberately handles differently — a home path becomes `~` here, not a tag.
+fn planted_credentials() -> Vec<PlantedSecret> {
+    planted_from_fixture()
+        .into_iter()
+        .filter(|entry| entry.credential)
+        .collect()
+}
+
+#[test]
+fn every_credential_in_the_shared_fixture_is_removed() {
+    let home = "/Users/octavia";
+    let credentials = planted_credentials();
+    assert!(
+        credentials.len() >= 16,
+        "the fixture yielded only {} credentials, which is too few to be the real file",
+        credentials.len()
+    );
+
+    let mut survivors: Vec<String> = Vec::new();
+    for entry in &credentials {
+        let redacted = redact_text(&entry.raw, home);
+        if redacted.text.contains(&entry.leak) {
+            survivors.push(format!("{} ({})", entry.label, entry.category));
+        }
+        assert!(
+            redacted.total >= 1,
+            "{} produced no redaction at all, so `oa trace redact` would report \
+             'Nothing matched the redaction rules' over a live credential",
+            entry.label
+        );
+    }
+
+    assert!(
+        survivors.is_empty(),
+        "these planted credentials survived `redact_text`, which means \
+         fixtures/redaction/planted-secrets.json covers a family that \
+         crates/openagents-cli/src/trace.rs does not: {survivors:?}"
+    );
+}
+
+#[test]
+fn every_credential_survives_nothing_when_planted_in_one_document() {
+    // Rules run in sequence over one growing string, so an earlier rule can eat the
+    // text a later rule was going to match. Line-at-a-time checks miss that.
+    let home = "/Users/octavia";
+    let credentials = planted_credentials();
+    let document = credentials
+        .iter()
+        .map(|entry| entry.raw.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let redacted = redact_text(&document, home);
+    let survivors: Vec<&str> = credentials
+        .iter()
+        .filter(|entry| redacted.text.contains(&entry.leak))
+        .map(|entry| entry.label.as_str())
+        .collect();
+    assert!(
+        survivors.is_empty(),
+        "planted credentials survived a combined document: {survivors:?}"
+    );
+
+    // The report is what an operator reads. It carries counts, never the match.
+    let report = serde_json::to_string(&redacted.counts).unwrap();
+    for entry in &credentials {
+        assert!(
+            !report.contains(&entry.leak),
+            "{} appeared in the redaction report",
+            entry.label
+        );
+    }
+}

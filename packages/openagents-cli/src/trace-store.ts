@@ -16,7 +16,7 @@
 import { lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { BIP39_ENGLISH_WORDS } from "./memory/bip39-wordlist.js";
+import { atifCredentialRules, type Rule as AtifRedactionRule } from "./memory/redaction.js";
 
 /** Where a candidate trace came from. */
 export type TraceSourceKind =
@@ -326,118 +326,52 @@ export interface RedactionRule {
   readonly replacement: string;
   /**
    * A rule that has to look at what it matched before deciding. It returns the
-   * text to substitute, or the match unchanged to decline. Only the seed-phrase
-   * rule needs this: a 12-word run is a cheap shape to find and an expensive one
-   * to guess at, so the wordlist decides rather than the regex.
+   * text to substitute, or the match unchanged to DECLINE, and a decline is not
+   * counted -- which is what keeps the report honest when the seed-phrase rule
+   * rejects a 12-word run of ordinary prose.
+   *
+   * Every rule adapted from ATIF carries one, because an ATIF rule computes its
+   * own substitution from the match and its capture groups.
    */
-  readonly resolve?: (match: string) => string;
+  readonly resolve?: (match: string, ...groups: Array<string>) => string;
 }
 
 const escapeForRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Word counts a BIP-39 mnemonic can have; below twelve is prose, not a seed. */
-const MIN_SEED_WORDS = 12;
+/**
+ * One ATIF rule, adapted to this module's shape.
+ *
+ * An ATIF rule decides its own substitution, so `resolve` carries it and
+ * `replacement` is never consulted; it is filled in with the tag the rule
+ * writes so the rule list still reads honestly.
+ *
+ * The wrapper declines on a match that already holds a redaction marker. The
+ * trace-specific rules run first and leave `[REDACTED:...]` behind them; an
+ * ATIF rule re-matching one of those markers would rewrite a redaction as a
+ * different redaction and count it twice, which inflates the report without
+ * removing anything.
+ */
+const fromAtifRule = (rule: AtifRedactionRule): RedactionRule => ({
+  category: rule.category,
+  pattern: rule.pattern,
+  replacement: `[REDACTED:${rule.category}]`,
+  resolve: (match, ...groups) =>
+    match.includes("[REDACTED:") ? match : rule.replace(match, ...groups),
+});
 
 /**
- * A run of short lowercase words the length of a mnemonic. This finds candidates
- * cheaply; {@link seedPhraseResolve} confirms against the word list before
- * anything is removed, so ordinary English is left alone.
+ * The rules that exist because this is a TRACE and not an ATIF export.
+ *
+ * A trace is a local session log, so it carries this machine's home path and
+ * whatever got pasted into a prompt. These rules rewrite a home path to `~`
+ * rather than to a tag, keep the seed phrase the CLI now hands out, and cover
+ * the `NAME=value` and `"secret": "..."` shapes a session log is full of.
+ *
+ * They run BEFORE the ATIF rules so their category names -- and the `~`
+ * rewrite -- win on the shapes both lists know about. The ATIF rules then
+ * cover everything these do not.
  */
-const SEED_PHRASE_SHAPE = /\b(?:[a-z]{3,8} ){11}[a-z]{3,8}(?:(?: [a-z]{3,8}){3})*\b/g;
-
-/**
- * Redact the longest run of consecutive BIP-39 words inside a shape match, and
- * only when that run is a whole mnemonic. Surrounding prose survives, which is
- * what keeps this rule usable on a real session log.
- */
-const seedPhraseResolve = (match: string): string => {
-  const words = match.split(" ");
-  let bestStart = -1;
-  let bestLength = 0;
-  let runStart = 0;
-  let runLength = 0;
-  for (let index = 0; index < words.length; index += 1) {
-    if (BIP39_ENGLISH_WORDS.has(words[index] as string)) {
-      if (runLength === 0) runStart = index;
-      runLength += 1;
-      if (runLength > bestLength) {
-        bestLength = runLength;
-        bestStart = runStart;
-      }
-    } else {
-      runLength = 0;
-    }
-  }
-  if (bestLength < MIN_SEED_WORDS) return match;
-  return [
-    words.slice(0, bestStart).join(" "),
-    "[REDACTED:seed_phrase]",
-    words.slice(bestStart + bestLength).join(" "),
-  ]
-    .filter((part) => part !== "")
-    .join(" ");
-};
-
-/** The conservative rule set. `home` scopes the path rules to this machine. */
-export const redactionRules = (home: string): ReadonlyArray<RedactionRule> => [
-  {
-    // The CLI now keeps one seed phrase per machine and tells people to write
-    // it down, so a phrase pasted into a session is a shape this promise has to
-    // cover. `npub` is deliberately not here: it is the public name.
-    category: "seed_phrase",
-    pattern: SEED_PHRASE_SHAPE,
-    replacement: "[REDACTED:seed_phrase]",
-    resolve: seedPhraseResolve,
-  },
-  {
-    category: "private_key",
-    pattern:
-      /\b(?:nsec1[02-9ac-hj-np-z]{50,}|(?:xprv|yprv|zprv|tprv|uprv|vprv)[1-9A-HJ-NP-Za-km-z]{50,})\b/g,
-    replacement: "[REDACTED:private_key]",
-  },
-  {
-    category: "bearer_token",
-    pattern: /\b[Bb]earer\s+[A-Za-z0-9._~+/=-]{8,}/g,
-    replacement: "Bearer [REDACTED:bearer_token]",
-  },
-  {
-    category: "api_key",
-    pattern:
-      /\b(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{30,})\b/g,
-    replacement: "[REDACTED:api_key]",
-  },
-  // The `api_key` rule above covers other people's credentials and stopped
-  // there, so this command redacted a Stripe key and left an OpenAgents one.
-  // These are our own token families, and they are the ones most likely to be
-  // in an OpenAgents trace. Ordered narrowest first so `oa_agent_` is not
-  // consumed by the general rule.
-  {
-    category: "oa_agent_token",
-    pattern: /\boa_agent_[A-Za-z0-9_-]{6,}\b/g,
-    replacement: "[REDACTED:oa_agent_token]",
-  },
-  {
-    category: "x_code",
-    pattern: /\boa-x-[A-Za-z0-9_-]{4,}\b/g,
-    replacement: "[REDACTED:x_code]",
-  },
-  {
-    category: "oa_token",
-    pattern: /\boa_(?:live|test|sk|key|secret|tok|token|pat)?_?[A-Za-z0-9]{12,}\b/g,
-    replacement: "[REDACTED:oa_token]",
-  },
-  {
-    // Machine tokens minted by computer pairing. They carry a hyphen, which
-    // the token rules above stop at.
-    category: "machine_token",
-    pattern: /\bsmct_[A-Za-z0-9_-]{6,}\b/g,
-    replacement: "[REDACTED:machine_token]",
-  },
-  {
-    category: "jwt",
-    pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
-    replacement: "[REDACTED:jwt]",
-  },
+const traceSpecificRules = (home: string): ReadonlyArray<RedactionRule> => [
   {
     category: "secret_field",
     pattern:
@@ -464,6 +398,28 @@ export const redactionRules = (home: string): ReadonlyArray<RedactionRule> => [
     pattern: /(?:\/Users|\/home)\/[A-Za-z0-9._-]+/g,
     replacement: "~",
   },
+];
+
+/**
+ * The rule set `openagents trace redact` runs, in order. `home` scopes the path
+ * rules to this machine.
+ *
+ * This list used to be written out by hand alongside the one in
+ * `packages/atif/src/redaction.ts`, and the two drifted twice. `oa_pat_`,
+ * `oa_token`, `oa_agent_` and `oa-x-` were in ATIF and missing here, so this
+ * command reported "Nothing matched the redaction rules" over a file full of
+ * live OpenAgents tokens; `smct_` was missing from both. Minting a token family
+ * meant remembering two places, and forgetting produced no error -- it produced
+ * a redaction that quietly reported success.
+ *
+ * So there is one list now. Every credential family comes from ATIF, which is
+ * authoritative; this module adds only what is specific to a local session log
+ * and nothing that ATIF already covers. `test/redaction-parity.test.ts` fails
+ * when a credential category exists in ATIF and has no coverage here.
+ */
+export const redactionRules = (home: string): ReadonlyArray<RedactionRule> => [
+  ...traceSpecificRules(home),
+  ...atifCredentialRules.map(fromAtifRule),
 ];
 
 export interface RedactionResult {

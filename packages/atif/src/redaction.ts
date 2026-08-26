@@ -1,6 +1,6 @@
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer } from "effect";
 
-import { BIP39_ENGLISH_WORDS } from "./bip39-wordlist.ts"
+import { BIP39_ENGLISH_WORDS } from "./bip39-wordlist.ts";
 
 export type RedactionCategory =
   | "private_key"
@@ -16,6 +16,7 @@ export type RedactionCategory =
   | "google_key"
   | "slack_token"
   | "github_token"
+  | "gitlab_token"
   | "owner_id"
   | "env_secret"
   | "wallet_or_payment"
@@ -29,139 +30,134 @@ export type RedactionCategory =
   | "medical_record_id"
   | "ip"
   | "long_blob"
-  | "username"
+  | "username";
 
 export type RedactOptions = Readonly<{
-  usernames?: ReadonlyArray<string>
-}>
+  usernames?: ReadonlyArray<string>;
+}>;
 
-export type RedactionSurface = "corpus_ingestion" | "trace_capture"
+export type RedactionSurface = "corpus_ingestion" | "trace_capture";
 
-export type RegulatedVertical = "legal" | "health" | "other_regulated"
+export type RegulatedVertical = "legal" | "health" | "other_regulated";
 
 export type ExternalInferenceRedactionOptions = RedactOptions &
   Readonly<{
-    surface: RedactionSurface
-    regulatedVertical?: RegulatedVertical
-  }>
+    surface: RedactionSurface;
+    regulatedVertical?: RegulatedVertical;
+  }>;
 
 export type RedactionReport = Readonly<{
-  counts: Readonly<Record<string, number>>
-  total: number
-}>
+  counts: Readonly<Record<string, number>>;
+  total: number;
+}>;
 
 export type RedactionResult<T> = Readonly<{
-  value: T
-  report: RedactionReport
-}>
+  value: T;
+  report: RedactionReport;
+}>;
 
 export type ExternalInferenceRedactionResult<T> = RedactionResult<T> &
   Readonly<{
     policy: Readonly<{
-      serviceRef: typeof REDACTION_SERVICE_REF
-      surface: RedactionSurface
-      regulatedVertical?: RegulatedVertical
-      appliedBeforeExternalInference: true
-    }>
-    safeForExternalInference: true
-  }>
+      serviceRef: typeof REDACTION_SERVICE_REF;
+      surface: RedactionSurface;
+      regulatedVertical?: RegulatedVertical;
+      appliedBeforeExternalInference: true;
+    }>;
+    safeForExternalInference: true;
+  }>;
 
-export type TraceRedactionCategory = RedactionCategory
-export type TraceRedactionReport = RedactionReport
-export type TraceRedactionResult<T> = RedactionResult<T>
+export type TraceRedactionCategory = RedactionCategory;
+export type TraceRedactionReport = RedactionReport;
+export type TraceRedactionResult<T> = RedactionResult<T>;
 
 export type TraceRedactorShape = Readonly<{
-  redact: <T>(
-    value: T,
-    options?: RedactOptions,
-  ) => Effect.Effect<RedactionResult<T>>
-  redactString: (
-    text: string,
-    options?: RedactOptions,
-  ) => Effect.Effect<RedactionResult<string>>
-  redactText: (
-    text: string,
-    options?: RedactOptions,
-  ) => Effect.Effect<RedactionResult<string>>
+  redact: <T>(value: T, options?: RedactOptions) => Effect.Effect<RedactionResult<T>>;
+  redactString: (text: string, options?: RedactOptions) => Effect.Effect<RedactionResult<string>>;
+  redactText: (text: string, options?: RedactOptions) => Effect.Effect<RedactionResult<string>>;
   redactForExternalInference: <T>(
     value: T,
     options: ExternalInferenceRedactionOptions,
-  ) => Effect.Effect<ExternalInferenceRedactionResult<T>>
+  ) => Effect.Effect<ExternalInferenceRedactionResult<T>>;
   redactTextForExternalInference: (
     text: string,
     options: ExternalInferenceRedactionOptions,
-  ) => Effect.Effect<ExternalInferenceRedactionResult<string>>
+  ) => Effect.Effect<ExternalInferenceRedactionResult<string>>;
   redactTrajectory: <T>(
     trajectory: T,
     options?: RedactOptions,
-  ) => Effect.Effect<RedactionResult<T>>
-}>
+  ) => Effect.Effect<RedactionResult<T>>;
+}>;
 
-export const REDACTION_SERVICE_REF = "@openagentsinc/atif/redaction"
+export const REDACTION_SERVICE_REF = "@openagentsinc/atif/redaction";
 
-const ALLOWLIST_EXACT: ReadonlyArray<string> = ["openagents/khala"]
+const ALLOWLIST_EXACT: ReadonlyArray<string> = ["openagents/khala"];
 
 const ALLOWLIST_PATTERNS: ReadonlyArray<RegExp> = [
   /https?:\/\/openagents\.com\/[^\s"'`)<>]*/g,
   /https?:\/\/(?:www\.)?github\.com\/OpenAgentsInc\/[^\s"'`)<>]*/g,
   /#\d{1,6}\b/g,
-]
+];
 
-const SENT_OPEN = "\uE000"
-const SENT_CLOSE = "\uE001"
+const SENT_OPEN = "\uE000";
+const SENT_CLOSE = "\uE001";
 
-const escapeRegExp = (s: string): string =>
-  s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const tag = (cat: RedactionCategory): string => `[REDACTED:${cat}]`
+const tag = (cat: RedactionCategory): string => `[REDACTED:${cat}]`;
 
-const maskAllowlist = (
-  text: string,
-): { masked: string; originals: Array<string> } => {
-  const originals: Array<string> = []
-  let masked = text
+const maskAllowlist = (text: string): { masked: string; originals: Array<string> } => {
+  const originals: Array<string> = [];
+  let masked = text;
   const stash = (m: string): string => {
-    const idx = originals.length
-    originals.push(m)
-    return `${SENT_OPEN}${idx}${SENT_CLOSE}`
-  }
+    const idx = originals.length;
+    originals.push(m);
+    return `${SENT_OPEN}${idx}${SENT_CLOSE}`;
+  };
 
   for (const exact of ALLOWLIST_EXACT) {
-    masked = masked.replace(new RegExp(escapeRegExp(exact), "g"), m => stash(m))
+    masked = masked.replace(new RegExp(escapeRegExp(exact), "g"), (m) => stash(m));
   }
   for (const re of ALLOWLIST_PATTERNS) {
-    re.lastIndex = 0
-    masked = masked.replace(re, m => stash(m))
+    re.lastIndex = 0;
+    masked = masked.replace(re, (m) => stash(m));
   }
 
-  return { masked, originals }
-}
+  return { masked, originals };
+};
 
-const unmaskAllowlist = (
-  masked: string,
-  originals: ReadonlyArray<string>,
-): string =>
+const unmaskAllowlist = (masked: string, originals: ReadonlyArray<string>): string =>
   masked.replace(
     new RegExp(`${SENT_OPEN}(\\d+)${SENT_CLOSE}`, "g"),
     (_m, idx: string) => originals[Number(idx)] ?? "",
-  )
+  );
 
-type Rule = Readonly<{
-  category: RedactionCategory
-  pattern: RegExp
-  replace: (match: string, ...groups: Array<string>) => string
-}>
+/**
+ * One redaction rule. `replace` returns the substitution, or the match unchanged
+ * to decline — a decline is not counted, which is what lets the mnemonic rule
+ * gate a shape match against the BIP39 wordlist.
+ *
+ * Exported because this list is the authoritative one. Every other redaction
+ * path in the repo consumes it rather than restating the patterns; restating
+ * them is what let `oa_pat_` and `smct_` leak past a redaction that reported
+ * success.
+ */
+export type Rule = Readonly<{
+  category: RedactionCategory;
+  pattern: RegExp;
+  replace: (match: string, ...groups: Array<string>) => string;
+}>;
 
 // A candidate BIP39 seed phrase is a run of 12/15/18/21/24 lowercase words.
 // This regex only FINDS candidates cheaply; `mnemonicReplace` then confirms
 // every word is an actual BIP39 word before redacting, so ordinary English
 // prose (which is full of non-wordlist words like "the", "roadmap", "ide") is
 // left intact. Real seed phrases are all-wordlist by definition and still redact.
-const MNEMONIC = /\b(?:[a-z]{3,8} ){11}[a-z]{3,8}(?:(?: [a-z]{3,8}){3})*\b/g
+const MNEMONIC = /\b(?:[a-z]{3,8} ){11}[a-z]{3,8}(?:(?: [a-z]{3,8}){3})*\b/g;
 
 // Shortest real BIP39 mnemonic. Runs of consecutive wordlist words below this
 // length are treated as coincidental prose, not a seed phrase.
-const MIN_MNEMONIC_WORDS = 12
+const MIN_MNEMONIC_WORDS = 12;
 
 /**
  * Redact only the ACTUAL seed phrase inside a shape-matched candidate: the
@@ -173,41 +169,49 @@ const MIN_MNEMONIC_WORDS = 12
  * to be a run of short lowercase words.
  */
 const mnemonicReplace = (match: string): string => {
-  const words = match.split(" ")
-  let bestStart = -1
-  let bestLen = 0
-  let curStart = 0
-  let curLen = 0
+  const words = match.split(" ");
+  let bestStart = -1;
+  let bestLen = 0;
+  let curStart = 0;
+  let curLen = 0;
   for (let i = 0; i < words.length; i += 1) {
     if (BIP39_ENGLISH_WORDS.has(words[i] as string)) {
-      if (curLen === 0) curStart = i
-      curLen += 1
+      if (curLen === 0) curStart = i;
+      curLen += 1;
       if (curLen > bestLen) {
-        bestLen = curLen
-        bestStart = curStart
+        bestLen = curLen;
+        bestStart = curStart;
       }
     } else {
-      curLen = 0
+      curLen = 0;
     }
   }
-  if (bestLen < MIN_MNEMONIC_WORDS) return match
-  const before = words.slice(0, bestStart).join(" ")
-  const after = words.slice(bestStart + bestLen).join(" ")
-  return [before, tag("mnemonic"), after].filter(part => part !== "").join(" ")
-}
+  if (bestLen < MIN_MNEMONIC_WORDS) return match;
+  const before = words.slice(0, bestStart).join(" ");
+  const after = words.slice(bestStart + bestLen).join(" ");
+  return [before, tag("mnemonic"), after].filter((part) => part !== "").join(" ");
+};
 
 const RULES: ReadonlyArray<Rule> = [
   {
     category: "private_key",
+    pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+    replace: () => tag("private_key"),
+  },
+  {
+    // Bech32 and base58 SECRET keys. `wallet_or_payment` below carries the
+    // matching PUBLIC forms (`xpub`, `bc1`, an invoice); these are the spend
+    // and signing halves, so they run first and are their own category.
+    // `npub` is deliberately absent: it is the public name.
+    category: "private_key",
     pattern:
-      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+      /\b(?:nsec1[02-9ac-hj-np-z]{50,}|(?:xprv|yprv|zprv|tprv|uprv|vprv)[1-9A-HJ-NP-Za-km-z]{50,})\b/g,
     replace: () => tag("private_key"),
   },
   { category: "mnemonic", pattern: MNEMONIC, replace: mnemonicReplace },
   {
     category: "jwt",
-    pattern:
-      /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}\b/g,
+    pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}\b/g,
     replace: () => tag("jwt"),
   },
   {
@@ -232,9 +236,21 @@ const RULES: ReadonlyArray<Rule> = [
     replace: () => tag("slack_token"),
   },
   {
+    // `github_pat_` first: the general `gh[pousr]_` shape does not reach it,
+    // because a fine-grained PAT spells the prefix out in full.
+    category: "github_token",
+    pattern: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    replace: () => tag("github_token"),
+  },
+  {
     category: "github_token",
     pattern: /\bgh[pousr]_[A-Za-z0-9]{16,}\b/g,
     replace: () => tag("github_token"),
+  },
+  {
+    category: "gitlab_token",
+    pattern: /\bglpat-[A-Za-z0-9_-]{16,}\b/g,
+    replace: () => tag("gitlab_token"),
   },
   {
     category: "bearer",
@@ -243,8 +259,7 @@ const RULES: ReadonlyArray<Rule> = [
   },
   {
     category: "bearer",
-    pattern:
-      /\b(authorization)\s*[:=]\s*["']?(?:bearer\s+)?[A-Za-z0-9._~+/=-]{8,}["']?/gi,
+    pattern: /\b(authorization)\s*[:=]\s*["']?(?:bearer\s+)?[A-Za-z0-9._~+/=-]{8,}["']?/gi,
     replace: () => `authorization: ${tag("bearer")}`,
   },
   {
@@ -329,8 +344,7 @@ const RULES: ReadonlyArray<Rule> = [
   },
   {
     category: "medical_record_id",
-    pattern:
-      /\b(?:MRN|medical record(?: number)?|patient id)\s*[:#=]?\s*[A-Za-z0-9-]{6,}\b/gi,
+    pattern: /\b(?:MRN|medical record(?: number)?|patient id)\s*[:#=]?\s*[A-Za-z0-9-]{6,}\b/gi,
     replace: () => `MRN ${tag("medical_record_id")}`,
   },
   {
@@ -360,142 +374,212 @@ const RULES: ReadonlyArray<Rule> = [
     pattern: /\b[A-Za-z0-9+]{48,}={0,2}\b/g,
     replace: () => tag("long_blob"),
   },
-]
+];
+
+/**
+ * How each category is classified for the purposes of the CLI redaction floor.
+ *
+ * `"credential"` means the match is key material or an access token: something
+ * that grants access if it escapes. Every credential category is a floor that
+ * the `openagents trace redact` path must also cover, and
+ * `test/redaction-parity.test.ts` fails when one of them has no coverage there.
+ *
+ * `"other"` means the match is a location, an identifier, or a PII/PHI shape.
+ * Those matter for a corpus export but are not access-granting, and the trace
+ * path deliberately treats some of them differently -- it rewrites a home path
+ * to `~` rather than to a tag, and it keeps `long_blob` off so a public `npub`
+ * survives a redaction.
+ *
+ * This map is exhaustive by construction: `Record<RedactionCategory, ...>` will
+ * not compile once a new category is added and left unclassified, which is the
+ * first link in the chain that stops the two rule lists from drifting again.
+ */
+export const REDACTION_CATEGORY_CLASS: Record<RedactionCategory, "credential" | "other"> = {
+  private_key: "credential",
+  mnemonic: "credential",
+  jwt: "credential",
+  bearer: "credential",
+  provider_key: "credential",
+  oa_agent_token: "credential",
+  x_code: "credential",
+  oa_token: "credential",
+  machine_token: "credential",
+  aws_key: "credential",
+  google_key: "credential",
+  slack_token: "credential",
+  github_token: "credential",
+  gitlab_token: "credential",
+  env_secret: "credential",
+  wallet_or_payment: "credential",
+  secrets_path: "credential",
+  owner_id: "other",
+  home_path: "other",
+  file_url: "other",
+  email: "other",
+  phone: "other",
+  ssn: "other",
+  date_of_birth: "other",
+  medical_record_id: "other",
+  ip: "other",
+  long_blob: "other",
+  username: "other",
+};
+
+/** True when a category's match is key material or an access token. */
+export const isCredentialCategory = (category: RedactionCategory): boolean =>
+  REDACTION_CATEGORY_CLASS[category] === "credential";
+
+/**
+ * Every rule this module applies, in the order it applies them.
+ *
+ * This is the authoritative list. Consumers import it instead of restating the
+ * patterns: `oa_pat_` and `smct_` both leaked because a second hand-written
+ * list forgot them, and forgetting produced no error -- it produced a redaction
+ * that reported success over a file full of live tokens.
+ */
+export const atifRedactionRules: ReadonlyArray<Rule> = RULES;
+
+/**
+ * The subset of {@link atifRedactionRules} whose matches are credentials.
+ *
+ * This is what the `openagents trace redact` path folds in on top of its own
+ * trace-specific rules, so a token family added here is removed there too.
+ */
+export const atifCredentialRules: ReadonlyArray<Rule> = RULES.filter((rule) =>
+  isCredentialCategory(rule.category),
+);
 
 const collectUsernames = (text: string): Set<string> => {
-  const names = new Set<string>()
+  const names = new Set<string>();
   for (const m of text.matchAll(/\/Users\/([A-Za-z0-9._-]+)/g)) {
     if (m[1] && m[1] !== "Shared") {
-      names.add(m[1])
+      names.add(m[1]);
     }
   }
   for (const m of text.matchAll(/\/home\/([A-Za-z0-9._-]+)/g)) {
     if (m[1]) {
-      names.add(m[1])
+      names.add(m[1]);
     }
   }
   for (const m of text.matchAll(/-Users-([A-Za-z0-9._]+?)-/g)) {
     if (m[1] && m[1] !== "Shared") {
-      names.add(m[1])
+      names.add(m[1]);
     }
   }
-  return names
-}
+  return names;
+};
 
-const mergeReports = (
-  into: Record<string, number>,
-  from: RedactionReport,
-): void => {
+const mergeReports = (into: Record<string, number>, from: RedactionReport): void => {
   for (const [cat, n] of Object.entries(from.counts)) {
-    into[cat] = (into[cat] ?? 0) + n
+    into[cat] = (into[cat] ?? 0) + n;
   }
-}
+};
 
 export const redactString = (
   input: string,
   options: RedactOptions = {},
 ): RedactionResult<string> => {
-  const counts: Record<string, number> = {}
+  const counts: Record<string, number> = {};
   const bump = (cat: RedactionCategory): void => {
-    counts[cat] = (counts[cat] ?? 0) + 1
-  }
+    counts[cat] = (counts[cat] ?? 0) + 1;
+  };
 
-  const { masked, originals } = maskAllowlist(input)
-  let working = masked
+  const { masked, originals } = maskAllowlist(input);
+  let working = masked;
 
   for (const rule of RULES) {
-    rule.pattern.lastIndex = 0
+    rule.pattern.lastIndex = 0;
     working = working.replace(rule.pattern, (...args: Array<unknown>) => {
-      const match = args[0] as string
+      const match = args[0] as string;
       if (match.includes(SENT_OPEN)) {
-        return match
+        return match;
       }
-      const groups = args.slice(1, -2) as Array<string>
-      const replaced = rule.replace(match, ...groups)
+      const groups = args.slice(1, -2) as Array<string>;
+      const replaced = rule.replace(match, ...groups);
       // Only count a real redaction. A rule whose `replace` returns the match
       // unchanged (e.g. the mnemonic wordlist gate rejecting prose) is a no-op
       // and must not inflate the report.
       if (replaced !== match) {
-        bump(rule.category)
+        bump(rule.category);
       }
-      return replaced
-    })
+      return replaced;
+    });
   }
 
   for (const name of options.usernames ?? []) {
     if (name === "") {
-      continue
+      continue;
     }
-    const re = new RegExp(escapeRegExp(name), "g")
-    working = working.replace(re, m => {
+    const re = new RegExp(escapeRegExp(name), "g");
+    working = working.replace(re, (m) => {
       if (m.includes(SENT_OPEN)) {
-        return m
+        return m;
       }
-      bump("username")
-      return "[REDACTED:home]"
-    })
+      bump("username");
+      return "[REDACTED:home]";
+    });
   }
 
-  const value = unmaskAllowlist(working, originals)
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
-  return { value, report: { counts, total } }
-}
+  const value = unmaskAllowlist(working, originals);
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return { value, report: { counts, total } };
+};
 
-export const redactTraceString = redactString
+export const redactTraceString = redactString;
 
-type Json = unknown
+type Json = unknown;
 
 export const redactValue = <T extends Json>(
   value: T,
   options: RedactOptions = {},
 ): RedactionResult<T> => {
-  const counts: Record<string, number> = {}
-  const usernames = new Set<string>(options.usernames ?? [])
+  const counts: Record<string, number> = {};
+  const usernames = new Set<string>(options.usernames ?? []);
 
   const scan = (v: Json): void => {
     if (typeof v === "string") {
       for (const name of collectUsernames(v)) {
-        usernames.add(name)
+        usernames.add(name);
       }
-      return
+      return;
     }
     if (Array.isArray(v)) {
-      v.forEach(scan)
-      return
+      v.forEach(scan);
+      return;
     }
     if (v !== null && typeof v === "object") {
-      Object.values(v as Record<string, Json>).forEach(scan)
+      Object.values(v as Record<string, Json>).forEach(scan);
     }
-  }
+  };
 
-  scan(value)
-  const opts: RedactOptions = { usernames: Array.from(usernames) }
+  scan(value);
+  const opts: RedactOptions = { usernames: Array.from(usernames) };
 
   const walk = (v: Json): Json => {
     if (typeof v === "string") {
-      const r = redactString(v, opts)
-      mergeReports(counts, r.report)
-      return r.value
+      const r = redactString(v, opts);
+      mergeReports(counts, r.report);
+      return r.value;
     }
     if (Array.isArray(v)) {
-      return v.map(walk)
+      return v.map(walk);
     }
     if (v !== null && typeof v === "object") {
-      const out: Record<string, Json> = {}
+      const out: Record<string, Json> = {};
       for (const [k, child] of Object.entries(v as Record<string, Json>)) {
-        out[k] = walk(child)
+        out[k] = walk(child);
       }
-      return out
+      return out;
     }
-    return v
-  }
+    return v;
+  };
 
-  const redacted = walk(value) as T
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
-  return { value: redacted, report: { counts, total } }
-}
+  const redacted = walk(value) as T;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return { value: redacted, report: { counts, total } };
+};
 
-export const redactTraceValue = redactValue
+export const redactTraceValue = redactValue;
 
 const externalInferencePolicy = (
   options: ExternalInferenceRedactionOptions,
@@ -506,35 +590,33 @@ const externalInferencePolicy = (
     ? {}
     : { regulatedVertical: options.regulatedVertical }),
   appliedBeforeExternalInference: true,
-})
+});
 
 export const redactForExternalInference = <T extends Json>(
   value: T,
   options: ExternalInferenceRedactionOptions,
 ): ExternalInferenceRedactionResult<T> => {
-  const { surface: _surface, regulatedVertical: _regulatedVertical, ...redactOptions } =
-    options
-  const redacted = redactValue(value, redactOptions)
+  const { surface: _surface, regulatedVertical: _regulatedVertical, ...redactOptions } = options;
+  const redacted = redactValue(value, redactOptions);
   return {
     ...redacted,
     policy: externalInferencePolicy(options),
     safeForExternalInference: true,
-  }
-}
+  };
+};
 
 export const redactStringForExternalInference = (
   text: string,
   options: ExternalInferenceRedactionOptions,
 ): ExternalInferenceRedactionResult<string> => {
-  const { surface: _surface, regulatedVertical: _regulatedVertical, ...redactOptions } =
-    options
-  const redacted = redactString(text, redactOptions)
+  const { surface: _surface, regulatedVertical: _regulatedVertical, ...redactOptions } = options;
+  const redacted = redactString(text, redactOptions);
   return {
     ...redacted,
     policy: externalInferencePolicy(options),
     safeForExternalInference: true,
-  }
-}
+  };
+};
 
 export const makeTraceRedactor = (): TraceRedactorShape => ({
   redact: (value, options) => Effect.sync(() => redactValue(value, options)),
@@ -544,15 +626,13 @@ export const makeTraceRedactor = (): TraceRedactorShape => ({
     Effect.sync(() => redactForExternalInference(value, options)),
   redactTextForExternalInference: (text, options) =>
     Effect.sync(() => redactStringForExternalInference(text, options)),
-  redactTrajectory: (trajectory, options) =>
-    Effect.sync(() => redactValue(trajectory, options)),
-})
+  redactTrajectory: (trajectory, options) => Effect.sync(() => redactValue(trajectory, options)),
+});
 
-export class TraceRedactor extends Context.Service<
-  TraceRedactor,
-  TraceRedactorShape
->()("@openagentsinc/atif/TraceRedactor") {
-  static readonly Default = Layer.succeed(TraceRedactor, makeTraceRedactor())
+export class TraceRedactor extends Context.Service<TraceRedactor, TraceRedactorShape>()(
+  "@openagentsinc/atif/TraceRedactor",
+) {
+  static readonly Default = Layer.succeed(TraceRedactor, makeTraceRedactor());
 }
 
-export const TraceRedactorLive = TraceRedactor.Default
+export const TraceRedactorLive = TraceRedactor.Default;

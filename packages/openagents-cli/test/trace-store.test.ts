@@ -205,19 +205,24 @@ describe("trace redaction", () => {
   const home = "/Users/octavia";
   const rules = redactionRules(home);
 
+  // These name the CATEGORY each shape is counted under, which the shared
+  // fixture deliberately does not: the three redaction paths use different
+  // category vocabularies, so the shared floor in `redaction-parity.test.ts`
+  // asserts only that the secret body is gone. This list is the local check
+  // that the report an operator reads names the right thing.
   const plantedSecrets: ReadonlyArray<{ category: string; text: string; secret: string }> = [
     {
-      category: "bearer_token",
+      category: "bearer",
       text: "authorization: Bearer sec.ret-token.value-12345",
       secret: "sec.ret-token.value-12345",
     },
     {
-      category: "api_key",
+      category: "provider_key",
       text: "used sk-abcdefghijklmnop1234 to call",
       secret: "sk-abcdefghijklmnop1234",
     },
     {
-      category: "api_key",
+      category: "github_token",
       text: "pushed with ghp_abcdefghijklmnopqrst123456",
       secret: "ghp_abcdefghijklmnopqrst123456",
     },
@@ -240,7 +245,7 @@ describe("trace redaction", () => {
       // The published BIP-39 test phrase, not anyone's seed. `openagents
       // identity` gives every machine one of these to keep, so a phrase pasted
       // into a session is now a shape a redacted export has to remove.
-      category: "seed_phrase",
+      category: "mnemonic",
       text: "my backup is abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about ok",
       secret: "abandon abandon",
     },
@@ -313,7 +318,7 @@ describe("trace redaction", () => {
     const result = redactText(`${prose} for ${npub}`, rules);
     expect(result.text).toContain(prose);
     expect(result.text).toContain(npub);
-    expect(result.counts["seed_phrase"]).toBeUndefined();
+    expect(result.counts["mnemonic"]).toBeUndefined();
     expect(result.counts["private_key"]).toBeUndefined();
   });
 

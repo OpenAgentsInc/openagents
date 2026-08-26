@@ -489,6 +489,18 @@ struct RedactionRule {
 /// Order is load-bearing: the specific shapes run before the broad ones so a bearer
 /// token is counted as `bearer_token` rather than swallowed by `env_value`, and each
 /// rule sees the previous rule's substitutions.
+///
+/// These patterns are a third statement of the ones in
+/// `packages/atif/src/redaction.ts`, which is authoritative, and a third statement is
+/// what let `oa_pat_` and `smct_` leak in the first place. This crate cannot import
+/// the TypeScript list, so the coupling is a TEST instead: `tests/trace_test.rs` reads
+/// `fixtures/redaction/planted-secrets.json` — the same file both TypeScript paths
+/// assert against — and fails when a planted credential body survives redaction here.
+/// A token family added to ATIF gets a planted secret, and the planted secret fails
+/// this crate until the rule below exists.
+///
+/// The CATEGORY names are this CLI's own and do not have to match ATIF's; only the
+/// removal is a shared contract.
 fn redaction_rules(home: &str) -> Vec<RedactionRule> {
     let mut rules = vec![
         RedactionRule {
@@ -508,6 +520,41 @@ fn redaction_rules(home: &str) -> Vec<RedactionRule> {
             resolve: None,
             declines_redacted_capture: false,
         },
+        // The PEM block form. It spans lines, so it needs `(?s)`, and it runs
+        // before every line-oriented rule below so nothing chops it in half.
+        RedactionRule {
+            category: "private_key",
+            pattern: Regex::new(
+                r"(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+            )
+            .unwrap(),
+            replacement: "[REDACTED:private_key]",
+            resolve: None,
+            declines_redacted_capture: false,
+        },
+        // Payment and wallet material: an invoice or offer someone can pay, and
+        // an extended PUBLIC key, which is not a spending secret but reveals
+        // every address a wallet will ever use.
+        RedactionRule {
+            category: "wallet_or_payment",
+            pattern: Regex::new(
+                r"(?i)\b(?:lnbc[0-9][a-z0-9]{20,}|lntb[0-9][a-z0-9]{20,}|lno1[a-z0-9]{20,}|bc1[a-z0-9]{20,}|(?:xpub|ypub|zpub|tpub)[1-9A-HJ-NP-Za-km-z]{20,})\b",
+            )
+            .unwrap(),
+            replacement: "[REDACTED:wallet_or_payment]",
+            resolve: None,
+            declines_redacted_capture: false,
+        },
+        // A path into a `.secrets/` directory. The file name alone says which
+        // credential lives there, and the home-path rule below rewrites only the
+        // `/Users/<name>` prefix, so it would leave the rest of the path standing.
+        RedactionRule {
+            category: "secrets_path",
+            pattern: Regex::new(r#"(?:\.{1,2}/)?\.secrets/[^\s"'`)<>]+"#).unwrap(),
+            replacement: "[REDACTED:secrets_path]",
+            resolve: None,
+            declines_redacted_capture: false,
+        },
         RedactionRule {
             category: "bearer_token",
             pattern: Regex::new(r"\b[Bb]earer\s+[A-Za-z0-9._~+/=-]{8,}").unwrap(),
@@ -518,7 +565,7 @@ fn redaction_rules(home: &str) -> Vec<RedactionRule> {
         RedactionRule {
             category: "api_key",
             pattern: Regex::new(
-                r"\b(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{30,})\b",
+                r"\b(?:sk-[A-Za-z0-9_-]{16,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{20,})\b",
             )
             .unwrap(),
             replacement: "[REDACTED:api_key]",
@@ -541,7 +588,7 @@ fn redaction_rules(home: &str) -> Vec<RedactionRule> {
         RedactionRule {
             category: "oa_token",
             pattern: Regex::new(
-                r"\b(?:oa_(?:live|test|sk|key|secret|tok|token|pat)?_?[A-Za-z0-9]{12,}|oa-x-[A-Za-z0-9_-]{4,}|smct_[A-Za-z0-9_-]{8,})\b",
+                r"\b(?:oa_(?:live|test|sk|key|secret|tok|token|pat)?_?[A-Za-z0-9]{12,}|oa-x-[A-Za-z0-9_-]{4,}|smct_[A-Za-z0-9_-]{6,})\b",
             )
             .unwrap(),
             replacement: "[REDACTED:oa_token]",
