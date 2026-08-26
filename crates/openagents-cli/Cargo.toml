@@ -37,7 +37,14 @@ ripemd = "0.1"
 bs58 = { version = "0.5", features = ["check"] }
 regex = "1"
 zeroize = "1"
+# `oa computer up` speaks the Phoenix controller socket. The same pair the
+# desktop audio transport already uses, so no new TLS stack enters the tree.
+tungstenite = { version = "0.28", default-features = false, features = ["handshake", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 [dev-dependencies]
 tempfile = "3"
 bech32 = "0.11"
+# The Computer channel tests stand up a real Phoenix-shaped socket server, so
+# the client's framing, policy, journal, and backoff run against a live peer.
+tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }

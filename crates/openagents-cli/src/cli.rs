@@ -71,13 +71,13 @@ pub enum Commands {
     /// Box sandbox management and fanout execution
     Box(BoxArgs),
     /// Computer agent daemon and local policy probe
-    Computer(ComputerArgs),
+    Computer(crate::computer::ComputerArgs),
     /// Forum boards and topics
     Forum(ForumArgs),
     /// Account-level system memory and knowledge management
     Memory(MemoryArgs),
     /// Generic API route invocation
-    Api(ApiArgs),
+    Api(crate::api_passthrough::ApiArgs),
     /// Trace inspection and session export
     Trace(TraceArgs),
     /// Replace this binary with the release the channel names
@@ -868,20 +868,6 @@ pub enum BoxRunAction {
 }
 
 #[derive(Args, Debug)]
-pub struct ComputerArgs {
-    #[command(subcommand)]
-    pub action: ComputerAction,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum ComputerAction {
-    Probe,
-    Policy,
-    Status,
-    Up,
-}
-
-#[derive(Args, Debug)]
 pub struct ForumArgs {
     #[command(subcommand)]
     pub action: ForumAction,
@@ -939,14 +925,6 @@ pub enum MemoryAction {
         #[arg(help = "Memory id")]
         memory_id: String,
     },
-}
-
-#[derive(Args, Debug)]
-pub struct ApiArgs {
-    #[arg(help = "HTTP method (e.g. GET, POST, DELETE)", default_value = "GET")]
-    pub method: String,
-    #[arg(help = "API endpoint path (e.g. /api/v1/user)", default_value = "/")]
-    pub path: String,
 }
 
 #[derive(Args, Debug)]
@@ -1076,15 +1054,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Deploy(deploy) => run_deploy(deploy.action, &api_base, token, cli.json).await,
         Commands::Provider(provider) => run_provider(provider.action, cli.json),
         Commands::Box(b) => run_box(b.action, &api_base, token, cli.json).await,
-        Commands::Computer(comp) => match comp.action {
-            ComputerAction::Probe => {
-                let info = crate::computer::probe_host();
-                println!("Host OS: {} ({}), CPUs: {}, Memory: {}MB", info.os, info.arch, info.num_cpus, info.total_memory_mb);
-            }
-            ComputerAction::Policy => println!("Computer Policy: default allowlist active"),
-            ComputerAction::Status => println!("Computer agent: idle / online"),
-            ComputerAction::Up => println!("Computer agent daemon launched."),
-        },
+        Commands::Computer(comp) => crate::computer::run(comp, &endpoint, cli.json).await,
         Commands::Forum(forum) => {
             let client = crate::forum::ForumClient::new(&api_base, token);
             match forum.action {
@@ -1162,11 +1132,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
-        Commands::Api(api) => {
-            let client = crate::api_passthrough::ApiPassthroughClient::new(&api_base, token);
-            let res = client.execute_request(&api.method, &api.path, None).await.map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&res)?);
-        }
+        Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
         Commands::Trace(trace) => run_trace(trace.action),
         Commands::Update(update) => {
             crate::update::run(update.channel, update.version, update.check, update.force).await?;
