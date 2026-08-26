@@ -50,7 +50,8 @@ const KEYS: &[(&str, &str)] = &[
     ("Enter", "send"),
     ("Alt+Enter / Ctrl+J", "newline"),
     ("Up / Down", "move the caret, then walk history, then scroll"),
-    ("PageUp / PageDown", "scroll the transcript"),
+    ("Scroll wheel / trackpad", "scroll the transcript"),
+    ("PageUp / PageDown", "scroll a page (Fn+Up / Fn+Down on a Mac)"),
     ("Tab", "complete a command or a path"),
     (
         "Ctrl+A / Ctrl+E / Ctrl+W / Ctrl+K / Ctrl+U / Alt+B / Alt+F",
