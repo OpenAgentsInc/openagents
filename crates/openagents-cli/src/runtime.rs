@@ -56,6 +56,16 @@ impl Lane {
     }
 }
 
+/// As much of an error body as belongs in a one-line message.
+fn snippet(body: &str) -> String {
+    let body = body.trim();
+    if body.chars().count() <= 200 {
+        return body.to_string();
+    }
+    let head: String = body.chars().take(200).collect();
+    format!("{head}…")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceGrant {
     pub thread_id: String,
@@ -77,6 +87,9 @@ pub struct ChatMessage {
 
 pub struct CoderRuntimeSession {
     pub lane: Lane,
+    /// The grant the last turn opened, so a caller can report the model that
+    /// actually answered rather than the one it would have asked for.
+    pub last_grant: Option<InferenceGrant>,
     pub api_base: String,
     pub user_token: Option<String>,
     pub http: reqwest::Client,
@@ -88,7 +101,14 @@ impl CoderRuntimeSession {
     pub fn new(lane: Lane, api_base: Option<String>, user_token: Option<String>, tools: HarnessToolRegistry) -> Self {
         Self {
             lane,
-            api_base: api_base.unwrap_or_else(|| "https://openagents.com/api/v1".to_string()),
+            last_grant: None,
+            // `OPENAGENTS_API_BASE` points the session at another host. A test
+            // that has to prove the streaming path end to end needs somewhere
+            // to point it that is not production, and an operator on staging
+            // needs the same switch.
+            api_base: api_base
+                .or_else(|| std::env::var("OPENAGENTS_API_BASE").ok().filter(|v| !v.trim().is_empty()))
+                .unwrap_or_else(|| "https://openagents.com/api/v1".to_string()),
             user_token,
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(300))
@@ -140,9 +160,17 @@ impl CoderRuntimeSession {
 
         let resp = self.http.post(&url)
             .headers(headers)
+            // `lane` is the thread's execution shape, and the server admits
+            // only `thread` and `local` — this path is the proxy, which
+            // is `thread`. It used to send a model name here, and every
+            // request was refused with `"ox-alpha" is not an admitted lane`;
+            // the refusal was invisible because the caller answered it with a
+            // fabricated grant. A model cannot be named at thread open at all:
+            // the endpoint publishes no model parameter and the grant the
+            // server returns pins the model that answers.
             .json(&serde_json::json!({
                 "objective": "Coding assistant session",
-                "lane": self.lane.model_name(),
+                "lane": "thread",
             }))
             .send()
             .await?;
@@ -164,12 +192,12 @@ impl CoderRuntimeSession {
                 model,
             })
         } else {
-            Ok(InferenceGrant {
-                thread_id: "th_local_fallback".to_string(),
-                token: self.user_token.clone().unwrap_or_else(|| "oat_anon".to_string()),
-                proxy_url: "https://openagents.com/api/inference/proxy".to_string(),
-                model: self.lane.model_name().to_string(),
-            })
+            // This used to invent a grant with a placeholder token and carry
+            // on, so a refused request reached the reader as a completed turn.
+            // Say what happened instead; the caller puts it on the transcript.
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            Err(format!("{} refused the thread request: {} {}", url, status, snippet(&body)).into())
         }
     }
 
@@ -196,6 +224,7 @@ impl CoderRuntimeSession {
         });
 
         let grant = self.create_thread().await?;
+        self.last_grant = Some(grant.clone());
 
         let mut max_steps = 30;
         let mut final_answer = String::new();
@@ -227,11 +256,27 @@ impl CoderRuntimeSession {
                 .send()
                 .await;
 
+            // A refused or unreachable proxy is a failed turn. The version
+            // this replaces streamed the words `Completed autonomous reasoning
+            // turn (offline fallback).` and returned success, so a rejected
+            // request and a finished one looked the same on screen.
             let resp = match resp {
                 Ok(r) if r.status().is_success() => r,
-                _ => {
-                    chunk_callback("Completed autonomous reasoning turn (offline fallback).");
-                    return Ok("Completed autonomous reasoning turn (offline fallback).".to_string());
+                Ok(r) => {
+                    let status = r.status();
+                    let body = r.text().await.unwrap_or_default();
+                    return Err(format!(
+                        "{} refused the turn: {} {}",
+                        grant.proxy_url,
+                        status,
+                        snippet(&body)
+                    )
+                    .into());
+                }
+                Err(error) => {
+                    return Err(
+                        format!("{} could not be reached: {}", grant.proxy_url, error).into()
+                    )
                 }
             };
 

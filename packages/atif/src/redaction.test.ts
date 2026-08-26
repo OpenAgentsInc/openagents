@@ -72,6 +72,14 @@ const SECRET_FIXTURES: ReadonlyArray<{
     category: "oa_token",
   },
   {
+    // Minted by computer pairing. Hyphenated, which every other token rule
+    // stops at, so it survived an export intact.
+    label: "machine pairing token",
+    raw: "the machine token is smct_machine-secret today",
+    leak: "smct_machine-secret",
+    category: "machine_token",
+  },
+  {
     label: "X verification code",
     raw: "Code: oa-x-9f2bc-defG",
     leak: "9f2bc-defG",

@@ -406,6 +406,33 @@ export const redactionRules = (home: string): ReadonlyArray<RedactionRule> => [
       /\b(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{30,})\b/g,
     replacement: "[REDACTED:api_key]",
   },
+  // The `api_key` rule above covers other people's credentials and stopped
+  // there, so this command redacted a Stripe key and left an OpenAgents one.
+  // These are our own token families, and they are the ones most likely to be
+  // in an OpenAgents trace. Ordered narrowest first so `oa_agent_` is not
+  // consumed by the general rule.
+  {
+    category: "oa_agent_token",
+    pattern: /\boa_agent_[A-Za-z0-9_-]{6,}\b/g,
+    replacement: "[REDACTED:oa_agent_token]",
+  },
+  {
+    category: "x_code",
+    pattern: /\boa-x-[A-Za-z0-9_-]{4,}\b/g,
+    replacement: "[REDACTED:x_code]",
+  },
+  {
+    category: "oa_token",
+    pattern: /\boa_(?:live|test|sk|key|secret|tok|token|pat)?_?[A-Za-z0-9]{12,}\b/g,
+    replacement: "[REDACTED:oa_token]",
+  },
+  {
+    // Machine tokens minted by computer pairing. They carry a hyphen, which
+    // the token rules above stop at.
+    category: "machine_token",
+    pattern: /\bsmct_[A-Za-z0-9_-]{6,}\b/g,
+    replacement: "[REDACTED:machine_token]",
+  },
   {
     category: "jwt",
     pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,

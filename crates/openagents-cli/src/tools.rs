@@ -1,5 +1,26 @@
-//! Real tool execution runtime for OpenAgents Coder
-//! Implements `shell`, `skill`, `openagents`, `capability`, and delegation hooks
+//! The tools a session declares to the model, and what running them does.
+//!
+//! Four tools: `shell`, `skill`, `openagents`, and `delegate`. Each is
+//! declared to the model and each has an implementation in
+//! [`HarnessToolRegistry::execute_tool`]; the list and the match arms are the
+//! same four, which is the only property that keeps a declared tool from being
+//! a promise nothing keeps.
+//!
+//! `capability` — the standing tool that searches the local plugin catalog and
+//! loads a digest-pinned WebAssembly plugin — is **not** implemented here and
+//! is **not** declared. This module's own header used to claim it was. It is
+//! not a matter of wiring: the plugins in `plugins/` are WebAssembly artifacts
+//! against a bespoke `packet-v0` ABI, with per-manifest mounts, host
+//! allowlists, memory ceilings, and timeouts to enforce, and this crate has no
+//! WebAssembly runtime to enforce them with. That is the "WASM capability
+//! runtime integration" half of OpenAgentsInc/openagents#71, and porting it
+//! means bringing a wasm engine into this binary. Until that happens the
+//! honest state is a tool that is absent rather than one that is advertised
+//! and refuses.
+//!
+//! The tool runtime is the client's. The inference proxy forwards the
+//! declarations and returns the calls the model asks for; nothing runs
+//! server-side.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -42,17 +63,51 @@ pub struct SkillInfo {
     pub body: String,
 }
 
+/// What the `delegate` tool is allowed to start.
+///
+/// Present on the session the reader is talking to and absent on the children
+/// it starts. A fan-out whose children fan out has no ceiling: three children
+/// each starting three is nine agents on one grant, and none of them told the
+/// reader.
+#[derive(Debug, Clone)]
+pub struct DelegationGate {
+    /// The lane children run on.
+    pub lane: String,
+    /// The credential children spend against.
+    pub user_token: Option<String>,
+    /// The most children one call may start.
+    pub max_count: usize,
+}
+
 pub struct HarnessToolRegistry {
     pub cwd: PathBuf,
     pub skills: HashMap<String, SkillInfo>,
+    /// `None` on a delegated child, so it cannot delegate further.
+    pub delegation: Option<DelegationGate>,
 }
 
 impl HarnessToolRegistry {
     pub fn new(cwd: Option<PathBuf>) -> Self {
+        Self::build(cwd, None)
+    }
+
+    /// The registry a session gets when it may start children.
+    pub fn with_delegation(cwd: Option<PathBuf>, gate: DelegationGate) -> Self {
+        Self::build(cwd, Some(gate))
+    }
+
+    /// The registry a delegated child gets: rooted at the child's own
+    /// directory, and with no `delegate` tool.
+    pub fn child(cwd: Option<PathBuf>) -> Self {
+        Self::build(cwd, None)
+    }
+
+    fn build(cwd: Option<PathBuf>, delegation: Option<DelegationGate>) -> Self {
         let root = cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let mut registry = Self {
             cwd: root,
             skills: HashMap::new(),
+            delegation,
         };
         registry.load_local_skills();
         registry
@@ -102,10 +157,16 @@ impl HarnessToolRegistry {
             skill_list.push_str(&format!("\n- `{}`: {}", name, info.description));
         }
 
-        vec![
+        let mut tools = vec![
             ToolDefinition {
                 name: "shell".to_string(),
-                description: "Run a shell command on this machine. Returns combined stdout and stderr with exit code. Paths are relative to the working directory. Batch independent commands with &&.".to_string(),
+                description: format!(
+                    "Run a shell command on this machine. The working directory is {}, so paths are \
+                    relative to it and you do not need to ask where you are. Returns combined stdout \
+                    and stderr with the exit code. Batch independent commands into one call with && \
+                    instead of one call each: every call replays the conversation so far.",
+                    self.cwd.display()
+                ),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -141,7 +202,49 @@ impl HarnessToolRegistry {
                     "required": ["args"]
                 }),
             },
-        ]
+        ];
+
+        // Declared only where it can be run. A child's registry has no gate,
+        // so a child neither sees the tool nor can call it.
+        if let Some(gate) = &self.delegation {
+            tools.push(ToolDefinition {
+                name: "delegate".to_string(),
+                description: format!(
+                    "Run one prompt on independent child coding agents in parallel and return what \
+                    each one found or did. Use it when work splits into parts that do not depend on \
+                    each other: several files to change the same way, several hypotheses to check, \
+                    several tests to run down. Each child is a full coding agent with its own shell \
+                    tool, working in a git worktree of its own so children cannot overwrite each \
+                    other, and it starts with no context from this conversation and cannot ask \
+                    questions — so the prompt has to be self-contained. Every child runs the same \
+                    prompt and each is told separately which number it is, so write the prompt for \
+                    whichever child reads it: say \"read the file at your own number\" rather than \
+                    naming one child. Children run on {} and on this session's budget. Prefer one \
+                    call with a count over several calls, and prefer `shell` over this for a single \
+                    command — a child agent is for work worth a whole agent, not one line of \
+                    output. At most {} children.",
+                    gate.lane, gate.max_count
+                ),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "The complete, self-contained instruction every child performs. Name the files, the command, and what to report back."
+                        },
+                        "count": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": gate.max_count,
+                            "description": "How many children run this prompt. Defaults to 1."
+                        }
+                    },
+                    "required": ["prompt"]
+                }),
+            });
+        }
+
+        tools
     }
 
     pub async fn execute_tool(&self, call: &ToolCall) -> ToolOutput {
@@ -194,6 +297,53 @@ impl HarnessToolRegistry {
                 ToolOutput {
                     call_id: call.id.clone(),
                     output: output_str,
+                    is_error: false,
+                }
+            }
+            "delegate" => {
+                let Some(gate) = &self.delegation else {
+                    // Reachable only if a model invents the name, since the
+                    // tool is not declared without a gate.
+                    return ToolOutput {
+                        call_id: call.id.clone(),
+                        output: "This session cannot start child agents.".to_string(),
+                        is_error: true,
+                    };
+                };
+
+                let prompt = call
+                    .arguments
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if prompt.is_empty() {
+                    return ToolOutput {
+                        call_id: call.id.clone(),
+                        output: "No children were started: `prompt` is required and must say what the child does.".to_string(),
+                        is_error: true,
+                    };
+                }
+
+                let count = call
+                    .arguments
+                    .get("count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1)
+                    .clamp(1, gate.max_count as u64) as usize;
+
+                let report = crate::delegate::fanout_for_tool(
+                    &prompt,
+                    count,
+                    &gate.lane,
+                    gate.user_token.clone(),
+                )
+                .await;
+
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output: report,
                     is_error: false,
                 }
             }

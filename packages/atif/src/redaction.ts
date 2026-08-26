@@ -11,6 +11,7 @@ export type RedactionCategory =
   | "oa_agent_token"
   | "x_code"
   | "oa_token"
+  | "machine_token"
   | "aws_key"
   | "google_key"
   | "slack_token"
@@ -266,6 +267,13 @@ const RULES: ReadonlyArray<Rule> = [
     category: "oa_token",
     pattern: /\boa_(?:live|test|sk|key|secret|tok|token|pat)?_?[A-Za-z0-9]{12,}\b/g,
     replace: () => tag("oa_token"),
+  },
+  {
+    // Machine tokens minted by computer pairing. They carry a hyphen, which
+    // every rule above stops at, so they survived an ATIF export intact.
+    category: "machine_token",
+    pattern: /\bsmct_[A-Za-z0-9_-]{6,}\b/g,
+    replace: () => tag("machine_token"),
   },
   {
     category: "owner_id",
