@@ -3,7 +3,7 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
@@ -21,6 +21,8 @@ use crate::coder::transcript::MarkdownContent;
 use crate::runtime::TurnUsage;
 
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const TOOL_RAIL_WAVE_ROWS: f32 = 32.0;
+const TOOL_RAIL_WAVE_SPEED: f32 = 0.15;
 
 /// Who this session is signed in as.
 ///
@@ -104,6 +106,8 @@ pub struct ToolCall {
     pub arguments: Value,
     pub output: Option<String>,
     pub error: Option<String>,
+    /// Whether the runtime has settled this call.
+    pub done: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -240,6 +244,9 @@ pub struct CoderUi {
     /// Temporary first-response state shown beside the spinner.
     pub waiting: Option<String>,
     pub tick: u64,
+    /// Whether active-state motion advances. Set `OPENAGENTS_REDUCED_MOTION`
+    /// to keep the same state markers with a static rail.
+    pub motion_enabled: bool,
     /// Who the session is signed in as, as the server confirmed it.
     ///
     /// Defaults to [`Identity::Anonymous`], which is the honest starting
@@ -334,6 +341,7 @@ impl CoderUi {
             loading: false,
             waiting: None,
             tick: 0,
+            motion_enabled: std::env::var_os("OPENAGENTS_REDUCED_MOTION").is_none(),
             identity: Identity::Anonymous,
             endpoint: String::new(),
             lane: String::new(),
@@ -468,7 +476,7 @@ impl CoderUi {
         for index in 0..self.entries.len() {
             let offset = all_lines.len();
             let entry = &mut self.entries[index];
-            let (lines, entry_links) = render_entry(entry, width);
+            let (lines, entry_links) = render_entry(entry, width, self.tick, self.motion_enabled);
             for mut link in entry_links {
                 link.row += offset;
                 links.push(link);
@@ -704,7 +712,12 @@ impl Default for CoderUi {
 fn render_entry(
     entry: &mut Entry,
     width: usize,
-) -> (Vec<Line<'static>>, Vec<crate::coder::transcript::ScreenLink>) {
+    tick: u64,
+    motion_enabled: bool,
+) -> (
+    Vec<Line<'static>>,
+    Vec<crate::coder::transcript::ScreenLink>,
+) {
     let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
     let model = (entry.role == Role::Assistant)
         .then(|| entry.model.clone())
@@ -752,32 +765,46 @@ fn render_entry(
         Role::Tool => {
             let mut lines = Vec::new();
 
-            // ~5-line output box, split by actual newlines. Empty output means
-            // the call is still pending or produced nothing, so the box is not
-            // drawn at all and the marker is an empty circle.
+            // ~5-line output box, split by actual newlines. The explicit done
+            // bit distinguishes an active silent call from a settled call
+            // that produced no output.
             let out = entry.output.as_deref().unwrap_or("");
             let out_lines: Vec<&str> = out.lines().collect();
             let start = out_lines.len().saturating_sub(5);
             let window = &out_lines[start..];
 
             // One-line tool call header, flush left.
-            let marker = if out.is_empty() { "○ " } else { "⏺ " };
+            let done = entry.tool.as_ref().is_some_and(|tool| tool.done);
+            let marker = if done { "⏺ " } else { "○ " };
+            let marker_style = if done || !motion_enabled {
+                text_style
+            } else {
+                text_style.fg(tool_rail_wave_color(tick, 0))
+            };
             let header_body = width.saturating_sub(2);
             let header_chunks = wrap_text(&entry.text, header_body);
             let header = header_chunks.first().cloned().unwrap_or_default();
             lines.push(Line::from(vec![
-                Span::styled(marker, text_style),
+                Span::styled(marker, marker_style),
                 Span::styled(header, text_style),
             ]));
 
             // Only draw the vertical bar for lines that actually exist.
-            for line in window {
+            for (row, line) in window.iter().enumerate() {
                 let clipped = line
                     .chars()
                     .take(width.saturating_sub(2))
                     .collect::<String>();
+                let rail_style = if done || !motion_enabled {
+                    text_style
+                } else {
+                    text_style.fg(tool_rail_wave_color(
+                        tick,
+                        u16::try_from(start + row + 1).unwrap_or(u16::MAX),
+                    ))
+                };
                 lines.push(Line::from(vec![
-                    Span::styled("│ ", text_style),
+                    Span::styled("│ ", rail_style),
                     Span::styled(clipped, text_style),
                 ]));
             }
@@ -841,4 +868,23 @@ fn render_entry(
     }
 
     (lines, links)
+}
+
+/// Grok's active-tool rail: a brightness wave that travels down the rows.
+fn tool_rail_wave_color(tick: u64, row: u16) -> Color {
+    use std::f32::consts::PI;
+
+    let phase = (row as f32 / TOOL_RAIL_WAVE_ROWS) * 2.0 * PI;
+    let brightness = (tick as f32 * TOOL_RAIL_WAVE_SPEED + phase).sin().powi(2);
+    blend_rgb(BACKGROUND_COLOR, TEXT_COLOR, brightness)
+}
+
+fn blend_rgb(from: Color, to: Color, amount: f32) -> Color {
+    let (Color::Rgb(fr, fg, fb), Color::Rgb(tr, tg, tb)) = (from, to) else {
+        return to;
+    };
+    let channel = |start: u8, end: u8| {
+        (start as f32 + (end as f32 - start as f32) * amount.clamp(0.0, 1.0)).round() as u8
+    };
+    Color::Rgb(channel(fr, tr), channel(fg, tg), channel(fb, tb))
 }

@@ -511,6 +511,7 @@ fn spawn_run(ui: &mut CoderUi, command: &str, tx: &Sender<Control>, cwd: &Path) 
         arguments: serde_json::json!({ "command": command }),
         output: None,
         error: None,
+        done: false,
     });
     ui.entries.push(entry);
     ui.scroll_override = None;

@@ -7,7 +7,7 @@
 
 use openagents_cli::coder::interactive::apply;
 use openagents_cli::coder::markdown::theme::{
-    DIM_TEXT_COLOR, MODEL_TEXT_COLOR, USER_TEXT_COLOR,
+    DIM_TEXT_COLOR, MODEL_TEXT_COLOR, TEXT_COLOR, USER_TEXT_COLOR,
 };
 use openagents_cli::coder::runtime::Control;
 use openagents_cli::coder::tui::{CoderUi, Entry, Role};
@@ -202,6 +202,83 @@ fn a_failed_tool_call_says_so_on_its_header() {
     );
     // And the ATIF record carries the failure too, not just the screen.
     assert!(entry.tool.as_ref().unwrap().error.is_some());
+}
+
+#[test]
+fn an_active_tool_rail_moves_until_the_call_finishes() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "c1".to_string(),
+            name: "shell".to_string(),
+            arguments: r#"{"command":"cargo test"}"#.to_string(),
+        },
+    );
+    apply(
+        &mut ui,
+        Control::ToolOutput {
+            call_id: "c1".to_string(),
+            chunk: "running\nstill running".to_string(),
+        },
+    );
+
+    let first = draw(&mut ui);
+    let second = draw(&mut ui);
+    let first_rail = first.cell((0, 1)).unwrap();
+    let second_rail = second.cell((0, 1)).unwrap();
+    assert_eq!(first_rail.symbol(), "│");
+    assert_ne!(
+        first_rail.fg, second_rail.fg,
+        "the active rail did not move"
+    );
+
+    apply(
+        &mut ui,
+        Control::ToolDone {
+            call_id: "c1".to_string(),
+            is_error: false,
+        },
+    );
+    let settled = draw(&mut ui);
+    let settled_again = draw(&mut ui);
+    assert_eq!(settled.cell((0, 1)).unwrap().fg, TEXT_COLOR);
+    assert_eq!(
+        settled.cell((0, 1)).unwrap().fg,
+        settled_again.cell((0, 1)).unwrap().fg,
+        "a finished tool rail kept moving"
+    );
+    assert!(ui.entries[0].tool.as_ref().unwrap().done);
+}
+
+#[test]
+fn reduced_motion_keeps_the_active_tool_state_static() {
+    let mut ui = CoderUi::new();
+    ui.motion_enabled = false;
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "c1".to_string(),
+            name: "shell".to_string(),
+            arguments: r#"{"command":"cargo test"}"#.to_string(),
+        },
+    );
+    apply(
+        &mut ui,
+        Control::ToolOutput {
+            call_id: "c1".to_string(),
+            chunk: "running".to_string(),
+        },
+    );
+
+    let first = draw(&mut ui);
+    let second = draw(&mut ui);
+    assert_eq!(first.cell((0, 1)).unwrap().fg, TEXT_COLOR);
+    assert_eq!(
+        first.cell((0, 1)).unwrap().fg,
+        second.cell((0, 1)).unwrap().fg
+    );
+    assert!(text_of(&second).starts_with("○ shell cargo test"));
 }
 
 /// Output for a call the frame never saw start goes nowhere rather than onto

@@ -564,6 +564,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 arguments: parsed,
                 output: None,
                 error: None,
+                done: false,
             });
             ui.entries.push(entry);
             ui.scroll_override = None;
@@ -582,8 +583,11 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             ui.scroll_override = None;
         }
         Control::ToolDone { call_id, is_error } => {
-            if is_error {
-                if let Some(entry) = tool_entry(ui, &call_id) {
+            if let Some(entry) = tool_entry(ui, &call_id) {
+                if let Some(tool) = entry.tool.as_mut() {
+                    tool.done = true;
+                }
+                if is_error {
                     // Said on the header, where the reader is looking. A
                     // failed call that reads like a successful one is how a
                     // session comes to believe a build passed.

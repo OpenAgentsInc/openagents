@@ -17,6 +17,7 @@ fn delegate_call() -> ToolCall {
         arguments: serde_json::json!({ "agent": "devin", "task": "Read src/main.rs" }),
         output: None,
         error: None,
+        done: false,
     }
 }
 
