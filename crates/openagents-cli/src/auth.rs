@@ -309,40 +309,98 @@ fn ensure_private_directory(directory: &Path) -> Result<(), AuthError> {
     Ok(())
 }
 
+/// The suffix every staging file carries, so a sweep can recognise one.
+pub(crate) const TEMP_SUFFIX: &str = ".tmp";
+
+/// A staging path beside `path` that no other writer can be using.
+///
+/// The name a staged write goes through must not be shared. A fixed one —
+/// `path.with_extension("tmp")` — gives every process writing this file the
+/// same staging path, so two `oa` runs over one config directory truncate and
+/// rename each other's half-written bytes: one wins, and the other's `rename`
+/// finds nothing and reports a failed credential write for a credential that
+/// may in fact have been stored. That is the worst shape a credential error
+/// can take, because the caller cannot tell what is on disk. A fleet of agents
+/// under one `$HOME` is the normal way this CLI runs, so the overlap is not a
+/// corner case.
+///
+/// Process id, wall clock, and a per-process counter make the name unique
+/// across processes, across threads, and across calls on one thread. The
+/// original file name stays in it so a human reading the directory knows what
+/// crashed, and so that path guards matching on `credentials.json` still match
+/// the staging file.
+pub(crate) fn unique_temp_path(path: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or(0);
+    let ordinal = COUNTER.fetch_add(1, Ordering::Relaxed);
+    path.with_file_name(format!(
+        ".{name}.{}.{nanos}.{ordinal}{TEMP_SUFFIX}",
+        std::process::id()
+    ))
+}
+
 /// Write a file 0600 through a temporary file in the same directory.
+///
+/// Staged and renamed, so a reader never sees half a file and a crash leaves
+/// the previous contents intact. The staging name is unique per call — see
+/// [`unique_temp_path`] — which is what makes concurrent writers safe rather
+/// than merely atomic for one.
 fn write_private_file(path: &Path, contents: &str) -> Result<(), AuthError> {
     let parent = path
         .parent()
         .ok_or_else(|| AuthError::new(format!("{} has no parent directory", path.display())))?;
     ensure_private_directory(parent)?;
-    let temporary = path.with_extension("tmp");
-    {
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&temporary).map_err(|error| {
-            AuthError::new(format!("could not write {}: {error}", temporary.display()))
-        })?;
-        file.write_all(contents.as_bytes()).map_err(|error| {
-            AuthError::new(format!("could not write {}: {error}", temporary.display()))
-        })?;
+    let temporary = unique_temp_path(path);
+    let staged = stage_private_file(&temporary, contents);
+    if staged.is_err() {
+        // The name was ours alone, so removing it can strand nobody else's
+        // write. Leaving it would litter the config directory once per failure.
+        let _ = fs::remove_file(&temporary);
     }
+    staged?;
+    fs::rename(&temporary, path).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        AuthError::new(format!("could not write {}: {error}", path.display()))
+    })
+}
+
+/// Create the staging file 0600 and put `contents` in it.
+fn stage_private_file(temporary: &Path, contents: &str) -> Result<(), AuthError> {
+    let mut options = fs::OpenOptions::new();
+    // `create_new` rather than `truncate`: the name is unique to this call, so
+    // finding one already there means the assumption broke and the write must
+    // refuse rather than trample whatever is in it.
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(temporary).map_err(|error| {
+        AuthError::new(format!("could not write {}: {error}", temporary.display()))
+    })?;
+    file.write_all(contents.as_bytes()).map_err(|error| {
+        AuthError::new(format!("could not write {}: {error}", temporary.display()))
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600)).map_err(|error| {
+        fs::set_permissions(temporary, fs::Permissions::from_mode(0o600)).map_err(|error| {
             AuthError::new(format!(
                 "could not restrict {} to 0600: {error}",
                 temporary.display()
             ))
         })?;
     }
-    fs::rename(&temporary, path)
-        .map_err(|error| AuthError::new(format!("could not write {}: {error}", path.display())))
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

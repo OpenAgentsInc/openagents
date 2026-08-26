@@ -233,6 +233,16 @@ pub fn write_config(config: &PolicyConfig) -> Result<(), String> {
     write_private_file(&config.paths.config, &format!("{encoded}\n"))
 }
 
+/// Write `computer.json` or the agent-key store `0600`, staged and renamed.
+///
+/// This wrote in place — `fs::write` onto the target, then `chmod` — which two
+/// `oa` processes under one config directory could interleave into one file,
+/// leaving JSON that neither of them wrote and that the next run refuses to
+/// decode. It also left the file world-readable for the moment between the
+/// create and the `chmod`, which for the agent-key store is a window on
+/// credentials. Staging under a name unique to this call and renaming fixes
+/// both: `rename` inside a directory is atomic, so the last writer wins whole
+/// and no reader sees a partial file. See [`crate::auth::unique_temp_path`].
 fn write_private_file(path: &Path, contents: &str) -> Result<(), String> {
     if let Some(directory) = path.parent() {
         std::fs::create_dir_all(directory)
@@ -243,13 +253,38 @@ fn write_private_file(path: &Path, contents: &str) -> Result<(), String> {
             let _ = std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700));
         }
     }
-    std::fs::write(path, contents)
-        .map_err(|error| format!("could not write {}: {error}", path.display()))?;
+    let temporary = crate::auth::unique_temp_path(path);
+    if let Err(error) = stage_private_file(&temporary, contents) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    std::fs::rename(&temporary, path).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        format!("could not write {}: {error}", path.display())
+    })
+}
+
+/// Create the staging file `0600` and put `contents` in it.
+fn stage_private_file(temporary: &Path, contents: &str) -> Result<(), String> {
+    let mut options = std::fs::OpenOptions::new();
+    // The name is unique to this call, so anything already there means the
+    // assumption broke; refuse rather than trample it.
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(temporary)
+        .map_err(|error| format!("could not write {}: {error}", temporary.display()))?;
+    file.write_all(contents.as_bytes())
+        .map_err(|error| format!("could not write {}: {error}", temporary.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .map_err(|error| format!("could not secure {}: {error}", path.display()))?;
+        std::fs::set_permissions(temporary, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("could not secure {}: {error}", temporary.display()))?;
     }
     Ok(())
 }

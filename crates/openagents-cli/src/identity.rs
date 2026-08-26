@@ -676,13 +676,44 @@ impl SeedStore {
     /// The seed file: a sealed envelope under the OS keychain, or the mnemonic
     /// itself where there is no keychain. Mode `0600` either way.
     pub fn path(&self) -> PathBuf {
-        self.directory.join("seed")
+        self.directory.join(Self::SEED_FILE_NAME)
     }
 
-    /// The path the atomic rewrite stages through. Named so `forget` and the
-    /// write path can both make sure a crashed write leaves nothing behind.
+    const SEED_FILE_NAME: &'static str = "seed";
+
+    /// A staging path for one rewrite, unique to this call.
+    ///
+    /// It used to be the fixed `seed.tmp`. Two processes writing a seed under
+    /// one `$HOME` then shared it: each truncated the other's staged bytes and
+    /// removed the file out from under it, so one rewrite could rename a
+    /// half-written envelope over the seed, or fail after the other had already
+    /// replaced it. A seed is the one file where either outcome loses an
+    /// identity outright. See [`crate::auth::unique_temp_path`].
     fn temp_path(&self) -> PathBuf {
-        self.directory.join("seed.tmp")
+        crate::auth::unique_temp_path(&self.path())
+    }
+
+    /// Remove staging files this directory still holds from crashed rewrites.
+    ///
+    /// With one fixed staging name `forget` could just delete it. Unique names
+    /// mean a sweep instead: anything beside the seed that this store's writes
+    /// would have named.
+    fn sweep_temp_files(&self) {
+        let Ok(entries) = fs::read_dir(&self.directory) else {
+            return;
+        };
+        let prefix = format!(".{}.", Self::SEED_FILE_NAME);
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(&prefix) && name.ends_with(crate::auth::TEMP_SUFFIX) {
+                let _ = fs::remove_file(entry.path());
+            }
+            // The name a crashed pre-sweep `oa` left behind.
+            if name == "seed.tmp" {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
     }
 
     /// True when a seed is already stored. Presence only; the bytes stay on disk.
@@ -807,15 +838,38 @@ impl SeedStore {
         Self::set_mode(&self.directory, 0o700)?;
         let path = self.path();
         let temp = self.temp_path();
-        let _ = fs::remove_file(&temp);
-        fs::write(&temp, bytes)?;
-        Self::set_mode(&temp, 0o600)?;
+        // No `remove_file` first: the name belongs to this call alone, so
+        // anything already at it would be a surprise rather than our own
+        // leftovers, and `create_new` inside `write_sealed` says so.
+        if let Err(error) = Self::write_sealed(&temp, bytes) {
+            let _ = fs::remove_file(&temp);
+            return Err(error);
+        }
         if let Err(error) = fs::rename(&temp, &path) {
             let _ = fs::remove_file(&temp);
             return Err(IdentityError::Io(error));
         }
         Self::set_mode(&path, 0o600)?;
         Ok(path)
+    }
+
+    /// Put `bytes` in a new file that is `0600` from the moment it exists.
+    ///
+    /// Created `0600` rather than created and then restricted: the seed must
+    /// never be readable to the rest of the machine, not even for the instant
+    /// between the two calls.
+    fn write_sealed(temp: &std::path::Path, bytes: &[u8]) -> Result<(), IdentityError> {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(temp)?;
+        file.write_all(bytes)?;
+        Self::set_mode(temp, 0o600)?;
+        Ok(())
     }
 
     /// Move a plaintext seed under the OS keychain, and report what is protecting
@@ -848,7 +902,7 @@ impl SeedStore {
     /// for an identity that no longer exists.
     pub fn forget(&self) -> Result<bool, IdentityError> {
         let path = self.path();
-        let _ = fs::remove_file(self.temp_path());
+        self.sweep_temp_files();
         if !path.exists() {
             self.keys.delete();
             return Ok(false);
