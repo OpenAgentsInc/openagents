@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use openagents_cli::composer::Composer;
 
-use crate::markdown::theme::{BACKGROUND_COLOR, TEXT_COLOR};
+use crate::markdown::theme::{BACKGROUND_COLOR, DIM_TEXT_COLOR, TEXT_COLOR};
 use crate::osc8::PlacedLink;
 use crate::transcript::MarkdownContent;
 
@@ -450,21 +450,27 @@ fn render_entry(
                 _ => ("", "⏺", " ", "  ", width.saturating_sub(2)),
             };
 
+            let role_style = if matches!(entry.role, Role::Notice | Role::Reasoning) {
+                Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR)
+            } else {
+                text_style
+            };
+
             let chunks = wrap_text(&entry.text, first_body);
 
             let mut lines = Vec::new();
             for (i, chunk) in chunks.iter().enumerate() {
                 if i == 0 {
                     lines.push(Line::from(vec![
-                        Span::styled(first_prefix, text_style),
-                        Span::styled(marker, text_style),
-                        Span::styled(marker_space, text_style),
-                        Span::styled(chunk.clone(), text_style),
+                        Span::styled(first_prefix, role_style),
+                        Span::styled(marker, role_style),
+                        Span::styled(marker_space, role_style),
+                        Span::styled(chunk.clone(), role_style),
                     ]));
                 } else {
                     lines.push(Line::from(vec![
-                        Span::styled(rest_indent, text_style),
-                        Span::styled(chunk.clone(), text_style),
+                        Span::styled(rest_indent, role_style),
+                        Span::styled(chunk.clone(), role_style),
                     ]));
                 }
             }

@@ -18,6 +18,12 @@ use super::syntax::Syntect;
 /// coder-lite's single foreground amber.
 pub const TEXT_COLOR: Color = Color::Rgb(255, 176, 0);
 
+/// A dimmer amber for notices, tokens, and other secondary text.
+///
+/// It is the halfway point between `TEXT_COLOR` and the background, so it
+/// reads at half the intensity of the main text.
+pub const DIM_TEXT_COLOR: Color = Color::Rgb(131, 91, 0);
+
 /// coder-lite's single background.
 pub const BACKGROUND_COLOR: Color = Color::Rgb(8, 6, 0);
 
