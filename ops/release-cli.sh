@@ -20,7 +20,7 @@
 #
 # Options:
 #   --version X.Y.Z[-suffix]  Required. The version to build and name.
-#   --targets "a b c"         Platforms to attempt. Defaults to all five.
+#   --targets "a b c"         Platforms to attempt. Defaults to all seven.
 #   --publish                 Upload to the release bucket. Off by default.
 #   --channel NAME            Point a channel at this version after publishing.
 #   --allow-partial           Publish even though some platforms are missing.
@@ -40,10 +40,19 @@ repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 # requested triple -- and a release that ships a darwin binary under a
 # linux-x86_64 name is worse than one that admits it built four of five. Every
 # artifact is read back and matched against this signature before it is staged.
+#
+# The two Linux libc flavors are separate platforms because they are separate
+# artifacts: the gnu build is dynamically linked and names a glibc loader that
+# a musl system does not have, and the musl build is statically linked and
+# names no interpreter at all. Their signatures say so -- `dynamically linked`
+# against `static-pie linked` -- which is what keeps the pair from being
+# published under each other's names.
 platform_table='macos-aarch64|aarch64-apple-darwin|cargo|Mach-O 64-bit executable arm64
 macos-x86_64|x86_64-apple-darwin|cargo|Mach-O 64-bit executable x86_64
-linux-x86_64|x86_64-unknown-linux-gnu|zigbuild|ELF 64-bit LSB*x86-64
-linux-aarch64|aarch64-unknown-linux-gnu|zigbuild|ELF 64-bit LSB*ARM aarch64
+linux-x86_64|x86_64-unknown-linux-gnu|zigbuild|ELF 64-bit LSB*x86-64*dynamically linked
+linux-x86_64-musl|x86_64-unknown-linux-musl|zigbuild|ELF 64-bit LSB*x86-64*static
+linux-aarch64|aarch64-unknown-linux-gnu|zigbuild|ELF 64-bit LSB*ARM aarch64*dynamically linked
+linux-aarch64-musl|aarch64-unknown-linux-musl|zigbuild|ELF 64-bit LSB*ARM aarch64*static
 windows-x86_64|x86_64-pc-windows-gnu|zigbuild|PE32+ executable*x86-64'
 
 all_platforms=$(printf '%s\n' "$platform_table" | cut -d'|' -f1 | tr '\n' ' ')
@@ -238,7 +247,14 @@ for platform in $targets; do
     build_command='cargo build'
   fi
 
-  if ! (cd "$repo_root" && $build_command --release -p openagents-cli --target "$triple") \
+  # The release version is threaded into the build rather than left to the
+  # crate manifest. `oa --version` is what `oa update` compares against the
+  # channel pointer, so a binary published as 0.1.0-rc.2 that reports 0.1.0
+  # would make every update either a no-op or a reinstall depending on which
+  # way the comparison fell. `build.rs` declares the dependency on this
+  # variable, so changing it rebuilds.
+  if ! (cd "$repo_root" && OPENAGENTS_CLI_RELEASE_VERSION="$version" \
+    $build_command --release -p openagents-cli --target "$triple") \
     >"$build_log" 2>&1; then
     echo "  SKIP: build failed (see $build_log)"
     tail -5 "$build_log" | sed 's/^/    /'
@@ -307,12 +323,24 @@ for platform in $built; do
   printf '%s  %s\n' "$sha" "$sums_name" >>"$sums"
 done
 
+# The commit alone is not a claim about what was built. A dirty worktree
+# produces artifacts that no commit describes, and a manifest naming a commit
+# it does not match is worse than one that admits the gap: someone checking out
+# that sha later would build something else and have no way to know. Rehearsals
+# are routinely built dirty; releases should not be.
+if [ -n "$(git -C "$repo_root" status --porcelain 2>/dev/null)" ]; then
+  git_clean=false
+else
+  git_clean=true
+fi
+
 cat >"$dist/release-manifest.json" <<EOF
 {
   "schema": "openagents.cli-release.v1",
   "version": "$version",
   "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "git_sha": "$(git -C "$repo_root" rev-parse --verify HEAD)",
+  "git_clean": $git_clean,
   "host": "$(uname -sm)",
   "artifacts": [$(printf '%s' "$manifest_entries" | sed '$ s/,$//')
   ]
@@ -334,6 +362,34 @@ if [ -n "$missing" ] && [ "$allow_partial" = 0 ]; then
   echo "than 'unsupported platform'. Fix the toolchain, restrict --targets to" >&2
   echo "what you meant to ship, or pass --allow-partial to publish anyway." >&2
   exit 1
+fi
+
+# The check above only sees platforms that were attempted. Narrowing --targets
+# makes a one-platform build look complete, and a release that "built
+# everything it was asked for" can still be a release that six of seven
+# platforms cannot install. That is fine for a rehearsal and fatal for a
+# channel, because a channel is the thing readers resolve without naming a
+# version. So coverage is judged against the whole platform table, not against
+# the request, at the moment a channel is about to be claimed.
+if [ -n "$channel" ] && [ "$allow_partial" = 0 ]; then
+  uncovered=''
+  for platform in $all_platforms; do
+    case " $built " in
+      *" $platform "*) ;;
+      *) uncovered="$uncovered $platform" ;;
+    esac
+  done
+
+  if [ -n "$uncovered" ]; then
+    echo "Refusing to point '$channel' at $version." >&2
+    echo "" >&2
+    echo "This release does not cover:$uncovered" >&2
+    echo "" >&2
+    echo "Readers who resolve '$channel' on those platforms would get a bare" >&2
+    echo "download failure. Build every platform, or pass --allow-partial if a" >&2
+    echo "channel that only some platforms can follow is what you mean." >&2
+    exit 1
+  fi
 fi
 
 if [ "$publish" = 0 ]; then

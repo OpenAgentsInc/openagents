@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "oa", version, about = "OpenAgents Rust CLI", long_about = None)]
+#[command(name = "oa", version = crate::VERSION, about = "OpenAgents Rust CLI", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -39,6 +39,24 @@ pub enum Commands {
     Api(ApiArgs),
     /// Trace inspection and session export
     Trace(TraceArgs),
+    /// Replace this binary with the release the channel names
+    #[command(alias = "self-update")]
+    Update(UpdateArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct UpdateArgs {
+    #[arg(long, help = "Release channel to resolve (default: stable)")]
+    pub channel: Option<String>,
+
+    #[arg(long, help = "Install this exact version instead of resolving a channel")]
+    pub version: Option<String>,
+
+    #[arg(long, help = "Report what the channel names without downloading anything")]
+    pub check: bool,
+
+    #[arg(long, help = "Reinstall even when the channel names the running version")]
+    pub force: bool,
 }
 
 #[derive(Args, Debug)]
@@ -519,6 +537,9 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("Redacted size: {} bytes", sanitized.len());
             }
         },
+        Commands::Update(update) => {
+            crate::update::run(update.channel, update.version, update.check, update.force).await?;
+        }
     }
     Ok(())
 }
