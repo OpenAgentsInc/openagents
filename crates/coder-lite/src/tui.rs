@@ -382,6 +382,16 @@ fn render_entry(
     let text_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
 
     match entry.role {
+        Role::Assistant if !entry.text.is_empty() && entry.text.starts_with("[error:") => {
+            let mut lines = Vec::new();
+            for chunk in wrap_input(&entry.text, width) {
+                lines.push(Line::from(vec![Span::styled(
+                    chunk,
+                    text_style.add_modifier(Modifier::BOLD),
+                )]));
+            }
+            (lines, Vec::new())
+        }
         ref role if role.is_markdown() && !entry.text.is_empty() => {
             let width = width.max(1);
             let md = entry.markdown_mut();
