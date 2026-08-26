@@ -562,6 +562,13 @@ mod unix_pty {
             "a bare invocation printed help instead of opening a session.\n{}",
             frame.dump()
         );
+        assert!(
+            frame
+                .transcript()
+                .contains(&format!("Coder v{}", openagents_cli::VERSION)),
+            "the session heading should label the current Coder version.\n{}",
+            frame.dump()
+        );
     }
 
     /// The one the postmortem is about: is there anywhere to type.

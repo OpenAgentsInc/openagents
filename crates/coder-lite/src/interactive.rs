@@ -118,7 +118,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             ui.entries.push(Entry::new(
                 Role::Notice,
                 format!(
-                    "coder {} · {} · {} · {acp_line} · /help",
+                    "Coder v{} · {} · {} · {acp_line} · /help",
                     openagents_cli::VERSION,
                     lane.label(),
                     crate::runtime::api_base()
@@ -287,7 +287,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             ui.entries.push(Entry::new(
                                 Role::Notice,
                                 format!(
-                                    "coder {} · {} · {} · {acp_line} · /help",
+                                    "Coder v{} · {} · {} · {acp_line} · /help",
                                     openagents_cli::VERSION,
                                     lane.label(),
                                     crate::runtime::api_base()
