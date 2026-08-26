@@ -9,9 +9,12 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
+use std::sync::OnceLock;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A server that answers one canned body and reports the paths it was asked
 /// for.
@@ -107,12 +110,38 @@ struct Output {
     status: Option<i32>,
 }
 
+/// A `HOME` of this test binary's own.
+///
+/// `oa` resolves its config directory from `HOME`, so without this every run
+/// here writes into the developer's real `~/.config/openagents`. It did: a
+/// single audit left 79 stub authorizations — keyed by ephemeral
+/// `http://127.0.0.1:<port>` origins — in the real `device-authorizations.json`,
+/// and concurrent runs racing that shared file made `repeated_scopes_are_all_sent`
+/// flake with a write error. Tests must not touch the machine they run on.
+fn isolated_home() -> &'static Path {
+    static HOME: OnceLock<PathBuf> = OnceLock::new();
+    HOME.get_or_init(|| {
+        let at = std::env::temp_dir().join(format!(
+            "oa-flags-home-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&at).expect("make an isolated HOME");
+        at
+    })
+    .as_path()
+}
+
 fn oa(args: &[&str]) -> Output {
     let result = Command::new(env!("CARGO_BIN_EXE_oa"))
         .args(args)
         // The credential store is keyed by origin, and the stub's origin has
         // no token, so these runs never carry a real one.
         .env("NO_COLOR", "")
+        .env("HOME", isolated_home())
         .output()
         .expect("run oa");
     Output {
