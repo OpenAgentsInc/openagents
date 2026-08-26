@@ -106,32 +106,45 @@ describe("repository client", () => {
 
     expect(repository.full_name).toBe("octavia/project");
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.path).toBe("/api/v1/user/repos");
+    expect(requests[0]?.path).toBe("/api/v1/repos");
     expect(requests[0]?.body).toEqual({ name: "project", private: true });
     expect(requests[0]?.headers?.["idempotency-key"]).toBeTypeOf("string");
   });
 
-  it("creates an organization repository through the organization route", async () => {
+  it("sends a named owner to the server rather than guessing its kind", async () => {
+    // The bug this replaces: a slash in `repo create OWNER/NAME` was read as
+    // proof the owner is an organization, so a personal namespace went to
+    // `/api/v1/orgs/{owner}/repos`. An organization owner and a personal owner
+    // are the same request now, and the server resolves which is which.
     const requests: Array<ApiRequest> = [];
     const layer = layerFromHandler((input) =>
       Effect.sync(() => {
         requests.push(input);
-        return { status: 201, body: repositoryFixture("acme/project") };
+        const sent = input.body as Record<string, unknown>;
+        return { status: 201, body: repositoryFixture(`${String(sent["owner"])}/project`) };
       }),
     );
-    await Effect.runPromise(
+    const create = (owner: string) =>
       Effect.gen(function* () {
         const client = yield* RepositoryClient;
         return yield* client.create({
           origin: "http://localhost:4000",
           token,
-          owner: "acme",
+          owner,
           name: "project",
           private: true,
         });
-      }).pipe(Effect.provide(layer)),
-    );
-    expect(requests[0]?.path).toBe("/api/v1/orgs/acme/repos");
+      }).pipe(Effect.provide(layer));
+
+    await Effect.runPromise(create("acme"));
+    await Effect.runPromise(create("AtlantisPleb"));
+
+    expect(requests.map((entry) => entry.path)).toEqual(["/api/v1/repos", "/api/v1/repos"]);
+    expect(requests.map((entry) => (entry.body as Record<string, unknown>)["owner"])).toEqual([
+      "acme",
+      "AtlantisPleb",
+    ]);
+    expect(requests.every((entry) => !entry.path.includes("/orgs/"))).toBe(true);
   });
 
   it("reports repository provisioning progress before completion", async () => {

@@ -27,6 +27,13 @@ export interface ProjectCreateInput extends AuthenticatedApi, RepositoryTarget {
   readonly description?: string;
 }
 
+export interface ProjectEditInput extends ProjectNumberInput {
+  readonly title?: string;
+  readonly description?: string;
+  readonly state?: string;
+  readonly archived?: boolean;
+}
+
 export interface ProjectItemInput extends ProjectNumberInput {
   readonly itemId: string;
 }
@@ -35,6 +42,8 @@ interface ProjectClientInterface {
   readonly list: (input: ProjectListInput) => Effect.Effect<unknown, CliError>;
   readonly view: (input: ProjectNumberInput) => Effect.Effect<unknown, CliError>;
   readonly create: (input: ProjectCreateInput) => Effect.Effect<unknown, CliError>;
+  readonly edit: (input: ProjectEditInput) => Effect.Effect<unknown, CliError>;
+  readonly delete: (input: ProjectNumberInput) => Effect.Effect<unknown, CliError>;
   readonly fields: (input: ProjectNumberInput) => Effect.Effect<unknown, CliError>;
   readonly items: (input: ProjectNumberInput) => Effect.Effect<unknown, CliError>;
   readonly addItem: (
@@ -101,6 +110,32 @@ export const projectClientLayer = Layer.effect(
             ...(input.description === undefined ? {} : { description: input.description }),
           },
           acceptedStatuses: [201],
+        }),
+
+      edit: (input) =>
+        request("edit a project", {
+          origin: input.origin,
+          token: input.token,
+          method: "PATCH",
+          path: projectPath(input),
+          body: {
+            ...(input.title === undefined ? {} : { title: input.title }),
+            ...(input.description === undefined ? {} : { description: input.description }),
+            ...(input.state === undefined ? {} : { state: input.state }),
+            ...(input.archived === undefined ? {} : { archived: input.archived }),
+          },
+          acceptedStatuses: [200],
+        }),
+
+      // The API refuses a board that is not archived, so the two-step is the
+      // server's policy rather than a client convention. See `project archive`.
+      delete: (input) =>
+        request("delete a project", {
+          origin: input.origin,
+          token: input.token,
+          method: "DELETE",
+          path: projectPath(input),
+          acceptedStatuses: [200, 204],
         }),
 
       fields: (input) =>

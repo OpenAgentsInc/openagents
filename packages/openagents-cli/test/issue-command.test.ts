@@ -336,4 +336,94 @@ describe("issue and project commands", () => {
     expect(requests[0]?.path).toBe("/api/v1/repos/octavia/project/projectsV2/2/items");
     expect(requests[0]?.body).toEqual({ issue_number: 155 });
   });
+
+  it("archives and then deletes a board, and the list stops carrying it", async () => {
+    // Listing on either side of the delete is what makes this a proof: the
+    // board is present before and absent after, so a delete that answered 204
+    // without removing anything would still fail here.
+    const requests: Array<ApiRequest> = [];
+    const board = { number: 5, title: "Scratch", state: "open", archived: false };
+    let deleted = false;
+    const { run, written } = harness((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        if (input.method === "DELETE") {
+          deleted = true;
+          return { status: 204, body: {} };
+        }
+        if (input.method === "PATCH") return { status: 200, body: { ...board, archived: true } };
+        return { status: 200, body: { projects: deleted ? [] : [board] } };
+      }),
+    );
+
+    await run(["--json", "project", "list", "--archived"]);
+    await run(["project", "edit", "5", "--archive"]);
+    await run(["project", "delete", "5", "--yes"]);
+    await run(["--json", "project", "list", "--archived"]);
+
+    expect(requests.map((entry) => `${entry.method} ${entry.path}`)).toEqual([
+      "GET /api/v1/repos/octavia/project/projectsV2?archived=true",
+      "PATCH /api/v1/repos/octavia/project/projectsV2/5",
+      "DELETE /api/v1/repos/octavia/project/projectsV2/5",
+      "GET /api/v1/repos/octavia/project/projectsV2?archived=true",
+    ]);
+    expect(requests[1]?.body).toEqual({ archived: true });
+    expect(written[0]?.document.value).toEqual({ projects: [board] });
+    expect(written[3]?.document.value).toEqual({ projects: [] });
+  });
+
+  it("refuses to delete a board without --yes and sends no request", async () => {
+    const requests: Array<ApiRequest> = [];
+    const { run } = harness((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return { status: 204, body: {} };
+      }),
+    );
+
+    await expect(run(["project", "delete", "5"])).rejects.toThrow(/--yes/u);
+    expect(requests).toEqual([]);
+  });
+
+  it("refuses an edit that names no field and sends no request", async () => {
+    const requests: Array<ApiRequest> = [];
+    const { run } = harness((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return { status: 200, body: {} };
+      }),
+    );
+
+    await expect(run(["project", "edit", "5"])).rejects.toThrow(/--title/u);
+    expect(requests).toEqual([]);
+  });
+
+  it("sends a title, description, and state together in one edit", async () => {
+    const requests: Array<ApiRequest> = [];
+    const { run } = harness((input) =>
+      Effect.sync(() => {
+        requests.push(input);
+        return { status: 200, body: { number: 5, title: "Renamed" } };
+      }),
+    );
+
+    await run([
+      "project",
+      "edit",
+      "5",
+      "--title",
+      "Renamed",
+      "--description",
+      "Why it exists",
+      "--state",
+      "closed",
+    ]);
+
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(requests[0]?.body).toEqual({
+      title: "Renamed",
+      description: "Why it exists",
+      state: "closed",
+    });
+  });
 });

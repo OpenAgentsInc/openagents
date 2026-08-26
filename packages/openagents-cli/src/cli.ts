@@ -4236,6 +4236,128 @@ const projectCreateCommand = Command.make(
     }),
 ).pipe(Command.withDescription("Create a project board"));
 
+const projectEditTitleFlag = Flag.string("title").pipe(
+  Flag.optional,
+  Flag.withDescription("New project title"),
+);
+
+const projectStateFlag = Flag.string("state").pipe(
+  Flag.optional,
+  Flag.withDescription("New project state: open or closed"),
+);
+
+const projectArchiveFlag = Flag.boolean("archive").pipe(
+  Flag.withDescription("Move the board out of the working set"),
+);
+
+const projectUnarchiveFlag = Flag.boolean("unarchive").pipe(
+  Flag.withDescription("Return the board to the working set"),
+);
+
+const projectEditCommand = Command.make(
+  "edit",
+  {
+    number: projectNumberArgument,
+    repo: repositoryOverrideFlag,
+    title: projectEditTitleFlag,
+    description: projectDescriptionFlag,
+    state: projectStateFlag,
+    archive: projectArchiveFlag,
+    unarchive: projectUnarchiveFlag,
+  },
+  ({ archive, description, number, repo, state, title, unarchive }) =>
+    Effect.gen(function* () {
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      if (archive && unarchive) {
+        return yield* new InputError({
+          message: "Pass either --archive or --unarchive, not both.",
+        });
+      }
+      const stateValue = Option.isNone(state) ? undefined : state.value;
+      if (stateValue !== undefined && stateValue !== "open" && stateValue !== "closed") {
+        return yield* new InputError({ message: "--state accepts open or closed." });
+      }
+      const archived = archive ? true : unarchive ? false : undefined;
+      const titleValue = Option.isNone(title) ? undefined : title.value;
+      const descriptionValue = Option.isNone(description) ? undefined : description.value;
+      if (
+        titleValue === undefined &&
+        descriptionValue === undefined &&
+        stateValue === undefined &&
+        archived === undefined
+      ) {
+        return yield* new InputError({
+          message: "Pass --title, --description, --state, --archive, or --unarchive.",
+        });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      const value = yield* projects.edit({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+        ...(titleValue === undefined ? {} : { title: titleValue }),
+        ...(descriptionValue === undefined ? {} : { description: descriptionValue }),
+        ...(stateValue === undefined ? {} : { state: stateValue }),
+        ...(archived === undefined ? {} : { archived }),
+      });
+      const project = record(value);
+      yield* output.write(
+        {
+          value,
+          human: [
+            `Updated project #${String(project["number"] ?? "?")} ${String(project["title"] ?? "")}`,
+          ],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(Command.withDescription("Edit a project board's title, description, state, or archive"));
+
+const projectDeleteYesFlag = Flag.boolean("yes").pipe(
+  Flag.withDescription("Confirm permanent project deletion"),
+);
+
+const projectDeleteCommand = Command.make(
+  "delete",
+  { number: projectNumberArgument, repo: repositoryOverrideFlag, yes: projectDeleteYesFlag },
+  ({ number, repo, yes }) =>
+    Effect.gen(function* () {
+      const projectNumber = yield* parseTrackerNumber("A project number", number);
+      if (!yes) {
+        return yield* new InputError({
+          message: "Project deletion requires --yes confirmation.",
+        });
+      }
+      const flags = yield* rootCommand;
+      const session = yield* resolveApiSession(endpointOverrides(flags));
+      const target = yield* resolveTrackerTarget(repo, session.endpoint.origin);
+      const projects = yield* ProjectClient;
+      const output = yield* Output;
+      yield* projects.delete({
+        origin: session.endpoint.origin,
+        token: session.token,
+        ...target,
+        number: projectNumber,
+      });
+      yield* output.write(
+        {
+          value: { number: projectNumber, deleted: true },
+          human: [`Deleted project #${projectNumber}.`],
+        },
+        outputMode(flags.json),
+      );
+    }),
+).pipe(
+  Command.withDescription(
+    "Permanently delete a project board (archive it first with project edit --archive)",
+  ),
+);
+
 const projectItemRow = (item: Record<string, unknown>): string => {
   const issue = record(item["issue"]);
   const values = record(item["values"]);
@@ -4436,6 +4558,8 @@ const projectCommand = Command.make("project").pipe(
     projectListCommand,
     projectViewCommand,
     projectCreateCommand,
+    projectEditCommand,
+    projectDeleteCommand,
     projectFieldsCommand,
     projectItemsCommand,
     projectItemAddCommand,

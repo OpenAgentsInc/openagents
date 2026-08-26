@@ -394,6 +394,32 @@ pub enum ProjectAction {
         #[arg(short = 'R', long, help = "Repository as owner/repo")]
         repo: Option<String>,
     },
+    /// Edit a project board's title, description, state, or archive
+    Edit {
+        #[arg(help = "Project number")]
+        number: u64,
+        #[arg(long, help = "New project title")]
+        title: Option<String>,
+        #[arg(long, help = "Markdown project description")]
+        description: Option<String>,
+        #[arg(long, help = "New project state: open or closed")]
+        state: Option<String>,
+        #[arg(long, help = "Move the board out of the working set")]
+        archive: bool,
+        #[arg(long, help = "Return the board to the working set")]
+        unarchive: bool,
+        #[arg(short = 'R', long, help = "Repository as owner/repo")]
+        repo: Option<String>,
+    },
+    /// Permanently delete a project board (archive it first with project edit --archive)
+    Delete {
+        #[arg(help = "Project number")]
+        number: u64,
+        #[arg(long, help = "Confirm permanent project deletion")]
+        yes: bool,
+        #[arg(short = 'R', long, help = "Repository as owner/repo")]
+        repo: Option<String>,
+    },
     /// List the fields of a project board
     Fields {
         #[arg(help = "Project number")]
@@ -2818,6 +2844,68 @@ async fn run_project(action: ProjectAction, api_base: &str, token: Option<String
                     number_or_question(&project, "number"),
                     field(&project, "title")
                 )],
+            );
+        }
+        ProjectAction::Edit {
+            number,
+            title,
+            description,
+            state,
+            archive,
+            unarchive,
+            repo,
+        } => {
+            if archive && unarchive {
+                fail("Pass either --archive or --unarchive, not both.");
+            }
+            if let Some(value) = state.as_deref() {
+                if value != "open" && value != "closed" {
+                    fail("--state accepts open or closed.");
+                }
+            }
+            let archived = if archive {
+                Some(true)
+            } else if unarchive {
+                Some(false)
+            } else {
+                None
+            };
+            if title.is_none() && description.is_none() && state.is_none() && archived.is_none() {
+                fail("Pass --title, --description, --state, --archive, or --unarchive.");
+            }
+            let target = target_or_fail(repo);
+            let project = or_fail(
+                tracker
+                    .edit_project(
+                        &target,
+                        number,
+                        title.as_deref(),
+                        description.as_deref(),
+                        state.as_deref(),
+                        archived,
+                    )
+                    .await,
+            );
+            emit(
+                json,
+                &project,
+                &[format!(
+                    "Updated project #{} {}",
+                    number_or_question(&project, "number"),
+                    field(&project, "title")
+                )],
+            );
+        }
+        ProjectAction::Delete { number, yes, repo } => {
+            if !yes {
+                fail("Project deletion requires --yes confirmation.");
+            }
+            let target = target_or_fail(repo);
+            or_fail(tracker.delete_project(&target, number).await);
+            emit(
+                json,
+                &serde_json::json!({ "number": number, "deleted": true }),
+                &[format!("Deleted project #{number}.")],
             );
         }
         ProjectAction::Fields { number, repo } => {

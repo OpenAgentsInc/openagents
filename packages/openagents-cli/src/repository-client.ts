@@ -320,21 +320,23 @@ export const repositoryClientLayer = Layer.effect(
       const name = yield* validateRepositoryName(input.name);
       const owner = input.owner === undefined ? undefined : yield* validateOwner(input.owner);
       const idempotencyKey = input.idempotencyKey ?? globalThis.crypto.randomUUID();
+      // `OWNER/NAME` says an owner was named, not that the owner is an
+      // organization. Sending a named owner to the organization route on the
+      // strength of a slash is what made `repo create AtlantisPleb/thing` ask
+      // the org route to create under a person. The owner travels in the body
+      // and the server resolves which kind it is.
       const body = {
         name,
         private: input.private,
+        ...(owner === undefined ? {} : { owner }),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.defaultBranch === undefined ? {} : { default_branch: input.defaultBranch }),
       };
-      const path =
-        owner === undefined
-          ? `${API_VERSION_PATH}/user/repos`
-          : `${API_VERSION_PATH}/orgs/${encoded(owner)}/repos`;
       const value = yield* retryMutation(
         request("create repository", {
           ...input,
           method: "POST",
-          path,
+          path: `${API_VERSION_PATH}/repos`,
           body,
           headers: { "idempotency-key": idempotencyKey },
           acceptedStatuses: [201, 202],

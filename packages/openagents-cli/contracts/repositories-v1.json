@@ -9,6 +9,7 @@
   "idempotency": {
     "header": "Idempotency-Key",
     "required_for": [
+      "POST /api/v1/repos",
       "POST /api/v1/user/repos",
       "POST /api/v1/orgs/{org}/repos",
       "POST /api/v1/user/repos/imports",
@@ -17,6 +18,7 @@
   },
   "endpoints": {
     "get_authenticated_user": "GET /api/v1/user",
+    "create_repository": "POST /api/v1/repos",
     "create_user_repository": "POST /api/v1/user/repos",
     "create_organization_repository": "POST /api/v1/orgs/{org}/repos",
     "import_user_repository": "POST /api/v1/user/repos/imports",

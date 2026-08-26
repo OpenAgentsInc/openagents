@@ -831,6 +831,56 @@ impl TrackerClient {
         .await
     }
 
+    /// Edits a board's title, description, state, or archive standing.
+    ///
+    /// The payload is built from whichever fields the caller set. The API
+    /// refuses an empty edit, so the command validates before it gets here.
+    pub async fn edit_project(
+        &self,
+        target: &RepoTarget,
+        number: u64,
+        title: Option<&str>,
+        description: Option<&str>,
+        state: Option<&str>,
+        archived: Option<bool>,
+    ) -> Result<Value, ApiError> {
+        let mut payload = json!({});
+        if let Some(text) = title {
+            payload["title"] = json!(text);
+        }
+        if let Some(text) = description {
+            payload["description"] = json!(text);
+        }
+        if let Some(text) = state {
+            payload["state"] = json!(text);
+        }
+        if let Some(flag) = archived {
+            payload["archived"] = json!(flag);
+        }
+        self.request(
+            "edit a project",
+            "PATCH",
+            &Self::project_path(target, number),
+            Some(payload),
+            &[200],
+        )
+        .await
+    }
+
+    /// Deletes a board. The API refuses one that is not archived, so archiving
+    /// is the deliberate step that stands in for a prompt an API caller has no
+    /// way to see.
+    pub async fn delete_project(&self, target: &RepoTarget, number: u64) -> Result<Value, ApiError> {
+        self.request(
+            "delete a project",
+            "DELETE",
+            &Self::project_path(target, number),
+            None,
+            &[200, 204],
+        )
+        .await
+    }
+
     pub async fn project_fields(&self, target: &RepoTarget, number: u64) -> Result<Value, ApiError> {
         self.request(
             "list project fields",

@@ -344,23 +344,27 @@ impl RepoClient {
     ) -> Result<Repository, AuthError> {
         let name = validate_repository_name(name)?;
         let owner = owner.map(validate_owner).transpose()?;
+        // `OWNER/NAME` says an owner was named, not that the owner is an
+        // organization. Sending a named owner to the organization route on the
+        // strength of a slash is what made `repo create AtlantisPleb/thing` ask
+        // the org route to create under a person. The owner travels in the body
+        // and the server resolves which kind it is.
         let mut body = serde_json::json!({
             "name": name,
             "private": private,
             "default_branch": default_branch,
         });
+        if let Some(owner) = &owner {
+            body["owner"] = serde_json::Value::String(owner.clone());
+        }
         if let Some(description) = description {
             body["description"] = serde_json::Value::String(description.to_string());
         }
-        let path = match &owner {
-            None => "/api/v1/user/repos".to_string(),
-            Some(owner) => format!("/api/v1/orgs/{}/repos", urlencode(owner)),
-        };
         let value = self
             .request(
                 "create the repository",
                 reqwest::Method::POST,
-                &path,
+                "/api/v1/repos",
                 Some(body),
                 Some(&idempotency_key()),
                 &[200, 201, 202],

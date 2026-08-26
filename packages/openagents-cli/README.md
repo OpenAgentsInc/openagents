@@ -208,6 +208,11 @@ Your OpenAgents namespace is your GitHub user or organization namespace. You
 sign in with GitHub, and organization creation requires an active GitHub
 membership that can create repositories.
 
+`repo create OWNER/NAME` works for either kind of owner. The owner travels to
+the server, which resolves whether it is a person or an organization; the CLI
+does not decide that from the shape of the argument. `repo create NAME` uses
+your own namespace.
+
 `repo create --source <directory>` verifies the Git worktree and adds the
 server-provided clone URL as a remote. It refuses to overwrite an unrelated
 remote and prints the next `git push` command. The first release never pushes
@@ -418,6 +423,10 @@ openagents project list
 openagents project list --archived
 openagents project view 2
 openagents project create --title "Issues and Projects delivery"
+openagents project edit 2 --title "Renamed" --description "Why it exists"
+openagents project edit 2 --state closed
+openagents project edit 2 --archive
+openagents project delete 2 --yes
 openagents project fields 2
 openagents project items 2
 openagents project item-add 2 --issue 129
@@ -428,6 +437,13 @@ openagents project item-remove 2 175
 
 Projects are repository-scoped, so every project command takes the same
 `-R, --repo` and remote inference the issue commands take.
+
+A board deletes in two steps. `project edit --archive` takes it out of the
+working set, and `project delete --yes` removes it and everything on it. The
+API refuses to delete a board that is not archived, so archiving is the
+deliberate step that stands in for the confirmation an API caller never sees.
+Deleting a board leaves the issues it pointed at alone: an item is a reference
+to canonical work, not the work itself.
 
 ## Deploy the fleet (operators)
 
