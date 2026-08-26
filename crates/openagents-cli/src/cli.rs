@@ -162,9 +162,9 @@ pub struct IdentityArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum IdentityAction {
-    /// Show the public identity derived from the stored seed
+    /// Show the public identity derived from the stored seed, and what protects it
     Show,
-    /// Generate a new seed phrase and store it 0600
+    /// Generate a new seed phrase and store it encrypted under the OS keychain
     Create {
         #[arg(long, default_value_t = 12, help = "Words in the new seed phrase: 12 for 128 bits, 24 for 256")]
         words: usize,
@@ -3431,7 +3431,17 @@ async fn run_memory(action: MemoryAction, api_base: &str, token: Option<String>,
 
 /// The public identity block. Public identifiers only: no seed phrase, no `nsec`,
 /// and no private key reaches this function.
-fn print_identity(identity: &crate::identity::SeedIdentity, json: bool) {
+///
+/// It also carries the protection line. Whether the seed on this machine is
+/// encrypted or is readable text is not something a person can infer from the
+/// path, and the plaintext fallback is only honest if the surface that shows an
+/// identity says so every time.
+fn print_identity(
+    identity: &crate::identity::SeedIdentity,
+    protection: crate::identity::SeedProtection,
+    seed_path: &std::path::Path,
+    json: bool,
+) {
     if json {
         let value = serde_json::json!({
             "schema": "openagents.cli_identity.v1",
@@ -3444,6 +3454,9 @@ fn print_identity(identity: &crate::identity::SeedIdentity, json: bool) {
             "wallet_fingerprint": identity.wallet_fingerprint_hex,
             "wallet_derivation_path": identity.wallet_derivation_path,
             "spending_rail": serde_json::Value::Null,
+            "seed_path": seed_path,
+            "seed_protection": protection.id(),
+            "seed_encrypted_at_rest": protection.encrypted_at_rest(),
         });
         println!("{}", value);
         return;
@@ -3456,6 +3469,7 @@ fn print_identity(identity: &crate::identity::SeedIdentity, json: bool) {
     println!("  fingerprint  {}", identity.wallet_fingerprint_hex);
     println!("  path         {}", identity.wallet_derivation_path);
     println!("Profile:  {}", identity.profile);
+    println!("{}", protection.describe(seed_path));
 }
 
 fn run_identity(action: IdentityAction, json: bool) {
@@ -3475,10 +3489,28 @@ fn run_identity(action: IdentityAction, json: bool) {
         }
     };
 
+    // Migrate before reading. A seed written before the CLI could encrypt one is
+    // plaintext until something moves it, and the move is the same atomic rename
+    // either way, so the first `show` after an upgrade protects it rather than
+    // waiting for the next `import`. `forget` and the write paths do not call
+    // this: sealing a seed that is about to be deleted or replaced would mint a
+    // wrapping key for nothing.
+    let protection_in_force = || {
+        store
+            .protect()
+            .unwrap_or_else(|e| fail(&e.to_string()))
+            .unwrap_or_else(|| {
+                store
+                    .available_protection()
+                    .unwrap_or_else(|e| fail(&e.to_string()))
+            })
+    };
+
     match action {
         IdentityAction::Show => {
+            let protection = protection_in_force();
             let identity = store.identity().unwrap_or_else(|e| fail(&e.to_string()));
-            print_identity(&identity, json);
+            print_identity(&identity, protection, &seed_path, json);
         }
         IdentityAction::Create { words, force } => {
             if words != 12 && words != 24 {
@@ -3490,13 +3522,13 @@ fn run_identity(action: IdentityAction, json: bool) {
             // Derive before storing: a phrase that cannot be derived from must not
             // become the identity on this machine.
             let identity = derive_seed_identity(&phrase).unwrap_or_else(|e| fail(&e.to_string()));
-            store
-                .write_phrase(&phrase)
-                .unwrap_or_else(|e| fail(&format!(
+            let (_, stored_protection) = store.store_phrase(&phrase).unwrap_or_else(|e| {
+                fail(&format!(
                     "The new seed could not be stored at {}: {}",
                     seed_path.display(),
                     e
-                )));
+                ))
+            });
 
             if !json {
                 println!(
@@ -3509,7 +3541,7 @@ fn run_identity(action: IdentityAction, json: bool) {
                      can recover it."
                 );
             }
-            print_identity(&identity, json);
+            print_identity(&identity, stored_protection, &seed_path, json);
         }
         IdentityAction::Import { force } => {
             refuse_if_seed_exists(force);
@@ -3530,7 +3562,7 @@ fn run_identity(action: IdentityAction, json: bool) {
                 );
             }
             let identity = derive_seed_identity(&phrase).unwrap_or_else(|e| fail(&e.to_string()));
-            store.write_phrase(&phrase).unwrap_or_else(|e| {
+            let (_, stored_protection) = store.store_phrase(&phrase).unwrap_or_else(|e| {
                 fail(&format!(
                     "The seed could not be stored at {}: {}",
                     seed_path.display(),
@@ -3541,7 +3573,7 @@ fn run_identity(action: IdentityAction, json: bool) {
             if !json {
                 println!("Stored the seed at {} (mode 0600).", seed_path.display());
             }
-            print_identity(&identity, json);
+            print_identity(&identity, stored_protection, &seed_path, json);
         }
         IdentityAction::Backup => {
             // The one command that prints the secret, and the one that refuses
@@ -3553,6 +3585,7 @@ fn run_identity(action: IdentityAction, json: bool) {
                      phrase yourself.",
                 );
             }
+            let protection = protection_in_force();
             let phrase = match store.read_phrase() {
                 Ok(Some(phrase)) => phrase,
                 Ok(None) => fail(&crate::identity::IdentityError::NoSeed.to_string()),
@@ -3562,6 +3595,10 @@ fn run_identity(action: IdentityAction, json: bool) {
                 "This is the only secret on this machine. Anyone holding it holds the \
                  identity and the wallet."
             );
+            // The person about to write the phrase down is the one who most
+            // needs to know whether the copy they are leaving behind on disk is
+            // encrypted or is the phrase itself.
+            println!("{}", protection.describe(&seed_path));
             println!("{}", phrase);
         }
         IdentityAction::Forget { force } => {

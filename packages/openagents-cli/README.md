@@ -314,11 +314,45 @@ openagents identity backup
 openagents identity show
 ```
 
-`create` writes the phrase to `~/.openagents/identity/seed` with mode `0600` and
-does not print it. `backup` is the one command that prints it, and it refuses
-`--json` so the phrase cannot be captured by a caller collecting machine output.
-`show` prints public identifiers only — the `npub`, the receive address, and the
-derivation paths — and never the phrase, an `nsec`, or a private key.
+`create` writes the seed to `~/.openagents/identity/seed` with mode `0600` and
+does not print the phrase. `backup` is the one command that prints it, and it
+refuses `--json` so the phrase cannot be captured by a caller collecting machine
+output. `show` prints public identifiers only — the `npub`, the receive address,
+and the derivation paths — and never the phrase, an `nsec`, or a private key.
+
+### What protects the seed at rest
+
+On a machine with an OS keychain — macOS Keychain, or `libsecret` through
+`secret-tool` on Linux — the file holds ciphertext, not the phrase. A 32-byte
+ChaCha20-Poly1305 wrapping key lives in the keychain under service
+`openagents-cli-identity`, keyed by the identity directory, and never touches the
+file. That is what stops the reader permissions never did: a backup tool, a sync
+client, an agent with read access to your home directory, or a stolen unlocked
+disk image. The key does not travel with the file, so a copy of
+`~/.openagents/identity` on another machine is not an identity.
+
+Where there is no keychain — CI, a container, an unattended agent host — the
+phrase is written as readable text at mode `0600`, and every command that shows
+an identity says so:
+
+```
+Protection: NONE. The seed phrase is stored as readable text at
+/home/agent/.openagents/identity/seed (mode 0600). No OS keychain is available
+here, so file permissions are the whole protection...
+```
+
+`identity show --json` carries the same answer as `seed_protection`
+(`os_keychain` or `plaintext_file`) and `seed_encrypted_at_rest`. Set
+`OPENAGENTS_IDENTITY_PLAINTEXT=1` to choose the plaintext file deliberately, on a
+host where a prompting keychain is worse than none. It is never selected
+implicitly.
+
+A seed written before the CLI could encrypt one is migrated the first time any
+`identity` command runs: the sealed envelope is renamed over the same path, so
+the phrase is never in two places and the plaintext is gone the instant the
+envelope lands. On a host with no keychain the migration reports the plaintext
+store rather than pretending. Both CLIs — this one and `oa` — write the same
+envelope under the same key, so either opens the other's seed.
 
 To restore an existing seed, pipe the phrase in. It is validated before anything
 is written, and it is never echoed:

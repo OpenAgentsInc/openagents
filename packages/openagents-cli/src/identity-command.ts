@@ -27,15 +27,20 @@ import { InputError } from "./errors.js";
 import { Output, type OutputMode } from "./output.js";
 import { SecretInput } from "./secret-input.js";
 import {
+  describeSeedProtection,
   deriveSeedIdentity,
   forgetSeedPhrase,
   generateSeedPhrase,
   isValidSeedPhrase,
-  readSeedPhrase,
+  loadSeed,
+  protectSeed,
+  seedEncryptedAtRest,
   seedPath,
   seedPresent,
-  writeSeedPhrase,
+  seedProtectionAvailable,
+  storeSeedPhrase,
   type SeedIdentity,
+  type SeedProtection,
 } from "./seed-identity.js";
 
 /** The shared flags a handler reads back off the root command. */
@@ -54,7 +59,7 @@ const NO_IDENTITY =
   "No seed is stored. Run openagents identity create to make one, or " +
   "openagents identity import to restore an existing seed phrase.";
 
-const identityValue = (identity: SeedIdentity) => ({
+const identityValue = (identity: SeedIdentity, protection: SeedProtection) => ({
   schema: "openagents.cli_identity.v1",
   profile: identity.profile,
   npub: identity.npub,
@@ -65,9 +70,15 @@ const identityValue = (identity: SeedIdentity) => ({
   wallet_fingerprint: identity.walletFingerprintHex,
   wallet_derivation_path: identity.walletDerivationPath,
   spending_rail: null,
+  seed_path: seedPath(),
+  seed_protection: protection,
+  seed_encrypted_at_rest: seedEncryptedAtRest(protection),
 });
 
-const identityHuman = (identity: SeedIdentity): ReadonlyArray<string> => [
+const identityHuman = (
+  identity: SeedIdentity,
+  protection: SeedProtection,
+): ReadonlyArray<string> => [
   `Identity: ${identity.npub}`,
   `  public key   ${identity.nostrPublicKeyHex}`,
   `  path         ${identity.nostrDerivationPath}`,
@@ -77,14 +88,42 @@ const identityHuman = (identity: SeedIdentity): ReadonlyArray<string> => [
   `  path         ${identity.walletDerivationPath}`,
   `Profile:  ${identity.profile}`,
   RAIL_NOTE,
+  // Whether the seed on this machine is encrypted or is readable text is not
+  // something a person can infer from the path, and the plaintext fallback is
+  // only honest if the surface that shows an identity says so every time.
+  describeSeedProtection(protection, seedPath()),
 ];
+
+/**
+ * Move a plaintext seed under the OS keychain, and report what protects it.
+ *
+ * Every identity command starts here. A seed written before the CLI could
+ * encrypt one stays plaintext until something moves it, and the move is the same
+ * atomic rename either way, so the first `show` after an upgrade protects it
+ * rather than waiting for the next `import`.
+ */
+const protectionInForce = Effect.fn("Identity.protectionInForce")(function* () {
+  return yield* Effect.try({
+    try: () => protectSeed() ?? seedProtectionAvailable(),
+    catch: (cause) => new InputError({ message: String(cause) }),
+  });
+});
+
+/** Read the stored seed, or fail with the sentence that says what to do. */
+const storedSeed = Effect.fn("Identity.storedSeed")(function* () {
+  const stored = yield* Effect.try({
+    try: () => loadSeed(),
+    catch: (cause) => new InputError({ message: String(cause) }),
+  });
+  if (stored === undefined) return yield* new InputError({ message: NO_IDENTITY });
+  return stored;
+});
 
 /** Derive from the stored seed, or fail with the sentence that says what to do. */
 const storedIdentity = Effect.fn("Identity.storedIdentity")(function* () {
-  const phrase = yield* Effect.sync(readSeedPhrase);
-  if (phrase === undefined) return yield* new InputError({ message: NO_IDENTITY });
+  const stored = yield* storedSeed();
   return yield* Effect.try({
-    try: () => deriveSeedIdentity(phrase),
+    try: () => deriveSeedIdentity(stored.phrase),
     catch: () =>
       new InputError({
         message: `The seed stored at ${seedPath()} is not a valid English BIP-39 mnemonic. Re-import the correct phrase with openagents identity import.`,
@@ -106,15 +145,19 @@ export const makeIdentityCommand = <R>(root: Effect.Effect<SharedFlags, never, R
     Effect.gen(function* () {
       const flags = yield* root;
       const output = yield* Output;
+      const protection = yield* protectionInForce();
       const identity = yield* storedIdentity();
       yield* output.write(
-        { value: identityValue(identity), human: identityHuman(identity) },
+        {
+          value: identityValue(identity, protection),
+          human: identityHuman(identity, protection),
+        },
         outputMode(flags.json),
       );
     }),
   ).pipe(
     Command.withDescription(
-      "Show the identity and wallet this machine's seed derives. Public identifiers only: the seed phrase, the nsec, and the private keys are never printed.",
+      "Show the identity and wallet this machine's seed derives, and what is protecting the seed at rest. Public identifiers only: the seed phrase, the nsec, and the private keys are never printed.",
     ),
   );
 
@@ -133,12 +176,12 @@ export const makeIdentityCommand = <R>(root: Effect.Effect<SharedFlags, never, R
             message: `A seed is already stored at ${seedPath()}. Back it up with openagents identity backup first, then pass --force to replace it.`,
           });
         }
-        const identity = yield* Effect.try({
+        const created = yield* Effect.try({
           try: () => {
             const phrase = generateSeedPhrase(words);
             const derived = deriveSeedIdentity(phrase);
-            writeSeedPhrase(phrase);
-            return derived;
+            const { protection } = storeSeedPhrase(phrase);
+            return { identity: derived, protection };
           },
           catch: (cause) =>
             new InputError({
@@ -147,11 +190,11 @@ export const makeIdentityCommand = <R>(root: Effect.Effect<SharedFlags, never, R
         });
         yield* output.write(
           {
-            value: { ...identityValue(identity), created: true, seed_path: seedPath() },
+            value: { ...identityValue(created.identity, created.protection), created: true },
             human: [
               `Wrote a new ${words}-word seed to ${seedPath()} (mode 0600).`,
               "Back it up now with openagents identity backup. Nothing else on this machine can recover it.",
-              ...identityHuman(identity),
+              ...identityHuman(created.identity, created.protection),
             ],
           },
           outputMode(flags.json),
@@ -159,7 +202,7 @@ export const makeIdentityCommand = <R>(root: Effect.Effect<SharedFlags, never, R
       }),
   ).pipe(
     Command.withDescription(
-      "Generate a seed phrase and store it 0600. The phrase itself is not printed; run openagents identity backup to see it.",
+      "Generate a seed phrase and store it encrypted under the OS keychain, or 0600 plaintext where there is no keychain. The phrase itself is not printed; run openagents identity backup to see it.",
     ),
   );
 
@@ -181,11 +224,11 @@ export const makeIdentityCommand = <R>(root: Effect.Effect<SharedFlags, never, R
             "That is not a valid English BIP-39 seed phrase. Check the word count (12, 15, 18, 21, or 24) and the spelling of each word.",
         });
       }
-      const identity = yield* Effect.try({
+      const imported = yield* Effect.try({
         try: () => {
           const derived = deriveSeedIdentity(phrase);
-          writeSeedPhrase(phrase);
-          return derived;
+          const { protection } = storeSeedPhrase(phrase);
+          return { identity: derived, protection };
         },
         catch: (cause) =>
           new InputError({
@@ -194,15 +237,18 @@ export const makeIdentityCommand = <R>(root: Effect.Effect<SharedFlags, never, R
       });
       yield* output.write(
         {
-          value: { ...identityValue(identity), imported: true, seed_path: seedPath() },
-          human: [`Stored the seed at ${seedPath()} (mode 0600).`, ...identityHuman(identity)],
+          value: { ...identityValue(imported.identity, imported.protection), imported: true },
+          human: [
+            `Stored the seed at ${seedPath()} (mode 0600).`,
+            ...identityHuman(imported.identity, imported.protection),
+          ],
         },
         outputMode(flags.json),
       );
     }),
   ).pipe(
     Command.withDescription(
-      "Read a seed phrase from standard input and store it 0600. The phrase is never echoed, and an invalid phrase is rejected before anything is written.",
+      "Read a seed phrase from standard input and store it encrypted under the OS keychain, or 0600 plaintext where there is no keychain. The phrase is never echoed, and an invalid phrase is rejected before anything is written.",
     ),
   );
 
@@ -216,14 +262,18 @@ export const makeIdentityCommand = <R>(root: Effect.Effect<SharedFlags, never, R
             "openagents identity backup does not support --json. The seed phrase must not land in machine-collected output; run it without --json and copy the phrase yourself.",
         });
       }
-      const phrase = yield* Effect.sync(readSeedPhrase);
-      if (phrase === undefined) return yield* new InputError({ message: NO_IDENTITY });
+      const protection = yield* protectionInForce();
+      const stored = yield* storedSeed();
       yield* output.write(
         {
           value: { schema: "openagents.cli_identity_backup.v1" },
           human: [
             "This is the only secret on this machine. Anyone holding it holds the identity and the wallet.",
-            phrase,
+            // The person about to write the phrase down is the one who most
+            // needs to know whether the copy left behind on disk is encrypted
+            // or is the phrase itself.
+            describeSeedProtection(protection, seedPath()),
+            stored.phrase,
           ],
         },
         "human",

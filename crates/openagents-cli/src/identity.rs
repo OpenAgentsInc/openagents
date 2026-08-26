@@ -11,19 +11,38 @@
 //! SECRETS. The mnemonic is returned from exactly one function,
 //! [`SeedStore::read_phrase`], and derived from in memory. [`SeedIdentity`] carries
 //! public identifiers only and is safe to print. No `nsec` and no private key is
-//! ever written to disk or returned by `show`; the seed file is `0600` inside a
-//! `0700` directory.
+//! ever written to disk or returned by `show`.
+//!
+//! AT REST. The seed file is `0600` inside a `0700` directory, and on a machine
+//! with an OS keychain it holds ciphertext rather than the phrase: a 32-byte
+//! ChaCha20-Poly1305 wrapping key lives in the keychain under service
+//! `openagents-cli-identity`, and the file holds only the sealed envelope. That is
+//! what stops the threats permissions never did — a backup tool, a sync client, an
+//! agent with read access to `$HOME`, or a stolen unlocked disk image.
+//!
+//! Where there is no keychain — CI, a container, an unattended agent host — the
+//! phrase is written as plaintext at `0600`, exactly as before, and [`SeedStore`]
+//! reports [`SeedProtection::PlaintextFile`] so every surface that shows an identity
+//! can say so. A silent fall back to plaintext would be worse than no encryption at
+//! all, because it would read as protection that is not there. The key never goes in
+//! the file, so the phrase exists in exactly one place either way.
 
 use bech32::{Bech32, Hrp};
 use bip32::{DerivationPath, XPrv};
 use bip39::{Language, Mnemonic};
+use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305, NONCE_LEN};
+use ring::rand::{SecureRandom, SystemRandom};
 use ripemd::Ripemd160;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::str::FromStr;
+use std::sync::Mutex;
+use zeroize::Zeroize;
 
 /// The frozen shared-root profile both the CLI and Pylon derive under.
 pub const DERIVATION_PROFILE_ID: &str = "openagents.legacy_unified_nostr_spark.v1";
@@ -52,6 +71,17 @@ pub enum IdentityError {
     SeedExists(PathBuf),
     /// Key derivation failed underneath us.
     Derivation(String),
+    /// This machine has no OS keychain to hold a wrapping key. Not a failure on
+    /// its own: it selects the plaintext store, and the caller must say so.
+    NoKeychain,
+    /// The keychain is here but would not answer, or answered with a record that
+    /// is not a wrapping key. Never a reason to mint a second key: that would
+    /// orphan the sealed seed the first one opens.
+    Keychain(String),
+    /// The seed on disk is sealed and the keychain holds no key for it.
+    SealedWithoutKey(PathBuf),
+    /// The seed on disk is sealed and the key present does not open it.
+    Undecryptable(PathBuf),
     Io(std::io::Error),
 }
 
@@ -73,6 +103,24 @@ impl fmt::Display for IdentityError {
                 path.display()
             ),
             Self::Derivation(why) => write!(f, "Key derivation failed: {}", why),
+            Self::NoKeychain => write!(
+                f,
+                "This machine has no OS keychain, so there is nowhere to hold a key."
+            ),
+            Self::Keychain(why) => write!(f, "The OS keychain could not be used: {}", why),
+            Self::SealedWithoutKey(path) => write!(
+                f,
+                "The seed at {} is encrypted, and the OS keychain holds no key that opens it. \
+                 The key does not travel with the file and is not in any backup of it. Restore \
+                 the seed phrase with `oa identity import`.",
+                path.display()
+            ),
+            Self::Undecryptable(path) => write!(
+                f,
+                "The seed at {} is encrypted and the key in the OS keychain does not open it. \
+                 Restore the seed phrase with `oa identity import`.",
+                path.display()
+            ),
             Self::Io(err) => write!(f, "{}", err),
         }
     }
@@ -108,6 +156,16 @@ pub struct SeedIdentity {
 
 fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn from_hex(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) || text.is_empty() {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok())
+        .collect()
 }
 
 /// Trim and collapse whitespace without changing the words themselves.
@@ -188,9 +246,398 @@ fn hash160(bytes: &[u8]) -> [u8; 20] {
     out
 }
 
+// ---------------------------------------------------------------------------
+// protection at rest
+// ---------------------------------------------------------------------------
+
+/// What is actually protecting the stored seed. Every surface that shows an
+/// identity reports this, because the difference between the two is the whole
+/// security posture of the machine and a person cannot infer it from the path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeedProtection {
+    /// The file holds a sealed envelope. The key that opens it is in the OS
+    /// keychain and never touches the identity directory.
+    OsKeychain,
+    /// The file holds the phrase itself at `0600`. Filesystem permissions are
+    /// the entire protection.
+    PlaintextFile,
+}
+
+impl SeedProtection {
+    /// The stable machine name. `oa identity show --json` carries this.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::OsKeychain => "os_keychain",
+            Self::PlaintextFile => "plaintext_file",
+        }
+    }
+
+    pub fn encrypted_at_rest(self) -> bool {
+        matches!(self, Self::OsKeychain)
+    }
+
+    /// The sentence a person reads. It says what is protecting the seed and, for
+    /// the plaintext store, what that protection does not cover — a fallback
+    /// nobody is told about is the same defect as a redaction that reports
+    /// success and leaves the secret in place.
+    pub fn describe(self, path: &Path) -> String {
+        match self {
+            Self::OsKeychain => format!(
+                "Protection: OS keychain. The seed at {} is encrypted \
+                 ({}); the key that opens it is held by the OS keychain under service {}, \
+                 never in the file and never in a backup of it.",
+                path.display(),
+                SEED_ENVELOPE_ALG,
+                IDENTITY_KEYCHAIN_SERVICE
+            ),
+            Self::PlaintextFile => format!(
+                "Protection: NONE. The seed phrase is stored as readable text at {} (mode 0600). \
+                 No OS keychain is available here, so file permissions are the whole protection: \
+                 they stop another local user, and they stop nothing that already runs as you — \
+                 a backup tool, a sync client, or an agent that can read your home directory. \
+                 Treat this file the way you would treat the phrase written on paper.",
+                path.display()
+            ),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// the sealed envelope
+// ---------------------------------------------------------------------------
+
+/// The on-disk format both CLIs read and write. Changing any of these three
+/// constants makes one CLI unable to open the other's seed.
+const SEED_ENVELOPE_SCHEMA: &str = "openagents.cli_identity_seed.v1";
+const SEED_ENVELOPE_ALG: &str = "chacha20-poly1305";
+/// Bound into the AEAD as additional data, so an envelope cannot be replayed
+/// under a different schema.
+const SEED_ENVELOPE_AAD: &[u8] = SEED_ENVELOPE_SCHEMA.as_bytes();
+
+#[derive(Serialize, Deserialize)]
+struct SeedEnvelope {
+    schema: String,
+    alg: String,
+    /// The 12-byte AEAD nonce, hex. Fresh on every write.
+    nonce: String,
+    /// Ciphertext with the 16-byte Poly1305 tag appended, hex.
+    ciphertext: String,
+}
+
+/// True when the file at hand is a sealed envelope rather than a bare mnemonic.
+/// A BIP-39 phrase can never start with `{`, so the two formats cannot be
+/// confused and an old plaintext seed is still recognised for migration.
+fn looks_sealed(text: &str) -> bool {
+    text.trim_start().starts_with('{')
+}
+
+fn seal_phrase(phrase: &str, key: &[u8; 32]) -> Result<String, IdentityError> {
+    let unbound = UnboundKey::new(&CHACHA20_POLY1305, key)
+        .map_err(|_| IdentityError::Keychain("the wrapping key is not usable".to_string()))?;
+    let sealing = LessSafeKey::new(unbound);
+
+    let mut nonce_bytes = [0u8; NONCE_LEN];
+    SystemRandom::new()
+        .fill(&mut nonce_bytes)
+        .map_err(|_| IdentityError::Derivation("the system random source failed".to_string()))?;
+
+    let mut in_out = phrase.as_bytes().to_vec();
+    sealing
+        .seal_in_place_append_tag(
+            Nonce::assume_unique_for_key(nonce_bytes),
+            Aad::from(SEED_ENVELOPE_AAD),
+            &mut in_out,
+        )
+        .map_err(|_| IdentityError::Derivation("the seed could not be encrypted".to_string()))?;
+
+    let envelope = SeedEnvelope {
+        schema: SEED_ENVELOPE_SCHEMA.to_string(),
+        alg: SEED_ENVELOPE_ALG.to_string(),
+        nonce: to_hex(&nonce_bytes),
+        ciphertext: to_hex(&in_out),
+    };
+    in_out.zeroize();
+    serde_json::to_string(&envelope)
+        .map_err(|e| IdentityError::Derivation(format!("the envelope could not be encoded: {e}")))
+}
+
+fn open_envelope(text: &str, key: &[u8; 32], path: &Path) -> Result<String, IdentityError> {
+    let envelope: SeedEnvelope = serde_json::from_str(text.trim())
+        .map_err(|_| IdentityError::Undecryptable(path.to_path_buf()))?;
+    if envelope.schema != SEED_ENVELOPE_SCHEMA || envelope.alg != SEED_ENVELOPE_ALG {
+        return Err(IdentityError::Undecryptable(path.to_path_buf()));
+    }
+    let nonce_bytes: [u8; NONCE_LEN] = from_hex(&envelope.nonce)
+        .and_then(|bytes| <[u8; NONCE_LEN]>::try_from(bytes.as_slice()).ok())
+        .ok_or_else(|| IdentityError::Undecryptable(path.to_path_buf()))?;
+    let mut in_out = from_hex(&envelope.ciphertext)
+        .ok_or_else(|| IdentityError::Undecryptable(path.to_path_buf()))?;
+
+    let unbound = UnboundKey::new(&CHACHA20_POLY1305, key)
+        .map_err(|_| IdentityError::Keychain("the wrapping key is not usable".to_string()))?;
+    let opening = LessSafeKey::new(unbound);
+    let opened = opening
+        .open_in_place(
+            Nonce::assume_unique_for_key(nonce_bytes),
+            Aad::from(SEED_ENVELOPE_AAD),
+            &mut in_out,
+        )
+        .map_err(|_| IdentityError::Undecryptable(path.to_path_buf()))?;
+    let phrase = String::from_utf8(opened.to_vec())
+        .map_err(|_| IdentityError::Undecryptable(path.to_path_buf()))?;
+    in_out.zeroize();
+    Ok(normalize_phrase(&phrase))
+}
+
+// ---------------------------------------------------------------------------
+// where the wrapping key lives
+// ---------------------------------------------------------------------------
+
+/// The service name the OS keychain files the identity wrapping key under. It is
+/// deliberately not `openagents-cli` (account tokens) or `openagents-cli-computer`
+/// (machine tokens), so no two of the three can overwrite each other. The
+/// TypeScript CLI uses the same one.
+pub const IDENTITY_KEYCHAIN_SERVICE: &str = "openagents-cli-identity";
+
+/// Set this to opt out of the keychain and store the phrase as plaintext at
+/// `0600`. It exists because a keychain that prompts is worse than no keychain
+/// on an unattended host, and because the choice should be stateable rather than
+/// discovered. It is never selected implicitly.
+pub const PLAINTEXT_ENV: &str = "OPENAGENTS_IDENTITY_PLAINTEXT";
+
+/// Where the 32-byte wrapping key lives. One implementation talks to the OS
+/// keychain; the others exist so a test exercises the real seal, open, and
+/// migration paths without touching the developer's own keychain.
+pub trait SeedKeyStore: Send + Sync {
+    /// `Ok(None)` means the store answered and holds no key for this identity
+    /// directory. `Err(NoKeychain)` means there is no store on this machine,
+    /// which selects the plaintext file. Any other error must not be read as
+    /// "no key": minting a second key would orphan the sealed seed.
+    fn get(&self) -> Result<Option<[u8; 32]>, IdentityError>;
+    /// Store the key and prove it by reading it back. A store that reports
+    /// success without keeping the value would seal a seed nobody can open.
+    fn put(&self, key: &[u8; 32]) -> Result<(), IdentityError>;
+    /// Best-effort removal. Used by `forget`, so a deleted identity does not
+    /// leave its key behind.
+    fn delete(&self);
+}
+
+/// The OS keychain: `security` on macOS, `secret-tool` on Linux.
+///
+/// The record is keyed by the identity directory, exactly as the credential
+/// store keys tokens by origin, so a second identity directory gets a second key
+/// and a test with a temporary directory can never reach the developer's own.
+pub struct OsKeychainKeyStore {
+    account: String,
+}
+
+impl OsKeychainKeyStore {
+    pub fn for_directory(directory: &Path) -> Self {
+        Self {
+            account: directory.display().to_string(),
+        }
+    }
+
+    fn get_command(&self) -> Option<Command> {
+        if cfg!(target_os = "macos") {
+            let mut command = Command::new("security");
+            command.args([
+                "find-generic-password",
+                "-a",
+                &self.account,
+                "-s",
+                IDENTITY_KEYCHAIN_SERVICE,
+                "-w",
+            ]);
+            command.stderr(Stdio::null());
+            Some(command)
+        } else if cfg!(target_os = "linux") {
+            let mut command = Command::new("secret-tool");
+            command.args([
+                "lookup",
+                "service",
+                IDENTITY_KEYCHAIN_SERVICE,
+                "account",
+                &self.account,
+            ]);
+            command.stderr(Stdio::null());
+            Some(command)
+        } else {
+            None
+        }
+    }
+}
+
+impl SeedKeyStore for OsKeychainKeyStore {
+    fn get(&self) -> Result<Option<[u8; 32]>, IdentityError> {
+        let Some(mut command) = self.get_command() else {
+            return Err(IdentityError::NoKeychain);
+        };
+        // A `security` or `secret-tool` that will not start is not an empty
+        // store: this platform has no keychain, and that is a different answer.
+        let output = command.output().map_err(|_| IdentityError::NoKeychain)?;
+        if !output.status.success() {
+            return Ok(None);
+        }
+        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if value.is_empty() {
+            return Ok(None);
+        }
+        match from_hex(&value).and_then(|bytes| <[u8; 32]>::try_from(bytes.as_slice()).ok()) {
+            Some(key) => Ok(Some(key)),
+            // Never regenerate here. A record that is not a wrapping key means
+            // something else wrote it, and overwriting it would make the sealed
+            // seed permanently unopenable.
+            None => Err(IdentityError::Keychain(format!(
+                "the record under service {} is not an identity wrapping key",
+                IDENTITY_KEYCHAIN_SERVICE
+            ))),
+        }
+    }
+
+    fn put(&self, key: &[u8; 32]) -> Result<(), IdentityError> {
+        let encoded = to_hex(key);
+        let stored = if cfg!(target_os = "macos") {
+            // `security` reads the value from argv, so the wrapping key is
+            // briefly visible to `ps`. The seed phrase never is: it goes to the
+            // file sealed, and the key alone opens nothing without that file.
+            Command::new("security")
+                .args([
+                    "add-generic-password",
+                    "-U",
+                    "-a",
+                    &self.account,
+                    "-s",
+                    IDENTITY_KEYCHAIN_SERVICE,
+                    "-w",
+                    &encoded,
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|status| status.success())
+                .map_err(|_| IdentityError::NoKeychain)?
+        } else if cfg!(target_os = "linux") {
+            let child = Command::new("secret-tool")
+                .args([
+                    "store",
+                    "--label=OpenAgents identity",
+                    "service",
+                    IDENTITY_KEYCHAIN_SERVICE,
+                    "account",
+                    &self.account,
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+            match child {
+                Ok(mut child) => {
+                    if let Some(mut pipe) = child.stdin.take() {
+                        let _ = pipe.write_all(encoded.as_bytes());
+                    }
+                    matches!(child.wait(), Ok(status) if status.success())
+                }
+                Err(_) => return Err(IdentityError::NoKeychain),
+            }
+        } else {
+            return Err(IdentityError::NoKeychain);
+        };
+        if !stored {
+            return Err(IdentityError::Keychain(
+                "the OS keychain refused to store the identity wrapping key".to_string(),
+            ));
+        }
+        match self.get()? {
+            Some(read_back) if read_back == *key => Ok(()),
+            _ => Err(IdentityError::Keychain(
+                "the OS keychain did not return the key that was just written".to_string(),
+            )),
+        }
+    }
+
+    fn delete(&self) {
+        if cfg!(target_os = "macos") {
+            let _ = Command::new("security")
+                .args([
+                    "delete-generic-password",
+                    "-a",
+                    &self.account,
+                    "-s",
+                    IDENTITY_KEYCHAIN_SERVICE,
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        } else if cfg!(target_os = "linux") {
+            let _ = Command::new("secret-tool")
+                .args([
+                    "clear",
+                    "service",
+                    IDENTITY_KEYCHAIN_SERVICE,
+                    "account",
+                    &self.account,
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+}
+
+/// A machine with no keychain: CI, a container, an unattended agent host. Every
+/// call says so, which is what selects the plaintext store and the warning that
+/// goes with it.
+pub struct NoKeyStore;
+
+impl SeedKeyStore for NoKeyStore {
+    fn get(&self) -> Result<Option<[u8; 32]>, IdentityError> {
+        Err(IdentityError::NoKeychain)
+    }
+    fn put(&self, _key: &[u8; 32]) -> Result<(), IdentityError> {
+        Err(IdentityError::NoKeychain)
+    }
+    fn delete(&self) {}
+}
+
+/// A keychain that lives for the length of one test, so the seal, open, and
+/// migration paths are exercised for real without writing to the developer's own
+/// keychain or depending on one existing.
+#[derive(Default)]
+pub struct InMemoryKeyStore {
+    key: Mutex<Option<[u8; 32]>>,
+}
+
+impl InMemoryKeyStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl SeedKeyStore for InMemoryKeyStore {
+    fn get(&self) -> Result<Option<[u8; 32]>, IdentityError> {
+        Ok(*self.key.lock().unwrap())
+    }
+    fn put(&self, key: &[u8; 32]) -> Result<(), IdentityError> {
+        *self.key.lock().unwrap() = Some(*key);
+        Ok(())
+    }
+    fn delete(&self) {
+        *self.key.lock().unwrap() = None;
+    }
+}
+
+/// A seed read back off disk, and what was protecting it there.
+pub struct StoredSeed {
+    /// The mnemonic. Secret; there is deliberately no `Debug`.
+    pub phrase: String,
+    pub protection: SeedProtection,
+}
+
 /// Where the seed lives on disk, and the only thing that touches it.
 pub struct SeedStore {
     directory: PathBuf,
+    keys: Box<dyn SeedKeyStore>,
 }
 
 impl SeedStore {
@@ -207,15 +654,35 @@ impl SeedStore {
         }
     }
 
+    /// The production store: the OS keychain holds the wrapping key, unless
+    /// [`PLAINTEXT_ENV`] says otherwise.
     pub fn new(directory: Option<PathBuf>) -> Self {
-        Self {
-            directory: directory.unwrap_or_else(Self::default_directory),
-        }
+        let directory = directory.unwrap_or_else(Self::default_directory);
+        let keys: Box<dyn SeedKeyStore> = if plaintext_requested() {
+            Box::new(NoKeyStore)
+        } else {
+            Box::new(OsKeychainKeyStore::for_directory(&directory))
+        };
+        Self { directory, keys }
     }
 
-    /// The seed file itself: one line, the mnemonic, mode `0600`.
+    /// A store with the wrapping key held somewhere a test controls, so the seal,
+    /// open, and migration paths run for real without touching the developer's
+    /// own keychain. Mirrors `CredentialStore::isolated`.
+    pub fn with_key_store(directory: PathBuf, keys: Box<dyn SeedKeyStore>) -> Self {
+        Self { directory, keys }
+    }
+
+    /// The seed file: a sealed envelope under the OS keychain, or the mnemonic
+    /// itself where there is no keychain. Mode `0600` either way.
     pub fn path(&self) -> PathBuf {
         self.directory.join("seed")
+    }
+
+    /// The path the atomic rewrite stages through. Named so `forget` and the
+    /// write path can both make sure a crashed write leaves nothing behind.
+    fn temp_path(&self) -> PathBuf {
+        self.directory.join("seed.tmp")
     }
 
     /// True when a seed is already stored. Presence only; the bytes stay on disk.
@@ -223,41 +690,171 @@ impl SeedStore {
         self.path().is_file()
     }
 
-    /// Read the stored mnemonic. This is the only function that returns secret
-    /// material, and every caller either derives from it or hands it to the reader
-    /// who asked for a backup.
-    pub fn read_phrase(&self) -> Result<Option<String>, IdentityError> {
+    /// What a write would use on this machine right now. `Err` only when the
+    /// keychain is present but unusable, which must not be silently downgraded
+    /// to plaintext.
+    pub fn available_protection(&self) -> Result<SeedProtection, IdentityError> {
+        match self.keys.get() {
+            Ok(_) => Ok(SeedProtection::OsKeychain),
+            Err(IdentityError::NoKeychain) => Ok(SeedProtection::PlaintextFile),
+            Err(other) => Err(other),
+        }
+    }
+
+    /// What is protecting the seed that is on disk now, without opening it.
+    /// `Ok(None)` when nothing is stored.
+    pub fn protection_on_disk(&self) -> Result<Option<SeedProtection>, IdentityError> {
         let path = self.path();
         if !path.is_file() {
             return Ok(None);
         }
-        let phrase = normalize_phrase(&fs::read_to_string(&path)?);
-        Ok(if phrase.is_empty() { None } else { Some(phrase) })
+        let text = fs::read_to_string(&path)?;
+        if text.trim().is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(if looks_sealed(&text) {
+            SeedProtection::OsKeychain
+        } else {
+            SeedProtection::PlaintextFile
+        }))
     }
 
-    /// Write the mnemonic, `0600` inside a `0700` directory, after validating it.
-    /// The validation is not politeness: a phrase stored here that does not validate
-    /// would be an identity nobody can recover from its own backup.
+    /// Read the stored seed and report what was protecting it. This and
+    /// [`SeedStore::read_phrase`] are the only functions that return secret
+    /// material.
+    pub fn load(&self) -> Result<Option<StoredSeed>, IdentityError> {
+        let path = self.path();
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let text = fs::read_to_string(&path)?;
+        if text.trim().is_empty() {
+            return Ok(None);
+        }
+        if !looks_sealed(&text) {
+            let phrase = normalize_phrase(&text);
+            return Ok(Some(StoredSeed {
+                phrase,
+                protection: SeedProtection::PlaintextFile,
+            }));
+        }
+        // Sealed. A keychain that cannot be read is never reported as "no seed":
+        // that reads as an identity that vanished, and the next command would
+        // offer to make a new one.
+        let key = self
+            .keys
+            .get()?
+            .ok_or_else(|| IdentityError::SealedWithoutKey(path.clone()))?;
+        let phrase = open_envelope(&text, &key, &path)?;
+        Ok(Some(StoredSeed {
+            phrase,
+            protection: SeedProtection::OsKeychain,
+        }))
+    }
+
+    /// Read the stored mnemonic. Every caller either derives from it or hands it
+    /// to the reader who asked for a backup.
+    pub fn read_phrase(&self) -> Result<Option<String>, IdentityError> {
+        Ok(self.load()?.map(|stored| stored.phrase))
+    }
+
+    /// Write the mnemonic under the best protection this machine has, `0600`
+    /// inside a `0700` directory, after validating it. The validation is not
+    /// politeness: a phrase stored here that does not validate would be an
+    /// identity nobody can recover from its own backup.
+    ///
+    /// The write is atomic — staged in a sibling file and renamed over the
+    /// target — so the phrase is never in two files at once and a crash mid-write
+    /// leaves the previous seed intact rather than half of the new one.
     pub fn write_phrase(&self, phrase: &str) -> Result<PathBuf, IdentityError> {
+        Ok(self.store_phrase(phrase)?.0)
+    }
+
+    /// The same write, and the protection it landed under.
+    pub fn store_phrase(&self, phrase: &str) -> Result<(PathBuf, SeedProtection), IdentityError> {
         let normalized = normalize_phrase(phrase);
         if !is_valid_seed_phrase(&normalized) {
             return Err(IdentityError::InvalidPhrase);
         }
+        let protection = self.available_protection()?;
+        let body = match protection {
+            SeedProtection::OsKeychain => {
+                let key = match self.keys.get()? {
+                    Some(key) => key,
+                    None => {
+                        let mut fresh = [0u8; 32];
+                        SystemRandom::new().fill(&mut fresh).map_err(|_| {
+                            IdentityError::Derivation("the system random source failed".to_string())
+                        })?;
+                        // Prove the keychain kept it before anything is sealed
+                        // under it. Sealing first would produce a file no key
+                        // opens.
+                        self.keys.put(&fresh)?;
+                        fresh
+                    }
+                };
+                let sealed = seal_phrase(&normalized, &key)?;
+                format!("{}\n", sealed)
+            }
+            SeedProtection::PlaintextFile => format!("{}\n", normalized),
+        };
+        let path = self.write_atomic(body.as_bytes())?;
+        Ok((path, protection))
+    }
+
+    fn write_atomic(&self, bytes: &[u8]) -> Result<PathBuf, IdentityError> {
         fs::create_dir_all(&self.directory)?;
         Self::set_mode(&self.directory, 0o700)?;
         let path = self.path();
-        fs::write(&path, format!("{}\n", normalized))?;
+        let temp = self.temp_path();
+        let _ = fs::remove_file(&temp);
+        fs::write(&temp, bytes)?;
+        Self::set_mode(&temp, 0o600)?;
+        if let Err(error) = fs::rename(&temp, &path) {
+            let _ = fs::remove_file(&temp);
+            return Err(IdentityError::Io(error));
+        }
         Self::set_mode(&path, 0o600)?;
         Ok(path)
     }
 
-    /// Remove the stored seed. Idempotent, and it deletes nothing else.
+    /// Move a plaintext seed under the OS keychain, and report what is protecting
+    /// it afterwards. `Ok(None)` when nothing is stored.
+    ///
+    /// The rewrite lands on the same path by rename, so there is never a moment
+    /// with the phrase in two files, and the plaintext is gone the instant the
+    /// sealed envelope arrives. On a machine with no keychain this changes
+    /// nothing and reports [`SeedProtection::PlaintextFile`], which is what the
+    /// caller then has to say out loud.
+    pub fn protect(&self) -> Result<Option<SeedProtection>, IdentityError> {
+        let Some(on_disk) = self.protection_on_disk()? else {
+            return Ok(None);
+        };
+        if on_disk == SeedProtection::OsKeychain {
+            return Ok(Some(SeedProtection::OsKeychain));
+        }
+        if self.available_protection()? != SeedProtection::OsKeychain {
+            return Ok(Some(SeedProtection::PlaintextFile));
+        }
+        let Some(stored) = self.load()? else {
+            return Ok(None);
+        };
+        let (_, protection) = self.store_phrase(&stored.phrase)?;
+        Ok(Some(protection))
+    }
+
+    /// Remove the stored seed, and the wrapping key with it. Idempotent, and it
+    /// deletes nothing else. Leaving the key behind would leave a keychain record
+    /// for an identity that no longer exists.
     pub fn forget(&self) -> Result<bool, IdentityError> {
         let path = self.path();
+        let _ = fs::remove_file(self.temp_path());
         if !path.exists() {
+            self.keys.delete();
             return Ok(false);
         }
         fs::remove_file(&path)?;
+        self.keys.delete();
         Ok(true)
     }
 
@@ -279,5 +876,18 @@ impl SeedStore {
     #[cfg(not(unix))]
     fn set_mode(_path: &std::path::Path, _mode: u32) -> Result<(), IdentityError> {
         Ok(())
+    }
+}
+
+/// True when the environment asks for the plaintext store. Anything but an
+/// explicit off value counts, so `=1`, `=true`, and `=yes` all work and a typo
+/// does not silently leave the keychain on when the operator meant it off.
+fn plaintext_requested() -> bool {
+    match std::env::var(PLAINTEXT_ENV) {
+        Ok(value) => {
+            let value = value.trim().to_ascii_lowercase();
+            !(value.is_empty() || value == "0" || value == "false" || value == "no")
+        }
+        Err(_) => false,
     }
 }

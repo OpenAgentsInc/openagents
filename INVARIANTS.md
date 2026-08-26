@@ -1079,6 +1079,31 @@ come from the Freerange teardown
   that prints the phrase and it refuses `--json`, no command prints an `nsec` or
   a raw private key, and `openagents trace redact` removes seed phrases (word
   list-gated) and `nsec`/`xprv`-family keys from a redacted export.
+- The seed is encrypted at rest wherever the machine can hold a key. Both CLIs
+  seal the phrase with ChaCha20-Poly1305 under a 32-byte wrapping key held in
+  the OS keychain (`security` on macOS, `secret-tool` on Linux) under service
+  `openagents-cli-identity`, keyed by the identity directory; the key never
+  enters the identity directory, so a copy of that directory is not an identity.
+  The envelope (`openagents.cli_identity_seed.v1`), the AEAD, the keychain
+  service, and the account key are one contract across
+  `crates/openagents-cli/src/identity.rs` and
+  `packages/openagents-cli/src/seed-identity.ts`: a format only one CLI
+  understands makes the other a downgrade attack on it, because both read one
+  file at one path.
+- Where no keychain exists — CI, a container, an unattended agent host — the
+  phrase is stored as plaintext `0600` and every surface that shows an identity
+  must say so. `identity show`, `create`, `import`, and `backup` carry the
+  protection sentence, and `--json` carries `seed_protection` and
+  `seed_encrypted_at_rest`. A silent fall back to plaintext is prohibited: it
+  reads as protection that is not there. `OPENAGENTS_IDENTITY_PLAINTEXT` selects
+  that store deliberately and is never applied implicitly.
+- A plaintext seed written before this was migrated on the next `identity`
+  command by renaming the sealed envelope over the same path, so the phrase is
+  never in two places at once. Coverage is
+  `crates/openagents-cli/tests/identity_test.rs` and
+  `packages/openagents-cli/test/seed-identity.test.ts`, which assert the bytes on
+  disk carry no word of the phrase, and that migration preserves the `npub`
+  while removing the plaintext.
 - The wallet receives; it does not spend. The spending rail is an owner decision
   that is not recorded, so no CLI surface may imply a spend path exists until it
   is.

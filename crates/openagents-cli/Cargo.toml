@@ -48,6 +48,10 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # compilation cache this host has no use for; these four are what a
 # `packet-v0` core module needs.
 wasmtime = { version = "36", default-features = false, features = ["cranelift", "runtime", "std", "parallel-compilation"] }
+# The identity seed is sealed with ChaCha20-Poly1305 before it reaches disk.
+# `ring` is already in the tree underneath `rustls`, so this adds an audited
+# AEAD and CSPRNG without adding a crate to the lock.
+ring = "0.17"
 
 [dev-dependencies]
 tempfile = "3"

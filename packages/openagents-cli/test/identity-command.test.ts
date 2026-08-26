@@ -21,7 +21,7 @@ import { environmentLayerFromValues } from "../src/environment.js";
 import { outputTestLayer, type OutputDocument, type OutputMode } from "../src/output.js";
 import { persistedConfigurationTestLayer } from "../src/persisted-configuration.js";
 import { secretInputTestLayer } from "../src/secret-input.js";
-import { seedPath } from "../src/seed-identity.js";
+import { PLAINTEXT_ENV, seedPath } from "../src/seed-identity.js";
 import { terminalSessionTestLayer } from "../src/terminal-session.js";
 
 const TEST_PHRASE =
@@ -36,6 +36,11 @@ interface Written {
 
 const harness = (stdin = TEST_PHRASE) => {
   process.env["OPENAGENTS_IDENTITY_DIR"] = mkdtempSync(join(tmpdir(), "identity-command-"));
+  // The headless posture on purpose. It is what CI and an unattended agent host
+  // actually have, it is the case the warning below exists for, and it keeps a
+  // developer's own OS keychain out of the test run. The encrypted store is
+  // covered end to end in `seed-identity.test.ts`.
+  process.env[PLAINTEXT_ENV] = "1";
   const written: Array<Written> = [];
   const layer = Layer.mergeAll(
     NodeServices.layer,
@@ -72,6 +77,7 @@ const messageOf = (error: unknown): string =>
 
 afterEach(() => {
   delete process.env["OPENAGENTS_IDENTITY_DIR"];
+  delete process.env[PLAINTEXT_ENV];
 });
 
 describe("openagents identity", () => {
@@ -160,5 +166,47 @@ describe("openagents identity", () => {
     await cli.run(["identity", "import"]);
     await cli.run(["identity", "show"]);
     expect(cli.last()?.document.human.join("\n")).toMatch(/Spending rail: not selected/);
+  });
+
+  /**
+   * The fallback has to reach a person, not just a code path. A CLI that quietly
+   * drops back to plaintext is the same shape of defect as a redaction that
+   * reports success and leaves the secret in place, so every command that shows
+   * an identity says which store it is on and, for the plaintext one, what that
+   * store does not protect against.
+   */
+  it("says the seed is plaintext, on every surface that shows an identity", async () => {
+    const cli = harness();
+
+    await cli.run(["identity", "import"]);
+    const imported = cli.last()?.document.human.join("\n") ?? "";
+    expect(imported).toMatch(/Protection: NONE/);
+    expect(imported).toContain(seedPath());
+    expect(imported).toMatch(/backup tool/);
+
+    await cli.run(["identity", "show"]);
+    expect(cli.last()?.document.human.join("\n")).toMatch(/Protection: NONE/);
+
+    // The person about to write the phrase down is the one who most needs it.
+    await cli.run(["identity", "backup"]);
+    expect(cli.last()?.document.human.join("\n")).toMatch(/Protection: NONE/);
+
+    // And a machine reader gets it as a field, not only as prose.
+    await cli.run(["--json", "identity", "show"]);
+    expect(cli.last()?.document.value).toMatchObject({
+      seed_protection: "plaintext_file",
+      seed_encrypted_at_rest: false,
+      seed_path: seedPath(),
+    });
+  });
+
+  it("says the same thing about a freshly created seed", async () => {
+    const cli = harness();
+    await cli.run(["--json", "identity", "create"]);
+    expect(cli.last()?.document.value).toMatchObject({
+      created: true,
+      seed_protection: "plaintext_file",
+      seed_encrypted_at_rest: false,
+    });
   });
 });
