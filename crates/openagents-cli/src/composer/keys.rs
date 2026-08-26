@@ -184,9 +184,31 @@ pub fn classify_key_event(event: &KeyEvent) -> Option<EditCommand> {
 
 fn shifted_char(character: char) -> char {
     if character.is_ascii_lowercase() {
-        character.to_ascii_uppercase()
-    } else {
-        character
+        return character.to_ascii_uppercase();
+    }
+    match character {
+        '`' => '~',
+        '1' => '!',
+        '2' => '@',
+        '3' => '#',
+        '4' => '$',
+        '5' => '%',
+        '6' => '^',
+        '7' => '&',
+        '8' => '*',
+        '9' => '(',
+        '0' => ')',
+        '-' => '_',
+        '=' => '+',
+        '[' => '{',
+        ']' => '}',
+        '\\' => '|',
+        ';' => ':',
+        '\'' => '"',
+        ',' => '<',
+        '.' => '>',
+        '/' => '?',
+        _ => character,
     }
 }
 
@@ -233,6 +255,14 @@ mod tests {
         assert_eq!(
             classify_key_event(&key(KeyCode::Char('a'), KeyModifiers::SHIFT)),
             Some(EditCommand::Insert('A'))
+        );
+    }
+
+    #[test]
+    fn shift_tilde_on_backtick() {
+        assert_eq!(
+            classify_key_event(&key(KeyCode::Char('`'), KeyModifiers::SHIFT)),
+            Some(EditCommand::Insert('~'))
         );
     }
 

@@ -26,9 +26,9 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use openagents_cli::auth::{CredentialStore, DeviceClient, Secret, open_browser};
+use openagents_cli::composer::ComposerAction;
 use openagents_cli::composer::complete::{Completion, complete};
 use openagents_cli::composer::history::History;
-use openagents_cli::composer::ComposerAction;
 use openagents_cli::runtime::Lane;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -211,7 +211,15 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
             _ => continue,
         };
-        if key.kind != KeyEventKind::Press {
+        if key.kind == KeyEventKind::Repeat
+            && !matches!(
+                key.code,
+                KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete
+            )
+        {
+            continue;
+        }
+        if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             continue;
         }
 
@@ -268,10 +276,8 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             refresh_credit(&tx);
                         }
                         Err(error) => {
-                            ui.entries.push(Entry::new(
-                                Role::Notice,
-                                format!("Login failed: {error}"),
-                            ));
+                            ui.entries
+                                .push(Entry::new(Role::Notice, format!("Login failed: {error}")));
                         }
                     }
                 } else {
@@ -551,7 +557,10 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         }
         Control::ToolOutput { call_id, chunk } => {
             if let Some(entry) = tool_entry(ui, &call_id) {
-                entry.output.get_or_insert_with(String::new).push_str(&chunk);
+                entry
+                    .output
+                    .get_or_insert_with(String::new)
+                    .push_str(&chunk);
                 let seen = entry.output.clone();
                 if let Some(tool) = entry.tool.as_mut() {
                     tool.output = seen;
@@ -769,8 +778,10 @@ mod tests {
     fn the_completer_offers_exactly_the_handled_commands() {
         let mut offered = command_names();
         offered.sort_unstable();
-        let mut listed: Vec<&str> =
-            crate::commands::COMMANDS.iter().map(|(name, _)| *name).collect();
+        let mut listed: Vec<&str> = crate::commands::COMMANDS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
         listed.sort_unstable();
         assert_eq!(offered, listed);
     }
