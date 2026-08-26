@@ -570,6 +570,20 @@ struct StubController {
 }
 
 fn start_stub_controller(machine_id: &str, run_payload: serde_json::Value) -> StubController {
+    start_stub_controller_pushing(machine_id, "run", run_payload)
+}
+
+/// The same peer, pushing a request of a named kind.
+///
+/// `OpenAgentsWeb.ComputerChannel` pushes a request under the name of its kind
+/// — `push(socket, Atom.to_string(kind), …)` for `kind in [:run, :devin,
+/// :agent]` — so `run` is one of three event names that can arrive, and the
+/// stub needs to be able to send the other two.
+fn start_stub_controller_pushing(
+    machine_id: &str,
+    event: &'static str,
+    run_payload: serde_json::Value,
+) -> StubController {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let (sender, frames) = channel();
@@ -589,7 +603,7 @@ fn start_stub_controller(machine_id: &str, run_payload: serde_json::Value) -> St
         let _ = socket.send(tungstenite::Message::Text(reply.to_string().into()));
         // hello
         let _ = socket.read();
-        let ask = serde_json::json!([serde_json::Value::Null, "9", topic, "run", run_payload]);
+        let ask = serde_json::json!([serde_json::Value::Null, "9", topic, event, run_payload]);
         let _ = socket.send(tungstenite::Message::Text(ask.to_string().into()));
 
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
@@ -706,6 +720,73 @@ fn test_up_refuses_a_command_outside_the_allowlist_and_journals_it() {
         "journal entry: {}",
         serde_json::to_string(recorded).unwrap()
     );
+}
+
+/// Every delegation kind the channel can push gets an answer.
+///
+/// `OpenAgentsWeb.ComputerChannel` pushes a request under the name of its kind
+/// and then waits for a terminal frame carrying that `request_id`:
+/// `handle_info({:computer_request, kind, request_id, payload, from})` accepts
+/// `kind in [:run, :devin, :agent]` and tracks the caller until an `exit` or a
+/// `refused` comes back. This build carries neither ACP delegation nor Devin,
+/// so both must answer `refused`.
+///
+/// `agent` did. `devin` fell through the frame match's catch-all arm and was
+/// dropped: no frame, no journal line, and a server left waiting on a request
+/// the controller had already thrown away. A silent drop is the one answer a
+/// request kind must never get, which is why this walks the kinds rather than
+/// asserting the one that happened to be handled.
+#[test]
+fn test_up_refuses_every_delegation_kind_it_cannot_serve() {
+    for (index, event) in ["agent", "devin"].into_iter().enumerate() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("checkout");
+        std::fs::create_dir_all(&root).unwrap();
+        let config = config_at(directory.path(), Tier::Curated, vec![root.clone()]);
+        let journal = Journal::at(directory.path().join("journal.ndjson"));
+        let machine = format!("machine-delegation-{index}");
+        let request_id = format!("req-{event}");
+
+        let stub = start_stub_controller_pushing(
+            &machine,
+            event,
+            serde_json::json!({
+                "request_id": request_id,
+                "prompt": "do the thing",
+                "cwd": root.display().to_string(),
+            }),
+        );
+
+        serve(
+            &stub.origin,
+            &openagents_cli::auth::Secret::new("smct_stub"),
+            &machine,
+            &serde_json::json!({"agent_version": "test"}),
+            &config,
+            &journal,
+            |_| {},
+        );
+
+        let refused = next_frame(&stub.frames, "refused");
+        assert_eq!(
+            refused.get("request_id").and_then(|v| v.as_str()),
+            Some(request_id.as_str()),
+            "a `{event}` request must be answered on its own request_id: {refused}"
+        );
+        assert_eq!(
+            refused.get("reason").and_then(|v| v.as_str()),
+            Some("unsupported"),
+            "a `{event}` request this build cannot serve must say so: {refused}"
+        );
+
+        let entries = journal.read(50).unwrap();
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.request_id == request_id && entry.outcome == "refused"),
+            "the `{event}` refusal must reach the local journal too"
+        );
+    }
 }
 
 /// An allowed command runs, streams its real output, and reports a real exit.

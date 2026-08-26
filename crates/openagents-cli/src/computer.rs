@@ -2290,12 +2290,22 @@ fn serve_connection(
                     &cancellations,
                 );
             }
-            "agent" => {
-                // ACP delegation is a separate subsystem this build does not
-                // carry. Saying so is the honest answer; pretending to accept it
-                // would leave the server waiting for output that never comes.
+            // ACP delegation is a separate subsystem this build does not carry,
+            // and `devin` is a second delegation kind it does not carry either.
+            // Saying so is the honest answer; pretending to accept either would
+            // leave the server waiting for output that never comes.
+            //
+            // `OpenAgentsWeb.ComputerChannel` pushes a request by the name of
+            // its kind — `handle_info({:computer_request, kind, …})` for `kind
+            // in [:run, :devin, :agent]` does `push(socket,
+            // Atom.to_string(kind), …)` — so every one of those names arrives
+            // here as an event carrying a `request_id` the server is tracking.
+            // `devin` used to fall through to the catch-all below and be
+            // dropped without a frame or a journal line, which is the exact
+            // failure this arm was written to prevent, one kind over.
+            "agent" | "devin" => {
                 let request = CommandRequest {
-                    argv: vec!["<agent>".to_string()],
+                    argv: vec![format!("<{event}>")],
                     cwd: String::new(),
                 };
                 let _ = journal.append(
