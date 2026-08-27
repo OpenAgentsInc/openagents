@@ -28,6 +28,9 @@ Read in order:
    and compute plumbing, shared by Terminal-Bench and CoderBench alike.
 5. [`roadmap.md`](roadmap.md) — the build order as tracker epics and issues,
    with the first wave filed in the tracker.
+6. [`delegation.md`](delegation.md) — how to run the roadmap's waves on
+   parallel subagents: worktrees per issue, waves computed from the
+   dependency graph, per-worker gates and the heartbeat rule.
 
 ## One-paragraph version
 

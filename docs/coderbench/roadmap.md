@@ -170,3 +170,13 @@ Later-wave work (run status/cancel, Box lanes, distiller, TUI pane, web
 views, second-domain build-out) files as its children close. When an issue
 closes, this file's next revision folds the outcome in; the tracker remains
 authoritative for state.
+
+## Running the waves on subagents
+
+[`delegation.md`](delegation.md) is the operating instruction for executing
+these waves with maximum parallelism: waves computed from the dependency
+graph, one fresh worktree per issue per worker, per-worker gates
+(`pnpm run check` + crate tests), evidence-on-close, heartbeat/reap rules
+for stragglers, and the orchestrator's role (rosters and merges, never
+code). Wave 0 — #167, #170, #173, #176, plus manual #175 — runs five wide
+today.
