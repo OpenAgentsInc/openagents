@@ -53,6 +53,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "run",
         "run a command here and show its output: /run cargo test",
     ),
+    (
+        "swarm",
+        "the local swarm: /swarm list, /swarm tree, /swarm inbox [id], /swarm send <id> <text>",
+    ),
 ];
 
 /// The keys the frame handles. Listed by `/help`, and every one of them is
@@ -103,6 +107,7 @@ pub fn handles(name: &str) -> bool {
             | "queue"
             | "resume"
             | "run"
+            | "swarm"
     )
 }
 
@@ -155,6 +160,7 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
         "queue" => output(ui, "Use `/queue` or `/queue clear`."),
         "diff" => spawn_diff(ui, arguments, tx, cwd),
         "run" => spawn_run(ui, &rest, tx, cwd),
+        "swarm" => run_swarm_command(ui, &arguments, &rest),
         "resume" => spawn_resume(ui, &arguments, tx, cwd),
         other => output(
             ui,
@@ -743,4 +749,213 @@ mod tests {
         assert!(text.contains("truncated"), "it was not cut");
         assert!(text.len() < OUTPUT_LIMIT + 200);
     }
+}
+
+/// `/swarm` — the local swarm, from inside a session.
+///
+/// `list` and `tree` read the registrations; `inbox` reads this (or another)
+/// session's inbox; `send` delivers from this session, so the outbox lands in
+/// this session's own store directory and the exchange is attributable in
+/// both transcripts.
+fn run_swarm_command(ui: &mut CoderUi, arguments: &[String], rest: &str) {
+    use crate::swarm;
+    let home = crate::session_store::default_root();
+    let Some(sub) = arguments.first().map(String::as_str) else {
+        output(
+            ui,
+            "Use `/swarm list`, `/swarm tree`, `/swarm inbox [id]`, or `/swarm send <id> <text>`.",
+        );
+        return;
+    };
+    match sub {
+        "list" => match swarm::list(&home) {
+            Ok(registrations) if registrations.is_empty() => {
+                output(ui, "No sessions are registered.");
+            }
+            Ok(registrations) => {
+                let mut lines = vec![format!(
+                    "{:<6}  {:<38}  {:<6}  {}",
+                    "state", "session", "role", "cwd"
+                )];
+                for registration in &registrations {
+                    lines.push(format!(
+                        "{:<6}  {:<38}  {:<6}  {}",
+                        registration.state().as_str(),
+                        registration.session_id,
+                        registration.role,
+                        registration.cwd,
+                    ));
+                }
+                output(ui, &lines.join("\n"));
+            }
+            Err(why) => output(ui, &why),
+        },
+        "tree" => match swarm::list(&home) {
+            Ok(registrations) if registrations.is_empty() => {
+                output(ui, "No sessions are registered.");
+            }
+            Ok(registrations) => {
+                let mut lines = Vec::new();
+                fn render(
+                    session: &swarm::Registration,
+                    depth: usize,
+                    all: &[swarm::Registration],
+                    lines: &mut Vec<String>,
+                ) {
+                    let indent = "  ".repeat(depth);
+                    lines.push(format!(
+                        "{indent}{}  {}  {}",
+                        session.state().as_str(),
+                        session.session_id,
+                        session.cwd,
+                    ));
+                    for child in all.iter().filter(|candidate| {
+                        candidate.role == "child"
+                            && candidate.parent.as_deref() == Some(session.session_id.as_str())
+                    }) {
+                        render(child, depth + 1, all, lines);
+                    }
+                }
+                for registration in &registrations {
+                    if registration.role != "child" {
+                        render(registration, 0, &registrations, &mut lines);
+                    }
+                }
+                output(ui, &lines.join("\n"));
+            }
+            Err(why) => output(ui, &why),
+        },
+        "inbox" => {
+            // Default to this session, identified by the store that carries
+            // the composer's transcript — the caller asked from here.
+            let session_id = arguments.get(1).cloned();
+            match resolve_inbox_directory(&session_id) {
+                Ok((directory, named)) => match swarm::read_inbox(&directory) {
+                    Ok(messages) if messages.is_empty() => {
+                        output(ui, &format!("The inbox of {named} is empty."));
+                    }
+                    Ok(messages) => {
+                        let mut lines = Vec::new();
+                        for message in &messages {
+                            lines.push(format!(
+                                "#{} [{}] from {} {}{}",
+                                message
+                                    .sequence
+                                    .map(|sequence| sequence.to_string())
+                                    .unwrap_or_else(|| "?".to_string()),
+                                message.kind,
+                                message.from,
+                                message.id,
+                                if message.read_at_ms.is_some() {
+                                    String::new()
+                                } else {
+                                    "  · unread".to_string()
+                                },
+                            ));
+                            lines.push(message.body.clone());
+                        }
+                        output(ui, &lines.join("\n"));
+                    }
+                    Err(why) => output(ui, &why),
+                },
+                Err(why) => output(ui, &why),
+            }
+        }
+        "send" => {
+            // `/swarm send <id> <text...>`: everything after the target is
+            // the body, verbatim.
+            let Some(target) = arguments.get(1) else {
+                output(ui, "Name a destination: `/swarm send <session-id> <text>`.");
+                return;
+            };
+            let body = rest
+                .strip_prefix(target.as_str())
+                .map(str::trim_start)
+                .unwrap_or_default()
+                .to_string();
+            if body.is_empty() {
+                output(ui, "The message body is empty.");
+                return;
+            }
+            let Some((directory, from_id)) = own_inbox_directory() else {
+                output(
+                    ui,
+                    "This session is not registered with the swarm, so it cannot send.",
+                );
+                return;
+            };
+            match swarm::send(
+                &crate::session_store::default_root(),
+                &from_id,
+                &directory,
+                target,
+                "status",
+                None,
+                false,
+                &body,
+            ) {
+                Ok(report) => {
+                    let mut lines = Vec::new();
+                    for delivery in &report.deliveries {
+                        lines.push(format!(
+                            "Delivered {} to {} (sequence {}).",
+                            report.message_id, delivery.to, delivery.sequence
+                        ));
+                    }
+                    for missed in &report.undeliverable {
+                        lines.push(format!("Not delivered to {}: {}.", missed.to, missed.why));
+                    }
+                    if report.deliveries.is_empty() {
+                        lines.push("No recipient accepted the message.".to_string());
+                    }
+                    output(ui, &lines.join("\n"));
+                }
+                Err(why) => output(ui, &why),
+            }
+        }
+        other => output(
+            ui,
+            &format!("`/swarm {other}` is not a swarm command. Use list, tree, inbox, or send."),
+        ),
+    }
+}
+
+/// Where the named (or this) session's inbox lives.
+fn resolve_inbox_directory(
+    session: &Option<String>,
+) -> Result<(std::path::PathBuf, String), String> {
+    let home = crate::session_store::default_root();
+    match session {
+        Some(id) => {
+            let registration = swarm_load(&home, id)?;
+            let directory = std::path::Path::new(&registration.inbox)
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            Ok((directory, id.clone()))
+        }
+        None => own_inbox_directory()
+            .ok_or_else(|| "No sessions are registered, so there is no inbox to read.".to_string()),
+    }
+}
+
+fn swarm_load(home: &std::path::Path, id: &str) -> Result<crate::swarm::Registration, String> {
+    crate::swarm::load_registration(home, id)?
+        .ok_or_else(|| format!("No session `{id}` is registered."))
+}
+
+/// This session's own swarm identity, when it has one: the registration whose
+/// pid is this process and whose store directory is beside this transcript.
+fn own_inbox_directory() -> Option<(std::path::PathBuf, String)> {
+    let root = crate::session_store::default_root();
+    let registrations = crate::swarm::list(&root).ok()?;
+    let pid = std::process::id();
+    let registration = registrations
+        .iter()
+        .find(|registration| registration.pid == pid && registration.role == "root")?;
+    let directory = std::path::Path::new(&registration.inbox)
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    Some((directory, registration.session_id.clone()))
 }

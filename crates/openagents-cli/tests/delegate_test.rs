@@ -178,10 +178,29 @@ echo '{"type":"result","is_error":false,"result":"first last"}'
             _ => None,
         })
         .expect("nothing was streamed at all");
-    let gap = first_said.duration_since(started);
+    // Order, not latency: the child must stream its first line while the run
+    // is still going, i.e. before the final line and before the fan-out's
+    // total duration is spent. (An absolute 1-second bound raced with machine
+    // load: on a busy box the first line legitimately arrives after 1 s while
+    // the run legitimately lasts 4 s, and the ordering property — the thing
+    // `Command::output()` actually broke — still holds.)
+    let last_said = events
+        .iter()
+        .find_map(|(at, event)| match event {
+            ChildEvent::Output { text, .. } if text.contains("last") => Some(*at),
+            _ => None,
+        })
+        .expect("the last line was never streamed");
+    let total = started.elapsed();
+    let first_gap = first_said.duration_since(started);
     assert!(
-        gap < Duration::from_secs(1),
-        "the first line arrived after {gap:?}, which is the end of the run rather than the start of it"
+        first_said < last_said,
+        "the first line arrived after the last one: {first_said:?} vs {last_said:?}"
+    );
+    assert!(
+        first_gap * 2 < total,
+        "the first line arrived at {first_gap:?} of a {total:?} run, which is the end of the run \
+         rather than the start of it"
     );
 }
 

@@ -159,6 +159,38 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         ui.show_welcome = false;
     }
     let atif_directory = loaded.store.directory().to_path_buf();
+    // This session joins the local swarm: other tabs and, later, delegate
+    // children discover it through this registration. Failing to register is
+    // a notice, never a session-fatal error — a swarm that cannot see one
+    // session is degraded, not broken.
+    let swarm_session_id = loaded.summary.id.clone();
+    let swarm_home = crate::session_store::default_root();
+    let swarm_registration = crate::swarm::Registration {
+        schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
+        session_id: swarm_session_id.clone(),
+        pid: std::process::id(),
+        cwd: cwd.display().to_string(),
+        lane: lane_name.clone(),
+        model: None,
+        role: "root".to_string(),
+        parent: None,
+        worktree: None,
+        inbox: loaded
+            .store
+            .directory()
+            .join("inbox.jsonl")
+            .display()
+            .to_string(),
+        alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
+        started_at_ms: crate::swarm::now_ms(),
+        heartbeat_at_ms: crate::swarm::now_ms(),
+    };
+    if let Err(why) = crate::swarm::register(&swarm_home, &swarm_registration) {
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            format!("Swarm registration failed: {why}"),
+        ));
+    }
     let mut local_store = Some(loaded.store);
     let mut session: Option<Arc<Mutex<Session>>> = None;
 
@@ -612,6 +644,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             ),
         }
     }
+    // Leave the swarm before returning: a registration naming a session that
+    // no longer exists is the stale state every other member then has to
+    // interpret. Best-effort — the exit path owns neither the filesystem nor
+    // a network.
+    let _ = crate::swarm::unregister(&crate::session_store::default_root(), &swarm_session_id);
     Ok(())
 }
 

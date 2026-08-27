@@ -89,6 +89,8 @@ pub enum Commands {
     Plugin(crate::plugins::PluginArgs),
     /// Trace inspection and session export
     Trace(TraceArgs),
+    /// Local swarm: discover sessions and exchange messages between them
+    Swarm(crate::swarm_args::SwarmArgs),
     /// Replace this binary with the release the channel names
     #[command(alias = "self-update")]
     Update(UpdateArgs),
@@ -1617,6 +1619,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
         Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
+        Commands::Swarm(swarm) => crate::swarm_args::run_swarm(swarm.action, cli.json).await,
         Commands::Update(update) => {
             let outcome = crate::update::run(
                 update.channel,
@@ -2327,7 +2330,7 @@ fn home_directory() -> std::path::PathBuf {
 /// (`output.ts`), so a consumer reading `oa … --json` in a loop gets one
 /// document per line; pretty-printing spread each document over dozens of
 /// lines and broke every NDJSON reader that worked against `openagents`.
-fn emit(json: bool, value: &serde_json::Value, human: &[String]) {
+pub(crate) fn emit(json: bool, value: &serde_json::Value, human: &[String]) {
     if json {
         match serde_json::to_string(value) {
             Ok(text) => println!("{}", text),
@@ -2615,8 +2618,10 @@ fn resolve_body(body: Option<String>, body_file: Option<String>) -> Option<Strin
                 }
                 use std::io::Read;
                 let mut bytes = Vec::new();
-                if let Err(error) =
-                    std::io::stdin().lock().take((MAX_BODY_BYTES + 1) as u64).read_to_end(&mut bytes)
+                if let Err(error) = std::io::stdin()
+                    .lock()
+                    .take((MAX_BODY_BYTES + 1) as u64)
+                    .read_to_end(&mut bytes)
                 {
                     fail(&format!(
                         "Could not read the body from standard input: {}",

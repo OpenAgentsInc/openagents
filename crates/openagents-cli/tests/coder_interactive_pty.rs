@@ -921,7 +921,11 @@ mod unix_pty {
         // beside it. Only that dispatch produces these strings.
         let frame = tui.wait_for("`/help` to print the command table", REDRAW, |frame| {
             let transcript = frame.transcript();
-            transcript.contains("clear the transcript") && transcript.contains("Alt+Enter")
+            // The transcript window scrolls: with the command table now one
+            // entry longer, the oldest rows fall off the top on a short
+            // terminal. Read the oldest surviving entry plus the newest, so
+            // the assertion holds at any window height.
+            transcript.contains("Alt+Enter") && transcript.contains("/swarm — the local swarm")
         });
         assert!(
             frame.transcript().contains("/queue"),

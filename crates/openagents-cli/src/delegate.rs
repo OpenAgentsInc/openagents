@@ -76,6 +76,13 @@ pub struct ChildWorkerResult {
     /// Set when the child did not answer, so a caller does not have to read
     /// `output` to find out.
     pub failure: Option<String>,
+    /// The swarm session id the child registered under, when it did. The
+    /// parent can address a running child through it, and the report shows
+    /// the exchange that travelled over it.
+    pub swarm_id: Option<String>,
+    /// Messages the child received while it worked, as (from, kind, body)
+    /// within [`CHILD_RESULT_LIMIT`], read before its workspace went away.
+    pub swarm_messages: Vec<(String, String, String)>,
 }
 
 /// What a child reports while it works.
@@ -465,6 +472,8 @@ impl DelegationSupervisor {
                     pid: None,
                     workspace: None,
                     failure: Some(format!("the child's task ended abnormally: {error}")),
+                    swarm_id: None,
+                    swarm_messages: Vec::new(),
                 }),
             }
         }
@@ -510,6 +519,37 @@ async fn run_child(
     let start = Instant::now();
     let id = task.id;
 
+    // The child joins the local swarm for the fan-out's duration, so the
+    // parent (and any other tab) can address it while it works, and `swarm
+    // tree` shows the fan-out as what it is. The registration is best-effort:
+    // a swarm that cannot see one child is degraded, not broken.
+    let swarm_home = crate::session_store::default_root();
+    let swarm_id = format!(
+        "delegate-{id}-{}",
+        workspace.path.to_string_lossy().replace('/', "_")
+    );
+    let swarm_registration = crate::swarm::Registration {
+        schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
+        session_id: swarm_id.clone(),
+        pid: std::process::id(),
+        cwd: workspace.path.display().to_string(),
+        lane: lane.label().to_string(),
+        model: None,
+        role: "child".to_string(),
+        parent: None,
+        worktree: Some(workspace.path.display().to_string()),
+        inbox: workspace.path.join("inbox.jsonl").display().to_string(),
+        alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
+        started_at_ms: crate::swarm::now_ms(),
+        heartbeat_at_ms: crate::swarm::now_ms(),
+    };
+    if let Err(why) = crate::swarm::register(&swarm_home, &swarm_registration) {
+        let _ = events.send(ChildEvent::Activity {
+            id,
+            text: format!("swarm registration failed: {why}"),
+        });
+    }
+
     let outcome = match &lane {
         ChildLane::OpenAgents => {
             let _ = events.send(ChildEvent::Started {
@@ -529,6 +569,24 @@ async fn run_child(
     };
 
     let duration_ms = start.elapsed().as_millis();
+
+    // The child's registration is removed by its own exit, so read the mail
+    // it received *now*, before the workspace (and its inbox) can go away.
+    // This is the swarm exchange the report will show: what reached the
+    // child while it worked, which is otherwise invisible.
+    let swarm_id = format!(
+        "delegate-{id}-{}",
+        workspace.path.to_string_lossy().replace('/', "_")
+    );
+    let child_directory = workspace.path.clone();
+    let swarm_messages = crate::swarm::Mailbox::at(&child_directory)
+        .messages()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|message| (message.from, message.kind, message.body))
+        .collect::<Vec<_>>();
+    let _ = crate::swarm::unregister(&swarm_home, &swarm_id);
+
     match outcome {
         Ok(ChildAnswer { text, pid }) => ChildWorkerResult {
             id,
@@ -538,6 +596,8 @@ async fn run_child(
             pid,
             workspace: Some(workspace.path.clone()),
             failure: None,
+            swarm_id: Some(swarm_id),
+            swarm_messages,
         },
         Err(ChildFailure { why, pid }) => ChildWorkerResult {
             id,
@@ -547,6 +607,8 @@ async fn run_child(
             pid,
             workspace: Some(workspace.path.clone()),
             failure: Some(why),
+            swarm_id: Some(swarm_id),
+            swarm_messages,
         },
     }
 }
@@ -1537,6 +1599,15 @@ pub async fn run_delegation(
                         .as_ref()
                         .map(|path| path.to_string_lossy().into_owned()),
                     "failure": result.failure,
+                    "swarm_id": result.swarm_id,
+                    "swarm_messages": result.swarm_messages
+                        .iter()
+                        .map(|(from, kind, body)| serde_json::json!({
+                            "from": from,
+                            "kind": kind,
+                            "body": body,
+                        }))
+                        .collect::<Vec<_>>(),
                 }))
                 .collect::<Vec<_>>(),
             "succeeded": succeeded,
@@ -1577,6 +1648,19 @@ pub async fn run_delegation(
             },
             lane.label()
         );
+        let exchanged: Vec<_> = results
+            .iter()
+            .filter(|result| !result.swarm_messages.is_empty())
+            .collect();
+        if !exchanged.is_empty() {
+            println!();
+            println!("Messages exchanged while the fan-out ran:");
+            for result in exchanged {
+                for (from, kind, body) in &result.swarm_messages {
+                    println!("  [child {}] {} from {}: {body}", result.id, kind, from);
+                }
+            }
+        }
     }
 
     if succeeded < results.len() {

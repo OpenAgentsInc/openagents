@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:b173569f6ccf8f4d4c619fccc82f3a7cb4d677ba8c8b89c58774acdb8c10f16a",
+  "sourceDigest": "sha256:03d3a836202260e63dfd1c5c3d0d1fa5adbd123ec44e6279c7911363f8f2bace",
   "surfaces": [
     {
       "id": "app:@openagentsinc/forge-git-service",
@@ -223,6 +223,23 @@
         {
           "type": "test",
           "ref": "apps/sarah-nostr-signer (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "crate:claude_agent_sdk",
+      "kind": "crate",
+      "owningPath": "crates/claude_agent_sdk",
+      "title": "claude_agent_sdk",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/claude_agent_sdk (cargo test --workspace)"
         }
       ],
       "obligation": {
@@ -3119,24 +3136,24 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 168,
+    "totalSurfaces": 169,
     "byKind": {
       "app": 8,
-      "crate": 6,
+      "crate": 7,
       "document": 52,
       "package": 96,
       "public-endpoint": 2,
       "release-pipeline": 3,
       "worker": 1
     },
-    "withOracle": 162,
+    "withOracle": 163,
     "unverified": 6,
     "byUnverifiedReason": {
       "config-only": 2,
       "no-oracle-authored": 4
     },
     "byObligationState": {
-      "designed": 126,
+      "designed": 127,
       "inconclusive": 3,
       "mapped": 36,
       "out-of-scope": 3
