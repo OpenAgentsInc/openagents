@@ -946,11 +946,7 @@ impl DeviceClient {
     /// scope set; naming scopes here names exactly what the approval page shows.
     pub async fn start(&self, scopes: &[String]) -> Result<DeviceAuthorization, AuthError> {
         let url = format!("{}/api/v1/device/authorizations", self.origin);
-        let body = if scopes.is_empty() {
-            serde_json::json!({})
-        } else {
-            serde_json::json!({ "scope": scopes.join(" ") })
-        };
+        let body = device_authorization_body(scopes, local_device_name());
         let response = self
             .http
             .post(&url)
@@ -1047,6 +1043,62 @@ impl DeviceClient {
             tokio::time::sleep(Duration::from_secs(interval)).await;
         }
     }
+}
+
+/// Build the anonymous authorization request without putting local metadata in
+/// authority-bearing fields. The computer name is shown to the approver; it
+/// does not change the scopes or token the server may grant.
+fn device_authorization_body(scopes: &[String], device_name: Option<String>) -> serde_json::Value {
+    let mut body = serde_json::Map::new();
+    if !scopes.is_empty() {
+        body.insert("scope".to_string(), scopes.join(" ").into());
+    }
+    if let Some(device_name) = device_name.and_then(normalize_device_name) {
+        body.insert("device_name".to_string(), device_name.into());
+    }
+    serde_json::Value::Object(body)
+}
+
+fn normalize_device_name(name: String) -> Option<String> {
+    let name = name
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    let name = name.trim().chars().take(80).collect::<String>();
+    (!name.is_empty()).then_some(name)
+}
+
+#[cfg(unix)]
+fn local_device_name() -> Option<String> {
+    let mut bytes = [0_u8; 256];
+    // SAFETY: `bytes` is a writable buffer for exactly the length supplied,
+    // and it lives until `gethostname` returns.
+    if unsafe { libc::gethostname(bytes.as_mut_ptr().cast(), bytes.len()) } != 0 {
+        return None;
+    }
+    let end = bytes
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(bytes.len());
+    normalize_device_name(String::from_utf8_lossy(&bytes[..end]).into_owned())
+}
+
+#[cfg(windows)]
+fn local_device_name() -> Option<String> {
+    std::env::var("COMPUTERNAME")
+        .ok()
+        .and_then(normalize_device_name)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn local_device_name() -> Option<String> {
+    None
 }
 
 /// The parenthetical the CLI appends to an API refusal: the server's own code
@@ -1254,5 +1306,24 @@ mod tests {
         assert!(normalize_api_origin("https://user:pw@openagents.com").is_err());
         assert!(normalize_api_origin("https://openagents.com/api/v1").is_err());
         assert!(normalize_api_origin("").is_err());
+    }
+
+    #[test]
+    fn a_device_authorization_names_the_computer_without_widening_its_scopes() {
+        let scopes = vec!["chat:account".to_string(), "forge:write".to_string()];
+        let body =
+            device_authorization_body(&scopes, Some(format!("  MacBook\nPro {}", "x".repeat(100))));
+
+        assert_eq!(body["scope"], "chat:account forge:write");
+        let name = body["device_name"].as_str().expect("a computer name");
+        assert!(name.starts_with("MacBook Pro "), "{name}");
+        assert!(!name.contains('\n'), "{name}");
+        assert_eq!(name.chars().count(), 80);
+    }
+
+    #[test]
+    fn an_empty_computer_name_is_not_sent() {
+        let body = device_authorization_body(&[], Some(" \n ".to_string()));
+        assert_eq!(body, serde_json::json!({}));
     }
 }
