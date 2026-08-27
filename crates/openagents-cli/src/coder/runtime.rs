@@ -471,6 +471,25 @@ impl Session {
         }
     }
 
+    /// Attach one local session after the runtime has installed Coder's
+    /// current system prompt and tools.
+    pub fn with_local_session(
+        mut self,
+        store: crate::session_store::LocalSessionStore,
+        events: &[crate::session_store::StoredEvent],
+        cloud_history: bool,
+    ) -> Self {
+        self.inner = self
+            .inner
+            .with_local_session(store, crate::session_store::replay_messages(events))
+            .with_cloud_history(cloud_history);
+        self
+    }
+
+    pub fn local_session_summary(&self) -> Option<&crate::session_store::SessionSummary> {
+        self.inner.local_session_summary()
+    }
+
     /// The lane this session was opened on. What was asked for, not what
     /// answered — [`Control::Model`] carries that.
     pub fn lane(&self) -> &Lane {

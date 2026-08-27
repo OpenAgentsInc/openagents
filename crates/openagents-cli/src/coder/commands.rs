@@ -393,6 +393,22 @@ fn info(ui: &CoderUi) -> String {
         Some(thread) => format!("- Thread — `{thread}`"),
         None => "- Thread — none open".to_string(),
     });
+    lines.push(match &ui.local_session_id {
+        Some(id) => format!("- Local session — `{id}`"),
+        None => "- Local session — unavailable".to_string(),
+    });
+    lines.push(match &ui.local_session_path {
+        Some(path) => format!("- Local record — `{path}`"),
+        None => "- Local record — unavailable".to_string(),
+    });
+    lines.push(format!(
+        "- Cloud history — {}",
+        if ui.cloud_history {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    ));
 
     lines.push(match ui.last_usage.reported() {
         true => format!("- Last turn — {}", ui.last_usage.line()),

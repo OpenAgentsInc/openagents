@@ -15,6 +15,7 @@ use std::io::Write;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::{Color, Modifier};
 
 use crate::coder::transcript::ScreenLink;
 
@@ -77,27 +78,98 @@ pub fn sequences(placed: &[PlacedLink], buf: &Buffer) -> String {
         if !url_is_safe(&link.url) {
             continue;
         }
-        let mut text = String::new();
+        let mut painted = String::new();
+        let mut last_style = None;
         let mut ok = true;
         for dx in 0..link.width {
             match buf.cell((link.x + dx, link.y)) {
-                Some(cell) => text.push_str(cell.symbol()),
+                Some(cell) => {
+                    // Ratatui leaves the terminal in the style of the last
+                    // cell it painted. Rewriting a link without its own SGR
+                    // state can therefore inherit HIDDEN from a markdown
+                    // marker and leave only the terminal's dotted link
+                    // decoration visible. Reset first, then reproduce the
+                    // cell's visible style from the frame buffer.
+                    let style = (cell.fg, cell.bg, cell.modifier);
+                    if last_style != Some(style) {
+                        painted.push_str(&cell_sgr(style.0, style.1, style.2));
+                        last_style = Some(style);
+                    }
+                    painted.push_str(cell.symbol());
+                }
                 None => {
                     ok = false;
                     break;
                 }
             }
         }
-        if !ok || text.is_empty() {
+        if !ok || painted.is_empty() {
             continue;
         }
         // Cursor position is 1-based in CUP.
         out.push_str(&format!("\x1b[{};{}H", link.y + 1, link.x + 1));
         out.push_str(&format!("\x1b]8;id={};{}\x1b\\", link.id, link.url));
-        out.push_str(&text);
+        out.push_str(&painted);
         out.push_str("\x1b]8;;\x1b\\");
+        out.push_str("\x1b[0m");
     }
     out
+}
+
+/// Encode the visible ratatui cell style without carrying HIDDEN into the
+/// hyperlink repaint.
+fn cell_sgr(fg: Color, bg: Color, modifiers: Modifier) -> String {
+    let mut codes = vec!["0".to_string()];
+    push_color(&mut codes, fg, false);
+    push_color(&mut codes, bg, true);
+
+    for (modifier, code) in [
+        (Modifier::BOLD, "1"),
+        (Modifier::DIM, "2"),
+        (Modifier::ITALIC, "3"),
+        (Modifier::UNDERLINED, "4"),
+        (Modifier::SLOW_BLINK, "5"),
+        (Modifier::RAPID_BLINK, "6"),
+        (Modifier::REVERSED, "7"),
+        (Modifier::CROSSED_OUT, "9"),
+    ] {
+        if modifiers.contains(modifier) {
+            codes.push(code.to_string());
+        }
+    }
+
+    format!("\x1b[{}m", codes.join(";"))
+}
+
+fn push_color(codes: &mut Vec<String>, color: Color, background: bool) {
+    let base = if background { 40 } else { 30 };
+    let bright = if background { 100 } else { 90 };
+    match color {
+        Color::Reset => codes.push(if background { "49" } else { "39" }.to_string()),
+        Color::Black => codes.push(base.to_string()),
+        Color::Red => codes.push((base + 1).to_string()),
+        Color::Green => codes.push((base + 2).to_string()),
+        Color::Yellow => codes.push((base + 3).to_string()),
+        Color::Blue => codes.push((base + 4).to_string()),
+        Color::Magenta => codes.push((base + 5).to_string()),
+        Color::Cyan => codes.push((base + 6).to_string()),
+        Color::Gray => codes.push((base + 7).to_string()),
+        Color::DarkGray => codes.push(bright.to_string()),
+        Color::LightRed => codes.push((bright + 1).to_string()),
+        Color::LightGreen => codes.push((bright + 2).to_string()),
+        Color::LightYellow => codes.push((bright + 3).to_string()),
+        Color::LightBlue => codes.push((bright + 4).to_string()),
+        Color::LightMagenta => codes.push((bright + 5).to_string()),
+        Color::LightCyan => codes.push((bright + 6).to_string()),
+        Color::White => codes.push((bright + 7).to_string()),
+        Color::Indexed(index) => {
+            codes.push(format!("{};5;{index}", if background { 48 } else { 38 }))
+        }
+        Color::Rgb(red, green, blue) => codes.push(format!(
+            "{};2;{red};{green};{blue}",
+            if background { 48 } else { 38 }
+        )),
+    }
 }
 
 /// Reject URLs that could break out of the escape sequence.
@@ -173,9 +245,29 @@ mod tests {
         let seq = sequences(&placed, &buf);
         assert!(seq.contains("\x1b]8;id=1;https://buildkite.com/\x1b\\"));
         assert!(seq.contains("Buildkite"));
-        assert!(seq.ends_with("\x1b]8;;\x1b\\"));
+        assert!(seq.ends_with("\x1b]8;;\x1b\\\x1b[0m"));
         // Nothing beyond the run leaks into the repaint.
         assert!(!seq.contains("now"));
+    }
+
+    #[test]
+    fn link_repaint_declares_the_visible_cell_style() {
+        let mut buf = buffer_with("https://openagents.com", 24);
+        for x in 0..22 {
+            let cell = buf.cell_mut((x, 0)).unwrap();
+            cell.set_fg(Color::Rgb(131, 91, 0));
+            cell.set_bg(Color::Rgb(8, 6, 0));
+            cell.modifier.insert(Modifier::DIM);
+        }
+        let placed = place(&[link(0, 0, 22, "https://openagents.com")], buf.area, 0);
+
+        let seq = sequences(&placed, &buf);
+
+        assert!(
+            seq.contains("\x1b[0;38;2;131;91;0;48;2;8;6;0;2mhttps"),
+            "the repaint did not restore the visible dim amber style: {seq:?}"
+        );
+        assert!(!seq.contains(";8m"), "the repaint carried HIDDEN: {seq:?}");
     }
 
     #[test]

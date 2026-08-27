@@ -291,6 +291,7 @@ mod unix_pty {
         /// The throwaway `HOME` the child wrote its history into; removed on
         /// drop.
         home: PathBuf,
+        cleanup_home: bool,
         _stub: Stub,
         _pty_gate: MutexGuard<'static, ()>,
     }
@@ -328,12 +329,43 @@ mod unix_pty {
             piped_stdin: bool,
             unknown_delay: Duration,
         ) -> Self {
+            Self::start_full_in(
+                rows,
+                cols,
+                credit,
+                piped_stdin,
+                unknown_delay,
+                scratch_dir(),
+                &[],
+            )
+        }
+
+        fn start_from_home(home: PathBuf, arguments: &[&str]) -> Self {
+            Self::start_full_in(
+                ROWS,
+                COLS,
+                STUB_CREDIT,
+                false,
+                Duration::ZERO,
+                home,
+                arguments,
+            )
+        }
+
+        fn start_full_in(
+            rows: u16,
+            cols: u16,
+            credit: &'static str,
+            piped_stdin: bool,
+            unknown_delay: Duration,
+            home: PathBuf,
+            arguments: &[&str],
+        ) -> Self {
             // macOS can refuse concurrent openpty calls under a full workspace
             // test run. One PTY at a time keeps this system-level oracle
             // deterministic without weakening any assertion.
             let pty_gate = PTY_GATE.lock().unwrap_or_else(|error| error.into_inner());
             let stub = Stub::start_with_credit_and_unknown_delay(credit, unknown_delay);
-            let home = scratch_dir();
             let workdir = home.join("workdir");
             std::fs::create_dir_all(&workdir).expect("create the scratch working directory");
 
@@ -355,9 +387,9 @@ mod unix_pty {
                 command.arg(format!("printf '' | exec '{escaped}'"));
                 command
             } else {
-                // No arguments: a bare invocation must remain the Coder front
-                // door rather than dispatching to another CLI surface.
-                CommandBuilder::new(executable)
+                let mut command = CommandBuilder::new(executable);
+                command.args(arguments);
+                command
             };
             command.cwd(&workdir);
             command.env("HOME", &home);
@@ -409,9 +441,15 @@ mod unix_pty {
                 writer,
                 emulator,
                 home,
+                cleanup_home: true,
                 _stub: stub,
                 _pty_gate: pty_gate,
             }
+        }
+
+        fn preserve_home(&mut self) -> PathBuf {
+            self.cleanup_home = false;
+            self.home.clone()
         }
 
         fn send(&mut self, bytes: &[u8]) {
@@ -531,7 +569,9 @@ mod unix_pty {
         fn drop(&mut self) {
             let _ = self.child.kill();
             let _ = self.child.wait();
-            let _ = std::fs::remove_dir_all(&self.home);
+            if self.cleanup_home {
+                let _ = std::fs::remove_dir_all(&self.home);
+            }
         }
     }
 
@@ -780,6 +820,49 @@ mod unix_pty {
                     .contains("the Coder PTY harness stub serves /api/v1/models and /credit")
             },
         );
+    }
+
+    /// A completed process leaves a local journal and the next process can
+    /// rebuild the visible transcript from it without reading cloud history.
+    #[test]
+    fn continue_rehydrates_the_previous_local_session() {
+        let mut first = Tui::start();
+        first.wait_for_composer();
+        first.type_text("remember this local session");
+        first.send(b"\r");
+        first.wait_for("the refused turn to finish", REDRAW, |frame| {
+            frame
+                .transcript()
+                .contains("the Coder PTY harness stub serves")
+        });
+        let home = first.preserve_home();
+        assert!(first.quit().success());
+        drop(first);
+
+        let sessions_root = home.join(".openagents").join("sessions");
+        let workspace = std::fs::read_dir(&sessions_root)
+            .expect("session workspace")
+            .next()
+            .expect("encoded working directory")
+            .expect("working directory entry")
+            .path();
+        let session_dir = std::fs::read_dir(workspace)
+            .expect("session directory")
+            .next()
+            .expect("session")
+            .expect("session entry")
+            .path();
+        assert!(session_dir.join("updates.jsonl").is_file());
+        assert!(session_dir.join("trajectory.atif.json").is_file());
+        let journal = std::fs::read_to_string(session_dir.join("updates.jsonl")).unwrap();
+        assert!(journal.contains("turn.user"));
+        assert!(journal.contains("turn.failed"));
+
+        let mut resumed = Tui::start_from_home(home, &["--continue"]);
+        resumed.wait_for("the previous prompt to be restored", FIRST_FRAME, |frame| {
+            frame.transcript().contains("> remember this local session")
+        });
+        assert!(resumed.quit().success());
     }
 
     /// Escape cancels the active transport without leaving Coder. The prompt

@@ -58,11 +58,18 @@ const REVOCATION_GRACE: Duration = Duration::from_secs(10);
 pub struct SessionOptions {
     /// The lane name as it was typed, for the delegation gate and refusals.
     pub lane_name: String,
+    /// Whether `--lane` should replace the lane stored by a resumed session.
+    pub lane_explicit: bool,
     /// `--reasoning`, recorded on the thread at open. `None` leaves the
     /// deployment's own default, which is a different answer from naming one.
     pub reasoning: Option<String>,
     /// `--dev` routes to the OpenResponses streaming surface.
     pub dev: bool,
+    /// `Some("")` resumes the most recent local session for this directory;
+    /// any other value names a local session id. `None` starts a new session.
+    pub resume: Option<String>,
+    /// Upload transcript events and outcome text. Local-only is the default.
+    pub cloud_history: bool,
 }
 
 pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -71,8 +78,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         return Ok(());
     }
 
-    // Mutable because shift+tab moves it.
-    let mut lane = Lane::from_str(&options.lane_name);
     let (tx, rx) = mpsc::channel::<Control>();
     let mut ui = CoderUi::new();
     let mut history = History::load(History::default_path());
@@ -80,10 +85,8 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let (repo, branch) = git_info().unwrap_or(("unknown".to_string(), "unknown".to_string()));
     ui.repo = repo;
     ui.branch = branch;
-    // The two facts the row under the composer needs that do not depend on a
-    // credential: where this session is talking, and what it asked for.
+    // The endpoint does not depend on a credential.
     ui.endpoint = crate::coder::runtime::api_base();
-    ui.lane = lane.label();
 
     // Only agents that are actually installed. `find_agents` checks each one
     // before reporting it, so the `acp` tool is declared over a list of
@@ -91,9 +94,56 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let agents = crate::coder::acp::find_agents().await.unwrap_or_default();
     ui.agents = agents.clone();
 
-    let mut session: Option<Arc<Mutex<Session>>> = None;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     ui.cwd = cwd.display().to_string();
+    let root = crate::session_store::default_root();
+    let mut loaded = match options.resume.as_deref() {
+        None => crate::session_store::LocalSessionStore::create(
+            &root,
+            &cwd,
+            &options.lane_name,
+            options.reasoning.clone(),
+            options.cloud_history,
+        )?,
+        Some("") => crate::session_store::LocalSessionStore::load_last(&root, &cwd)?
+            .ok_or_else(|| format!("No saved Coder session exists for {}.", cwd.display()))?,
+        Some(id) => crate::session_store::LocalSessionStore::load_id(&root, &cwd, id)?
+            .ok_or_else(|| format!("No saved Coder session has id `{id}`."))?,
+    };
+    let resumed = options.resume.is_some();
+    let lane_name = if resumed && !options.lane_explicit {
+        loaded.summary.lane.clone()
+    } else {
+        options.lane_name.clone()
+    };
+    let reasoning = if resumed && options.reasoning.is_none() {
+        loaded.summary.reasoning.clone()
+    } else {
+        options.reasoning.clone()
+    };
+    loaded.store.set_lane(&lane_name)?;
+    loaded.store.set_reasoning(reasoning.as_deref())?;
+    loaded.store.set_cloud_history(options.cloud_history)?;
+    // Mutable because shift+tab moves it.
+    let mut lane = Lane::from_str(&lane_name);
+    ui.lane = lane.label();
+    let restored_events = loaded.events;
+    ui.local_session_id = Some(loaded.summary.id.clone());
+    ui.local_session_path = Some(loaded.store.directory().display().to_string());
+    ui.cloud_history = options.cloud_history;
+    if resumed {
+        restore_entries(&mut ui, &restored_events);
+        ui.model = loaded.summary.last_model.unwrap_or_default();
+        for entry in &mut ui.entries {
+            if entry.role == Role::Assistant && entry.model.is_none() && !ui.model.is_empty() {
+                entry.model = Some(ui.model.clone());
+            }
+        }
+        ui.show_welcome = false;
+    }
+    let atif_directory = loaded.store.directory().to_path_buf();
+    let mut local_store = Some(loaded.store);
+    let mut session: Option<Arc<Mutex<Session>>> = None;
 
     if let Some(token) = crate::coder::runtime::user_token() {
         let endpoint = crate::auth::resolve_endpoint(None, None)?;
@@ -103,14 +153,21 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             // yet an account name, and the row may only show one the server
             // gave.
             ui.identity = resolve_identity(&endpoint.origin, &token).await;
-            session = Some(Arc::new(Mutex::new(Session::open(
+            let opened = Session::open(
                 lane.clone(),
-                &options.lane_name,
-                options.reasoning.clone(),
+                &lane_name,
+                reasoning.clone(),
                 agents.clone(),
                 options.dev,
                 tx.clone(),
-            ))));
+            );
+            let opened = match local_store.take() {
+                Some(store) => {
+                    opened.with_local_session(store, &restored_events, options.cloud_history)
+                }
+                None => opened,
+            };
+            session = Some(Arc::new(Mutex::new(opened)));
         } else {
             // A stored token the deployment refused. The row says the
             // credential is unverified rather than naming whoever it was
@@ -190,6 +247,12 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                     let terminal = matches!(*event, Control::Done);
                     apply(&mut ui, *event);
                     if terminal {
+                        if let Err(error) = write_atif_snapshot(&ui, &atif_directory) {
+                            ui.entries.push(Entry::new(
+                                Role::Notice,
+                                format!("The local ATIF snapshot could not be written: {error}"),
+                            ));
+                        }
                         turns.apply(TurnAction::ObserveTerminal(id));
                         active_turn = None;
                         refresh_credit(&tx);
@@ -217,6 +280,12 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         if let Some(diagnostic) = diagnostic {
                             ui.entries.push(Entry::new(Role::Notice, diagnostic));
                         }
+                        if let Err(error) = write_atif_snapshot(&ui, &atif_directory) {
+                            ui.entries.push(Entry::new(
+                                Role::Notice,
+                                format!("The local ATIF snapshot could not be written: {error}"),
+                            ));
+                        }
                         refresh_credit(&tx);
                         if exit_after_cancel {
                             break 'frame;
@@ -242,14 +311,23 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             // which account it belongs to before changing the
                             // identity row.
                             ui.identity = current_identity().await;
-                            session = Some(Arc::new(Mutex::new(Session::open(
+                            let opened = Session::open(
                                 lane.clone(),
-                                &options.lane_name,
-                                options.reasoning.clone(),
+                                &lane_name,
+                                reasoning.clone(),
                                 agents.clone(),
                                 options.dev,
                                 tx.clone(),
-                            ))));
+                            );
+                            let opened = match local_store.take() {
+                                Some(store) => opened.with_local_session(
+                                    store,
+                                    &restored_events,
+                                    options.cloud_history,
+                                ),
+                                None => opened,
+                            };
+                            session = Some(Arc::new(Mutex::new(opened)));
                             refresh_credit(&tx);
                         }
                         Err(error) => ui
@@ -484,6 +562,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     }
 
     terminal.hide_cursor()?;
+    if let Err(error) = write_atif_snapshot(&ui, &atif_directory) {
+        eprintln!("Coder: the local ATIF snapshot could not be written: {error}");
+    }
 
     // The screen is gone, so these land on the normal one. Ending the thread is
     // the point: one left open holds its grant's remaining budget, and the
@@ -507,6 +588,33 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         }
     }
     Ok(())
+}
+
+fn write_atif_snapshot(ui: &CoderUi, directory: &std::path::Path) -> std::io::Result<usize> {
+    let Some(_) = ui.local_session_id.as_deref() else {
+        return Ok(0);
+    };
+    // Derive the durable ATIF from the authoritative journal rather than the
+    // visible viewport. `/clear` may remove entries from the screen, but it
+    // must not erase history from the portable session artifact.
+    let loaded = crate::session_store::LocalSessionStore::load_path(directory)?;
+    let mut transcript = CoderUi::new();
+    restore_entries(&mut transcript, &loaded.events);
+    let model = loaded
+        .summary
+        .last_model
+        .as_deref()
+        .filter(|model| !model.is_empty())
+        .or_else(|| (!ui.model.is_empty()).then_some(ui.model.as_str()))
+        .unwrap_or("unknown");
+    crate::coder::export::write_session_trajectory(
+        &transcript.entries,
+        model,
+        &ui.repo,
+        &ui.branch,
+        &loaded.summary.id,
+        directory,
+    )
 }
 
 /// Ask the deployment what the account has left, off the frame loop.
@@ -684,6 +792,68 @@ fn is_quit(key: &KeyEvent) -> bool {
 /// and wrapping logic out of agreement with the text the submitted turn uses.
 fn normalize_paste(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent]) {
+    for event in events {
+        let payload = &event.record.payload;
+        let text = |key: &str| {
+            payload
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string()
+        };
+        let mut entry = match event.record.event_type.as_str() {
+            "turn.user" => Entry::new(Role::You, text("text")),
+            "turn.reasoning" => Entry::new(Role::Reasoning, text("text")),
+            "turn.assistant" => {
+                let answer = text("text");
+                if answer.is_empty() {
+                    continue;
+                }
+                let mut entry = Entry::new(Role::Assistant, answer);
+                entry.model = payload
+                    .get("model")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
+                entry.finish_text();
+                entry
+            }
+            "tool.ran" => {
+                let call_id = text("call_id");
+                let name = text("tool");
+                let arguments = text("arguments");
+                let output = payload
+                    .get("output")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| payload.get("error").and_then(serde_json::Value::as_str))
+                    .unwrap_or("")
+                    .to_string();
+                let parsed = serde_json::from_str(&arguments).unwrap_or_else(
+                    |_| serde_json::json!({ "unparsed_arguments": arguments.clone() }),
+                );
+                let mut entry = Entry::tool_call(tool_title(&name, &arguments));
+                entry.output = Some(output.clone());
+                entry.tool = Some(ToolCall {
+                    call_id,
+                    function_name: name,
+                    arguments: parsed,
+                    output: Some(output),
+                    error: payload
+                        .get("error")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string),
+                    done: true,
+                });
+                entry
+            }
+            "turn.failed" => Entry::new(Role::Notice, text("error")),
+            _ => continue,
+        };
+        entry.at = event.at_ms;
+        ui.entries.push(entry);
+    }
 }
 
 /// Apply one message from the runtime to the frame.
@@ -1218,6 +1388,95 @@ mod tests {
     #[test]
     fn paste_line_endings_become_composer_line_endings() {
         assert_eq!(normalize_paste("one\r\ntwo\rthree"), "one\ntwo\nthree");
+    }
+
+    #[test]
+    fn local_events_restore_visible_roles_and_the_answer_model() {
+        let events = vec![
+            crate::session_store::StoredEvent {
+                sequence: 1,
+                at_ms: 10,
+                record: crate::runtime::ThreadRecord::user("question"),
+            },
+            crate::session_store::StoredEvent {
+                sequence: 2,
+                at_ms: 20,
+                record: crate::runtime::ThreadRecord::reasoning("working"),
+            },
+            crate::session_store::StoredEvent {
+                sequence: 3,
+                at_ms: 30,
+                record: crate::runtime::ThreadRecord::assistant_on(
+                    "answer",
+                    crate::runtime::TurnUsage::default(),
+                    0,
+                    Some("model/one"),
+                ),
+            },
+            crate::session_store::StoredEvent {
+                sequence: 4,
+                at_ms: 40,
+                record: crate::runtime::ThreadRecord::failed(
+                    "later failure",
+                    crate::runtime::TurnUsage::default(),
+                    0,
+                ),
+            },
+        ];
+        let mut ui = CoderUi::new();
+        restore_entries(&mut ui, &events);
+
+        assert_eq!(
+            ui.entries
+                .iter()
+                .map(|entry| entry.role.clone())
+                .collect::<Vec<_>>(),
+            vec![Role::You, Role::Reasoning, Role::Assistant, Role::Notice]
+        );
+        assert_eq!(ui.entries[2].model.as_deref(), Some("model/one"));
+        assert_eq!(ui.entries[3].text, "later failure");
+        assert_eq!(ui.entries[3].at, 40);
+    }
+
+    #[test]
+    fn atif_snapshot_comes_from_the_journal_after_the_view_is_cleared() {
+        let root = tempfile::tempdir().unwrap();
+        let mut loaded = crate::session_store::LocalSessionStore::create(
+            root.path(),
+            std::path::Path::new("/repo"),
+            "flash",
+            None,
+            false,
+        )
+        .unwrap();
+        loaded
+            .store
+            .append(&[
+                crate::runtime::ThreadRecord::user("question"),
+                crate::runtime::ThreadRecord::assistant_on(
+                    "answer",
+                    crate::runtime::TurnUsage::default(),
+                    0,
+                    Some("model/one"),
+                ),
+            ])
+            .unwrap();
+        loaded.store.set_last_model(Some("model/one")).unwrap();
+        let directory = loaded.store.directory().to_path_buf();
+
+        let mut cleared = CoderUi::new();
+        cleared.local_session_id = Some(loaded.summary.id);
+        cleared.repo = "/repo".to_string();
+        cleared.branch = "main".to_string();
+        assert!(cleared.entries.is_empty());
+        assert_eq!(write_atif_snapshot(&cleared, &directory).unwrap(), 2);
+
+        let document: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(directory.join("trajectory.atif.json")).unwrap())
+                .unwrap();
+        assert_eq!(document["steps"][0]["message"], "question");
+        assert_eq!(document["steps"][1]["message"], "answer");
+        assert_eq!(document["steps"][1]["model_name"], "model/one");
     }
 
     fn device_authorization() -> crate::auth::DeviceAuthorization {

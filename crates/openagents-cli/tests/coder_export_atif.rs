@@ -7,7 +7,7 @@
 //! neighbour reading the environment mid-swap would be a real race. One test
 //! per process removes the race rather than papering over it.
 
-use openagents_cli::coder::export::export_trajectory;
+use openagents_cli::coder::export::{export_trajectory, write_session_trajectory};
 use openagents_cli::coder::tui::{Entry, Role, ToolCall, now_ms};
 
 fn delegate_call() -> ToolCall {
@@ -121,6 +121,34 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
         openagents_cli::VERSION,
         "the exported trajectory must name the published version, not the crate manifest"
     );
+
+    let session_dir = scratch.join("session");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let snapshot_steps = write_session_trajectory(
+        &entries,
+        "coder-auto",
+        "openagents",
+        "main",
+        "local-session-7",
+        &session_dir,
+    )
+    .unwrap();
+    let snapshot: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(session_dir.join("trajectory.atif.json")).unwrap())
+            .unwrap();
+    assert_eq!(snapshot_steps, 3);
+    assert_eq!(snapshot["session_id"], "local-session-7");
+    assert_eq!(snapshot["trajectory_id"], "local-session-7");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(session_dir.join("trajectory.atif.json"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
+    }
 
     let _ = std::fs::remove_dir_all(&scratch);
 }

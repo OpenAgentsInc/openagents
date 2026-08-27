@@ -263,6 +263,7 @@ fn tools() -> HarnessToolRegistry {
 
 fn session(lane: Lane, base: String) -> CoderRuntimeSession {
     CoderRuntimeSession::new(lane, Some(base), Some("oat_test".to_string()), tools())
+        .with_cloud_history(true)
 }
 
 /// A port nothing listens on, so a connection to it is refused at once.
@@ -1283,6 +1284,63 @@ fn recording_stub() -> Stub {
             None,
         )
     })
+}
+
+/// Local history is authoritative unless the reader explicitly opts in to a
+/// server transcript.
+#[tokio::test]
+async fn a_default_session_keeps_transcript_content_off_the_server() {
+    let stub = recording_stub();
+    let root = tempfile::tempdir().unwrap();
+    let loaded = openagents_cli::session_store::LocalSessionStore::create(
+        root.path(),
+        std::path::Path::new("/private/repository"),
+        "flash",
+        None,
+        false,
+    )
+    .unwrap();
+    let id = loaded.summary.id.clone();
+    let replayed = openagents_cli::session_store::replay_messages(&loaded.events);
+    let mut local = CoderRuntimeSession::new(
+        Lane::default(),
+        Some(stub.base.clone()),
+        Some("oat_test".to_string()),
+        tools(),
+    )
+    .with_local_session(loaded.store, replayed)
+    .with_cloud_history(false);
+
+    let answer = local
+        .execute_turn("keep this question local", |_| {})
+        .await
+        .unwrap();
+    assert_eq!(answer, "It said hello.");
+    local.finish().await.unwrap();
+
+    assert!(
+        recorded(&stub).is_empty(),
+        "server transcript received events"
+    );
+    let report = filed_report(&stub).expect("the thread was not settled");
+    assert_eq!(report["report"], "The session answered.");
+    assert!(!report.to_string().contains("It said hello."));
+
+    let saved = openagents_cli::session_store::LocalSessionStore::load_id(
+        root.path(),
+        std::path::Path::new("/private/repository"),
+        &id,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        saved
+            .events
+            .iter()
+            .map(|event| event.record.event_type.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn.user", "turn.reasoning", "tool.ran", "turn.assistant"]
+    );
 }
 
 /// A turn that answered is written to the transcript, in order, before the

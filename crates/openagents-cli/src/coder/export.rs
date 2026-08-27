@@ -10,18 +10,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const SCHEMA_VERSION: &str = "ATIF-v1.7";
 const AGENT_NAME: &str = "openagents-coder";
-/// Lines that are the reader talking to the session rather than to a model.
-///
-/// They are typed into the composer like a prompt and look like one in the
-/// transcript, but no model ever saw them, so a trajectory that recorded them
-/// as user turns would be describing a conversation that did not happen. The
-/// list is matched on the whole line for the commands that take no argument
-/// and on the first word for the ones that do.
-const INTERFACE_COMMANDS: &[&str] = &["/export", "/system", "/skills", "/help", "/clear"];
-
-/// The same, for commands that carry arguments: `/diff HEAD`, `/run cargo test`.
-const INTERFACE_COMMAND_PREFIXES: &[&str] = &["/diff", "/run", "/resume", "/export"];
-
 pub struct ExportedTrajectory {
     pub path: String,
     pub copied: bool,
@@ -75,36 +63,32 @@ fn copy_to_clipboard(text: &str) -> bool {
     false
 }
 
-fn python3_or_python() -> Option<String> {
-    if Command::new("python3").arg("--version").output().is_ok() {
-        Some("python3".to_string())
-    } else if Command::new("python").arg("--version").output().is_ok() {
-        Some("python".to_string())
-    } else {
-        None
-    }
+fn iso_for_ms(at: u64) -> String {
+    let seconds = at / 1_000;
+    let ms = at % 1000;
+    let days = i64::try_from(seconds / 86_400).unwrap_or(i64::MAX);
+    let seconds_of_day = seconds % 86_400;
+    let (year, month, day) = civil_date(days);
+    let hour = seconds_of_day / 3_600;
+    let minute = (seconds_of_day % 3_600) / 60;
+    let second = seconds_of_day % 60;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{ms:03}Z")
 }
 
-fn iso_for_ms(at: u64) -> String {
-    if let Some(py) = python3_or_python() {
-        let script = format!(
-            "import datetime; \
-             s=datetime.datetime(1970,1,1)+datetime.timedelta(milliseconds={}); \
-             print(s.strftime('%Y-%m-%dT%H:%M:%S'))",
-            at
-        );
-        if let Ok(output) = Command::new(&py).args(["-c", &script]).output() {
-            let base = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !base.is_empty() {
-                let ms = at % 1000;
-                return format!("{}.{:03}Z", base, ms);
-            }
-        }
-    }
-    // Fallback to a seconds-only timestamp if python is not available.
-    let seconds = at / 1000;
-    let ms = at % 1000;
-    format!("1970-01-01T00:00:{:02}.{:03}Z", seconds % 60, ms)
+/// Convert days since 1970-01-01 to a Gregorian calendar date.
+fn civil_date(days_since_epoch: i64) -> (i64, u64, u64) {
+    let z = days_since_epoch + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    (year, month as u64, day as u64)
 }
 
 fn now_iso() -> String {
@@ -135,12 +119,9 @@ pub fn git_info() -> Option<(String, String)> {
 }
 
 fn is_interface_command(text: &str) -> bool {
-    let t = text.trim();
-    if INTERFACE_COMMANDS.iter().any(|cmd| t == *cmd) {
-        return true;
-    }
-    let first = t.split_whitespace().next().unwrap_or_default();
-    INTERFACE_COMMAND_PREFIXES.iter().any(|cmd| first == *cmd)
+    // The interactive dispatch handles every leading slash locally, including
+    // unknown commands. None reaches a model as a user message.
+    text.trim_start().starts_with('/')
 }
 
 fn step_of(entry: &Entry, model: &str, tool: Option<&ToolCall>) -> Option<Value> {
@@ -157,7 +138,7 @@ fn step_of(entry: &Entry, model: &str, tool: Option<&ToolCall>) -> Option<Value>
             "timestamp": timestamp,
             "source": "agent",
             "message": entry.text,
-            "model_name": model,
+            "model_name": entry.model.as_deref().unwrap_or(model),
         })),
         Role::Tool => {
             let tool = tool?;
@@ -194,30 +175,40 @@ fn step_of(entry: &Entry, model: &str, tool: Option<&ToolCall>) -> Option<Value>
 }
 
 fn file_name(repository: &str, at_iso: &str) -> String {
-    let safe = repository.split('/').last().unwrap_or(repository).replace(
-        |c: char| !c.is_alphanumeric() && c != '.' && c != '-' && c != '_',
-        "-",
-    );
-    let stamp = at_iso.replace(':', "-").replace('.', "-");
+    let safe = repository
+        .split('/')
+        .next_back()
+        .unwrap_or(repository)
+        .replace(
+            |c: char| !c.is_alphanumeric() && c != '.' && c != '-' && c != '_',
+            "-",
+        );
+    let stamp = at_iso.replace([':', '.'], "-");
     format!("{}-{}-atif.json", stamp, safe)
 }
 
-pub fn export_trajectory(
+fn trajectory_document(
     entries: &[Entry],
     model: &str,
     repo: &str,
     branch: &str,
-) -> ExportedTrajectory {
-    let at_iso = now_iso();
+    session_id: &str,
+    at_iso: &str,
+) -> (Value, usize) {
     let mut steps = Vec::new();
     let mut notices = Vec::new();
     let mut turn_outcomes = Vec::new();
+    let mut pending_reasoning = String::new();
 
-    for (i, entry) in entries.iter().enumerate() {
+    for entry in entries {
+        if entry.role == Role::Reasoning {
+            if !pending_reasoning.is_empty() {
+                pending_reasoning.push('\n');
+            }
+            pending_reasoning.push_str(&entry.text);
+            continue;
+        }
         if let Some(notice) = match entry.role {
-            // What the session said, and what its own commands printed. Both
-            // are notices rather than steps: no model produced either, and
-            // `step_of` leaves both out of `steps` for the same reason.
             Role::Notice | Role::Output => Some(json!({
                 "timestamp": iso_for_ms(entry.at),
                 "text": entry.text,
@@ -236,34 +227,92 @@ pub fn export_trajectory(
 
         if let Some(mut step) = step_of(entry, model, entry.tool.as_ref()) {
             if let Some(obj) = step.as_object_mut() {
-                obj.insert("step_id".to_string(), json!(i + 1));
+                obj.insert("step_id".to_string(), json!(steps.len() + 1));
+                if !pending_reasoning.is_empty() {
+                    obj.insert(
+                        "reasoning_content".to_string(),
+                        json!(std::mem::take(&mut pending_reasoning)),
+                    );
+                }
             }
             steps.push(step);
         }
     }
 
-    let document = json!({
-        "schema_version": SCHEMA_VERSION,
-        "session_id": format!("{}-{}", repo, at_iso),
-        "trajectory_id": format!("{}-{}", repo, at_iso),
-        "agent": {
-            "name": AGENT_NAME,
-            "version": crate::VERSION,
-            "model_name": model,
-        },
-        "steps": steps,
-        "final_metrics": {
-            "total_steps": steps.len(),
-        },
-        "extra": {
-            "exporter": "openagents.coder.atif_export.v1",
-            "exported_at": at_iso,
-            "repository": repo,
-            "branch": branch,
-            "notices": notices,
-            "turn_outcomes": turn_outcomes,
-        }
-    });
+    let step_count = steps.len();
+    (
+        json!({
+            "schema_version": SCHEMA_VERSION,
+            "session_id": session_id,
+            "trajectory_id": session_id,
+            "agent": {
+                "name": AGENT_NAME,
+                "version": crate::VERSION,
+                "model_name": model,
+            },
+            "steps": steps,
+            "final_metrics": {
+                "total_steps": step_count,
+            },
+            "extra": {
+                "exporter": "openagents.coder.atif_export.v1",
+                "exported_at": at_iso,
+                "repository": repo,
+                "branch": branch,
+                "notices": notices,
+                "turn_outcomes": turn_outcomes,
+            }
+        }),
+        step_count,
+    )
+}
+
+/// Materialize the current local session as an atomic ATIF snapshot.
+///
+/// `updates.jsonl` remains the crash-safe source of truth. This file is a
+/// complete, directly consumable interchange artifact derived from it.
+pub fn write_session_trajectory(
+    entries: &[Entry],
+    model: &str,
+    repo: &str,
+    branch: &str,
+    session_id: &str,
+    directory: &std::path::Path,
+) -> std::io::Result<usize> {
+    let at_iso = now_iso();
+    let (document, steps) = trajectory_document(entries, model, repo, branch, session_id, &at_iso);
+    let path = directory.join("trajectory.atif.json");
+    let temp = directory.join(format!(".trajectory.atif.json.{}.tmp", std::process::id()));
+    let bytes = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&document)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+    );
+    let mut options = fs::OpenOptions::new();
+    options.create(true).truncate(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temp)?;
+    file.write_all(bytes.as_bytes())?;
+    file.sync_all()?;
+    fs::rename(&temp, &path).inspect_err(|_| {
+        let _ = fs::remove_file(&temp);
+    })?;
+    Ok(steps)
+}
+
+pub fn export_trajectory(
+    entries: &[Entry],
+    model: &str,
+    repo: &str,
+    branch: &str,
+) -> ExportedTrajectory {
+    let at_iso = now_iso();
+    let session_id = format!("{}-{}", repo, at_iso);
+    let (document, steps) = trajectory_document(entries, model, repo, branch, &session_id, &at_iso);
 
     let directory = home_dir()
         .map(|h| PathBuf::from(h).join(".openagents").join("exports"))
@@ -285,6 +334,50 @@ pub fn export_trajectory(
     ExportedTrajectory {
         path: path_str,
         copied,
-        steps: steps.len(),
+        steps,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timestamps_do_not_depend_on_an_external_runtime() {
+        assert_eq!(iso_for_ms(0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(iso_for_ms(951_827_696_789), "2000-02-29T12:34:56.789Z");
+        assert_eq!(iso_for_ms(1_798_310_400_000), "2026-12-26T18:40:00.000Z");
+    }
+
+    #[test]
+    fn step_ids_are_contiguous_when_notices_are_skipped() {
+        let entries = vec![
+            Entry::new(Role::Notice, "local notice"),
+            Entry::new(Role::You, "/goal local command"),
+            Entry::new(Role::You, "question"),
+            Entry::new(Role::Output, "local output"),
+            Entry::new(Role::Reasoning, "inspect the evidence"),
+            Entry::new(Role::Assistant, "answer"),
+        ];
+        let (document, count) = trajectory_document(
+            &entries,
+            "model",
+            "/repo",
+            "main",
+            "session",
+            "2026-08-26T00:00:00.000Z",
+        );
+        let ids = document["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|step| step["step_id"].as_u64().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(count, 2);
+        assert_eq!(ids, vec![1, 2]);
+        assert_eq!(
+            document["steps"][1]["reasoning_content"],
+            "inspect the evidence"
+        );
     }
 }

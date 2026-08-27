@@ -67,6 +67,11 @@ Coder options:
                      Defaults to `flash`.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to
                      leave the deployment's own default.
+  --continue         Resume the most recent local session for this directory.
+  --resume [id]      Resume a local session. Without an id, use this directory's
+                     most recent session.
+  --cloud-history    Also store transcript events and outcome text on the server.
+                     Off by default; local files remain the source of truth.
   -h, --help         Print this and exit.
   -V, --version      Print the version and exit.
 
@@ -107,6 +112,17 @@ fn names_a_cli_command(arguments: &[String]) -> bool {
             continue;
         }
 
+        if argument == "--resume" {
+            index += 1;
+            if arguments
+                .get(index)
+                .is_some_and(|value| !value.starts_with('-'))
+            {
+                index += 1;
+            }
+            continue;
+        }
+
         if argument.starts_with('-') {
             index += 1;
             continue;
@@ -129,7 +145,18 @@ fn has_only_coder_options(arguments: &[String]) -> bool {
 
     while let Some(argument) = arguments.get(index) {
         match argument.as_str() {
-            "--dev" | "-h" | "--help" | "-V" | "--version" => index += 1,
+            "--dev" | "--continue" | "--cloud-history" | "-h" | "--help" | "-V" | "--version" => {
+                index += 1
+            }
+            "--resume" => {
+                index += 1;
+                if arguments
+                    .get(index)
+                    .is_some_and(|value| !value.starts_with('-'))
+                {
+                    index += 1;
+                }
+            }
             "--lane" | "--reasoning" => {
                 let Some(value) = arguments.get(index + 1) else {
                     return false;
@@ -236,8 +263,11 @@ enum Parsed {
 fn parse(arguments: &[String]) -> Result<Parsed, String> {
     let mut options = SessionOptions {
         lane_name: "flash".to_string(),
+        lane_explicit: false,
         reasoning: None,
         dev: false,
+        resume: None,
+        cloud_history: false,
     };
     let mut dev = false;
     let mut index = 0;
@@ -261,8 +291,34 @@ fn parse(arguments: &[String]) -> Result<Parsed, String> {
                 return Ok(Parsed::Said);
             }
             "--dev" => dev = true,
+            "--continue" => {
+                if options.resume.is_some() {
+                    return Err("use either `--continue` or `--resume`, not both".to_string());
+                }
+                options.resume = Some(String::new());
+            }
+            "--resume" => {
+                if options.resume.is_some() {
+                    return Err("use either `--continue` or `--resume`, not both".to_string());
+                }
+                options.resume = Some(
+                    arguments
+                        .get(index + 1)
+                        .filter(|next| !next.starts_with('-'))
+                        .cloned()
+                        .unwrap_or_default(),
+                );
+                if arguments
+                    .get(index + 1)
+                    .is_some_and(|next| !next.starts_with('-'))
+                {
+                    index += 1;
+                }
+            }
+            "--cloud-history" => options.cloud_history = true,
             "--lane" => {
                 options.lane_name = value("--lane")?;
+                options.lane_explicit = true;
                 index += 1;
             }
             "--reasoning" => {
@@ -459,6 +515,43 @@ mod tests {
             classify_health_response("not an HTTP response"),
             DevServerProbe::Unreachable
         );
+    }
+
+    #[test]
+    fn coder_history_is_local_by_default() {
+        let Parsed::Run(options, _) = parse(&[]).unwrap() else {
+            panic!("expected Coder options");
+        };
+        assert_eq!(options.resume, None);
+        assert!(!options.cloud_history);
+    }
+
+    #[test]
+    fn continue_and_resume_select_local_sessions() {
+        let Parsed::Run(continued, _) = parse(&["--continue".into()]).unwrap() else {
+            panic!("expected Coder options");
+        };
+        assert_eq!(continued.resume.as_deref(), Some(""));
+
+        let Parsed::Run(resumed, _) = parse(&[
+            "--resume".into(),
+            "session-7".into(),
+            "--cloud-history".into(),
+        ])
+        .unwrap() else {
+            panic!("expected Coder options");
+        };
+        assert_eq!(resumed.resume.as_deref(), Some("session-7"));
+        assert!(resumed.cloud_history);
+    }
+
+    #[test]
+    fn continue_and_resume_conflict() {
+        let error = match parse(&["--continue".into(), "--resume".into()]) {
+            Ok(_) => panic!("conflicting session selectors were accepted"),
+            Err(error) => error,
+        };
+        assert!(error.contains("either"), "{error}");
     }
 
     #[test]

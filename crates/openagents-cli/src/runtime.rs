@@ -20,15 +20,13 @@
 //! request with the sentence `Completed autonomous reasoning turn (offline
 //! fallback).` and exit 0. Neither comes back.
 //!
-//! ## A turn writes itself down before the thread is revoked
+//! ## A turn writes itself locally before the thread is settled
 //!
-//! The thread lane records what it did to `POST /api/v1/threads/{id}/events`
-//! as it happens — `turn.user`, `turn.reasoning`, `tool.ran`, `turn.assistant`
-//! — which is the vocabulary [`crate::resume`] replays and the one
-//! `docs/2026-08-24-coder-account-integration-audit.md` fixes. It used to
-//! record nothing at all, so every session reached `DELETE` with a transcript
-//! holding one `thread.opened` and nothing else, and the account's history
-//! read as a wall of cancellations over runs that had answered correctly.
+//! Coder appends `turn.user`, `turn.reasoning`, `tool.ran`, and
+//! `turn.assistant` to its local session journal as they happen. That is the
+//! vocabulary [`crate::resume`] replays. `--cloud-history` additionally sends
+//! those records to `POST /api/v1/threads/{id}/events`; local-only is the
+//! default.
 //!
 //! A turn that did not answer records [`ThreadRecord::failed`] instead, and
 //! never an answer: the point of writing the turn down is that the record
@@ -36,9 +34,9 @@
 //! stream, an interrupted session, or an exhausted step budget lands in the
 //! transcript looking like an answer.
 //!
-//! Recording is best effort and does not fail a turn that worked: a transcript
-//! that could not be written is kept in [`CoderRuntimeSession::record_failures`]
-//! and reported, rather than swallowed or allowed to throw away an answer.
+//! A write failure does not replace an answer. It is retained in
+//! [`CoderRuntimeSession::record_failures`] so the caller can report the
+//! persistence failure separately.
 //!
 //! ## A session says how it ended, and `DELETE` is a disposal
 //!
@@ -490,6 +488,17 @@ impl Lane {
                 .unwrap_or_else(|| "Coder".to_string()),
         }
     }
+
+    /// The stable command-line spelling stored with a local session.
+    pub fn name(&self) -> String {
+        match self {
+            Lane::Flash => "flash".to_string(),
+            Lane::Free => "free".to_string(),
+            Lane::Named(id) => id.clone(),
+            Lane::Local(model) if model.is_empty() => "local".to_string(),
+            Lane::Local(model) => format!("ollama:{model}"),
+        }
+    }
 }
 
 /// The refusal for a lane none of whose candidates this deployment serves.
@@ -589,7 +598,7 @@ pub struct InferenceGrant {
 /// set — a turn that did not answer has no answer to replay, and a reader that
 /// does not know the word skips it rather than feeding a failure back to a
 /// model as though the model had said it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ThreadRecord {
     pub event_type: String,
     pub payload: serde_json::Value,
@@ -631,12 +640,18 @@ impl ThreadRecord {
 
     /// The answer, with what the turn spent reaching it.
     pub fn assistant(text: &str, usage: TurnUsage, calls: usize) -> Self {
+        Self::assistant_on(text, usage, calls, None)
+    }
+
+    /// The answer, including the exact model that produced it when known.
+    pub fn assistant_on(text: &str, usage: TurnUsage, calls: usize, model: Option<&str>) -> Self {
         Self::new(
             "turn.assistant",
             serde_json::json!({
                 "text": text,
                 "usage": usage,
                 "calls": calls,
+                "model": model,
             }),
         )
     }
@@ -765,6 +780,16 @@ impl ThreadOutcome {
         &self.report
     }
 
+    /// Keep settlement state while removing conversation-derived text.
+    fn without_conversation(mut self) -> Self {
+        self.report = match self.status {
+            SUCCEEDED => "The session answered.".to_string(),
+            CANCELLED => "The session was stopped before the turn finished.".to_string(),
+            _ => "The session ended without an answer.".to_string(),
+        };
+        self
+    }
+
     /// The body `POST /threads/{id}/report` takes.
     ///
     /// `usage` is what this process counted, sent as the session's own figure
@@ -885,6 +910,11 @@ pub struct CoderRuntimeSession {
     pub http: reqwest::Client,
     pub tools: HarnessToolRegistry,
     pub messages: Vec<ChatMessage>,
+    /// The local append-only record. It is Coder's source of truth and never
+    /// performs network I/O.
+    local_session: Option<crate::session_store::LocalSessionStore>,
+    /// Whether Coder may upload transcript events and outcome text.
+    cloud_history: bool,
     /// Told about every tool this session runs, as it runs it.
     ///
     /// `None` by default: a caller that does not draw a frame has nothing to
@@ -961,6 +991,11 @@ impl CoderRuntimeSession {
                 .unwrap_or_default(),
             tools,
             messages: Vec::new(),
+            local_session: None,
+            // Headless and delegated callers may have no local store. Keep
+            // their existing server record unless the interactive Coder front
+            // door explicitly selects local-only history.
+            cloud_history: true,
             tool_observer: None,
             progress_observer: None,
             stream_observer: None,
@@ -976,6 +1011,38 @@ impl CoderRuntimeSession {
     pub fn observing_tools(mut self, observer: ToolObserver) -> Self {
         self.tool_observer = Some(observer);
         self
+    }
+
+    /// Attach the local source-of-truth session and its model-facing replay.
+    pub fn with_local_session(
+        mut self,
+        store: crate::session_store::LocalSessionStore,
+        replayed: Vec<ChatMessage>,
+    ) -> Self {
+        if !replayed.is_empty() {
+            let system = self
+                .messages
+                .first()
+                .filter(|message| message.role == "system")
+                .cloned();
+            self.messages.clear();
+            if let Some(system) = system {
+                self.messages.push(system);
+            }
+            self.messages.extend(replayed);
+        }
+        self.local_session = Some(store);
+        self
+    }
+
+    /// Opt in to durable server transcript storage.
+    pub fn with_cloud_history(mut self, enabled: bool) -> Self {
+        self.cloud_history = enabled;
+        self
+    }
+
+    pub fn local_session_summary(&self) -> Option<&crate::session_store::SessionSummary> {
+        self.local_session.as_ref().map(|store| store.summary())
     }
 
     /// Report first-response waiting and retry state to a caller that draws it.
@@ -1211,6 +1278,9 @@ impl CoderRuntimeSession {
         self.lane = lane;
         self.thread_id = None;
         self.last_model = None;
+        if let Some(store) = self.local_session.as_mut() {
+            let _ = store.set_lane(&self.lane.name());
+        }
     }
 
     /// The model id this session's lane opens on, read from the live catalog.
@@ -1466,6 +1536,11 @@ impl CoderRuntimeSession {
         let Some(thread_id) = self.thread_id.clone() else {
             return Ok(None);
         };
+        let outcome = if self.cloud_history {
+            outcome
+        } else {
+            outcome.without_conversation()
+        };
         let url = format!("{}/threads/{thread_id}/report", self.api_base);
         let mut request = self
             .http
@@ -1601,7 +1676,24 @@ impl CoderRuntimeSession {
 
     /// Record, keeping a refusal rather than failing the turn over it.
     pub async fn note(&mut self, events: Vec<ThreadRecord>) {
-        if let Err(error) = self.record(&events).await {
+        if let Some(store) = self.local_session.as_mut()
+            && let Err(error) = store.append(&events)
+        {
+            let kinds = events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.record_failures
+                .push(format!("{kinds} were not saved locally: {error}"));
+        }
+        self.note_cloud(&events).await;
+    }
+
+    async fn note_cloud(&mut self, events: &[ThreadRecord]) {
+        if self.cloud_history
+            && let Err(error) = self.record(events).await
+        {
             let kinds = events
                 .iter()
                 .map(|event| event.event_type.as_str())
@@ -1639,6 +1731,7 @@ impl CoderRuntimeSession {
             tool_calls: None,
             tool_call_id: None,
         });
+        self.note(vec![ThreadRecord::user(prompt)]).await;
 
         self.last_usage = TurnUsage::default();
         self.last_calls = 0;
@@ -1662,7 +1755,22 @@ impl CoderRuntimeSession {
             self.run_thread_turn(prompt, &tool_defs, chunk_callback)
                 .await
         };
+        if let Err(error) = &answered
+            && self.pending_failure.is_none()
+        {
+            let why = error.to_string();
+            self.note(vec![ThreadRecord::failed(
+                &why,
+                self.last_usage,
+                self.last_calls,
+            )])
+            .await;
+            self.pending_failure = Some(ThreadOutcome::failed(error_code::TURN_FAILED, &why));
+        }
         self.session_usage.add(self.last_usage);
+        if let Some(store) = self.local_session.as_mut() {
+            let _ = store.set_last_model(self.last_model.as_deref());
+        }
 
         // The one place the outcome is decided, and it is decided from the
         // turn's own result rather than from anything a caller believes. An
@@ -1703,10 +1811,9 @@ impl CoderRuntimeSession {
             }
         };
         self.last_model = Some(grant.model.clone());
-
-        // The transcript opens with what was asked, before a model is reached,
-        // so a turn that dies mid-step still leaves the question behind.
-        self.note(vec![ThreadRecord::user(prompt)]).await;
+        // The local copy was appended before transport selection. Once the
+        // server thread exists, an explicit cloud-history opt-in mirrors it.
+        self.note_cloud(&[ThreadRecord::user(prompt)]).await;
 
         let mut final_answer = String::new();
         // False means the step budget ran out with every step still calling
@@ -1914,7 +2021,12 @@ impl CoderRuntimeSession {
                     tool_calls: None,
                     tool_call_id: None,
                 });
-                let said = ThreadRecord::assistant(&final_answer, self.last_usage, self.last_calls);
+                let said = ThreadRecord::assistant_on(
+                    &final_answer,
+                    self.last_usage,
+                    self.last_calls,
+                    self.last_model.as_deref(),
+                );
                 self.note(vec![said]).await;
                 answered = true;
                 break;
@@ -2168,6 +2280,13 @@ impl CoderRuntimeSession {
                     tool_call_id: None,
                 });
                 self.last_model = resolved_model.clone();
+                self.note(vec![ThreadRecord::assistant_on(
+                    &final_answer,
+                    self.last_usage,
+                    self.last_calls,
+                    self.last_model.as_deref(),
+                )])
+                .await;
                 answered = true;
                 break;
             }
@@ -2521,6 +2640,11 @@ impl CoderRuntimeSession {
             self.last_usage.add(step.usage);
             self.last_reasoning.push_str(&step.reasoning);
 
+            if !step.reasoning.trim().is_empty() {
+                self.note(vec![ThreadRecord::reasoning(&step.reasoning)])
+                    .await;
+            }
+
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
                 self.tell_stream(ModelStreamEvent::ContentCommitted);
@@ -2544,6 +2668,13 @@ impl CoderRuntimeSession {
                     tool_calls: None,
                     tool_call_id: None,
                 });
+                self.note(vec![ThreadRecord::assistant_on(
+                    &final_answer,
+                    self.last_usage,
+                    self.last_calls,
+                    self.last_model.as_deref(),
+                )])
+                .await;
                 answered = true;
                 break;
             }
@@ -3124,6 +3255,15 @@ mod tests {
             Lane::from_str("ollama:qwen3:0.6b").label(),
             "Coder Local (qwen3:0.6b)"
         );
+        for lane in [
+            Lane::Flash,
+            Lane::Free,
+            Lane::Named("model/one".to_string()),
+            Lane::Local(String::new()),
+            Lane::Local("qwen3:0.6b".to_string()),
+        ] {
+            assert_eq!(Lane::from_str(&lane.name()), lane);
+        }
     }
 
     #[test]

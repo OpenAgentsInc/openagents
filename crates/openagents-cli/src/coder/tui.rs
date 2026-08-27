@@ -304,6 +304,11 @@ pub struct CoderUi {
     pub lane: String,
     /// The thread this session holds, once the server has opened one.
     pub thread: Option<String>,
+    /// The local source-of-truth session and its directory.
+    pub local_session_id: Option<String>,
+    pub local_session_path: Option<String>,
+    /// Whether this invocation opted in to durable server transcript storage.
+    pub cloud_history: bool,
     /// What the last turn spent, as the server reported it for that turn.
     pub last_usage: TurnUsage,
     pub total_usage: TurnUsage,
@@ -388,6 +393,9 @@ impl CoderUi {
             endpoint: String::new(),
             lane: String::new(),
             thread: None,
+            local_session_id: None,
+            local_session_path: None,
+            cloud_history: false,
             last_usage: TurnUsage::default(),
             total_usage: TurnUsage::default(),
             credit: crate::coder::credit::CreditField::Unread,

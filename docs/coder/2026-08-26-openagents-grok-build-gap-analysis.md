@@ -38,10 +38,11 @@ The comparison supports five conclusions:
 
 ## Scope and method
 
-This audit compares these pinned trees:
+This audit compares these pinned trees and includes the local persistence work
+prepared for OpenAgents CLI `0.0.17`:
 
-- OpenAgents at `b40ba518c2e571e27a4cf50e1e067edef8b820a6`, principally
-  `crates/openagents-cli`.
+- OpenAgents based on `ae16348639`, principally `crates/openagents-cli`, with
+  the `0.0.17` persistence changes reviewed as part of this audit.
 - grok-build at `07b2f7144fd5c5c9d3dd1966937a87852d2dbdb8`, principally
   `crates/codegen/xai-grok-pager` and its supporting crates.
 
@@ -143,8 +144,10 @@ scrollback, commands, and settings before it adds the highest-value parity items
 | Subagent roster | **Partial** | OpenAgents delegation exists outside and through tools, but Coder lacks Grok's live agent dashboard, roster, status, and catalog views. |
 | Workflows | **Partial outside Coder** | OpenAgents has broader automation and delegation concepts, but Coder has no workflow picker, run view, or local slash surface comparable to Grok. |
 | Session creation | **Partial** | Coder starts a session and can log out. It lacks `/new` as an in-frame lifecycle operation. |
-| Session resume | **Partial** | `/resume` discovers foreign coding-agent sessions. It lacks Grok's native session picker, filters, previews, and seamless own-session restoration. |
-| Session history | **Missing** | Composer prompt history is not a navigable list of conversations. Grok provides history search and session selection. |
+| Session resume | **Partial** | `--continue` reopens the newest local session for the current directory and `--resume [id]` reopens a selected session. Coder still lacks Grok's picker, title search, previews, forks, and relocation workflow. The in-frame `/resume` command continues to discover foreign coding-agent sessions. |
+| Session history | **Partial** | Coder now keeps complete local event logs and restores its transcript. It does not yet provide an in-frame history browser, search index, rename, or delete workflow. |
+| Local persistence | **Equivalent for the core record** | Both products use a per-session directory, an atomic summary, and append-only JSONL as the source of truth. OpenAgents additionally materializes an ATIF snapshot. Grok has a persistence actor, locks, caches, and more auxiliary state. |
+| Cloud transcript storage | **OpenAgents privacy advantage** | Coder stores transcripts locally by default. `--cloud-history` explicitly opts in to server event and report text. Remote inference still sends prompts to the selected provider; this setting governs durable transcript storage, not inference transport. |
 | Session metadata | **Partial** | `/info` shows spend, model, lane, and thread. Rename, delete, share, recap, and transcript commands are absent. |
 | Fork and rewind | **Missing** | Coder cannot branch a session, rewind turns, restore repository state, or edit a previous prompt as one transaction. |
 | Worktree integration | **Missing in frame** | Grok can create and select worktrees during session workflows. OpenAgents has repository and workspace code but no comparable Coder view. |
@@ -237,7 +240,6 @@ The first useful slice should provide:
 6. Keyboard link traversal based on the existing hyperlink metadata.
 
 Do not replace terminal-native selection. Semantic selection should complement
-Shift-drag and preserve trackpad scrolling.
 
 ### Commands and discovery
 
@@ -265,22 +267,100 @@ views by calling existing OpenAgents modules.
 
 ### Sessions, recovery, and repository state
 
-`/resume` is useful, but it solves foreign-agent discovery rather than complete
-Coder continuity. Grok treats sessions as objects you can create, find, rename,
-fork, rewind, delete, and share. It coordinates session history with repository
-or worktree state.
+Grok does not use SQLite as its canonical conversation store. Its default
+`StorageMode::Local` writes a directory of JSON and JSONL files. `Writeback` is
+an explicit remote mode, and the background remote queue treats local files as
+authoritative even when a remote flush fails. Grok uses SQLite for derived
+search and memory indexes, which it can rebuild from the session record.
 
-OpenAgents needs a clear persistence contract before it ports UI:
+The principal Grok files are:
 
-- Which server thread and local ATIF journal identify a Coder session?
-- Which local transcript content is authoritative after reconnect?
-- How does a session bind to a directory, repository revision, and worktree?
-- What does rewind do to messages, receipts, files, and Git state?
-- Can a fork share earlier receipts without double counting them?
-- What happens when a repository moved or its worktree was deleted?
+- `xai-grok-shell/src/config/mod.rs`: defines `StorageMode`, defaults to local,
+  and resolves the CLI, environment, remote-settings, and default precedence.
+- `xai-grok-shared/src/session/mod.rs`: computes a session directory from the
+  working directory and session identity.
+- `xai-grok-shell/src/session/storage/mod.rs`: owns `summary.json`, canonical
+  `updates.jsonl`, derived `chat_history.jsonl`, plans, signals, goals, and
+  atomic replacement.
+- `xai-grok-shell/src/session/storage/jsonl/mod.rs`: lays out
+  `<root>/sessions/<encoded-cwd>/<session-id>/`, enumerates sessions, appends
+  auxiliary journals, and uses file locks.
+- `xai-grok-shell/src/session/persistence.rs`: serializes all writes through a
+  persistence actor. Messages cover ordinary and acknowledged appends, history
+  replacement, model and reasoning settings, plans, rewind, goals, workflows,
+  feedback, flush, and copy.
+- `xai-grok-shell/src/session/chat_persistence.rs`: adapts chat operations to
+  the persistence actor instead of allowing callers to write files directly.
+- `xai-grok-shell/src/remote/sync.rs`: mirrors local state in writeback mode as
+  a best-effort background operation.
+- `xai-grok-pager/src/app/dispatch/session/load.rs`: creates a loading state,
+  replays persisted history in batches, and then attaches the live session.
+- `xai-grok-pager/src/app/session_load_barrier.rs`: prevents live events from
+  appearing before already queued replay events.
+- `xai-grok-pager/src/app/cli.rs`: defines explicit `--continue` and optional
+  `--resume [id]` startup behavior. An ordinary launch starts a new session.
 
-Until those answers exist, implement session search, rename, and reliable reopen;
-defer destructive rewind and repository restoration.
+Grok persists more than visible chat. Its directory can contain
+`rewind_points.jsonl`, `feedback.jsonl`, `btw_history.jsonl`, workflow state,
+compaction state, images, plan state, goal state, and announcement state. Its
+`chat_history.jsonl` is a rebuildable acceleration structure; `updates.jsonl`
+is the complete event record. This distinction matters because a cache may be
+replaced while the source journal remains append-only.
+
+OpenAgents `0.0.17` adopts the smallest complete version of that contract:
+
+```text
+~/.openagents/sessions/<percent-encoded-working-directory>/<session-id>/
+├── summary.json
+├── updates.jsonl
+└── trajectory.atif.json
+```
+
+- `summary.json` is an atomic catalog row with the session ID, original working
+  directory, timestamps, lane, reasoning setting, last model, format version,
+  and cloud-history choice.
+- `updates.jsonl` is the authoritative append-only record. Each envelope has a
+  format version, monotonic sequence, timestamp, event type, and payload.
+- `trajectory.atif.json` is an atomic, complete ATIF v1.7 projection. Coder
+  refreshes it after completed turns and at exit. `/export` uses the same ATIF
+  document builder.
+
+ATIF should not replace the append log. A complete ATIF document requires a
+whole-file rewrite after each event. That creates write amplification and makes
+the interchange file a poor crash journal. Keeping ATIF as an always-current,
+atomic projection provides portable tooling without making a torn JSON document
+the only copy of a conversation.
+
+Coder creates a new local session on an ordinary launch. `--continue` loads the
+most recently updated session under the current working directory. Bare
+`--resume` has the same selection rule, and `--resume <id>` finds a session by
+ID even if the repository moved. Replay restores user messages, reasoning,
+tools, failures, assistant messages, and the model recorded on each answer. The
+same reconstructed wire history becomes the next model request context.
+
+Local persistence and server authority have separate responsibilities. The
+local record owns conversation continuity. The server thread still owns grants,
+metering, credit receipts, and settlement. By default, Coder does not append
+transcript events to the server and replaces conversation-derived settlement
+reports with a generic outcome. `--cloud-history` opts in to the previous event
+and report-text behavior. It does not make remote inference local: prompts still
+travel to the selected remote model unless you choose a local lane.
+
+The candidate intentionally omits SQLite. A search database becomes useful when
+Coder has a session picker, title and content search, and enough sessions for
+directory scans to be slow. Add it then as a disposable index built from
+`summary.json` and `updates.jsonl`, never as a second authority.
+
+The remaining Grok persistence gaps are meaningful but separable:
+
+- Serialize concurrent writers through an actor and add cross-process locks.
+- Add a replay barrier before live events can race session restoration.
+- Add session picker, title generation, rename, delete, fork, and relocation
+  workflows.
+- Persist goal, prompt queue, plan, compaction, permission, and repository
+  checkpoints when those domains have durable schemas.
+- Add rewind semantics only after conversation, credit receipt, tool side
+  effects, and Git state can move together without double settlement.
 
 ### Permissions, questions, and plans
 
@@ -416,8 +496,10 @@ The following Grok features are not current OpenAgents gaps:
 - Grok's internal implementation scale or module boundaries where a smaller
   OpenAgents abstraction meets the behavior contract.
 - Any global approval mode without a scoped OpenAgents safety design.
-- A second session store that competes with OpenAgents threads, ATIF, traces, or
-  receipts.
+- A cloud transcript store enabled without the reader's explicit choice.
+- SQLite as canonical chat storage. Use it only for derived search indexes.
+- ATIF as an in-place event journal. Keep it as an atomic projection of the
+  append-only local record.
 
 ## Recommended target architecture
 
@@ -444,8 +526,8 @@ This sequence avoids a large refactor with no user outcome.
 
 1. Add a distinct cancel-turn action with server, tool, receipt, and late-event
    tests.
-2. Make native Coder sessions durable and reopenable; define thread, ATIF, and
-   repository identity.
+2. Finish the native-session candidate by adding a session picker and a replay
+   race barrier around the durable local record.
 3. Add structured permission and question overlays through one overlay host.
 4. Add stable transcript block IDs and viewport anchors.
 5. Add an in-session doctor and redacted support export.
@@ -533,6 +615,10 @@ Use these files as starting points when implementing or refreshing this audit:
 - `crates/openagents-cli/src/coder/transcript.rs`: transcript wrapping and
   rendering.
 - `crates/openagents-cli/src/coder/commands.rs`: local slash commands.
+- `crates/openagents-cli/src/session_store.rs`: authoritative local session
+  summary, event journal, lookup, and replay adapter.
+- `crates/openagents-cli/src/coder/export.rs`: shared ATIF document builder,
+  session projection, and `/export` output.
 - `crates/openagents-cli/src/coder/goal.rs`: OpenAgents goal behavior.
 - `crates/openagents-cli/src/composer`: editing, history, completion, and keys.
 - `crates/openagents-cli/tests/coder_interactive_pty.rs`: real-terminal behavior.
@@ -541,8 +627,8 @@ Use these files as starting points when implementing or refreshing this audit:
 
 ### grok-build
 
-All paths below are relative to `crates/codegen/xai-grok-pager/src` in the pinned
-grok-build checkout:
+Pager paths below are relative to `crates/codegen/xai-grok-pager/src` in the
+pinned grok-build checkout:
 
 - `app`: state, actions, event loop, consent, sessions, agents, queue, and turn
   completion.
@@ -557,6 +643,19 @@ grok-build checkout:
 - `diagnostics` and `doctor_cmd`: runtime and terminal supportability.
 - `headless` and `minimal`: alternate execution and presentation surfaces.
 - `voice`: voice interaction.
+
+Persistence also depends on these paths outside the pager crate:
+
+- `xai-grok-shell/src/config/mod.rs`: local and writeback storage modes.
+- `xai-grok-shell/src/session/persistence.rs`: serialized persistence actor.
+- `xai-grok-shell/src/session/chat_persistence.rs`: chat persistence adapter.
+- `xai-grok-shell/src/session/storage/mod.rs`: canonical and derived files.
+- `xai-grok-shell/src/session/storage/jsonl/mod.rs`: directory layout, listing,
+  locking, and auxiliary logs.
+- `xai-grok-shell/src/remote/sync.rs`: optional remote writeback queue.
+- `xai-grok-shared/src/session/mod.rs`: session path construction.
+- `xai-grok-pager/src/app/dispatch/session/load.rs`: replay startup.
+- `xai-grok-pager/src/app/session_load_barrier.rs`: replay and live ordering.
 
 Re-pin both revisions and rerun the matrix before treating an individual status
 as current. The categories and priorities should remain useful even as individual
