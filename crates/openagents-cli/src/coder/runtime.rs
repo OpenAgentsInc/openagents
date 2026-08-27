@@ -474,9 +474,27 @@ impl Session {
     ) -> Self {
         // Long shell runs keep their whole transcript beside this record, so
         // a follow-up question reads the file instead of rerunning the job.
+        let record_directory = store.directory().to_path_buf();
         self.inner
             .tools
-            .keeping_session_logs_in_place(store.directory().to_path_buf());
+            .keeping_session_logs_in_place(record_directory.clone());
+        // The session's own record is now addressable (#159): the Tier D
+        // recall host tool answers questions about past output from the
+        // record and its command artifacts, so the model's way back to a
+        // fact is a read, never a re-execution.
+        match self
+            .inner
+            .tools
+            .add_host_tool(crate::coder::recall::host_tool(record_directory))
+        {
+            Ok(()) => self.refresh_system_prompt(),
+            Err(refusal) => {
+                // Only a name collision could refuse here, and the registry
+                // was just built — but a silent downgrade of the tool list
+                // would be worse than a loud one.
+                eprintln!("history_recall host tool not registered: {refusal}");
+            }
+        }
         self.inner = self
             .inner
             .with_local_session(store, crate::session_store::replay_messages(events))

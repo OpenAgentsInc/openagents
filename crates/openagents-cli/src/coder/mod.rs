@@ -15,6 +15,7 @@ pub mod image;
 pub mod interactive;
 pub mod markdown;
 pub mod osc8;
+pub mod recall;
 pub mod runtime;
 pub mod transcript;
 pub mod tui;

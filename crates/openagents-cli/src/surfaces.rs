@@ -65,6 +65,8 @@ pub mod tool_descriptions {
     pub const GOAL: &str = "Report a state change on the active persistent task goal for this session. The goal's objective, status, and budget already accompany each turn; call this with action='complete' when the goal is done and verified, or 'block'/'pause'/'resume' to update its status.";
     /// `rust.checkpoint`
     pub const RUST_CHECKPOINT: &str = "Record one milestone note for this session: which issue or task, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. A few sentences. Write one at every natural milestone -- an issue implemented and green, a blocker hit and worked around, a switch to different work -- and always before the turn's tool budget runs low. The note is shown to whoever resumes this session, including a future session after this one dies; it is the difference between picking up the work and excavating it.";
+    /// `history_recall`
+    pub const HISTORY_RECALL: &str = "Answer a question about this session's own past: what a command printed, what a turn decided, when something happened. Zero model calls, reads the session record owner-locally. The question is one of Grep (find text in past output - use this to recover failure names instead of re-running anything), CursorSlice (records between two sequence numbers), TimeSlice (records between two ISO instants), KeyTurns (first N turns, one span each), or TurnSummary (counts, tools, and text of one turn; its turnId is the sequence number of the turn's first record). Caps bound the answer and a cap hit is reported in the honesty field - `partial_budget` means read more or narrow the question, not that the answer is wrong. The answer cites the exact records it came from.";
 }
 
 /// Every staged surface and the digest of the artifact this was built from.
@@ -77,7 +79,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:0ad2b5390cac3e0ef181c8a1739c1dd14f7b791cf3137f509900734c481c1dfa",
+        "sha256:86fa6a77b5796ea866c00ba68e57a32a0270809aca09289a55433c994c105871",
     ),
     (
         "catalog-lines",
