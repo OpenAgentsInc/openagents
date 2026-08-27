@@ -735,6 +735,14 @@ impl HarnessToolRegistry {
                     };
                 }
 
+                if let Some(refusal) = check_duplicate_execution(cmd) {
+                    return ToolOutput {
+                        call_id: call.id.clone(),
+                        output: refusal,
+                        is_error: true,
+                    };
+                }
+
                 let (output_str, failed) = run_real_shell_logged(
                     cmd,
                     &self.cwd,
@@ -1172,9 +1180,9 @@ const REFUSED: &[(&str, &str)] = &[
 /// Why this command will not be run, or `None` when it will.
 pub fn check_shell_refusal(cmd: &str) -> Option<String> {
     for (pattern, reason) in REFUSED {
-        // A pattern that does not compile is a bug in this table, not a reason
-        // to let the command through, so it is skipped loudly in debug and
-        // treated as no-match otherwise.
+        // A pattern that does not compile is a bug in this table, not a
+        // reason to let the command through, so it is skipped loudly in debug
+        // and treated as no-match otherwise.
         let Ok(re) = regex::Regex::new(pattern) else {
             debug_assert!(false, "the refusal pattern `{pattern}` does not compile");
             continue;
@@ -1183,6 +1191,167 @@ pub fn check_shell_refusal(cmd: &str) -> Option<String> {
             return Some(format!(
                 "{reason} This session refuses it. If you meant something narrower, name the \
                  directory."
+            ));
+        }
+    }
+    None
+}
+
+/// The command heads one line would execute, in order, or `None` when the
+/// line is too tangled to split cheaply.
+///
+/// A head is an executable plus its first argument when there is one — enough
+/// to tell a rerun from legitimate work. Splitting is on top-level `;`, `&&`,
+/// `||`, and `|` only: quotes are respected, `$( )` and backticks are treated
+/// as opaque, and anything this misses stays missing because a conservative
+/// `None` just means no lint, never a wrong refusal. Redirections after a
+/// head are ignored; they do not change what executes.
+///
+/// This is also what #157's exporter re-execution audit clusters on, so the
+/// definition of "the same command" lives in exactly one place.
+pub fn command_heads(cmd: &str) -> Option<Vec<String>> {
+    // Top-level separators. Byte-wise scanning rather than regex, because the
+    // state to track is small — in single quotes, in double quotes, in a
+    // command substitution — and depth is bounded by the input, not by a
+    // grammar worth a crate.
+    #[derive(PartialEq)]
+    enum In {
+        Nothing,
+        Single,
+        Double,
+        Subst,
+    }
+    let mut segments: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut state = In::Nothing;
+    let bytes = cmd.as_bytes();
+    for (index, &byte) in bytes.iter().enumerate() {
+        match state {
+            In::Single => {
+                current.push(byte as char);
+                if byte == b'\'' {
+                    state = In::Nothing;
+                }
+            }
+            In::Double => {
+                current.push(byte as char);
+                if byte == b'"' && bytes[index.saturating_sub(1)] != b'\\' {
+                    state = In::Nothing;
+                }
+            }
+            In::Subst => {
+                current.push(byte as char);
+                if byte == b')' {
+                    state = In::Nothing;
+                }
+            }
+            In::Nothing => match byte {
+                b'\'' => {
+                    current.push('\'');
+                    state = In::Single;
+                }
+                b'"' => {
+                    current.push('"');
+                    state = In::Double;
+                }
+                b'$' if index + 1 < bytes.len() && bytes[index + 1] == b'(' => {
+                    current.push_str("$(");
+                    state = In::Subst;
+                }
+                b';' | b'|' => {
+                    segments.push(std::mem::take(&mut current));
+                }
+                b'&'
+                    if index + 1 < bytes.len()
+                        && bytes[index + 1] == b'&'
+                        || index > 0 && bytes[index - 1] == b'&' =>
+                {
+                    // Push only once per `&&`: on the first ampersand, unless
+                    // a lone `&` (background) follows — that separates too,
+                    // but a bare `&` is rare enough to treat conservatively
+                    // as a separator as well.
+                    segments.push(std::mem::take(&mut current));
+                }
+                _ => current.push(byte as char),
+            },
+        }
+    }
+    segments.push(current);
+
+    let mut heads = Vec::new();
+    for segment in segments {
+        let segment = segment.trim();
+        if segment.is_empty() {
+            continue;
+        }
+        // Env-prefix assignments (`FOO=bar cmd …`) are skipped off the front
+        // first: the environment does not change what executes.
+        let mut words = segment.split_whitespace().map(str::to_string);
+        let mut executable = loop {
+            match words.next() {
+                Some(word) if word.contains('=') && !word.starts_with('-') => continue,
+                Some(word) => break word,
+                None => return None,
+            }
+        };
+        // Strip surrounding quotes, which would otherwise make `'cargo'` and
+        // `cargo` different commands.
+        executable = executable.trim_matches('\'').trim_matches('"').to_string();
+        let mut next_word = move || {
+            words
+                .next()
+                .map(|word| word.trim_matches('\'').trim_matches('"').to_string())
+        };
+        let mut head = match next_word() {
+            Some(argument) if !argument.starts_with('-') => {
+                format!("{executable} {argument}")
+            }
+            _ => {
+                heads.push(executable.clone());
+                continue;
+            }
+        };
+        // A family of executors whose interesting identity is three words
+        // deep: `pnpm run test:rust` and `pnpm run lint` share nothing but
+        // the binary, and refusing a line that ran both would break ordinary
+        // compound work. One more word separates them.
+        const RUNNERS: &[&str] = &["pnpm", "npm", "yarn", "bun", "npx", "pnpx"];
+        const GIT_VERBS: &[&str] = &["stash", "worktree", "remote"];
+        let parts: Vec<&str> = head.split(' ').collect();
+        if parts.len() == 2 {
+            let (first, second) = (parts[0], parts[1]);
+            let wants_third =
+                RUNNERS.contains(&first) && second == "run" || first == "git" && GIT_VERBS.contains(&second);
+            if wants_third {
+                if let Some(third) = next_word() {
+                    head = format!("{head} {third}");
+                }
+            }
+        }
+        heads.push(head);
+    }
+    Some(heads)
+}
+
+/// Why this one-liner runs the same work twice, or `None` when it does not.
+///
+/// Three greps over three separate full-suite executions was how a session
+/// spent five minutes answering three questions about one output stream
+/// (#153): each pipeline entry looked like fresh work because nothing read
+/// past the pipe. A repeat inside one invocation is refused with the way out
+/// — run it once through `tee`, grep the file — rather than silently rewritten,
+/// because the second execution of a mutating command is not always the same
+/// command again.
+pub fn check_duplicate_execution(cmd: &str) -> Option<String> {
+    let heads = command_heads(cmd)?;
+    let mut seen = std::collections::HashSet::new();
+    for head in &heads {
+        if !seen.insert(head.clone()) {
+            return Some(format!(
+                "This one-liner executes `{head}` more than once. Run it once with the output \
+                 kept — append `2>&1 | tee /tmp/last-run.log`, or rely on the session log this \
+                 session writes for long commands — then answer every follow-up question by \
+                 grepping that file instead of executing again."
             ));
         }
     }
@@ -2409,6 +2578,84 @@ mod defect_tests {
             .await;
         let entries = std::fs::read_dir(session.path()).unwrap().count();
         assert_eq!(entries, 0, "fast quiet work leaves no file behind");
+    }
+
+    // ─────────────────────────────── the repeated-execution gate
+
+    /// The shape that cost five minutes in trajectory 2026-08-27 step 55:
+    /// three executions of one suite because each carried a different grep.
+    #[test]
+    fn the_gate_refuses_a_one_liner_that_executes_a_command_twice() {
+        let refusal = check_duplicate_execution(
+            "pnpm run test:rust 2>&1 | grep -E 'test result' | head; \
+             pnpm run test:rust 2>&1 | grep -c 'test result: ok'; \
+             pnpm run test:rust 2>&1 | grep FAILED",
+        )
+        .expect("three runs of one suite are two too many");
+        assert!(refusal.contains("pnpm run test:rust"), "{refusal}");
+        assert!(refusal.contains("tee"), "the refusal names the way out");
+    }
+
+    #[test]
+    fn a_single_run_of_a_command_is_never_the_gate() {
+        // One execution with three post-processing stages is one run. Piping
+        // through several consumers is exactly what the tool description
+        // already encourages.
+        assert!(
+            check_duplicate_execution(
+                "vp test --run --reporter=json --outputFile=/tmp/v.json 2>&1 | tee /tmp/raw.log | grep FAIL | head"
+            )
+            .is_none()
+        );
+        // Distinct commands to distinct heads are unrelated work.
+        assert!(
+            check_duplicate_execution("git status && git log --oneline -5 && ls")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn the_head_check_distinguishes_commands_by_first_argument() {
+        // `cargo build` and `cargo test` share an executable but not work;
+        // refusing those would break ordinary compound lines.
+        assert!(
+            check_duplicate_execution("cargo build --release && cargo test")
+                .is_none()
+        );
+        // But `cargo test` twice is a rerun regardless of what follows it.
+        assert!(
+            check_duplicate_execution("cargo test lib && cargo test doc").is_some()
+        );
+    }
+
+    #[test]
+    fn quoted_and_substituted_segments_are_not_split() {
+        // The separators inside quotes and substitutions do not count as
+        // boundaries, so this is one echo followed by a different head.
+        assert!(
+            check_duplicate_execution(
+                r#"echo "a; b | c && d" && echo "$(git status)" "#
+            )
+            .is_none(),
+            "one echo plus one echo is two different heads at worst"
+        );
+        // A repeat behind quotes is still a repeat: the quote is on the word,
+        // and the identity survives the strip. Two echos with the same
+        // argument are one command twice.
+        assert!(check_duplicate_execution(r#"echo hi; 'echo' hi"#).is_some());
+        // But two distinct commands, however quoted, run free.
+        assert!(check_duplicate_execution(r#"echo hi; 'echo' again"#).is_none());
+    }
+
+    #[test]
+    fn environment_prefixes_do_not_hide_a_repeat() {
+        assert!(
+            check_duplicate_execution(
+                "RUST_BACKTRACE=1 cargo test && RUST_BACKTRACE=full cargo test"
+            )
+            .is_some(),
+            "same command under different env assignments is still a rerun"
+        );
     }
 
     #[cfg(unix)]
