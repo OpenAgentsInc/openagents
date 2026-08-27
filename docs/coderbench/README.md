@@ -23,6 +23,9 @@ Read in order:
 3. [`process.md`](process.md) — the operating procedure: inventory every local
    trace, redact, upload the corpus to the OpenAgents Cloud, label it against
    the forge, distill pinned tasks, grade, and feed the autoimprovement loop.
+4. [`gym-cli-spec.md`](gym-cli-spec.md) — the `openagents gym` command
+   surface: suites, runs, results, trace-corpus import, dataset membership,
+   and compute plumbing, shared by Terminal-Bench and CoderBench alike.
 
 ## One-paragraph version
 
@@ -38,3 +41,12 @@ adapter, pinned suite manifest, thresholds, append-only hash-chained results.
 Terminal-Bench proved the methodology on contrived terminal tasks; CoderBench
 applies it to real work as it actually happens, across whatever code the
 corpus honestly contains.
+
+## Driving both benchmarks from one place
+
+Terminal-Bench and CoderBench run through the same `openagents gym` CLI
+surface — see [`gym-cli-spec.md`](gym-cli-spec.md). One `gym run` command
+executes either suite with the same lifecycle receipts, `gym results compare`
+puts their numbers side by side so our benchmark is always measured against
+the established one, and `gym corpus`/`gym dataset` manage the trace pipeline
+that only CoderBench needs.

@@ -15,6 +15,15 @@ nothing in the pipeline is OpenAgents-specific except the forge provenance
 convenience, and a domain without forge issues simply pins its outcomes by
 commit range instead.
 
+**The CLI path.** Once the `openagents gym` commands land
+([`gym-cli-spec.md`](gym-cli-spec.md)), the manual steps below get first-class
+replacements and the docs here say which command wraps which stage:
+Stage A → `gym corpus inventory`, Stage B–C → `gym corpus qualify`/`import`,
+Stage E's pinning → `gym dataset pin`, Stage F's prereq checks → `gym env
+doctor`. The procedure stays the source of truth for *what and why*; the CLI
+spec owns *how*. Until a command exists, run the stage by hand exactly as
+written.
+
 ## Stage A — Inventory (M0)
 
 **Goal:** one reproducible catalog of every candidate session on this machine,

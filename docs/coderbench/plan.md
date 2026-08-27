@@ -100,12 +100,14 @@ Everything hangs off machinery that already exists:
 | Runs | `bench/run-suite.sh` + `bench/adapters/openagents_coder.py` | grade the coder on the suite |
 | Scoring | `packages/coder-effectiveness` thresholds + compare/report | floors, deltas, smoke rejection |
 | Receipts | `bench-results/coderbench-<domain>-v1.jsonl` hash chains | append-only trend lines |
+| CLI surface | `openagents gym` (spec: [`gym-cli-spec.md`](gym-cli-spec.md)) | one command surface for suites, runs, results, corpus, datasets — both tb2 and CoderBench |
 
 New code is limited to: a curation CLI that walks the inventory → redact →
 upload → register pipeline and writes the ledger; a distiller that turns a
-labeled trace cluster into a draft task JSON plus its verifier script; and a
+labeled trace cluster into a draft task JSON plus its verifier script; a
 small set of parameterized task-environment image families (one per
-environment shape, not per task — see §5 M4).
+environment shape, not per task — see §5 M4); and the `openagents gym`
+subcommand per its spec.
 
 ## 5. Domains
 
@@ -148,7 +150,10 @@ Domain rules:
 
 Milestones land one PR each, in order; each leaves the tree green and the docs
 honest. M0–M5 cover the first domain (agent-building) end to end; later
-domains re-enter at M1 with their own traces and skip nothing.
+domains re-enter at M1 with their own traces and skip nothing. The
+`openagents gym` CLI ([`gym-cli-spec.md`](gym-cli-spec.md) §6) lands in step
+with these: suites/runs/results/env alongside M4–M5's tooling, corpus/dataset
+commands alongside M0–M4.
 
 ### M0 — Corpus inventory (no upload)
 
