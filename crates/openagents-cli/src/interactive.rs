@@ -1102,7 +1102,11 @@ fn install_panic_hook() {
 /// they each built the registry separately before, both passed `None`, and the
 /// result was that `delegate` worked headless and was missing from the only
 /// session anyone actually types into.
-fn session_tools(
+///
+/// The discovered ACP agents ride on the gate, so naming one in a `delegate`
+/// call hands the whole task to it on its own bill; a machine with none just
+/// gets the plain fan-out wording.
+async fn session_tools(
     lane_name: &str,
     token: &Option<String>,
     child: crate::delegate::ChildOptions,
@@ -1114,6 +1118,8 @@ fn session_tools(
             user_token: token.clone(),
             max_count: crate::delegate::MAX_DELEGATE_COUNT,
             child,
+            acp_agents: crate::coder::acp::find_agents().await.unwrap_or_default(),
+            acp_spent: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         },
     )
 }
@@ -1134,7 +1140,7 @@ pub async fn run_tui(
         return run_without_a_terminal(args, api_base, token, repository, lane, resumed).await;
     }
 
-    let tools = session_tools(&lane_name, &token, args.child_options());
+    let tools = session_tools(&lane_name, &token, args.child_options()).await;
     let mut session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
     session.repository = repository;
@@ -1244,7 +1250,7 @@ async fn run_without_a_terminal(
         return Ok(());
     };
 
-    let tools = session_tools(&lane_name, &token, args.child_options());
+    let tools = session_tools(&lane_name, &token, args.child_options()).await;
     let mut session = CoderRuntimeSession::new(lane, Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
     session.repository = repository;
@@ -1307,13 +1313,14 @@ mod tests {
     /// symptom was subtle: `oa coder --headless` could start children and the
     /// interactive session silently could not, because a missing tool looks
     /// exactly like a model choosing not to call it.
-    #[test]
-    fn an_interactive_session_can_delegate() {
+    #[tokio::test]
+    async fn an_interactive_session_can_delegate() {
         let tools = session_tools(
             "glm-5.3-flash",
             &Some("token".to_string()),
             Default::default(),
-        );
+        )
+        .await;
         let names: Vec<String> = tools.list_tools().into_iter().map(|t| t.name).collect();
         assert!(
             names.iter().any(|n| n == "delegate"),
@@ -1325,13 +1332,14 @@ mod tests {
     /// The gate carries the lane and credential children spend against. A gate
     /// that exists but names the wrong lane would start children on the default
     /// lane while the session runs on another, which is worse than no gate.
-    #[test]
-    fn the_gate_carries_this_sessions_lane_and_credential() {
+    #[tokio::test]
+    async fn the_gate_carries_this_sessions_lane_and_credential() {
         let tools = session_tools(
             "claude",
             &Some("secret-token".to_string()),
             Default::default(),
-        );
+        )
+        .await;
         let gate = tools
             .delegation
             .as_ref()

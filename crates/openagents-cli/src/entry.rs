@@ -80,7 +80,8 @@ Environment:
   OPENAGENTS_BASE_URL   The /api/v1 base to use. `--dev` sets it.
   OPENAGENTS_API_KEY    The credential to spend. Optional if signed in.
   OPENAGENTS_WEB_REPO   Where `--dev` looks for start_server.sh.
-  ACP_REGISTRY          Where the `acp` tool looks for installed agents.
+  ACP_REGISTRY          Where the `delegate` tool looks for installed external
+                        agents (cursor, devin, opencode, ...).
 
 Inside the session, `/help` lists the commands and the keys.
 ";

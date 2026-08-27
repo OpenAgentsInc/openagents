@@ -251,11 +251,6 @@ pub struct Session {
     /// The frame's channel, kept so the ending can report what the server
     /// billed. Turns carry their own sender; this one outlives them.
     sink: Sink,
-    /// Whether this user turn has already handed work to an ACP agent.
-    ///
-    /// Cleared at the top of every turn and set by the `acp` tool itself; see
-    /// [`crate::coder::acp_tool`] for why one is the limit.
-    acp_spent: Arc<AtomicBool>,
     goal: crate::coder::goal::SharedGoal,
     turn_router: SharedTurnRouter,
     next_turn: u64,
@@ -311,7 +306,7 @@ impl Session {
         dev: bool,
         tx: Sender<Control>,
     ) -> Self {
-        let mut tools = HarnessToolRegistry::with_delegation(
+        let tools = HarnessToolRegistry::with_delegation(
             None,
             DelegationGate {
                 lane: lane_name.to_string(),
@@ -322,6 +317,12 @@ impl Session {
                 // adding those flags here is a visible edit, not a silent
                 // inheritance of whatever the field grows into.
                 child: crate::delegate::ChildOptions::default(),
+                // Discovered before the session opened: `find_agents` checks
+                // each registry entry against this machine, so a program that
+                // is not installed is not offered. Naming one of these in a
+                // `delegate` call hands the task to it on its own bill.
+                acp_agents: agents,
+                acp_spent: Arc::new(AtomicBool::new(false)),
             },
         );
 
@@ -336,30 +337,6 @@ impl Session {
         let stream_turns = Arc::clone(&turn_router);
         let live_streaming = Arc::new(AtomicBool::new(false));
         let streamed = Arc::clone(&live_streaming);
-
-        // Coder's own capability, declared only where there is one to
-        // declare: `find_agents` reports installed agents, so a machine with
-        // none does not see the tool.
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let found = !agents.is_empty();
-        let acp_spent = Arc::new(AtomicBool::new(false));
-        if let Some(tool) = crate::coder::acp_tool::acp_host_tool(
-            agents,
-            cwd,
-            Arc::clone(&sink),
-            Arc::clone(&acp_spent),
-        ) {
-            if let Err(refusal) = tools.add_host_tool(tool) {
-                send(&sink, Control::Notice(refusal));
-            }
-        } else if found {
-            // Unreachable while `acp_host_tool` refuses only an empty list,
-            // and here so that stops being silently true if it stops being.
-            send(
-                &sink,
-                Control::Notice("ACP agents were found but no `acp` tool was declared".to_string()),
-            );
-        }
 
         let mut inner = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools)
             .observing_tools(Arc::new(move |event: ToolEvent| match event {
@@ -478,7 +455,6 @@ impl Session {
             inner,
             lane,
             sink,
-            acp_spent,
             goal,
             turn_router,
             next_turn: 1,
@@ -670,9 +646,12 @@ impl Session {
             turns.start(id, cancel_tools);
         }
         self.inner.set_tool_cancellation(tool_cancellation);
-        // A fresh turn may hand work to an agent again. The limit is per user
-        // turn, not per session.
-        self.acp_spent.store(false, Ordering::SeqCst);
+        // A fresh turn may hand work to an external agent again. The limit is
+        // per user turn, not per session; the flag lives in the delegation
+        // gate and is claimed by the `delegate` tool's `agent` path.
+        if let Some(gate) = &self.inner.tools.delegation {
+            gate.acp_spent.store(false, Ordering::SeqCst);
+        }
         let sink: Sink = Arc::new(Mutex::new(tx));
         self.live_streaming.store(false, Ordering::Relaxed);
         let started = Instant::now();

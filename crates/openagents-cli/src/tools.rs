@@ -40,12 +40,15 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::watch;
 
+use crate::coder::acp::Agent;
+use crate::coder::acp_harness::{AcpFailure, AcpHarness, PermissionMode};
 use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
@@ -172,6 +175,18 @@ fn floor_char_boundary(text: &str, max: usize) -> usize {
 
 pub const DEFAULT_TIMEOUT_SECS: u64 = 120;
 pub const MAXIMUM_TIMEOUT_SECS: u64 = 600;
+
+/// A plan upsell is not work done.
+///
+/// An external agent that answers "upgrade your plan to continue" has
+/// returned a string rather than performed the task, and reporting that as a
+/// successful tool result is how a session comes to believe a file was edited
+/// when nothing touched it.
+fn is_refusal(answer: &str) -> bool {
+    answer
+        .to_lowercase()
+        .contains("upgrade your plan to continue")
+}
 
 /// Child output with its terminal escape sequences removed.
 ///
@@ -343,6 +358,20 @@ pub struct DelegationGate {
     /// which is the only route a provider credential has to one, since this
     /// CLI stores none.
     pub child: crate::delegate::ChildOptions,
+    /// The ACP agents installed on this machine, from
+    /// [`crate::coder::acp::find_agents`]. Naming one of these in a `delegate`
+    /// call hands the whole task to that program over the Agent Client
+    /// Protocol — on its own credentials and its own bill, not the session's —
+    /// so one such call is the per-turn limit. Empty on a machine with no ACP
+    /// agent, which is also when the external-agent language leaves the
+    /// declaration: a capability that does not exist here is not advertised.
+    pub acp_agents: Vec<Agent>,
+    /// Whether this user turn has already handed work to an external ACP
+    /// agent. Claimed before a call's arguments are read, so a malformed
+    /// second call cannot spend the turn's one external delegation on an
+    /// error message; cleared at the top of every turn by
+    /// [`crate::coder::runtime::Session::execute_turn`].
+    pub acp_spent: Arc<AtomicBool>,
 }
 
 pub struct HarnessToolRegistry {
@@ -727,11 +756,36 @@ impl HarnessToolRegistry {
         if let Some(gate) = &self.delegation {
             let resolved_child = crate::delegate::ChildLane::resolve_for_session(&gate.lane)
                 .unwrap_or(crate::delegate::ChildLane::OpenAgents);
+            // The external agents are named through the surface's
+            // `{external}` placeholder, filled here from what is installed.
+            // A dynamic schema cannot go in a builtin's constant parameter
+            // block, so the description is where the ids live; an empty
+            // installed list fills the placeholder with nothing, so a machine
+            // with no ACP agent is not told it has one.
+            let external = if gate.acp_agents.is_empty() {
+                String::new()
+            } else {
+                let listed = gate
+                    .acp_agents
+                    .iter()
+                    .map(|agent| format!("`{}` ({})", agent.id, agent.name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    " One call may instead hand the whole task to one coding agent installed on \
+                     this machine, over the Agent Client Protocol: pass `agent` with one of \
+                     {listed} and the task runs in that program with its own tools, its own \
+                     credentials, and its own bill — count is then forced to 1, and one \
+                     external agent is the per-turn limit. Prefer `shell` for a single command \
+                     — an ACP agent is for work worth a whole agent."
+                )
+            };
             tools.push(ToolDefinition {
                 name: "delegate".to_string(),
                 description: text::RUST_DELEGATE
                     .replace("{lane}", &resolved_child.label())
-                    .replace("{max_count}", &gate.max_count.to_string()),
+                    .replace("{max_count}", &gate.max_count.to_string())
+                    .replace("{external}", &external),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -743,7 +797,16 @@ impl HarnessToolRegistry {
                             "type": "integer",
                             "minimum": 1,
                             "maximum": gate.max_count,
-                            "description": "How many children run this prompt. Defaults to 1."
+                            "description": "How many children run this prompt. Defaults to 1. Ignored when `agent` is set."
+                        },
+                        "agent": {
+                            "type": "string",
+                            "description": "One installed external agent to hand the whole task to, instead of children on this session's lane. Each call may name at most one."
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": ["read-only", "prompt", "dangerous"],
+                            "description": "With `agent`: how much it may do unattended. Omit to leave the agent's own default; `read-only` for a look that changes nothing."
                         }
                     },
                     "required": ["prompt"]
@@ -958,6 +1021,36 @@ impl HarnessToolRegistry {
                     };
                 };
 
+                // Claimed before anything about the call is read, so a
+                // malformed second call cannot spend the turn's one external
+                // delegation on an error message. The cap is scoped to
+                // external agents: it exists because one turn once carried
+                // twenty-four consecutive hand-offs to agents on somebody's
+                // bill, and plain fan-out on the session's own grant is
+                // already bounded by `max_count`.
+                if let Some(wanted) = call
+                    .arguments
+                    .get("agent")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                {
+                    if gate.acp_spent.swap(true, Ordering::SeqCst) {
+                        return ToolOutput {
+                            call_id: call.id.clone(),
+                            output: "This turn has already handed work to an agent, and one is the limit: a \
+                                     second agent is a second bill for the same request. Answer with what the \
+                                     first one returned, or ask for another turn."
+                                .to_string(),
+                            is_error: true,
+                            duration_ms: 0,
+                        };
+                    }
+                    return self
+                        .delegate_to_acp_agent(call, wanted, gate, cancel)
+                        .await;
+                }
+
                 let prompt = call
                     .arguments
                     .get("prompt")
@@ -1160,6 +1253,113 @@ impl HarnessToolRegistry {
                 }
             }
         }
+    }
+
+    /// Hand the whole task to one installed ACP agent: the `agent` parameter
+    /// of `delegate`, which was the `acp` tool before the two surfaces
+    /// merged. Every refusal here is one the old tool's tests pin, kept
+    /// verbatim so the consolidation is a move and not a rewrite.
+    ///
+    /// This path loses the old host tool's live streaming of the child's
+    /// output into its tool box — builtin tools drain into a discard sink,
+    /// and results arrive at the end. Accepted for now: delegate's results
+    /// are end-of-run today, and nobody has flagged the loss.
+    async fn delegate_to_acp_agent(
+        &self,
+        call: &ToolCall,
+        wanted: &str,
+        gate: &DelegationGate,
+        mut cancel: watch::Receiver<bool>,
+    ) -> ToolOutput {
+        let agents = &gate.acp_agents;
+        let make = |output: String, is_error: bool| ToolOutput {
+            call_id: call.id.clone(),
+            output,
+            is_error,
+            duration_ms: 0,
+        };
+
+        let Some(agent) = agents.iter().find(|a| a.id == wanted).cloned() else {
+            return make(
+                format!(
+                    "No agent named `{wanted}` is installed here. Installed: {}.",
+                    agents
+                        .iter()
+                        .map(|a| a.id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                true,
+            );
+        };
+        let Some(prompt) = call
+            .arguments
+            .get("prompt")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+        else {
+            return make(
+                "No task was given. `prompt` is required and must say what the agent does."
+                    .to_string(),
+                true,
+            );
+        };
+        // A mode this build does not know is refused by name rather than
+        // quietly dropped: the reader asked for read-only and would
+        // otherwise get whatever the agent's default is.
+        let mode = match call
+            .arguments
+            .get("mode")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            None => None,
+            Some(named) => match PermissionMode::parse(named) {
+                Some(mode) => Some(mode),
+                None => {
+                    return make(
+                        format!(
+                            "`{named}` is not a mode. Use `read-only`, `prompt`, or \
+                             `dangerous`, or omit it for the agent's own default."
+                        ),
+                        true,
+                    );
+                }
+            },
+        };
+
+        let result = AcpHarness {
+            command: agent.command,
+            args: agent.args,
+            mode,
+            ..AcpHarness::default()
+        }
+        .run(&prompt, &self.cwd, |_| {}, &mut cancel)
+        .await;
+
+        let (output, is_error) = match result {
+            Ok(answer) if is_refusal(&answer) => (
+                format!("`{wanted}` refused the task rather than doing it: {answer}"),
+                true,
+            ),
+            Ok(answer) if answer.trim().is_empty() => {
+                (format!("`{wanted}` finished and said nothing."), false)
+            }
+            Ok(answer) => (answer, false),
+            Err(AcpFailure::Unstartable(why)) => {
+                (format!("`{wanted}` could not be started: {why}"), true)
+            }
+            Err(AcpFailure::Refused(why)) => {
+                (format!("`{wanted}` did not finish the task: {why}"), true)
+            }
+            Err(AcpFailure::Cancelled) => {
+                (format!("`{wanted}` was stopped before it finished."), true)
+            }
+        };
+        make(output, is_error)
     }
 }
 
@@ -2787,6 +2987,7 @@ async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicBool;
 
     fn write_skill(root: &Path, dir: &str, source: &str) {
         let at = root.join(".agents").join("skills").join(dir);
@@ -3056,6 +3257,8 @@ mod tests {
                 user_token: None,
                 max_count: 2,
                 child: Default::default(),
+                acp_agents: Vec::new(),
+                acp_spent: Arc::new(AtomicBool::new(false)),
             },
         );
         let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
@@ -4225,5 +4428,168 @@ mod defect_tests {
         // non-ASCII text passes through a byte at a time, intact.
         let input = "€ FAIL \u{1b}[31m\u{1e00}가\u{1b}[0m ✓";
         assert_eq!(strip_terminal_escapes(input), "€ FAIL \u{1e00}가 ✓");
+    }
+
+    // ─────────────────────────── the delegate tool's external-agent path
+    //
+    // These are the `acp` tool's tests, re-targeted at the `agent` parameter
+    // of `delegate` — the capability was folded into delegate (#228) and the
+    // refusals were kept verbatim, so the tests that pinned them moved with
+    // it and read one tool's one behaviour.
+
+    fn acp_agent(id: &str) -> Agent {
+        Agent {
+            id: id.to_string(),
+            name: id.to_string(),
+            command: "definitely-not-a-real-binary-xyz".to_string(),
+            args: vec!["acp".to_string()],
+        }
+    }
+
+    fn gate_with(agents: Vec<Agent>) -> (HarnessToolRegistry, Arc<AtomicBool>) {
+        let spent = Arc::new(AtomicBool::new(false));
+        let registry = HarnessToolRegistry::with_delegation(
+            Some(std::env::temp_dir()),
+            DelegationGate {
+                lane: "test".to_string(),
+                user_token: None,
+                max_count: 2,
+                child: Default::default(),
+                acp_agents: agents,
+                acp_spent: Arc::clone(&spent),
+            },
+        );
+        (registry, spent)
+    }
+
+    async fn run_delegate(registry: &HarnessToolRegistry, arguments: serde_json::Value) -> (String, bool) {
+        let out = registry
+            .execute_tool(&ToolCall {
+                id: "1".to_string(),
+                name: "delegate".to_string(),
+                arguments,
+            })
+            .await;
+        (out.output, out.is_error)
+    }
+
+    /// The declaration enumerates the installed agents, and a machine with
+    /// none carries no external-agent language at all. The alternative is a
+    /// capability claimed where it does not exist.
+    #[test]
+    fn the_declaration_names_the_installed_external_agents_and_only_those() {
+        let (registry, _spent) = gate_with(vec![acp_agent("devin"), acp_agent("grok-build")]);
+        let tool = registry
+            .list_tools()
+            .into_iter()
+            .find(|t| t.name == "delegate")
+            .expect("declared");
+        assert!(tool.description.contains("`devin`"), "{}", tool.description);
+        assert!(tool.description.contains("grok-build"), "{}", tool.description);
+        assert!(tool.description.contains("own bill"), "{}", tool.description);
+
+        let (empty, _spent) = gate_with(Vec::new());
+        let tool = empty
+            .list_tools()
+            .into_iter()
+            .find(|t| t.name == "delegate")
+            .expect("declared");
+        assert!(
+            !tool.description.to_lowercase().contains("agent client protocol"),
+            "no external-agent language without an installed agent: {}",
+            tool.description
+        );
+    }
+
+    #[tokio::test]
+    async fn an_agent_that_is_not_installed_is_refused_by_name() {
+        let (registry, _spent) = gate_with(vec![acp_agent("devin")]);
+        let (output, is_error) = run_delegate(
+            &registry,
+            serde_json::json!({"agent": "nobody", "prompt": "do it"}),
+        )
+        .await;
+        assert!(is_error);
+        assert!(output.contains("nobody"), "{output}");
+        assert!(output.contains("devin"), "{output}");
+    }
+
+    #[tokio::test]
+    async fn a_mode_this_build_does_not_know_is_refused_rather_than_dropped() {
+        let (registry, _spent) = gate_with(vec![acp_agent("devin")]);
+        let (output, is_error) = run_delegate(
+            &registry,
+            serde_json::json!({"agent": "devin", "prompt": "look", "mode": "whatever"}),
+        )
+        .await;
+        assert!(is_error);
+        assert!(output.contains("read-only"), "{output}");
+    }
+
+    /// An agent that is not on PATH is said to be missing. It used to be
+    /// reported to the model as the tool's answer.
+    #[tokio::test]
+    async fn an_agent_that_will_not_start_is_an_error_and_says_why() {
+        let (registry, _spent) = gate_with(vec![acp_agent("devin")]);
+        let (output, is_error) = run_delegate(
+            &registry,
+            serde_json::json!({"agent": "devin", "prompt": "do it"}),
+        )
+        .await;
+        assert!(is_error, "{output}");
+        assert!(output.contains("could not be started"), "{output}");
+    }
+
+    /// Twenty-four consecutive delegations for one message is what this
+    /// exists to stop; the mechanism it replaced was `tool_choice: none`
+    /// (commit `afea5551fa`). Scoped to external agents: a plain fan-out
+    /// spends the session's own grant, an `agent` call spends somebody's bill.
+    #[tokio::test]
+    async fn only_one_external_agent_is_handed_work_per_turn() {
+        let (registry, spent) = gate_with(vec![acp_agent("devin")]);
+
+        // The first call is let through — it fails only because the stand-in
+        // binary does not exist, which is a different refusal.
+        let (first, _) = run_delegate(
+            &registry,
+            serde_json::json!({"agent": "devin", "prompt": "do it"}),
+        )
+        .await;
+        assert!(first.contains("could not be started"), "{first}");
+
+        let (second, is_error) = run_delegate(
+            &registry,
+            serde_json::json!({"agent": "devin", "prompt": "again"}),
+        )
+        .await;
+        assert!(is_error, "{second}");
+        assert!(second.contains("already handed work"), "{second}");
+        assert!(second.contains("one is the limit"), "{second}");
+
+        // A new turn clears it.
+        spent.store(false, Ordering::SeqCst);
+        let (third, _) = run_delegate(
+            &registry,
+            serde_json::json!({"agent": "devin", "prompt": "next turn"}),
+        )
+        .await;
+        assert!(third.contains("could not be started"), "{third}");
+    }
+
+    /// A malformed second call must not be the one that gets through: the
+    /// flag is claimed before the arguments are read.
+    #[tokio::test]
+    async fn a_refused_second_call_is_refused_before_its_arguments_are_read() {
+        let (registry, spent) = gate_with(vec![acp_agent("devin")]);
+        spent.store(true, Ordering::SeqCst);
+        let (output, is_error) = run_delegate(&registry, serde_json::json!({"agent": "devin"})).await;
+        assert!(is_error);
+        assert!(output.contains("already handed work"), "{output}");
+    }
+
+    #[test]
+    fn a_plan_upsell_is_not_a_completed_task() {
+        assert!(is_refusal("Please upgrade your plan to continue."));
+        assert!(!is_refusal("Done. Edited src/main.rs."));
     }
 }

@@ -94,8 +94,10 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     ui.endpoint = crate::coder::runtime::api_base();
 
     // Only agents that are actually installed. `find_agents` checks each one
-    // before reporting it, so the `acp` tool is declared over a list of
-    // programs that exist on this machine rather than a registry's wish list.
+    // before reporting it, so the `delegate` tool's external-agent path runs
+    // over a list of programs that exist on this machine rather than a
+    // registry's wish list. This discovery feeds the welcome box; the
+    // session's gate discovers separately in `session_tools`.
     let agents = crate::coder::acp::find_agents().await.unwrap_or_default();
     ui.agents = agents.clone();
 
