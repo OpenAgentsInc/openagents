@@ -481,6 +481,9 @@ impl Session {
         events: &[crate::session_store::StoredEvent],
         cloud_history: bool,
     ) -> Self {
+        // Long shell runs keep their whole transcript beside this record, so
+        // a follow-up question reads the file instead of rerunning the job.
+        self.inner.tools.keeping_session_logs_in_place(store.directory().to_path_buf());
         self.inner = self
             .inner
             .with_local_session(store, crate::session_store::replay_messages(events))

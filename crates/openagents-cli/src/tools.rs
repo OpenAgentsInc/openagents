@@ -53,6 +53,11 @@ use crate::plugins::{
 
 pub const OUTPUT_LIMIT: usize = 30_000;
 
+/// A command that ran at least this long keeps its whole transcript on disk
+/// even when the bounded excerpt looked complete, because a summary of a
+/// two-minute build is exactly the thing a follow-up question wants to grep.
+pub const PERSIST_AFTER_SECS: u64 = 30;
+
 /// The names [`HarnessToolRegistry::execute_tool`] answers itself.
 ///
 /// A loaded plugin is dispatched from the fallthrough arm, *below* all five of
@@ -316,6 +321,10 @@ pub struct HarnessToolRegistry {
     loaded: Mutex<Vec<Arc<LoadedPlugin>>>,
     /// Tools the front-end driving this session answers itself.
     host: Vec<HostTool>,
+    /// Where long-running commands keep whole output: the session record's
+    /// own directory, when the session has one. `None` keeps the old
+    /// truncate-and-drop behaviour — delegated children, one-shot calls.
+    session_dir: Option<PathBuf>,
 }
 
 impl HarnessToolRegistry {
@@ -342,6 +351,22 @@ impl HarnessToolRegistry {
         self
     }
 
+    /// Keep whole output of long commands under this directory.
+    ///
+    /// The session hands over its own record directory, so the logs live with
+    /// everything else that survives a resume rather than in a scratch space
+    /// nothing can find later.
+    pub fn keeping_session_logs(mut self, dir: PathBuf) -> Self {
+        self.session_dir = Some(dir);
+        self
+    }
+
+    /// The in-place form of [`Self::keeping_session_logs`], for a registry
+    /// already held behind a constructed session.
+    pub fn keeping_session_logs_in_place(&mut self, dir: PathBuf) {
+        self.session_dir = Some(dir);
+    }
+
     fn build(cwd: Option<PathBuf>, delegation: Option<DelegationGate>) -> Self {
         let root =
             cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
@@ -354,6 +379,7 @@ impl HarnessToolRegistry {
             plugin_approval: Approval::default(),
             loaded: Mutex::new(Vec::new()),
             host: Vec::new(),
+            session_dir: None,
         };
         registry.load_local_skills();
         registry
@@ -709,8 +735,14 @@ impl HarnessToolRegistry {
                     };
                 }
 
-                let (output_str, failed) =
-                    run_real_shell(cmd, &self.cwd, timeout_secs, &mut cancel).await;
+                let (output_str, failed) = run_real_shell_logged(
+                    cmd,
+                    &self.cwd,
+                    timeout_secs,
+                    &mut cancel,
+                    self.session_dir.as_deref(),
+                )
+                .await;
                 ToolOutput {
                     call_id: call.id.clone(),
                     output: output_str,
@@ -1162,12 +1194,36 @@ pub fn check_shell_refusal(cmd: &str) -> Option<String> {
 /// The outcome used to be dropped here and every shell result was reported to
 /// the model as `is_error: false`, so a failing build read like a passing one
 /// and the model carried on as though the step had succeeded.
+///
+/// Whole output that outgrew [`OUTPUT_LIMIT`] used to vanish past the
+/// boundary — printed `N` characters and gone. Any question about what the
+/// other side of that cut held could only be answered by running the command
+/// again, which is minutes against suites. When a command runs long, its full
+/// transcript lands beside the session record instead (`#152`), and the
+/// excerpt names the file so a later question greps rather than re-executes.
+#[cfg(test)]
 async fn run_real_shell(
     cmd: &str,
     cwd: &Path,
     timeout_secs: u64,
     cancel: &mut watch::Receiver<bool>,
 ) -> (String, bool) {
+    run_real_shell_logged(cmd, cwd, timeout_secs, cancel, None).await
+}
+
+/// The real runner, with an optional place to keep whole output.
+///
+/// `session_dir` comes from the session record's own directory when there is
+/// one; tests pass a scratch directory. A spawn failure before any output
+/// means nothing worth keeping, so no file is written for it.
+async fn run_real_shell_logged(
+    cmd: &str,
+    cwd: &Path,
+    timeout_secs: u64,
+    cancel: &mut watch::Receiver<bool>,
+    session_dir: Option<&Path>,
+) -> (String, bool) {
+    let started = std::time::Instant::now();
     let mut command = Command::new("/bin/sh");
     command
         .arg("-c")
@@ -1226,6 +1282,23 @@ async fn run_real_shell(
     };
     let stdout = stdout.await.unwrap_or_default();
     let stderr = stderr.await.unwrap_or_default();
+    let elapsed_secs = started.elapsed().as_secs();
+
+    // One file per call for the session: `cmd-N.log` beside `updates.jsonl`.
+    // Written whenever the run was long enough to be worth keeping —
+    // truncated or not — because the truncation notice and the log pointer
+    // together are what make the next question answerable without a rerun.
+    let mut persisted: Option<PathBuf> = None;
+    if elapsed_secs >= PERSIST_AFTER_SECS {
+        if let Some(dir) = session_dir {
+            match write_command_log(dir, cmd, &stdout, &stderr) {
+                Ok(path) => persisted = Some(path),
+                Err(error) => {
+                    tracing::warn!("could not persist shell output: {error}");
+                }
+            }
+        }
+    }
 
     match end {
         End::Status(Ok(status)) => {
@@ -1236,12 +1309,23 @@ async fn run_real_shell(
             let combined = strip_terminal_escapes(&combined);
             let total_len = combined.len();
             let bounded = if total_len > OUTPUT_LIMIT {
-                format!(
-                    "{}\n\n[Output truncated: printed {} characters, limit is {}]",
-                    &combined[..floor_char_boundary(&combined, OUTPUT_LIMIT)],
-                    total_len,
-                    OUTPUT_LIMIT
-                )
+                let cut_at = floor_char_boundary(&combined, OUTPUT_LIMIT);
+                let head = &combined[..cut_at];
+                match &persisted {
+                    Some(path) => format!(
+                        "{}\n\n[Output truncated: printed {} characters, limit is {}. Full output kept at `{}`.]",
+                        head,
+                        total_len,
+                        OUTPUT_LIMIT,
+                        path.display()
+                    ),
+                    None => format!(
+                        "{}\n\n[Output truncated: printed {} characters, limit is {}]",
+                        head,
+                        total_len,
+                        OUTPUT_LIMIT
+                    ),
+                }
             } else {
                 combined
             };
@@ -1266,14 +1350,51 @@ async fn run_real_shell(
         }
         End::Status(Err(e)) => (format!("Shell execution error: {}", e), true),
         End::Cancelled => (CANCELLED_TOOL_RESULT.to_string(), true),
-        End::TimedOut => (
-            format!(
-                "The command timed out after {} seconds and was stopped.",
-                timeout_secs
-            ),
-            true,
-        ),
+        End::TimedOut => {
+            // A timed-out command is precisely one whose later output nobody
+            // has seen, so the kept transcript earns its file here too.
+            let tail_note = match &persisted {
+                Some(path) => format!(" Partial output kept at `{}`.", path.display()),
+                None => String::new(),
+            };
+            (
+                format!(
+                    "The command timed out after {} seconds and was stopped.{}",
+                    timeout_secs, tail_note
+                ),
+                true,
+            )
+        }
     }
+}
+
+/// Whole stdout and stderr of one command, under the session's directory.
+///
+/// Numbered by what is already there, so files sort in execution order and a
+/// resumed session keeps counting rather than overwriting. The command itself
+/// goes in as a header, because a log that does not say what ran is a riddle.
+fn write_command_log(
+    dir: &Path,
+    cmd: &str,
+    stdout_bytes: &[u8],
+    stderr_bytes: &[u8],
+) -> std::io::Result<PathBuf> {
+    std::fs::create_dir_all(dir)?;
+    let next = (0..)
+        .map(|n| dir.join(format!("cmd-{n}.log")))
+        .find(|path| !path.exists())
+        .ok_or_else(|| {
+            std::io::Error::other("no free cmd-N.log name in the session directory")
+        })?;
+    let mut contents =
+        String::with_capacity(cmd.len() + stdout_bytes.len() + stderr_bytes.len() + 32);
+    contents.push_str("$ ");
+    contents.push_str(cmd);
+    contents.push_str("\n\n");
+    contents.push_str(&String::from_utf8_lossy(stdout_bytes));
+    contents.push_str(&String::from_utf8_lossy(stderr_bytes));
+    std::fs::write(&next, contents)?;
+    Ok(next)
 }
 
 // ─────────────────────────────────────────────────────────── the file tools
@@ -2203,6 +2324,91 @@ mod defect_tests {
         let (text, failed) = run_real_shell("sleep 5", &dir, 1, &mut cancel).await;
         assert!(failed, "a timeout must be an error, got: {text}");
         assert!(text.contains("timed out"), "{text}");
+    }
+
+    // ───────────────────────────────────────── keeping long output on disk
+
+    /// The point of the log: a truncated result names where the rest went,
+    /// so the follow-up question is a `grep` and not a second two-minute
+    /// suite run. This is the exact shape of trajectory 2026-08-27 step 48.
+    #[tokio::test]
+    async fn a_long_command_keeps_its_whole_output_and_names_the_file() {
+        let session = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        let command = "echo line-0; echo line-1; sleep 31; echo tail-marker";
+
+        let (_stop, mut cancel) = watch::channel(false);
+        // The wait itself buys the 30-second persistence threshold, so the
+        // command is real work plus real waiting rather than a mocked clock.
+        let (text, failed) = run_real_shell_logged(
+            command,
+            work.path(),
+            60,
+            &mut cancel,
+            Some(session.path()),
+        )
+        .await;
+        assert!(!failed);
+        assert!(text.contains("tail-marker"));
+
+        let logs: Vec<_> = std::fs::read_dir(session.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("cmd-"))
+            .collect();
+        assert_eq!(logs.len(), 1, "one command, one log");
+        let logged = std::fs::read_to_string(logs[0].path()).unwrap();
+        assert!(logged.starts_with("$ "), "the log says what ran: {logged}");
+        assert!(logged.contains("line-0"), "{logged}");
+        assert!(logged.contains("tail-marker"), "{logged}");
+    }
+
+    #[tokio::test]
+    async fn a_truncated_result_points_at_the_persisted_log() {
+        let session = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        // 300 lines of ~55 bytes plus the marker clears the 30_000-character
+        // excerpt limit once both streams are counted; the marker line after
+        // the sleep proves the log holds what the excerpt cut off. Real
+        // `sleep` rather than a mocked clock, because the threshold is
+        // defined in wall time.
+        let command = "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo END-MARKER";
+
+        let (_stop, mut cancel) = watch::channel(false);
+        let (text, failed) = run_real_shell_logged(
+            command,
+            work.path(),
+            90,
+            &mut cancel,
+            Some(session.path()),
+        )
+        .await;
+        assert!(!failed);
+        assert!(
+            text.contains("Full output kept at"),
+            "the excerpt names the file: {text}"
+        );
+
+        let log_path = text
+            .split("Full output kept at `")
+            .nth(1)
+            .and_then(|rest| rest.split('`').next())
+            .expect("a path in the notice")
+            .to_string();
+        let logged = std::fs::read_to_string(&log_path).unwrap();
+        assert!(logged.contains("END-MARKER"), "whole output survived");
+        assert!(logged.len() > OUTPUT_LIMIT);
+    }
+
+    #[tokio::test]
+    async fn a_short_command_writes_no_log() {
+        let session = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        let (_stop, mut cancel) = watch::channel(false);
+        let _ = run_real_shell_logged("echo hi", work.path(), 30, &mut cancel, Some(session.path()))
+            .await;
+        let entries = std::fs::read_dir(session.path()).unwrap().count();
+        assert_eq!(entries, 0, "fast quiet work leaves no file behind");
     }
 
     #[cfg(unix)]
