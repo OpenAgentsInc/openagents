@@ -32,12 +32,39 @@ failed without changing the service. The cleanup principal lacks
 the service intact until an authorized operator scales or deletes it after the
 caller-observation window.
 
+Update at 14:35 UTC the same day: the earlier failure was principal-specific,
+not a service problem. Running as `chris@openagents.com` (project owner), the
+same change succeeded on both services:
+
+- `openagents-monolith-staging` revision `00160-rps`: min-instances 0;
+- `openagents-monolith` revisions `00413-cg8` and later `00426-sic`:
+  min-instances 0 (`minScale` annotation now absent, which means 0; the old
+  revision `00412-697` had declared 1).
+
+The first probe requests after the scale-down returned in 0.3–0.9 s
+time-to-first-byte (cold start included), so the compatibility routes stay
+responsive on demand. A zero-request observation window is open from
+14:20 UTC; scheduler and scanner-only traffic is expected.
+
 The production authentication compatibility gate remains open. At 08:12 UTC,
 `auth.openagents.com` returned `200` for `/.well-known/jwks.json`, `400` for an
 incomplete `/authorize` request, and `200` for `/code/authorize`. The same
 paths on Phoenix `openagents.com` returned `404`. Do not delete the production
 monolith or old load balancer until Phoenix serves or explicitly retires those
 contracts.
+
+Update at 14:35 UTC the same day: a six-hour post-pause log sample (08:16 UTC
+onward, 561 requests) shows no human or programmatic caller on the
+compatibility routes. Every successful `/.well-known/jwks.json` hit in the
+seven-day window came from Googlebot or the cleanup's own `curl` probes; the
+remaining 2xx/3xx traffic is the root `/`, `/docs`, and `/login` pages plus
+static assets — the rest is scanner noise (519 4xx). Phoenix still serves none
+of the paths, but the only callers observed are crawlers and this audit, so
+retiring the hostname with a redirect appears safe. An explicit
+`auth.openagents.com` → `openagents.com` redirect contract at the load
+balancer would settle the last residual (the SPA `/login` page keeps an
+early-access email-code form alive that Phoenix replaces with GitHub
+sign-in).
 
 At 08:27 UTC, both queue databases still contained zero rows in
 `oa_infra_jobs`, `khala_acceptance_jobs`, and
@@ -114,8 +141,8 @@ Phoenix deployment boundary.
 
 | Service | Ready revision | Minimum instances | 24-hour request-log summary | Decision |
 | --- | --- | ---: | --- | --- |
-| `openagents-monolith` | `openagents-monolith-00412-697` | 1 | 3,628 entries; 1,281 were `/internal/cron`. Remaining traffic was mainly scans, static files, and compatibility pages. | Drain after authentication and scheduled-task migration. |
-| `openagents-monolith-staging` | `openagents-monolith-staging-00159-6kw` | 1 | 1,442 entries; 1,439 were `/internal/cron`, and three were health checks. | Pause its scheduler first, then drain. |
+| `openagents-monolith` | `openagents-monolith-00426-sic` | 0 (was 1) | 3,628 entries; 1,281 were `/internal/cron`. Remaining traffic was mainly scans, static files, and compatibility pages. | Drain after authentication and scheduled-task migration. |
+| `openagents-monolith-staging` | `openagents-monolith-staging-00160-rps` | 0 (was 1) | 1,442 entries; 1,439 were `/internal/cron`, and three were health checks. | Pause its scheduler first, then drain. |
 | `oa-queue-worker` | Deleted at 08:27 UTC | 0 | The production queue and acceptance tables contained zero rows before and after the scheduler pause. | Deleted. |
 | `oa-queue-worker-staging` | Deleted at 08:27 UTC | 0 | The staging queue and acceptance tables contained zero rows before and after the scheduler pause. | Deleted. |
 | `forge-git` | `forge-git-00046-xl5` | 0 | No request entries in the 24-hour sample. | Preserve until repository-disk restore and ref comparison pass. |
