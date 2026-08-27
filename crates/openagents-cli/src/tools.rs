@@ -133,6 +133,97 @@ fn floor_char_boundary(text: &str, max: usize) -> usize {
 pub const DEFAULT_TIMEOUT_SECS: u64 = 120;
 pub const MAXIMUM_TIMEOUT_SECS: u64 = 600;
 
+/// Child output with its terminal escape sequences removed.
+///
+/// A child process does not know it is being captured, and one with a pty or
+/// an env that forces it colors and animates regardless: a test runner styles
+/// `FAIL` red, a spinner rewrites its line with `\r`. Those bytes are written
+/// for a terminal to *execute*. Inside the full-screen coder TUI, ratatui
+/// paints the frame cell by cell and positions the cursor before each span —
+/// an escape sequence embedded in span content runs after that positioning,
+/// so the child's colors overwrite the palette and its cursor movements make
+/// every later cell land where the child moved the cursor to. Overlapping
+/// garbage and a dirty terminal: issue #193. Stripping at the capture
+/// boundary covers every render path at once.
+///
+/// Hand-rolled rather than a dependency; the grammar consumed here is the
+/// small part of ECMA-48 that captured output actually meets —
+///
+/// - CSI sequences (`ESC [` … one final byte in `@`..=`~`)
+/// - string sequences: OSC, DCS, PM, APC (`ESC ]`, `ESC P`, `ESC ^`, `ESC _`
+///   … terminated by BEL or by ST, `ESC \`)
+/// - any other two-byte `ESC` sequence
+/// - bare `\r`, which a progress bar uses to rewrite its own line; keeping
+///   it would replay the rewrite against cells the TUI did not draw
+///
+/// Newlines and every ordinary byte survive untouched.
+pub fn strip_terminal_escapes(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            0x1b => match bytes.get(index + 1) {
+                Some(b'[') => {
+                    // CSI: parameter and intermediate bytes, then one final
+                    // byte in `@`..=`~`. Unterminated at end of buffer, the
+                    // partial sequence is dropped.
+                    let mut cursor = index + 2;
+                    while cursor < bytes.len() && !(0x40..=0x7e).contains(&bytes[cursor]) {
+                        cursor += 1;
+                    }
+                    index = cursor + 1;
+                }
+                Some(b']') | Some(b'P') | Some(b'^') | Some(b'_') => {
+                    // String sequence: scan for BEL or ST.
+                    let mut cursor = index + 2;
+                    loop {
+                        match bytes.get(cursor) {
+                            None => {
+                                cursor = bytes.len();
+                                break;
+                            }
+                            Some(0x07) => {
+                                cursor += 1;
+                                break;
+                            }
+                            Some(0x1b) if bytes.get(cursor + 1) == Some(&b'\\') => {
+                                cursor += 2;
+                                break;
+                            }
+                            Some(_) => cursor += 1,
+                        }
+                    }
+                    index = cursor;
+                }
+                Some(_) => {
+                    // `ESC x`, possibly with intermediate bytes before the
+                    // final one: `ESC ( B` is three bytes, not two.
+                    index += 2;
+                    while index - 1 < bytes.len() && (0x20..=0x2f).contains(&bytes[index - 1]) {
+                        index += 1;
+                    }
+                }
+                None => index += 1,
+            },
+            b'\r' => {
+                // `\r\n` is still a line ending; a bare `\r` is a rewrite.
+                if bytes.get(index + 1) == Some(&b'\n') {
+                    out.push(b'\n');
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+            }
+            byte => {
+                out.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -1142,6 +1233,7 @@ async fn run_real_shell(
             combined.push_str(&String::from_utf8_lossy(&stdout));
             combined.push_str(&String::from_utf8_lossy(&stderr));
 
+            let combined = strip_terminal_escapes(&combined);
             let total_len = combined.len();
             let bounded = if total_len > OUTPUT_LIMIT {
                 format!(
@@ -1501,7 +1593,7 @@ async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>)
             let mut combined = String::new();
             combined.push_str(&String::from_utf8_lossy(&stdout));
             combined.push_str(&String::from_utf8_lossy(&stderr));
-            (format!("{note}\n\n{}", combined.trim()), !status.success())
+            (format!("{note}\n\n{}", strip_terminal_escapes(&combined).trim()), !status.success())
         }
         Err(error) => (
             format!("{note}\n\nFailed to wait for the openagents CLI: {error}"),
@@ -2509,5 +2601,75 @@ mod defect_tests {
             out.output.starts_with(&body[..OUTPUT_LIMIT - 1]),
             "the cut did not step back to the boundary"
         );
+    }
+
+    // ───────────────────────────────────── stripping terminal escapes from output
+
+    #[test]
+    fn sgr_color_sequences_are_removed() {
+        // A test runner styling `FAIL` red, bold, then resetting.
+        let styled = "\u{1b}[1;31mFAIL\u{1b}[0m node";
+        assert_eq!(strip_terminal_escapes(styled), "FAIL node");
+    }
+
+    #[test]
+    fn cursor_movement_and_erase_sequences_are_removed() {
+        // Save, rewrite, erase, restore — the shape of a progress bar.
+        let input = "\u{1b}[s\u{1b}[2K\u{1b}[u\u{1b}[1A\u{1b}[G\u{1b}[Jtext";
+        assert_eq!(strip_terminal_escapes(input), "text");
+    }
+
+    #[test]
+    fn osc_sequences_are_removed_through_either_terminator() {
+        // BEL-terminated title, ST-terminated hyperlink, with payload intact.
+        let input = "\u{1b}]0;title\u{7}a\u{1b}]8;;https://example.com\u{1b}\\b";
+        assert_eq!(strip_terminal_escapes(input), "ab");
+    }
+
+    #[test]
+    fn two_byte_escape_sequences_are_removed() {
+        // Charset selection and an `ESC @`..=`ESC _` form.
+        let input = "\u{1b}(Ba\u{1b}Mb";
+        assert_eq!(strip_terminal_escapes(input), "ab");
+    }
+
+    #[test]
+    fn carriage_return_rewrites_are_removed() {
+        // A spinner: three writes, one line. Keeping the `\r` would make the
+        // terminal replay the rewrite against cells the TUI did not draw.
+        // The stripped form keeps each write; the last before the newline is
+        // the one a terminal would have left showing.
+        assert_eq!(
+            strip_terminal_escapes("10%\r50%\r100%\ndone"),
+            "10%50%100%\ndone"
+        );
+    }
+
+    #[test]
+    fn plain_text_and_newlines_pass_through_untouched() {
+        let plain = "Test Files  2 failed | 2 passed (4)\nTests  72 passed (72)\n";
+        assert_eq!(strip_terminal_escapes(plain), plain);
+    }
+
+    #[test]
+    fn an_unterminated_sequence_at_end_of_buffer_is_dropped_without_panicking() {
+        assert_eq!(strip_terminal_escapes("ok\u{1b}[31"), "ok");
+        assert_eq!(strip_terminal_escapes("ok\u{1b}]0;title"), "ok");
+        assert_eq!(strip_terminal_escapes("ok\u{1b}"), "ok");
+    }
+
+    #[test]
+    fn an_empty_string_stays_empty() {
+        assert_eq!(strip_terminal_escapes(""), "");
+    }
+
+    #[test]
+    fn multibyte_characters_survive_stripping() {
+        // The stripper walks bytes, and this only works because 0x1b cannot
+        // appear inside a multi-byte UTF-8 sequence — every continuation byte
+        // is >= 0x80. So an ESC byte is always a real escape introducer, and
+        // non-ASCII text passes through a byte at a time, intact.
+        let input = "€ FAIL \u{1b}[31m\u{1e00}가\u{1b}[0m ✓";
+        assert_eq!(strip_terminal_escapes(input), "€ FAIL \u{1e00}가 ✓");
     }
 }
