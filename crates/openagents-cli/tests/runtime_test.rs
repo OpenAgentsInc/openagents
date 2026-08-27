@@ -1502,8 +1502,10 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
     );
 }
 
-/// The final allowed model step keeps its tools and fails if it still does not
-/// answer.
+/// A model that loops past the budget is asked -- twice, tools withheld -- to
+/// report its state, and only then does the turn fail. The failure record
+/// still says what happened, with the honest call count: the two report
+/// rounds each ran the `true` shell the stub kept offering.
 #[tokio::test]
 async fn the_tool_step_limit_never_removes_tools() {
     let stub = start(|request, origin| {
@@ -1549,20 +1551,49 @@ async fn the_tool_step_limit_never_removes_tools() {
         "the runtime invented an answer: {kinds:?}"
     );
     assert!(failure.to_string().contains("without a final answer"));
-    assert_eq!(events.last().expect("an event")["payload"]["calls"], 100);
+
+    // The budget moment and the two finish-and-report prompts are in the
+    // transcript, so a reader can see the model was given its chance (#188).
+    assert!(
+        kinds.contains(&"turn.budget".to_string()),
+        "the budget events are missing: {kinds:?}"
+    );
+    // five: budget-reached, prompt, report, prompt, report.
+    assert_eq!(
+        kinds
+            .iter()
+            .filter(|kind| **kind == "turn.budget".to_string())
+            .count(),
+        5,
+        "reached, two finish prompts, two spend reports: {kinds:?}"
+    );
+
+    // The counters are honest: 100 budget calls plus one `true` shell per
+    // ignored report request.
+    assert_eq!(events.last().expect("an event")["payload"]["calls"], 102);
 
     let completions = stub
         .requests()
         .into_iter()
         .filter(|request| request.starts_with("POST /api/inference/proxy"))
         .collect::<Vec<_>>();
-    assert_eq!(completions.len(), 100);
+    assert_eq!(completions.len(), 102);
+    // The turn's own 100 rounds keep their tools; exactly the two
+    // finish-and-report rounds go out tools-withheld (#188).
+    let report_rounds = completions
+        .iter()
+        .filter(|request| request.contains(r#""tools":[]"#))
+        .count();
+    assert_eq!(
+        report_rounds, 2,
+        "the report rounds are the only tool-less ones"
+    );
     assert!(
         completions
             .iter()
-            .all(|request| !request.contains(r#""tools":[]"#)
-                && request.contains(r#""name":"shell""#)),
-        "at least one model request had its tools removed"
+            .filter(|request| !request.contains(r#""tools":[]"#))
+            .all(|request| request.contains(r#""name":"shell""#)),
+        "a turn round lost its tools"
     );
 }
 

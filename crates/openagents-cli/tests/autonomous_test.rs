@@ -360,8 +360,11 @@ async fn the_local_lane_records_what_it_answered() {
 /// followed by a blank line and exited 0, and the interactive session settled
 /// `TurnEvent::Done("")` as an answered turn.
 ///
-/// The runtime reports a failure after the safety budget. It never changes the
-/// model's capabilities to force a particular answer on the last request.
+/// The runtime reports a failure after the safety budget -- but only after
+/// asking the model, tools withheld, to report its state (#188). The turn's
+/// own rounds never lose their tools; the two report rounds are the only
+/// tool-less requests, and refusing to answer in words after two asks is
+/// what finally fails the turn.
 #[tokio::test]
 async fn a_turn_that_uses_every_step_fails_without_disabling_tools() {
     // Every step asks for a tool and never stops asking. The name is one no
@@ -390,15 +393,25 @@ async fn a_turn_that_uses_every_step_fails_without_disabling_tools() {
         .expect_err("a turn with no answer succeeded");
 
     assert!(failure.to_string().contains("without a final answer"));
+    // 100 budget calls + one ignored report round each, twice.
     assert_eq!(
         stub.completions().len(),
-        100,
-        "the runtime changed the safety budget"
+        102,
+        "the report rounds did not run, or the budget moved"
     );
-    let last = stub.completions().pop().expect("a final request");
+    let completions = stub.completions();
+    let toolless = completions
+        .iter()
+        .filter(|request| request.contains(r#""tools":[]"#))
+        .count();
+    assert_eq!(
+        toolless, 2,
+        "only the finish-and-report rounds go out tools-withheld"
+    );
+    let last = completions.last().expect("a final request");
     assert!(
-        !last.contains(r#""tools":[]"#) && last.contains("a_tool_that_does_not_exist"),
-        "the final request removed its tools: {last}"
+        last.contains(r#""tools":[]"#),
+        "the final request is a report round: {last}"
     );
 }
 
