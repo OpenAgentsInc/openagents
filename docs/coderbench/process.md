@@ -6,9 +6,19 @@ repository's agent work (`docs/coder/runbook.md` §0): fresh worktree per
 unit, land via the forge remote, never record what was not measured, a
 candidate is never a deployment.
 
+CoderBench is a general coding benchmark. The procedure below is written for
+the first domain (agent-building, this repository) but every step after A is
+domain-parameterized: the same inventory, redaction, upload, labeling,
+distillation, and grading apply to any repository whose traces qualify. The
+second domain re-enters at Stage B with its own label and environment work;
+nothing in the pipeline is OpenAgents-specific except the forge provenance
+convenience, and a domain without forge issues simply pins its outcomes by
+commit range instead.
+
 ## Stage A — Inventory (M0)
 
-**Goal:** one reproducible catalog of every candidate session on this machine.
+**Goal:** one reproducible catalog of every candidate session on this machine,
+tagged by domain.
 
 ```sh
 # Discover per store (native tooling; no new parsers)
@@ -22,8 +32,14 @@ and emit `docs/coderbench/inventory.json`. One row per session:
 
 ```
 { source, path, digest, bytes, steps_est, started_at, ended_at,
-  model, repo_hint, qualifies: bool, excluded_because?: [codes] }
+  model, repo_hint, domain, qualifies: bool, excluded_because?: [codes] }
 ```
+
+The domain tag comes from the repo hint: sessions name the repositories they
+work in (cwd, remotes in commands, forge refs). First pass tags with the
+observed repo; declared domains (`plan.md` §5) reconcile them at review. A
+session spanning repositories takes the domain of its outcome commit, and its
+row notes the others.
 
 Rules:
 
@@ -33,7 +49,7 @@ Rules:
   corpus.
 - Digests are content digests over the *converted* ATIF (pre-redaction), so
   dedup survives path renames.
-- Exclusion codes come from `plan.md` §6; every drop is counted and visible.
+- Exclusion codes come from `plan.md` §7; every drop is counted and visible.
   No silent filters.
 
 Two runs of the inventory command must diff clean (modulo mtimes) before M0
@@ -82,26 +98,35 @@ openagents trace upload <redacted.json> \
 
 ## Stage D — Label outcomes (M2)
 
-Against the forge, for each uploaded trace:
+Against the forge (first domain) or the repository's own history (any domain),
+for each uploaded trace:
 
 ```sh
-openagents issue list --state closed --limit 200
-git log --oneline <window>                  # match landing commits to sessions
+openagents issue list --state closed --limit 200   # forge-provenance domains
+git log --oneline <window>                         # every domain: landing commits
 ```
 
 Produce one label per session:
 
 ```
-{ trace_uuid, repos_touched, issues_closed, commits_landed,
-  outcome_type: feature|fix|refactor|port|test|infra|rejection,
-  oracle: { kind: gate|pty-suite|forge-closing-ref, command },
+{ trace_uuid, domain, repos_touched, issues_closed, commits_landed,
+  outcome_type: feature|fix|refactor|port|test|infra|audit|rejection,
+  oracle: { kind: gate|test-suite|build|conformance|forge-closing-ref,
+            command },
   gradeable: bool, holdout_ok: bool, notes }
 ```
 
 Labeling is manual and reviewed by the owner — no agent self-labels at this
 stage (the thing being benchmarked must not grade its own history). Gradeable
 requires: the start commit builds clean today, the oracle command exists and
-is deterministic, and no credential the corpus can't provide is needed.
+is deterministic in a container, and no credential the corpus can't provide is
+needed.
+
+Oracle kinds generalize beyond this repository's gates: a test suite, a
+reproducible build, a conformance runner, a property-based fuzz target — any
+deterministic command whose exit code separates done from not-done qualifies.
+What does not qualify: a human's memory of the outcome, an LLM judge, or an
+oracle needing credentials the corpus cannot hold.
 
 Write the ten+ labels plus `labels.schema.json`; expect the schema to change
 twice here — cheap now, expensive after 1,000 rows.
@@ -124,16 +149,20 @@ Human review gates promotion into `bench/tasks/coderbench/<task-id>/`.
 Reviewer checklist: leaks? instruction self-contained? oracle deterministic?
 does any *reasonable* solution pass, not just the historical one?
 
-Promote survivors into `bench/suites/coderbench-v1.suite.json`
+Promote survivors into `bench/suites/coderbench-<domain>-v1.suite.json`
 (`environmentAvailable: true` only where verified), regenerate manifests with
 `pnpm run effectiveness:suites -- --check`, keep tier `smoke` until Stage F.
+Environments amortize by image family — one parameterized build per toolchain
+shape (pnpm+cargo, pytest, make, conformance runners); a task pins only its
+commit and oracle. A new domain with a novel toolchain earns exactly one new
+image family, not per-task images.
 
 ## Stage F — Grade (M4–M5)
 
 Same rails as tb2:
 
 ```sh
-bench/run-suite.sh bench/suites/coderbench-v1.suite.json \
+bench/run-suite.sh bench/suites/coderbench-agent-building-v1.suite.json \
   --model openai/gpt-5.6-luna --lane proxy --n-concurrent 2
 ```
 
@@ -145,19 +174,27 @@ bench/run-suite.sh bench/suites/coderbench-v1.suite.json \
 - Baselines: Flash configuration first (#143 discipline — native binary,
   real model, honest row), then one degraded-config deliberately-bad row for
   the floor to catch, mirroring tb2-quick's regression proof.
-- Results append to `bench-results/coderbench-v1.jsonl` through the store
-  tooling only. Smoke rows stay marked smoke; nothing graduates without the
-  burn-in record.
+- Results append to `bench-results/coderbench-<domain>-v1.jsonl` through the
+  store tooling only. Smoke rows stay marked smoke; nothing graduates without
+  the burn-in record.
+- Cross-domain runs (after M6): each domain grades against its own suite and
+  records its own rows; a combined report reads per-domain rows and derives
+  aggregates at render time. Nothing ever appends a blended score.
 
 From here: the autoimprovement cycle treats CoderBench like any other lane —
 change one lever, same suite, read delta, keep or refute, write the ledger
-row — always paired with a tb2 number so home-soil gains stay honest.
+row — always paired with a tb2 number so home-soil gains stay honest, and
+(after M6) with per-domain deltas so single-domain gains get the same
+scrutiny.
 
 ## Stage G — Keep it alive
 
 - Every future qualified session appends to the inventory automatically at
   week boundaries; new labels enter review queue; suites grow only by reviewed
   promotion.
+- New domains enter through the same stages with their own label and
+  environment work; the pipeline does not care which repository produced the
+  traces, only that the outcomes are checkable and the gates deterministic.
 - Quarterly: re-dedup the corpus (content drift check), re-run determinism
   spot checks on 20% of tasks, re-read `terminal-bench-lessons.md` against
   whatever Harbor shipped since.
@@ -172,3 +209,5 @@ row — always paired with a tb2 number so home-soil gains stay honest.
 4. Recording a smoke run as score "to see the trend early."
 5. Bypassing the visibility ladder default in a batch flag.
 6. Letting the corpus ledger and the results store disagree about digests.
+7. Declaring a domain "in the benchmark" before it has a recorded run —
+   generality is proven by M6's rows, not by the docs saying so.

@@ -8,9 +8,12 @@ environment providers), Harbor's ATIF RFC 0001 and v1.7 changelog,
 
 Terminal-Bench is the external yardstick this repository already runs through
 `bench/`. CoderBench should steal its discipline, not its task distribution.
-What follows is split into what to copy wholesale, what to adapt, and what to
-reject — with the reason in each case, so a future reader can re-litigate any
-line.
+CoderBench is a **general** coding-agent benchmark — general in the work it
+measures and in where its tasks may come from — while tb2 is general by
+authorship: anyone can write a task for it. Those are different generalities,
+and the difference runs through every line below. What follows is split into
+what to copy wholesale, what to adapt, and what to reject — with the reason
+in each case, so a future reader can re-litigate any line.
 
 ## 1. Copy wholesale: the machinery that already proved itself
 
@@ -79,8 +82,9 @@ Terminal-Bench tasks are authored puzzles: someone writes a broken environment
 on purpose. Fine for breadth, weak for realism — nothing in them was ever
 actually wrong in production. CoderBench inherits the owned-closed-issues
 pattern instead: start states are real historical commits, instructions are
-rebuilt from the original issue/session, outcomes were shipped under review.
-Adaptation required: historical bias. Every derived task was solvable once by
+rebuilt from the original issue/session, outcomes were shipped under review —
+and this holds for every domain, not just this repository. Adaptation
+required: historical bias. Every derived task was solvable once by
 construction, which risks teaching "reproduce history" rather than "solve the
 problem." Mitigations:
 
@@ -100,7 +104,8 @@ consumer is this project's improvement loop. So: keep tiers small and honest
 the first baseline rather than aspirational targets, and grow the pool only as
 labeling throughput allows. A 12-task suite that gets run weekly beats a
 200-task suite that gets run twice. Add tasks when the loop demonstrably needs
-finer resolution between configurations, not to look substantial.
+finer resolution between configurations, not to look substantial — and add
+domains when the corpus earns them, not to look general.
 
 ### 2.3 Registry vs. owned tracker
 
@@ -129,11 +134,14 @@ than three blended ones hedging.
 
 ### 3.1 Public-dataset breadth as a goal
 
-87 adapters is Terminal-Bench's moat and explicitly not CoderBench's. Breadth
-across unrelated domains would dilute the one property this benchmark has:
-distribution fidelity to building coding agents. Depth over coverage;
-resist every temptation to bolt on third-party datasets through Harbor "since
-it's free."
+87 adapters is Terminal-Bench's moat and explicitly not CoderBench's path.
+CoderBench is general in provenance — any real coding domain qualifies — but
+narrow in method: every task must trace back to a real session with a real
+outcome. Breadth arrives the only honest way it can, by the corpus growing
+across the repositories this machine actually touches, never by bolting on
+third-party synthetic datasets through Harbor "since it's free." A wide
+benchmark of borrowed tasks would be strictly worse than tb2 at being tb2; a
+deep benchmark of earned tasks is something tb2 cannot be at all.
 
 ### 3.2 Contests and leaderboards
 
