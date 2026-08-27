@@ -1550,11 +1550,9 @@ pub fn command_heads(cmd: &str) -> Option<Vec<String>> {
                 continue;
             }
         };
-        // A family of executors whose interesting identity is three words
-        // deep: `pnpm run test:rust` and `pnpm run lint` share nothing but
-        // the binary, and refusing a line that ran both would break ordinary
-        // compound work. One more word separates them.
-        const RUNNERS: &[&str] = &["pnpm", "npm", "yarn", "bun", "npx", "pnpx"];
+        // `pnpm run test:rust` and `pnpm run lint` share nothing but the
+        // binary — one more word separates them (the table is shared with
+        // the repeat-cost gate below).
         // Package runners: the tool is the third word, and `pnpm run test`
         // against `pnpm run lint` are different work. `npx`/`pnpx` shape the
         // same way — the package is the second word and the command the
@@ -1577,27 +1575,134 @@ pub fn command_heads(cmd: &str) -> Option<Vec<String>> {
 
 /// Why this one-liner runs the same work twice, or `None` when it does not.
 ///
-/// Three greps over three separate full-suite executions was how a session
-/// spent five minutes answering three questions about one output stream
-/// (#153): each pipeline entry looked like fresh work because nothing read
-/// past the pipe. A repeat inside one invocation is refused with the way out
-/// — run it once through `tee`, grep the file — rather than silently rewritten,
-/// because the second execution of a mutating command is not always the same
-/// command again.
+/// A repeat is only worth refusing when repeating it **costs** something.
+/// The origin (#153) was a five-minute suite executed three times for three
+/// greps — the refusal paid for itself there. But the gate first shipped
+/// refusing every repeated head, and a repeated `grep` or `sed` over a file
+/// costs milliseconds while the refusal costs a whole turn: the model stops,
+/// reads the hint, rewrites the line, and the session loses more to the
+/// rewrite than the second grep would have spent. Worse, the tool's own
+/// guidance — run once, keep the output, grep the file — *produces* lines
+/// with several greps in them.
+///
+/// So the gate classifies the head before refusing:
+///
+/// - **Expensive** heads (suite runners, compilers, build tools) refuse with
+///   the keep-the-output hint — the #153 case, unchanged.
+/// - **Unsafe** heads (mutating commands) refuse because a second run is a
+///   different action, not a repeat of the first — `git stash pop` twice
+///   pops two different stashes. This is the caveat #153 itself carried;
+///   the first implementation flattened it into "refuse everything".
+/// - Everything else — the greps, the seds, the cat-and-ls reads — runs
+///   free, silently. A refusal that saves milliseconds while costing a turn
+///   is the bug, not the fix.
 pub fn check_duplicate_execution(cmd: &str) -> Option<String> {
     let heads = command_heads(cmd)?;
     let mut seen = std::collections::HashSet::new();
     for head in &heads {
-        if !seen.insert(head.clone()) {
-            return Some(format!(
-                "This one-liner executes `{head}` more than once. Run it once with the output \
-                 kept — append `2>&1 | tee /tmp/last-run.log`, or rely on the session log this \
-                 session writes for long commands — then answer every follow-up question by \
-                 grepping that file instead of executing again."
-            ));
+        if seen.insert(head.clone()) {
+            continue;
+        }
+        match repeat_cost(head) {
+            RepeatCost::Free => {}
+            RepeatCost::Expensive => {
+                return Some(format!(
+                    "This one-liner executes `{head}` more than once. A second run costs the \
+                     first run's time again. Run it once with the output kept — append \
+                     `2>&1 | tee /tmp/last-run.log`, or rely on the session log this session \
+                     writes for long commands — then answer every follow-up question by \
+                     grepping that file instead of executing again."
+                ));
+            }
+            RepeatCost::Unsafe => {
+                return Some(format!(
+                    "This one-liner executes `{head}` more than once. A second run is not the \
+                     same action again — it acts on whatever the first run changed. Say what \
+                     each run is for and give each its own tool call."
+                ));
+            }
         }
     }
     None
+}
+
+/// What running one head a second time inside the same line costs.
+#[derive(PartialEq, Debug)]
+enum RepeatCost {
+    /// Pure and quick: grep it twice, the second grep is milliseconds.
+    Free,
+    /// A second run spends the first run's wall time again: suites, builds.
+    Expensive,
+    /// A second run is a different action: it mutates state the first run
+    /// already changed. Refused on danger, not on time.
+    Unsafe,
+}
+
+/// The package runners whose `run <script>` heads are build-and-test work.
+/// The same table [`command_heads`] shapes third words with; both gates must
+/// agree on what a head is before they can disagree on what a repeat costs.
+const RUNNERS: &[&str] = &["pnpm", "npm", "yarn", "bun", "npx", "pnpx"];
+
+/// The cargo subcommands that compile something.
+const CARGO_HEAVY: &[&str] = &["test", "build", "bench", "check", "clippy", "doc", "install", "run"];
+
+/// The git verbs that change state, for the unsafe classification. (`git
+/// stash pop` twice pops two different stashes; `git status` twice is free.)
+const GIT_MUTATIONS: &[&str] = &[
+    "commit", "push", "pull", "merge", "rebase", "reset", "revert",
+    "cherry-pick", "checkout", "switch", "restore", "stash", "rm",
+    "clean", "apply", "tag", "am", "bisect",
+];
+
+/// The other mutating commands whose repeat is a different action.
+const BARE_MUTATIONS: &[&str] = &["rm", "rmdir", "mv", "dd", "shred", "truncate", "kill", "pkill"];
+
+fn repeat_cost(head: &str) -> RepeatCost {
+    let mut words = head.split_whitespace();
+    let Some(first) = words.next() else {
+        return RepeatCost::Free;
+    };
+    let second = words.next();
+
+    if BARE_MUTATIONS.contains(&first) {
+        return RepeatCost::Unsafe;
+    }
+    if first == "git" {
+        return match second {
+            // `git stash pop` carries the pop in the third word, which
+            // `command_heads` already kept; the verb pair is what repeats.
+            Some("stash" | "worktree" | "remote") => RepeatCost::Unsafe,
+            Some(verb) if GIT_MUTATIONS.contains(&verb) => RepeatCost::Unsafe,
+            _ => RepeatCost::Free,
+        };
+    }
+    if first == "cargo" {
+        return match second {
+            Some(sub) if CARGO_HEAVY.contains(&sub) => RepeatCost::Expensive,
+            _ => RepeatCost::Free,
+        };
+    }
+    if RUNNERS.contains(&first) {
+        return match second {
+            Some("run") => RepeatCost::Expensive,
+            Some("install" | "add" | "i" | "update" | "remove") => RepeatCost::Unsafe,
+            _ => RepeatCost::Free,
+        };
+    }
+    const OTHER_HEAVY: &[&str] = &["make", "bazel", "gradle", "mvn", "cmake"];
+    if OTHER_HEAVY.contains(&first) {
+        return RepeatCost::Expensive;
+    }
+    if first == "go" && matches!(second, Some("test" | "build" | "generate")) {
+        return RepeatCost::Expensive;
+    }
+    if first == "dotnet" && matches!(second, Some("build" | "test" | "publish")) {
+        return RepeatCost::Expensive;
+    }
+    if first == "docker" && second == Some("build") {
+        return RepeatCost::Expensive;
+    }
+    RepeatCost::Free
 }
 
 /// The text a tool result carries, and whether the command actually worked.
@@ -3350,6 +3455,7 @@ mod defect_tests {
 
     /// The shape that cost five minutes in trajectory 2026-08-27 step 55:
     /// three executions of one suite because each carried a different grep.
+    /// This — and only this shape of thing — is what the gate is for.
     #[test]
     fn the_gate_refuses_a_one_liner_that_executes_a_command_twice() {
         let refusal = check_duplicate_execution(
@@ -3360,6 +3466,36 @@ mod defect_tests {
         .expect("three runs of one suite are two too many");
         assert!(refusal.contains("pnpm run test:rust"), "{refusal}");
         assert!(refusal.contains("tee"), "the refusal names the way out");
+    }
+
+    /// The regression this gate shipped with: it refused *every* repeated
+    /// head, so two greps over one file — milliseconds each — bought a
+    /// refusal that costs a turn. Repeats are only work when repeating
+    /// them costs something.
+    #[test]
+    fn cheap_reads_repeat_free() {
+        // Different searches over the same evidence: exactly the shape the
+        // old gate refused three of in one session.
+        assert!(
+            check_duplicate_execution(
+                "grep -n 'fn answer_edit' src/tools.rs; grep -n 'resolve_path' src/tools.rs"
+            )
+            .is_none()
+        );
+        assert!(check_duplicate_execution("rg -n 'head' a.rs; rg -n 'head' b.rs").is_none());
+        assert!(check_duplicate_execution("sed -n '1,10p' f.txt; sed -n '11,20p' f.txt").is_none());
+        assert!(check_duplicate_execution("cat a; cat b").is_none());
+        assert!(check_duplicate_execution("ls; ls -la").is_none());
+    }
+
+    /// A mutating repeat is refused on danger, not on time: the second run
+    /// acts on whatever the first run changed, so it is a different action.
+    #[test]
+    fn mutating_heads_refuse_even_when_quick() {
+        let refusal = check_duplicate_execution("git stash pop; git stash pop")
+            .expect("two pops are two different stashes");
+        assert!(refusal.contains("not the same action"), "{refusal}");
+        assert!(check_duplicate_execution("rm -rf tmp/a; rm -rf tmp/b").is_some());
     }
 
     #[test]
@@ -3382,7 +3518,7 @@ mod defect_tests {
         // `cargo build` and `cargo test` share an executable but not work;
         // refusing those would break ordinary compound lines.
         assert!(check_duplicate_execution("cargo build --release && cargo test").is_none());
-        // But `cargo test` twice is a rerun regardless of what follows it.
+        // But `cargo test` twice re-pays a build-and-suite each time.
         assert!(check_duplicate_execution("cargo test lib && cargo test doc").is_some());
     }
 
@@ -3395,9 +3531,8 @@ mod defect_tests {
             "one echo plus one echo is two different heads at worst"
         );
         // A repeat behind quotes is still a repeat: the quote is on the word,
-        // and the identity survives the strip. Two echos with the same
-        // argument are one command twice.
-        assert!(check_duplicate_execution(r#"echo hi; 'echo' hi"#).is_some());
+        // and the identity survives the strip. Two suites are one suite twice.
+        assert!(check_duplicate_execution(r#"cargo test; 'cargo' test"#).is_some());
         // But two distinct commands, however quoted, run free.
         assert!(check_duplicate_execution(r#"echo hi; 'echo' again"#).is_none());
     }
@@ -3409,7 +3544,7 @@ mod defect_tests {
                 "RUST_BACKTRACE=1 cargo test && RUST_BACKTRACE=full cargo test"
             )
             .is_some(),
-            "same command under different env assignments is still a rerun"
+            "same command under different env assignments still re-pays the suite"
         );
     }
 
