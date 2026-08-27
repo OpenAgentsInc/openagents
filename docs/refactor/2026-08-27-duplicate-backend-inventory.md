@@ -279,12 +279,45 @@ requests to the monolith's own routes, zero queue or bridge calls, and zero
 compatibility-path successes. This closes the observation gate; the remaining
 gates are the Forge restore/ref comparison and Terraform transfer receipts.
 
+## Forge restore and ref comparison receipt
+
+A restore drill ran on 2026-08-27 against the newest snapshot
+`forge-git-repositor-us-central1-a-20260827081102-n7piqnoq` (2026-08-27
+01:11 UTC, 100 GB):
+
+- Created a scratch `e2-small` instance and a 100 GB disk from the
+  snapshot in `us-central1-a`, mounted it read-only-equivalent (no service
+  touched it), and inspected the tree.
+- Layout: one tenant directory `tenant.openagents` containing nine bare
+  repositories — `omega.git` plus eight `repo.openagents.forge02-live-*.git`
+  acceptance seeds.
+- `git fsck --full` passed on all nine (exit 0; the only diagnostics were
+  dangling objects on `omega.git` and two unborn-branch notices on empty
+  seed repositories).
+- Ref comparison: `omega.git` carries `refs/heads/main` =
+  `refs/heads/forge/omega-journey` = `585af0d8c0` and tag
+  `forge-omega-import-2026-07-26` -> `ae32ebd9`. The import-point commit is
+  an ancestor of the live Omega repository's history, and the forge tip is
+  the import point plus one docs-only commit
+  (`forge-receipts/2026-07-26-owned-forge-journey.md`, 5 insertions). The
+  eight `forge02-live` seeds hold only the July FORGE-02 acceptance
+  commits. Nothing on the disk is unique, load-bearing product data; the
+  one unique docs commit exists in the restored snapshot and is recorded
+  here.
+- The scratch instance and disk were deleted after the drill. The
+  snapshot itself is retained until Terraform transfer closes issue #145.
+
+This closes the restore, integrity, and ref-comparison gate.
+
 ## Remaining evidence
+
+Resolved by this document: scheduled-task classification, the bounded
+zero-caller observation, and the Forge disk restore, integrity, and
+ref comparison.
 
 Issue #145 remains open until these items land:
 
-- authentication hostname and compatibility-route disposition;
-- scheduled-task classification and migration;
-- a bounded zero-caller observation after schedulers and producers stop;
-- Forge disk restore, repository integrity, and ref comparison;
-- Terraform transfer, destroy, or retained-resource receipts.
+- the `auth.openagents.com` hostname retirement (load-balancer redirect
+  or DNS cutover), which the caller evidence now supports;
+- Terraform transfer, destroy, or retained-resource receipts, after which
+  the source deletion in issue #146 can proceed.
