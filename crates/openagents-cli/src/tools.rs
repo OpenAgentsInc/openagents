@@ -1046,9 +1046,7 @@ impl HarnessToolRegistry {
                             duration_ms: 0,
                         };
                     }
-                    return self
-                        .delegate_to_acp_agent(call, wanted, gate, cancel)
-                        .await;
+                    return self.delegate_to_acp_agent(call, wanted, gate, cancel).await;
                 }
 
                 let prompt = call
@@ -4462,7 +4460,10 @@ mod defect_tests {
         (registry, spent)
     }
 
-    async fn run_delegate(registry: &HarnessToolRegistry, arguments: serde_json::Value) -> (String, bool) {
+    async fn run_delegate(
+        registry: &HarnessToolRegistry,
+        arguments: serde_json::Value,
+    ) -> (String, bool) {
         let out = registry
             .execute_tool(&ToolCall {
                 id: "1".to_string(),
@@ -4485,8 +4486,16 @@ mod defect_tests {
             .find(|t| t.name == "delegate")
             .expect("declared");
         assert!(tool.description.contains("`devin`"), "{}", tool.description);
-        assert!(tool.description.contains("grok-build"), "{}", tool.description);
-        assert!(tool.description.contains("own bill"), "{}", tool.description);
+        assert!(
+            tool.description.contains("grok-build"),
+            "{}",
+            tool.description
+        );
+        assert!(
+            tool.description.contains("own bill"),
+            "{}",
+            tool.description
+        );
 
         let (empty, _spent) = gate_with(Vec::new());
         let tool = empty
@@ -4495,7 +4504,10 @@ mod defect_tests {
             .find(|t| t.name == "delegate")
             .expect("declared");
         assert!(
-            !tool.description.to_lowercase().contains("agent client protocol"),
+            !tool
+                .description
+                .to_lowercase()
+                .contains("agent client protocol"),
             "no external-agent language without an installed agent: {}",
             tool.description
         );
@@ -4582,7 +4594,8 @@ mod defect_tests {
     async fn a_refused_second_call_is_refused_before_its_arguments_are_read() {
         let (registry, spent) = gate_with(vec![acp_agent("devin")]);
         spent.store(true, Ordering::SeqCst);
-        let (output, is_error) = run_delegate(&registry, serde_json::json!({"agent": "devin"})).await;
+        let (output, is_error) =
+            run_delegate(&registry, serde_json::json!({"agent": "devin"})).await;
         assert!(is_error);
         assert!(output.contains("already handed work"), "{output}");
     }
