@@ -53,6 +53,7 @@ import {
   PylonPortableSessionOperationLedger,
 } from "../src/portable-session-operation-ledger.js";
 import { createPylonOwnerLocalExecutionTarget } from "../src/portable-session-target.js";
+import { resolveRepositoryMainRef } from "./repository-main-ref.js";
 
 const Ref = Schema.String.check(
   Schema.isMinLength(3),
@@ -310,7 +311,8 @@ export const runIde13OwnerLocalRealCohort = async (
   if (laterPaths.some((path) => !COHORT_EVIDENCE_REPOSITORY_PATHS.has(path))) {
     throw new Error("owner-local cohort candidate omits an implementation change");
   }
-  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
+  const mainRef = await resolveRepositoryMainRef((...args) => git(repositoryRoot, ...args));
+  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, mainRef);
   const root = await mkdtemp(join(tmpdir(), "openagents-ide13-owner-local-cohort-"));
   const database = openLegacySqliteDatabase(join(root, "portable.sqlite"));
   const custodyKeyA = randomBytes(32);

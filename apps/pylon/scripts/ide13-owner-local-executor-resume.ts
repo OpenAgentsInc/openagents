@@ -32,6 +32,7 @@ import {
 import { PylonPortableSessionOperationLedger } from "../src/portable-session-operation-ledger.js";
 import { createPylonPortableOwnerLocalWorkResumer } from "../src/portable-session-owner-local-work-resumer.js";
 import { createPylonOwnerLocalExecutionTarget } from "../src/portable-session-target.js";
+import { resolveRepositoryMainRef } from "./repository-main-ref.js";
 
 const Ref = Schema.String.check(
   Schema.isMinLength(3),
@@ -101,8 +102,7 @@ export interface Ide13OwnerLocalExecutorResumeReceipt extends Schema.Schema.Type
 
 const decodeReceipt = Schema.decodeUnknownSync(Ide13OwnerLocalExecutorResumeReceiptSchema);
 const GIT_SHA = /^[a-f0-9]{40}$/u;
-const EVIDENCE_PATH =
-  "benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json";
+const EVIDENCE_PATH = "benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json";
 
 const sha256 = (value: string | Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
@@ -183,7 +183,8 @@ export const runIde13OwnerLocalExecutorResume = async (
   if (laterPaths.some((path) => path !== EVIDENCE_PATH)) {
     throw new Error("executor-resume candidate omits an implementation change");
   }
-  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
+  const mainRef = await resolveRepositoryMainRef((...args) => git(repositoryRoot, ...args));
+  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, mainRef);
   const root = await mkdtemp(join(tmpdir(), "openagents-ide13-executor-resume-"));
   const database = openLegacySqliteDatabase(join(root, "portable.sqlite"));
   const custodyKey = randomBytes(32);

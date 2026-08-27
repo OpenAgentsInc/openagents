@@ -118,7 +118,7 @@ pnpm --dir apps/qa-runner run demo:khala -- --goal "..." --url https://openagent
 #   -> writes session.mp4 + trace.zip + screenshots + result.json + session-trace.json,
 #      and emits generated/<slug>.e2e.test.ts (the review artifact alongside the video).
 # Run the generated scenario (a real, runnable test) against any target:
-TARGET_URL=https://openagents.com pnpm test apps/qa-runner/generated/login-verify.e2e.test.ts
+TARGET_URL=https://openagents.com pnpm --dir apps/qa-runner run test:generated
 
 # Khala Code flagship native demo (Q3.4): headed packaged app, AX/screenshot
 # seeded-bug hunt, public-safe report, and distilled regression candidate.
@@ -127,7 +127,7 @@ QA_NATIVE_DESKTOP=1 pnpm --dir apps/qa-runner run khala:flagship-demo -- \
   --seeded-bug-text "Seeded bug: packaged Khala Code fixture response is rendered"
 pnpm test apps/qa-runner/generated/khala-code-packaged-seeded-bug.e2e.test.ts
 
-# Deterministic /login regression demo (scriptedBrain; no model, for CI):
+# Deterministic /login regression demo (scriptedBrain; no model, live browser):
 pnpm --dir apps/qa-runner run demo:login
 pnpm --dir apps/qa-runner run demo:login -- --out ./runs/login --headed
 # Prove honest failure: point the same scenario at a deliberately-wrong assertion

@@ -17,10 +17,10 @@ import {
   PylonPortableOwnerLocalCapabilityRecoveryError,
   PylonPortableOwnerLocalCapabilityWorker,
 } from "../src/portable-owner-local-capability-operation-worker.js";
+import { resolveRepositoryMainRef } from "./repository-main-ref.js";
 
 const GIT_SHA = /^[a-f0-9]{40}$/u;
-const RECEIPT_REPOSITORY_PATH =
-  "benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json";
+const RECEIPT_REPOSITORY_PATH = "benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json";
 const DEADLINE_MILLISECONDS = 120_000;
 const REF = Schema.String.check(
   Schema.isMinLength(3),
@@ -356,7 +356,8 @@ export const runIde13OwnerLocalRecoveryFaults = async (
   if (laterPaths.some((path) => path !== RECEIPT_REPOSITORY_PATH)) {
     throw new Error("recovery candidate omits an implementation change");
   }
-  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
+  const mainRef = await resolveRepositoryMainRef((...args) => git(repositoryRoot, ...args));
+  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, mainRef);
   const root = await mkdtemp(join(tmpdir(), "openagents-ide13-recovery-faults-"));
   try {
     const workerStartedAt = performance.now();

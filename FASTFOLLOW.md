@@ -1660,7 +1660,13 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md",
       "docs/teardowns/2026-08-04-ark-solver-mostro-cashu-rails-teardown.md",
       "docs/teardowns/2026-08-04-satora-lendaswap-outage-teardown.md",
-      "docs/teardowns/2026-08-04-tbdex-liquidity-protocol-teardown.md"
+      "docs/teardowns/2026-08-04-tbdex-liquidity-protocol-teardown.md",
+      "docs/teardowns/2026-08-10-macro-teardown.md",
+      "docs/teardowns/2026-08-13-wanix-apptron-teardown.md",
+      "docs/teardowns/2026-08-23-cc-tool-and-agent-fleet-rendering-reproduction.md",
+      "docs/teardowns/2026-08-23-entire-ecosystem-teardown.md",
+      "docs/teardowns/2026-08-23-openagents-coder-tui-agent-fleet-port-plan.md",
+      "docs/teardowns/2026-08-24-background-agents-open-inspect-teardown.md"
     ],
     "lessons": [
       {

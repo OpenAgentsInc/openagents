@@ -24,10 +24,10 @@ import {
 import { PylonPortableCheckpointArtifactStore } from "../src/portable-session-checkpoint-artifact.js";
 import { createPylonPortableLocalRehydrator } from "../src/portable-session-local-rehydrator.js";
 import type { PylonPortableCheckpointBundle } from "../src/portable-session-operation-ledger.js";
+import { resolveRepositoryMainRef } from "./repository-main-ref.js";
 
 const GIT_SHA = /^[a-f0-9]{40}$/u;
-const RECEIPT_REPOSITORY_PATH =
-  "benchmarks/ide/2026-07-20-ide-13-checkpoint-admission-faults.json";
+const RECEIPT_REPOSITORY_PATH = "benchmarks/ide/2026-07-20-ide-13-checkpoint-admission-faults.json";
 const DEADLINE_MILLISECONDS = 30_000;
 const SCENARIOS = [
   "corrupt_checkpoint",
@@ -444,7 +444,8 @@ export const runIde13CheckpointAdmissionFaults = async (
   if (laterPaths.some((path) => path !== RECEIPT_REPOSITORY_PATH)) {
     throw new Error("fault receipt candidate omits an implementation change");
   }
-  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
+  const mainRef = await resolveRepositoryMainRef((...args) => git(repositoryRoot, ...args));
+  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, mainRef);
   const runScenario = async (scenario: Scenario): Promise<FaultCaseResult> => {
     if (scenario === "provider_capability_drift" || scenario === "source_revocation_failure") {
       return {

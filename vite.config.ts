@@ -121,6 +121,10 @@ export default defineConfig({
             // has run those smokes collects dozens of stale generated suites
             // into every later sweep and sees failures that no commit caused.
             "var/**",
+            // Generated QA scenarios are live black-box probes. The QA package
+            // exposes them through `test:generated`; the offline completion
+            // gate must not make production availability part of unit truth.
+            "apps/qa-runner/generated/**",
             "**/node_modules/**",
             "**/.claude/worktrees/**",
             "**/.worktrees/**",

@@ -162,9 +162,8 @@ rl.on("line", (line) => {
     return;
   }
   if (mode === "response-then-update") {
-    write(response);
-    setImmediate(() =>
-      write({
+    process.stdout.write(
+      `${JSON.stringify(response)}\n${JSON.stringify({
         jsonrpc: "2.0",
         method: "session/update",
         params: {
@@ -174,7 +173,7 @@ rl.on("line", (line) => {
             content: { type: "text", text: "tail" },
           },
         },
-      }),
+      })}\n`,
     );
     return;
   }

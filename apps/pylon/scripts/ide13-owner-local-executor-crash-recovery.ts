@@ -12,9 +12,9 @@ import {
   createPylonPortableOwnerLocalWorkResumer,
   type PylonPortableOwnerLocalWorkHandler,
 } from "../src/portable-session-owner-local-work-resumer.js";
+import { resolveRepositoryMainRef } from "./repository-main-ref.js";
 
-const EVIDENCE_PATH =
-  "benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json";
+const EVIDENCE_PATH = "benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json";
 const GIT_SHA = /^[0-9a-f]{40}$/u;
 const execFileAsync = promisify(execFile);
 const sessionRef = "session.ide13.owner-local.crash-recovery";
@@ -160,7 +160,8 @@ export const runIde13OwnerLocalExecutorCrashRecovery = async (
   if (laterPaths.some((path) => path !== EVIDENCE_PATH)) {
     throw new Error("crash-recovery candidate omits an implementation change");
   }
-  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
+  const mainRef = await resolveRepositoryMainRef((...args) => git(repositoryRoot, ...args));
+  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, mainRef);
   const root = await mkdtemp(join(tmpdir(), "openagents-ide13-executor-crash-recovery-"));
   const source = join(root, "source");
   const destination = join(root, "destination");
