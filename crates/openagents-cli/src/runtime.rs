@@ -1159,6 +1159,8 @@ impl CoderRuntimeSession {
             "".to_string(),
             prompt::CODER_CONCISION.to_string(),
             "".to_string(),
+            prompt::CODER_VERIFICATION.to_string(),
+            "".to_string(),
             format!(
                 "The session's working directory is `{}`. This is a runtime fact: when asked \
                  where you are working, state this path and do not invent another one. Use the \

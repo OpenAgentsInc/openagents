@@ -4,14 +4,14 @@
     "system-prompt": {
       "file": "system-prompt.v1.json",
       "schema": "openagents.coder_surface.system_prompt.v1",
-      "keys": 11,
-      "digest": "sha256:9dcbe4755e1cdd317afefb3f2b4c694df17ca6aefe07680243c67b7ec7289b0c"
+      "keys": 12,
+      "digest": "sha256:ed7d11e64b1129e2d3f98c1a2169e838086e5e9af151298829518eca851831a7"
     },
     "tool-descriptions": {
       "file": "tool-descriptions.v1.json",
       "schema": "openagents.coder_surface.tool_descriptions.v1",
       "keys": 10,
-      "digest": "sha256:0e75085542a4f0b61da8a897f8baecc82fe3169cabb55c7a21ed67ac26a89e38"
+      "digest": "sha256:338515dacc522b1edcb791872631d3bc42849f1402bccec631b4c6536921f772"
     },
     "catalog-lines": {
       "file": "catalog-lines.v1.json",
