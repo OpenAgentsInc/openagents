@@ -162,10 +162,15 @@ fn output(ui: &mut CoderUi, text: &str) {
 }
 
 fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {
-    output(ui, "Opening the OpenAgents sign-in page in your browser...");
+    output(ui, "Starting OpenAgents sign-in...");
     let tx = tx.clone();
     tokio::spawn(async move {
-        let text = match crate::coder::interactive::do_login().await {
+        let progress = tx.clone();
+        let text = match crate::coder::interactive::do_login_with_progress(move |message| {
+            let _ = progress.send(Control::Output(message));
+        })
+        .await
+        {
             Ok(message) => message,
             Err(error) => format!("Login failed: {error}"),
         };

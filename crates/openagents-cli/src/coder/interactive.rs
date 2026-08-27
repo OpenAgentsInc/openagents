@@ -178,6 +178,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let mut turns = TurnState::default();
     let mut active_turn: Option<ActiveTurn> = None;
     let mut prompt_queue = VecDeque::new();
+    let mut login_pending = false;
     let mut exit_after_cancel = false;
 
     'frame: loop {
@@ -230,6 +231,31 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             &mut active_turn,
                         )
                         .await;
+                    }
+                }
+                Control::Login(result) => {
+                    login_pending = false;
+                    match result {
+                        Ok(message) => {
+                            ui.entries.push(Entry::new(Role::Notice, message));
+                            // A successful device authorization supplies a
+                            // credential, not an account name. Ask the server
+                            // which account it belongs to before changing the
+                            // identity row.
+                            ui.identity = current_identity().await;
+                            session = Some(Arc::new(Mutex::new(Session::open(
+                                lane.clone(),
+                                &options.lane_name,
+                                options.reasoning.clone(),
+                                agents.clone(),
+                                options.dev,
+                                tx.clone(),
+                            ))));
+                            refresh_credit(&tx);
+                        }
+                        Err(error) => ui
+                            .entries
+                            .push(Entry::new(Role::Notice, format!("Login failed: {error}"))),
                     }
                 }
                 control => apply(&mut ui, control),
@@ -366,34 +392,16 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         }
                     }
                 } else if text.trim().is_empty() || text.trim() == "/login" {
-                    ui.entries.push(Entry::new(
-                        Role::Notice,
-                        "Opening the OpenAgents sign-in page in your browser...",
-                    ));
-                    match do_login().await {
-                        Ok(message) => {
-                            ui.entries.push(Entry::new(Role::Notice, message));
-                            // The row was saying "not signed in" a moment ago,
-                            // and now it has an account to name — asked for
-                            // once, here, rather than assumed from the login
-                            // having returned.
-                            ui.identity = current_identity().await;
-                            session = Some(Arc::new(Mutex::new(Session::open(
-                                lane.clone(),
-                                &options.lane_name,
-                                options.reasoning.clone(),
-                                agents.clone(),
-                                options.dev,
-                                tx.clone(),
-                            ))));
-                            // The account is only now known, so this is the
-                            // first read that can answer.
-                            refresh_credit(&tx);
-                        }
-                        Err(error) => {
-                            ui.entries
-                                .push(Entry::new(Role::Notice, format!("Login failed: {error}")));
-                        }
+                    if login_pending {
+                        ui.entries.push(Entry::new(
+                            Role::Notice,
+                            "OpenAgents sign-in is already in progress.",
+                        ));
+                    } else {
+                        login_pending = true;
+                        ui.entries
+                            .push(Entry::new(Role::Notice, "Starting OpenAgents sign-in..."));
+                        spawn_session_login(&tx);
                     }
                 } else {
                     ui.entries.push(Entry::new(
@@ -523,6 +531,21 @@ fn refresh_credit(tx: &Sender<Control>) {
     });
 }
 
+/// Start device sign-in without holding the frame loop while the server waits
+/// for approval.
+fn spawn_session_login(tx: &Sender<Control>) {
+    let tx = tx.clone();
+    tokio::spawn(async move {
+        let progress = tx.clone();
+        let result = do_login_with_progress(move |message| {
+            let _ = progress.send(Control::Output(message));
+        })
+        .await
+        .map_err(|error| error.to_string());
+        let _ = tx.send(Control::Login(result));
+    });
+}
+
 /// Check that a token is accepted by the deployment without calling GitHub.
 /// `GET /api/v1/models` is a light, non-GitHub endpoint that still requires a
 /// valid bearer token, so a 200 here means the token is good to spend.
@@ -591,13 +614,15 @@ async fn resolve_identity(origin: &str, token: &Secret) -> crate::coder::tui::Id
 ///
 /// This is called from inside the TUI, so it must not print to stdout; the
 /// caller is responsible for showing any message in the transcript.
-pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
+pub async fn do_login_with_progress(
+    progress: impl FnOnce(String),
+) -> Result<String, Box<dyn std::error::Error>> {
     let endpoint = crate::auth::resolve_endpoint(None, None)?;
     let client = DeviceClient::new(&endpoint.origin);
     let scopes: &[String] = &[];
     let auth = client.start(scopes).await?;
 
-    open_browser(&auth.verification_uri_complete);
+    progress(open_login_page(&auth, open_browser));
 
     let token = client.wait(&auth).await?;
     validate_token(&endpoint.origin, &token).await?;
@@ -609,6 +634,28 @@ pub async fn do_login() -> Result<String, Box<dyn std::error::Error>> {
     unsafe { std::env::set_var("OPENAGENTS_API_KEY", token.expose()) };
 
     Ok("Authenticated.".to_string())
+}
+
+/// Open one device-authorization page and describe the exact manual fallback.
+///
+/// The URL and code are present in both branches. A launcher failure changes
+/// only the status sentence, so the reader can finish signing in from an SSH
+/// session, a container, or a detached terminal.
+fn open_login_page(
+    auth: &crate::auth::DeviceAuthorization,
+    launch: impl FnOnce(&str) -> bool,
+) -> String {
+    let opened = launch(&auth.verification_uri_complete);
+    let status = if opened {
+        "Opened the OpenAgents sign-in page in your browser."
+    } else {
+        "Coder could not open a browser. Open the URL below to sign in to OpenAgents."
+    };
+
+    format!(
+        "{status}\n\nURL: {}\nCode: {}",
+        auth.verification_uri_complete, auth.user_code
+    )
 }
 
 /// The columns the composer soft-wraps to: the frame's width less its border
@@ -645,7 +692,7 @@ fn normalize_paste(text: &str) -> String {
 /// Split out of the loop so a test can drive it without a terminal.
 pub fn apply(ui: &mut CoderUi, control: Control) {
     match control {
-        Control::Turn { .. } | Control::CancelComplete { .. } => {}
+        Control::Turn { .. } | Control::CancelComplete { .. } | Control::Login(_) => {}
         Control::Chunk(chunk) => {
             if !chunk.is_empty() {
                 // Create the answer where its text actually arrives. A turn
@@ -1139,6 +1186,51 @@ mod tests {
     #[test]
     fn paste_line_endings_become_composer_line_endings() {
         assert_eq!(normalize_paste("one\r\ntwo\rthree"), "one\ntwo\nthree");
+    }
+
+    fn device_authorization() -> crate::auth::DeviceAuthorization {
+        crate::auth::DeviceAuthorization {
+            device_code: "device-secret".to_string(),
+            user_code: "ABCD-EFGH".to_string(),
+            verification_uri: "https://example.test/device".to_string(),
+            verification_uri_complete: "https://example.test/device?user_code=ABCD-EFGH"
+                .to_string(),
+            expires_in: 600,
+            interval: 5,
+            scope: Some("chat:account".to_string()),
+        }
+    }
+
+    #[test]
+    fn failed_browser_launch_leaves_a_manual_sign_in_path() {
+        let authorization = device_authorization();
+        let mut launched = String::new();
+        let message = open_login_page(&authorization, |url| {
+            launched = url.to_string();
+            false
+        });
+
+        assert_eq!(launched, authorization.verification_uri_complete);
+        assert!(message.contains("could not open a browser"), "{message}");
+        assert!(message.contains(&authorization.verification_uri_complete));
+        assert!(message.contains(&authorization.user_code));
+        assert!(
+            !message.contains("Opened the OpenAgents sign-in page"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn successful_browser_launch_still_shows_the_url_and_code() {
+        let authorization = device_authorization();
+        let message = open_login_page(&authorization, |_| true);
+
+        assert!(
+            message.contains("Opened the OpenAgents sign-in page"),
+            "{message}"
+        );
+        assert!(message.contains(&authorization.verification_uri_complete));
+        assert!(message.contains(&authorization.user_code));
     }
 
     #[test]

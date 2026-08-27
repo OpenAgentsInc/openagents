@@ -83,6 +83,12 @@ pub enum Control {
     Billed(u64),
     /// Something worth saying that is not the model talking.
     Notice(String),
+    /// An in-frame device sign-in finished.
+    ///
+    /// Progress travels as [`Control::Output`] while the browser opens and the
+    /// device authorization polls. This event lets the frame install the new
+    /// authenticated session without blocking redraws during that wait.
+    Login(Result<String, String>),
     /// Replace the temporary first-response status, or clear it with `None`.
     Waiting(Option<String>),
     /// What one of the session's own commands printed. Markdown, rendered the
