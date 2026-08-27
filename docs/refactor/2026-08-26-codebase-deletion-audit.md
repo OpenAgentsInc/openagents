@@ -52,6 +52,28 @@ The recommended end state is a smaller repository with these responsibilities:
 Everything else should be deleted from the active workspace. Git history is
 the archive for source code.
 
+## Product direction added after the audit
+
+The owner clarified the target architecture on 2026-08-27:
+
+- Rust is the default language for the CLI, local runtimes, and standalone
+  services.
+- Phoenix and Elixir remain the web and backend authority.
+- Rust can supplement Phoenix through an explicit service, port, or NIF
+  boundary.
+- Plan to retire most or all TypeScript. A retained TypeScript path must name
+  a current consumer, owner, replacement boundary, and retirement plan.
+- Coder remains the front door to Computers, Forge, Forum, Inference, Issues,
+  Memory, Nostr, Plugins, Sarah, Traces, Training, and Wallet.
+- Local persistence remains the default. Cloud synchronization remains
+  optional.
+
+This direction strengthens the deletion test without narrowing the product.
+Delete obsolete TypeScript implementations, but preserve or replace the CLI
+namespaces and contracts that express current product intent. Product intent
+is evidence for a replacement boundary; it is not evidence that a stale
+implementation remains deployable.
+
 ## First-principles test
 
 A path belongs in the active repository only if it satisfies at least one of
@@ -469,7 +491,9 @@ Phase 1 was completed on 2026-08-26 against recovery baseline
 - `cargo test --workspace`, the all-work generation check, the Coder surface
   check, the assure-repo inventory check, and the release-contract tests pass.
 
-Phases 2 through 6 remain open.
+Phase 4 was completed in issue #136. Phases 2, 3, 5, and 6 remain open under
+issues #144 through #150. The duplicate-backend inventory is recorded in
+[`2026-08-27-duplicate-backend-inventory.md`](./2026-08-27-duplicate-backend-inventory.md).
 
 ## Execution order
 
@@ -494,6 +518,11 @@ Status: complete on 2026-08-26.
 3. Drain and decommission obsolete services through the infrastructure process
    in this audit.
 
+Status: in progress in issue #145. The first inventory found active monolith
+schedulers, an authentication hostname on the old load balancer, deployed
+queue and bridge services, and durable Forge and SQL state. Source deletion
+must wait for the ordered drain and migration proofs.
+
 ### Phase 3: remove the duplicate backend
 
 1. Delete `apps/openagents.com` in full.
@@ -501,6 +530,8 @@ Status: complete on 2026-08-26.
    with their obsolete Worker paths.
 3. Remove root scripts, workspace entries, guards, and site-only packages.
 4. Regenerate the pnpm lockfile and package inventory.
+
+Status: issue #146, blocked by issue #145.
 
 ### Phase 4: finish the CLI consolidation
 
@@ -521,6 +552,8 @@ Completed in issue #136:
    authority.
 5. Replace the root aggregate suite with checks for retained products only.
 
+Status: issue #150, blocked by the root-disposition issues.
+
 ### Phase 6: decommission remaining external systems
 
 1. Inventory Google Cloud, installed systemd units, package registries, and
@@ -529,6 +562,10 @@ Completed in issue #136:
 3. Transfer retained infrastructure ownership out of legacy Terraform roots.
 4. Delete the corresponding crates, applications, packages, Dockerfiles,
    scripts, fixtures, and documentation.
+
+Status: issues #147 through #150. Voice, managed computers, and the remaining
+application and runner cohort have separate disposition issues so durable data
+and current callers are resolved before source deletion.
 
 ## Completion criteria
 
