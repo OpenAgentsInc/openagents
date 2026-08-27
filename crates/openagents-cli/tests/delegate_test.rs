@@ -844,10 +844,16 @@ async fn the_delegate_tool_resolves_an_inference_tier_to_the_default_child_lane(
         !report.starts_with("No children were started:"),
         "the `flash` lane was refused instead of resolved: {report}"
     );
+    let parsed = openagents_cli::delegate_result::DelegateFanoutResult::parse(&report)
+        .unwrap_or_else(|| panic!("expected fan-out JSON: {report}"));
     assert!(
-        report.starts_with("1 of 1 child completed on openagents (this process"),
-        "the `flash` lane did not resolve to the default child lane: {report}"
+        parsed
+            .header
+            .starts_with("1 of 1 child completed on openagents (this process"),
+        "the `flash` lane did not resolve to the default child lane: {}",
+        parsed.header
     );
+    assert_eq!(parsed.results.len(), 1);
 }
 
 /// A `--child-*` flag the session's lane cannot honour is said, not dropped.

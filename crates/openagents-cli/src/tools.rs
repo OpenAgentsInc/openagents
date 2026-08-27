@@ -40,7 +40,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
@@ -52,6 +52,7 @@ use crate::coder::acp::Agent;
 use crate::coder::acp_harness::{AcpFailure, AcpHarness, PermissionMode};
 use crate::coder::agents::{self, AgentDefinition, ToolPool};
 use crate::coder::runtime::Control;
+use crate::delegate_result::{DelegateAgentResult, DelegateStatus, WorktreeRef};
 use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
@@ -502,6 +503,9 @@ pub struct HarnessToolRegistry {
     /// The turn's Control sink, when this registry belongs to an interactive
     /// Coder session. `delegate` uses it to stream into the parent box.
     event_sink: Option<ToolEventSink>,
+    /// Last ACP session id per agent id, so a later call to the same agent
+    /// on this registry can resume.
+    acp_sessions: Mutex<BTreeMap<String, String>>,
 }
 
 impl HarnessToolRegistry {
@@ -610,6 +614,7 @@ impl HarnessToolRegistry {
             check_scopes,
             tool_pool,
             event_sink: None,
+            acp_sessions: Mutex::new(BTreeMap::new()),
         };
         registry.load_local_skills();
         registry
@@ -1570,6 +1575,8 @@ impl HarnessToolRegistry {
             let stream_parent = call.id.clone();
             let content_buf = Arc::new(Mutex::new(LineBuffer::new()));
             let reasoning_buf = Arc::new(Mutex::new(LineBuffer::new()));
+            let tool_uses = Arc::new(AtomicUsize::new(0));
+            let counted_uses = Arc::clone(&tool_uses);
             let mut runtime = crate::runtime::CoderRuntimeSession::new(
                 lane,
                 gate.api_base.clone(),
@@ -1577,17 +1584,20 @@ impl HarnessToolRegistry {
                 tools,
             )
             .observing_tools(Arc::new(move |event: ToolEvent| {
-                let Some(sink) = &tool_sink else {
-                    return;
-                };
                 match event {
                     ToolEvent::Started {
                         name, arguments, ..
-                    } => sink(Control::Tool {
-                        call_id: tool_parent.clone(),
-                        name,
-                        arguments,
-                    }),
+                    } => {
+                        counted_uses.fetch_add(1, Ordering::SeqCst);
+                        let Some(sink) = &tool_sink else {
+                            return;
+                        };
+                        sink(Control::Tool {
+                            call_id: tool_parent.clone(),
+                            name,
+                            arguments,
+                        });
+                    }
                     ToolEvent::Finished { .. } => {
                         // Do not emit ToolDone with the parent id: that would
                         // settle the delegate box before the agent finished.
@@ -1634,6 +1644,7 @@ impl HarnessToolRegistry {
                     }
                 }
             }));
+            let cancel_watch = cancel.clone();
             runtime.set_tool_cancellation(cancel);
             runtime.messages.push(crate::runtime::ChatMessage {
                 role: "system".to_string(),
@@ -1654,43 +1665,49 @@ impl HarnessToolRegistry {
             let started = Instant::now();
             let result = runtime.execute_turn(&prompt, |_| {}).await;
             let duration = started.elapsed();
-            let tool_uses = runtime.last_calls;
+            let counted = tool_uses.load(Ordering::SeqCst);
+            let tool_uses = u64::try_from(counted.max(runtime.last_calls)).unwrap_or(u64::MAX);
             let answered_model = runtime.last_model.clone();
+            let session_id = runtime.thread_id().map(str::to_string);
+            let total_tokens = runtime.last_usage.total_tokens;
+            let cancelled = *cancel_watch.borrow();
             let _ = runtime.finish().await;
             let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
-            let worktree_line = match workspace {
-                Some(ws) => Some(ws.close_if_unchanged().await),
+            let worktree = match workspace {
+                Some(ws) => {
+                    let line = ws.close_if_unchanged().await;
+                    if line.starts_with("worktree kept: ") {
+                        Some(WorktreeRef {
+                            path: ws.path.display().to_string(),
+                            branch: ws.branch.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                }
                 None => None,
             };
-            let model_bit = answered_model
-                .as_deref()
-                .map(|model| format!(" · {model}"))
-                .unwrap_or_default();
-            let extra = worktree_line
-                .as_deref()
-                .map(|line| format!("\n{line}"))
-                .unwrap_or_default();
 
-            match result {
-                Ok(report) => make(
-                    format!(
-                        "Done · {tool_uses} tool uses · {}s{model_bit}\n{}{extra}",
-                        duration.as_secs(),
-                        report.trim()
-                    ),
-                    false,
-                    duration_ms,
-                ),
-                Err(error) => make(
-                    format!(
-                        "{} failed after {tool_uses} tool uses and {}s{model_bit}: {error}{extra}",
-                        agent.label,
-                        duration.as_secs()
-                    ),
-                    true,
-                    duration_ms,
-                ),
-            }
+            let (status, report, is_error) = match result {
+                Ok(report) if cancelled => {
+                    (DelegateStatus::Cancelled, report.trim().to_string(), true)
+                }
+                Ok(report) => (DelegateStatus::Done, report.trim().to_string(), false),
+                Err(error) if cancelled => (DelegateStatus::Cancelled, error.to_string(), true),
+                Err(error) => (DelegateStatus::Failed, error.to_string(), true),
+            };
+            let record = DelegateAgentResult {
+                status,
+                agent: agent.id.to_string(),
+                total_tool_uses: tool_uses,
+                duration_ms,
+                total_tokens,
+                model: answered_model,
+                session_id,
+                report,
+                worktree,
+            };
+            make(record.to_json(), is_error, duration_ms)
         })
     }
 
@@ -1775,13 +1792,20 @@ impl HarnessToolRegistry {
         let event_sink = self.event_sink.clone();
         let text_buf = Arc::new(Mutex::new(LineBuffer::new()));
         let stream_buf = Arc::clone(&text_buf);
+        let resume_session_id = self
+            .acp_sessions
+            .lock()
+            .ok()
+            .and_then(|sessions| sessions.get(wanted).cloned());
+        let started = Instant::now();
         let result = AcpHarness {
             command: agent.command,
             args: agent.args,
             mode,
+            resume_session_id,
             ..AcpHarness::default()
         }
-        .run(
+        .run_detailed(
             &prompt,
             &self.cwd,
             move |event| {
@@ -1829,26 +1853,70 @@ impl HarnessToolRegistry {
             }
         }
 
-        let (output, is_error) = match result {
-            Ok(answer) if is_refusal(&answer) => (
-                format!("`{wanted}` refused the task rather than doing it: {answer}"),
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let (status, report, is_error, session_id) = match result {
+            Ok(outcome) if is_refusal(&outcome.answer) => (
+                DelegateStatus::Failed,
+                format!(
+                    "`{wanted}` refused the task rather than doing it: {}",
+                    outcome.answer
+                ),
                 true,
+                Some(outcome.session_id).filter(|id| !id.is_empty()),
             ),
-            Ok(answer) if answer.trim().is_empty() => {
-                (format!("`{wanted}` finished and said nothing."), false)
-            }
-            Ok(answer) => (answer, false),
-            Err(AcpFailure::Unstartable(why)) => {
-                (format!("`{wanted}` could not be started: {why}"), true)
-            }
-            Err(AcpFailure::Refused(why)) => {
-                (format!("`{wanted}` did not finish the task: {why}"), true)
-            }
-            Err(AcpFailure::Cancelled) => {
-                (format!("`{wanted}` was stopped before it finished."), true)
-            }
+            Ok(outcome) if outcome.answer.trim().is_empty() => (
+                DelegateStatus::Done,
+                format!("`{wanted}` finished and said nothing."),
+                false,
+                Some(outcome.session_id).filter(|id| !id.is_empty()),
+            ),
+            Ok(outcome) => (
+                DelegateStatus::Done,
+                outcome.answer,
+                false,
+                Some(outcome.session_id).filter(|id| !id.is_empty()),
+            ),
+            Err(AcpFailure::Unstartable(why)) => (
+                DelegateStatus::Failed,
+                format!("`{wanted}` could not be started: {why}"),
+                true,
+                None,
+            ),
+            Err(AcpFailure::Refused(why)) => (
+                DelegateStatus::Failed,
+                format!("`{wanted}` did not finish the task: {why}"),
+                true,
+                None,
+            ),
+            Err(AcpFailure::Cancelled) => (
+                DelegateStatus::Cancelled,
+                format!("`{wanted}` was stopped before it finished."),
+                true,
+                None,
+            ),
         };
-        make(output, is_error)
+        if let Some(session_id) = &session_id {
+            if let Ok(mut sessions) = self.acp_sessions.lock() {
+                sessions.insert(wanted.to_string(), session_id.clone());
+            }
+        }
+        let record = DelegateAgentResult {
+            status,
+            agent: wanted.to_string(),
+            total_tool_uses: 0,
+            duration_ms,
+            total_tokens: 0,
+            model: None,
+            session_id,
+            report,
+            worktree: None,
+        };
+        ToolOutput {
+            call_id: call.id.clone(),
+            output: record.to_json(),
+            is_error,
+            duration_ms,
+        }
     }
 }
 

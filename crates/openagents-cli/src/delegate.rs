@@ -1802,7 +1802,7 @@ pub fn fanout_for_tool_cancellable(
         let _ = sink.await;
 
         let succeeded = results.iter().filter(|result| result.success).count();
-        let mut lines = vec![format!(
+        let header = format!(
             "{succeeded} of {} {} completed on {}.",
             results.len(),
             if results.len() == 1 {
@@ -1811,25 +1811,39 @@ pub fn fanout_for_tool_cancellable(
                 "children"
             },
             resolved_lane.label()
-        )];
-        lines.push(String::new());
-        for result in &results {
-            if result.success {
-                lines.push(format!(
-                    "child {} completed in {}ms:\n{}",
-                    result.id,
-                    result.duration_ms,
-                    if result.output.trim().is_empty() {
-                        "(no output)"
-                    } else {
-                        result.output.trim()
-                    }
-                ));
-            } else {
-                lines.push(format!("child {} failed: {}", result.id, result.output));
-            }
+        );
+        let records = results
+            .into_iter()
+            .map(|result| crate::delegate_result::DelegateAgentResult {
+                status: if result.success {
+                    crate::delegate_result::DelegateStatus::Done
+                } else {
+                    crate::delegate_result::DelegateStatus::Failed
+                },
+                agent: resolved_lane.name(),
+                total_tool_uses: 0,
+                duration_ms: u64::try_from(result.duration_ms).unwrap_or(u64::MAX),
+                total_tokens: 0,
+                model: None,
+                session_id: None,
+                report: if result.output.trim().is_empty() {
+                    format!("child {} completed with no output", result.id)
+                } else {
+                    result.output
+                },
+                worktree: result
+                    .workspace
+                    .map(|path| crate::delegate_result::WorktreeRef {
+                        path: path.display().to_string(),
+                        branch: None,
+                    }),
+            })
+            .collect();
+        crate::delegate_result::DelegateFanoutResult {
+            header,
+            results: records,
         }
-        lines.join("\n")
+        .to_json()
     })
 }
 

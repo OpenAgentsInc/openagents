@@ -331,14 +331,15 @@ impl Entry {
     /// assistant turn. Tool output arrives as a growing snapshot, so rebuild
     /// the renderer only when that snapshot changes.
     fn output_markdown_mut(&mut self) -> &mut MarkdownContent {
-        let source = self.output.as_deref().unwrap_or("");
-        if self.output_md.is_none() || self.output_md_source != source {
+        let raw = self.output.as_deref().unwrap_or("");
+        let rendered = crate::delegate_result::displayed_delegate_output(raw);
+        if self.output_md.is_none() || self.output_md_source != rendered {
             let mut content = MarkdownContent::new();
-            content.push(source);
+            content.push(&rendered);
             content.finish();
             self.output_md = Some(Box::new(content));
             self.output_md_source.clear();
-            self.output_md_source.push_str(source);
+            self.output_md_source.push_str(&rendered);
         }
         self.output_md.as_mut().expect("just inserted")
     }
@@ -1200,7 +1201,8 @@ fn render_entry(
             let output_width = width.saturating_sub(2).max(1);
             let live_subagent = !entry.tool.as_ref().is_some_and(|tool| tool.done)
                 && !entry.subagent_lines.is_empty();
-            let output = entry.output.as_deref().unwrap_or("").to_string();
+            let raw_output = entry.output.as_deref().unwrap_or("");
+            let output = crate::delegate_result::displayed_delegate_output(raw_output);
             let (mut out_lines, out_links, window_rows) = if live_subagent {
                 let hidden = entry
                     .subagent_lines
@@ -1753,5 +1755,56 @@ mod tests {
         ui.turn_started();
         ui.turn_started_at = Some(now_ms() - 9_000);
         assert_eq!(ui.stopwatch_text(), "9s");
+    }
+
+    /// A settled delegate box shows the trailer, not the JSON the parent
+    /// model reads. The count survives even when a live box would clip.
+    #[test]
+    fn a_settled_delegate_box_renders_the_trailer_not_the_json() {
+        let result = crate::delegate_result::DelegateAgentResult {
+            status: crate::delegate_result::DelegateStatus::Done,
+            agent: "coder-mini".to_string(),
+            total_tool_uses: 14,
+            duration_ms: 96_000,
+            total_tokens: 41_234,
+            model: Some("glm-5.3-flash".to_string()),
+            session_id: Some("th_mini".to_string()),
+            report: "the finding".to_string(),
+            worktree: None,
+        };
+        let mut entry = Entry::tool_call("delegate audit auth");
+        entry.output = Some(result.to_json());
+        entry.tool = Some(ToolCall {
+            call_id: "d1".to_string(),
+            function_name: "delegate".to_string(),
+            arguments: serde_json::json!({"prompt": "audit auth"}),
+            output: Some(result.to_json()),
+            error: None,
+            done: true,
+            duration_ms: Some(96_000),
+        });
+        let (lines, _) = render_entry(&mut entry, 200, 0, false);
+        let all = lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            all.contains("Done · 14 tool uses"),
+            "trailer missing from the box: {all}"
+        );
+        assert!(
+            all.contains("the finding"),
+            "report missing from the box: {all}"
+        );
+        assert!(
+            !all.contains("\"total_tool_uses\""),
+            "raw JSON leaked into the box: {all}"
+        );
     }
 }

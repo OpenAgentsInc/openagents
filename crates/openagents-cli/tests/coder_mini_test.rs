@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicBool;
 
 use openagents_cli::coder::runtime::Control;
 use openagents_cli::delegate::ChildOptions;
+use openagents_cli::delegate_result::{DelegateAgentResult, DelegateStatus};
 use openagents_cli::tools::{DelegationGate, HarnessToolRegistry, ToolCall};
 
 #[tokio::test]
@@ -40,15 +41,20 @@ async fn a_coder_mini_run_reports_done_with_a_tool_use_count() {
         .await;
 
     assert!(!output.is_error, "{}", output.output);
+    let result = DelegateAgentResult::parse(&output.output)
+        .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
+    assert_eq!(result.status, DelegateStatus::Done);
+    assert_eq!(result.agent, "coder-mini");
+    assert_eq!(result.total_tool_uses, 1);
+    assert_eq!(result.total_tokens, 116);
+    assert_eq!(result.model.as_deref(), Some("glm-5.3-flash"));
+    assert_eq!(result.session_id.as_deref(), Some("th_mini"));
+    assert_eq!(result.report, "Read the finding.");
+    let shown = result.render();
+    assert!(shown.starts_with("Done · 1 tool uses ·"), "{shown}");
     assert!(
-        output.output.starts_with("Done · 1 tool uses ·"),
-        "{}",
-        output.output
-    );
-    assert!(
-        output.output.ends_with("Read the finding."),
-        "{}",
-        output.output
+        shown.contains("116 tokens") || shown.contains("0.1k tokens"),
+        "{shown}"
     );
 }
 
@@ -224,16 +230,16 @@ async fn an_unchanged_worktree_is_removed() {
         .await;
 
     assert!(!output.is_error, "{}", output.output);
+    let result = DelegateAgentResult::parse(&output.output)
+        .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
+    assert_eq!(result.status, DelegateStatus::Done);
     assert!(
-        output.output.contains("worktree removed (no changes)"),
-        "{}",
-        output.output
+        result.worktree.is_none(),
+        "unchanged worktree leaked into the result: {:?}",
+        result.worktree
     );
-    assert!(
-        output.output.contains("glm-5.3-flash"),
-        "trailer did not name the model that answered: {}",
-        output.output
-    );
+    assert_eq!(result.model.as_deref(), Some("glm-5.3-flash"));
+    assert_eq!(result.session_id.as_deref(), Some("th_mini"));
     assert_eq!(worktree_list(root.path()), before);
 }
 
@@ -267,16 +273,20 @@ async fn a_changed_worktree_is_kept_and_named() {
         .await;
 
     assert!(!output.is_error, "{}", output.output);
-    let kept = output
-        .output
-        .lines()
-        .find(|line| line.starts_with("worktree kept: "))
-        .unwrap_or_else(|| panic!("missing keep line: {}", output.output));
-    assert!(kept.contains("(branch agent-"), "{kept}");
-    let path = kept
-        .strip_prefix("worktree kept: ")
-        .and_then(|rest| rest.split(" (branch ").next())
-        .expect("keep line path");
+    let result = DelegateAgentResult::parse(&output.output)
+        .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
+    let kept = result
+        .worktree
+        .as_ref()
+        .unwrap_or_else(|| panic!("missing worktree: {}", output.output));
+    assert!(
+        kept.branch
+            .as_deref()
+            .is_some_and(|branch| branch.starts_with("agent-")),
+        "kept branch was {:?}",
+        kept.branch
+    );
+    let path = kept.path.as_str();
     let listed = worktree_list(root.path());
     assert!(
         listed.contains(path),

@@ -23,6 +23,7 @@ pub mod coder;
 pub mod composer;
 pub mod computer;
 pub mod delegate;
+pub mod delegate_result;
 pub mod diag;
 pub mod diff;
 pub mod entry;

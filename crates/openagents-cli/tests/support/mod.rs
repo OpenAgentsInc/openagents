@@ -82,7 +82,19 @@ pub async fn start_calling_read(path: String, answer: &'static str) -> StubProxy
                 } else {
                     serde_json::json!({"choices":[{"delta":{"content": answer}}]})
                 };
-                let frame = format!("data: {payload}\n\ndata: [DONE]\n\n");
+                let frame = if step == 0 {
+                    format!("data: {payload}\n\ndata: [DONE]\n\n")
+                } else {
+                    let usage = serde_json::json!({
+                        "choices": [],
+                        "usage": {
+                            "prompt_tokens": 99,
+                            "completion_tokens": 17,
+                            "total_tokens": 116
+                        }
+                    });
+                    format!("data: {payload}\n\ndata: {usage}\n\ndata: [DONE]\n\n")
+                };
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{frame}",
                     frame.len()

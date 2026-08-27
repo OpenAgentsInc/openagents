@@ -1371,6 +1371,11 @@ impl CoderRuntimeSession {
         }
     }
 
+    /// The thread this session opened, while it still holds one.
+    pub fn thread_id(&self) -> Option<&str> {
+        self.thread_id.as_deref()
+    }
+
     /// Refuse a directly-named model before a child or worktree is created.
     pub async fn ensure_named_served(&self) -> Result<(), Failure> {
         if let Lane::Named(id) = self.lane.clone() {
