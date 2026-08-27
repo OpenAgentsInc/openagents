@@ -882,6 +882,7 @@ fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent
                         .and_then(serde_json::Value::as_str)
                         .map(str::to_string),
                     done: true,
+                    duration_ms: payload.get("duration_ms").and_then(serde_json::Value::as_u64),
                 });
                 entry
             }
@@ -965,6 +966,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 output: None,
                 error: None,
                 done: false,
+                duration_ms: None,
             });
             ui.entries.push(entry);
             ui.scroll_override = None;
@@ -982,12 +984,17 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             }
             ui.scroll_override = None;
         }
-        Control::ToolDone { call_id, is_error } => {
+        Control::ToolDone {
+            call_id,
+            is_error,
+            duration_ms,
+        } => {
             let settled_at = ui.tick;
             if let Some(entry) = tool_entry(ui, &call_id) {
                 entry.settle_tool(settled_at);
                 if let Some(tool) = entry.tool.as_mut() {
                     tool.done = true;
+                    tool.duration_ms = Some(duration_ms);
                 }
                 if is_error {
                     // Said on the header, where the reader is looking. A
@@ -1677,6 +1684,7 @@ mod tests {
             Control::ToolDone {
                 call_id: "call_1".to_string(),
                 is_error: false,
+                duration_ms: 0,
             },
         );
         apply(&mut ui, Control::Chunk("All green.".to_string()));

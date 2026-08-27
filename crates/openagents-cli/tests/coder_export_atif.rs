@@ -18,6 +18,7 @@ fn delegate_call() -> ToolCall {
         output: None,
         error: None,
         done: false,
+        duration_ms: None,
     }
 }
 
@@ -80,6 +81,34 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
     assert_eq!(
         tool_step["observation"]["results"][0]["content"],
         "Reading file...\nDone"
+    );
+    // Timing is part of the record, not something a reader subtracts from
+    // timestamps that collapse when calls share a model step. An unsettled
+    // call exports as 0 rather than omitting the field, so the schema holds
+    // for a document built mid-flight.
+    assert_eq!(
+        tool_step["observation"]["results"][0]["duration_ms"],
+        0,
+        "an unsettled call exports a zero duration"
+    );
+    entries[2]
+        .tool
+        .as_mut()
+        .unwrap()
+        .settle_duration_ms(152_000);
+    let result2 = export_trajectory(&entries, "coder-auto", "openagents", "main");
+    let body2 = std::fs::read_to_string(&result2.path).unwrap();
+    let document2: serde_json::Value = serde_json::from_str(&body2).unwrap();
+    let tool_step2 = document2["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s.get("tool_calls").is_some())
+        .unwrap();
+    assert_eq!(
+        tool_step2["observation"]["results"][0]["duration_ms"],
+        152_000,
+        "a settled call exports the reported duration"
     );
 
     // Timestamps come from `Entry::at`; an unstamped entry would serialize as

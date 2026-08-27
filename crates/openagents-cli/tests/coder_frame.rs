@@ -272,6 +272,7 @@ fn a_failed_tool_call_says_so_on_its_header() {
         Control::ToolDone {
             call_id: "c1".to_string(),
             is_error: true,
+            duration_ms: 0,
         },
     );
 
@@ -348,6 +349,7 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
         Control::ToolDone {
             call_id: "c1".to_string(),
             is_error: false,
+            duration_ms: 0,
         },
     );
     let settled = draw(&mut ui);

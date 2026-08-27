@@ -248,6 +248,13 @@ pub struct ToolOutput {
     pub call_id: String,
     pub output: String,
     pub is_error: bool,
+    /// Whole milliseconds the call held the session. Set once per execution
+    /// in [`HarnessToolRegistry::execute_tool_cancellable`], around
+    /// everything the arm does, so a record says what a run cost without
+    /// anyone reconstructing it from timestamps. Zero on the early-cancelled
+    /// path: no work ran.
+    #[serde(default)]
+    pub duration_ms: u64,
 }
 
 /// One skill: a directory holding a `SKILL.md` with YAML front matter naming
@@ -678,11 +685,23 @@ impl HarnessToolRegistry {
         call: &ToolCall,
         mut cancel: watch::Receiver<bool>,
     ) -> ToolOutput {
+        let started = std::time::Instant::now();
+        let mut output = self.execute_tool_inner(call, cancel).await;
+        output.duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        output
+    }
+
+    async fn execute_tool_inner(
+        &self,
+        call: &ToolCall,
+        mut cancel: watch::Receiver<bool>,
+    ) -> ToolOutput {
         if *cancel.borrow() {
             return ToolOutput {
                 call_id: call.id.clone(),
                 output: CANCELLED_TOOL_RESULT.to_string(),
                 is_error: true,
+                duration_ms: 0,
             };
         }
         match call.name.as_str() {
@@ -692,6 +711,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output,
                     is_error,
+                    duration_ms: 0,
                 }
             }
             "write" => {
@@ -700,6 +720,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output,
                     is_error,
+                    duration_ms: 0,
                 }
             }
             "edit" => {
@@ -708,6 +729,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output,
                     is_error,
+                    duration_ms: 0,
                 }
             }
             // One arm for both names: `bash` is the name pi's tool set gives
@@ -732,6 +754,7 @@ impl HarnessToolRegistry {
                         call_id: call.id.clone(),
                         output: refusal,
                         is_error: true,
+                        duration_ms: 0,
                     };
                 }
 
@@ -740,6 +763,7 @@ impl HarnessToolRegistry {
                         call_id: call.id.clone(),
                         output: refusal,
                         is_error: true,
+                        duration_ms: 0,
                     };
                 }
 
@@ -755,6 +779,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output: output_str,
                     is_error: failed,
+                    duration_ms: 0,
                 }
             }
             "skill" => {
@@ -768,12 +793,14 @@ impl HarnessToolRegistry {
                         call_id: call.id.clone(),
                         output: render_skill(skill_info),
                         is_error: false,
+                        duration_ms: 0,
                     }
                 } else {
                     ToolOutput {
                         call_id: call.id.clone(),
                         output: format!("Skill '{}' not found.", name),
                         is_error: true,
+                        duration_ms: 0,
                     }
                 }
             }
@@ -795,6 +822,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output: output_str,
                     is_error: failed,
+                    duration_ms: 0,
                 }
             }
             "delegate" => {
@@ -805,6 +833,7 @@ impl HarnessToolRegistry {
                         call_id: call.id.clone(),
                         output: "This session cannot start child agents.".to_string(),
                         is_error: true,
+                        duration_ms: 0,
                     };
                 };
 
@@ -820,6 +849,7 @@ impl HarnessToolRegistry {
                         call_id: call.id.clone(),
                         output: "No children were started: `prompt` is required and must say what the child does.".to_string(),
                         is_error: true,
+                        duration_ms: 0,
                     };
                 }
 
@@ -845,6 +875,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output: report,
                     is_error: false,
+                    duration_ms: 0,
                 }
             }
             "capability" => {
@@ -873,6 +904,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output: text,
                     is_error,
+                    duration_ms: 0,
                 }
             }
             other => {
@@ -885,6 +917,7 @@ impl HarnessToolRegistry {
                         call_id: call.id.clone(),
                         output,
                         is_error,
+                        duration_ms: 0,
                     };
                 }
                 // A loaded plugin answers under its own manifest name.
@@ -909,12 +942,14 @@ impl HarnessToolRegistry {
                             call_id: call.id.clone(),
                             is_error: output == CANCELLED_TOOL_RESULT,
                             output,
+                            duration_ms: 0,
                         }
                     }
                     None => ToolOutput {
                         call_id: call.id.clone(),
                         output: format!("Unknown tool: {}", call.name),
                         is_error: true,
+                        duration_ms: 0,
                     },
                 }
             }
@@ -1261,10 +1296,8 @@ pub fn command_heads(cmd: &str) -> Option<Vec<String>> {
                 b';' | b'|' => {
                     segments.push(std::mem::take(&mut current));
                 }
-                b'&'
-                    if index + 1 < bytes.len()
-                        && bytes[index + 1] == b'&'
-                        || index > 0 && bytes[index - 1] == b'&' =>
+                b'&' if index + 1 < bytes.len() && bytes[index + 1] == b'&'
+                    || index > 0 && bytes[index - 1] == b'&' =>
                 {
                     // Push only once per `&&`: on the first ampersand, unless
                     // a lone `&` (background) follows — that separates too,
@@ -1322,9 +1355,7 @@ pub fn command_heads(cmd: &str) -> Option<Vec<String>> {
             let (first, second) = (parts[0], parts[1]);
             let wants_third = RUNNERS.contains(&first) && second == "run"
                 || first == "git" && GIT_VERBS.contains(&second);
-            if wants_third
-                && let Some(third) = next_word()
-            {
+            if wants_third && let Some(third) = next_word() {
                 head = format!("{head} {third}");
             }
         }
@@ -1490,9 +1521,7 @@ async fn run_real_shell_logged(
                     ),
                     None => format!(
                         "{}\n\n[Output truncated: printed {} characters, limit is {}]",
-                        head,
-                        total_len,
-                        OUTPUT_LIMIT
+                        head, total_len, OUTPUT_LIMIT
                     ),
                 }
             } else {
@@ -1552,9 +1581,7 @@ fn write_command_log(
     let next = (0..)
         .map(|n| dir.join(format!("cmd-{n}.log")))
         .find(|path| !path.exists())
-        .ok_or_else(|| {
-            std::io::Error::other("no free cmd-N.log name in the session directory")
-        })?;
+        .ok_or_else(|| std::io::Error::other("no free cmd-N.log name in the session directory"))?;
     let mut contents =
         String::with_capacity(cmd.len() + stdout_bytes.len() + stderr_bytes.len() + 32);
     contents.push_str("$ ");
@@ -2509,14 +2536,9 @@ mod defect_tests {
         let (_stop, mut cancel) = watch::channel(false);
         // The wait itself buys the 30-second persistence threshold, so the
         // command is real work plus real waiting rather than a mocked clock.
-        let (text, failed) = run_real_shell_logged(
-            command,
-            work.path(),
-            60,
-            &mut cancel,
-            Some(session.path()),
-        )
-        .await;
+        let (text, failed) =
+            run_real_shell_logged(command, work.path(), 60, &mut cancel, Some(session.path()))
+                .await;
         assert!(!failed);
         assert!(text.contains("tail-marker"));
 
@@ -2544,14 +2566,9 @@ mod defect_tests {
         let command = "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo END-MARKER";
 
         let (_stop, mut cancel) = watch::channel(false);
-        let (text, failed) = run_real_shell_logged(
-            command,
-            work.path(),
-            90,
-            &mut cancel,
-            Some(session.path()),
-        )
-        .await;
+        let (text, failed) =
+            run_real_shell_logged(command, work.path(), 90, &mut cancel, Some(session.path()))
+                .await;
         assert!(!failed);
         assert!(
             text.contains("Full output kept at"),
@@ -2574,8 +2591,14 @@ mod defect_tests {
         let session = tempfile::tempdir().unwrap();
         let work = tempfile::tempdir().unwrap();
         let (_stop, mut cancel) = watch::channel(false);
-        let _ = run_real_shell_logged("echo hi", work.path(), 30, &mut cancel, Some(session.path()))
-            .await;
+        let _ = run_real_shell_logged(
+            "echo hi",
+            work.path(),
+            30,
+            &mut cancel,
+            Some(session.path()),
+        )
+        .await;
         let entries = std::fs::read_dir(session.path()).unwrap().count();
         assert_eq!(entries, 0, "fast quiet work leaves no file behind");
     }
@@ -2608,24 +2631,16 @@ mod defect_tests {
             .is_none()
         );
         // Distinct commands to distinct heads are unrelated work.
-        assert!(
-            check_duplicate_execution("git status && git log --oneline -5 && ls")
-                .is_none()
-        );
+        assert!(check_duplicate_execution("git status && git log --oneline -5 && ls").is_none());
     }
 
     #[test]
     fn the_head_check_distinguishes_commands_by_first_argument() {
         // `cargo build` and `cargo test` share an executable but not work;
         // refusing those would break ordinary compound lines.
-        assert!(
-            check_duplicate_execution("cargo build --release && cargo test")
-                .is_none()
-        );
+        assert!(check_duplicate_execution("cargo build --release && cargo test").is_none());
         // But `cargo test` twice is a rerun regardless of what follows it.
-        assert!(
-            check_duplicate_execution("cargo test lib && cargo test doc").is_some()
-        );
+        assert!(check_duplicate_execution("cargo test lib && cargo test doc").is_some());
     }
 
     #[test]
@@ -2633,10 +2648,7 @@ mod defect_tests {
         // The separators inside quotes and substitutions do not count as
         // boundaries, so this is one echo followed by a different head.
         assert!(
-            check_duplicate_execution(
-                r#"echo "a; b | c && d" && echo "$(git status)" "#
-            )
-            .is_none(),
+            check_duplicate_execution(r#"echo "a; b | c && d" && echo "$(git status)" "#).is_none(),
             "one echo plus one echo is two different heads at worst"
         );
         // A repeat behind quotes is still a repeat: the quote is on the word,

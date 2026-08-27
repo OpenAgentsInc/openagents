@@ -38,6 +38,8 @@ export class AtifObservationResult extends S.Class<AtifObservationResult>(
 )({
   source_call_id: S.String,
   content: S.String,
+  status: S.optionalKey(S.Literals(['completed', 'failed', 'cancelled'])),
+  duration_ms: S.optionalKey(S.Number),
 }) {}
 
 export class AtifObservation extends S.Class<AtifObservation>('AtifObservation')(

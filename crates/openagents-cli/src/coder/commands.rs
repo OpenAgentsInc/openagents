@@ -557,6 +557,7 @@ fn spawn_run(ui: &mut CoderUi, command: &str, tx: &Sender<Control>, cwd: &Path) 
         output: None,
         error: None,
         done: false,
+        duration_ms: None,
     });
     ui.entries.push(entry);
     ui.scroll_override = None;
@@ -564,6 +565,7 @@ fn spawn_run(ui: &mut CoderUi, command: &str, tx: &Sender<Control>, cwd: &Path) 
     let tx = tx.clone();
     let cwd = cwd.to_path_buf();
     let command = command.to_string();
+    let started = std::time::Instant::now();
     tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
 
@@ -588,6 +590,7 @@ fn spawn_run(ui: &mut CoderUi, command: &str, tx: &Sender<Control>, cwd: &Path) 
                 let _ = tx.send(Control::ToolDone {
                     call_id,
                     is_error: true,
+                    duration_ms: 0,
                 });
                 return;
             }
@@ -644,6 +647,7 @@ fn spawn_run(ui: &mut CoderUi, command: &str, tx: &Sender<Control>, cwd: &Path) 
         let _ = tx.send(Control::ToolDone {
             call_id,
             is_error: failed,
+            duration_ms: started.elapsed().as_millis() as u64,
         });
     });
 }

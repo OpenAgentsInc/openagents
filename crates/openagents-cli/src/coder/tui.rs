@@ -121,6 +121,22 @@ pub struct ToolCall {
     pub error: Option<String>,
     /// Whether the runtime has settled this call.
     pub done: bool,
+    /// Whole milliseconds the call held the session, as reported at settle.
+    /// `None` while in flight; a call that never reached a tool stays 0.
+    pub duration_ms: Option<u64>,
+}
+
+impl ToolCall {
+    /// The duration the export carries: `0` until the call settles, so a
+    /// document built mid-flight still validates against the schema.
+    pub fn exported_duration_ms(&self) -> u64 {
+        self.duration_ms.unwrap_or(0)
+    }
+
+    /// The settle path records what the run cost, on the entry itself.
+    pub fn settle_duration_ms(&mut self, duration_ms: u64) {
+        self.duration_ms = Some(duration_ms);
+    }
 }
 
 #[derive(Debug, Clone)]

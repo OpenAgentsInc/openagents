@@ -71,7 +71,13 @@ pub enum Control {
     /// More of what that call has printed, appended to its box.
     ToolOutput { call_id: String, chunk: String },
     /// That call finished, and whether it worked.
-    ToolDone { call_id: String, is_error: bool },
+    ToolDone {
+        call_id: String,
+        is_error: bool,
+        /// Whole milliseconds the call held the session, from the tool
+        /// layer. Zero for a call that never reached a tool.
+        duration_ms: u64,
+    },
     /// The model that actually answered, as its grant pins it.
     Model(String),
     /// The thread the server opened for this session, once it has one.
@@ -383,6 +389,7 @@ impl Session {
                     call_id,
                     output,
                     is_error,
+                    duration_ms,
                     ..
                 } => {
                     let id = observed_turns
@@ -398,7 +405,15 @@ impl Session {
                                 chunk: output,
                             },
                         );
-                        send_turn(&observed, id, Control::ToolDone { call_id, is_error });
+                        send_turn(
+                            &observed,
+                            id,
+                            Control::ToolDone {
+                                call_id,
+                                is_error,
+                                duration_ms,
+                            },
+                        );
                     }
                 }
             }))
@@ -483,7 +498,9 @@ impl Session {
     ) -> Self {
         // Long shell runs keep their whole transcript beside this record, so
         // a follow-up question reads the file instead of rerunning the job.
-        self.inner.tools.keeping_session_logs_in_place(store.directory().to_path_buf());
+        self.inner
+            .tools
+            .keeping_session_logs_in_place(store.directory().to_path_buf());
         self.inner = self
             .inner
             .with_local_session(store, crate::session_store::replay_messages(events))

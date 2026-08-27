@@ -238,6 +238,10 @@ pub enum ToolEvent {
         name: String,
         output: String,
         is_error: bool,
+        /// Whole milliseconds the call held the session. A record says what a
+        /// run cost without anyone subtracting timestamps that collapse when
+        /// several calls share one model step.
+        duration_ms: u64,
     },
 }
 
@@ -640,6 +644,20 @@ impl ThreadRecord {
     /// `arguments` is the raw JSON string the wire carried, not a re-encoding
     /// of it, because that is what goes back to a model on replay.
     pub fn tool_ran(call_id: &str, tool: &str, arguments: &str, output: &str) -> Self {
+        Self::tool_ran_on(call_id, tool, arguments, output, 0)
+    }
+
+    /// [`Self::tool_ran`] with what the call cost in whole milliseconds.
+    ///
+    /// Recorded on the event rather than reconstructed later from envelope
+    /// timestamps, which collapse when several calls share one model step.
+    pub fn tool_ran_on(
+        call_id: &str,
+        tool: &str,
+        arguments: &str,
+        output: &str,
+        duration_ms: u64,
+    ) -> Self {
         Self::new(
             "tool.ran",
             serde_json::json!({
@@ -647,6 +665,7 @@ impl ThreadRecord {
                 "tool": tool,
                 "arguments": arguments,
                 "output": output,
+                "duration_ms": duration_ms,
             }),
         )
     }
@@ -2450,12 +2469,14 @@ impl CoderRuntimeSession {
                 name: call.name.clone(),
                 output: result.output.clone(),
                 is_error: result.is_error,
+                duration_ms: result.duration_ms,
             });
-            ran.push(ThreadRecord::tool_ran(
+            ran.push(ThreadRecord::tool_ran_on(
                 &call.id,
                 &call.name,
                 &args_str,
                 &result.output,
+                result.duration_ms,
             ));
             self.messages.push(ChatMessage {
                 role: "tool".to_string(),

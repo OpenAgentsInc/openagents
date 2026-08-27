@@ -164,6 +164,7 @@ fn step_of(entry: &Entry, model: &str, tool: Option<&ToolCall>) -> Option<Value>
                         "source_call_id": tool.call_id,
                         "content": content,
                         "status": status,
+                        "duration_ms": tool.exported_duration_ms(),
                     }]
                 }
             }))

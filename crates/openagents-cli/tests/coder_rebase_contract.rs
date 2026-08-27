@@ -51,6 +51,7 @@ fn delegate_call() -> ToolCall {
         output: None,
         error: None,
         done: false,
+        duration_ms: None,
     }
 }
 
