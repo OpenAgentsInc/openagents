@@ -107,3 +107,191 @@ async fn a_coder_mini_run_streams_child_tools_into_the_parent_sink() {
         "child ToolDone settled the parent box: {events:?}"
     );
 }
+
+fn init_git_repo(root: &std::path::Path) {
+    for argv in [
+        vec!["init", "--quiet", "-b", "main"],
+        vec!["config", "user.email", "test@example.test"],
+        vec!["config", "user.name", "Test"],
+        vec!["add", "."],
+        vec![
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "root",
+        ],
+    ] {
+        let done = std::process::Command::new("git")
+            .args(&argv)
+            .current_dir(root)
+            .output()
+            .expect("run git");
+        assert!(done.status.success(), "git {argv:?}: {done:?}");
+    }
+}
+
+fn worktree_list(root: &std::path::Path) -> String {
+    let done = std::process::Command::new("git")
+        .args(["worktree", "list"])
+        .current_dir(root)
+        .output()
+        .expect("git worktree list");
+    String::from_utf8_lossy(&done.stdout).into_owned()
+}
+
+fn mini_gate(_root: &std::path::Path, api_base: String) -> DelegationGate {
+    DelegationGate {
+        lane: "flash".to_string(),
+        user_token: Some("test-token".to_string()),
+        api_base: Some(api_base),
+        max_count: 2,
+        child: ChildOptions::default(),
+        acp_agents: Vec::new(),
+        acp_spent: Arc::new(AtomicBool::new(false)),
+    }
+}
+
+#[tokio::test]
+async fn an_unresolvable_model_refuses_before_any_child_starts() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("README.md"), "hello\n").unwrap();
+    init_git_repo(root.path());
+    let before = worktree_list(root.path());
+    let stub = support::start_calling_read(
+        root.path().join("README.md").display().to_string(),
+        "unused",
+    )
+    .await;
+    let registry = HarnessToolRegistry::with_delegation(
+        Some(root.path().to_path_buf()),
+        mini_gate(root.path(), stub.base),
+    );
+
+    let output = registry
+        .execute_tool(&ToolCall {
+            id: "delegate-mini".to_string(),
+            name: "delegate".to_string(),
+            arguments: serde_json::json!({
+                "agent": "coder-mini",
+                "tools": "read-write",
+                "isolation": "worktree",
+                "model": "not-a-served-model",
+                "prompt": "edit README"
+            }),
+        })
+        .await;
+
+    assert!(output.is_error, "{}", output.output);
+    assert!(
+        output.output.contains("not-a-served-model"),
+        "{}",
+        output.output
+    );
+    assert!(
+        !output.output.contains("worktree kept"),
+        "{}",
+        output.output
+    );
+    assert_eq!(worktree_list(root.path()), before);
+}
+
+#[tokio::test]
+async fn an_unchanged_worktree_is_removed() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("finding.txt"), "the finding").unwrap();
+    init_git_repo(root.path());
+    let before = worktree_list(root.path());
+    let stub = support::start_calling_read("finding.txt".to_string(), "Read the finding.").await;
+    let registry = HarnessToolRegistry::with_delegation(
+        Some(root.path().to_path_buf()),
+        mini_gate(root.path(), stub.base),
+    );
+
+    let output = registry
+        .execute_tool(&ToolCall {
+            id: "delegate-mini".to_string(),
+            name: "delegate".to_string(),
+            arguments: serde_json::json!({
+                "agent": "coder-mini",
+                "tools": "read-write",
+                "isolation": "worktree",
+                "prompt": "Read finding.txt and report it."
+            }),
+        })
+        .await;
+
+    assert!(!output.is_error, "{}", output.output);
+    assert!(
+        output.output.contains("worktree removed (no changes)"),
+        "{}",
+        output.output
+    );
+    assert!(
+        output.output.contains("glm-5.3-flash"),
+        "trailer did not name the model that answered: {}",
+        output.output
+    );
+    assert_eq!(worktree_list(root.path()), before);
+}
+
+#[tokio::test]
+async fn a_changed_worktree_is_kept_and_named() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("README.md"), "hello\n").unwrap();
+    init_git_repo(root.path());
+    let stub = support::start_calling_write(
+        "README.md".to_string(),
+        "# hello\n\nA hello section.\n".to_string(),
+        "Added a hello section.",
+    )
+    .await;
+    let registry = HarnessToolRegistry::with_delegation(
+        Some(root.path().to_path_buf()),
+        mini_gate(root.path(), stub.base),
+    );
+
+    let output = registry
+        .execute_tool(&ToolCall {
+            id: "delegate-mini".to_string(),
+            name: "delegate".to_string(),
+            arguments: serde_json::json!({
+                "agent": "coder-mini",
+                "tools": "read-write",
+                "isolation": "worktree",
+                "prompt": "edit README to add a hello section"
+            }),
+        })
+        .await;
+
+    assert!(!output.is_error, "{}", output.output);
+    let kept = output
+        .output
+        .lines()
+        .find(|line| line.starts_with("worktree kept: "))
+        .unwrap_or_else(|| panic!("missing keep line: {}", output.output));
+    assert!(kept.contains("(branch agent-"), "{kept}");
+    let path = kept
+        .strip_prefix("worktree kept: ")
+        .and_then(|rest| rest.split(" (branch ").next())
+        .expect("keep line path");
+    let listed = worktree_list(root.path());
+    assert!(
+        listed.contains(path),
+        "worktree list missing {path}: {listed}"
+    );
+    let status = std::process::Command::new("git")
+        .args(["-C", path, "status", "--porcelain"])
+        .output()
+        .expect("git status");
+    assert!(
+        !String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "kept worktree has no changes"
+    );
+    let _ = std::process::Command::new("git")
+        .args(["worktree", "remove", "--force", path])
+        .current_dir(root.path())
+        .output();
+}

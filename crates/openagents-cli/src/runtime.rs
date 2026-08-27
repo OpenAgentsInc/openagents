@@ -1371,6 +1371,15 @@ impl CoderRuntimeSession {
         }
     }
 
+    /// Refuse a directly-named model before a child or worktree is created.
+    pub async fn ensure_named_served(&self) -> Result<(), Failure> {
+        if let Lane::Named(id) = self.lane.clone() {
+            self.check_named(&id).await
+        } else {
+            Ok(())
+        }
+    }
+
     /// Move this session onto another lane.
     ///
     /// The thread it was holding is dropped rather than reused. A thread's

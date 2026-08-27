@@ -56,8 +56,9 @@ use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
 };
-use crate::runtime::{ModelStreamEvent, ToolEvent};
+use crate::runtime::{Lane, ModelStreamEvent, ToolEvent};
 use crate::surfaces::tool_descriptions as text;
+use crate::workspace;
 
 /// The `check` tool's description, with `{scopes}` filled from the repo's
 /// declared `.openagents/checks.json`. Absent when the repository declares
@@ -387,6 +388,25 @@ pub struct DelegationGate {
 /// stream child activity into the parent box. Absent in headless and child
 /// registries: those callers only need the final [`ToolOutput`].
 pub type ToolEventSink = Arc<dyn Fn(Control) + Send + Sync>;
+
+/// Branch and directory slug for a Coder Mini isolation worktree.
+fn agent_worktree_slug(call_id: &str) -> String {
+    let compact: String = call_id
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .take(8)
+        .collect();
+    let compact = if compact.is_empty() {
+        "agent".to_string()
+    } else {
+        compact.to_ascii_lowercase()
+    };
+    let ordinal = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    format!("agent-{compact}-{ordinal:08x}")
+}
 
 /// The `· ` prefix the TUI draws on a delegated agent's activity line.
 fn prefix_subagent_line(line: &str) -> String {
@@ -926,6 +946,15 @@ impl HarnessToolRegistry {
                             "enum": ["read-only", "read-write", "all"],
                             "description": "The Coder Mini tool pool. Defaults to `read-only`; ACP agents ignore it."
                         },
+                        "model": {
+                            "type": "string",
+                            "description": "Optional catalog id for Coder Mini only, resolved the same way as `--model`. ACP agents and fan-out ignore it. An id this deployment does not serve is refused before any child starts."
+                        },
+                        "isolation": {
+                            "type": "string",
+                            "enum": ["worktree"],
+                            "description": "On Coder Mini with a read-write tool pool, `worktree` runs the agent in a temporary git worktree of this checkout on an `agent-*` branch. Unchanged worktrees are removed; changed ones are kept and named in the result. Read-only runs ignore this. Mutually exclusive with a cwd override, which is not accepted yet."
+                        },
                         "mode": {
                             "type": "string",
                             "enum": ["read-only", "prompt", "dangerous"],
@@ -1463,7 +1492,73 @@ impl HarnessToolRegistry {
                 agent.pool
             };
 
-            let tools = HarnessToolRegistry::with_tool_pool(Some(self.cwd.clone()), pool);
+            if let Some(value) = call
+                .arguments
+                .get("isolation")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                if value != "worktree" {
+                    return make(
+                        format!(
+                            "`{value}` is not an isolation mode. Use `worktree`, or omit it. \
+                             A cwd override is not accepted yet and cannot be combined with isolation."
+                        ),
+                        true,
+                        0,
+                    );
+                }
+            }
+
+            let lane = if agent.id == "coder-mini" {
+                match call
+                    .arguments
+                    .get("model")
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    Some(model) => Lane::from_str(model),
+                    None => Lane::from_str(&gate.lane),
+                }
+            } else {
+                Lane::from_str(&gate.lane)
+            };
+
+            let probe_tools = HarnessToolRegistry::with_tool_pool(Some(self.cwd.clone()), pool);
+            let probe = crate::runtime::CoderRuntimeSession::new(
+                lane.clone(),
+                gate.api_base.clone(),
+                gate.user_token.clone(),
+                probe_tools,
+            );
+            if let Err(error) = probe.ensure_named_served().await {
+                return make(error.to_string(), true, 0);
+            }
+
+            let wants_worktree = matches!(pool, ToolPool::ReadWrite | ToolPool::All)
+                && call
+                    .arguments
+                    .get("isolation")
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    == Some("worktree");
+            let workspace = if wants_worktree {
+                let slug = agent_worktree_slug(&call.id);
+                match workspace::create_agent_worktree(&self.cwd, &slug).await {
+                    Ok(workspace) => Some(workspace),
+                    Err(error) => return make(error, true, 0),
+                }
+            } else {
+                None
+            };
+            let child_cwd = workspace
+                .as_ref()
+                .map(|ws| ws.path.clone())
+                .unwrap_or_else(|| self.cwd.clone());
+
+            let tools = HarnessToolRegistry::with_tool_pool(Some(child_cwd), pool);
             let tool_names = tools
                 .list_tools()
                 .into_iter()
@@ -1476,7 +1571,7 @@ impl HarnessToolRegistry {
             let content_buf = Arc::new(Mutex::new(LineBuffer::new()));
             let reasoning_buf = Arc::new(Mutex::new(LineBuffer::new()));
             let mut runtime = crate::runtime::CoderRuntimeSession::new(
-                crate::runtime::Lane::from_str(&gate.lane),
+                lane,
                 gate.api_base.clone(),
                 gate.user_token.clone(),
                 tools,
@@ -1548,17 +1643,38 @@ impl HarnessToolRegistry {
                 images: Vec::new(),
             });
 
+            let prompt = match &workspace {
+                Some(ws) => format!(
+                    "{prompt}\n\nYou are operating in an isolated git worktree at {}. Your paths are inside the worktree; re-read files you may have seen.",
+                    ws.path.display()
+                ),
+                None => prompt.to_string(),
+            };
+
             let started = Instant::now();
-            let result = runtime.execute_turn(prompt, |_| {}).await;
+            let result = runtime.execute_turn(&prompt, |_| {}).await;
             let duration = started.elapsed();
             let tool_uses = runtime.last_calls;
+            let answered_model = runtime.last_model.clone();
             let _ = runtime.finish().await;
             let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+            let worktree_line = match workspace {
+                Some(ws) => Some(ws.close_if_unchanged().await),
+                None => None,
+            };
+            let model_bit = answered_model
+                .as_deref()
+                .map(|model| format!(" · {model}"))
+                .unwrap_or_default();
+            let extra = worktree_line
+                .as_deref()
+                .map(|line| format!("\n{line}"))
+                .unwrap_or_default();
 
             match result {
                 Ok(report) => make(
                     format!(
-                        "Done · {tool_uses} tool uses · {}s\n{}",
+                        "Done · {tool_uses} tool uses · {}s{model_bit}\n{}{extra}",
                         duration.as_secs(),
                         report.trim()
                     ),
@@ -1567,7 +1683,7 @@ impl HarnessToolRegistry {
                 ),
                 Err(error) => make(
                     format!(
-                        "{} failed after {tool_uses} tool uses and {}s: {error}",
+                        "{} failed after {tool_uses} tool uses and {}s{model_bit}: {error}{extra}",
                         agent.label,
                         duration.as_secs()
                     ),

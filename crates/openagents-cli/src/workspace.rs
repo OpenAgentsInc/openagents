@@ -66,6 +66,11 @@ pub struct ChildWorkspace {
     /// The repository the worktree is registered in, when there is one to
     /// unregister it from.
     repo: Option<PathBuf>,
+    /// Named branch for a Coder Mini isolation worktree. Fan-out children
+    /// stay detached and leave this empty.
+    pub branch: Option<String>,
+    /// `HEAD` at creation, for unchanged-worktree cleanup.
+    head_commit: Option<String>,
 }
 
 impl ChildWorkspace {
@@ -95,7 +100,7 @@ impl ChildWorkspace {
                     .stderr(Stdio::piped())
                     .output()
                     .await;
-                match done {
+                let remove_error = match done {
                     Ok(out) if out.status.success() => None,
                     Ok(out) => Some(format!(
                         "could not remove the worktree at {}: {}",
@@ -106,7 +111,18 @@ impl ChildWorkspace {
                         "could not remove the worktree at {}: {error}",
                         self.path.display()
                     )),
+                };
+                if let Some(branch) = &self.branch {
+                    let _ = Command::new("git")
+                        .arg("-C")
+                        .arg(repo)
+                        .args(["branch", "-D", branch])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .output()
+                        .await;
                 }
+                remove_error
             }
             (Isolation::Directory, _) => match tokio::fs::remove_dir_all(&self.path).await {
                 Ok(()) => None,
@@ -115,6 +131,130 @@ impl ChildWorkspace {
             _ => None,
         }
     }
+
+    /// Whether this worktree differs from the commit it was created at.
+    ///
+    /// Fail-closed: a git error is treated as "has changes" so a broken
+    /// status cannot delete work the child did.
+    pub async fn has_changes(&self) -> bool {
+        if self.kind != Isolation::Worktree {
+            return false;
+        }
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&self.path)
+            .args(["status", "--porcelain"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .await;
+        let Ok(status) = status else {
+            return true;
+        };
+        if !status.status.success() || !String::from_utf8_lossy(&status.stdout).trim().is_empty() {
+            return true;
+        }
+        let Some(head) = &self.head_commit else {
+            return false;
+        };
+        let counted = Command::new("git")
+            .arg("-C")
+            .arg(&self.path)
+            .args(["rev-list", "--count", &format!("{head}..HEAD")])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .await;
+        match counted {
+            Ok(out) if out.status.success() => {
+                String::from_utf8_lossy(&out.stdout)
+                    .trim()
+                    .parse::<u64>()
+                    .unwrap_or(1)
+                    > 0
+            }
+            _ => true,
+        }
+    }
+
+    /// Keep-or-remove closeout for a Coder Mini isolation worktree.
+    pub async fn close_if_unchanged(&self) -> String {
+        if self.has_changes().await {
+            let branch = self.branch.as_deref().unwrap_or("HEAD");
+            format!("worktree kept: {} (branch {branch})", self.path.display())
+        } else {
+            let _ = self.release().await;
+            "worktree removed (no changes)".to_string()
+        }
+    }
+}
+
+/// A named git worktree of `cwd`'s checkout, on branch `slug`.
+///
+/// Used by Coder Mini `isolation:"worktree"`. Fan-out children keep
+/// [`WorkspacePlan`], which stays detached.
+pub async fn create_agent_worktree(cwd: &Path, slug: &str) -> Result<ChildWorkspace, String> {
+    let repo = git_toplevel(cwd).await.ok_or_else(|| {
+        format!(
+            "Cannot create a worktree: {} is not a git repository.",
+            cwd.display()
+        )
+    })?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let ordinal = PLANS.fetch_add(1, Ordering::Relaxed);
+    let base =
+        std::env::temp_dir().join(format!("oa-agent-{}-{stamp}-{ordinal}", std::process::id()));
+    tokio::fs::create_dir_all(&base)
+        .await
+        .map_err(|error| format!("could not create {}: {error}", base.display()))?;
+    let path = base.join(slug);
+
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["rev-parse", "HEAD"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|error| format!("could not run git: {error}"))?;
+    if !head.status.success() {
+        return Err(format!(
+            "git rev-parse HEAD refused: {}",
+            String::from_utf8_lossy(&head.stderr).trim()
+        ));
+    }
+    let head_commit = String::from_utf8_lossy(&head.stdout).trim().to_string();
+
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["worktree", "add", "-B", slug])
+        .arg(&path)
+        .arg("HEAD")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|error| format!("could not run git: {error}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git worktree add refused: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+
+    Ok(ChildWorkspace {
+        id: 0,
+        path,
+        kind: Isolation::Worktree,
+        repo: Some(repo),
+        branch: Some(slug.to_string()),
+        head_commit: Some(head_commit),
+    })
 }
 
 /// Prepares one working directory per child, ahead of the fan-out.
@@ -195,6 +335,8 @@ impl WorkspacePlan {
                 path: self.cwd.clone(),
                 kind: Isolation::None,
                 repo: None,
+                branch: None,
+                head_commit: None,
             }),
             Isolation::Directory => {
                 let path = self.base.join(format!("child-{id}"));
@@ -206,6 +348,8 @@ impl WorkspacePlan {
                     path,
                     kind: Isolation::Directory,
                     repo: None,
+                    branch: None,
+                    head_commit: None,
                 })
             }
             Isolation::Worktree => {
@@ -244,6 +388,8 @@ impl WorkspacePlan {
                     path,
                     kind: Isolation::Worktree,
                     repo: Some(repo),
+                    branch: None,
+                    head_commit: None,
                 })
             }
         }

@@ -58,7 +58,7 @@ pub mod tool_descriptions {
     /// `rust.openagents`
     pub const RUST_OPENAGENTS: &str = "Run the OpenAgents CLI commands (issue, project, repo, auth, etc.). Pass the arguments as a list without openagents itself.";
     /// `rust.delegate`
-    pub const RUST_DELEGATE: &str = "Run one self-contained task through a delegated coding agent. Set `agent` to `coder-mini` for a fresh in-process Coder with `read-only` tools by default, `explore` for a fixed read-only investigator, or `coder` for a fixed read-write agent. Coder Mini also accepts `tools` as `read-only`, `read-write`, or `all`; no built-in agent can delegate again. Omit `agent` to keep fan-out: independent children run the same prompt in separate git worktrees on {lane}, up to {max_count} children. Use `description` for an optional 3–5 word tool-call label. Every delegated agent starts with no context from this conversation and cannot ask questions, so the prompt must name the files, commands, constraints, and report. Prefer `shell` for one command; use an agent for work worth a separate coding session.{external}";
+    pub const RUST_DELEGATE: &str = "Run one self-contained task through a delegated coding agent. Set `agent` to `coder-mini` for a fresh in-process Coder with `read-only` tools by default, `explore` for a fixed read-only investigator, or `coder` for a fixed read-write agent. Coder Mini also accepts `tools` as `read-only`, `read-write`, or `all`, `model` as a catalog id resolved like `--model`, and `isolation` as `worktree` on a read-write run (unchanged worktrees are removed; changed ones are kept). A cwd override is not accepted yet and cannot be combined with isolation. No built-in agent can delegate again. Omit `agent` to keep fan-out: independent children run the same prompt in separate git worktrees on {lane}, up to {max_count} children. Use `description` for an optional 3–5 word tool-call label. Every delegated agent starts with no context from this conversation and cannot ask questions, so the prompt must name the files, commands, constraints, and report. Prefer `shell` for one command; use an agent for work worth a separate coding session.{external}";
     /// `rust.capability`
     pub const RUST_CAPABILITY: &str = "Discover and load installed plugin capabilities: sandboxed, digest-pinned WebAssembly programs this machine already holds for common agent work. Before writing a script for a task, search here first — a capability that covers it is bounded, reviewable, and returns structured output. Call with `query` describing what you need to get the best matches; then call again with `name` set to the exact returned name to load it and make its dedicated tool available. Every later call to the loaded capability uses that exact name as the tool name.";
     /// `goal`
@@ -79,7 +79,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:d468b5381541909a7efc53a67feb773b3c07eb72cce1c87466b1b765f4e0ba60",
+        "sha256:cad437e541720552554f77b46b9df298b26bff5fc5feb2f8ebe05295c8c9eb7c",
     ),
     (
         "catalog-lines",
