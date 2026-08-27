@@ -111,6 +111,26 @@ Point a channel at a version only when you intend readers to receive it:
 ops/release-cli.sh --version 0.1.0 --publish --channel stable
 ```
 
+### Publish one Mac first
+
+You can publish the Apple Silicon artifact, test the public installer, and add
+the other six platforms without changing the tested Mac binary:
+
+```sh
+ops/release-cli.sh --version 0.1.0 \
+  --targets "macos-aarch64" --publish --allow-partial
+
+ops/release-cli.sh --version 0.1.0 \
+  --targets "macos-x86_64 linux-x86_64 linux-x86_64-musl linux-aarch64 linux-aarch64-musl windows-x86_64" \
+  --publish --channel stable
+```
+
+The second pass merges the first pass's checksum entry into the completed sums
+file. Published `<version, platform>` artifacts are immutable. If you rebuild a
+published target and its checksum differs, the script refuses the release
+instead of exposing a binary and checksum that disagree. Use a new version when
+you need to replace a published target.
+
 ## What the script refuses
 
 Each refusal exists because the failure it prevents is silent.
@@ -147,6 +167,13 @@ channel a reader resolves by default should keep meaning a real release.
 secret file, or a notarization result other than `Accepted` stops the run. Pass
 `--skip-notarization` to build macOS artifacts without submitting them, which
 is useful while iterating and is recorded as `skipped` in the manifest.
+
+**A changed artifact under a published version.** The release script keeps a
+published `<version, platform>` artifact byte-for-byte. This rule matters most
+for signed macOS builds, whose signatures can differ across builds. Replacing
+an artifact and its checksum requires two object writes, so either write order
+creates an installer failure window. Publish replacement bytes under a new
+version instead.
 
 ## Why the artifacts are bare binaries rather than tarballs
 

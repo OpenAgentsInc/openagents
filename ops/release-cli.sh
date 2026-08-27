@@ -374,7 +374,7 @@ fi
 # channel, because a channel is the thing readers resolve without naming a
 # version. So coverage is judged against the whole platform table, not against
 # the request, at the moment a channel is about to be claimed.
-if [ -n "$channel" ] && [ "$allow_partial" = 0 ]; then
+if [ -n "$channel" ] && [ "$allow_partial" = 0 ] && [ "$publish" = 0 ]; then
   uncovered=''
   for platform in $all_platforms; do
     case " $built " in
@@ -404,12 +404,78 @@ command -v gcloud >/dev/null 2>&1 || die "gcloud is required to publish"
 CLOUDSDK_CONFIG=$gcloud_config
 export CLOUDSDK_CONFIG
 
+# A release can be published in stages. Preserve checksum entries from earlier
+# stages, and treat every published <version, platform> pair as immutable. A
+# signed macOS build is not byte-for-byte reproducible: rebuilding it changes
+# its signature. Replacing that artifact before replacing its sums file creates
+# a window where every installer rejects it, while replacing the sums file
+# first creates the same window in reverse. Refusing the replacement removes
+# both races. Later stages may only add platforms.
+published_sums="$dist/.published-SHA256SUMS-$version"
+merged_sums="$dist/.merged-SHA256SUMS-$version"
+if gcloud storage cp "gs://$bucket/SHA256SUMS-$version" "$published_sums" --quiet \
+  >/dev/null 2>&1; then
+  :
+else
+  : >"$published_sums"
+fi
+
+: >"$merged_sums"
+covered=''
+for platform in $all_platforms; do
+  artifact="openagents-$version-$platform"
+  sums_name=$artifact
+  case "$platform" in
+    windows-*) sums_name="$artifact.exe" ;;
+  esac
+
+  sha=''
+  case " $built " in
+    *" $platform "*) sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}') ;;
+    *)
+      sha=$(awk -v name="$sums_name" '$2 == name || $2 == "*" name { print $1; exit }' "$published_sums")
+      ;;
+  esac
+
+  if [ -n "$sha" ]; then
+    printf '%s  %s\n' "$sha" "$sums_name" >>"$merged_sums"
+    covered="$covered $platform"
+  fi
+done
+
+if [ -n "$channel" ] && [ "$allow_partial" = 0 ]; then
+  uncovered=''
+  for platform in $all_platforms; do
+    case " $covered " in
+      *" $platform "*) ;;
+      *) uncovered="$uncovered $platform" ;;
+    esac
+  done
+  if [ -n "$uncovered" ]; then
+    die "refusing to point '$channel' at $version; the published and newly built artifacts do not cover:$uncovered"
+  fi
+fi
+
 echo "Publishing to gs://$bucket"
 for platform in $built; do
   artifact="openagents-$version-$platform"
+  sums_name=$artifact
+  case "$platform" in
+    windows-*) sums_name="$artifact.exe" ;;
+  esac
+  local_sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}')
+  published_sha=$(awk -v name="$sums_name" '$2 == name || $2 == "*" name { print $1; exit }' "$published_sums")
+  if [ -n "$published_sha" ]; then
+    if [ "$published_sha" != "$local_sha" ]; then
+      die "refusing to replace immutable $artifact: published sha256 $published_sha, rebuilt sha256 $local_sha"
+    fi
+    echo "  keeping published $platform ($local_sha)"
+    continue
+  fi
   gcloud storage cp "$dist/$artifact" "gs://$bucket/$artifact" \
     --content-type=application/octet-stream --quiet
 done
+cp "$merged_sums" "$sums"
 gcloud storage cp "$sums" "gs://$bucket/SHA256SUMS-$version" \
   --content-type=text/plain --quiet
 
