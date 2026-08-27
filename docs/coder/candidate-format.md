@@ -25,7 +25,7 @@ human cycle could not seed the optimizer, and every consumer would need two
 readers. So the schema is defined once.
 
 The definition lives in code, at
-`packages/openagents-cli/src/coder-review-candidate.ts`, under the schema id
+`packages/coder-review/src/candidate.ts`, under the schema id
 `openagents.coder_candidate.v1`. That file is the normative artifact; this
 document explains it and pins the vocabulary the `surfaces` field draws on.
 A review proposal is a candidate whose `lineage.origin` is `review`; an
@@ -97,14 +97,13 @@ its `surfaces` array is empty.
 ### The catalog-lines surface is a mirror, not a move
 
 Stated plainly, because it changes how a candidate against it is applied. The
-system prompt and the tool descriptions were string literals in
-`crates/coder-lite`, `crates/openagents-cli`, and `packages/openagents-cli`;
-staging them moved the text out of code and into the artifact, and the
-artifact is now where it is edited.
+system prompt and the tool descriptions were string literals in earlier Coder
+implementations. Staging moved the text out of code and into the artifact,
+which is now where you edit it.
 
 A plugin's catalog line was never a literal. It is the top-level `description`
 of `plugins/<id>/manifest.json`, discovered at runtime by `discover_catalog()`
-(`crates/openagents-cli/src/plugins.rs`) and its TypeScript equivalent. The
+(`crates/openagents-cli/src/plugins.rs`). The
 manifest stays where that text is edited. `catalog-lines.v1.json` mirrors those
 descriptions into one diffable object with a content digest, so an optimizer
 has a single file to diff and a bench row has a single digest to record — and

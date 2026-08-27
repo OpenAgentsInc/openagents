@@ -8,14 +8,13 @@ a per-file size bound. The guest measures one mounted file: byte count,
 UTF-8 or not, line count.
 
 The escape-attempt tests live in
-`packages/openagents-cli/test/coder-plugin-mounts.test.ts`.
+`crates/openagents-cli/tests/plugin_host_test.rs`.
 
 Load it into a coder session:
 
 ```sh
-# from packages/openagents-cli, after pnpm build
-printf '/plugin load ../../plugins/file-stats/manifest.json\nmeasure sample.txt with file_stats\n' \
-  | node dist/main.js coder --plain
+printf 'Use the file_stats capability to measure sample.txt\n' \
+  | openagents coder --plain
 ```
 
 Rebuild from `plugins/` (then update `artifact.digest` in `manifest.json`):

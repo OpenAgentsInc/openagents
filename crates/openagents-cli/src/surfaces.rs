@@ -61,7 +61,7 @@ pub mod tool_descriptions {
 ///
 /// A run records these so a bench row names exactly which text produced it.
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
-    ("system-prompt", "sha256:8f0fbbbb38f4ce609a09fe2ba4e03ca160ff2c0d0f698dd4676c2bf940ded849"),
-    ("tool-descriptions", "sha256:e3f86c6eeebd99c99d21fb06aab9f1ea7628e7f38c1c78d9dca028335bdd1532"),
+    ("system-prompt", "sha256:9dcbe4755e1cdd317afefb3f2b4c694df17ca6aefe07680243c67b7ec7289b0c"),
+    ("tool-descriptions", "sha256:0e75085542a4f0b61da8a897f8baecc82fe3169cabb55c7a21ed67ac26a89e38"),
     ("catalog-lines", "sha256:98a96bcf6acfd5847bc1bddcc575761af71be7ea144f3584b3594b24b2f80911"),
 ];

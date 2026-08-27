@@ -14,8 +14,8 @@ Read first, in order:
 
 ## 0. Authority and boundaries
 
-You may change: the coder system prompt and tool descriptions
-(`crates/coder-lite`, `packages/openagents-cli`), tool budgets, plugins
+You may change: the Coder system prompt and tool descriptions
+(`surfaces/coder` and `crates/openagents-cli`), tool budgets, plugins
 (`plugins/`), suites and thresholds (as their own change — best practice
 M4), this directory's docs, and CLI code under the repository completion
 gate.
@@ -32,12 +32,10 @@ forge remote, never GitHub (best practices R2, R3). For CLI code changes
 the completion gate is `pnpm run check`; docs-only changes push with
 `--no-verify` after the docs checks.
 
-A change to the coder-lite TUI has one more step, because `pnpm run check`
-does not reach it. `cargo test -p coder-lite --test interactive_pty` drives
-the real binary on a pseudo-terminal and asserts on the rendered cells; it is
-what "headless evidence does not close a TUI issue" now points at. The
-completion gate runs neither it nor `cargo fmt` for this crate (#124), so run
-it by hand and say in the issue that you did.
+A change to the Coder TUI requires its pseudo-terminal suite:
+`cargo test -p openagents-cli --test coder_interactive_pty`. It drives the real
+binary and asserts on rendered cells; headless evidence does not close a TUI
+issue.
 
 ## 1. Prerequisites
 
@@ -54,16 +52,14 @@ it by hand and say in the issue that you did.
   bridge `0.0.0.0:4001 → 127.0.0.1:4000` and set
   `OPENAGENTS_CODER_API_URL=http://host.docker.internal:4001` instead of
   fighting for the port.
-- **A packed CLI tarball** from the working tree — this is what the adapter
-  installs into containers, so it is how your change reaches the arena:
+- **A native Linux CLI build** from the working tree. The suite runner builds
+  and installs it in each Harbor environment. To inspect the build command
+  without running the suite:
 
   ```sh
-  cd packages/openagents-cli
-  pnpm build
-  pnpm pack --pack-destination ../../bench
+  bench/run-suite.sh bench/suites/tb2-quick.suite.json \
+    --model openai/gpt-5.6-luna --lane proxy --dry-run
   ```
-
-  `pnpm pack`, never `npm pack` (best practice R1).
 
 - **Ollama** with the local-lane model pulled, for local-lane runs. Local
   runs need no token; keep `--n-concurrent 1` because the model owns the
@@ -326,7 +322,7 @@ Two flags matter for the lanes below the live one:
   one it does not.
 - The automated review (autoimprove §7.5) exists as `pnpm run coder:review`
   (#121). Its candidate schema, `openagents.coder_candidate.v1` in
-  `packages/openagents-cli/src/coder-review-candidate.ts`, is the object
+  `packages/coder-review/src/candidate.ts`, is the object
   #122 staged surfaces for and #123's optimizer will mutate; a review
   proposal and an optimizer mutation are the same type, documented in
   `docs/coder/candidate-format.md`. No review has been recorded through it

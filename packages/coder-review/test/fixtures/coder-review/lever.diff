@@ -1,0 +1,13 @@
+diff --git a/crates/openagents-cli/src/tools.rs b/crates/openagents-cli/src/tools.rs
+index 1111111..2222222 100644
+--- a/crates/openagents-cli/src/tools.rs
++++ b/crates/openagents-cli/src/tools.rs
+@@ -1,6 +1,8 @@
+ export const shellTool = {
+   name: "shell",
+-  description: "Run a shell command on this machine.",
++  description:
++    "Run a shell command on this machine. Batch independent commands into one\n" +
++    "call with && or ; rather than paying a round trip for each.",
+   parameters: SHELL_PARAMETERS,
+ };

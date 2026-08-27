@@ -1,0 +1,111 @@
+---
+name: superdelegate
+description: How to hand work to another agent and work through an issue backlog with safe parallelism. Loaded into every session.
+auto: true
+---
+
+# Handing work out
+
+## Which lane
+
+| The work                              | Use              |
+| ------------------------------------- | ---------------- |
+| One command, one answer               | `shell`          |
+| The same thing to N independent parts | `delegate`       |
+| A backlog of issues                   | the method below |
+
+Run a single command yourself. Starting an agent to run `pwd` costs minutes and
+real money and hands back an answer nobody watched being produced.
+
+`delegate` starts child coding agents that run the same prompt in parallel, each
+with its own file and shell tools. Children start with no context from this
+conversation and cannot ask questions, so the prompt carries everything. Every
+child gets the same prompt and is told its own number separately — write for
+whichever child is reading rather than naming one.
+
+The `delegate` tool uses the child lane configured for this Coder session. The
+standalone `openagents delegate` command accepts `--lane`; supported values are
+`openagents`, `gemini`, `opencode/<model>`, `devin`, `claude`, and `codex`.
+Choose the lane before you start a fan-out.
+
+`devin` runs the children on the Devin CLI, and `devin:<mode>` picks a
+permission mode other than the default `dangerous`. A Devin child brings its own
+credentials and model rather than spending this session's grant. Prefer it over
+running `devin` yourself through `shell`: a fleet child renders, stops with
+`ctrl+x`, and does not block the turn, while a shell child is one opaque call
+that freezes the session until it ends.
+
+## Burning through a backlog
+
+When the task is "work the issues" rather than one named thing, this is the
+method. It is opinionated on purpose: the decisions below are the ones that go
+wrong when they are made ad hoc.
+
+### 1. Read the board before touching it
+
+List open issues in every repository the account can reach —
+`OpenAgentsInc/openagents` and `OpenAgentsInc/openagents.com` at least. Use the
+`openagents` tool, read the plain output, and use `--json` only to take a field.
+
+### 2. Workable means unblocked
+
+`openagents issue view <n>` reports `Blocked` and `Blocked by`. **A blocked issue
+is not workable**, however ready it looks, and starting one wastes a child and
+produces a change that cannot land. Name the blocked ones as blocked, say what
+they wait on, and leave them.
+
+Prefer `agent-ready`. An issue whose shape is still a question is not ready for
+a child that cannot ask one.
+
+### 3. One child per surface
+
+Two children editing the same files is a merge conflict nobody asked for. Group
+the workable issues by the surface they touch — a package, a directory, a
+module — and keep **one child in flight per surface**. Issues on different
+surfaces run together freely.
+
+If two issues must touch the same surface, run them in sequence, or give each
+child its own git worktree so their edits cannot meet.
+
+### 4. Route by the kind of thinking
+
+- **Devin** for straightforward engineering: a named fix, a test to write, a
+  migration, a rename, a documented change with a clear shape.
+- **OpenAgents** for design, architecture, and work where the shape of the
+  answer is still the question.
+
+If you cannot tell which, it is the second kind.
+
+### 5. Find the width, do not pick it
+
+**Never choose a number and hope.** Start at about four and climb:
+
+1. Run a round of four.
+2. Before widening, look: system load and free memory
+   (`uptime`, `vm_stat` or `free`), `openagents auth status` for the account,
+   and whether any child came back with a rate limit, a quota refusal, or a
+   provider error.
+3. If all three are clean, raise the width — four, six, eight — and go again.
+4. At the **first** sign of a limit, stop raising and hold at the last width
+   that was clean. Do not push past it to confirm; the confirmation costs a
+   round of failed children.
+
+The width is a measurement, not a setting. A machine with sixteen idle cores and
+a healthy account should be running far more than four; one that is swapping
+should be running fewer. Report the width you reached and what stopped it.
+
+### 6. Report as you go
+
+After each round, say which issues were selected, which were skipped and why,
+what each child returned, and where the width stands. A backlog run that reports
+only at the end is one nobody can steer.
+
+## Working and completing issues
+
+When assigned or requested to fix or work on an issue, deliver the solution
+completely: verify the fix with tests, push directly to `main` (or the working branch),
+and close the issue without a separate confirmation step.
+
+Take care not to step on other people's concurrent work: check git status and remotes
+before pushing. An agent reporting that it finished is not evidence that it did:
+read the diff, run the test, and verify the output before closing.

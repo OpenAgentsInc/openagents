@@ -6,7 +6,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BENCH_DIR="$REPO_ROOT/bench"
-CLI_DIR="$REPO_ROOT/packages/openagents-cli"
 
 usage() {
   cat <<'EOF'
@@ -287,6 +286,9 @@ done
 
 SUITE_NAME="$(basename "$(basename "$SUITE_FILE" .txt)" .suite.json)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+BENCH_CLI_VERSION="0.0.0-bench.${TIMESTAMP//-/}"
+BENCH_CLI_PLATFORM="${OPENAGENTS_CODER_PLATFORM:-linux-x86_64}"
+BENCH_CLI_BINARY="$REPO_ROOT/dist/releases/$BENCH_CLI_VERSION/openagents-$BENCH_CLI_VERSION-$BENCH_CLI_PLATFORM"
 
 # The catalog name the run registers under: Harbor spells models
 # provider/name, the catalog id is the name, and an ollama/ model is the
@@ -331,8 +333,8 @@ if [ -n "$TIMEOUT_MULTIPLIER" ]; then
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "[dry-run] Pack command:"
-  echo "[dry-run]   (cd $(printf '%q' packages/openagents-cli) && pnpm build && pnpm pack --pack-destination $(printf '%q' ../../bench))"
+  echo "[dry-run] Native CLI build command:"
+  echo "[dry-run]   ops/release-cli.sh --version $(printf '%q' "$BENCH_CLI_VERSION") --targets $(printf '%q' "$BENCH_CLI_PLATFORM")"
   echo
   if [ -n "$OPENAGENTS_TOKEN" ]; then
     echo "[dry-run] Register command:"
@@ -353,6 +355,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   printf '%q ' \
     "PYTHONPATH=$BENCH_DIR" \
     "OPENAGENTS_TOKEN=$TOKEN_DISPLAY" \
+    "OPENAGENTS_CODER_BINARY=$BENCH_CLI_BINARY" \
     "OPENAGENTS_CODER_API_URL=$CANDIDATE_CODER_API_URL" \
     ${GYM_ENV_ARGS[@]+"${GYM_ENV_ARGS[@]}"} \
     harbor run \
@@ -375,16 +378,15 @@ if [ -z "$OPENAGENTS_TOKEN" ] && [[ "$MODEL" != ollama/* ]]; then
   exit 1
 fi
 
-# Pack the CLI tarball.
-log "Packing openagents-cli tarball..."
-(
-  cd "$CLI_DIR"
-  pnpm build
-  pnpm pack --pack-destination ../../bench
-)
+# Build the same native binary the installer publishes. The adapter uploads
+# this exact working-tree artifact into each Harbor container.
+log "Building native OpenAgents CLI for $BENCH_CLI_PLATFORM..."
+"$REPO_ROOT/ops/release-cli.sh" \
+  --version "$BENCH_CLI_VERSION" \
+  --targets "$BENCH_CLI_PLATFORM"
 
-if ! ls "$BENCH_DIR"/openagentsinc-cli-*.tgz >/dev/null 2>&1; then
-  log "No openagentsinc-cli-*.tgz tarball found in $BENCH_DIR after pack."
+if [ ! -x "$BENCH_CLI_BINARY" ]; then
+  log "Native CLI build did not produce $BENCH_CLI_BINARY."
   exit 1
 fi
 
@@ -408,6 +410,7 @@ log "Running Harbor suite: $SUITE_NAME (${#TASKS[@]} tasks)..."
 if ! (
   export PYTHONPATH="$BENCH_DIR"
   export OPENAGENTS_TOKEN
+  export OPENAGENTS_CODER_BINARY="$BENCH_CLI_BINARY"
   if [ -n "${OPENAGENTS_CODER_API_URL:-}" ]; then
     export OPENAGENTS_CODER_API_URL
   else

@@ -274,13 +274,8 @@ impl HarnessToolRegistry {
         if let Ok(home) = std::env::var("HOME") {
             dirs.push(PathBuf::from(home).join(".agents").join("skills"));
         }
-        // The skills this CLI ships, read from the package they live in.
-        dirs.push(
-            self.cwd
-                .join("packages")
-                .join("openagents-cli")
-                .join("skills"),
-        );
+        // Shipped skills live outside any retired implementation package.
+        dirs.push(self.cwd.join("skills"));
         dirs
     }
 
@@ -922,7 +917,7 @@ pub fn render_skill(skill: &SkillInfo) -> String {
 ///
 /// A session in `openagents.com` spent turns working out that it was in the
 /// Phoenix application, and one in `openagents` that the CLI lives under
-/// `packages/`. Both are facts about the workspace rather than about the work,
+/// `crates/`. Both are facts about the workspace rather than about the work,
 /// and neither is discoverable without reading around.
 fn openagents_workspace_note(cwd: &Path) -> Option<String> {
     let shown = cwd.to_string_lossy();
@@ -938,8 +933,8 @@ fn openagents_workspace_note(cwd: &Path) -> Option<String> {
         "- **`openagents.com`** is the web application: a Phoenix and Elixir codebase serving the"
             .to_string(),
         "  site, the forge, and the `/api/v1` API. Its issues are the site's issues.".to_string(),
-        "- **`openagents`** is the monorepo: the `openagents` CLI lives in".to_string(),
-        "  `packages/openagents-cli`, alongside the other packages. Its issues are the CLI's and \
+        "- **`openagents`** is the monorepo: the native `openagents` CLI lives in".to_string(),
+        "  `crates/openagents-cli`, alongside the other packages. Its issues are the CLI's and \
          the monorepo's."
             .to_string(),
         String::new(),
@@ -1405,16 +1400,9 @@ pub enum OpenAgentsCliSource {
 
 /// The program the `openagents` tool runs, and where it was found.
 ///
-/// `PATH` first, deliberately: the CLI installed under that name is the
-/// TypeScript one, and it covers more subcommands than this binary does, so
-/// where both exist the model should reach the fuller of the two.
-///
-/// This binary is the fallback rather than the first choice because it is
-/// installed as `oa`. On a machine carrying only the Rust CLI there is nothing
-/// named `openagents` anywhere on `PATH`, and this used to be
-/// `Command::new("openagents")` — so every call the model made failed with
-/// `No such file or directory` while the very binary that could have answered
-/// was the one running the tool.
+/// `PATH` comes first so an installed `openagents` entry point keeps the same
+/// update and launch behavior as a shell command. The current binary is the
+/// fallback for development runs and renamed entry points.
 pub fn resolve_openagents_cli() -> Result<(PathBuf, OpenAgentsCliSource), String> {
     let name = format!("openagents{}", std::env::consts::EXE_SUFFIX);
     let on_path = std::env::var_os("PATH")
@@ -1641,12 +1629,7 @@ mod tests {
             "shared",
             "---\nname: shared\ndescription: The repository's.\n---\nRepo body.\n",
         );
-        let shipped = root
-            .path()
-            .join("packages")
-            .join("openagents-cli")
-            .join("skills")
-            .join("shared");
+        let shipped = root.path().join("skills").join("shared");
         std::fs::create_dir_all(&shipped).unwrap();
         std::fs::write(
             shipped.join("SKILL.md"),

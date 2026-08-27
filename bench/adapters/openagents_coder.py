@@ -17,11 +17,11 @@ container holds only the scoped OpenAgents token. Harbor's `--model`
 provider prefix is dropped: `openai/gpt-5.6-luna` becomes catalog id
 `gpt-5.6-luna` on `POST /api/v3/threads`.
 
-The CLI installs from a tarball packed beside this file (`npm pack` in
-`packages/openagents-cli`), so the run measures the working tree, not the
-published npm version. The trajectory is the coder's own ATIF export: the
-run pipes `/export` after the instruction and copies the newest export to
-the trial's `trajectory.json`.
+The adapter uploads the native binary built from the working tree by
+`bench/run-suite.sh`, so the run measures the CLI that ships through the
+installer. The trajectory is the coder's own ATIF export: the run pipes
+`/export` after the instruction and copies the newest export to the trial's
+`trajectory.json`.
 
 When `OPENAGENTS_GYM_RUN_ID` is set (`bench/run-suite.sh` registers the run
 against the Gym lifecycle API, OpenAgentsInc/openagents#38), the adapter
@@ -48,26 +48,13 @@ from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_templat
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-def _find_tarball() -> Path:
-    """The packed CLI, whatever version it is.
-
-    Pinning the version here meant a version bump silently broke every graded
-    run: the adapter looked for a tarball nobody packs any more and every trial
-    errored in install with a message about the old number. The pack step
-    produces exactly one tarball, so find it rather than predict its name; if
-    there are several, take the newest, because that is the one just built.
-    """
-    bench = Path(__file__).resolve().parent.parent
-    candidates = sorted(
-        bench.glob("openagentsinc-cli-*.tgz"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    return candidates[0] if candidates else bench / "openagentsinc-cli-<version>.tgz"
+def _native_binary() -> Path:
+    """Return the working-tree native binary selected by the suite runner."""
+    configured = os.environ.get("OPENAGENTS_CODER_BINARY", "").strip()
+    return Path(configured) if configured else Path("<OPENAGENTS_CODER_BINARY>")
 
 
-_TARBALL = _find_tarball()
-_REMOTE_TARBALL = "/installed-agent/openagents-cli.tgz"
+_REMOTE_BINARY = "/tmp/openagents-bench"
 _DEFAULT_API_URL = "http://host.docker.internal:4000"
 _EXPORT_DIR = "$HOME/.openagents/exports"
 
@@ -168,36 +155,20 @@ class OpenAgentsCoder(BaseInstalledAgent):
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
-        if not _TARBALL.exists():
+        binary = _native_binary()
+        if not binary.is_file():
             raise FileNotFoundError(
-                f"CLI tarball missing at {_TARBALL}. Run `pnpm build && npm pack "
-                "--pack-destination ../../bench` in packages/openagents-cli first."
+                f"Native CLI binary missing at {binary}. Run the suite through "
+                "bench/run-suite.sh so it builds and selects the target artifact."
             )
 
-        await self.ensure_system_dependencies(environment, ("curl", "bash"))
-
-        # Node >= 20 (the CLI's engines floor). Task images rarely carry it,
-        # so provision Node 22 through NodeSource on apt images and fail
-        # loudly elsewhere rather than running on a node that cannot.
+        await environment.upload_file(binary, _REMOTE_BINARY)
         await self.exec_as_root(
             environment,
             command=(
-                "set -euo pipefail; "
-                "if command -v node >/dev/null 2>&1 && "
-                '[ "$(node -e \'process.stdout.write(String(process.versions.node.split(".")[0]))\')" -ge 20 ]; '
-                "then echo 'node present'; "
-                "elif command -v apt-get >/dev/null 2>&1; then "
-                "curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && "
-                "apt-get install -y nodejs; "
-                "else echo 'no node >= 20 and no apt-get' >&2; exit 1; fi; "
-                "node --version"
+                f"install -m 0755 {shlex.quote(_REMOTE_BINARY)} /usr/local/bin/openagents && "
+                "openagents --version"
             ),
-        )
-
-        await environment.upload_file(_TARBALL, _REMOTE_TARBALL)
-        await self.exec_as_root(
-            environment,
-            command=f"npm install -g {shlex.quote(_REMOTE_TARBALL)} && openagents --version",
         )
 
     @override

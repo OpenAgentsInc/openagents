@@ -14,7 +14,8 @@ attaches to a turn, compiled into a WebAssembly plugin the CLI loads.
 
 ```sh
 node build-kb.mjs
-cargo build --release --target wasm32-unknown-unknown -p knowledge-base
+cargo build --manifest-path ../Cargo.toml --release \
+  --target wasm32-unknown-unknown -p knowledge-base
 ```
 
 Then re-pin `artifact.digest` in `manifest.json` to the digest of the rebuilt
@@ -60,7 +61,7 @@ is MEMORY-012 there.
 
 ## Tests
 
-`src/tests.rs` runs the ranking against the shipped `kb.json`, and
-`packages/openagents-cli/test/coder-plugin-knowledge-base.test.ts` proves the
-sandboxed artifact and the injected note end to end. Both pin behavior by stance
-title, so renaming a title is a test change.
+`src/tests.rs` runs the ranking against the shipped `kb.json`. Native Coder's
+plugin tests load the digest-pinned artifact through the same sandboxed host it
+uses in a session. Both checks pin behavior by stance title, so renaming a
+title is a test change.

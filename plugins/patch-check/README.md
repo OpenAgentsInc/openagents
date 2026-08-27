@@ -18,9 +18,8 @@ is refused. `include_preview` returns the post-application content, elided
 in the middle past `max_preview_chars`.
 
 The placement logic is unit-tested in `src/tests.rs` (pure, no host); the
-sandbox test in
-`packages/openagents-cli/test/coder-plugin-patch-check.test.ts` proves the
-same behavior through the real WASM boundary.
+sandbox tests in `crates/openagents-cli/tests/plugin_host_test.rs` prove the
+same behavior through the real WebAssembly boundary.
 
 Rebuild from `plugins/` (then update `artifact.digest` in `manifest.json`):
 see `../README.md`.

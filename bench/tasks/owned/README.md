@@ -35,10 +35,11 @@ it, and the diff is on record. An issue closed without a closing reference is
 skipped by number rather than guessed at — it may be perfectly well closed, but
 there is nothing to grade against.
 
-At the time of writing, six of the tracker's fifty-eight closed issues carry a
-closing-reference commit. All six land in `packages/openagents-cli`, and five of
-the six touch a test file in the same commit, which is the shape the verifier
-below needs.
+At the time this suite was recorded, six of the tracker's fifty-eight closed
+issues carried a closing-reference commit. All six landed in the retired
+`packages/openagents-cli` package, and five touched a test file in the same
+commit. The immutable commit pins preserve those historical task definitions
+after the package's removal.
 
 ## What is not built yet
 
@@ -77,11 +78,9 @@ closing commit touches both source and test files:
 Two things have to be true before the first of these can flip
 `environmentAvailable`, and neither is cheap:
 
-- **The image.** `packages/openagents-cli` sits in a 117-package pnpm
-  workspace, so the environment is a repo snapshot plus an install, not a
-  `FROM node:22-slim` and a copy. Build time and image size are the open
-  question, and the answer decides whether the owned lane is run per release or
-  per week.
+- **The image.** Each historical `packages/openagents-cli` task requires its
+  pinned repository snapshot and a pnpm workspace install. Build time and image
+  size determine whether the owned lane runs per release or per week.
 - **The test half really failing at base.** A closing commit that only added a
   test for behaviour that already worked is not a graded task at all — it is a
   task that passes before the agent starts. Each candidate needs that checked

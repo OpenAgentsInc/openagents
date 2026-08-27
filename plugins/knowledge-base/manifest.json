@@ -6,7 +6,7 @@
   "description": "Answer questions about OpenAgents itself from the generated knowledge base: what is built, parked, or planned — earning bitcoin or money, payouts, tipping, threads, plugins, Coder tiers — plus summaries of every public doc. Pure lookup over an embedded corpus with no file, network, or environment access. The harness consults it automatically and attaches relevant stances and docs to the conversation; prefer its dated, reviewed positions over guesses when they conflict with intuition.",
   "artifact": {
     "path": "knowledge_base.wasm",
-    "digest": "sha256:7897da0a140d6a022a0c75ac5356f971e4de22a5e756a1a99d970dbc76703ebf"
+    "digest": "sha256:341a126b4fd36da0c6ccd556bc12dc095889ca41591b7f8c4252cb73d21763fd"
   },
   "abi": {
     "kind": "packet-v0",

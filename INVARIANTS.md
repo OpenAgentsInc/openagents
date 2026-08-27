@@ -1064,57 +1064,15 @@ come from the Freerange teardown
   raw provider material in context/history/logs, missing app-owned idempotency,
   generic provider tools, and platform-authority widening.
 
-## One Seed, One Identity, One Wallet
+## Retired CLI identity surface
 
-- The CLI derives both the Nostr identity and the wallet from one BIP-39 seed
-  under the frozen profile `openagents.legacy_unified_nostr_spark.v1`: the
-  identity at `m/44'/1237'/0'/0/0` (NIP-06 account zero), the wallet at
-  `m/44'/0'/0'/0/0` (BIP-44 account zero), both on the English word list with an
-  EMPTY BIP-39 passphrase. That profile is the same one
-  `packages/sovereign-identity/src/contract/derivation.ts` froze, and no surface
-  may add a passphrase, change an index, or introduce a second profile. A change
-  here reissues every existing identity and orphans every address people were
-  told to receive at.
-- The derivation is pinned by fixed vectors, not by review.
-  `packages/openagents-cli/test/seed-identity.test.ts` asserts the `npub`, the
-  public keys, the fingerprint, and the receive address that the published
-  BIP-39 test phrase must always produce, and re-derives them through
-  `@openagentsinc/sovereign-identity` so the two surfaces cannot drift apart.
-- Secret material stays out of every output. The seed file is written `0600`
-  inside a `0700` directory, `openagents identity backup` is the only command
-  that prints the phrase and it refuses `--json`, no command prints an `nsec` or
-  a raw private key, and `openagents trace redact` removes seed phrases (word
-  list-gated) and `nsec`/`xprv`-family keys from a redacted export.
-- The seed is encrypted at rest wherever the machine can hold a key. Both CLIs
-  seal the phrase with ChaCha20-Poly1305 under a 32-byte wrapping key held in
-  the OS keychain (`security` on macOS, `secret-tool` on Linux) under service
-  `openagents-cli-identity`, keyed by the identity directory; the key never
-  enters the identity directory, so a copy of that directory is not an identity.
-  The envelope (`openagents.cli_identity_seed.v1`), the AEAD, the keychain
-  service, and the account key are one contract, owned by
-  `packages/openagents-cli/src/seed-identity.ts`. It was written as a contract
-  across two CLIs because both read one file at one path, so a format only one
-  of them understood would be a downgrade attack on the other. The Rust CLI's
-  identity surface was removed on 2026-08-26 in `02cdaea275` — nothing consumed
-  the identity it derived — which leaves one reader. Any second reader of that
-  path re-enters the contract exactly as written above.
-- Where no keychain exists — CI, a container, an unattended agent host — the
-  phrase is stored as plaintext `0600` and every surface that shows an identity
-  must say so. `identity show`, `create`, `import`, and `backup` carry the
-  protection sentence, and `--json` carries `seed_protection` and
-  `seed_encrypted_at_rest`. A silent fall back to plaintext is prohibited: it
-  reads as protection that is not there. `OPENAGENTS_IDENTITY_PLAINTEXT` selects
-  that store deliberately and is never applied implicitly.
-- A plaintext seed written before this was migrated on the next `identity`
-  command by renaming the sealed envelope over the same path, so the phrase is
-  never in two places at once. Coverage is
-  `packages/openagents-cli/test/seed-identity.test.ts`, which asserts the bytes
-  on disk carry no word of the phrase, and that migration preserves the `npub`
-  while removing the plaintext. Its Rust counterpart went with the surface it
-  covered in `02cdaea275`.
-- The wallet receives; it does not spend. The spending rail is an owner decision
-  that is not recorded, so no CLI surface may imply a spend path exists until it
-  is.
+The native CLI removed its unused identity command in `02cdaea275`. Issue #136
+then retired the remaining TypeScript CLI and its legacy seed reader. The
+installed CLI does not create, import, display, back up, or spend from a seed.
+`packages/sovereign-identity` retains its own derivation contract for products
+that still consume it. A future CLI identity command requires a new product
+contract and migration plan; it must not silently revive the deleted on-disk
+format or imply that a spending rail exists.
 
 ## Retired Verse World Service
 
@@ -2539,9 +2497,8 @@ surviving lane, so that if either returns it can mean what it meant. In the
 Rust CLI they parse as directly-named models and are refused by the catalog
 under their own names.
 
-- The tier-to-model map lives in exactly one module,
-  `packages/openagents-cli/src/coder-tiers.ts`. Display code holds no vendor
-  strings.
+- The lane-to-model policy lives in `crates/openagents-cli/src/runtime.rs`.
+  Display code holds no compiled vendor default.
 - `ReplySource.model` is the tier label; `ReplySource.modelId` carries the
   vendor id for records and exports, which are allowed to name what a reader
   could run again. The split is the enforcement seam: rendering reads
@@ -2587,7 +2544,8 @@ under their own names.
   or dearer than another: the catalog declares a rate for some lanes and none
   for others, and a tier label implying a price the server never quoted would
   be a worse lie than the vendor name it replaced.
-- Held by `packages/openagents-cli/test/coder-tiers.test.ts`. Issue
+- Held by `crates/openagents-cli/tests/runtime_test.rs` and
+  `crates/openagents-cli/tests/coder_identity_row.rs`. Issue
   OpenAgentsInc/openagents#40.
 
 ## OpenAgents CLI transcript rendering
@@ -2634,8 +2592,7 @@ are fixed.
 
 `oa coder`'s `/resume` lists Claude Code and Codex sessions from their own
 local stores and prints the command that resumes one in the tool that owns it
-(`crates/openagents-cli/src/foreign_resume.rs`, the port of
-`packages/openagents-cli/src/coder-foreign-resume.ts`). Discovery is the
+(`crates/openagents-cli/src/foreign_resume.rs`). Discovery is the
 `packet-v0` WebAssembly guest at `plugins/foreign-sessions`, run under the
 wasm host in `crates/openagents-cli/src/plugins.rs` over read-only mounts of
 `~/.claude` and `~/.codex`. Four things about that surface are fixed.

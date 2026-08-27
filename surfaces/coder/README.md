@@ -22,11 +22,8 @@ Each artifact is a flat `text` map of key to string, so a one-sentence change is
 a one-line diff. A `{placeholder}` in a value is substituted by the consumer —
 `{cwd}`, `{count}`, `{lane}`, `{catalog}`, and so on.
 
-A key's segments say which harness reads it. A key containing `node` reaches
-`packages/openagents-cli` only; one containing `rust`, or beginning
-`coder_lite`, reaches the Rust crates only; a key with neither is shared. The
-harnesses have forked on some of this text, and the key names are where that is
-visible rather than hidden.
+A key containing `rust`, or beginning `coder_lite`, names native Coder text.
+A key with no consumer segment is shared data that native Coder also reads.
 
 ## Rebuilding
 
@@ -34,13 +31,11 @@ visible rather than hidden.
 pnpm run build:coder-surfaces
 ```
 
-That re-pins `index.json` and regenerates the two modules the native and legacy
-CLIs compile:
+That re-pins `index.json` and regenerates the module the native CLI compiles:
 
 - `crates/openagents-cli/src/surfaces.rs` — read by the current Rust CLI
-- `packages/openagents-cli/src/coder-surfaces.generated.ts`
 
-Neither generated module is edited by hand. Both are build output.
+Do not edit the generated module by hand. It is build output.
 
 ```sh
 pnpm run check:coder-surfaces
@@ -58,8 +53,8 @@ reports any copy living outside the artifact and its build output.
 ## The catalog lines are a mirror, not a move
 
 `system-prompt` and `tool-descriptions` were string literals in the former
-`coder-lite` crate, `crates/openagents-cli`, and `packages/openagents-cli`.
-Staging them moved the text; the artifact is now where it is edited.
+Coder implementations. Staging them moved the text; the artifact is now where
+it is edited.
 
 A plugin's catalog line was never a literal. It is the top-level `description`
 of `plugins/<id>/manifest.json`, discovered at runtime by `discover_catalog()`.

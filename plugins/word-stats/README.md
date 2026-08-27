@@ -9,9 +9,8 @@ invocation. The built artifact `word_stats.wasm` and its digest pin in
 Load it into a coder session:
 
 ```sh
-# from packages/openagents-cli, after pnpm build
-printf '/plugin load ../../plugins/word-stats/manifest.json\ncount the words in: hello hello world\n' \
-  | node dist/main.js coder --plain
+printf 'Use the word_stats capability to count: hello hello world\n' \
+  | openagents coder --plain
 ```
 
 Rebuild from `plugins/` (then update `artifact.digest` in `manifest.json`):

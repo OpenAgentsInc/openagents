@@ -1,9 +1,8 @@
 # Guest plugins
 
-The Cargo workspace for `openagents coder` WASM plugins and the owned PDK
-that authors them. The host lives in
-`packages/openagents-cli/src/coder-plugins.ts` with the engine seam in
-`coder-plugin-engine.ts`; the contract is issue
+The Cargo workspace for `openagents coder` WebAssembly plugins and the owned
+PDK that authors them. The host lives in
+`crates/openagents-cli/src/plugins.rs`; the contract is issue
 OpenAgentsInc/openagents#26 and
 `docs/plugins/2026-08-24-coder-plugin-demo-shape.md`.
 
@@ -58,7 +57,7 @@ shasum -a 256 */*.wasm
 ```
 
 Then update each manifest's `artifact.digest` — the host refuses a stale
-pin — and rerun the plugin tests in `packages/openagents-cli`. A change
+pin — and run `cargo test -p openagents-cli --test plugin_host_test`. A change
 to the PDK reshuffles every artifact's bytes, so rebuild and repin all of
 them together, never one alone.
 

@@ -813,13 +813,10 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   with `npm pack` publishes a manifest npm itself cannot resolve, and the
   consumer sees `EUNSUPPORTEDPROTOCOL "catalog:"` — a message that names the
   protocol rather than the mistake. It has shipped that way before.
-- **Never publish a tarball you have not verified installs.** For the CLI,
-  `pnpm --filter @openagentsinc/cli run verify:package` packs the way a publish
-  packs, refuses a manifest carrying `catalog:` or `workspace:` specifiers,
-  installs the tarball into an empty project with `npm`, and runs the packed
-  binary. It runs automatically as `prepublishOnly`. Note that
-  `npm publish <file.tgz>` skips that lifecycle, so if you publish a pre-packed
-  tarball you must run the verifier yourself first.
+- **Never publish a tarball you have not verified installs.** Run the package's
+  installation check against the packed artifact before you publish it. Note
+  that `npm publish <file.tgz>` skips `prepublishOnly`, so a pre-packed tarball
+  needs an explicit verification step.
 - **Confirm the published artifact from the registry, not from the build.**
   Install the exact published version into an empty directory and run a real
   command against a live surface. Registry metadata is cached locally, so

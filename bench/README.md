@@ -1,17 +1,14 @@
 # Bench: the Gym's harness lane
 
 `bench/adapters/openagents_coder.py` is the Harbor installed-agent adapter
-for `openagents coder` (OpenAgentsInc/openagents#35). It runs the working
-tree's CLI, not the published npm version, so pack a tarball first:
+for `openagents coder` (OpenAgentsInc/openagents#35). `bench/run-suite.sh`
+builds the working tree's native CLI for the selected Linux target and installs
+that binary in each Harbor environment.
 
 ```sh
-cd packages/openagents-cli
-pnpm build
-pnpm pack --pack-destination ../../bench
+bench/run-suite.sh bench/suites/tb2-quick.suite.json \
+  --model openai/gpt-5.6-luna --lane proxy
 ```
-
-Use `pnpm pack`, not `npm pack`: the manifest carries pnpm `catalog:`
-versions that only `pnpm pack` rewrites into versions npm can install.
 
 Run against the dev forge on the host (`PHX_LISTEN_ALL=true mix
 phx.server` in openagents.com, plus a `chat:account` token):

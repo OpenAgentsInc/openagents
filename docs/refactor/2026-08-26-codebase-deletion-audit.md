@@ -212,26 +212,17 @@ plugin catalog. That is a distribution gap, not evidence that the plugin source
 is stale. Decide whether plugins are checkout-only developer features or
 installed product features before pruning individual plugins.
 
-## Deletion cohort 3: TypeScript CLI
+## Completed deletion cohort 3: TypeScript CLI
 
-Delete `packages/openagents-cli` after its remaining consumers migrate to the
-native CLI. The owner has already directed this retirement, and the current
-release script builds only `crates/openagents-cli`.
+Issue #136 retired `packages/openagents-cli`. The native
+`crates/openagents-cli` crate now owns the installed command, Git credential
+helper, benchmark adapter, and generated Coder surfaces. The review pipeline
+moved to the focused `packages/coder-review` package because it analyzes
+benchmark artifacts and is not a user-facing CLI namespace.
 
-Do not delete it before completing these prerequisites:
-
-1. Make the native CLI satisfy the forge Git credential-helper invocation.
-2. Move `bench/adapters/openagents_coder.py` away from the npm tarball.
-3. Remove shell functions that shadow the installed `oa`, `openagents`, or
-   `coder` binaries.
-4. Update the remaining documents and install paths that name
-   `@openagentsinc/cli`.
-5. Remove the TypeScript generated Coder surface, symbol baseline entries, and
-   root scripts that test or publish the npm CLI.
-
-Retain `surfaces/coder`. The Rust CLI consumes its generated projection and
-pins it in tests. Remove only the TypeScript consumer and stale documentation
-that still describes `coder-lite` or two CLI implementations.
+The npm package remains published only as a historical artifact. Deprecating
+it in the npm registry requires registry credentials and does not justify
+retaining its source tree.
 
 ## Deletion cohort 4: duplicate and leaf applications
 
@@ -513,11 +504,13 @@ Status: complete on 2026-08-26.
 
 ### Phase 4: finish the CLI consolidation
 
-1. Complete the credential-helper, benchmark adapter, shell, and documentation
-   migrations.
-2. Delete `packages/openagents-cli` and its TypeScript-only surface generation
-   and publishing paths.
-3. Keep one CLI release gate and one Coder surface generator.
+Completed in issue #136:
+
+- Migrated the credential helper, benchmark adapter, shell entry points, and
+  current documentation.
+- Deleted `packages/openagents-cli` and its TypeScript-only generation and
+  publishing paths.
+- Kept one native CLI release gate and one Coder surface generator.
 
 ### Phase 5: collapse the TypeScript package graph
 

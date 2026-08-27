@@ -1546,6 +1546,28 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/coder-review:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.1
+        version: 24.13.1
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(happy-dom@20.10.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))
+
   packages/codex-app-server-protocol:
     dependencies:
       ajv:
@@ -2224,58 +2246,6 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
-
-  packages/openagents-cli:
-    dependencies:
-      '@effect/platform-node':
-        specifier: 'catalog:'
-        version: 4.0.0-beta.94(effect@4.0.0-beta.94)(ioredis@5.11.1)
-      '@effect/platform-node-shared':
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94(effect@4.0.0-beta.94)
-      '@noble/curves':
-        specifier: 1.8.1
-        version: 1.8.1
-      '@noble/hashes':
-        specifier: 1.7.1
-        version: 1.7.1
-      '@scure/base':
-        specifier: 1.2.4
-        version: 1.2.4
-      '@scure/bip32':
-        specifier: 1.6.2
-        version: 1.6.2
-      '@scure/bip39':
-        specifier: 1.5.4
-        version: 1.5.4
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-      ollama:
-        specifier: ^0.6.3
-        version: 0.6.3
-      ws:
-        specifier: 8.21.1
-        version: 8.21.1
-    devDependencies:
-      '@openagentsinc/sovereign-identity':
-        specifier: workspace:*
-        version: link:../sovereign-identity
-      '@types/node':
-        specifier: 24.13.1
-        version: 24.13.1
-      '@types/ws':
-        specifier: 8.18.1
-        version: 8.18.1
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vite-plus:
-        specifier: 0.2.4
-        version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(happy-dom@20.10.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))
 
   packages/oxlint-plugin-openagents:
     dependencies:
@@ -3213,12 +3183,6 @@ packages:
 
   '@effect/platform-browser@4.0.0-beta.94':
     resolution: {integrity: sha512-qtA331vhAFOe93uZ0C1BH/DarOEz9gdi+ssxWf9lZuZyMR3mRBV4czXUiC3Z2UHD6HNYcG/XfhUHctG5w1JeNQ==}
-    peerDependencies:
-      effect: 4.0.0-beta.94
-
-  '@effect/platform-node-shared@4.0.0-beta.94':
-    resolution: {integrity: sha512-8mCen8dhL4ockkkxevKdFOXqR8sksuZcPwyqkKZv3w30TIdj4TKXG5sQODmpPFI0+/quwm5T78kodqf/QlZwoA==}
-    engines: {node: '>=18.0.0'}
     peerDependencies:
       effect: 4.0.0-beta.94
 
@@ -8468,9 +8432,6 @@ packages:
   ofetch@1.5.1:
     resolution: {integrity: sha512-2W4oUZlVaqAPAil6FUg/difl6YhqhUR7x2eZY4bQCko22UXg3hptq9KLQdqFClV+Wu85UX7hNtdGTngi/1BxcA==}
 
-  ollama@0.6.3:
-    resolution: {integrity: sha512-KEWEhIqE5wtfzEIZbDCLH51VFZ6Z3ZSa6sIOg/E/tBV8S51flyqBOXi+bRxlOYKDf8i327zG9eSTb8IJxvm3Zg==}
-
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
@@ -10627,15 +10588,6 @@ snapshots:
     dependencies:
       effect: 4.0.0-beta.94
       multipasta: 0.2.8
-
-  '@effect/platform-node-shared@4.0.0-beta.94(effect@4.0.0-beta.94)':
-    dependencies:
-      '@types/ws': 8.18.1
-      effect: 4.0.0-beta.94
-      ws: 8.21.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   '@effect/platform-node-shared@4.0.0-beta.98(effect@4.0.0-beta.94)':
     dependencies:
@@ -16139,10 +16091,6 @@ snapshots:
       destr: 2.0.5
       node-fetch-native: 1.6.7
       ufo: 1.6.4
-
-  ollama@0.6.3:
-    dependencies:
-      whatwg-fetch: 3.6.20
 
   on-exit-leak-free@2.1.2: {}
 

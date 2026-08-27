@@ -53,37 +53,36 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       contractId: "openagents_cli.agent_device_authorization.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
-        "packages/openagents-cli/src/cli.ts",
-        "packages/openagents-cli/src/credential-store.ts",
-        "packages/openagents-cli/src/device-authorization-store.ts",
-        "packages/openagents-cli/test/cli.test.ts",
-        "packages/openagents-cli/test/credential-store.test.ts",
-        "packages/openagents-cli/test/device-authorization-store.test.ts",
+        "crates/openagents-cli/src/auth.rs",
+        "crates/openagents-cli/src/cli.rs",
+        "crates/openagents-cli/tests/auth_repo_test.rs",
+        "crates/openagents-cli/tests/flags.rs",
+        "crates/openagents-cli/tests/private_file_race_test.rs",
       ],
       oracles: [
         {
           description:
             "The CLI oracle proves immediate noninteractive output, explicit resume after approval, and a visible manual fallback when an interactive browser does not open.",
           id: "openagents_cli.agent_device_authorization.flow",
-          kind: "bun-test",
+          kind: "script",
           mode: "unit",
-          ref: "packages/openagents-cli/test/cli.test.ts",
+          ref: "crates/openagents-cli/tests/flags.rs",
         },
         {
           description:
             "The credential oracle proves the macOS Keychain invocation receives the token through its required password argument instead of an ignored standard-input stream.",
           id: "openagents_cli.agent_device_authorization.keychain",
-          kind: "bun-test",
+          kind: "script",
           mode: "unit",
-          ref: "packages/openagents-cli/test/credential-store.test.ts",
+          ref: "crates/openagents-cli/tests/auth_repo_test.rs",
         },
         {
           description:
             "The state oracle proves that a pending device request survives a second process in a mode-0600 file and disappears after completion.",
           id: "openagents_cli.agent_device_authorization.pending_state",
-          kind: "bun-test",
+          kind: "script",
           mode: "unit",
-          ref: "packages/openagents-cli/test/device-authorization-store.test.ts",
+          ref: "crates/openagents-cli/tests/private_file_race_test.rs",
         },
       ],
       productArea: "OpenAgents CLI device authorization",
@@ -1005,18 +1004,18 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       contractId: "openagents_cli.api_profiles.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
-        "packages/openagents-cli/src/endpoint.ts",
-        "packages/openagents-cli/src/api-transport.ts",
-        "packages/openagents-cli/test/endpoint.test.ts",
+        "crates/openagents-cli/src/auth.rs",
+        "crates/openagents-cli/tests/auth_repo_test.rs",
+        "crates/openagents-cli/tests/flags.rs",
       ],
       oracles: [
         {
           description:
             "The endpoint oracle proves the production default, explicit local and staging profiles, command-line precedence, normalized HTTPS and loopback origins, and refusal of non-loopback HTTP and URL paths.",
           id: "openagents_cli.api_profiles.endpoint_selection",
-          kind: "bun-test",
+          kind: "script",
           mode: "unit",
-          ref: "packages/openagents-cli/test/endpoint.test.ts",
+          ref: "crates/openagents-cli/tests/auth_repo_test.rs",
         },
       ],
       productArea: "OpenAgents CLI endpoint selection",
@@ -1030,7 +1029,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "The OpenAgents CLI must target production by default and support explicit localhost, staging, and custom API origins. Automated tests must use localhost and fail closed before any production or staging network request.",
       surface: "openagents-cli",
       verification:
-        "pnpm --filter @openagentsinc/cli test runs the endpoint and network-policy oracles, and the behavior-contract sweep validates this registry entry.",
+        "The native CLI test sweep runs the endpoint and network-policy oracles, and the behavior-contract sweep validates this registry entry.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,

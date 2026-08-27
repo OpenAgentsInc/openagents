@@ -333,7 +333,8 @@
     "Check the prerequisites",
     "Import in the browser",
     "Import with an installed CLI",
-    "Import once with npx",
+    "Pin a version for a qualification run",
+    "Import from a headless agent",
     "Import a large repository",
     "Verify an import",
     "Understand what the import copies",
@@ -351,15 +352,20 @@
    "title": "Install the OpenAgents CLI",
    "source": "priv/docs/install-cli.md",
    "headings": [
-    "Install globally with npm",
-    "Run one command with npx",
+    "Update",
+    "Install a specific version",
+    "Choose a channel",
+    "Choose where the binary lands",
+    "Supported platforms",
+    "What the installer verifies",
+    "Verify a download by hand",
     "Sign in",
     "Use a token without a browser",
     "Select an API profile",
     "Configure Git authentication",
     "Next steps"
    ],
-   "summary": "The npm package is `@openagentsinc/cli`. It provides the `openagents` command and requires Node.js 20 or later.",
+   "summary": "The CLI is a single native binary. Install it with the installer script:",
    "tags": [
     "install",
     "cli"
@@ -461,11 +467,11 @@
    "source": "priv/docs/openagents-cli.md",
    "headings": [
     "What the CLI does",
-    "Choose how to run the CLI",
+    "Install and check",
     "Follow a common terminal workflow",
     "Next steps"
    ],
-   "summary": "`openagents` is the OpenAgents command-line interface, distributed on npm as `@openagentsinc/cli`. It signs you in, configures Git authentication, manages [repositories](/docs/repositories) from a terminal, and calls implemented API routes such as Issues and Projects.",
+   "summary": "`openagents` is the OpenAgents command-line interface. It signs you in, configures Git authentication, manages [repositories](/docs/repositories) from a terminal, and calls implemented API routes such as Issues and Projects.",
    "tags": [
     "openagents",
     "cli"

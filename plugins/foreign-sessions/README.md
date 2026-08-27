@@ -55,5 +55,5 @@ then ask the coder to list recent sessions. The manifest's mounts are
 declared as `~/.claude` and `~/.codex`; both must exist as directories on
 the machine, or the load refuses (`mount_invalid`). Tests stage fixture
 trees and point a copy of the manifest at them — see
-`packages/openagents-cli/test/coder-plugin-foreign-sessions.test.ts` for
-the boundary tests and `src/tests.rs` for the fake-host scanner tests.
+`crates/openagents-cli/tests/foreign_resume_test.rs` for the boundary tests
+and `src/tests.rs` for the fake-host scanner tests.

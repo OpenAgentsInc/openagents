@@ -10,7 +10,7 @@
 // whole tree for it, allowing exactly the places a copy is meant to be:
 //
 //   - `surfaces/coder/` — the artifacts themselves;
-//   - the two generated modules, which ARE the build output;
+//   - the generated Rust module, which is the build output;
 //   - `plugins/<id>/manifest.json` — where a catalog line is edited, the
 //     artifact being its mirror rather than its replacement;
 //   - the two Rust golden files, which pin the composed output on purpose;
@@ -33,7 +33,6 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ALLOWED = [
   "surfaces/coder/",
   "crates/openagents-cli/src/surfaces.rs",
-  "packages/openagents-cli/src/coder-surfaces.generated.ts",
   "plugins/",
   "crates/openagents-cli/tests/coder-surfaces-golden.json",
   "crates/openagents-cli/tests/coder-amber-surfaces-golden.json",
