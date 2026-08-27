@@ -24,6 +24,13 @@ doctor`. The procedure stays the source of truth for *what and why*; the CLI
 spec owns *how*. Until a command exists, run the stage by hand exactly as
 written.
 
+**Where the pieces live.** The CLI is Rust (this repo). The harness is
+Harbor, reached through a digest-pinned container the CLI provisions — new
+Python-side work goes into that image, never pip-installed on a host. The
+record and the live view are the Phoenix Gym in the `openagents.com` repo
+(run/trial rows, ingest routes, `/gym` scoreboards); the retired
+Workers-gym TypeScript in this monorepo is archived reference only.
+
 ## Stage A — Inventory (M0)
 
 **Goal:** one reproducible catalog of every candidate session on this machine,
@@ -174,6 +181,10 @@ Same rails as tb2:
 bench/run-suite.sh bench/suites/coderbench-agent-building-v1.suite.json \
   --model openai/gpt-5.6-luna --lane proxy --n-concurrent 2
 ```
+
+(Once the Gym CLI lands, `openagents gym run coderbench-agent-building-v1
+--model ...` is the same thing with the prereq checks and lifecycle
+registration handled; the shell command stays as the documented fallback.)
 
 - amd64 verifier rule applies (Rosetta/cloud/real amd64) exactly as documented
   in `bench/README.md`; ungraded trials are not scores.

@@ -50,3 +50,12 @@ executes either suite with the same lifecycle receipts, `gym results compare`
 puts their numbers side by side so our benchmark is always measured against
 the established one, and `gym corpus`/`gym dataset` manage the trace pipeline
 that only CoderBench needs.
+
+**Architecture, one line each:** the CLI is Rust; the harness is Harbor,
+reached through a pinned container; the record and the live visualization are
+the Phoenix Gym in the separate `openagents.com` repo (`/gym` and
+`/gym/runs/:id` LiveViews, ingest + read routes, trial transcripts rendered
+live); the same versioned JSON documents the CLI emits are what the terminal,
+the Rust TUI, and any web surface each render, so new interfaces are new
+renderers, not new definitions. The retired Workers-gym TypeScript in this
+monorepo is historical reference only.

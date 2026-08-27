@@ -97,10 +97,11 @@ Everything hangs off machinery that already exists:
 | Upload + storage | `openagents trace upload --visibility <rung>` → `POST /api/v1/traces`, idempotent by digest | publish the corpus once |
 | Task provenance | forge issues with closing-reference commits (`bench/tasks/owned/README.md` pattern) | pin each task to its outcome |
 | Suites | `bench/suites/*.suite.json` via `openagents.effectiveness_suite.v1`, content-digest pins | domain-tagged `coderbench-*.suite.json` |
-| Runs | `bench/run-suite.sh` + `bench/adapters/openagents_coder.py` | grade the coder on the suite |
+| Runs | `bench/run-suite.sh` + `bench/adapters/openagents_coder.py`, driven by `openagents gym run` | grade the coder on the suite |
 | Scoring | `packages/coder-effectiveness` thresholds + compare/report | floors, deltas, smoke rejection |
 | Receipts | `bench-results/coderbench-<domain>-v1.jsonl` hash chains | append-only trend lines |
-| CLI surface | `openagents gym` (spec: [`gym-cli-spec.md`](gym-cli-spec.md)) | one command surface for suites, runs, results, corpus, datasets — both tb2 and CoderBench |
+| Record + view | the Phoenix Gym in the `openagents.com` repo: run/trial records, ingest routes, `/gym` LiveView scoreboards | runs land server-side and render live; retired Workers-gym code is reference only |
+| CLI surface | `openagents gym` (spec: [`gym-cli-spec.md`](gym-cli-spec.md)) | one Rust command surface for suites, runs, results, corpus, datasets — both tb2 and CoderBench; Harbor reached through a pinned container |
 
 New code is limited to: a curation CLI that walks the inventory → redact →
 upload → register pipeline and writes the ledger; a distiller that turns a

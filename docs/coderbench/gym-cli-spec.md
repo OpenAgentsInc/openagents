@@ -9,16 +9,31 @@ against. Companions: [`plan.md`](plan.md) (the benchmark it serves),
 
 The Gym is OpenAgents' graded-work arena: Harbor (and later other harnesses)
 run benchmark tasks against agents, a verifier decides, and receipted results
-land in the public projections. Today the loop lives in three places that do
-not know about each other:
+land where they can be watched and compared. Today the loop lives in three
+places that do not know about each other:
 
 - `bench/run-suite.sh` and `bench/post_gym_run.py` in this repository — the
   registered-run lifecycle (`POST /api/v1/gym/runs/start` → live trial
   updates → `PATCH` to `graded`/`abandoned`).
-- The server's Gym surface (`apps/openagents.com/workers/api/src/inference/gym/`)
-  — run progress, ladder, leaderboard, Harbor dispatch receipts, full-trace
-  archives, Terminal-Bench comparison reports.
+- The API in the separate `openagents.com` repository — a Phoenix/Elixir
+  app whose `OpenAgents.Gym` context holds runs and trials
+  (`lib/openagents/gym/`), the ingest routes
+  (`POST /api/v1/gym/runs[/start|/:id/trials]`, `PATCH /api/v1/gym/runs/:id`,
+  `GET /api/v1/gym/runs`), PubSub broadcasts on the `"gym"` and
+  `"gym:run:<id>"` topics, and the operator-only LiveView scoreboards
+  (`/gym`, `/gym/runs/:id`) that move a run from "running" to the graded
+  table in place and stream a selected trial's transcript through the same
+  components `/chat` renders with.
 - Whatever a person remembers to do with `trace upload` afterwards.
+
+Architecture note, and a correction of record: earlier CoderBench drafts
+pointed the Gym at the retired Node/Workers stack in this monorepo
+(`apps/openagents.com/workers/api/src/inference/gym/`). That code is
+**historical reference material** — the live Gym API and UI are the Phoenix
+app. The CLI in this repo is and stays Rust; the harness stays Harbor,
+mediated through this CLI; the Phoenix app is the record-and-view surface the
+CLI uploads to. The retired TypeScript implementations stay archived and are
+read for prior decisions, not extended.
 
 A Gym section in the CLI makes the whole cycle first-class: **discover a
 suite, run it, watch it, score it, record it, compare it — and manage the
@@ -27,6 +42,34 @@ terminal or knowing which internal route each step hits.** It is also the
 substrate CoderBench runs on, side by side with Terminal-Bench, so numbers
 from the established benchmark and our own land in one place under one set of
 receipts.
+
+## 1.1 Where each piece lives (the architecture, stated once)
+
+- **Rust CLI (this repo) — the control plane.** Everything a person or an
+  agent drives: suites, runs, results, corpus, datasets, compute. Built out in
+  Rust as much as possible; this is where the real logic goes.
+- **Harbor (Python) — the harness.** Runs tasks, installs agents, executes
+  verifiers. Not reimplemented. Where new Python would otherwise be written,
+  the preference is a **container mediated through this CLI** — Harbor
+  invoked inside an image the Gym commands start and read results from —
+  keeping the host machine free of Python environment drift.
+- **Phoenix (openagents.com repo) — the record and the window.** The Gym
+  context persists runs/trials/digests and answers the ingest + read routes;
+  the LiveView scoreboards render them live over PubSub. The CLI uploads to
+  it (`forge:write` bearer, operator re-check server-side) and reads the run
+  progress projection from it; it never embeds a second storage layer.
+- **Visualization, shared by construction.** Every Gym command emits
+  versioned JSON (`openagents.gym.<thing>.v1`) whose shape is the interface:
+  the same document renders as plain text in the terminal, feeds a future
+  ratatui pane in the coder TUI (the rendering rule `render.ts` already
+  holds — unknown prints as unknown, never as a fabricated zero), and is what
+  a web or mobile surface would consume. Add an interface by writing one
+  renderer over the schema, not by touching the commands.
+
+The retired Workers-gym TypeScript code in this monorepo is archived
+reference for decisions those teams already made (staleness sweeps, digest
+idempotency, ladder building) — the Phoenix context is the live descendant
+of the same ideas, and new work targets Rust + Harbor + Phoenix only.
 
 Design law, inherited from the CLI's existing conventions:
 
@@ -56,13 +99,20 @@ openagents gym <subcommand>
 Wiring follows the existing pattern exactly: a `GymArgs` struct with a
 `GymAction` enum in `cli.rs`, a `run_gym` dispatcher, and per-area client
 modules (`src/gym/`) in the shape of `trace_client.rs` — typed requests,
-typed errors through `ApiError`, `diag` logging of every request.
+typed errors through `ApiError`, `diag` logging of every request. All Rust:
+parsing, pinning, scoring math, corpus bookkeeping, dataset compilation live
+in the CLI crate or in `coder-effectiveness` logic ported to it, not in a
+script the CLI shells out to and cannot type.
 
 Scope note: `gym` talks to the **Gym API and local harness**. It is not a
-replacement for `harbor run` — Harbor stays the execution engine, invoked
-through `bench/run-suite.sh`'s lifecycle (start → live update → finalize).
-The CLI drives that lifecycle and reads its outputs; it does not reimplement
-the runner.
+replacement for `harbor run` — Harbor stays the execution engine. The CLI
+drives the lifecycle (start → live update → finalize), preferably by running
+Harbor inside a pinned container (`gym env` provisions it) so the host needs
+no Python toolchain at all; a host-native Harbor install remains the
+documented fallback for lanes that want it. The CLI reads Harbor's job
+directories and reports verdicts; it does not reimplement the runner, and it
+does not reimplement the Phoenix record layer — it is that API's most
+important client.
 
 ## 3. The command surface
 
@@ -99,28 +149,38 @@ openagents gym run list [--mine]             # recent runs, by state
 openagents gym run cancel <run-id>
 ```
 
-`gym run` is the friendly front door to `bench/run-suite.sh`:
+`gym run` is the friendly front door to the Harbor lane:
 
 - Resolves the suite, verifies pins (`suite check` semantics first), verifies
-  prereqs (Harbor installed; Docker up and amd64 emulation working on Apple
-  Silicon — probe it, name the Rosetta fix in the refusal), then shells the
-  runner with `OPENAGENTS_TOKEN` from the stored credential, not the
-  environment.
+  prereqs (Harbor reachable; Docker up and amd64 emulation working on Apple
+  Silicon — probe it, name the Rosetta fix in the refusal), then executes the
+  suite through the harness with `OPENAGENTS_TOKEN` from the stored
+  credential, not the environment.
+- **Execution target, in order of preference:** (1) the pinned Harbor
+  container — `gym env` builds/pulls an image holding Harbor and the adapter,
+  the CLI starts it with the job directory mounted, and nothing Python lives
+  on the host; (2) a Box VM (`gym env box create`) for lanes that want the
+  trials off this machine entirely; (3) host-native Harbor, the documented
+  fallback, kept for parity with the current `bench/run-suite.sh` path. All
+  three write the same job-directory shape, so everything downstream —
+  scoring, ingest, rendering — is identical.
 - Registers the run (`POST /api/v1/gym/runs/start`) when a token is present,
-  streams trial states live (`GET /api/public/gym/run-progress` or polling the
-  job dir when running against a dev server), and finalizes through the same
-  path `post_gym_run.py --run-id` uses. The finalize rule is enforced client
-  side too: **a run whose verifier never graded a single trial is patched
+  streams trial states live (subscribing to the API's run stream or polling
+  the job directory when running against a dev server), and finalizes through
+  the same lifecycle routes. The finalize rule is enforced client side too:
+  **a run whose verifier never graded a single trial is patched
   `abandoned`, never `graded`** — a crashed grader is not a grade.
 - `--lane proxy|local` (default inferred from the model string, exactly as
   the shell runner does), `--n-concurrent`, `--jobs-dir`, `--timeout-multiplier`,
+  `--env <provider>` passing through to Harbor (daytona, modal, …),
   `--dry-run` (prints the exact commands; registers nothing).
 - Output: the run id, the per-task states as they land
   (`accepted`/`rejected`/`ungraded`), and the summary line. `--json` emits
-  `openagents.gym.run_status.v1`.
-- `run status` on a run registered server-side reads the run-progress
-  projection; on a local-only run (no token at start time) it reads the job
-  directory the way `coder-effectiveness` does.
+  `openagents.gym.run_status.v1` — the same document the TUI pane and the
+  web scoreboard render.
+- `run status` on a run registered server-side reads the run's record
+  through `GET /api/v1/gym/runs`; on a local-only run (no token at start
+  time) it reads the job directory the way `coder-effectiveness` does.
 
 ### 3.3 `gym results` — score, record, compare
 
@@ -131,15 +191,18 @@ openagents gym results compare <suite-id> [--last N]
 openagents gym results trend <suite-id>
 ```
 
-- `score` wraps `pnpm run effectiveness:report` + the append step. Refusals
-  pass through verbatim (`unclassified_run`, `smoke_run`, exit 3): the CLI
-  prints the store's reason and does not editorialize. `--append` requires
-  the suite to be at `score` tier in its manifest — a smoke-tier suite
-  records nowhere, and the refusal says so.
-- `show`/`compare`/`trend` read `bench-results/<suite>.jsonl` through
-  `@openagentsinc/coder-effectiveness`'s compare/verify tooling. Verify-first:
-  the chain is checked before the trend is drawn; a broken chain stops the
-  command with the offending row named.
+- `score` computes the effectiveness report (job directory → graded trials →
+  accepted rate, cost per accepted outcome, threshold gate) in Rust — the
+  same grading rule `packages/coder-effectiveness` documents (a verifier ran
+  and returned a positive reward; ungraded never counts in the denominator) —
+  and appends through the results store. Refusals pass through verbatim
+  (`unclassified_run`, `smoke_run`, exit 3): the CLI prints the store's
+  reason and does not editorialize. `--append` requires the suite to be at
+  `score` tier in its manifest — a smoke-tier suite records nowhere, and the
+  refusal says so.
+- `show`/`compare`/`trend` read `bench-results/<suite>.jsonl`. Verify-first:
+  the hash chain is checked before the trend is drawn; a broken chain stops
+  the command with the offending row named.
 - The comparison that motivates this whole section lives here:
   `gym results compare tb2-cross-section coderbench-agent-building-v1` puts
   the established benchmark and our own side by side — per-model accepted
@@ -220,7 +283,8 @@ openagents gym dataset diff <id> <suite-file>
 
 Benchmarks need boxes. The env subcommands wire Gym runs to compute through
 the pieces that already exist — `openagents box` VMs, the Computer daemon,
-and cloud providers Harbor already knows (Daytona, Modal, e2b, EC2, …):
+the pinned Harbor container, and cloud providers Harbor already knows
+(Daytona, Modal, e2b, EC2, …):
 
 ```
 openagents gym env probe                    # local: docker, amd64 emulation, harbor, disk
@@ -229,16 +293,22 @@ openagents gym env list                     # available execution targets
 openagents gym env use <target>             # default target for this machine
 openagents gym env box create [--count N]   # spin up Box VMs for a run (wraps box create/fanout)
 openagents gym env box release <box-id>...  # stop + release after a run
+openagents gym env pull                     # build/pull the pinned harbor-runner image
 ```
 
 - `probe` composes the existing `computer probe` (toolchains, coding agents,
   worktrees) with Gym-specific checks: Docker present, amd64 images runnable
   (the qemu/Rosetta verifier segfault detection from `bench/README.md` made
   mechanical — run the canary, read the result, don't ask the human to
-  remember), Harbor importable, disk headroom.
+  remember), the `harbor-runner` image present or pullable, disk headroom.
 - `doctor` is probe plus the fix: every failed check prints the exact remedy
-  (enable Rosetta in Docker Desktop settings; `pip install harbor`; `openagents
+  (enable Rosetta in Docker Desktop settings; `gym env pull`; `openagents
   auth login`). Exit 0 means a scored run can happen on this machine now.
+- `env pull` is how the Python question stays answered by containers: the
+  image pins Harbor, the benchmark adapters, and this repo's
+  `bench/adapters/openagents_coder.py` by digest. New Python-side work (a new
+  adapter knob, a verifier helper) lands inside that image's build, versioned
+  and digest-pinned — never pip-installed onto a host at run time.
 - `env box create` provisions execution targets through the existing Box
   client (`box create`, `box fanout` for N) labeled for the Gym run, so a
   proxy-lane suite can run its trials on cloud boxes instead of the local
@@ -278,6 +348,25 @@ The suite manifests themselves stay `openagents.effectiveness_suite.v1` —
 that schema is already the pinned contract; the Gym layer reads it and does
 not fork it.
 
+**Schemas are the visualization contract.** The versioned JSON each command
+emits is what every surface renders:
+
+- **The terminal** — the plain-text rendering the command itself prints.
+- **The coder TUI** — a `gym` pane in the ratatui interface reads the same
+  documents (run status, results trend) and draws rows and bars from them.
+  The TUI adds no parsing of its own beyond the schema, so a schema change
+  is a one-place migration.
+- **The web** — the Phoenix LiveView scoreboards (`/gym`, `/gym/runs/:id`
+  in the openagents.com repo) already render the run/trial records live over
+  PubSub; anything new the Gym CLI produces (corpus inventory, dataset
+  views, comparison reports) reaches a web surface by the API serving the
+  same versioned document, not by a second definition of the shape.
+
+The rule for adding an interface: write one renderer over an existing
+`openagents.gym.*` schema. If a renderer needs a field the schema lacks, the
+schema changes first, in Rust, with a version bump — renderers never scrape
+human text.
+
 ## 5. Errors worth refusing well
 
 - **Suite pin drift** → refuse `run`, print the `suite check` diff.
@@ -295,23 +384,29 @@ not fork it.
 ## 6. Build order
 
 This maps to `plan.md`'s milestones; the CLI work lands alongside them, not
-before:
+before. Rust first at every step; Harbor reached through its pinned container;
+Phoenix only as the record/ingest API the commands call.
 
-1. **`gym suite list/show/check` + `gym run` (driving `run-suite.sh`)** —
-   the existing tb2 path, first-class. Immediately useful with zero corpus.
+1. **`gym suite list/show/check` + `gym run` (host Harbor path, driving the
+   existing lifecycle)** — the current tb2 path, first-class. Immediately
+   useful with zero corpus; the shell runner keeps working beside it.
 2. **`gym results score/compare` + `env probe/doctor`** — the scoring loop
-   and the prereq checks, still all-Terminal-Bench. At this point
-   "run tb2 and coderbench through one CLI" is real for everything recorded
-   so far.
-3. **`gym corpus inventory/qualify/import/status`** — M0/M1 of CoderBench.
+   ported to Rust and the prereq checks, still all-Terminal-Bench. At this
+   point "run tb2 and coderbench through one CLI" is real for everything
+   recorded so far.
+3. **`gym env pull` + `gym run` on the pinned Harbor container** — the host
+   loses its Python requirement; container-mediated harness becomes the
+   default and host-native becomes the fallback.
+4. **`gym corpus inventory/qualify/import/status`** — M0/M1 of CoderBench.
    The inventory determinism test and the import pacing are the two
    non-negotiables here.
-4. **`gym dataset`** — M2–M4: labels accumulate, datasets get pinned into the
+5. **`gym dataset`** — M2–M4: labels accumulate, datasets get pinned into the
    first CoderBench suite.
-5. **`gym env box`** — cloud-box execution lanes, after the local path is
+6. **`gym env box`** — cloud-box execution lanes, after the local path is
    boring.
-6. **`gym results trend`, `corpus verify`, run `cancel`** — the polish that
-   only matters once the earlier stages are load-bearing.
+7. **TUI gym pane + `gym results trend`, `corpus verify`, run `cancel`** —
+   the visual and polish layer, once the commands underneath are
+   load-bearing.
 
 Each step leaves the previous ones working; nothing lands as a flag-gated
 half-command. The test suite follows the house pattern (`tests/trace_upload_test.rs`
