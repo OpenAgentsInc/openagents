@@ -23,8 +23,6 @@ pub mod system_prompt {
     /// `coder.concision`
     pub const CODER_CONCISION: &str =
         "Answer very concisely unless the reader asks for a longer response.";
-    /// `coder.verification`
-    pub const CODER_VERIFICATION: &str = "Verify in steps, cheapest first: run just the files you changed, then the owning package, then — once, at the end, before you report done — the full suite. A suite run costs minutes; a file-scoped run costs seconds. Never re-execute a command to read something from output you already received but lost: long runs keep their whole transcript on disk and the tool result names the path, so read or grep that file instead of paying for the run twice.";
     /// `coder.no_tools`
     pub const CODER_NO_TOOLS: &str = "You have no tools in this session: you cannot read or write files, run commands, or reach anything outside this conversation. Answer from what the reader tells you, and say plainly when something would need a tool you do not have.";
     /// `coder.tool_list_header.rust`
@@ -46,9 +44,9 @@ pub mod tool_descriptions {
     /// `rust.edit`
     pub const RUST_EDIT: &str = "Replace one exact run of text in a file. `oldText` must appear exactly once: if it appears more than once the edit is refused and the file is left alone, so add the lines above and below the one you mean until the match is unique, then call again. Match byte for byte first; if nothing matches exactly, the site is still found when the difference is only trailing or leading whitespace, or doubled backslashes before a newline, and whole lines are replaced -- but a miss is cheaper than a misspelled guess, so copy the text rather than retyping it. On a miss the reply shows the file's real lines beside what you sent. `newText` may be empty to delete the run. Use this rather than `sed` for a surgical change.";
     /// `rust.bash`
-    pub const RUST_BASH: &str = "Run a command through `/bin/sh -c` in the session's working directory, {cwd}. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. This is the same runner as `shell`, and either name reaches it. Re-running a command only to view different parts of its earlier output is refused when the command is duplicated inside one call, and wasted otherwise: long commands keep their whole output on disk and the result names the path.";
+    pub const RUST_BASH: &str = "Run a command through `/bin/sh -c` in the session's working directory, {cwd}. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. This is the same runner as `shell`, and either name reaches it.";
     /// `rust.shell`
-    pub const RUST_SHELL: &str = "Run a shell command on this machine. The working directory is {cwd}, so paths are relative to it and you do not need to ask where you are. Returns combined stdout and stderr with the exit code. Batch independent commands into one call with && instead of one call each: every call replays the conversation so far. Re-running a command only to view different parts of its earlier output is refused when the command is duplicated inside one call, and wasted otherwise: long commands keep their whole output on disk and the result names the path.";
+    pub const RUST_SHELL: &str = "Run a shell command on this machine. The working directory is {cwd}, so paths are relative to it and you do not need to ask where you are. Returns combined stdout and stderr with the exit code. Batch independent commands into one call with && instead of one call each: every call replays the conversation so far.";
     /// `rust.skill`
     pub const RUST_SKILL: &str = "Read one of this repository skill procedures: a written procedure with conventions, commands, and rules. Call it before doing work a skill covers. Skills available:{skills}";
     /// `rust.openagents`
@@ -67,11 +65,11 @@ pub mod tool_descriptions {
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     (
         "system-prompt",
-        "sha256:ed7d11e64b1129e2d3f98c1a2169e838086e5e9af151298829518eca851831a7",
+        "sha256:9dcbe4755e1cdd317afefb3f2b4c694df17ca6aefe07680243c67b7ec7289b0c",
     ),
     (
         "tool-descriptions",
-        "sha256:338515dacc522b1edcb791872631d3bc42849f1402bccec631b4c6536921f772",
+        "sha256:273000cab096e1adebaaed7143ced5480f7112d23e5c6e965e4a75052599599f",
     ),
     (
         "catalog-lines",
