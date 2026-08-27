@@ -3202,19 +3202,6 @@ mod tests {
 
 #[cfg(test)]
 mod defect_tests {
-    /// Read the `cmd-N.log` a shell reply named. The run counter is
-    /// process-global, so a test cannot predict `N`; the reply is the
-    /// authority, which is the same thing a model reads.
-    fn read_named_log(reply: &str, logs: &std::path::Path) -> String {
-        let name = reply
-            .split("kept in ")
-            .nth(1)
-            .and_then(|rest| rest.split(" (").next())
-            .unwrap_or_else(|| panic!("no log named in reply: {reply}"));
-        std::fs::read_to_string(logs.join(name))
-            .unwrap_or_else(|error| panic!("could not read {name}: {error}"))
-    }
-
     use super::*;
 
     /// `&combined[..OUTPUT_LIMIT]` is a *byte* index into a `String`. The first
@@ -3626,7 +3613,7 @@ mod defect_tests {
         let command = "echo header-marker; sleep 31; echo tail-marker";
 
         let (_stop, mut cancel) = watch::channel(false);
-        let (text, failed) =
+        let (_text, failed) =
             run_real_shell_logged(command, work.path(), 60, &mut cancel, Some(session.path()))
                 .await;
         assert!(!failed);
@@ -3655,7 +3642,7 @@ mod defect_tests {
             "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo boom; exit 3";
 
         let (_stop, mut cancel) = watch::channel(false);
-        let (text, failed) =
+        let (_text, failed) =
             run_real_shell_logged(command, work.path(), 90, &mut cancel, Some(session.path()))
                 .await;
         assert!(failed);

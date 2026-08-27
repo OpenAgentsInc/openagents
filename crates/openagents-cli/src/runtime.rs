@@ -1801,13 +1801,12 @@ impl CoderRuntimeSession {
             // session is shown, so it also lands on the summary, which is
             // the one file a resume reads before any replay (#189).
             for event in &events {
-                if event.event_type == "turn.checkpoint" {
-                    if let Some(text) = event.payload.get("text").and_then(|v| v.as_str()) {
-                        if let Err(error) = store.set_last_checkpoint(text) {
-                            self.record_failures
-                                .push(format!("the checkpoint was not saved to the summary: {error}"));
-                        }
-                    }
+                if event.event_type == "turn.checkpoint"
+                    && let Some(text) = event.payload.get("text").and_then(|v| v.as_str())
+                    && let Err(error) = store.set_last_checkpoint(text)
+                {
+                    self.record_failures
+                        .push(format!("the checkpoint was not saved to the summary: {error}"));
                 }
             }
         }
