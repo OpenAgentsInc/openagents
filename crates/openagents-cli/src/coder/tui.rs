@@ -197,21 +197,18 @@ pub fn format_duration(total_seconds: u64) -> String {
     }
 }
 
-/// The loading row: spinner, then any waiting text, then the running count,
-/// single-spaced — `⠹ Waiting for first token 4s` or, on an ordinary turn,
-/// `⠹ 4s`. Extracted because the first cut of the composition swallowed the
+/// The loading row's leading span: the spinner, then any waiting text,
+/// single-spaced — `⠹ Waiting for first token` or, on an ordinary turn,
+/// just `⠹`. The running count is appended by the caller in its own dimmer
+/// span. Extracted because the first cut of the composition swallowed the
 /// count on the exact row it existed for: a match over two emptiness flags
 /// let the `(true, _)` arm win whenever `waiting` happened to be unset,
 /// which is to say on every normal turn (#216).
-pub fn loading_line(spinner: char, waiting: &str, stopwatch: &str) -> String {
+pub fn loading_prefix(spinner: char, waiting: &str) -> String {
     let mut text = spinner.to_string();
     if !waiting.is_empty() {
         text.push(' ');
         text.push_str(waiting);
-    }
-    if !stopwatch.is_empty() {
-        text.push(' ');
-        text.push_str(stopwatch);
     }
     text
 }
@@ -735,8 +732,21 @@ impl CoderUi {
             let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
             let status = self.waiting.as_deref().unwrap_or_default();
             let stopwatch = self.stopwatch_text();
-            let text = loading_line(spinner, status, &stopwatch);
-            all_lines.push(Line::from(vec![Span::styled(text, style)]));
+            // The count is secondary to the spinner and any waiting text, so
+            // it reads at the 25% opacity the model labels use: present, but
+            // never competing with the row it measures (#216).
+            let mut spans = Vec::with_capacity(2);
+            spans.push(Span::styled(
+                loading_prefix(spinner, status),
+                style,
+            ));
+            if !stopwatch.is_empty() {
+                spans.push(Span::styled(
+                    format!(" {stopwatch}"),
+                    style.fg(MODEL_TEXT_COLOR),
+                ));
+            }
+            all_lines.push(Line::from(spans));
         }
 
         let total = all_lines.len() as u16;
@@ -1649,14 +1659,9 @@ mod tests {
     #[test]
     fn the_loading_row_shows_the_spinner_and_the_running_count() {
         // The ordinary turn: no waiting text, count still visible.
-        assert_eq!(loading_line('⠹', "", "4s"), "⠹ 4s");
-        // A cancel or first-token wait, with the count riding beside it.
-        assert_eq!(
-            loading_line('⠹', "Canceling turn...", "1m30s"),
-            "⠹ Canceling turn... 1m30s"
-        );
-        // Nothing running: the spinner alone, as before the stopwatch.
-        assert_eq!(loading_line('⠹', "", ""), "⠹");
+        assert_eq!(loading_prefix('⠹', ""), "⠹");
+        // A cancel or first-token wait rides in front of the count.
+        assert_eq!(loading_prefix('⠹', "Canceling turn..."), "⠹ Canceling turn...");
         // The UI-level path agrees: a running turn with `waiting` unset
         // still counts.
         let mut ui = CoderUi::new();
@@ -1664,10 +1669,5 @@ mod tests {
         ui.turn_started();
         ui.turn_started_at = Some(now_ms() - 9_000);
         assert_eq!(ui.stopwatch_text(), "9s");
-        let stopwatch = ui.stopwatch_text();
-        assert_eq!(
-            loading_line(SPINNER_FRAMES[0], "", &stopwatch),
-            "⠋ 9s"
-        );
     }
 }
