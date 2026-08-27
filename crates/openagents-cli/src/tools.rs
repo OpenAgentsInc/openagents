@@ -338,6 +338,10 @@ pub struct DelegationGate {
 
 pub struct HarnessToolRegistry {
     pub cwd: PathBuf,
+    /// Where this session's command logs land, when a local session store
+    /// exists. `None` keeps `shell` writing nothing to disk; a path makes
+    /// every run's full output addressable for the rest of the session (#152).
+    pub session_log_dir: Option<PathBuf>,
     /// Discovered skills by name, in catalog order.
     pub skills: BTreeMap<String, SkillInfo>,
     /// `None` on a delegated child, so it cannot delegate further.
@@ -378,6 +382,19 @@ impl HarnessToolRegistry {
         Self::build(cwd, None)
     }
 
+    /// Point this session's shell logs at one directory, created on first
+    /// run rather than here: a session that never shells out never makes a
+    /// directory.
+    pub fn with_session_log_dir(mut self, dir: PathBuf) -> Self {
+        self.session_log_dir = Some(dir);
+        self
+    }
+
+    /// The directory this session's shell logs land in, when one is set.
+    pub fn session_log_dir(&self) -> Option<&Path> {
+        self.session_log_dir.as_deref()
+    }
+
     /// Grant the read-only mount tier, for a caller with an operator behind
     /// it. Without this a plugin that declares mounts refuses to load, which
     /// is the safe default for an unattended session.
@@ -412,6 +429,7 @@ impl HarnessToolRegistry {
         let check_scopes = crate::checks::ChecksConfig::load(&root).unwrap_or(None);
         let mut registry = Self {
             cwd: root,
+            session_log_dir: None,
             skills: BTreeMap::new(),
             delegation,
             catalog,
@@ -1665,7 +1683,12 @@ async fn run_real_shell_logged(
         }
     }
 
+    let mut combined = String::new();
+    combined.push_str(&String::from_utf8_lossy(&stdout));
+    combined.push_str(&String::from_utf8_lossy(&stderr));
+
     match end {
+        End::Status(Ok(status)) if status.success() => (combined, false),
         End::Status(Ok(status)) => {
             let mut combined = String::new();
             combined.push_str(&String::from_utf8_lossy(&stdout));
@@ -2990,6 +3013,19 @@ mod tests {
 
 #[cfg(test)]
 mod defect_tests {
+    /// Read the `cmd-N.log` a shell reply named. The run counter is
+    /// process-global, so a test cannot predict `N`; the reply is the
+    /// authority, which is the same thing a model reads.
+    fn read_named_log(reply: &str, logs: &std::path::Path) -> String {
+        let name = reply
+            .split("kept in ")
+            .nth(1)
+            .and_then(|rest| rest.split(" (").next())
+            .unwrap_or_else(|| panic!("no log named in reply: {reply}"));
+        std::fs::read_to_string(logs.join(name))
+            .unwrap_or_else(|error| panic!("could not read {name}: {error}"))
+    }
+
     use super::*;
 
     /// `&combined[..OUTPUT_LIMIT]` is a *byte* index into a `String`. The first
@@ -3390,6 +3426,108 @@ mod defect_tests {
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
             "keep\nchanged\nkeep\n"
         );
+    }
+
+    /// A logged run leaves a file holding the command and everything it
+    /// printed, and the reply names that file (#152).
+    #[tokio::test]
+    async fn a_logged_shell_run_keeps_its_full_output_and_names_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = dir.path().join("commands");
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()))
+            .with_session_log_dir(logs.clone());
+
+        let out = registry
+            .execute_tool(&file_call(
+                "bash",
+                serde_json::json!({"command": "printf 'line one\\nline two\\n'"}),
+            ))
+            .await;
+
+        assert!(!out.is_error, "{}", out.output);
+        assert!(
+            out.output.contains("Full output of this run kept"),
+            "the reply must say the log exists: {}",
+            out.output
+        );
+        let log = read_named_log(&out.output, logs.as_path());
+        assert!(log.contains("printf"), "the command is recorded: {log}");
+        assert!(log.contains("line one"), "stdout is recorded: {log}");
+    }
+
+    /// The point of the log: a follow-up question about output that was cut
+    /// from the reply is answered by reading the file, not by paying for the
+    /// command again.
+    #[tokio::test]
+    async fn a_truncated_logged_run_still_has_everything_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = dir.path().join("commands");
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()))
+            .with_session_log_dir(logs.clone());
+
+        let out = registry
+            .execute_tool(&file_call(
+                "bash",
+                serde_json::json!({"command": "seq 1 40000"}),
+            ))
+            .await;
+
+        assert!(!out.is_error, "{}", out.output);
+        assert!(out.output.contains("Output truncated"), "{}", out.output);
+        let log = read_named_log(&out.output, logs.as_path());
+        assert!(
+            log.contains("\n39999\n"),
+            "the truncated tail is recoverable from the log"
+        );
+        assert!(
+            out.output.contains(".log"),
+            "the reply names the file to read: {}",
+            out.output
+        );
+    }
+
+    /// A failing run is logged like a passing one: the failure names are the
+    /// part a follow-up greps for.
+    #[tokio::test]
+    async fn a_failing_logged_run_keeps_its_output_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = dir.path().join("commands");
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()))
+            .with_session_log_dir(logs.clone());
+
+        let out = registry
+            .execute_tool(&file_call(
+                "bash",
+                serde_json::json!({"command": "echo boom; exit 3"}),
+            ))
+            .await;
+
+        assert!(out.is_error, "{}", out.output);
+        let log = read_named_log(&out.output, logs.as_path());
+        assert!(log.contains("boom"), "{}", log);
+    }
+
+    /// Without a session store there is no log and no promise of one; the
+    /// reply is exactly what it always was.
+    #[tokio::test]
+    async fn a_session_without_a_log_dir_keeps_the_untouched_reply() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+
+        let out = registry
+            .execute_tool(&file_call(
+                "bash",
+                serde_json::json!({"command": "echo hello"}),
+            ))
+            .await;
+
+        assert!(!out.is_error, "{}", out.output);
+        assert!(
+            !out.output.contains("Full output"),
+            "no log was promised: {}",
+            out.output
+        );
+        assert!(out.output.contains("hello"), "{}", out.output);
     }
 
     /// The escape-sequence tier, on the defect that motivated it: the model
