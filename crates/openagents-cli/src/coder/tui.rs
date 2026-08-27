@@ -26,6 +26,9 @@ const TOOL_RAIL_WAVE_SPEED: f32 = 0.15;
 const TOOL_OUTPUT_ROWS: usize = 4;
 const TOOL_OUTPUT_SCROLL_FRAMES: u64 = 24;
 const TOOL_SETTLE_FRAMES: u64 = 10;
+/// Live subagent lines kept visible in a delegate box. Older lines collapse
+/// into one `+N earlier` counter, counted rather than stored as text.
+pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
 
 /// Who this session is signed in as.
@@ -154,6 +157,9 @@ pub struct Entry {
     pub duration_seconds: Option<u64>,
     /// Tool output text, rendered as a box of up to four lines.
     pub output: Option<String>,
+    /// Live lines from a delegated agent, clipped to [`MAX_SUBAGENT_LINES`].
+    /// Presentation-only: the ATIF tool record keeps the final output.
+    pub subagent_lines: Vec<String>,
     pub tool: Option<ToolCall>,
     pub at: u64,
     /// The first frame of the one-shot preview sweep for long tool output.
@@ -223,6 +229,7 @@ impl Entry {
             model: None,
             duration_seconds: None,
             output: None,
+            subagent_lines: Vec::new(),
             tool: None,
             at: now_ms(),
             output_scroll_started: None,
@@ -246,6 +253,7 @@ impl Entry {
             model: None,
             duration_seconds: None,
             output: Some(String::new()),
+            subagent_lines: Vec::new(),
             tool: None,
             at: now_ms(),
             output_scroll_started: None,
@@ -253,6 +261,20 @@ impl Entry {
             md: None,
             output_md: None,
             output_md_source: String::new(),
+        }
+    }
+
+    /// Append one live line from a delegated agent.
+    pub fn push_subagent_line(&mut self, line: impl Into<String>) {
+        let line = line.into();
+        let line = line.trim_end();
+        if line.is_empty() {
+            return;
+        }
+        if line.starts_with("· ") {
+            self.subagent_lines.push(line.to_string());
+        } else {
+            self.subagent_lines.push(format!("· {line}"));
         }
     }
 
@@ -1176,12 +1198,28 @@ fn render_entry(
             // single newline as a space, which would destroy logs and tables
             // that are plain text rather than markdown.
             let output_width = width.saturating_sub(2).max(1);
+            let live_subagent = !entry.tool.as_ref().is_some_and(|tool| tool.done)
+                && !entry.subagent_lines.is_empty();
             let output = entry.output.as_deref().unwrap_or("").to_string();
-            let (mut out_lines, out_links) = if tool_output_is_markdown(&output) {
+            let (mut out_lines, out_links, window_rows) = if live_subagent {
+                let hidden = entry
+                    .subagent_lines
+                    .len()
+                    .saturating_sub(MAX_SUBAGENT_LINES);
+                let mut rendered = Vec::new();
+                if hidden > 0 {
+                    rendered.push(Line::from(Span::raw(format!("+{hidden} earlier"))));
+                }
+                for line in entry.subagent_lines.iter().skip(hidden) {
+                    rendered.push(Line::from(Span::raw(line.clone())));
+                }
+                let len = rendered.len();
+                (rendered, Vec::new(), len)
+            } else if tool_output_is_markdown(&output) {
                 let md = entry.output_markdown_mut();
                 let rendered = md.lines(output_width).to_vec();
                 let links = md.links(output_width).to_vec();
-                (rendered, links)
+                (rendered, links, TOOL_OUTPUT_ROWS)
             } else {
                 (
                     output
@@ -1189,6 +1227,7 @@ fn render_entry(
                         .map(|line| Line::from(Span::raw(line.to_string())))
                         .collect(),
                     Vec::new(),
+                    TOOL_OUTPUT_ROWS,
                 )
             };
             while out_lines
@@ -1197,14 +1236,14 @@ fn render_entry(
             {
                 out_lines.pop();
             }
-            let final_start = out_lines.len().saturating_sub(TOOL_OUTPUT_ROWS);
-            let start = if final_start == 0 || !motion_enabled {
+            let final_start = out_lines.len().saturating_sub(window_rows);
+            let start = if live_subagent || final_start == 0 || !motion_enabled {
                 final_start
             } else {
                 let started = *entry.output_scroll_started.get_or_insert(tick);
                 tool_output_scroll_start(final_start, tick.saturating_sub(started))
             };
-            let end = (start + TOOL_OUTPUT_ROWS).min(out_lines.len());
+            let end = (start + window_rows).min(out_lines.len());
             let window = &out_lines[start..end];
 
             // One-line tool call header, flush left.
@@ -1226,7 +1265,10 @@ fn render_entry(
             // Wrapping runs against the width the model label leaves, so a
             // header never runs under the answer's model name the way the
             // assistant body does not.
-            let header_chunks = wrap_text(&header_text, header_body.min(width).saturating_sub(2).max(1));
+            let header_chunks = wrap_text(
+                &header_text,
+                header_body.min(width).saturating_sub(2).max(1),
+            );
             let mut header_iter = header_chunks.iter();
             let header = header_iter.next().cloned().unwrap_or_default();
             lines.push(Line::from(vec![

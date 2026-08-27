@@ -281,6 +281,14 @@ fn trajectory_document(
         } {
             notices.push(notice);
         }
+        if entry.role == Role::Tool {
+            for line in &entry.subagent_lines {
+                notices.push(json!({
+                    "timestamp": iso_for_ms(entry.at),
+                    "text": format!("  {line}"),
+                }));
+            }
+        }
         if entry.role == Role::Notice && entry.text == "Turn canceled." {
             turn_outcomes.push(json!({
                 "timestamp": iso_for_ms(entry.at),
@@ -468,6 +476,43 @@ mod tests {
         assert_eq!(
             document["steps"][0]["message"],
             "/Users/name/repo inspect this path"
+        );
+    }
+
+    #[test]
+    fn subagent_lines_export_as_indented_notices_under_the_tool() {
+        let mut entry = Entry::tool_call("delegate read it");
+        entry.tool = Some(ToolCall {
+            call_id: "d1".to_string(),
+            function_name: "delegate".to_string(),
+            arguments: serde_json::json!({"prompt": "read it"}),
+            output: Some("Done · 1 tool uses · 1s\nreport".to_string()),
+            error: None,
+            done: true,
+            duration_ms: Some(1000),
+        });
+        entry.push_subagent_line("· read Cargo.toml");
+        entry.push_subagent_line("the crate name is openagents-cli");
+        let (document, count) = trajectory_document(
+            &[entry],
+            "model",
+            "/repo",
+            "main",
+            "session",
+            "2026-08-27T00:00:00.000Z",
+        );
+        assert_eq!(count, 1);
+        let notices = document["extra"]["notices"].as_array().unwrap();
+        let texts: Vec<&str> = notices
+            .iter()
+            .filter_map(|notice| notice["text"].as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            vec![
+                "  · read Cargo.toml",
+                "  · the crate name is openagents-cli"
+            ]
         );
     }
 }

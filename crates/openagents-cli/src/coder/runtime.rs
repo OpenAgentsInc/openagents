@@ -78,6 +78,14 @@ pub enum Control {
         /// layer. Zero for a call that never reached a tool.
         duration_ms: u64,
     },
+    /// A delegated agent's activity, streamed into that agent's own box.
+    ///
+    /// The `call_id` is the parent `delegate` call. Child tool starts reuse
+    /// [`Control::Tool`] with this same id so they nest in the box rather than
+    /// opening a sibling; child text uses this variant. A child must not emit
+    /// [`Control::ToolDone`] with the parent id: that would settle the box
+    /// before the agent finished.
+    SubagentOutput { call_id: String, line: String },
     /// The model that actually answered, as its grant pins it.
     Model(String),
     /// The thread the server opened for this session, once it has one.
@@ -306,7 +314,7 @@ impl Session {
         dev: bool,
         tx: Sender<Control>,
     ) -> Self {
-        let tools = HarnessToolRegistry::with_delegation(
+        let mut tools = HarnessToolRegistry::with_delegation(
             None,
             DelegationGate {
                 lane: lane_name.to_string(),
@@ -333,6 +341,18 @@ impl Session {
         let progress = Arc::clone(&sink);
         let streaming = Arc::clone(&sink);
         let turn_router = Arc::new(Mutex::new(TurnRouter::default()));
+        // The turn's own sink: a tool arm that streams (delegate) emits
+        // through this, and TurnRouter scopes every Control by the active
+        // generation so a cancelled turn cannot paint into the next one.
+        tools = tools.with_event_sink({
+            let sink = Arc::clone(&sink);
+            let turns = Arc::clone(&turn_router);
+            Arc::new(move |event| {
+                if let Some(id) = turns.lock().ok().and_then(|router| router.active) {
+                    send_turn(&sink, id, event);
+                }
+            })
+        });
         let observed_turns = Arc::clone(&turn_router);
         let progress_turns = Arc::clone(&turn_router);
         let stream_turns = Arc::clone(&turn_router);

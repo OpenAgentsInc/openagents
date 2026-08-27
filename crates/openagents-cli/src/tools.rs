@@ -47,13 +47,16 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::watch;
 
+use crate::acp::{AcpEvent, acp_event_subagent_line};
 use crate::coder::acp::Agent;
 use crate::coder::acp_harness::{AcpFailure, AcpHarness, PermissionMode};
 use crate::coder::agents::{self, AgentDefinition, ToolPool};
+use crate::coder::runtime::Control;
 use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
 };
+use crate::runtime::{ModelStreamEvent, ToolEvent};
 use crate::surfaces::tool_descriptions as text;
 
 /// The `check` tool's description, with `{scopes}` filled from the repo's
@@ -378,6 +381,61 @@ pub struct DelegationGate {
     pub acp_spent: Arc<AtomicBool>,
 }
 
+/// How a tool arm reaches the turn's Control sink mid-run.
+///
+/// Attached by [`crate::coder::runtime::Session::open_at`] so `delegate` can
+/// stream child activity into the parent box. Absent in headless and child
+/// registries: those callers only need the final [`ToolOutput`].
+pub type ToolEventSink = Arc<dyn Fn(Control) + Send + Sync>;
+
+/// The `· ` prefix the TUI draws on a delegated agent's activity line.
+fn prefix_subagent_line(line: &str) -> String {
+    let line = line.trim_end();
+    if line.is_empty() {
+        String::new()
+    } else if line.starts_with("· ") {
+        line.to_string()
+    } else {
+        format!("· {line}")
+    }
+}
+
+/// Split streamed chunks into complete lines, flushing the remainder on demand.
+struct LineBuffer {
+    pending: String,
+}
+
+impl LineBuffer {
+    fn new() -> Self {
+        Self {
+            pending: String::new(),
+        }
+    }
+
+    fn push_lines(&mut self, chunk: &str, mut emit: impl FnMut(String)) {
+        self.pending.push_str(chunk);
+        while let Some(idx) = self.pending.find('\n') {
+            let line = self.pending[..idx].trim_end().to_string();
+            self.pending.drain(..=idx);
+            if !line.is_empty() {
+                emit(line);
+            }
+        }
+    }
+
+    fn flush(&mut self, mut emit: impl FnMut(String)) {
+        let line = std::mem::take(&mut self.pending);
+        let line = line.trim_end();
+        if !line.is_empty() {
+            emit(line.to_string());
+        }
+    }
+
+    fn discard(&mut self) {
+        self.pending.clear();
+    }
+}
+
 fn installed_agent_ids(gate: &DelegationGate) -> Vec<String> {
     let mut ids = agents::BUILTIN_AGENTS
         .iter()
@@ -421,6 +479,9 @@ pub struct HarnessToolRegistry {
     check_scopes: Option<crate::checks::ChecksConfig>,
     /// The declarations an in-process delegated agent receives.
     tool_pool: ToolPool,
+    /// The turn's Control sink, when this registry belongs to an interactive
+    /// Coder session. `delegate` uses it to stream into the parent box.
+    event_sink: Option<ToolEventSink>,
 }
 
 impl HarnessToolRegistry {
@@ -442,6 +503,29 @@ impl HarnessToolRegistry {
     /// A fresh in-process delegated agent with a constructor-selected pool.
     pub fn with_tool_pool(cwd: Option<PathBuf>, pool: ToolPool) -> Self {
         Self::build(cwd, None, pool)
+    }
+
+    /// Give tool arms the turn's Control sink so they can stream mid-run.
+    pub fn with_event_sink(mut self, sink: ToolEventSink) -> Self {
+        self.event_sink = Some(sink);
+        self
+    }
+
+    fn emit_control(&self, event: Control) {
+        if let Some(sink) = &self.event_sink {
+            sink(event);
+        }
+    }
+
+    fn emit_subagent_line(&self, call_id: &str, line: impl AsRef<str>) {
+        let line = prefix_subagent_line(line.as_ref());
+        if line.is_empty() {
+            return;
+        }
+        self.emit_control(Control::SubagentOutput {
+            call_id: call_id.to_string(),
+            line,
+        });
     }
 
     /// Point this session's shell logs at one directory, created on first
@@ -505,6 +589,7 @@ impl HarnessToolRegistry {
             session_dir: None,
             check_scopes,
             tool_pool,
+            event_sink: None,
         };
         registry.load_local_skills();
         registry
@@ -1384,12 +1469,76 @@ impl HarnessToolRegistry {
                 .into_iter()
                 .map(|tool| tool.name)
                 .collect::<Vec<_>>();
+            let tool_sink = self.event_sink.clone();
+            let stream_sink = self.event_sink.clone();
+            let tool_parent = call.id.clone();
+            let stream_parent = call.id.clone();
+            let content_buf = Arc::new(Mutex::new(LineBuffer::new()));
+            let reasoning_buf = Arc::new(Mutex::new(LineBuffer::new()));
             let mut runtime = crate::runtime::CoderRuntimeSession::new(
                 crate::runtime::Lane::from_str(&gate.lane),
                 gate.api_base.clone(),
                 gate.user_token.clone(),
                 tools,
-            );
+            )
+            .observing_tools(Arc::new(move |event: ToolEvent| {
+                let Some(sink) = &tool_sink else {
+                    return;
+                };
+                match event {
+                    ToolEvent::Started {
+                        name, arguments, ..
+                    } => sink(Control::Tool {
+                        call_id: tool_parent.clone(),
+                        name,
+                        arguments,
+                    }),
+                    ToolEvent::Finished { .. } => {
+                        // Do not emit ToolDone with the parent id: that would
+                        // settle the delegate box before the agent finished.
+                    }
+                }
+            }))
+            .observing_stream(Arc::new(move |event| {
+                let Some(sink) = &stream_sink else {
+                    return;
+                };
+                let emit_line = |line: String| {
+                    let line = prefix_subagent_line(&line);
+                    if line.is_empty() {
+                        return;
+                    }
+                    sink(Control::SubagentOutput {
+                        call_id: stream_parent.clone(),
+                        line,
+                    });
+                };
+                match event {
+                    ModelStreamEvent::ContentDelta(chunk) => {
+                        if let Ok(mut buf) = content_buf.lock() {
+                            buf.push_lines(&chunk, emit_line);
+                        }
+                    }
+                    ModelStreamEvent::ReasoningDelta(chunk) => {
+                        if let Ok(mut buf) = reasoning_buf.lock() {
+                            buf.push_lines(&chunk, emit_line);
+                        }
+                    }
+                    ModelStreamEvent::ContentCommitted => {
+                        if let Ok(mut buf) = content_buf.lock() {
+                            buf.flush(emit_line);
+                        }
+                    }
+                    ModelStreamEvent::ContentDiscarded => {
+                        if let Ok(mut buf) = content_buf.lock() {
+                            buf.discard();
+                        }
+                        if let Ok(mut buf) = reasoning_buf.lock() {
+                            buf.flush(emit_line);
+                        }
+                    }
+                }
+            }));
             runtime.set_tool_cancellation(cancel);
             runtime.messages.push(crate::runtime::ChatMessage {
                 role: "system".to_string(),
@@ -1434,10 +1583,7 @@ impl HarnessToolRegistry {
     /// merged. Every refusal here is one the old tool's tests pin, kept
     /// verbatim so the consolidation is a move and not a rewrite.
     ///
-    /// This path loses the old host tool's live streaming of the child's
-    /// output into its tool box — builtin tools drain into a discard sink,
-    /// and results arrive at the end. Accepted for now: delegate's results
-    /// are end-of-run today, and nobody has flagged the loss.
+    /// Child activity streams into the parent box through [`Self::event_sink`].
     async fn delegate_to_acp_agent(
         &self,
         call: &ToolCall,
@@ -1505,14 +1651,67 @@ impl HarnessToolRegistry {
             },
         };
 
+        self.emit_subagent_line(
+            &call.id,
+            format!("started on {wanted} in {}", self.cwd.display()),
+        );
+        let parent_call = call.id.clone();
+        let event_sink = self.event_sink.clone();
+        let text_buf = Arc::new(Mutex::new(LineBuffer::new()));
+        let stream_buf = Arc::clone(&text_buf);
         let result = AcpHarness {
             command: agent.command,
             args: agent.args,
             mode,
             ..AcpHarness::default()
         }
-        .run(&prompt, &self.cwd, |_| {}, &mut cancel)
+        .run(
+            &prompt,
+            &self.cwd,
+            move |event| {
+                let Some(sink) = &event_sink else {
+                    return;
+                };
+                let emit_line = |line: String| {
+                    let line = prefix_subagent_line(&line);
+                    if line.is_empty() {
+                        return;
+                    }
+                    sink(Control::SubagentOutput {
+                        call_id: parent_call.clone(),
+                        line,
+                    });
+                };
+                match event {
+                    AcpEvent::Text { chunk } => {
+                        if let Ok(mut buf) = stream_buf.lock() {
+                            buf.push_lines(&chunk, emit_line);
+                        }
+                    }
+                    other => {
+                        if let Some(line) = acp_event_subagent_line(&other) {
+                            emit_line(line);
+                        }
+                    }
+                }
+            },
+            &mut cancel,
+        )
         .await;
+        if let Some(sink) = &self.event_sink {
+            let parent_call = call.id.clone();
+            if let Ok(mut buf) = text_buf.lock() {
+                buf.flush(|line| {
+                    let line = prefix_subagent_line(&line);
+                    if !line.is_empty() {
+                        sink(Control::SubagentOutput {
+                            call_id: parent_call.clone(),
+                            line,
+                        });
+                    }
+                });
+            }
+        }
 
         let (output, is_error) = match result {
             Ok(answer) if is_refusal(&answer) => (

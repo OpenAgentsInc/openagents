@@ -102,6 +102,27 @@ pub enum AcpEvent {
     },
 }
 
+/// The line a parent `delegate` box shows for one ACP event.
+///
+/// `Text` is omitted: the caller buffers those chunks into whole lines so a
+/// token stream does not become one box row per piece. Session, tool, and
+/// token events become one line each.
+pub fn acp_event_subagent_line(event: &AcpEvent) -> Option<String> {
+    match event {
+        AcpEvent::Session { id } => Some(format!("session {id}")),
+        AcpEvent::Tool { kind, title } => {
+            let title = title.trim();
+            if title.is_empty() {
+                Some(kind.clone())
+            } else {
+                Some(title.to_string())
+            }
+        }
+        AcpEvent::Tokens { input, output } => Some(format!("{input} in / {output} out")),
+        AcpEvent::Text { .. } => None,
+    }
+}
+
 /// What the agent is asking permission to do.
 ///
 /// The wire shape is ACP's `session/request_permission` `toolCall`: a `kind`
@@ -768,4 +789,50 @@ pub fn first_allow_option(params: &serde_json::Value) -> Option<String> {
         .and_then(|option| option.get("optionId"))
         .and_then(|v| v.as_str())
         .map(String::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acp_events_map_onto_subagent_lines() {
+        assert_eq!(
+            acp_event_subagent_line(&AcpEvent::Session {
+                id: "sess_1".to_string()
+            })
+            .as_deref(),
+            Some("session sess_1")
+        );
+        assert_eq!(
+            acp_event_subagent_line(&AcpEvent::Tool {
+                kind: "read".to_string(),
+                title: "Read src/a.ts".to_string(),
+            })
+            .as_deref(),
+            Some("Read src/a.ts")
+        );
+        assert_eq!(
+            acp_event_subagent_line(&AcpEvent::Tool {
+                kind: "read".to_string(),
+                title: "  ".to_string(),
+            })
+            .as_deref(),
+            Some("read")
+        );
+        assert_eq!(
+            acp_event_subagent_line(&AcpEvent::Tokens {
+                input: 12,
+                output: 4
+            })
+            .as_deref(),
+            Some("12 in / 4 out")
+        );
+        assert_eq!(
+            acp_event_subagent_line(&AcpEvent::Text {
+                chunk: "hello".to_string()
+            }),
+            None
+        );
+    }
 }

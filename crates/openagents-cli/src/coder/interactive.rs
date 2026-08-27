@@ -1077,19 +1077,43 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             name,
             arguments,
         } => {
-            let parsed = serde_json::from_str(&arguments)
-                .unwrap_or_else(|_| serde_json::json!({ "unparsed_arguments": arguments.clone() }));
-            let mut entry = Entry::tool_call(tool_title(&name, &arguments));
-            entry.tool = Some(ToolCall {
-                call_id,
-                function_name: name,
-                arguments: parsed,
-                output: None,
-                error: None,
-                done: false,
-                duration_ms: None,
+            let nested = ui.entries.iter().rev().any(|entry| {
+                entry.role == Role::Tool
+                    && entry
+                        .tool
+                        .as_ref()
+                        .is_some_and(|tool| tool.call_id == call_id && !tool.done)
             });
-            ui.entries.push(entry);
+            if nested {
+                // A child tool of an in-flight delegate: keep the parent's
+                // box and record the child as a live line inside it.
+                if let Some(entry) = tool_entry(ui, &call_id) {
+                    entry.push_subagent_line(tool_title(&name, &arguments));
+                }
+            } else {
+                let parsed = serde_json::from_str(&arguments).unwrap_or_else(
+                    |_| serde_json::json!({ "unparsed_arguments": arguments.clone() }),
+                );
+                let mut entry = Entry::tool_call(tool_title(&name, &arguments));
+                entry.tool = Some(ToolCall {
+                    call_id,
+                    function_name: name,
+                    arguments: parsed,
+                    output: None,
+                    error: None,
+                    done: false,
+                    duration_ms: None,
+                });
+                ui.entries.push(entry);
+            }
+            ui.scroll_override = None;
+        }
+        Control::SubagentOutput { call_id, line } => {
+            if let Some(entry) = tool_entry(ui, &call_id) {
+                if !entry.tool.as_ref().is_some_and(|tool| tool.done) {
+                    entry.push_subagent_line(line);
+                }
+            }
             ui.scroll_override = None;
         }
         Control::ToolOutput { call_id, chunk } => {

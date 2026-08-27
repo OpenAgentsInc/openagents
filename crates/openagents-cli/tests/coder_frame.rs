@@ -10,7 +10,8 @@ use openagents_cli::coder::markdown::theme::{
     DIM_TEXT_COLOR, MODEL_TEXT_COLOR, TEXT_COLOR, USER_TEXT_COLOR,
 };
 use openagents_cli::coder::runtime::Control;
-use openagents_cli::coder::tui::{CoderUi, Entry, Role};
+use openagents_cli::coder::tui::{CoderUi, Entry, MAX_SUBAGENT_LINES, Role};
+use openagents_cli::coder::turn::{TurnAction, TurnEffect, TurnState};
 use openagents_cli::runtime::TurnUsage;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -730,4 +731,142 @@ fn trailing_spaces_are_kept_and_the_block_cursor_sits_after_them() {
     let cell = buffer.cell(reversed[0]).unwrap();
     assert_eq!(cell.fg, Color::Rgb(255, 176, 0));
     assert_eq!(cell.bg, Color::Rgb(8, 6, 0));
+}
+
+#[test]
+fn subagent_output_for_an_unknown_call_lands_on_nothing() {
+    let mut ui = CoderUi::new();
+    ui.entries.push(Entry::new(Role::Assistant, "an answer"));
+    apply(
+        &mut ui,
+        Control::SubagentOutput {
+            call_id: "never-started".to_string(),
+            line: "· stray".to_string(),
+        },
+    );
+    assert!(
+        ui.entries
+            .iter()
+            .all(|entry| entry.subagent_lines.is_empty()),
+        "stray subagent output was attached to an unrelated entry"
+    );
+}
+
+#[test]
+fn subagent_output_for_a_cancelled_turn_is_dropped() {
+    let mut turns = TurnState::default();
+    let TurnEffect::Started(id) = turns.apply(TurnAction::Start) else {
+        panic!("the turn did not start");
+    };
+    turns.apply(TurnAction::RequestCancel);
+    assert!(!turns.accepts(id));
+
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "d1".to_string(),
+            name: "delegate".to_string(),
+            arguments: r#"{"prompt":"read it"}"#.to_string(),
+        },
+    );
+    let control = Control::Turn {
+        id,
+        event: Box::new(Control::SubagentOutput {
+            call_id: "d1".to_string(),
+            line: "· should not land".to_string(),
+        }),
+    };
+    if let Control::Turn { id, event } = control {
+        if turns.accepts(id) {
+            apply(&mut ui, *event);
+        }
+    }
+    assert!(
+        ui.entries[0].subagent_lines.is_empty(),
+        "a fenced turn still painted into the box"
+    );
+}
+
+#[test]
+fn the_delegate_box_clips_subagent_lines_to_the_last_n() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "d1".to_string(),
+            name: "delegate".to_string(),
+            arguments: r#"{"prompt":"read it"}"#.to_string(),
+        },
+    );
+    let extra = 2;
+    let total = MAX_SUBAGENT_LINES + extra;
+    for i in 1..=total {
+        apply(
+            &mut ui,
+            Control::SubagentOutput {
+                call_id: "d1".to_string(),
+                line: format!("· line {i}"),
+            },
+        );
+    }
+
+    assert_eq!(ui.entries.len(), 1);
+    assert_eq!(ui.entries[0].subagent_lines.len(), total);
+
+    let screen = text_of(&draw(&mut ui));
+    assert!(
+        screen.contains(&format!("+{extra} earlier")),
+        "missing clip counter: {screen}"
+    );
+    assert!(
+        !screen.contains("line 1"),
+        "clipped first line still visible: {screen}"
+    );
+    assert!(
+        screen.contains(&format!("line {}", extra + 1)),
+        "oldest kept line missing: {screen}"
+    );
+    assert!(
+        screen.contains(&format!("line {total}")),
+        "newest line missing: {screen}"
+    );
+}
+
+#[test]
+fn a_nested_child_tool_stays_inside_the_delegate_box() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "d1".to_string(),
+            name: "delegate".to_string(),
+            arguments: r#"{"prompt":"read Cargo.toml","description":"Read Cargo"}"#.to_string(),
+        },
+    );
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "d1".to_string(),
+            name: "read".to_string(),
+            arguments: r#"{"path":"Cargo.toml"}"#.to_string(),
+        },
+    );
+
+    assert_eq!(ui.entries.len(), 1, "child tool opened a sibling box");
+    assert_eq!(
+        ui.entries[0].tool.as_ref().unwrap().function_name,
+        "delegate"
+    );
+    assert!(
+        ui.entries[0]
+            .subagent_lines
+            .iter()
+            .any(|line| line.contains("read Cargo.toml")),
+        "{:?}",
+        ui.entries[0].subagent_lines
+    );
+    let screen = text_of(&draw(&mut ui));
+    assert!(screen.contains("Read Cargo"), "{screen}");
+    assert!(screen.contains("read Cargo.toml"), "{screen}");
 }

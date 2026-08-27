@@ -108,6 +108,26 @@ pub enum ChildEvent {
     Finished(Box<ChildWorkerResult>),
 }
 
+/// The line a parent `delegate` box shows for one child event.
+///
+/// `Finished` is omitted: the parent tool result already carries the trailer.
+pub fn child_event_subagent_line(event: &ChildEvent) -> Option<String> {
+    match event {
+        ChildEvent::Started {
+            lane, workspace, ..
+        } => Some(format!("started on {lane} in {workspace}")),
+        ChildEvent::Output { text, .. } | ChildEvent::Activity { text, .. } => {
+            let text = text.trim_end();
+            if text.is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        }
+        ChildEvent::Finished(_) => None,
+    }
+}
+
 /// The lane a fan-out runs on when `--lane` names none.
 ///
 /// It is not a neutral choice: `openagents` is this process on the OpenAgents
@@ -1820,6 +1840,50 @@ mod child_option_tests {
 
     fn argv(lane: &ChildLane, options: &ChildOptions) -> (String, Vec<String>) {
         harness_command(lane, "do the thing", Path::new("/tmp/work"), options)
+    }
+
+    #[test]
+    fn child_events_map_onto_subagent_lines() {
+        assert_eq!(
+            child_event_subagent_line(&ChildEvent::Started {
+                id: 1,
+                lane: "devin".to_string(),
+                workspace: "/tmp/work".to_string(),
+                pid: Some(9),
+            })
+            .as_deref(),
+            Some("started on devin in /tmp/work")
+        );
+        assert_eq!(
+            child_event_subagent_line(&ChildEvent::Output {
+                id: 1,
+                text: "hello\n".to_string(),
+            })
+            .as_deref(),
+            Some("hello")
+        );
+        assert_eq!(
+            child_event_subagent_line(&ChildEvent::Activity {
+                id: 1,
+                text: "Read src/a.ts".to_string(),
+            })
+            .as_deref(),
+            Some("Read src/a.ts")
+        );
+        assert_eq!(
+            child_event_subagent_line(&ChildEvent::Finished(Box::new(ChildWorkerResult {
+                id: 1,
+                success: true,
+                output: "done".to_string(),
+                duration_ms: 10,
+                pid: None,
+                workspace: None,
+                failure: None,
+                swarm_id: None,
+                swarm_messages: Vec::new(),
+            }))),
+            None
+        );
     }
 
     /// `--child-command` has to change which binary a child is started as.
