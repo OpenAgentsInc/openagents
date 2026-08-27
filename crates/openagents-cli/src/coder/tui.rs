@@ -429,7 +429,34 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let mut current_width = 0;
 
     for word in text.split_whitespace() {
-        let word_width = word.chars().count();
+        let mut word = word;
+        let mut word_width = word.chars().count();
+        // One unbroken run — a path, a hash, a long note with no spaces —
+        // longer than the line is split where it lands rather than pushed
+        // past the edge whole. A word wider than the line used to be kept
+        // whole here, and ratatui clipped whatever ran past, so the tail of
+        // exactly the text the header existed to show disappeared.
+        while word_width > width {
+            if !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
+                current_width = 0;
+            }
+            let take = width.saturating_sub(current_width);
+            let end = word
+                .char_indices()
+                .map(|(i, _)| i)
+                .chain(std::iter::once(word.chars().count()))
+                .take_while(|i| *i <= take)
+                .last()
+                .unwrap_or(0);
+            let (head, rest) = word.split_at(end);
+            current.push_str(head);
+            current_width += head.chars().count();
+            lines.push(std::mem::take(&mut current));
+            current_width = 0;
+            word = rest;
+            word_width = word.chars().count();
+        }
         if current.is_empty() {
             current.push_str(word);
             current_width = word_width;
@@ -1195,12 +1222,27 @@ fn render_entry(
             };
             let header_body = width.saturating_sub(2);
             let header_text = tool_header_text(entry);
-            let header_chunks = wrap_text(&header_text, header_body);
-            let header = header_chunks.first().cloned().unwrap_or_default();
+            // The whole header, wrapped: a call whose title runs long used to
+            // lose everything past the first line, which for `checkpoint`
+            // meant the note itself — the one part a reader needs. A multi-line
+            // header indents its continuation under the text, not the marker.
+            // Wrapping runs against the width the model label leaves, so a
+            // header never runs under the answer's model name the way the
+            // assistant body does not.
+            let header_chunks = wrap_text(&header_text, header_body.min(width).saturating_sub(2).max(1));
+            let mut header_iter = header_chunks.iter();
+            let header = header_iter.next().cloned().unwrap_or_default();
             lines.push(Line::from(vec![
                 Span::styled(marker, marker_style),
                 Span::styled(header, text_style),
             ]));
+            let continuation = format!("{} ", " ".repeat(marker.chars().count()));
+            for chunk in header_iter {
+                lines.push(Line::from(vec![
+                    Span::styled(continuation.clone(), marker_style),
+                    Span::styled(chunk.clone(), text_style),
+                ]));
+            }
 
             // Only draw the vertical bar for lines that actually exist.
             for (row, line) in window.iter().enumerate() {

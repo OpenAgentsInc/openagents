@@ -812,9 +812,13 @@ pub fn tool_title(name: &str, arguments: &str) -> String {
                 .unwrap_or_default();
             string("prompt").map(|prompt| format!("{count}{prompt}"))
         }
+        // The note itself, never the JSON envelope. The fallthrough below
+        // would have put `{"text":"..."}` in the header — the one tool whose
+        // payload is prose read as the one header that was unreadable.
         // A plugin loaded through `capability` declares a tool under its own
         // name and over its own schema, so there is nothing general to read
         // out of it but the arguments themselves.
+        "checkpoint" => string("text"),
         _ => (parsed != serde_json::Value::Null).then(|| parsed.to_string()),
     };
 
@@ -900,6 +904,15 @@ mod tests {
         );
         // Arguments that will not parse are not a reason to draw no header.
         assert_eq!(tool_title("shell", "not json"), "shell");
+        // The checkpoint header is the note, not the JSON envelope carrying
+        // it — the note is prose, and `{"text":"..."}` in a header is the
+        // one line a reader cannot use.
+        assert_eq!(
+            tool_title("checkpoint", r#"{"text":"issue 228 done. Next: none."}"#),
+            "checkpoint issue 228 done. Next: none."
+        );
+        // No note, no detail: the bare name, never an empty envelope.
+        assert_eq!(tool_title("checkpoint", "{}"), "checkpoint");
     }
 
     #[test]
