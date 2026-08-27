@@ -12,6 +12,7 @@ members = [
     "crates/oa-node",
     "crates/oa-workroomd",
     "crates/oa-cloud-run-bridge",
+    "crates/claude_agent_sdk",
 ]
 resolver = "2"
 
