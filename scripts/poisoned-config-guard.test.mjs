@@ -99,7 +99,7 @@ test("pre-push guard heals a core.bare-poisoned common config and lets the push 
 
     const result = pushLane(sandbox.wt, bin);
     assert.equal(result.status, 0, `push must succeed, stderr: ${result.stderr}`);
-
+    assert.match(result.stderr, /checking in /i, "guard must name the tree it checks");
     assert.match(result.stderr, /poisoned config, healing/i, "guard must announce the healing");
     assert.match(result.stderr, /push allowed/i, "guard must allow the push once healed");
     assert.throws(() => git(sandbox.origin, "config", "--get", "core.bare"));
@@ -196,8 +196,40 @@ test("the healthy path is untouched: a clean repo pushes without healing (#208)"
 
     const result = pushLane(sandbox.wt, bin);
     assert.equal(result.status, 0, `push must succeed, stderr: ${result.stderr}`);
+    assert.match(result.stderr, /checking in /i, "guard must name the tree it checks");
     assert.doesNotMatch(result.stderr, /healing/i, "no healing must be attempted when healthy");
     assert.match(result.stderr, /push allowed/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("pre-push guard refuses when cwd HEAD is not the pushed commit (#243)", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "guard-243-head-"));
+  try {
+    const sandbox = buildSandbox(root);
+    const bin = stubTools(root);
+    commitLaneWork(sandbox.wt);
+    const pushed = git(sandbox.wt, "rev-parse", "HEAD").trim();
+    const treeHead = git(sandbox.origin, "rev-parse", "HEAD").trim();
+    assert.notEqual(treeHead, pushed, "precondition: origin HEAD must differ from the lane commit");
+
+    const result = spawnSync(
+      "git",
+      ["push", "upstream", `${pushed}:refs/heads/main`],
+      {
+        cwd: sandbox.origin,
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      },
+    );
+    assert.equal(result.status, 1, `push must be blocked, stderr: ${result.stderr}`);
+    assert.match(result.stderr, /checking in /i);
+    assert.match(result.stderr, new RegExp(treeHead));
+    assert.match(result.stderr, new RegExp(pushed));
+    assert.match(result.stderr, /Push from a tree that holds the pushed commit/i);
+    assert.doesNotMatch(result.stderr, /cargo check failed/i);
+    assert.doesNotMatch(result.stderr, /push allowed/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -60,6 +60,18 @@ if [ "$main_local_sha" = "$zero_sha" ]; then
   exit 1
 fi
 
+echo "[pre-push guard] checking in $root" >&2
+
+# Checks run in $root. If that tree's HEAD is not the commit being pushed,
+# cargo/fmt would test some other code and report a failure the push does
+# not have (#243). Refuse before any check and name both commits.
+tree_head="$(git -C "$root" rev-parse HEAD 2>/dev/null || true)"
+if [ -n "$main_local_sha" ] && [ -n "$tree_head" ] && [ "$tree_head" != "$main_local_sha" ]; then
+  echo "[pre-push guard] BLOCKED: this tree is $tree_head, but the push is $main_local_sha." >&2
+  echo "[pre-push guard] Push from a tree that holds the pushed commit, so the checks cover that code." >&2
+  exit 1
+fi
+
 if [ -n "$main_local_sha" ] && [ "$main_remote_sha" != "$zero_sha" ]; then
   if ! ( cd "$root" && git diff --check "$main_remote_sha..$main_local_sha" ) >&2; then
     echo "[pre-push guard] BLOCKED: whitespace errors in pushed diff." >&2
