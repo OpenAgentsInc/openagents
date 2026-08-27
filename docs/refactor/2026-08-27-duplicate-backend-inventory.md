@@ -221,12 +221,103 @@ gcloud logging read '<service-scoped request-log filter>' \
 The log review stripped query strings before grouping paths. It did not retain
 authorization headers, request bodies, tokens, or user identifiers.
 
+## Scheduled-task classification
+
+Every task in the monolith per-minute `scheduled()` table (the
+`Promise.allSettled` array plus the two pre-array runs in
+`apps/openagents.com/workers/api/src/index.ts`), classified against the
+retained product set — Phoenix backend and the Rust CLI:
+
+| Task | Class | Evidence and disposition |
+| --- | --- | --- |
+| `HydraliskGlmPoolHeartbeat.run` | Retired | Hydralisk GLM pool is the retired own-capacity inference fleet; Phoenix serves `glm-5.3-flash` through the provider route and keeps no D1 heartbeat store. |
+| `runKhalaSyncCaptureStalenessProbe` | Retired | Probes the retired Khala capture pipeline; the capture producer is itself dead (its local listener fails against the drained Cloud SQL, and Phoenix serves no hub-append route). |
+| `sendPendingReviewReadyArtifactNotifications` | Retired | Sends Resend email for retired artifact-review commerce. `CRM_RESEND_SEND_ENABLED=0` already disables sends. |
+| `reconcileTokensServedProjection` | Retired | Detect-only reconcile of the public tokens-served projection whose producers are retired. |
+| `FleetBurnStallDetector.tick` | Retired | Watchdog for the retired own-capacity Codex fleet (`FLEET_WATCHDOG_ENABLED=true` only writes alert rows nobody reads). |
+| `ServingRateMonitor.tick` | Retired | Monitors serving rates of the retired pool. |
+| `ArtanisScheduledRunner.runTick` | Retired | Artanis runtime ticks; Phoenix has no Artanis surface (`KHALA_SYNC_ARTANIS_READS=postgres` names only a legacy read mode). |
+| `HostedRuntimeTurnDispatch.tick` | Retired | Drained mobile Khala Code turns; the mobile application is deleted. |
+| `ManagedCloudRuntimeTurnDispatch.tick` | Retired | Same consumers as hosted dispatch; no current caller. |
+| `SarahAutonomousTick.tick` | Retired | Armed only by `SARAH_AUTONOMOUS_TICK_ENABLED`, which is `false` in production: a clean no-op since before this audit. |
+| `PortableSessionCommandDispatch.tick` | Retired | Portable-session commands for the retired mobile and Pylon snapshot flows. |
+| `PylonCapacityFunnel.recordSnapshots` | Retired | Capacity-funnel snapshots of the retired own-capacity pool; the retained Pylon CLI does not read them. |
+| `PublicActivityTimeline.refreshSnapshot` | Retired | Rebuild-on-cron snapshot of the old site's activity page; Phoenix has no activity-timeline surface. |
+| `RelayHealth.probeTick` | Retired | Probed the market relay through a service binding that only existed inside the old Worker. The relay itself is retained (see external consumers); this probe is not. |
+| `SelfServeWindowProducer.topUp` | Retired | Tops up claimable training windows for a Tassadar training run that is not armed. |
+| `EmailCampaignDispatcher.dispatchDue` | Retired | Old CRM email automation; `CRM_RESEND_SEND_ENABLED=0`. |
+| `BusinessFulfillmentLoop.dailyMotion` | Retired | Old business fulfillment loop over the retired commerce tables. |
+| `AgentDefinitionScheduler.tick` | Retired | Cron-triggered agent-definition runs served by the old Worker API; Phoenix owns the current agent surface. |
+| `AutopilotContinuationPolicy.sweep` | Retired | Continuation sweep hard-coded to skip: `billingAllowsContinuation` returns `continuation.skipped.paid_capacity_retired` unconditionally. |
+| `ArtanisResponder.scan` / `.compose`, `ArtanisAdmin.tick`, `ArtanisFleet.tick`, `ArtanisAdmin.closeoutVerifier` | Retired | Artanis responder/ops fleet; no Phoenix or CLI consumer. |
+| `TassadarTracePairing.tick` | Retired | Deliberate no-op pairer (`TASSADAR_TRACE_PAIRING` unset; resolver returns `[]` by design). |
+
+No task has a Phoenix or Rust replacement requirement: Phoenix implements its
+own projections and the CLI ships its own release checks. The production
+scheduler stays paused; the next source-deletion change removes the table with
+the Worker itself.
+
+## External-consumer verdicts
+
+| External system | Verdict | Evidence |
+| --- | --- | --- |
+| `auth.openagents.com` issuer (OpenAuth + jwks) | Safe to retire behind a redirect | 2-hour zero-caller window with min-instances 0 found only Googlebot, two transient `GET /` redirects, and this audit's own probes. The early-access email-code flow is already broken (`/login/email` returns 404 on the auth host; the served SPA links to it). No retained code consumes the issuer: the CLI uses device authorizations on `openagents.com/api/v1`, Phoenix uses GitHub OAuth, and the only other registered client was the deleted mobile app. |
+| `openagents-nostr-relay` (relay.openagents.com) | **Retain — live and load-bearing** | 502 HTTP 426 (Upgrade Required) websocket handshakes in the last ~40 hours from real Nostr clients; serves a valid NIP-11 document. This is the canonical market relay referenced by retained code. |
+| `sarah` (sarah.openagents.com) | Retain for now (issue #147 scope) | Low but real human traffic (200s on the root document); disposition belongs to the voice-stack issue, not the duplicate-backend drain. |
+| `oa-sarah-nostr-signer` | Zero requests in 7 days | Candidate for the voice-stack disposition; not a duplicate-backend dependency. |
+| `khala-live-hub` (Cloud Run) | Zero requests since 07:10 UTC | The local capture agent that mirrored into it fails its primary listener (Cloud SQL capture drained) and Phoenix never implemented the hub-append route. |
+| Local `khala-heartbeat` / `khala-canary` launch agents | Retired (owner notice) | They probe the retired Khala inference surface through the same retired gateway; only meaningful while issue #147 decides the voice/agent stack. |
+| Local `khala-sync-capture` launch agent | Effectively dead | Its listener cannot connect (Cloud SQL capture drained); poll fallback spins against a dead endpoint. Safe to unload; listed here because it is machine-local state, not repository state. |
+
+## Completed zero-caller observation
+
+The bounded no-caller window required by the drain order ran from 14:20 UTC to
+16:05 UTC on 2026-08-27 with both monolith schedulers paused and both monolith
+services at min-instances 0. Observed traffic: three `GET /` redirects on
+`auth.openagents.com` (two browser one-offs, one scanner-class) and zero
+requests to the monolith's own routes, zero queue or bridge calls, and zero
+compatibility-path successes. This closes the observation gate; the remaining
+gates are the Forge restore/ref comparison and Terraform transfer receipts.
+
+## Forge restore and ref comparison receipt
+
+A restore drill ran on 2026-08-27 against the newest snapshot
+`forge-git-repositor-us-central1-a-20260827081102-n7piqnoq` (2026-08-27
+01:11 UTC, 100 GB):
+
+- Created a scratch `e2-small` instance and a 100 GB disk from the
+  snapshot in `us-central1-a`, mounted it read-only-equivalent (no service
+  touched it), and inspected the tree.
+- Layout: one tenant directory `tenant.openagents` containing nine bare
+  repositories — `omega.git` plus eight `repo.openagents.forge02-live-*.git`
+  acceptance seeds.
+- `git fsck --full` passed on all nine (exit 0; the only diagnostics were
+  dangling objects on `omega.git` and two unborn-branch notices on empty
+  seed repositories).
+- Ref comparison: `omega.git` carries `refs/heads/main` =
+  `refs/heads/forge/omega-journey` = `585af0d8c0` and tag
+  `forge-omega-import-2026-07-26` -> `ae32ebd9`. The import-point commit is
+  an ancestor of the live Omega repository's history, and the forge tip is
+  the import point plus one docs-only commit
+  (`forge-receipts/2026-07-26-owned-forge-journey.md`, 5 insertions). The
+  eight `forge02-live` seeds hold only the July FORGE-02 acceptance
+  commits. Nothing on the disk is unique, load-bearing product data; the
+  one unique docs commit exists in the restored snapshot and is recorded
+  here.
+- The scratch instance and disk were deleted after the drill. The
+  snapshot itself is retained until Terraform transfer closes issue #145.
+
+This closes the restore, integrity, and ref-comparison gate.
+
 ## Remaining evidence
+
+Resolved by this document: scheduled-task classification, the bounded
+zero-caller observation, and the Forge disk restore, integrity, and
+ref comparison.
 
 Issue #145 remains open until these items land:
 
-- authentication hostname and compatibility-route disposition;
-- scheduled-task classification and migration;
-- a bounded zero-caller observation after schedulers and producers stop;
-- Forge disk restore, repository integrity, and ref comparison;
-- Terraform transfer, destroy, or retained-resource receipts.
+- the `auth.openagents.com` hostname retirement (load-balancer redirect
+  or DNS cutover), which the caller evidence now supports;
+- Terraform transfer, destroy, or retained-resource receipts, after which
+  the source deletion in issue #146 can proceed.
