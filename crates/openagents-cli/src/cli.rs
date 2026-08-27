@@ -1,4 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use std::path::{Path, PathBuf};
 
 /// The shells `--completions` can write a script for.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -87,6 +88,8 @@ pub enum Commands {
     Api(crate::api_passthrough::ApiArgs),
     /// Sandboxed WebAssembly capability plugins: catalog, digests, and runs
     Plugin(crate::plugins::PluginArgs),
+    /// Gym environment, suites, and corpus
+    Gym(GymArgs),
     /// Trace inspection and session export
     Trace(TraceArgs),
     /// Local swarm: discover sessions and exchange messages between them
@@ -1359,6 +1362,35 @@ pub enum TraceAction {
     },
 }
 
+#[derive(Args, Debug)]
+pub struct GymArgs {
+    #[command(subcommand)]
+    pub action: GymAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum GymAction {
+    /// Discover and inspect benchmark suite manifests
+    Suite(crate::gym::suite::SuiteArgs),
+    /// Gym environment plumbing
+    Env(crate::gym::env::EnvArgs),
+    /// Walk the three local trace stores and write a corpus inventory
+    Inventory {
+        #[arg(
+            long,
+            help = "Scan this directory instead of the default stores. Repeatable"
+        )]
+        path: Vec<String>,
+        #[arg(long, help = "Write the inventory to this file")]
+        out: Option<String>,
+    },
+    /// Apply the plan.md qualification filters and write the exclusion report
+    Qualify {
+        #[arg(help = "Inventory file to qualify")]
+        inventory: String,
+    },
+}
+
 /// The completion script for one shell.
 ///
 /// `sh` is not a shell clap generates for, and a POSIX shell has no completion
@@ -1377,6 +1409,81 @@ pub fn completion_script(shell: CompletionShell) -> String {
     let mut buffer: Vec<u8> = Vec::new();
     generate(generated, &mut command, "oa", &mut buffer);
     String::from_utf8_lossy(&buffer).into_owned()
+}
+
+async fn run_gym(action: GymAction, json: bool) -> Result<(), crate::errors::CliError> {
+    match action {
+        GymAction::Suite(args) => crate::gym::suite::run_suite(args.action, json),
+        GymAction::Env(env) => {
+            crate::gym::env::run(env.action, json).await;
+            Ok(())
+        }
+        GymAction::Inventory { path, out } => {
+            let home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| {
+                crate::errors::CliError::Input(
+                    "could not determine the home directory; set HOME or pass --path".to_string(),
+                )
+            })?;
+            let extra: Vec<PathBuf> = path.into_iter().map(PathBuf::from).collect();
+            let out = out.map(PathBuf::from).unwrap_or_else(|| {
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .join("docs/coderbench/inventory.json")
+            });
+            let document = crate::gym::corpus::inventory(
+                &home,
+                &extra,
+                &out,
+                crate::gym::corpus::INVENTORY_BOUNDS,
+            )
+            .map_err(|error| crate::errors::CliError::Input(error.to_string()))?;
+            let human: Vec<String> = {
+                let mut lines = vec![format!(
+                    "Wrote {} rows to {}",
+                    document.rows.len(),
+                    out.display()
+                )];
+                for store in &document.stores {
+                    lines.push(format!(
+                        "{} matched={} listed={} qualified={} excluded={}",
+                        store.source, store.matched, store.listed, store.qualified, store.excluded
+                    ));
+                }
+                if let Some(counts) = &document.counts {
+                    for (reason, count) in counts {
+                        lines.push(format!("{}: {}", reason, count));
+                    }
+                }
+                lines
+            };
+            emit(
+                json,
+                &schema_document(crate::gym::corpus::INVENTORY_SCHEMA, &document),
+                &human,
+            );
+            Ok(())
+        }
+        GymAction::Qualify { inventory } => {
+            let report = crate::gym::corpus::qualify(Path::new(&inventory))
+                .map_err(|error| crate::errors::CliError::Input(error.to_string()))?;
+            let human: Vec<String> = {
+                let mut lines = vec![format!(
+                    "qualified={} excluded={} total={}",
+                    report.qualified_rows, report.excluded_rows, report.total_rows
+                )];
+                for (reason, count) in &report.by_reason {
+                    lines.push(format!("{}: {}", reason, count));
+                }
+                lines
+            };
+            emit(
+                json,
+                &schema_document(crate::gym::corpus::QUALIFY_SCHEMA, &report),
+                &human,
+            );
+            Ok(())
+        }
+    }
 }
 
 pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -1558,6 +1665,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Provider(provider) => run_provider(provider.action, cli.json),
         Commands::Box(b) => run_box(b.action, &api_base, token, cli.json).await,
         Commands::Computer(comp) => crate::computer::run(comp, &endpoint, cli.json).await,
+        Commands::Gym(gym) => or_fail(run_gym(gym.action, cli.json).await),
         Commands::Forum(forum) => {
             let client = crate::forum::ForumClient::new(&api_base, token);
             match forum.action {
@@ -1618,6 +1726,7 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
         Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
+        Commands::Gym(gym) => or_fail(run_gym(gym.action, cli.json).await),
         Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
         Commands::Swarm(swarm) => crate::swarm_args::run_swarm(swarm.action, cli.json).await,
         Commands::Update(update) => {

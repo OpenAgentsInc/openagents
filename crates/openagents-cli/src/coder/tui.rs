@@ -1567,8 +1567,7 @@ mod tests {
     fn a_settled_turn_stamps_its_duration_on_the_answer() {
         let mut ui = CoderUi::new();
         ui.turn_started();
-        ui.entries
-            .push(Entry::new(Role::Assistant, "the answer"));
+        ui.entries.push(Entry::new(Role::Assistant, "the answer"));
         ui.entries.last_mut().unwrap().model = Some("gemini-3.7-flash".to_string());
         // Simulate the elapsed time: started in the past.
         ui.turn_started_at = Some(now_ms() - 90_000);
@@ -1607,8 +1606,7 @@ mod tests {
         ui.turn_started_at = Some(now_ms() - 9_000);
         assert_eq!(ui.stopwatch_text(), "9s");
 
-        ui.entries
-            .push(Entry::new(Role::Assistant, "done"));
+        ui.entries.push(Entry::new(Role::Assistant, "done"));
         ui.turn_settled();
         assert_eq!(ui.stopwatch_text(), "");
     }
@@ -1622,11 +1620,7 @@ mod tests {
         entry.duration_seconds = Some(90);
         entry.finish_text();
         let (lines, _) = render_entry(&mut entry, 200, 0, false);
-        let first: String = lines[0]
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
+        let first: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
             first.trim_end().ends_with("gemini-3.7-flash · 1m30s"),
             "duration missing beside the model: {first:?}"
@@ -1638,11 +1632,7 @@ mod tests {
         entry.model = Some("gemini-3.7-flash".to_string());
         entry.finish_text();
         let (lines, _) = render_entry(&mut entry, 200, 0, false);
-        let first: String = lines[0]
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
+        let first: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
             first.trim_end().ends_with("gemini-3.7-flash"),
             "model changed without a duration: {first:?}"

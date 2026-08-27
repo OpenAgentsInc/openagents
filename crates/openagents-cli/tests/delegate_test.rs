@@ -816,6 +816,40 @@ async fn the_delegate_tool_carries_the_sessions_child_options() {
     );
 }
 
+/// A session on the default inference tier `flash` delegates onto the default
+/// child lane (`openagents`) instead of refusing.
+#[tokio::test]
+async fn the_delegate_tool_resolves_an_inference_tier_to_the_default_child_lane() {
+    let _guard = exclusive();
+    let stub = proxy_stub().await;
+    unsafe {
+        std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin));
+    }
+
+    let report = openagents_cli::delegate::fanout_for_tool(
+        "say something",
+        1,
+        "flash",
+        Some("oat_test".to_string()),
+        openagents_cli::delegate::ChildOptions::default(),
+        Some(std::env::temp_dir()),
+    )
+    .await;
+
+    unsafe {
+        std::env::remove_var("OPENAGENTS_API_BASE");
+    }
+
+    assert!(
+        !report.starts_with("No children were started:"),
+        "the `flash` lane was refused instead of resolved: {report}"
+    );
+    assert!(
+        report.starts_with("1 of 1 child completed on openagents (this process"),
+        "the `flash` lane did not resolve to the default child lane: {report}"
+    );
+}
+
 /// A `--child-*` flag the session's lane cannot honour is said, not dropped.
 #[tokio::test]
 async fn the_delegate_tool_refuses_a_flag_its_lane_cannot_honour() {

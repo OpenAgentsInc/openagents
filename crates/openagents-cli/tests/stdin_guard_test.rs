@@ -26,10 +26,7 @@ fn assert_exits_with_closed_stdin(args: &[&str], bound: Duration) -> String {
     loop {
         match child.try_wait().expect("wait on the CLI") {
             Some(status) => {
-                assert!(
-                    !status.success(),
-                    "expected a refusal, got success"
-                );
+                assert!(!status.success(), "expected a refusal, got success");
                 let output = child.wait_with_output().expect("collect the output");
                 return format!(
                     "{}{}",

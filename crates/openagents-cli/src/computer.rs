@@ -924,7 +924,7 @@ pub struct Journal {
     path: PathBuf,
 }
 
-fn now_iso8601() -> String {
+pub(crate) fn now_iso8601() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();

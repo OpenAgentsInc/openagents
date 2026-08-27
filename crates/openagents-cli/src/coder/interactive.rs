@@ -35,7 +35,7 @@ use crossterm::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::collections::VecDeque;
-use std::io::{stderr, stdout, Write};
+use std::io::{Write, stderr, stdout};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
@@ -1617,10 +1617,7 @@ mod tests {
         );
         assert_eq!(ui.entries[2].model.as_deref(), Some("model/one"));
         // The restored failure carries the counters it died with (#188).
-        assert_eq!(
-            ui.entries[3].text,
-            "later failure (0 tool calls, 0 tokens)"
-        );
+        assert_eq!(ui.entries[3].text, "later failure (0 tool calls, 0 tokens)");
         assert_eq!(ui.entries[3].at, 40);
     }
 

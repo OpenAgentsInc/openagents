@@ -760,10 +760,7 @@ impl ThreadRecord {
     /// (#189). A turn that dies — to the budget, to a crash, to a cancel —
     /// leaves this behind for whoever picks the work up.
     pub fn checkpoint(text: &str) -> Self {
-        Self::new(
-            "turn.checkpoint",
-            serde_json::json!({ "text": text }),
-        )
+        Self::new("turn.checkpoint", serde_json::json!({ "text": text }))
     }
 }
 
@@ -1805,8 +1802,9 @@ impl CoderRuntimeSession {
                     && let Some(text) = event.payload.get("text").and_then(|v| v.as_str())
                     && let Err(error) = store.set_last_checkpoint(text)
                 {
-                    self.record_failures
-                        .push(format!("the checkpoint was not saved to the summary: {error}"));
+                    self.record_failures.push(format!(
+                        "the checkpoint was not saved to the summary: {error}"
+                    ));
                 }
             }
         }
@@ -2215,7 +2213,10 @@ impl CoderRuntimeSession {
     /// request with more tool calls gets one retry with the instruction
     /// restated; anything further is what the old code did, a failure, but
     /// now after the model has had its chance.
-    async fn finalize_turn_with_a_report(&mut self, tool_defs: &[ToolDefinition]) -> Result<String, Failure> {
+    async fn finalize_turn_with_a_report(
+        &mut self,
+        tool_defs: &[ToolDefinition],
+    ) -> Result<String, Failure> {
         self.note(vec![ThreadRecord::budget_reached(
             self.last_usage,
             self.last_calls,
@@ -2249,8 +2250,7 @@ impl CoderRuntimeSession {
                     images: Vec::new(),
                 });
             }
-            self.note(vec![ThreadRecord::budget_instruction()])
-                .await;
+            self.note(vec![ThreadRecord::budget_instruction()]).await;
             let step = self.step_thread_once(tool_defs).await?;
             self.last_usage.add(step.usage);
             self.last_reasoning.push_str(&step.reasoning);
@@ -2284,7 +2284,10 @@ impl CoderRuntimeSession {
     /// `tools` are declared empty so the model physically cannot spend the
     /// budget it no longer has; the step still carries usage and reasoning,
     /// which the finalization records like any other round.
-    async fn step_thread_once(&mut self, _tool_defs: &[ToolDefinition]) -> Result<StepAccumulator, Failure> {
+    async fn step_thread_once(
+        &mut self,
+        _tool_defs: &[ToolDefinition],
+    ) -> Result<StepAccumulator, Failure> {
         let grant = match &self.last_grant {
             Some(grant) => grant.clone(),
             None => return Err("the turn's thread grant is gone".into()),
@@ -2358,7 +2361,10 @@ impl CoderRuntimeSession {
     /// One no-tools round on the OpenResponses transport, for the budget
     /// report. Same request the turn loop sends, tools withheld, stream read
     /// to completion without painting the frame.
-    async fn step_responses_once(&mut self, model: Option<&str>) -> Result<StepAccumulator, Failure> {
+    async fn step_responses_once(
+        &mut self,
+        model: Option<&str>,
+    ) -> Result<StepAccumulator, Failure> {
         let input = messages_to_responses_input(&self.messages);
         let mut body = serde_json::json!({
             "input": input,
@@ -2377,13 +2383,22 @@ impl CoderRuntimeSession {
                 HeaderValue::from_str(&format!("Bearer {token}"))?,
             );
         }
-        let resp = self.http.post(&url).headers(headers).json(&body).send().await;
+        let resp = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .json(&body)
+            .send()
+            .await;
         let resp = match resp {
             Ok(r) if r.status().is_success() => r,
             Ok(r) => {
                 let status = r.status();
                 let response_body = r.text().await.unwrap_or_default();
-                let why = format!("{url} refused the turn: {status} {}", snippet(&response_body));
+                let why = format!(
+                    "{url} refused the turn: {status} {}",
+                    snippet(&response_body)
+                );
                 return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
             }
             Err(error) => {
@@ -3191,7 +3206,8 @@ impl CoderRuntimeSession {
                 // The local lane gets the same soft landing (#188), with one
                 // no-tools round against the local model. Ollama answers a
                 // tools-less chat with words; the report is the answer.
-                let report = Self::finalize_answer(self.last_calls, self.step_local_report().await?);
+                let report =
+                    Self::finalize_answer(self.last_calls, self.step_local_report().await?);
                 self.tell_stream(ModelStreamEvent::ContentCommitted);
                 self.messages.push(ChatMessage {
                     role: "assistant".to_string(),
@@ -3236,8 +3252,7 @@ impl CoderRuntimeSession {
             tool_call_id: None,
             images: Vec::new(),
         });
-        self.note(vec![ThreadRecord::budget_instruction()])
-            .await;
+        self.note(vec![ThreadRecord::budget_instruction()]).await;
         let Lane::Local(wanted) = self.lane.clone() else {
             return Err("run_local_turn was called off the local lane".into());
         };

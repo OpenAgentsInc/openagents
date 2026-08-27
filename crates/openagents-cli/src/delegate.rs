@@ -166,6 +166,40 @@ impl ChildLane {
         matches!(name.trim().to_lowercase().as_str(), "ox-alpha" | "ox").then_some("openagents")
     }
 
+    /// Resolve a session's lane into the child lane children run on.
+    ///
+    /// A session's lane is an inference lane, not a child lane. If it names a
+    /// recognised child lane, use it. If it is a recognised inference tier
+    /// (`flash`, `free`, `local`) it has no equivalent child lane, so children
+    /// run on the default. Any other unparseable name is refused.
+    pub fn resolve_for_session(name: &str) -> Result<Self, String> {
+        match Self::parse(name) {
+            Ok(lane) => Ok(lane),
+            Err(why) => {
+                // The session's lane may be an inference tier rather than a
+                // child lane. Those are not parseable as child lanes, but they
+                // are not an error either: the fan-out falls back to the
+                // default child lane.
+                if Lane::from_str(name).tier().is_some() {
+                    Self::parse(DEFAULT_CHILD_LANE)
+                } else {
+                    Err(why)
+                }
+            }
+        }
+    }
+
+    /// The canonical child-lane name, usable with [`ChildLane::parse`].
+    pub fn name(&self) -> String {
+        match self {
+            ChildLane::OpenAgents => "openagents".to_string(),
+            ChildLane::Opencode { model } => format!("opencode/{model}"),
+            ChildLane::Devin => "devin".to_string(),
+            ChildLane::Claude => "claude".to_string(),
+            ChildLane::Codex => "codex".to_string(),
+        }
+    }
+
     pub fn label(&self) -> String {
         match self {
             ChildLane::OpenAgents => "openagents (this process, the OpenAgents proxy)".to_string(),
@@ -1725,7 +1759,7 @@ pub fn fanout_for_tool_cancellable(
         // A flag the lane cannot honour is reported to the caller rather than
         // dropped: the session asked for a model or a dry run and would otherwise
         // get a fan-out without either, with nothing said.
-        let resolved_lane = match ChildLane::parse(lane) {
+        let resolved_lane = match ChildLane::resolve_for_session(lane) {
             Ok(resolved) => resolved,
             Err(why) => return format!("No children were started: {why}"),
         };
@@ -1735,7 +1769,8 @@ pub fn fanout_for_tool_cancellable(
         // Children work where the session works. The version this replaces took
         // whatever the process's own directory happened to be, which is the same
         // thing only until something changes it.
-        let supervisor = DelegationSupervisor::new(count, lane, user_token)
+        let resolved_name = resolved_lane.name();
+        let supervisor = DelegationSupervisor::new(count, &resolved_name, user_token)
             .with_child_options(child)
             .in_directory(directory);
         let (events, mut drain) = mpsc::unbounded_channel();
@@ -2008,5 +2043,31 @@ mod child_option_tests {
         // `--dir` and `--description` are still `oa delegate`'s alone.
         assert!(request.directory.is_none());
         assert!(request.description.is_none());
+    }
+
+    /// A session's inference lane is not a child lane, but it is not an error.
+    ///
+    /// Known inference tiers (`flash`, `free`, `local`) fall back to the
+    /// default child lane. Recognised child lanes pass through unchanged. A
+    /// name that is neither is refused.
+    #[test]
+    fn resolve_for_session_maps_inference_tiers_to_the_default_child_lane() {
+        assert_eq!(
+            ChildLane::resolve_for_session("flash").unwrap(),
+            ChildLane::OpenAgents
+        );
+        assert_eq!(
+            ChildLane::resolve_for_session("free").unwrap(),
+            ChildLane::OpenAgents
+        );
+        assert_eq!(
+            ChildLane::resolve_for_session("local").unwrap(),
+            ChildLane::OpenAgents
+        );
+        assert_eq!(
+            ChildLane::resolve_for_session("devin").unwrap(),
+            ChildLane::Devin
+        );
+        assert!(ChildLane::resolve_for_session("nonsense-lane-xyz").is_err());
     }
 }

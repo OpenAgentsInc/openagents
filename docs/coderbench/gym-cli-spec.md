@@ -367,6 +367,24 @@ The rule for adding an interface: write one renderer over an existing
 schema changes first, in Rust, with a version bump — renderers never scrape
 human text.
 
+### 4.1 Version-bump policy
+
+Additive changes that only append new **optional** fields may land on the
+current version. For example, `openagents.gym.run_status.v1` could gain an
+`estimated_finish_at` optional field, or `openagents.gym.corpus_inventory.v1`
+could add an optional `tool_calls` count, without changing the version suffix:
+older renderers ignore the new keys and still render the document correctly.
+
+Any change that removes a field, retypes a field, or changes its semantics bumps
+the version suffix and every renderer gets a migration note. For example,
+retyping `openagents.gym.corpus_import_record.v1` `digest` from a hex string to
+a structured object, removing `cost_per_accepted_outcome_usd` from
+`openagents.gym.results_trend.v1`, or changing `openagents.gym.env_report.v1`
+`passed` from a boolean to a tristate would each require a new
+`openagents.gym.<document>.v2` and a renderer migration. The frozen `v1` schema
+types and their golden fixtures stay unchanged, so drift is always a test
+failure.
+
 ## 5. Errors worth refusing well
 
 - **Suite pin drift** → refuse `run`, print the `suite check` diff.

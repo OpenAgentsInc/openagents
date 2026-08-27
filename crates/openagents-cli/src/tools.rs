@@ -725,10 +725,12 @@ impl HarnessToolRegistry {
         // Declared only where it can be run. A child's registry has no gate,
         // so a child neither sees the tool nor can call it.
         if let Some(gate) = &self.delegation {
+            let resolved_child = crate::delegate::ChildLane::resolve_for_session(&gate.lane)
+                .unwrap_or(crate::delegate::ChildLane::OpenAgents);
             tools.push(ToolDefinition {
                 name: "delegate".to_string(),
                 description: text::RUST_DELEGATE
-                    .replace("{lane}", &gate.lane)
+                    .replace("{lane}", &resolved_child.label())
                     .replace("{max_count}", &gate.max_count.to_string()),
                 parameters: serde_json::json!({
                     "type": "object",
@@ -916,11 +918,7 @@ impl HarnessToolRegistry {
                     .and_then(|v| v.as_array())
                     .map(|arr| {
                         arr.iter()
-                            .map(|v| {
-                                v.as_str().map(String::from).ok_or_else(|| {
-                                    v.to_string()
-                                })
-                            })
+                            .map(|v| v.as_str().map(String::from).ok_or_else(|| v.to_string()))
                             .collect::<Result<Vec<_>, _>>()
                     })
                     .unwrap_or_else(|| Ok(Vec::new()));
@@ -936,7 +934,7 @@ impl HarnessToolRegistry {
                             ),
                             is_error: true,
                             duration_ms: 0,
-                        }
+                        };
                     }
                 };
 
@@ -2074,10 +2072,7 @@ fn answer_edit_batch(
             }
             (reply, false)
         }
-        Err(error) => (
-            format!("Could not write `{raw}`: {error}."),
-            true,
-        ),
+        Err(error) => (format!("Could not write `{raw}`: {error}."), true),
     }
 }
 
@@ -2098,9 +2093,7 @@ fn answer_edit_inner(
         .and_then(|v| v.as_str())
         .unwrap_or("");
     if old.is_empty() {
-        return Err(
-            "`oldText` is required and must be the exact text to replace.".to_string(),
-        );
+        return Err("`oldText` is required and must be the exact text to replace.".to_string());
     }
 
     // Exact first, always: the common case pays nothing, and what follows
@@ -2108,7 +2101,12 @@ fn answer_edit_inner(
     match content.matches(old).count() {
         1 => {
             let site = content.find(old).expect("counted");
-            return Ok(finish_edit_in_memory(content, site..site + old.len(), new, ""));
+            return Ok(finish_edit_in_memory(
+                content,
+                site..site + old.len(),
+                new,
+                "",
+            ));
         }
         hits if hits > 1 => {
             return Err(format!(
@@ -2650,7 +2648,10 @@ async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>)
             let mut combined = String::new();
             combined.push_str(&String::from_utf8_lossy(&stdout));
             combined.push_str(&String::from_utf8_lossy(&stderr));
-            (format!("{note}\n\n{}", strip_terminal_escapes(&combined).trim()), !status.success())
+            (
+                format!("{note}\n\n{}", strip_terminal_escapes(&combined).trim()),
+                !status.success(),
+            )
         }
         Err(error) => (
             format!("{note}\n\nFailed to wait for the openagents CLI: {error}"),
@@ -3629,8 +3630,6 @@ mod defect_tests {
         assert!(logged.contains("tail-marker"), "{logged}");
     }
 
-
-
     /// A long *failing* run is logged like a passing one: the failure names
     /// are the part a follow-up greps for, and they are exactly what a
     /// bounded reply is most likely to have cut.
@@ -3638,8 +3637,7 @@ mod defect_tests {
     async fn a_failing_logged_run_keeps_its_output_too() {
         let session = tempfile::tempdir().unwrap();
         let work = tempfile::tempdir().unwrap();
-        let command =
-            "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo boom; exit 3";
+        let command = "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo boom; exit 3";
 
         let (_stop, mut cancel) = watch::channel(false);
         let (_text, failed) =
@@ -3654,9 +3652,11 @@ mod defect_tests {
             .collect();
         assert_eq!(logs.len(), 1, "a failing run is logged too");
         let logged = std::fs::read_to_string(logs[0].path()).unwrap();
-        assert!(logged.contains("boom"), "the failure name is on disk: {logged}");
+        assert!(
+            logged.contains("boom"),
+            "the failure name is on disk: {logged}"
+        );
     }
-
 
     /// The escape-sequence tier, on the defect that motivated it: the model
     /// sends two backslashes before the newline where the file holds one,

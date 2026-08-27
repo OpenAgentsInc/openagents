@@ -58,7 +58,7 @@ pub mod tool_descriptions {
     /// `rust.openagents`
     pub const RUST_OPENAGENTS: &str = "Run the OpenAgents CLI commands (issue, project, repo, auth, etc.). Pass the arguments as a list without openagents itself.";
     /// `rust.delegate`
-    pub const RUST_DELEGATE: &str = "Run one prompt on independent child coding agents in parallel and return what each one found or did. Use it when work splits into parts that do not depend on each other: several files to change the same way, several hypotheses to check, several tests to run down. Each child is a full coding agent with its own shell tool, working in a git worktree of its own so children cannot overwrite each other, and it starts with no context from this conversation and cannot ask questions — so the prompt has to be self-contained. Every child runs the same prompt and each is told separately which number it is, so write the prompt for whichever child reads it: say \"read the file at your own number\" rather than naming one child. Children run on {lane} and on this session's budget. Prefer one call with a count over several calls, and prefer `shell` over this for a single command — a child agent is for work worth a whole agent, not one line of output. At most {max_count} children.";
+    pub const RUST_DELEGATE: &str = "Run one prompt on independent child coding agents in parallel and return what each one found or did. Use it when work splits into parts that do not depend on each other: several files to change the same way, several hypotheses to check, several tests to run down. Each child is a full coding agent with its own shell tool, working in a git worktree of its own so children cannot overwrite each other, and it starts with no context from this conversation and cannot ask questions — so the prompt has to be self-contained. Every child runs the same prompt and each is told separately which number it is, so write the prompt for whichever child reads it: say \"read the file at your own number\" rather than naming one child. Children run on the session's child lane, falling back to `openagents` (this process, the OpenAgents proxy) when the session is on an inference tier name such as `flash`. The resolved child lane is {lane}. At most {max_count} children. Prefer one call with a count over several calls, and prefer `shell` over this for a single command — a child agent is for work worth a whole agent, not one line of output.";
     /// `rust.capability`
     pub const RUST_CAPABILITY: &str = "Discover and load installed plugin capabilities: sandboxed, digest-pinned WebAssembly programs this machine already holds for common agent work. Before writing a script for a task, search here first — a capability that covers it is bounded, reviewable, and returns structured output. Call with `query` describing what you need to get the best matches; then call again with `name` set to the exact returned name to load it and make its dedicated tool available. Every later call to the loaded capability uses that exact name as the tool name.";
     /// `goal`
@@ -77,7 +77,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:eda221619c2f8d0f06cf54460a2f9c226b6ad122c01027fd3d5dc2944c57d86e",
+        "sha256:d107e44cebe5fe3f2f099b506276c4b94ccb42d25fba0049aaebefc940ca5b76",
     ),
     (
         "catalog-lines",

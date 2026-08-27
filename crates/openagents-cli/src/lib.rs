@@ -30,6 +30,7 @@ pub mod errors;
 pub mod fleet;
 pub mod foreign_resume;
 pub mod forum;
+pub mod gym;
 pub mod interactive;
 pub mod markdown;
 pub mod memory_client;

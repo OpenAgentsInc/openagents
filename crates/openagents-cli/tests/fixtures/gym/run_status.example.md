@@ -1,0 +1,40 @@
+# `run_status`
+
+```json
+{
+  "schema": "openagents.gym.run_status.v1",
+  "run_id": "run-2026-001",
+  "suite_id": "tb2-quick",
+  "lane": "proxy",
+  "model": "openai/gpt-5.6-luna",
+  "state": "graded",
+  "started_at": "2026-08-27T10:00:00Z",
+  "updated_at": "2026-08-27T10:05:12Z",
+  "tasks_total": 2,
+  "accepted": 1,
+  "rejected": 0,
+  "ungraded": 1,
+  "graded": 1,
+  "summary": "1 accepted, 0 rejected, 1 ungraded; 1 of 2 tasks graded",
+  "trials": [
+    {
+      "task": "regex-log",
+      "state": "accepted",
+      "outcome": "accepted",
+      "started_at": "2026-08-27T10:00:01Z",
+      "finished_at": "2026-08-27T10:02:30Z",
+      "transcript_ref": "/trace/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "cost_usd": 0.0042
+    },
+    {
+      "task": "openssl-selfsigned-cert",
+      "state": "ungraded",
+      "outcome": null,
+      "started_at": "2026-08-27T10:00:01Z",
+      "finished_at": "2026-08-27T10:05:12Z",
+      "transcript_ref": "/trace/bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+      "cost_usd": null
+    }
+  ]
+}
+```
