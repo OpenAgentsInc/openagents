@@ -18,6 +18,15 @@ done
 
 [ "$gate" = 1 ] || exit 0
 
+# Git exports GIT_DIR when it runs this hook. In a linked worktree that
+# points at .git/worktrees/<name> with no GIT_WORK_TREE, and under an
+# explicit GIT_DIR `rev-parse --show-toplevel` refuses to resolve a work
+# tree at all — so every push from a linked worktree was blocked here
+# (seen while landing #181). Clearing it puts the hook in the caller's
+# shoes: the cwd is inside the worktree, so git discovers both dirs as it
+# would for any command typed there.
+unset GIT_DIR GIT_WORK_TREE
+
 root="$(git -c core.bare=false rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
 if [ -z "$root" ] || [ ! -d "$root" ]; then
   echo "[pre-push guard] BLOCKED: could not resolve the repository root." >&2
