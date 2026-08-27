@@ -16,7 +16,7 @@
 //!   and a sentence about an offline fallback. These assert on `Err` and on
 //!   what it says.
 
-use openagents_cli::runtime::{CoderRuntimeSession, Lane, TurnUsage};
+use openagents_cli::runtime::{CoderRuntimeSession, Lane, ModelStreamEvent, TurnUsage};
 use openagents_cli::tools::HarnessToolRegistry;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -293,7 +293,12 @@ async fn a_final_answer_reaches_the_caller_after_the_round_closes() {
     });
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, Instant)>();
-    let mut session = session(Lane::default(), stub.base.clone());
+    let live = Arc::new(Mutex::new(Vec::new()));
+    let observed = Arc::clone(&live);
+    let mut session =
+        session(Lane::default(), stub.base.clone()).observing_stream(Arc::new(move |event| {
+            observed.lock().unwrap().push((event, Instant::now()))
+        }));
 
     let answer = session
         .execute_turn("say pong", move |chunk| {
@@ -320,6 +325,21 @@ async fn a_final_answer_reaches_the_caller_after_the_round_closes() {
     assert!(
         returned >= chunks[0].1,
         "the callback arrived after the turn returned"
+    );
+    let live = live.lock().unwrap();
+    assert_eq!(
+        live.iter()
+            .map(|(event, _)| event.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            ModelStreamEvent::ContentDelta("PO".to_string()),
+            ModelStreamEvent::ContentDelta("NG".to_string()),
+            ModelStreamEvent::ContentCommitted,
+        ]
+    );
+    assert!(
+        returned.duration_since(live[0].1) >= Duration::from_millis(600),
+        "the live observer did not receive the first delta while the response was open"
     );
 }
 
@@ -814,7 +834,10 @@ async fn a_tool_round_does_not_stream_provisional_text() {
         )
     });
 
-    let mut session = session(Lane::default(), stub.base.clone());
+    let live = Arc::new(Mutex::new(Vec::new()));
+    let observed = Arc::clone(&live);
+    let mut session = session(Lane::default(), stub.base.clone())
+        .observing_stream(Arc::new(move |event| observed.lock().unwrap().push(event)));
     let seen = Arc::new(Mutex::new(Vec::new()));
     let received = Arc::clone(&seen);
     let answer = session
@@ -830,6 +853,26 @@ async fn a_tool_round_does_not_stream_provisional_text() {
         vec!["The working directory is verified."],
         "a response that requested a tool leaked provisional text to the reader"
     );
+    let live = live.lock().unwrap();
+    let discarded = live
+        .iter()
+        .position(|event| *event == ModelStreamEvent::ContentDiscarded)
+        .expect("the provisional tool-round text was not discarded");
+    let text = |events: &[ModelStreamEvent]| {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                ModelStreamEvent::ContentDelta(delta) => Some(delta.as_str()),
+                _ => None,
+            })
+            .collect::<String>()
+    };
+    assert_eq!(text(&live[..discarded]), "I will check that now.");
+    assert_eq!(
+        text(&live[discarded + 1..]),
+        "The working directory is verified."
+    );
+    assert_eq!(live.last(), Some(&ModelStreamEvent::ContentCommitted));
 }
 
 // ───────────────────────────────────────────────────────────── the local lane

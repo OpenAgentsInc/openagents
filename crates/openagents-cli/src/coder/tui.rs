@@ -81,6 +81,7 @@ pub enum Role {
     You,
     Assistant,
     Tool,
+    Reasoning,
     Notice,
     /// What one of the session's own commands printed — `/diff`, `/help`,
     /// `/resume`.
@@ -919,7 +920,9 @@ fn render_entry(
             };
 
             let role_style = match entry.role {
-                Role::Notice => Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR),
+                Role::Notice | Role::Reasoning => {
+                    Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR)
+                }
                 Role::You => Style::default().fg(USER_TEXT_COLOR).bg(BACKGROUND_COLOR),
                 _ => text_style,
             };

@@ -101,6 +101,27 @@ pub enum TurnProgress {
 
 pub type TurnProgressObserver = Arc<dyn Fn(TurnProgress) + Send + Sync>;
 
+/// One live model event, before the runtime knows whether the current model
+/// step will answer or call a tool.
+///
+/// Content is provisional until [`ModelStreamEvent::ContentCommitted`]. A
+/// model can write a preamble and then request a tool in the same response;
+/// [`ModelStreamEvent::ContentDiscarded`] lets a live interface remove that
+/// preamble instead of preserving it as the turn's final answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelStreamEvent {
+    /// A piece of assistant-visible text, in wire order.
+    ContentDelta(String),
+    /// The current step's text is the final answer.
+    ContentCommitted,
+    /// The current step requested tools, so its text is not the final answer.
+    ContentDiscarded,
+    /// A piece of the model's reasoning summary, in wire order.
+    ReasoningDelta(String),
+}
+
+pub type ModelStreamObserver = Arc<dyn Fn(ModelStreamEvent) + Send + Sync>;
+
 #[derive(Debug, Clone, Copy)]
 struct FirstResponsePolicy {
     waiting_after: Duration,
@@ -871,6 +892,13 @@ pub struct CoderRuntimeSession {
     pub tool_observer: Option<ToolObserver>,
     /// Told when a model has not begun its response within the watchdog window.
     pub progress_observer: Option<TurnProgressObserver>,
+    /// Told about model text and reasoning as each wire delta arrives.
+    ///
+    /// The existing answer callback remains a committed-answer interface for
+    /// callers that cannot retract provisional content. A live frame can use
+    /// this richer observer to draw the stream immediately and remove a model
+    /// preamble when the same response proceeds to a tool call.
+    pub stream_observer: Option<ModelStreamObserver>,
     /// The current turn's cancellation signal, cloned into every tool call.
     tool_cancellation: Option<tokio::sync::watch::Receiver<bool>>,
     first_response: FirstResponsePolicy,
@@ -935,6 +963,7 @@ impl CoderRuntimeSession {
             messages: Vec::new(),
             tool_observer: None,
             progress_observer: None,
+            stream_observer: None,
             tool_cancellation: None,
             first_response: FirstResponsePolicy::default(),
             thread_id: None,
@@ -952,6 +981,13 @@ impl CoderRuntimeSession {
     /// Report first-response waiting and retry state to a caller that draws it.
     pub fn observing_progress(mut self, observer: TurnProgressObserver) -> Self {
         self.progress_observer = Some(observer);
+        self
+    }
+
+    /// Report live response and reasoning deltas to a caller that can draw
+    /// provisional content and retract it when a tool call follows.
+    pub fn observing_stream(mut self, observer: ModelStreamObserver) -> Self {
+        self.stream_observer = Some(observer);
         self
     }
 
@@ -985,6 +1021,37 @@ impl CoderRuntimeSession {
     fn tell_progress(&self, progress: TurnProgress) {
         if let Some(observer) = &self.progress_observer {
             observer(progress);
+        }
+    }
+
+    fn tell_stream(&self, event: ModelStreamEvent) {
+        if let Some(observer) = &self.stream_observer {
+            observer(event);
+        }
+    }
+
+    /// Deliver one provider text delta at a readable live cadence.
+    ///
+    /// Some providers stream a whole paragraph as one delta. Passing that
+    /// value straight through technically uses SSE but still paints as one
+    /// completed block. Only an attached live observer gets these paced
+    /// pieces; the committed-answer callback and headless callers keep the
+    /// provider's original chunk and incur no delay.
+    async fn tell_content_delta(&self, delta: String) {
+        const CHARS_PER_PIECE: usize = 8;
+        const PIECE_DELAY: Duration = Duration::from_millis(20);
+
+        let Some(observer) = self.stream_observer.clone() else {
+            return;
+        };
+        let chars = delta.chars().collect::<Vec<_>>();
+        let pieces = chars.chunks(CHARS_PER_PIECE).collect::<Vec<_>>();
+        let last = pieces.len().saturating_sub(1);
+        for (index, piece) in pieces.into_iter().enumerate() {
+            observer(ModelStreamEvent::ContentDelta(piece.iter().collect()));
+            if index < last {
+                tokio::time::sleep(PIECE_DELAY).await;
+            }
         }
     }
 
@@ -1773,7 +1840,20 @@ impl CoderRuntimeSession {
                             response_started = true;
                             self.tell_progress(TurnProgress::Clear);
                         }
-                        step.absorb_openai(&json, &mut |chunk| deferred_text.push_str(chunk));
+                        let reasoning_start = step.reasoning.len();
+                        let mut live_chunks = Vec::new();
+                        step.absorb_openai(&json, &mut |chunk| {
+                            deferred_text.push_str(chunk);
+                            live_chunks.push(chunk.to_string());
+                        });
+                        for chunk in live_chunks {
+                            self.tell_content_delta(chunk).await;
+                        }
+                        if step.reasoning.len() > reasoning_start {
+                            self.tell_stream(ModelStreamEvent::ReasoningDelta(
+                                step.reasoning[reasoning_start..].to_string(),
+                            ));
+                        }
                     }
 
                     if timed_out {
@@ -1813,6 +1893,7 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                self.tell_stream(ModelStreamEvent::ContentCommitted);
                 if !deferred_text.is_empty() {
                     chunk_callback(&deferred_text);
                 }
@@ -1837,6 +1918,9 @@ impl CoderRuntimeSession {
                 self.note(vec![said]).await;
                 answered = true;
                 break;
+            }
+            if !step.content.is_empty() {
+                self.tell_stream(ModelStreamEvent::ContentDiscarded);
             }
             let ran = self.run_tools(step).await;
             self.last_calls += ran.records.len();
@@ -1981,9 +2065,20 @@ impl CoderRuntimeSession {
                                 self.tell_progress(TurnProgress::Clear);
                             }
                             if event.event == "response.completed" {
+                                let reasoning_start = step.reasoning.len();
+                                let mut live_chunks = Vec::new();
                                 step.absorb_responses(&value, &mut |chunk| {
-                                    deferred_text.push_str(chunk)
+                                    deferred_text.push_str(chunk);
+                                    live_chunks.push(chunk.to_string());
                                 });
+                                for chunk in live_chunks {
+                                    self.tell_content_delta(chunk).await;
+                                }
+                                if step.reasoning.len() > reasoning_start {
+                                    self.tell_stream(ModelStreamEvent::ReasoningDelta(
+                                        step.reasoning[reasoning_start..].to_string(),
+                                    ));
+                                }
                                 completed = true;
                                 break;
                             }
@@ -2002,9 +2097,20 @@ impl CoderRuntimeSession {
                                     .record_failure(error_code::PROVIDER_FAILED, why)
                                     .await);
                             }
+                            let reasoning_start = step.reasoning.len();
+                            let mut live_chunks = Vec::new();
                             step.absorb_responses(&value, &mut |chunk| {
-                                deferred_text.push_str(chunk)
+                                deferred_text.push_str(chunk);
+                                live_chunks.push(chunk.to_string());
                             });
+                            for chunk in live_chunks {
+                                self.tell_content_delta(chunk).await;
+                            }
+                            if step.reasoning.len() > reasoning_start {
+                                self.tell_stream(ModelStreamEvent::ReasoningDelta(
+                                    step.reasoning[reasoning_start..].to_string(),
+                                ));
+                            }
                         }
                     }
 
@@ -2047,6 +2153,7 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                self.tell_stream(ModelStreamEvent::ContentCommitted);
                 if !deferred_text.is_empty() {
                     chunk_callback(&deferred_text);
                 }
@@ -2063,6 +2170,10 @@ impl CoderRuntimeSession {
                 self.last_model = resolved_model.clone();
                 answered = true;
                 break;
+            }
+
+            if !step.content.is_empty() {
+                self.tell_stream(ModelStreamEvent::ContentDiscarded);
             }
 
             let ran = self.run_tools(step).await;
@@ -2370,14 +2481,40 @@ impl CoderRuntimeSession {
                         continue;
                     }
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                        step.absorb_ollama(&json, &mut |chunk| deferred_text.push_str(chunk));
+                        let reasoning_start = step.reasoning.len();
+                        let mut live_chunks = Vec::new();
+                        step.absorb_ollama(&json, &mut |chunk| {
+                            deferred_text.push_str(chunk);
+                            live_chunks.push(chunk.to_string());
+                        });
+                        for chunk in live_chunks {
+                            self.tell_content_delta(chunk).await;
+                        }
+                        if step.reasoning.len() > reasoning_start {
+                            self.tell_stream(ModelStreamEvent::ReasoningDelta(
+                                step.reasoning[reasoning_start..].to_string(),
+                            ));
+                        }
                     }
                 }
             }
             let tail = pending.trim();
-            if !tail.is_empty() {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(tail) {
-                    step.absorb_ollama(&json, &mut |chunk| deferred_text.push_str(chunk));
+            if !tail.is_empty()
+                && let Ok(json) = serde_json::from_str::<serde_json::Value>(tail)
+            {
+                let reasoning_start = step.reasoning.len();
+                let mut live_chunks = Vec::new();
+                step.absorb_ollama(&json, &mut |chunk| {
+                    deferred_text.push_str(chunk);
+                    live_chunks.push(chunk.to_string());
+                });
+                for chunk in live_chunks {
+                    self.tell_content_delta(chunk).await;
+                }
+                if step.reasoning.len() > reasoning_start {
+                    self.tell_stream(ModelStreamEvent::ReasoningDelta(
+                        step.reasoning[reasoning_start..].to_string(),
+                    ));
                 }
             }
 
@@ -2386,6 +2523,7 @@ impl CoderRuntimeSession {
 
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
+                self.tell_stream(ModelStreamEvent::ContentCommitted);
                 if !deferred_text.is_empty() {
                     chunk_callback(&deferred_text);
                 }
@@ -2408,6 +2546,9 @@ impl CoderRuntimeSession {
                 });
                 answered = true;
                 break;
+            }
+            if !step.content.is_empty() {
+                self.tell_stream(ModelStreamEvent::ContentDiscarded);
             }
             // The local lane holds no thread of its own, so `note` writes
             // nothing; it is called anyway so a local session that resumed

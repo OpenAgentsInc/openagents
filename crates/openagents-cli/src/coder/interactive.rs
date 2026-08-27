@@ -710,6 +710,39 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 ui.scroll_override = None;
             }
         }
+        Control::Reasoning(chunk) => {
+            if !chunk.is_empty() {
+                if let Some(last) = ui
+                    .entries
+                    .last_mut()
+                    .filter(|entry| entry.role == Role::Reasoning)
+                {
+                    last.push_text(&chunk);
+                } else {
+                    ui.entries.push(Entry::new(Role::Reasoning, chunk));
+                }
+                ui.scroll_override = None;
+            }
+        }
+        Control::DiscardReply => {
+            if ui
+                .entries
+                .last()
+                .is_some_and(|entry| entry.role == Role::Assistant)
+            {
+                ui.entries.pop();
+            }
+            ui.scroll_override = None;
+        }
+        Control::CommitReply => {
+            if let Some(last) = ui
+                .entries
+                .last_mut()
+                .filter(|entry| entry.role == Role::Assistant)
+            {
+                last.finish_text();
+            }
+        }
         Control::Tool {
             call_id,
             name,
@@ -1338,5 +1371,48 @@ mod tests {
         );
         assert_eq!(ui.entries[2].text, "All green.");
         assert_eq!(ui.entries[2].model.as_deref(), Some("glm-5.3-flash"));
+    }
+
+    #[test]
+    fn reasoning_deltas_form_a_visible_entry_before_the_answer() {
+        let mut ui = CoderUi::new();
+
+        apply(&mut ui, Control::Reasoning("Check ".to_string()));
+        apply(&mut ui, Control::Reasoning("the request.".to_string()));
+        apply(&mut ui, Control::Chunk("Done.".to_string()));
+        apply(&mut ui, Control::CommitReply);
+
+        assert_eq!(ui.entries.len(), 2);
+        assert_eq!(ui.entries[0].role, Role::Reasoning);
+        assert_eq!(ui.entries[0].text, "Check the request.");
+        assert_eq!(ui.entries[1].role, Role::Assistant);
+        assert_eq!(ui.entries[1].text, "Done.");
+    }
+
+    #[test]
+    fn a_tool_round_removes_its_provisional_reply() {
+        let mut ui = CoderUi::new();
+
+        apply(&mut ui, Control::Chunk("I will inspect it.".to_string()));
+        apply(&mut ui, Control::DiscardReply);
+        apply(
+            &mut ui,
+            Control::Tool {
+                call_id: "call_1".to_string(),
+                name: "read".to_string(),
+                arguments: r#"{"path":"README.md"}"#.to_string(),
+            },
+        );
+        apply(&mut ui, Control::Chunk("The file is current.".to_string()));
+        apply(&mut ui, Control::CommitReply);
+
+        assert_eq!(
+            ui.entries
+                .iter()
+                .map(|entry| entry.role.clone())
+                .collect::<Vec<_>>(),
+            vec![Role::Tool, Role::Assistant]
+        );
+        assert_eq!(ui.entries[1].text, "The file is current.");
     }
 }

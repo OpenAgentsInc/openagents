@@ -31,6 +31,10 @@ enum Reply {
     Sse(Vec<String>),
     DelayedSse(Duration, Vec<String>),
     ResponsesSse(Duration, String),
+    ResponsesStream(
+        Vec<(&'static str, serde_json::Value)>,
+        Option<(usize, Duration)>,
+    ),
 }
 
 struct Stub {
@@ -164,6 +168,26 @@ where
                                 .as_bytes(),
                             )
                             .await;
+                    }
+                    Reply::ResponsesStream(events, pause) => {
+                        let _ = socket
+                            .write_all(
+                                b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\
+                                  connection: close\r\n\r\n",
+                            )
+                            .await;
+                        let _ = socket.flush().await;
+                        for (index, (event, data)) in events.into_iter().enumerate() {
+                            if let Some((at, delay)) = pause {
+                                if index == at {
+                                    tokio::time::sleep(delay).await;
+                                }
+                            }
+                            let _ = socket
+                                .write_all(format!("event: {event}\ndata: {data}\n\n").as_bytes())
+                                .await;
+                            let _ = socket.flush().await;
+                        }
                     }
                 }
                 let _ = socket.flush().await;
@@ -632,6 +656,163 @@ async fn a_silent_openresponses_turn_is_cancelled_and_retried_once() {
             .any(|control| matches!(control, Control::Model(model) if model == "glm-5.3-flash")),
         "dev mode did not report the model that answered: {seen:?}"
     );
+}
+
+/// Dev mode forwards answer and reasoning deltas while the response is still
+/// open. Waiting for `response.completed` would make this test time out before
+/// it observes the first answer chunk.
+#[tokio::test]
+async fn an_openresponses_turn_streams_answer_and_reasoning_before_completion() {
+    let stub = start(|request, _origin| {
+        if request.contains("POST /api/v1/responses") {
+            return Reply::ResponsesStream(
+                vec![
+                    (
+                        "response.reasoning_summary_text.delta",
+                        serde_json::json!({
+                            "type": "response.reasoning_summary_text.delta",
+                            "delta": "Check the request."
+                        }),
+                    ),
+                    (
+                        "response.output_text.delta",
+                        serde_json::json!({
+                            "type": "response.output_text.delta",
+                            "delta": "Hello "
+                        }),
+                    ),
+                    (
+                        "response.output_text.delta",
+                        serde_json::json!({
+                            "type": "response.output_text.delta",
+                            "delta": "world."
+                        }),
+                    ),
+                    (
+                        "response.completed",
+                        serde_json::json!({
+                            "type": "response.completed",
+                            "response": {"usage": {}}
+                        }),
+                    ),
+                ],
+                Some((2, Duration::from_millis(200))),
+            );
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let (tx, rx) = channel();
+    let mut session = dev_session(&stub.base, tx.clone());
+    let running = tokio::spawn(async move {
+        session.execute_turn("hello", tx).await;
+    });
+
+    let early = tokio::time::timeout(Duration::from_millis(150), async {
+        let mut reasoning = String::new();
+        let mut answer = String::new();
+        while reasoning.is_empty() || answer.is_empty() {
+            if let Ok(control) = rx.try_recv() {
+                let event = match control {
+                    Control::Turn { event, .. } => *event,
+                    event => event,
+                };
+                match event {
+                    Control::Reasoning(chunk) => reasoning.push_str(&chunk),
+                    Control::Chunk(chunk) => answer.push_str(&chunk),
+                    _ => {}
+                }
+            }
+            tokio::task::yield_now().await;
+        }
+        (reasoning, answer)
+    })
+    .await
+    .expect("no reasoning and answer delta arrived before the response completed");
+
+    assert_eq!(
+        early,
+        ("Check the request.".to_string(), "Hello ".to_string())
+    );
+    assert!(
+        !running.is_finished(),
+        "the first deltas were not observed until the completed response"
+    );
+    running.await.unwrap();
+
+    let remaining = drain(&rx);
+    assert_eq!(reply_text(&remaining), "world.");
+    assert!(
+        remaining
+            .iter()
+            .any(|event| matches!(event, Control::CommitReply))
+    );
+}
+
+/// A provider can technically stream while sending its entire answer in one
+/// large delta. Coder splits only that live UI event into paced pieces so the
+/// terminal still updates incrementally.
+#[tokio::test]
+async fn one_coarse_provider_delta_is_paced_for_the_tui() {
+    let answer = "One coarse provider delta still paints as a live terminal stream.";
+    let stub = start(move |request, _origin| {
+        if request.contains("POST /api/v1/responses") {
+            return Reply::ResponsesStream(
+                vec![
+                    (
+                        "response.output_text.delta",
+                        serde_json::json!({
+                            "type": "response.output_text.delta",
+                            "delta": answer
+                        }),
+                    ),
+                    (
+                        "response.completed",
+                        serde_json::json!({
+                            "type": "response.completed",
+                            "response": {"usage": {}}
+                        }),
+                    ),
+                ],
+                None,
+            );
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let (tx, rx) = channel();
+    let mut session = dev_session(&stub.base, tx.clone());
+    let running = tokio::spawn(async move {
+        session.execute_turn("hello", tx).await;
+    });
+
+    let first = tokio::time::timeout(Duration::from_millis(100), async {
+        loop {
+            if let Ok(control) = rx.try_recv() {
+                let event = match control {
+                    Control::Turn { event, .. } => *event,
+                    event => event,
+                };
+                if let Control::Chunk(chunk) = event {
+                    break chunk;
+                }
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the first paced piece did not reach the TUI");
+
+    assert_eq!(first, "One coar");
+    assert!(
+        !running.is_finished(),
+        "the coarse delta reached the TUI as one completed block"
+    );
+    running.await.unwrap();
+
+    let mut streamed = first;
+    streamed.push_str(&reply_text(&drain(&rx)));
+    assert_eq!(streamed, answer);
 }
 
 /// The retry budget is one. A provider that stays silent cannot create an

@@ -31,7 +31,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::coder::turn::TurnId;
-use crate::runtime::{ChatMessage, CoderRuntimeSession, Lane, ToolEvent, TurnProgress, TurnUsage};
+use crate::runtime::{
+    ChatMessage, CoderRuntimeSession, Lane, ModelStreamEvent, ToolEvent, TurnProgress, TurnUsage,
+};
 use crate::surfaces::system_prompt as prompt;
 use crate::tools::{DelegationGate, HarnessToolRegistry, ToolDefinition};
 
@@ -51,6 +53,13 @@ pub enum Control {
     },
     /// A piece of the reply, as the model wrote it.
     Chunk(String),
+    /// A piece of the model's reasoning summary, as it arrived.
+    Reasoning(String),
+    /// The current response step became a tool round, so remove its
+    /// provisional assistant text.
+    DiscardReply,
+    /// The current response step is the final answer.
+    CommitReply,
     /// A tool call started. The header goes up now; the box fills in later.
     Tool {
         call_id: String,
@@ -247,6 +256,8 @@ pub struct Session {
     settled_cancellations: std::collections::HashSet<TurnId>,
     /// Canceled turns already written to the transcript, including retries.
     recorded_cancellations: std::collections::HashSet<TurnId>,
+    /// Whether the live stream observer delivered answer text for this turn.
+    live_streaming: Arc<AtomicBool>,
 }
 
 impl Session {
@@ -311,9 +322,13 @@ impl Session {
         let goal = Arc::new(Mutex::new(crate::coder::goal::GoalStore::default()));
         let observed = Arc::clone(&sink);
         let progress = Arc::clone(&sink);
+        let streaming = Arc::clone(&sink);
         let turn_router = Arc::new(Mutex::new(TurnRouter::default()));
         let observed_turns = Arc::clone(&turn_router);
         let progress_turns = Arc::clone(&turn_router);
+        let stream_turns = Arc::clone(&turn_router);
+        let live_streaming = Arc::new(AtomicBool::new(false));
+        let streamed = Arc::clone(&live_streaming);
 
         // Coder's own capability, declared only where there is one to
         // declare: `find_agents` reports installed agents, so a machine with
@@ -405,6 +420,28 @@ impl Session {
                     send_turn(&progress, id, Control::Waiting(message));
                 }
             }))
+            .observing_stream(Arc::new(move |event| {
+                let id = stream_turns.lock().ok().and_then(|turns| turns.active);
+                let Some(id) = id else {
+                    return;
+                };
+                match event {
+                    ModelStreamEvent::ContentDelta(chunk) => {
+                        streamed.store(true, Ordering::Relaxed);
+                        send_turn(&streaming, id, Control::Chunk(chunk));
+                    }
+                    ModelStreamEvent::ContentCommitted => {
+                        send_turn(&streaming, id, Control::CommitReply)
+                    }
+                    ModelStreamEvent::ContentDiscarded => {
+                        streamed.store(false, Ordering::Relaxed);
+                        send_turn(&streaming, id, Control::DiscardReply)
+                    }
+                    ModelStreamEvent::ReasoningDelta(chunk) => {
+                        send_turn(&streaming, id, Control::Reasoning(chunk))
+                    }
+                }
+            }))
             .use_openresponses(dev);
         inner.reasoning = reasoning;
         inner.repository = repository();
@@ -430,6 +467,7 @@ impl Session {
             next_turn: 1,
             settled_cancellations: std::collections::HashSet::new(),
             recorded_cancellations: std::collections::HashSet::new(),
+            live_streaming,
         }
     }
 
@@ -565,13 +603,7 @@ impl Session {
         // turn, not per session.
         self.acp_spent.store(false, Ordering::SeqCst);
         let sink: Sink = Arc::new(Mutex::new(tx));
-        let chunks = Arc::clone(&sink);
-        // Whether the reply reached the frame as it was written. The answer
-        // `execute_turn` returns has normally already streamed, so repeating
-        // it would print it twice; this is what tells the one case from the
-        // other.
-        let streamed = Arc::new(AtomicBool::new(false));
-        let saw = Arc::clone(&streamed);
+        self.live_streaming.store(false, Ordering::Relaxed);
         let started = Instant::now();
         let goal_prompt = self
             .goal()
@@ -582,12 +614,10 @@ impl Session {
             .unwrap_or_else(|| prompt.to_string());
         let result = self
             .inner
-            .execute_turn(&outgoing, move |chunk| {
-                if !chunk.is_empty() {
-                    saw.store(true, Ordering::Relaxed);
-                    send_turn(&chunks, id, Control::Chunk(chunk.to_string()));
-                }
-            })
+            // The rich stream observer above carries each wire delta. This
+            // committed-answer callback remains for non-interactive callers
+            // and would repeat the same text here.
+            .execute_turn(&outgoing, |_| {})
             .await;
 
         if let Some(model) = &self.inner.last_model {
@@ -611,7 +641,7 @@ impl Session {
                 // The fallback for a path that answered without streaming, and
                 // nothing else: an empty answer stays empty rather than
                 // becoming a sentence somebody could read as a reply.
-                if !answer.is_empty() && !streamed.load(Ordering::Relaxed) {
+                if !answer.is_empty() && !self.live_streaming.load(Ordering::Relaxed) {
                     send_turn(&sink, id, Control::Chunk(answer));
                 }
             }
