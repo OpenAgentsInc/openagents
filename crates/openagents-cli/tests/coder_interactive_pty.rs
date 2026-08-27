@@ -834,8 +834,8 @@ mod unix_pty {
             transcript.contains("clear the transcript") && transcript.contains("Alt+Enter")
         });
         assert!(
-            frame.transcript().contains("Commands"),
-            "the `/help` output should be headed `Commands`.\n{}",
+            frame.transcript().contains("/queue"),
+            "the `/help` output should list the prompt queue control.\n{}",
             frame.dump()
         );
 
@@ -845,6 +845,72 @@ mod unix_pty {
             let transcript = frame.transcript();
             transcript.contains("There is no") && transcript.contains("nosuchcommand")
         });
+    }
+
+    #[test]
+    fn queued_prompts_survive_cancel_and_run_in_order() {
+        let mut tui = Tui::start_with_blocked_turn();
+        tui.wait_for_composer();
+
+        tui.type_text("first blocked prompt");
+        tui.send(b"\r");
+        tui.type_text("second queued prompt");
+        tui.send(b"\r");
+        let queued = tui.wait_for("the second prompt to queue", REDRAW, |frame| {
+            frame.rows.iter().any(|row| row.contains("1 queued prompt"))
+        });
+        assert!(queued.transcript().contains("> second queued prompt"));
+
+        tui.send(&[0x1b]);
+        let resumed = tui.wait_for("the queued prompt to run after cancel", REDRAW, |frame| {
+            frame.transcript().contains("Turn canceled.")
+                && frame.transcript().contains("Coder PTY harness stub")
+                && frame.rows.last().is_some_and(|row| row.contains("Idle"))
+        });
+        assert!(resumed.transcript().contains("> first blocked prompt"));
+        assert!(resumed.transcript().contains("> second queued prompt"));
+    }
+
+    #[test]
+    fn clearing_the_queue_does_not_cancel_the_active_turn() {
+        let mut tui = Tui::start_with_blocked_turn();
+        tui.wait_for_composer();
+
+        tui.type_text("active prompt");
+        tui.send(b"\r");
+        tui.type_text("discard this prompt");
+        tui.send(b"\r");
+        tui.wait_for("one prompt to queue", REDRAW, |frame| {
+            frame.rows.iter().any(|row| row.contains("1 queued prompt"))
+        });
+
+        tui.type_text("/queue clear");
+        tui.send(b"\r");
+        let cleared = tui.wait_for("the queue to clear", REDRAW, |frame| {
+            frame.transcript().contains("Cleared 1 queued prompt.")
+                && frame.rows.iter().any(|row| row.contains("Active"))
+        });
+        assert!(!cleared.transcript().contains("Turn canceled."));
+        assert!(
+            cleared
+                .rows
+                .last()
+                .is_some_and(|row| !row.contains("1 queued prompt"))
+        );
+    }
+
+    #[test]
+    fn exit_cancels_an_active_turn_before_leaving() {
+        let mut tui = Tui::start_with_blocked_turn();
+        tui.wait_for_composer();
+        tui.type_text("active during exit");
+        tui.send(b"\r");
+        tui.wait_for("the active turn", REDRAW, |frame| {
+            frame.rows.iter().any(|row| row.contains("Active"))
+        });
+
+        let status = tui.quit();
+        assert!(status.success(), "active exit failed: {status:?}");
     }
 
     #[test]

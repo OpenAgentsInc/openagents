@@ -43,6 +43,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "end this session's thread and remove the stored token",
     ),
     (
+        "queue",
+        "inspect or clear waiting prompts: /queue, /queue clear",
+    ),
+    (
         "resume",
         "coding-agent sessions other tools left on this machine: /resume, /resume <number>",
     ),
@@ -67,7 +71,8 @@ const KEYS: &[(&str, &str)] = &[
         "Ctrl+A / Ctrl+E / Ctrl+W / Ctrl+K / Ctrl+U / Alt+B / Alt+F",
         "edit the line",
     ),
-    ("Esc / Ctrl+C / Ctrl+D", "leave, revoking the thread"),
+    ("Esc", "cancel the active turn and keep queued prompts"),
+    ("Ctrl+C / Ctrl+D / Ctrl+Q", "leave Coder; an active turn is canceled first"),
 ];
 
 /// The command names, for Tab completion.
@@ -87,6 +92,7 @@ pub fn handles(name: &str) -> bool {
             | "info"
             | "login"
             | "logout"
+            | "queue"
             | "resume"
             | "run"
     )
@@ -103,6 +109,10 @@ pub enum Outcome {
     Done,
     /// Log this session out: see [`logout`].
     Logout,
+    /// Report the number of prompts waiting behind the active turn.
+    QueueStatus,
+    /// Remove prompts waiting behind the active turn.
+    ClearQueue,
 }
 
 /// Run one `/` line. `line` still carries its leading slash.
@@ -132,6 +142,9 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
         // thread has been ended and the credential removed, so it says what
         // actually happened rather than what was asked for.
         "logout" => return Outcome::Logout,
+        "queue" if arguments.is_empty() => return Outcome::QueueStatus,
+        "queue" if arguments == ["clear"] => return Outcome::ClearQueue,
+        "queue" => output(ui, "Use `/queue` or `/queue clear`."),
         "diff" => spawn_diff(ui, arguments, tx, cwd),
         "run" => spawn_run(ui, &rest, tx, cwd),
         "resume" => spawn_resume(ui, &arguments, tx, cwd),
@@ -665,7 +678,8 @@ mod tests {
         let listed: Vec<&str> = KEYS.iter().map(|(key, _)| *key).collect();
         assert!(listed.contains(&"Enter"));
         assert!(listed.contains(&"Tab"));
-        assert!(listed.contains(&"Esc / Ctrl+C / Ctrl+D"));
+        assert!(listed.contains(&"Esc"));
+        assert!(listed.contains(&"Ctrl+C / Ctrl+D / Ctrl+Q"));
         // Nothing about a pane, a diff inspector, or a detach key: none of
         // those exist here.
         let text = help();

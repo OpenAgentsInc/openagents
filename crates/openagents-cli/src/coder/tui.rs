@@ -282,6 +282,8 @@ pub struct CoderUi {
     pub loading: bool,
     /// Temporary first-response state shown beside the spinner.
     pub waiting: Option<String>,
+    /// Current turn and prompt-queue state, rendered in the status row.
+    pub activity: String,
     pub tick: u64,
     /// Whether active-state motion advances. Set `OPENAGENTS_REDUCED_MOTION`
     /// to keep the same state markers with a static rail.
@@ -379,6 +381,7 @@ impl CoderUi {
             transcript_height: 0,
             loading: false,
             waiting: None,
+            activity: "Idle".to_string(),
             tick: 0,
             motion_enabled: std::env::var_os("OPENAGENTS_REDUCED_MOTION").is_none(),
             identity: Identity::Anonymous,
@@ -597,6 +600,11 @@ impl CoderUi {
         // the edge. The balance gets the remaining columns on the left; no
         // fixed gutter survives when either field is short.
         let mut balance = self.balance_line();
+        if !self.activity.is_empty() {
+            let separator = if balance.is_empty() { "" } else { " · " };
+            balance.push_str(separator);
+            balance.push_str(&self.activity);
+        }
         let balance_width = (balance.chars().count() as u16).min(status_area.width);
         let gap = u16::from(balance_width > 0);
         let lane = self.lane_field_within(
