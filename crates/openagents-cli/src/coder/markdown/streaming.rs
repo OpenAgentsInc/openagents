@@ -256,6 +256,11 @@ impl StreamingMarkdownRenderer {
         }
     }
 
+    /// Whether CommonMark soft breaks currently collapse to a space.
+    pub fn collapse_soft_breaks(&self) -> bool {
+        self.collapse_soft_breaks
+    }
+
     /// Set whether CommonMark soft breaks collapse to a space.
     ///
     /// Defaults to `true`. Set `false` for source-faithful rendering (plan

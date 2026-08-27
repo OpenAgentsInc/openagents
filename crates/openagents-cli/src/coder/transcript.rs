@@ -82,7 +82,11 @@ impl Clone for MarkdownContent {
     fn clone(&self) -> Self {
         // Rebuild from source rather than copying caches: a clone that shares
         // a stale frozen count would render a different document.
-        let mut next = Self::new();
+        let mut next = if self.renderer_is_source_faithful() {
+            Self::source_faithful()
+        } else {
+            Self::new()
+        };
         next.push(self.renderer.source());
         next
     }
@@ -111,6 +115,19 @@ impl MarkdownContent {
         }
     }
 
+    /// A renderer that keeps single newlines as line breaks.
+    ///
+    /// CommonMark folds a soft break into a space, which is right for prose
+    /// and wrong for text whose author meant every line: a reasoning summary
+    /// written as "1. assess\n2. plan" reads as one wall of prose once the
+    /// newlines collapse. The engine already has the switch; this is the
+    /// constructor that turns it on.
+    pub fn source_faithful() -> Self {
+        let mut content = Self::new();
+        content.renderer.set_collapse_soft_breaks(false);
+        content
+    }
+
     /// Append a streamed chunk.
     ///
     /// Parsing is deferred to the next [`Self::lines`] call so a chunk is
@@ -132,6 +149,14 @@ impl MarkdownContent {
     pub fn finish(&mut self) {
         self.renderer.finish(Some(theme::syntect()));
         self.generation = self.generation.wrapping_add(1);
+    }
+
+    /// Whether this content keeps soft breaks as line breaks.
+    ///
+    /// The engine is the keeper of the mode; this reads it back so `clone`
+    /// reproduces the rendering it was built with.
+    fn renderer_is_source_faithful(&self) -> bool {
+        !self.renderer.collapse_soft_breaks()
     }
 
     /// The accumulated markdown source, after LaTeX delimiter normalization.

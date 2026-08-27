@@ -98,7 +98,16 @@ pub enum Role {
 impl Role {
     /// Whether this role's text goes through the streaming markdown engine.
     fn is_markdown(&self) -> bool {
-        matches!(self, Role::Assistant | Role::Output)
+        matches!(self, Role::Assistant | Role::Output | Role::Reasoning)
+    }
+
+    /// Whether this role renders with single newlines kept as line breaks.
+    ///
+    /// Reasoning summaries are written to be read with their layout intact —
+    /// "1. assess\n2. plan" over three lines, not folded into one sentence.
+    /// CommonMark's soft-break folding is for prose, so reasoning opts out.
+    fn is_source_faithful(&self) -> bool {
+        matches!(self, Role::Reasoning)
     }
 }
 
@@ -226,7 +235,11 @@ impl Entry {
     /// incremental saving there was nothing to save.
     fn markdown_mut(&mut self) -> &mut MarkdownContent {
         if self.md.is_none() {
-            let mut content = MarkdownContent::new();
+            let mut content = if self.role.is_source_faithful() {
+                MarkdownContent::source_faithful()
+            } else {
+                MarkdownContent::new()
+            };
             if !self.text.is_empty() {
                 content.push(&self.text);
             }
@@ -915,6 +928,43 @@ fn render_entry(
         .unwrap_or(width);
 
     let (mut lines, links) = match entry.role {
+        Role::Reasoning if !entry.text.is_empty() => {
+            // The reasoning bullet keeps the column it always had; the
+            // markdown that follows it wraps inside what is left. Blocks sit
+            // flush at the indent, inline styles indent only their text, and
+            // one dim repaint unifies the block with the role it renders.
+            let bullet_body = width.saturating_sub(2).max(1);
+            let md = entry.markdown_mut();
+            let raw_lines = md.lines(bullet_body).to_vec();
+            let raw_links = md.links(bullet_body).to_vec();
+            let mut lines = Vec::with_capacity(raw_lines.len());
+            let mut row_prefix_widths = Vec::with_capacity(raw_lines.len());
+            for (row, line) in raw_lines.into_iter().enumerate() {
+                let (prefix, indent) = if row == 0 { ("⏺ ", "  ") } else { ("", "  ") };
+                let gutter = format!("{prefix}{indent}");
+                row_prefix_widths.push(UnicodeWidthStr::width(gutter.as_str()));
+                let mut spans = Vec::with_capacity(line.spans.len() + 1);
+                spans.push(Span::styled(gutter, text_style.fg(DIM_TEXT_COLOR)));
+                for mut span in line.spans {
+                    span.style.fg = Some(DIM_TEXT_COLOR);
+                    span.style.bg = Some(BACKGROUND_COLOR);
+                    spans.push(span);
+                }
+                lines.push(Line::from(spans));
+            }
+            // Link columns were measured inside the wrapped body; shift them
+            // past the gutter this role draws in front of each row.
+            let links = raw_links
+                .into_iter()
+                .map(|mut link| {
+                    let shift = row_prefix_widths.get(link.row).copied().unwrap_or(0);
+                    link.col_start += shift;
+                    link.col_end += shift;
+                    link
+                })
+                .collect();
+            (lines, links)
+        }
         Role::Assistant if !entry.text.is_empty() && entry.text.starts_with("[error:") => {
             let mut lines = Vec::new();
             for chunk in wrap_text(&entry.text, body_width) {
@@ -1189,4 +1239,125 @@ fn blend_rgb(from: Color, to: Color, amount: f32) -> Color {
         (start as f32 + (end as f32 - start as f32) * amount.clamp(0.0, 1.0)).round() as u8
     };
     Color::Rgb(channel(fr, tr), channel(fg, tg), channel(fb, tb))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The exact shape reported in issue #181: a reasoning summary whose
+    /// markers and list layout arrived intact but rendered as one folded
+    /// paragraph of literal `**bold**` text.
+    #[test]
+    fn reasoning_renders_markdown_structure_and_keeps_line_breaks() {
+        let mut entry = Entry::new(
+            Role::Reasoning,
+            "The user wants me to assess the options:\n\n1. **Option A: Hub daemon** — one socket\n2. **Option B: Peer-to-peer** — N sockets\n\nThen assess `swarm` naming.",
+        );
+        entry.finish_text();
+
+        let (lines, _) = render_entry(&mut entry, 200, 0, false);
+        let text = |row: usize| -> String {
+            lines[row]
+                .spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect()
+        };
+        let all = (0..lines.len()).map(text).collect::<Vec<_>>().join("\n");
+
+        // Inline markers are consumed by the engine, not printed.
+        assert!(!all.contains("**"), "raw bold markers survived: {all}");
+        assert!(!all.contains("`"), "raw code ticks survived: {all}");
+
+        // "Option A" is bold: it survives with the BOLD modifier.
+        let bold_somewhere = lines.iter().any(|line| {
+            line.spans.iter().any(|s| {
+                s.content.contains("Option A") && s.style.add_modifier.contains(Modifier::BOLD)
+            })
+        });
+        assert!(bold_somewhere, "bold never rendered: {all}");
+
+        // The two list items sit on their own rows, in order, with the
+        // soft breaks between them kept.
+        let item_a = lines
+            .iter()
+            .position(|line| line.spans.iter().any(|s| s.content.contains("Option A")))
+            .expect("option A row missing");
+        let item_b = lines
+            .iter()
+            .position(|line| line.spans.iter().any(|s| s.content.contains("Option B")))
+            .expect("option B row missing");
+        assert!(item_b > item_a, "list items folded into one row: {all}");
+    }
+
+    /// Line breaks are respected even without blank lines: a reasoning
+    /// summary that never uses list syntax still gets one row per line.
+    #[test]
+    fn reasoning_soft_breaks_render_as_line_breaks_not_spaces() {
+        let mut entry = Entry::new(
+            Role::Reasoning,
+            "First thought,\nsecond thought,\nthird thought.",
+        );
+        entry.finish_text();
+
+        let (lines, _) = render_entry(&mut entry, 200, 0, false);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        let joined = texts.join("\n");
+        assert!(texts.len() >= 3, "breaks collapsed: {joined}");
+        assert!(joined.contains("First thought,"));
+        assert!(joined.contains("second thought,"));
+    }
+
+    /// The reasoning bullet survives the markdown arm: the block still opens
+    /// with `⏺` and the dim colour the role has always carried.
+    #[test]
+    fn reasoning_keeps_its_bullet_and_dim_colour() {
+        let mut entry = Entry::new(Role::Reasoning, "Thinking about it.\n\nSecond line.");
+        entry.finish_text();
+
+        let (lines, _) = render_entry(&mut entry, 200, 0, false);
+        let first = &lines[0];
+        assert_eq!(first.spans[0].content.as_ref(), "⏺   ");
+        assert!(
+            first
+                .spans
+                .iter()
+                .any(|s| s.style.fg == Some(DIM_TEXT_COLOR)),
+            "reasoning no longer dim: {:?}",
+            first.spans
+        );
+    }
+
+    /// Assistant prose keeps CommonMark folding: this regression is what the
+    /// reasoning switch must not leak into.
+    #[test]
+    fn assistant_soft_breaks_still_collapse_to_spaces() {
+        let mut entry = Entry::new(Role::Assistant, "Line one,\nline two,");
+        entry.finish_text();
+
+        let (lines, _) = render_entry(&mut entry, 200, 0, false);
+        let joined = lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Line one, line two,"),
+            "assistant folding changed: {joined}"
+        );
+    }
 }

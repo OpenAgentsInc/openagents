@@ -839,7 +839,11 @@ fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent
         };
         let mut entry = match event.record.event_type.as_str() {
             "turn.user" => Entry::new(Role::You, text("text")),
-            "turn.reasoning" => Entry::new(Role::Reasoning, text("text")),
+            "turn.reasoning" => {
+                let mut entry = Entry::new(Role::Reasoning, text("text"));
+                entry.finish_text();
+                entry
+            }
             "turn.assistant" => {
                 let answer = text("text");
                 if answer.is_empty() {
@@ -941,7 +945,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             if let Some(last) = ui
                 .entries
                 .last_mut()
-                .filter(|entry| entry.role == Role::Assistant)
+                .filter(|entry| entry.role == Role::Assistant || entry.role == Role::Reasoning)
             {
                 last.finish_text();
             }
@@ -1054,7 +1058,11 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             ui.scroll_override = None;
         }
         Control::Done => {
-            if let Some(last) = ui.entries.iter_mut().rfind(|e| e.role == Role::Assistant) {
+            if let Some(last) = ui
+                .entries
+                .last_mut()
+                .filter(|e| e.role == Role::Assistant || e.role == Role::Reasoning)
+            {
                 last.finish_text();
             }
             ui.loading = false;
