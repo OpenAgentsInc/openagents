@@ -604,11 +604,6 @@ impl CoderUi {
         // the edge. The balance gets the remaining columns on the left; no
         // fixed gutter survives when either field is short.
         let mut balance = self.balance_line();
-        if !self.activity.is_empty() {
-            let separator = if balance.is_empty() { "" } else { " · " };
-            balance.push_str(separator);
-            balance.push_str(&self.activity);
-        }
         let balance_width = (balance.chars().count() as u16).min(status_area.width);
         let gap = u16::from(balance_width > 0);
         let lane = self.lane_field_within(
@@ -617,6 +612,23 @@ impl CoderUi {
                 .saturating_sub(balance_width.saturating_add(gap)),
         );
         let lane_width = (lane.chars().count() as u16).min(status_area.width);
+        let fits_left = |text: &str| {
+            let text_width = text.chars().count() as u16;
+            let gap = u16::from(text_width > 0 && lane_width > 0);
+            text_width
+                .saturating_add(gap)
+                .saturating_add(lane_width)
+                <= status_area.width
+        };
+        // Activity and goal text are useful progress details, but they must
+        // not evict the credit or effective model that govern the next turn.
+        if !self.activity.is_empty() {
+            let separator = if balance.is_empty() { "" } else { " · " };
+            let candidate = format!("{balance}{separator}{}", self.activity);
+            if fits_left(&candidate) {
+                balance = candidate;
+            }
+        }
         if let Some(goal) = self
             .goal
             .as_ref()
@@ -629,14 +641,9 @@ impl CoderUi {
             };
             let field = format!("goal: \"{snippet}\"");
             let separator = if balance.is_empty() { "" } else { " · " };
-            let needed = separator.len() as u16 + field.chars().count() as u16;
-            if balance_width
-                .saturating_add(lane_width)
-                .saturating_add(needed)
-                <= status_area.width
-            {
-                balance.push_str(separator);
-                balance.push_str(&field);
+            let candidate = format!("{balance}{separator}{field}");
+            if fits_left(&candidate) {
+                balance = candidate;
             }
         }
         let balance_area = Rect {
