@@ -19,6 +19,7 @@ pub mod auth;
 pub mod box_client;
 pub mod cli;
 pub mod coder;
+pub mod checks;
 pub mod composer;
 pub mod computer;
 pub mod delegate;

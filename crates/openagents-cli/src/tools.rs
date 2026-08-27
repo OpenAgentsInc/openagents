@@ -50,6 +50,32 @@ use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
 };
+use crate::surfaces::tool_descriptions as text;
+
+/// The `check` tool's description, with `{scopes}` filled from the repo's
+/// declared `.openagents/checks.json`. Absent when the repository declares
+/// none — a tool that always refuses is noise in every declaration list.
+pub fn check_tool_description(
+    scopes: &std::collections::BTreeMap<String, crate::checks::CheckScope>,
+) -> String {
+    let mut listed: Vec<String> = scopes
+        .iter()
+        .map(|(name, scope)| match &scope.description {
+            Some(description) => format!("- `{name}`: {description}"),
+            None => format!("- `{name}`"),
+        })
+        .collect();
+    listed.sort();
+    format!(
+        "Run a named check scope this repository declares in `.openagents/checks.json`, \
+         cheapest-first: `diff` for the files you changed, wider scopes only when the narrow \
+         one is green and the question needs it. Each command runs through the same `shell` \
+         rules. A failure is checked against this session's baseline of known failures \
+         (taken from clean-tree runs) and labelled inherited or new, so attribution never \
+         costs another sweep. Declared scopes:\n{}\nUse `shell` directly for anything else.",
+        listed.join("\n")
+    )
+}
 
 pub const OUTPUT_LIMIT: usize = 30_000;
 
@@ -310,8 +336,6 @@ pub struct DelegationGate {
     pub child: crate::delegate::ChildOptions,
 }
 
-use crate::surfaces::tool_descriptions as text;
-
 pub struct HarnessToolRegistry {
     pub cwd: PathBuf,
     /// Discovered skills by name, in catalog order.
@@ -332,6 +356,10 @@ pub struct HarnessToolRegistry {
     /// own directory, when the session has one. `None` keeps the old
     /// truncate-and-drop behaviour — delegated children, one-shot calls.
     session_dir: Option<PathBuf>,
+    /// The repository's declared check scopes, from
+    /// `.openagents/checks.json`. `None` means the repository has not opted
+    /// in and the `check` tool is not declared.
+    check_scopes: Option<crate::checks::ChecksConfig>,
 }
 
 impl HarnessToolRegistry {
@@ -378,6 +406,10 @@ impl HarnessToolRegistry {
         let root =
             cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let catalog = plugins::discover_catalog(&root);
+        // Declared scopes load here: discovery is a read of the repository
+        // the session is rooted in, no cheaper moment exists, and a registry
+        // without them simply declares no `check` tool.
+        let check_scopes = crate::checks::ChecksConfig::load(&root).unwrap_or(None);
         let mut registry = Self {
             cwd: root,
             skills: BTreeMap::new(),
@@ -387,6 +419,7 @@ impl HarnessToolRegistry {
             loaded: Mutex::new(Vec::new()),
             host: Vec::new(),
             session_dir: None,
+            check_scopes,
         };
         registry.load_local_skills();
         registry
@@ -630,6 +663,25 @@ impl HarnessToolRegistry {
         // The standing capability tool. Constant-size: it names no installed
         // plugin, so the declaration does not grow as the catalog does.
         tools.push(capability_tool_definition());
+
+        // Declared only where the repository opted in: a repo without
+        // `.openagents/checks.json` has no scopes to name, and a `check`
+        // tool that always refuses is friction, not a guardrail.
+        if let Some(config) = &self.check_scopes {
+            tools.push(ToolDefinition {
+                name: "check".to_string(),
+                description: check_tool_description(&config.scopes),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "scope": {
+                            "type": "string",
+                            "description": "Which declared scope to run. Defaults to the narrowest one when omitted."
+                        }
+                    }
+                }),
+            });
+        }
 
         // Declared only where it can be run. A child's registry has no gate,
         // so a child neither sees the tool nor can call it.
@@ -904,6 +956,91 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output: text,
                     is_error,
+                    duration_ms: 0,
+                }
+            }
+            "check" => {
+                let Some(config) = &self.check_scopes else {
+                    return ToolOutput {
+                        call_id: call.id.clone(),
+                        output: "This repository declares no check scopes (no \
+                                 `.openagents/checks.json`). Use `shell` directly."
+                            .to_string(),
+                        is_error: true,
+                        duration_ms: 0,
+                    };
+                };
+                let requested = call
+                    .arguments
+                    .get("scope")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(crate::checks::DEFAULT_SCOPE);
+                let scope = match config.scope(requested) {
+                    Ok(scope) => scope,
+                    Err(error) => {
+                        return ToolOutput {
+                            call_id: call.id.clone(),
+                            output: error,
+                            is_error: true,
+                            duration_ms: 0,
+                        };
+                    }
+                };
+                let mut report = String::new();
+                let mut failed = false;
+                for (index, command) in scope.run.iter().enumerate() {
+                    if let Some(refusal) = check_shell_refusal(command) {
+                        report.push_str(&format!("[{index}] refused: {refusal}\n"));
+                        failed = true;
+                        break;
+                    }
+                    if let Some(refusal) = check_duplicate_execution(command) {
+                        report.push_str(&format!("[{index}] refused: {refusal}\n"));
+                        failed = true;
+                        break;
+                    }
+                    let (output, is_error) = run_real_shell_logged(
+                        command,
+                        &self.cwd,
+                        MAXIMUM_TIMEOUT_SECS,
+                        &mut cancel,
+                        self.session_dir.as_deref(),
+                    )
+                    .await;
+                    report.push_str(&format!(
+                        "[{index}] {} → {}\n{}\n",
+                        command,
+                        if is_error { "FAILED" } else { "ok" },
+                        output
+                    ));
+                    if is_error {
+                        failed = true;
+                        // Attribution against the baseline: inherited or
+                        // new, answered from the record rather than by
+                        // re-running anything.
+                        let baseline = self
+                            .session_dir
+                            .as_deref()
+                            .map(crate::checks::FailureBaseline::load)
+                            .unwrap_or_default();
+                        let known = baseline.is_known(requested, command);
+                        report.push_str(&format!(
+                            "This failure is {} (baseline: {} failures recorded for this \
+                             scope).\n",
+                            if known {
+                                "inherited — it already failed on a clean tree"
+                            } else {
+                                "new — no clean-tree baseline failure for this command"
+                            },
+                            baseline.failures.len(),
+                        ));
+                        break;
+                    }
+                }
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output: report,
+                    is_error: failed,
                     duration_ms: 0,
                 }
             }
