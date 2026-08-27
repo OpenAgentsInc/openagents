@@ -26,6 +26,8 @@ Read in order:
 4. [`gym-cli-spec.md`](gym-cli-spec.md) — the `openagents gym` command
    surface: suites, runs, results, trace-corpus import, dataset membership,
    and compute plumbing, shared by Terminal-Bench and CoderBench alike.
+5. [`roadmap.md`](roadmap.md) — the build order as tracker epics and issues,
+   with the first wave filed in the tracker.
 
 ## One-paragraph version
 
