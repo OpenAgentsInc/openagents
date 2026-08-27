@@ -149,10 +149,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   consistent with the no-Expo/EAS-cloud mobile policy — and avoid handing repo
   automation, secrets, or scheduling to third-party GitHub-hosted runners.
 - **Enforced** by `check:no-github-actions` (in `check:deploy`): it fails if any
-  `.github/workflows/*.yml` exists. PR-evidence / autonomous-QA on a PR is **agent- or
-  manually-triggered** — an agent runs `apps/qa-runner/src/pr-comment-run.ts` (or the
-  `qa-runner` directly) and posts the verdict/trace/video comment itself (e.g. PR #6224) —
-  never a `pull_request`/`push`/`schedule` workflow.
+  `.github/workflows/*.yml` exists. PR evidence and scheduled checks run on
+  owned infrastructure or through an explicit local command, never a
+  `pull_request`, `push`, or `schedule` workflow.
 
 ## QA Swarm Run Projection Evidence
 
@@ -168,9 +167,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - A board link may be `evidence_backed` only when the receipt resolver admits
   the exact requested ref. Missing, rejected, unavailable, or substituted
   resolution cannot light the edge. Enforced by
-  `packages/qa-swarm-contract/src/index.test.ts`, the QA Runner cross-package
-  assertions in `apps/qa-runner/src/control.test.ts`, and the web projection
-  fail-closed tests in
+  `packages/qa-swarm-contract/src/index.test.ts` and the web projection fail-closed tests in
   `apps/openagents.com/workers/api/src/qa-swarm-projection-routes.test.ts`.
 - Generated public boards are published only through the authenticated
   `PUT /api/operator/qa-swarm/runs/{runRef}` boundary. The Worker decodes the
@@ -195,7 +192,6 @@ More specific invariant ledgers apply inside imported apps and packages.
   same candidate digest. Only resolver-confirmed reviewed merge evidence for
   that exact digest and pull request can produce `landed` state or populate the
   landed-only `distilledTests` projection. Enforced by
-  `apps/qa-runner/src/discovery-regression-lifecycle.test.ts` and
   `packages/qa-swarm-contract/src/index.test.ts`.
 
 ## QA Swarm Assurance Execution

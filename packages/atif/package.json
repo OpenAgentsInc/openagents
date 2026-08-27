@@ -2,7 +2,7 @@
   "name": "@openagentsinc/atif",
   "version": "0.1.0",
   "private": false,
-  "description": "Canonical in-repo ATIF (Agent Trajectory Interchange Format, ATIF-v1.7) schema, validators, and public-safety tripwire shared by trace producers (qa-runner) and consumers (the trace ingest API).",
+  "description": "Canonical in-repo ATIF v1.7 schema, validators, and public-safety checks for retained trajectory exporters and trace consumers.",
   "files": [
     "src",
     "README.md"

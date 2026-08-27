@@ -1,13 +1,10 @@
-import {
-  BehaviorContractSchemaVersion,
-  type BehaviorContractRegistryDocument,
-} from "./contract"
+import { BehaviorContractSchemaVersion, type BehaviorContractRegistryDocument } from "./contract";
 
 export const BACKGROUND_AGENTS_CONTRACT_DOC_PATH =
-  "docs/fable/background-agent-behavior-contracts.md"
+  "docs/fable/background-agent-behavior-contracts.md";
 
 const pendingOracleBlocker = (task: string): string =>
-  `blocker.background_agents.${task}.oracle_not_landed`
+  `blocker.background_agents.${task}.oracle_not_landed`;
 
 /**
  * Background-agent behavior contracts.
@@ -930,4 +927,4 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
   ],
   schemaVersion: BehaviorContractSchemaVersion,
   version: "2026-07-16.1",
-}
+};

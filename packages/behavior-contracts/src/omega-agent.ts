@@ -1,7 +1,4 @@
-import {
-  BehaviorContractSchemaVersion,
-  type BehaviorContractRegistryDocument,
-} from "./contract"
+import { BehaviorContractSchemaVersion, type BehaviorContractRegistryDocument } from "./contract";
 
 /**
  * Omega Agent behavior contracts (OMEGA-AGENT-02, OpenAgentsInc/omega#76).
@@ -156,8 +153,7 @@ export const omegaAgentContractRegistry: BehaviorContractRegistryDocument = {
         statedOn: "2026-07-27",
       },
       state: "enforced",
-      statement:
-        "Exactly five model-visible tools: `read`, `write`, `edit`, `bash`, `delegate`.",
+      statement: "Exactly five model-visible tools: `read`, `write`, `edit`, `bash`, `delegate`.",
       surface: "omega",
       verification:
         "Runs in OpenAgentsInc/omega. The OpenAgents behavior-contract sweep validates this record but does not execute the cross-repository Rust oracle.",
@@ -165,9 +161,7 @@ export const omegaAgentContractRegistry: BehaviorContractRegistryDocument = {
     {
       authorityBoundary:
         "This contract needs a candidate-bound installed observation on the direct provider. Source tests and a deterministic fixture can validate the harness and tool boundary, but neither is packaged-release evidence.",
-      blockerRefs: [
-        "github:OpenAgentsInc/omega#118:installed-journey-observation",
-      ],
+      blockerRefs: ["github:OpenAgentsInc/omega#118:installed-journey-observation"],
       contractId: "omega_agent.basic_out_of_box_completion.v1",
       enforcementTier: "unenforced",
       evidenceRefs: [
@@ -305,8 +299,7 @@ export const omegaAgentContractRegistry: BehaviorContractRegistryDocument = {
         statedOn: "2026-07-27",
       },
       state: "enforced",
-      statement:
-        "No basic-agent tool discards uncommitted work without a typed confirm.",
+      statement: "No basic-agent tool discards uncommitted work without a typed confirm.",
       surface: "omega",
       verification:
         "Runs in OpenAgentsInc/omega. The behavior-contract registry preserves the owner statement and exact oracle reference.",
@@ -349,4 +342,4 @@ export const omegaAgentContractRegistry: BehaviorContractRegistryDocument = {
   ],
   schemaVersion: BehaviorContractSchemaVersion,
   version: "2026-07-27.1",
-}
+};

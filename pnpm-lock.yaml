@@ -733,40 +733,6 @@ importers:
         specifier: ^18.0.5
         version: 18.0.6
 
-  apps/qa-runner:
-    dependencies:
-      '@openagentsinc/assurance-spec':
-        specifier: workspace:*
-        version: link:../../packages/assurance-spec
-      '@openagentsinc/atif':
-        specifier: workspace:*
-        version: link:../../packages/atif
-      '@openagentsinc/qa-swarm-contract':
-        specifier: workspace:*
-        version: link:../../packages/qa-swarm-contract
-      '@openagentsinc/runtime-platform':
-        specifier: workspace:*
-        version: link:../../packages/runtime-platform
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-      playwright:
-        specifier: ^1.61.0
-        version: 1.61.1
-    devDependencies:
-      '@openagentsinc/khala-sync':
-        specifier: workspace:*
-        version: link:../../packages/khala-sync
-      '@openagentsinc/khala-sync-client':
-        specifier: workspace:*
-        version: link:../../packages/khala-sync-client
-      '@openagentsinc/probe-runtime':
-        specifier: workspace:*
-        version: link:../../packages/probe/packages/runtime
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
   apps/sarah-livekit-agent:
     dependencies:
       '@livekit/agents':
@@ -1491,37 +1457,6 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
-
-  packages/khala-qa-harness:
-    dependencies:
-      '@openagentsinc/agent-runtime-schema':
-        specifier: 0.2.1-rc.4
-        version: 0.2.1-rc.4
-      '@openagentsinc/behavior-contracts':
-        specifier: workspace:*
-        version: link:../behavior-contracts
-      '@openagentsinc/khala-fleet-intents':
-        specifier: workspace:*
-        version: link:../khala-fleet-intents
-      '@openagentsinc/khala-tools':
-        specifier: workspace:*
-        version: link:../khala-tools
-      '@openagentsinc/runtime-platform':
-        specifier: workspace:*
-        version: link:../runtime-platform
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      fast-check:
-        specifier: ^4.8.0
-        version: 4.9.0
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vitest:
-        specifier: ^4.1.8
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(happy-dom@20.10.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))
 
   packages/khala-sync:
     dependencies:

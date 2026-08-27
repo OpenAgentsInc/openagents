@@ -6,7 +6,7 @@
 // golden examples in `tests/golden/terminus_2/*.trajectory.json`.
 //
 // These are the producer-facing structural types (string `message`, optional
-// `notes`/`extra`, open `Json` argument values). The qa-runner mapper
+// `notes`/`extra`, open `Json` argument values). Each retained mapper
 // (`mapKhalaRunToAtif`) and the Claude Code / Codex converters build values of
 // these types; they re-export the type names from here so downstream imports
 // stay stable. The Effect-Schema VALIDATOR for these values lives in

@@ -57,8 +57,7 @@ export const marketSwapCompareContractRegistry: BehaviorContractRegistryDocument
       authorityBoundary:
         "This contract covers reservation-evidence presentation and client-side fork retention only. Reservation proofs are verified by the MKT-SWP engine; the client renders the claimed proof class and refuses disallowed class pairings, it does not validate proofs.",
       blockerRefs: [],
-      contractId:
-        "openagents_web.swap_compare.reservation_proof_class_distinct.v1",
+      contractId: "openagents_web.swap_compare.reservation_proof_class_distinct.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
         "packages/mkt-swp-compare/src/view.test.ts",
@@ -144,8 +143,7 @@ export const marketSwapCompareContractRegistry: BehaviorContractRegistryDocument
       authorityBoundary:
         "This contract covers the UI funding gate only, and the gate is a UX pre-check in one direction: it can only keep funding disabled. Verification truth is computed by the MKT-SWP engine behind the SWAP-0 boundary and arrives as a typed report; the UI never computes a profile-level verdict and has no path from UI-side state to an enabled fund action.",
       blockerRefs: [],
-      contractId:
-        "openagents_web.swap_compare.funding_disabled_until_checks_pass.v1",
+      contractId: "openagents_web.swap_compare.funding_disabled_until_checks_pass.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
         "packages/mkt-swp-compare/src/verify.test.ts",

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vite-plus/test"
-import { spawnSync } from "node:child_process"
+import { describe, expect, test } from "vite-plus/test";
+import { spawnSync } from "node:child_process";
 import {
   buildTechnicalPlan,
   buildCandidateIssueSearch,
@@ -16,7 +16,7 @@ import {
   tokenizeIssueText,
   triageIssue,
   type GitHubIssue,
-} from "./github-issue-triage"
+} from "./github-issue-triage";
 
 const issue = (overrides: Partial<GitHubIssue>): GitHubIssue => ({
   body: "",
@@ -24,7 +24,7 @@ const issue = (overrides: Partial<GitHubIssue>): GitHubIssue => ({
   number: 1,
   title: "fixture",
   ...overrides,
-})
+});
 
 describe("github issue triage classification", () => {
   test("classifies concrete failures as pr burndown", () => {
@@ -35,8 +35,8 @@ describe("github issue triage classification", () => {
           title: "fix: worker deploy regression",
         }),
       ),
-    ).toMatchObject({ label: "prio:0-pr-burndown" })
-  })
+    ).toMatchObject({ label: "prio:0-pr-burndown" });
+  });
 
   test("classifies promise and benchmark lanes", () => {
     expect(
@@ -46,7 +46,7 @@ describe("github issue triage classification", () => {
           title: "docs: product promise registry update",
         }),
       ),
-    ).toMatchObject({ label: "prio:3-product-promises" })
+    ).toMatchObject({ label: "prio:3-product-promises" });
 
     expect(
       classifyIssuePriority(
@@ -55,15 +55,15 @@ describe("github issue triage classification", () => {
           title: "task: gym benchmark backstop",
         }),
       ),
-    ).toMatchObject({ label: "prio:4-backstop-burn" })
-  })
+    ).toMatchObject({ label: "prio:4-backstop-burn" });
+  });
 
   test("defaults unclear issues to the triage lane", () => {
     expect(classifyIssuePriority(issue({ title: "misc follow-up" }))).toMatchObject({
       label: "prio:2-issue-triage",
-    })
-  })
-})
+    });
+  });
+});
 
 describe("github issue triage duplicate and file inference", () => {
   test("tokenizes stable issue terms without noise", () => {
@@ -73,30 +73,30 @@ describe("github issue triage duplicate and file inference", () => {
       "deploy",
       "failing",
       "fix",
-    ])
-  })
+    ]);
+  });
 
   test("finds high-similarity duplicate candidates", () => {
     const source = issue({
       number: 10,
       title: "fix pylon codex account status readiness",
       body: "accounts list should report readiness state",
-    })
+    });
     const duplicate = issue({
       number: 11,
       title: "fix codex account readiness status in pylon",
       body: "pylon accounts list should report readiness state",
-    })
+    });
     const unrelated = issue({
       number: 12,
       title: "docs product promise copy sync",
       body: "update promise registry",
-    })
+    });
 
     expect(findDuplicateCandidates(source, [source, duplicate, unrelated], 0.35)).toEqual([
       expect.objectContaining({ number: 11 }),
-    ])
-  })
+    ]);
+  });
 
   test("infers explicit and token-matched repository files", () => {
     expect(
@@ -111,33 +111,35 @@ describe("github issue triage duplicate and file inference", () => {
           "docs/promises/registry.md",
         ],
       ),
-    ).toEqual(["apps/pylon/src/accounts.ts", "apps/pylon/src/legacy-accounts.ts"])
-  })
-})
+    ).toEqual(["apps/pylon/src/accounts.ts", "apps/pylon/src/legacy-accounts.ts"]);
+  });
+});
 
 describe("github issue triage output", () => {
   test("detects existing prio labels", () => {
-    expect(issueHasPriorityLabel(issue({ labels: [{ name: "prio:2-issue-triage" }] }))).toBe(true)
-    expect(issueHasPriorityLabel(issue({ labels: [{ name: "bug" }] }))).toBe(false)
-  })
+    expect(issueHasPriorityLabel(issue({ labels: [{ name: "prio:2-issue-triage" }] }))).toBe(true);
+    expect(issueHasPriorityLabel(issue({ labels: [{ name: "bug" }] }))).toBe(false);
+  });
 
   test("detects any existing labels for the default unlabeled queue", () => {
-    expect(issueHasAnyLabel(issue({ labels: [] }))).toBe(false)
-    expect(issueHasAnyLabel(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
-  })
+    expect(issueHasAnyLabel(issue({ labels: [] }))).toBe(false);
+    expect(issueHasAnyLabel(issue({ labels: [{ name: "standing-task" }] }))).toBe(true);
+  });
 
   test("keeps non-priority labeled issues in the priority triage queue", () => {
-    expect(issueNeedsPriorityTriage(issue({ labels: [] }))).toBe(true)
-    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
-    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "prio:2-issue-triage" }] }))).toBe(false)
-  })
+    expect(issueNeedsPriorityTriage(issue({ labels: [] }))).toBe(true);
+    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "standing-task" }] }))).toBe(true);
+    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "prio:2-issue-triage" }] }))).toBe(
+      false,
+    );
+  });
 
   test("builds the default candidate query from issues missing priority labels", () => {
     expect(buildCandidateIssueSearch(false)).toBe(
-      `is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`,
-    )
-    expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc")
-  })
+      `is:issue is:open ${PRIORITY_LABELS.map((label) => `-label:"${label}"`).join(" ")} sort:created-desc`,
+    );
+    expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc");
+  });
 
   test("builds bounded issue view args for full candidate descriptions", () => {
     expect(buildIssueViewArgs("OpenAgentsInc/openagents", 6708)).toEqual([
@@ -148,8 +150,8 @@ describe("github issue triage output", () => {
       "OpenAgentsInc/openagents",
       "--json",
       "number,title,body,labels,url",
-    ])
-  })
+    ]);
+  });
 
   test("hydrates candidate issues before classification", () => {
     const listed = issue({
@@ -157,8 +159,8 @@ describe("github issue triage output", () => {
       labels: [],
       number: 6708,
       title: "task(ops): standing backlog triage",
-    })
-    const hydrated = hydrateCandidateIssues([listed], issueNumber =>
+    });
+    const hydrated = hydrateCandidateIssues([listed], (issueNumber) =>
       issue({
         body: "Full description mentions docs/promises/registry.md and duplicate checks.",
         labels: [{ name: "standing-task" }],
@@ -166,7 +168,7 @@ describe("github issue triage output", () => {
         title: "task(ops): standing backlog triage + scoping + dedup loop",
         url: "https://github.com/OpenAgentsInc/openagents/issues/6708",
       }),
-    )
+    );
 
     expect(hydrated).toEqual([
       expect.objectContaining({
@@ -175,31 +177,39 @@ describe("github issue triage output", () => {
         number: 6708,
         title: "task(ops): standing backlog triage + scoping + dedup loop",
       }),
-    ])
-  })
+    ]);
+  });
 
   test("builds a scoped execution plan and rendered comment", () => {
     const target = issue({
       number: 42,
       title: "task(ops): standing backlog triage + scoping + dedup loop",
       body: "Scan newly opened issues, search the codebase, check duplicates, and apply prio labels.",
-    })
+    });
     const decision = triageIssue(target, {
       openIssues: [target],
       repositoryFiles: ["scripts/github-issue-triage.ts", "docs/promises/registry.md"],
-    })
+    });
 
-    expect(decision.label).toBe("prio:2-issue-triage")
-    expect(decision.relevantFiles).toContain("scripts/github-issue-triage.ts")
-    expect(buildTechnicalPlan(target, decision.label, decision.relevantFiles, [])).toHaveLength(4)
-    expect(renderTriageComment(decision)).toContain("Automated triage pass")
-    expect(renderTriageComment(decision)).toContain("prio:2-issue-triage")
-  })
+    expect(decision.label).toBe("prio:2-issue-triage");
+    expect(decision.relevantFiles).toContain("scripts/github-issue-triage.ts");
+    expect(buildTechnicalPlan(target, decision.label, decision.relevantFiles, [])).toHaveLength(4);
+    expect(renderTriageComment(decision)).toContain("Automated triage pass");
+    expect(renderTriageComment(decision)).toContain("prio:2-issue-triage");
+  });
 
   test("prints the searched queue when no candidates are found", () => {
     const result = spawnSync(
       process.execPath,
-      ["--import", "tsx", "scripts/github-issue-triage.ts", "--repo", "OpenAgentsInc/openagents", "--limit", "1"],
+      [
+        "--import",
+        "tsx",
+        "scripts/github-issue-triage.ts",
+        "--repo",
+        "OpenAgentsInc/openagents",
+        "--limit",
+        "1",
+      ],
       {
         cwd: import.meta.dirname + "/..",
         encoding: "utf8",
@@ -208,11 +218,11 @@ describe("github issue triage output", () => {
           PATH: `${import.meta.dirname}/fixtures/github-issue-triage/bin:${process.env.PATH ?? ""}`,
         },
       },
-    )
+    );
 
-    expect(result.status).toBe(0)
+    expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      `[github-issue-triage] no candidate issues found for OpenAgentsInc/openagents using search: is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`,
-    )
-  })
-})
+      `[github-issue-triage] no candidate issues found for OpenAgentsInc/openagents using search: is:issue is:open ${PRIORITY_LABELS.map((label) => `-label:"${label}"`).join(" ")} sort:created-desc`,
+    );
+  });
+});

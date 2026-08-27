@@ -5,10 +5,8 @@
 // `ComputerUsePage` seam, with executor's `acquireUseRelease` flush-on-timeout
 // discipline: even if the `use` body is interrupted (vitest/bun timeout, kill,
 // Effect fiber interruption), the `release` block STILL runs to close the page
-// and flush artifacts (trace + video). Real chromium is wired in
-// `playwright-page.ts`; unit tests inject a fake page.
+// and flush artifacts. Unit tests and current callers inject the page seam.
 
-import { Effect } from "effect";
 import { type Timeline, makeTimeline } from "./timeline";
 import type { ComputerUsePage, WaitForCondition } from "./page";
 
@@ -59,10 +57,7 @@ function describeCondition(condition: WaitForCondition): string {
   }
 }
 
-function makeSurface(
-  page: ComputerUsePage,
-  options: MakeBrowserSurfaceOptions,
-): BrowserSurface {
+function makeSurface(page: ComputerUsePage, options: MakeBrowserSurfaceOptions): BrowserSurface {
   const timeline = makeTimeline(options.now ? { now: options.now } : {});
   let shotCount = 0;
   const slug = (s: string) =>
@@ -120,29 +115,4 @@ function makeSurface(
       return path;
     },
   };
-}
-
-/**
- * Run `use` against a browser surface acquired from `acquire`, guaranteeing the
- * acquired browser is flushed/closed even if `use` is interrupted or throws.
- *
- * This is the executor flush-on-timeout discipline expressed as an Effect
- * `acquireUseRelease`: a killed/timed-out run still closes chromium and flushes
- * the trace + video rather than leaking the process and losing artifacts.
- */
-export function withBrowserSurface<A, E, R>(
-  acquire: () => Promise<AcquiredBrowser>,
-  options: MakeBrowserSurfaceOptions,
-  use: (surface: BrowserSurface) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> {
-  return Effect.acquireUseRelease(
-    Effect.promise(async () => {
-      const acquired = await acquire();
-      return { acquired, surface: makeSurface(acquired.page, options) };
-    }),
-    ({ surface }) => use(surface),
-    ({ acquired }) =>
-      // RELEASE: flush is best-effort and must never mask the primary error.
-      Effect.promise(() => acquired.flush().catch(() => undefined)),
-  );
 }

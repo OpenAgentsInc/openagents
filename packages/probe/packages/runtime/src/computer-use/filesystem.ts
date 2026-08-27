@@ -55,7 +55,11 @@ export function makeFilesystemSurface(options: MakeFilesystemSurfaceOptions): Fi
     read: (path) => {
       const { absolutePath, relativePath } = resolve(path);
       const contents = io.readFile(absolutePath);
-      timeline.beat({ surface: "filesystem", label: `read ${relativePath}`, detail: { path: relativePath } });
+      timeline.beat({
+        surface: "filesystem",
+        label: `read ${relativePath}`,
+        detail: { path: relativePath },
+      });
       return contents;
     },
     write: (path, contents) => {

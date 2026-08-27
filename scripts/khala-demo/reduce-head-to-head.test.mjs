@@ -90,9 +90,15 @@ describe("Khala head-to-head reducer", () => {
     expect(khala.acceptedOutcomesPerKwh).toBe("not_measured");
 
     expect(metrics.closureAudit.canClose).toBe(false);
-    expect(metrics.closureAudit.blockerRefs).toContain("blocker.khala_demo.fixture_scaffold_not_live");
-    expect(metrics.closureAudit.blockerRefs).toContain("blocker.khala_demo.settlement_receipts_missing");
-    expect(metrics.closureAudit.blockerRefs).toContain("blocker.khala_demo.energy_telemetry_missing");
+    expect(metrics.closureAudit.blockerRefs).toContain(
+      "blocker.khala_demo.fixture_scaffold_not_live",
+    );
+    expect(metrics.closureAudit.blockerRefs).toContain(
+      "blocker.khala_demo.settlement_receipts_missing",
+    );
+    expect(metrics.closureAudit.blockerRefs).toContain(
+      "blocker.khala_demo.energy_telemetry_missing",
+    );
     expect(metrics.livePromotionAudit.status).toBe("blocked");
     expect(metrics.livePromotionAudit.fixtureRefPaths).toEqual([]);
     expect(metrics.livePromotionAudit.checks.map((check) => check.id)).toContain(

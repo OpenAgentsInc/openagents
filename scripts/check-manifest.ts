@@ -40,18 +40,6 @@ export const rootTestTargets: readonly CheckTarget[] = [
   },
   { name: "ste", command: ["pnpm", "exec", "vp", "test", "--run", "scripts/check-ste.test.ts"] },
   {
-    name: "qa-pre-push-smoke",
-    command: ["pnpm", "exec", "vp", "test", "--run", "scripts/qa-pre-push-smoke.test.ts"],
-  },
-  {
-    name: "qa-async-gce-trigger",
-    command: ["pnpm", "exec", "vp", "test", "--run", "scripts/qa-async-gce-trigger.test.ts"],
-  },
-  {
-    name: "qa-nightly-matrix",
-    command: ["pnpm", "exec", "vp", "test", "--run", "scripts/qa-nightly-matrix.test.ts"],
-  },
-  {
     name: "github-issue-triage",
     command: ["pnpm", "exec", "vp", "test", "--run", "scripts/github-issue-triage.test.ts"],
   },
@@ -143,6 +131,5 @@ export const componentExclusions: Readonly<Partial<Record<CheckComponent, readon
 };
 
 /** A workspace may expose a stronger completion script than its ordinary script. */
-export const componentOverrides: Readonly<
-  Record<string, Partial<Record<CheckComponent, string>>>
-> = {};
+export const componentOverrides: Readonly<Record<string, Partial<Record<CheckComponent, string>>>> =
+  {};

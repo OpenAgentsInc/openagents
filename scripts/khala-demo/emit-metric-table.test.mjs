@@ -27,9 +27,9 @@ function recordedManifest() {
 
 describe("emit-metric-table honest unmeasured cells", () => {
   test("tokensCell downgrades an unmeasured zero to not_measured", () => {
-    expect(
-      tokensCell({ tokens: 0, blockerRefs: ["blocker.khala_demo.tokens_not_measured"] }),
-    ).toBe("not_measured");
+    expect(tokensCell({ tokens: 0, blockerRefs: ["blocker.khala_demo.tokens_not_measured"] })).toBe(
+      "not_measured",
+    );
   });
 
   test("tokensCell keeps a real measured token count", () => {
@@ -66,9 +66,9 @@ describe("emit-metric-table honest unmeasured cells", () => {
   });
 
   test("costPerAcceptedOutcomeCell keeps a real measured cost", () => {
-    expect(
-      costPerAcceptedOutcomeCell({ costPerAcceptedOutcomeUsd: 7.32, blockerRefs: [] }),
-    ).toBe(7.32);
+    expect(costPerAcceptedOutcomeCell({ costPerAcceptedOutcomeUsd: 7.32, blockerRefs: [] })).toBe(
+      7.32,
+    );
   });
 });
 
@@ -88,9 +88,9 @@ describe("wallClockCell formatting", () => {
 
 describe("inWorldVsGatewayCell", () => {
   test("reports not_measured when split is not measured", () => {
-    expect(
-      inWorldVsGatewayCell({ inWorldVsGatewaySplit: { status: "not_measured" } }),
-    ).toBe("not_measured");
+    expect(inWorldVsGatewayCell({ inWorldVsGatewaySplit: { status: "not_measured" } })).toBe(
+      "not_measured",
+    );
   });
 
   test("formats a measured split", () => {
@@ -158,7 +158,9 @@ describe("recorded run table — EXECUTED acceptance verdicts (honest red + genu
 
 describe("fixture dry-run table preserves measured numbers", () => {
   test("dry-run khala lane keeps its measured tokens and cost", () => {
-    const parsed = JSON.parse(emitMetricTableFromManifest(structuredClone(loadManifest(dryRunPath)), { json: true }));
+    const parsed = JSON.parse(
+      emitMetricTableFromManifest(structuredClone(loadManifest(dryRunPath)), { json: true }),
+    );
     const khala = parsed.rows.find((r) => r.lane === "khala");
     expect(khala.tokens).toBe(89600);
     expect(khala.dollars).toBe(7.32);

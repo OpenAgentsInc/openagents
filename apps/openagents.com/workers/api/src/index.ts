@@ -15885,7 +15885,6 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ['/rules.md', '/RULES.md'],
       ['/heartbeat.md', '/HEARTBEAT.md'],
       ['/agents-core.md', '/AGENTS-CORE.md'],
-      ['/qa-runner.md', '/QA-RUNNER.md'],
       ['/skills/agent_chat.md', '/skills/AGENT_CHAT.md'],
     ] as const
   ).map(([aliasPath, canonicalPath]) => ({

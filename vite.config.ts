@@ -112,15 +112,7 @@ export default defineConfig({
           include: ["**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}", "**/*.node-suite.ts"],
           exclude: [
             "**/.pylon-local/**",
-            // `var/` is gitignored scratch. QA smokes generate real test files
-            // under var/qa-pre-push-smoke/<run>/generated/, so a developer who
-            // has run those smokes collects dozens of stale generated suites
-            // into every later sweep and sees failures that no commit caused.
             "var/**",
-            // Generated QA scenarios are live black-box probes. The QA package
-            // exposes them through `test:generated`; the offline completion
-            // gate must not make production availability part of unit truth.
-            "apps/qa-runner/generated/**",
             "**/node_modules/**",
             "**/.claude/worktrees/**",
             "**/.worktrees/**",

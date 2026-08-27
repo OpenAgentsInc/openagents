@@ -97,8 +97,7 @@ const containsParseablePrivateKey = (bytes) => {
   return false;
 };
 
-const IMMUTABLE_POD_IMAGE_PAYLOAD =
-  /^immutable-image\/sha256\/[0-9a-f]{64}\/[^/]+\/.+/u;
+const IMMUTABLE_POD_IMAGE_PAYLOAD = /^immutable-image\/sha256\/[0-9a-f]{64}\/[^/]+\/.+/u;
 
 const classifyRetainedPayload = (scope, displayPath) =>
   scope !== "pods" || !IMMUTABLE_POD_IMAGE_PAYLOAD.test(displayPath);

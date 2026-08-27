@@ -143,12 +143,10 @@ idea into tests or notes and leave the surface deleted.
 
 ## TypeScript test gate
 
-Probe remains an active workspace dependency rather than an isolated archive:
-`apps/qa-runner` imports and bundles its browser, Playwright, terminal/PTY, and
-OpenRouter runtime modules. Its Docker build copies this package, and current
-product-promise and contract-drift gates cite Probe contracts. Wholesale
-deletion therefore requires a deliberate consumer migration and promise/gate
-reconciliation first.
+Probe remains an experimental workspace command, but the retired QA Runner no
+longer imports or packages it. Keep a Probe module only when its command or a
+current retained consumer reaches it. Remove test-only runtime adapters instead
+of preserving them for the former runner.
 
 Run the canonical checks from the Probe workspace root:
 

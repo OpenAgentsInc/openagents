@@ -278,9 +278,7 @@ describe("reconstructCompletionFromSse", () => {
       },
     });
     const body = reconstructCompletionFromSse(wire);
-    expect(body.choices[0].message.content).toBe(
-      "<!doctype html><!-- crossy -->",
-    );
+    expect(body.choices[0].message.content).toBe("<!doctype html><!-- crossy -->");
     expect(body.choices[0].finish_reason).toBe("stop");
     expect(body.usage.total_tokens).toBe(210);
     expect(body.openagents.receipt).toBe("oa_receipt_stream_1");
@@ -333,7 +331,13 @@ describe("liveStreamTransport (the interactive default — 524 fix)", () => {
           controller.close();
         },
       });
-      return { ok: true, body: stream, async text() { return wire; } };
+      return {
+        ok: true,
+        body: stream,
+        async text() {
+          return wire;
+        },
+      };
     };
 
     const tokens = [];

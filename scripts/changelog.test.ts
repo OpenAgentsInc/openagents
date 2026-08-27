@@ -65,7 +65,9 @@ describe("changelog parsing", () => {
     expect(entries[0]?.lane).toBe("fixture-lane-a");
     expect(entries[0]?.summaryParagraphs).toHaveLength(2);
     expect(entries[0]?.summaryParagraphs[0]).toContain("survives an app restart");
-    expect(entries[1]?.contractsSpecs).toBe("packages/harness-conformance/src/harness-conformance.ts");
+    expect(entries[1]?.contractsSpecs).toBe(
+      "packages/harness-conformance/src/harness-conformance.ts",
+    );
   });
 
   test("an entry missing required metadata is a typed failure, never silence", () => {

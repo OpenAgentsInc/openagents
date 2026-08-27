@@ -1,14 +1,11 @@
 // Deterministic unit tests for the computer-use tool surface.
 //
 // NO network, NO chromium, NO real PTY: a fake `ComputerUsePage` and fake `Pty`
-// are injected against the seams. The real-chromium path is proven by the
-// qa-runner (#6176/#6177), NOT here — mirroring acceptance-runner's
-// fakes-in-CI / real-for-proof discipline.
+// are injected against the seams. A retained caller must provide its own
+// real-Chromium acceptance proof.
 
 import { describe, expect, test } from "vite-plus/test";
-import { Effect, Fiber } from "effect";
-
-import { withBrowserSurface, type AcquiredBrowser } from "./browser";
+import { Effect } from "effect";
 import { makeFilesystemSurface, FilesystemScopeError } from "./filesystem";
 import type { ComputerUsePage, WaitForCondition } from "./page";
 import { makeTerminalSurface, type Pty, type PtySession } from "./terminal";
@@ -29,7 +26,8 @@ function fakePage(overrides: Partial<ComputerUsePage> = {}): ComputerUsePage {
     type: async () => undefined,
     readText: async () => "fake body text",
     readDom: async () => "<html></html>",
-    waitFor: async (c: WaitForCondition) => c.kind === "url-includes" && currentUrl.includes(c.value),
+    waitFor: async (c: WaitForCondition) =>
+      c.kind === "url-includes" && currentUrl.includes(c.value),
     screenshot: async () => undefined,
     ...overrides,
   };
@@ -72,88 +70,6 @@ describe("timeline", () => {
 });
 
 // ── Browser surface ──────────────────────────────────────────────────────────
-
-describe("browser surface", () => {
-  test("drives the page and records a beat timeline", async () => {
-    const acquire = async (): Promise<AcquiredBrowser> => ({
-      page: fakePage(),
-      flush: async () => undefined,
-    });
-    const labels = await Effect.runPromise(
-      withBrowserSurface(acquire, { artifactDir: "/tmp/cu-test" }, (b) =>
-        Effect.promise(async () => {
-          await b.navigate("/login");
-          await b.click("button[type=submit]", "submit login");
-          await b.type("input[name=email]", "secret@example.com");
-          const met = await b.waitFor({ kind: "url-includes", value: "/login" });
-          expect(met).toBe(true);
-          return b.timeline.snapshot().beats.map((x) => x.label);
-        }),
-      ),
-    );
-    expect(labels).toContain("navigate to /login");
-    expect(labels).toContain("submit login");
-    expect(labels).toContain("type into input[name=email]");
-  });
-
-  test("does NOT record typed text (credentials) in the timeline", async () => {
-    const acquire = async (): Promise<AcquiredBrowser> => ({
-      page: fakePage(),
-      flush: async () => undefined,
-    });
-    const beats = await Effect.runPromise(
-      withBrowserSurface(acquire, { artifactDir: "/tmp/cu-test" }, (b) =>
-        Effect.promise(async () => {
-          await b.type("input[name=password]", "hunter2-super-secret");
-          return b.timeline.snapshot().beats;
-        }),
-      ),
-    );
-    const serialized = JSON.stringify(beats);
-    expect(serialized).not.toContain("hunter2-super-secret");
-    expect(serialized).toContain("input[name=password]");
-    expect(serialized).toContain('"length":20');
-  });
-
-  test("flush-on-interrupt: release runs even when the use body fails", async () => {
-    let flushed = false;
-    const acquire = async (): Promise<AcquiredBrowser> => ({
-      page: fakePage(),
-      flush: async () => {
-        flushed = true;
-      },
-    });
-    const result = await Effect.runPromiseExit(
-      withBrowserSurface(acquire, { artifactDir: "/tmp/cu-test" }, () =>
-        Effect.promise(async () => {
-          throw new Error("boom mid-session");
-        }),
-      ),
-    );
-    expect(result._tag).toBe("Failure");
-    expect(flushed).toBe(true); // browser was flushed/closed despite the failure
-  });
-
-  test("flush-on-interrupt: release runs even when the fiber is interrupted", async () => {
-    let flushed = false;
-    const acquire = async (): Promise<AcquiredBrowser> => ({
-      page: fakePage(),
-      flush: async () => {
-        flushed = true;
-      },
-    });
-    const fiber = Effect.runFork(
-      withBrowserSurface(acquire, { artifactDir: "/tmp/cu-test" }, () =>
-        // never resolves on its own
-        Effect.never,
-      ),
-    );
-    // give acquire a tick to complete, then interrupt
-    await new Promise((r) => setTimeout(r, 10));
-    await Effect.runPromise(Fiber.interrupt(fiber));
-    expect(flushed).toBe(true);
-  });
-});
 
 // ── Terminal surface ─────────────────────────────────────────────────────────
 

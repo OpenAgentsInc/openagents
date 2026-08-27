@@ -1,10 +1,8 @@
 // The browser page seam.
 //
-// `ComputerUsePage` is the narrow contract the browser tool drives. The REAL
-// implementation (see `playwright-page.ts`) is a thin adapter over a Playwright
-// `Page` + `BrowserContext`; tests inject a deterministic fake. This split is
-// what keeps unit CI free of chromium and the network while the real-chromium
-// path stays provable via the qa-runner (#6176/#6177).
+// `ComputerUsePage` is the narrow contract the browser tool drives. A browser
+// driver can adapt to it, while tests inject a deterministic fake. This split
+// keeps unit CI free of Chromium and the network.
 //
 // Deterministic discipline: `waitFor` takes a *condition*, never a sleep.
 

@@ -4,10 +4,9 @@
 QA Runner run projections and the OpenAgents web consumer.
 
 Artifact and receipt fields describe observed, public-safe evidence only. A
-receipt-looking string is not evidence admission. Board edges are derived with
-`buildResolverBackedQaSwarmBoardGraph`, which lights an edge only after the
-supplied resolver admits that exact receipt. Missing, rejected, or unavailable
-resolution remains `inconclusive` with blocker refs.
+receipt-looking string is not evidence admission. Producers must include the
+exact receipts admitted by their resolver. The decoder rejects evidence-backed
+board edges that cite receipts outside that admission set.
 
 Published boards may add the optional typed `execution` projection. Its
 scheduled/running/completed/failed state and bounded tier rows are public

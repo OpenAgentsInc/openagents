@@ -1,20 +1,13 @@
-import { GraphSpec } from "@openagentsinc/arbiter-effect/core"
-import { buildQaSwarmBoardGraphSpec } from "@openagentsinc/arbiter-effect/qa-swarm"
-import { Schema as S } from "effect"
+import { GraphSpec } from "@openagentsinc/arbiter-effect/core";
+import { Schema as S } from "effect";
 
-export const QA_SWARM_RUN_PROJECTION_SCHEMA =
-  "openagents.qa_swarm.run_projection.v1" as const
+export const QA_SWARM_RUN_PROJECTION_SCHEMA = "openagents.qa_swarm.run_projection.v1" as const;
 
-export const QaSwarmVerdict = S.Literals([
-  "passed",
-  "failed",
-  "warning",
-  "inconclusive",
-])
-export type QaSwarmVerdict = typeof QaSwarmVerdict.Type
+export const QaSwarmVerdict = S.Literals(["passed", "failed", "warning", "inconclusive"]);
+export type QaSwarmVerdict = typeof QaSwarmVerdict.Type;
 
-export const QaSwarmTargetVisibility = S.Literals(["public", "opaque"])
-export type QaSwarmTargetVisibility = typeof QaSwarmTargetVisibility.Type
+export const QaSwarmTargetVisibility = S.Literals(["public", "opaque"]);
+export type QaSwarmTargetVisibility = typeof QaSwarmTargetVisibility.Type;
 
 export class QaSwarmTargetProjection extends S.Class<QaSwarmTargetProjection>(
   "QaSwarmTargetProjection",
@@ -24,9 +17,7 @@ export class QaSwarmTargetProjection extends S.Class<QaSwarmTargetProjection>(
   visibility: QaSwarmTargetVisibility,
 }) {}
 
-export class QaSwarmVerdictItem extends S.Class<QaSwarmVerdictItem>(
-  "QaSwarmVerdictItem",
-)({
+export class QaSwarmVerdictItem extends S.Class<QaSwarmVerdictItem>("QaSwarmVerdictItem")({
   label: S.String,
   receiptRef: S.String,
   summary: S.String,
@@ -42,9 +33,7 @@ export class QaSwarmCoverageFrontierItem extends S.Class<QaSwarmCoverageFrontier
   receiptRef: S.String,
 }) {}
 
-export class QaSwarmPerfBudgetItem extends S.Class<QaSwarmPerfBudgetItem>(
-  "QaSwarmPerfBudgetItem",
-)({
+export class QaSwarmPerfBudgetItem extends S.Class<QaSwarmPerfBudgetItem>("QaSwarmPerfBudgetItem")({
   actualMs: S.Number,
   budgetMs: S.Number,
   label: S.String,
@@ -52,9 +41,7 @@ export class QaSwarmPerfBudgetItem extends S.Class<QaSwarmPerfBudgetItem>(
   verdict: QaSwarmVerdict,
 }) {}
 
-export class QaSwarmVideoRef extends S.Class<QaSwarmVideoRef>(
-  "QaSwarmVideoRef",
-)({
+export class QaSwarmVideoRef extends S.Class<QaSwarmVideoRef>("QaSwarmVideoRef")({
   label: S.String,
   posterRef: S.String,
   traceHref: S.String,
@@ -118,8 +105,8 @@ export const QaSwarmRegressionCandidate = S.Union([
   QaSwarmValidatedRegressionCandidate,
   QaSwarmProposedRegressionCandidate,
   QaSwarmLandedRegressionCandidate,
-])
-export type QaSwarmRegressionCandidate = typeof QaSwarmRegressionCandidate.Type
+]);
+export type QaSwarmRegressionCandidate = typeof QaSwarmRegressionCandidate.Type;
 
 export class QaSwarmEvidenceAdmission extends S.Class<QaSwarmEvidenceAdmission>(
   "QaSwarmEvidenceAdmission",
@@ -129,13 +116,8 @@ export class QaSwarmEvidenceAdmission extends S.Class<QaSwarmEvidenceAdmission>(
   resolverContract: S.Literal("qa_swarm.receipt_resolver.v1"),
 }) {}
 
-export const QaSwarmExecutionStatus = S.Literals([
-  "scheduled",
-  "running",
-  "completed",
-  "failed",
-])
-export type QaSwarmExecutionStatus = typeof QaSwarmExecutionStatus.Type
+export const QaSwarmExecutionStatus = S.Literals(["scheduled", "running", "completed", "failed"]);
+export type QaSwarmExecutionStatus = typeof QaSwarmExecutionStatus.Type;
 
 export const QaSwarmExecutionTierStatus = S.Literals([
   "scheduled",
@@ -143,12 +125,10 @@ export const QaSwarmExecutionTierStatus = S.Literals([
   "passed",
   "failed",
   "skipped",
-])
-export type QaSwarmExecutionTierStatus = typeof QaSwarmExecutionTierStatus.Type
+]);
+export type QaSwarmExecutionTierStatus = typeof QaSwarmExecutionTierStatus.Type;
 
-export class QaSwarmExecutionTier extends S.Class<QaSwarmExecutionTier>(
-  "QaSwarmExecutionTier",
-)({
+export class QaSwarmExecutionTier extends S.Class<QaSwarmExecutionTier>("QaSwarmExecutionTier")({
   backend: S.String,
   jobRef: S.optional(S.String),
   reason: S.optional(S.String),
@@ -162,9 +142,7 @@ export class QaSwarmExecutionProjection extends S.Class<QaSwarmExecutionProjecti
   tiers: S.Array(QaSwarmExecutionTier),
 }) {}
 
-export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
-  "QaSwarmRunProjection",
-)({
+export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>("QaSwarmRunProjection")({
   boardGraph: GraphSpec,
   blockerRefs: S.Array(S.String),
   coverageFrontier: S.Array(QaSwarmCoverageFrontierItem),
@@ -193,134 +171,21 @@ export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   videoRefs: S.Array(QaSwarmVideoRef),
 }) {}
 
-export type QaSwarmReceiptResolution =
-  | Readonly<{ status: "admitted"; receiptRef: string }>
-  | Readonly<{ status: "missing" | "rejected" | "unavailable"; blockerRef: string }>
+export const decodeQaSwarmRunProjection = S.decodeUnknownSync(QaSwarmRunProjection);
 
-export type QaSwarmReceiptResolver = Readonly<{
-  resolve: (receiptRef: string) => QaSwarmReceiptResolution
-}>
-
-export type QaSwarmProjectionEvidence = Omit<
-  QaSwarmRunProjection,
-  "boardGraph" | "blockerRefs" | "evidenceAdmission" | "verdict"
-> & Readonly<{
-  blockerRefs?: ReadonlyArray<string>
-  verdict: QaSwarmVerdict
-}>
-
-const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
-  [...new Set(values)].sort()
-
-export const qaSwarmClaimedReceiptRefs = (
-  projection: QaSwarmProjectionEvidence,
-): ReadonlyArray<string> => unique([
-  ...projection.traceRefs,
-  ...projection.publicSafetyRefs,
-  ...projection.coverageFrontier.map(item => item.receiptRef),
-  ...projection.distilledTests.map(item => item.receiptRef),
-  ...(projection.regressionCandidates ?? []).flatMap(candidate => {
-    switch (candidate._tag) {
-      case "validated":
-        return [candidate.rerunReceiptRef]
-      case "proposed":
-        return [candidate.rerunReceiptRef]
-      case "landed":
-        return [candidate.rerunReceiptRef, candidate.reviewedMergeReceiptRef]
-    }
-  }),
-  ...projection.perfBudgets.map(item => item.receiptRef),
-  ...projection.verdictWall.map(item => item.receiptRef),
-])
-
-export const buildResolverBackedQaSwarmBoardGraph = (
-  projection: QaSwarmProjectionEvidence,
-  resolver: QaSwarmReceiptResolver,
-): Readonly<{
-  boardGraph: GraphSpec
-  blockerRefs: ReadonlyArray<string>
-  evidenceAdmission: QaSwarmEvidenceAdmission
-  verdict: QaSwarmVerdict
-}> => {
-  const resolutions = qaSwarmClaimedReceiptRefs(projection).map(receiptRef => {
-    const resolution = resolver.resolve(receiptRef)
-    return resolution.status === "admitted" && resolution.receiptRef !== receiptRef
-      ? {
-          status: "rejected" as const,
-          blockerRef: `blocker.qa_swarm.receipt_resolver.ref_mismatch.${receiptRef.split(".").at(-1) ?? "unknown"}`,
-        }
-      : resolution
-  })
-  const admittedReceiptRefs = unique(resolutions.flatMap(resolution =>
-    resolution.status === "admitted" ? [resolution.receiptRef] : [],
-  ))
-  const admitted = new Set(admittedReceiptRefs)
-  const blockerRefs = unique([
-    ...(projection.blockerRefs ?? []),
-    ...resolutions.flatMap(resolution =>
-      resolution.status === "admitted" ? [] : [resolution.blockerRef],
-    ),
-  ])
-  const admittedProjection = {
-    ...projection,
-    coverageFrontier: projection.coverageFrontier.filter(item => admitted.has(item.receiptRef)),
-    distilledTests: projection.distilledTests.filter(item => admitted.has(item.receiptRef)),
-    perfBudgets: projection.perfBudgets.filter(item => admitted.has(item.receiptRef)),
-    publicSafetyRefs: projection.publicSafetyRefs.filter(ref => admitted.has(ref)),
-    target: {
-      ...projection.target,
-      ref: projection.target.ref ?? "",
-    },
-    traceRefs: projection.traceRefs.filter(ref => admitted.has(ref)),
-    verdictWall: projection.verdictWall.filter(item => admitted.has(item.receiptRef)),
-    verdict: blockerRefs.length > 0 && projection.verdict === "passed"
-      ? "inconclusive" as const
-      : projection.verdict,
-  }
-  const graph = buildQaSwarmBoardGraphSpec(admittedProjection)
-  const boardGraph: GraphSpec = {
-    ...graph,
-    blockerRefs: unique([...graph.blockerRefs, ...blockerRefs]),
-    links: graph.links.map(link =>
-      link.status === "inactive" && blockerRefs.length > 0
-        ? { ...link, blockerRefs, status: "blocked" as const }
-        : link,
-    ),
-  }
-
-  return {
-    boardGraph,
-    blockerRefs,
-    evidenceAdmission: new QaSwarmEvidenceAdmission({
-      admittedReceiptRefs,
-      blockerRefs,
-      resolverContract: "qa_swarm.receipt_resolver.v1",
-    }),
-    verdict: admittedProjection.verdict,
-  }
-}
-
-export const decodeQaSwarmRunProjection = S.decodeUnknownSync(QaSwarmRunProjection)
-
-export const assertResolverBackedQaSwarmProjection = (
-  value: unknown,
-): QaSwarmRunProjection => {
-  const projection = decodeQaSwarmRunProjection(value)
-  const admitted = new Set(projection.evidenceAdmission.admittedReceiptRefs)
-  const falseGreen = projection.boardGraph.links.find(link =>
-    link.status === "evidence_backed" && (
-      link.evidenceRefs.length === 0 ||
-      link.evidenceRefs.some(ref => !admitted.has(ref))
-    ),
-  )
+export const assertResolverBackedQaSwarmProjection = (value: unknown): QaSwarmRunProjection => {
+  const projection = decodeQaSwarmRunProjection(value);
+  const admitted = new Set(projection.evidenceAdmission.admittedReceiptRefs);
+  const falseGreen = projection.boardGraph.links.find(
+    (link) =>
+      link.status === "evidence_backed" &&
+      (link.evidenceRefs.length === 0 || link.evidenceRefs.some((ref) => !admitted.has(ref))),
+  );
   if (falseGreen !== undefined) {
-    throw new Error(`QA Swarm board link is not resolver-backed: ${falseGreen.id}`)
+    throw new Error(`QA Swarm board link is not resolver-backed: ${falseGreen.id}`);
   }
-  if (
-    projection.evidenceAdmission.blockerRefs.length > 0 &&
-    projection.verdict === "passed"
-  ) {
-    throw new Error("QA Swarm projection cannot pass with unresolved evidence blockers")
+  if (projection.evidenceAdmission.blockerRefs.length > 0 && projection.verdict === "passed") {
+    throw new Error("QA Swarm projection cannot pass with unresolved evidence blockers");
   }
-  return projection
-}
+  return projection;
+};

@@ -40,7 +40,12 @@ const str = { type: "string" } as const;
 const obj = (
   properties: Record<string, unknown>,
   required: ReadonlyArray<string>,
-): Record<string, unknown> => ({ type: "object", properties, required, additionalProperties: false });
+): Record<string, unknown> => ({
+  type: "object",
+  properties,
+  required,
+  additionalProperties: false,
+});
 
 const fail = (message: string) => new ProbeLlmToolFailure({ message });
 
@@ -54,9 +59,11 @@ function decodeInput<A, I>(
 }
 
 /** Gate an outbound/destructive action through Probe's permission model. */
-function gate(
-  request: { action: "edit" | "write" | "delete"; filePath: string; diff: string },
-): Effect.Effect<void, ProbeLlmToolFailure> {
+function gate(request: {
+  action: "edit" | "write" | "delete";
+  filePath: string;
+  diff: string;
+}): Effect.Effect<void, ProbeLlmToolFailure> {
   return getPermissionHandler()
     .ask(request)
     .pipe(
@@ -162,7 +169,15 @@ export function makeComputerUseTools(surfaces: ComputerUseSurfaces): ProbeLlmToo
       name: "browser_wait_for",
       description:
         "Wait until a condition holds (url-includes / text-visible / selector-visible). Never sleeps.",
-      inputSchema: obj({ kind: { type: "string", enum: ["url-includes", "text-visible", "selector-visible"] }, value: str, selector: str, timeoutMs: { type: "number" } }, ["kind"]),
+      inputSchema: obj(
+        {
+          kind: { type: "string", enum: ["url-includes", "text-visible", "selector-visible"] },
+          value: str,
+          selector: str,
+          timeoutMs: { type: "number" },
+        },
+        ["kind"],
+      ),
       execute: (input) =>
         decodeInput(WaitForInput, input).pipe(
           Effect.flatMap((args) => {
@@ -179,7 +194,10 @@ export function makeComputerUseTools(surfaces: ComputerUseSurfaces): ProbeLlmToo
             }
             return Effect.tryPromise({
               try: () =>
-                browser.waitFor(condition, args.timeoutMs ? { timeoutMs: args.timeoutMs } : undefined),
+                browser.waitFor(
+                  condition,
+                  args.timeoutMs ? { timeoutMs: args.timeoutMs } : undefined,
+                ),
               catch: (e) => fail(`wait_for_failed: ${e instanceof Error ? e.message : String(e)}`),
             });
           }),
@@ -195,7 +213,8 @@ export function makeComputerUseTools(surfaces: ComputerUseSurfaces): ProbeLlmToo
           Effect.flatMap((args) =>
             Effect.tryPromise({
               try: () => browser.screenshot(args.label),
-              catch: (e) => fail(`screenshot_failed: ${e instanceof Error ? e.message : String(e)}`),
+              catch: (e) =>
+                fail(`screenshot_failed: ${e instanceof Error ? e.message : String(e)}`),
             }),
           ),
           Effect.map((path) => ({ path })),
@@ -217,7 +236,8 @@ export function makeComputerUseTools(surfaces: ComputerUseSurfaces): ProbeLlmToo
               Effect.flatMap(() =>
                 Effect.tryPromise({
                   try: () => terminal.run(args.command, args.args),
-                  catch: (e) => fail(`terminal_run_failed: ${e instanceof Error ? e.message : String(e)}`),
+                  catch: (e) =>
+                    fail(`terminal_run_failed: ${e instanceof Error ? e.message : String(e)}`),
                 }),
               ),
             ),
@@ -251,11 +271,16 @@ export function makeComputerUseTools(surfaces: ComputerUseSurfaces): ProbeLlmToo
       execute: (input) =>
         decodeInput(FsWriteInput, input).pipe(
           Effect.flatMap((args) =>
-            gate({ action: "write", filePath: args.path, diff: `${args.contents.length} bytes` }).pipe(
+            gate({
+              action: "write",
+              filePath: args.path,
+              diff: `${args.contents.length} bytes`,
+            }).pipe(
               Effect.flatMap(() =>
                 Effect.try({
                   try: () => filesystem.write(args.path, args.contents),
-                  catch: (e) => fail(`fs_write_failed: ${e instanceof Error ? e.message : String(e)}`),
+                  catch: (e) =>
+                    fail(`fs_write_failed: ${e instanceof Error ? e.message : String(e)}`),
                 }),
               ),
             ),

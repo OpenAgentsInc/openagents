@@ -1,19 +1,17 @@
 //! Cross-OS Cloud-VM provisioner (`openagents.cloud_vm_provisioner.v1`).
 //!
-//! This module implements the **production** provisioner behind the qa-runner's
-//! cross-OS Cloud-VM execution seam. The qa-runner (openagents repo) defines the
-//! typed seam in `apps/qa-runner/src/backend.ts`:
+//! This module preserves the former cross-OS Cloud-VM execution seam:
 //!
 //! ```text
 //! CloudVmProvisionerV2 / CloudVmHandle:  provision -> exec -> copyOut -> teardown
 //! ```
 //!
-//! and ships a *local analogue* (`apps/qa-runner/src/container-backend.ts`, a
-//! Docker-backed backend) that exercises the same lifecycle without faking. This
-//! module is the owner-gated production implementation that lives in `cloud`,
-//! backed by **firecracker** microVMs (reference `projects/repos/firecracker` +
-//! `sek8s` for KVM/TDX/jailer patterns). It is exposed over HTTP by
-//! `oa-codex-control` so the qa-runner can call it (see `cloud_vm` HTTP routes).
+//! The TypeScript QA Runner that defined and called this seam is retired. The
+//! managed-computer disposition must now prove a current caller before treating
+//! this module as a production implementation. Its owner-gated implementation
+//! uses **firecracker** microVMs (reference `projects/repos/firecracker` and
+//! `sek8s` for KVM/TDX/jailer patterns) and remains exposed over HTTP by
+//! `oa-codex-control` during that review.
 //!
 //! ## Lifecycle
 //!

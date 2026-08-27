@@ -45,7 +45,9 @@ const lockfile = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
 for (const name of trainPackages) {
   const escapedName = name.replace("/", "\\/");
   const versions = new Set(
-    [...lockfile.matchAll(new RegExp(`${escapedName}@([^':()\\s]+)`, "g"))].map((match) => match[1]),
+    [...lockfile.matchAll(new RegExp(`${escapedName}@([^':()\\s]+)`, "g"))].map(
+      (match) => match[1],
+    ),
   );
   // Absent is allowed: deleting the Electron desktop app (#9325) removed the
   // only consumer of several train packages, and zero resolved copies cannot

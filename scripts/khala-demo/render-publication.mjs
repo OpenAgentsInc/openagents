@@ -50,9 +50,7 @@ function tableRow(cells) {
 
 export function renderKhalaHeadToHeadPublication(metrics) {
   const status =
-    metrics.evidenceMode === "live"
-      ? "LIVE EVIDENCE"
-      : "FIXTURE SCAFFOLD - not product proof";
+    metrics.evidenceMode === "live" ? "LIVE EVIDENCE" : "FIXTURE SCAFFOLD - not product proof";
   const scoreboardRows = metrics.scoreboard.map((run) =>
     tableRow([
       run.lane,
@@ -82,12 +80,7 @@ export function renderKhalaHeadToHeadPublication(metrics) {
     ]),
   );
   const promotionRows = metrics.livePromotionAudit.checks.map((check) =>
-    tableRow([
-      check.id,
-      check.passed ? "pass" : "blocked",
-      check.blockerRef ?? "",
-      check.detail,
-    ]),
+    tableRow([check.id, check.passed ? "pass" : "blocked", check.blockerRef ?? "", check.detail]),
   );
 
   return [
@@ -134,19 +127,7 @@ export function renderKhalaHeadToHeadPublication(metrics) {
       "AO/kWh",
       "in-world/gateway",
     ]),
-    tableRow([
-      "---",
-      "---",
-      "---",
-      "---:",
-      "---:",
-      "---:",
-      "---",
-      "---",
-      "---:",
-      "---:",
-      "---",
-    ]),
+    tableRow(["---", "---", "---", "---:", "---:", "---:", "---", "---", "---:", "---:", "---"]),
     ...scoreboardRows,
     "",
     "## External Reported Claims",
@@ -170,7 +151,9 @@ export function renderKhalaHeadToHeadPublication(metrics) {
 if (import.meta.main) {
   const manifestPath = process.argv[2];
   if (manifestPath === undefined) {
-    console.error("usage: node --import tsx scripts/khala-demo/render-publication.mjs <manifest.json>");
+    console.error(
+      "usage: node --import tsx scripts/khala-demo/render-publication.mjs <manifest.json>",
+    );
     process.exit(2);
   }
   const manifest = loadManifest(manifestPath);

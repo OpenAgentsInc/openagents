@@ -53,9 +53,7 @@ const sandbox = sandboxFlag as "read-only" | "workspace-write";
 const timeoutMs = Number(flagValue("--timeout-ms") ?? 180_000);
 
 if (harness !== "codex") {
-  console.error(
-    `harness_not_supported: "${harness}" — slice 1 implements the codex lane only`,
-  );
+  console.error(`harness_not_supported: "${harness}" — slice 1 implements the codex lane only`);
   process.exit(2);
 }
 
@@ -66,7 +64,9 @@ if (binary === undefined || binary === null) {
   process.exit(2);
 }
 
-console.log(`headless harness smoke: ${harness} model=${model} effort=${effort} sandbox=${sandboxFlag}`);
+console.log(
+  `headless harness smoke: ${harness} model=${model} effort=${effort} sandbox=${sandboxFlag}`,
+);
 console.log(`binary: ${binary}`);
 console.log(`workdir: ${workdir}`);
 

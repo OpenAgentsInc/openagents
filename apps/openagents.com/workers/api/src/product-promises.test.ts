@@ -251,9 +251,9 @@ describe('public product promises document', () => {
     )
 
     expect(promiseById.get('qa.agentic_qa_runner.v1')).toMatchObject({
-      state: 'yellow',
+      state: 'withdrawn',
       blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.qa_swarm_self_serve_hosted_runs_missing',
+        'blocker.product_promises.qa_runner_retired',
       ]),
     })
 
@@ -504,8 +504,8 @@ describe('public product promises document', () => {
       green: 25,
       planned: 53,
       red: 3,
-      withdrawn: 47,
-      yellow: 17,
+      withdrawn: 48,
+      yellow: 16,
     })
   })
 

@@ -1,6 +1,6 @@
-import { Schema as S } from "effect"
+import { Schema as S } from "effect";
 
-export const BehaviorContractSchemaVersion = "openagents.behavior_contracts.v1"
+export const BehaviorContractSchemaVersion = "openagents.behavior_contracts.v1";
 
 /**
  * Registry lifecycle state for one contract, mirroring the product-promise
@@ -15,8 +15,8 @@ export const BehaviorContractSchemaVersion = "openagents.behavior_contracts.v1"
  * - `retired`    — statement no longer applies (superseded by a newer
  *                  contract version). Kept for history.
  */
-export const BehaviorContractState = S.Literals(["enforced", "pending", "retired"])
-export type BehaviorContractState = "enforced" | "pending" | "retired"
+export const BehaviorContractState = S.Literals(["enforced", "pending", "retired"]);
+export type BehaviorContractState = "enforced" | "pending" | "retired";
 
 /**
  * Where the oracle runs. `test-sweep` means the normal per-package test run
@@ -31,13 +31,13 @@ export const BehaviorContractEnforcementTier = S.Literals([
   "nightly",
   "manual",
   "unenforced",
-])
+]);
 export type BehaviorContractEnforcementTier =
   | "test-sweep"
   | "smoke"
   | "nightly"
   | "manual"
-  | "unenforced"
+  | "unenforced";
 
 export const BehaviorContractOracleKind = S.Literals([
   "bun-test",
@@ -46,16 +46,16 @@ export const BehaviorContractOracleKind = S.Literals([
   "script",
   "manual-check",
   "planned",
-])
+]);
 export type BehaviorContractOracleKind =
   | "bun-test"
   | "qa-scenario"
   | "visual-smoke"
   | "script"
   | "manual-check"
-  | "planned"
+  | "planned";
 
-/** Driver mode vocabulary shared with the khala-qa-harness scenario DSL. */
+/** Driver mode vocabulary retained in behavior contract records. */
 export const BehaviorContractOracleMode = S.Literals([
   "unit",
   "dom",
@@ -63,14 +63,8 @@ export const BehaviorContractOracleMode = S.Literals([
   "vision",
   "headless",
   "e2e",
-])
-export type BehaviorContractOracleMode =
-  | "unit"
-  | "dom"
-  | "rpc"
-  | "vision"
-  | "headless"
-  | "e2e"
+]);
+export type BehaviorContractOracleMode = "unit" | "dom" | "rpc" | "vision" | "headless" | "e2e";
 
 export const BehaviorContractOracle = S.Struct({
   description: S.String,
@@ -81,17 +75,17 @@ export const BehaviorContractOracle = S.Struct({
    * For `bun-test` oracles: repo-relative path of the test file that encodes
    * the expectation. The file must reference the owning contractId so
    * coverage checking can prove the linkage. For `qa-scenario` oracles: the
-   * scenario id in the khala-qa-harness seed corpus.
+   * scenario ID in the retired QA corpus.
    */
   ref: S.String,
-})
+});
 export type BehaviorContractOracle = {
-  readonly description: string
-  readonly id: string
-  readonly kind: BehaviorContractOracleKind
-  readonly mode: BehaviorContractOracleMode
-  readonly ref: string
-}
+  readonly description: string;
+  readonly id: string;
+  readonly kind: BehaviorContractOracleKind;
+  readonly mode: BehaviorContractOracleMode;
+  readonly ref: string;
+};
 
 /**
  * Two-sided seam binding (ST-5 #8511). A seam contract asserts behavior that
@@ -114,11 +108,11 @@ export const BehaviorContractSeam = S.Struct({
   client: S.String,
   /** Repo-relative path of the server-side artifact the seam binds. */
   server: S.String,
-})
+});
 export type BehaviorContractSeam = {
-  readonly client: string
-  readonly server: string
-}
+  readonly client: string;
+  readonly server: string;
+};
 
 export const BehaviorContractSource = S.Struct({
   /** Where the requirement was stated (e.g. "khala-code-session", "forum", "issue"). */
@@ -126,12 +120,12 @@ export const BehaviorContractSource = S.Struct({
   statedBy: S.String,
   /** ISO date the requirement was stated. */
   statedOn: S.String,
-})
+});
 export type BehaviorContractSource = {
-  readonly channel: string
-  readonly statedBy: string
-  readonly statedOn: string
-}
+  readonly channel: string;
+  readonly statedBy: string;
+  readonly statedOn: string;
+};
 
 export const BehaviorContract = S.Struct({
   /** What enforcing this contract does NOT authorize or imply. */
@@ -159,41 +153,41 @@ export const BehaviorContract = S.Struct({
   surface: S.String,
   /** Human-readable description of how the contract is verified end to end. */
   verification: S.String,
-})
+});
 export type BehaviorContract = {
-  readonly authorityBoundary?: string
-  readonly blockerRefs: ReadonlyArray<string>
-  readonly contractId: string
-  readonly enforcementTier: BehaviorContractEnforcementTier
-  readonly evidenceRefs: ReadonlyArray<string>
-  readonly oracles: ReadonlyArray<BehaviorContractOracle>
-  readonly productArea: string
-  readonly seam?: BehaviorContractSeam
-  readonly source: BehaviorContractSource
-  readonly state: BehaviorContractState
-  readonly statement: string
-  readonly surface: string
-  readonly verification: string
-}
+  readonly authorityBoundary?: string;
+  readonly blockerRefs: ReadonlyArray<string>;
+  readonly contractId: string;
+  readonly enforcementTier: BehaviorContractEnforcementTier;
+  readonly evidenceRefs: ReadonlyArray<string>;
+  readonly oracles: ReadonlyArray<BehaviorContractOracle>;
+  readonly productArea: string;
+  readonly seam?: BehaviorContractSeam;
+  readonly source: BehaviorContractSource;
+  readonly state: BehaviorContractState;
+  readonly statement: string;
+  readonly surface: string;
+  readonly verification: string;
+};
 
 export const BehaviorContractRegistryDocument = S.Struct({
   contracts: S.Array(BehaviorContract),
   schemaVersion: S.Literal(BehaviorContractSchemaVersion),
   /** Registry version string, `YYYY-MM-DD.N`, bumped on every registry change. */
   version: S.String,
-})
+});
 export type BehaviorContractRegistryDocument = {
-  readonly contracts: ReadonlyArray<BehaviorContract>
-  readonly schemaVersion: typeof BehaviorContractSchemaVersion
-  readonly version: string
-}
+  readonly contracts: ReadonlyArray<BehaviorContract>;
+  readonly schemaVersion: typeof BehaviorContractSchemaVersion;
+  readonly version: string;
+};
 
 export const decodeBehaviorContractRegistryDocument = (
   input: unknown,
 ): BehaviorContractRegistryDocument =>
-  S.decodeUnknownSync(BehaviorContractRegistryDocument)(input) as BehaviorContractRegistryDocument
+  S.decodeUnknownSync(BehaviorContractRegistryDocument)(input) as BehaviorContractRegistryDocument;
 
-export const behaviorContractIdPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)+\.v[0-9]+$/u
+export const behaviorContractIdPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)+\.v[0-9]+$/u;
 
 /**
  * Seam-contract naming convention (ST-5 #8511): a contract is a seam contract
@@ -203,4 +197,4 @@ export const behaviorContractIdPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)+\.v[0-9]+$/u
  * oracles to the e2e-suite requirement.
  */
 export const isSeamBehaviorContractId = (contractId: string): boolean =>
-  contractId.split(".").includes("seam")
+  contractId.split(".").includes("seam");

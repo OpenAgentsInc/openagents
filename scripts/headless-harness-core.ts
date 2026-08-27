@@ -47,8 +47,7 @@ interface JsonRecord {
 const asRecord = (value: unknown): JsonRecord | null =>
   typeof value === "object" && value !== null ? (value as JsonRecord) : null;
 
-const asString = (value: unknown): string | null =>
-  typeof value === "string" ? value : null;
+const asString = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
 const asNumber = (value: unknown): number => (typeof value === "number" ? value : 0);
 
@@ -162,9 +161,7 @@ export interface HeadlessRunSummary {
 }
 
 /** Derive the run summary from the ordered exec events. */
-export const summarizeCodexRun = (
-  events: readonly CodexExecEvent[],
-): HeadlessRunSummary => {
+export const summarizeCodexRun = (events: readonly CodexExecEvent[]): HeadlessRunSummary => {
   let threadId: string | null = null;
   let finalAnswer: string | null = null;
   let usage: CodexExecUsage | null = null;
@@ -200,7 +197,11 @@ export const summarizeCodexRun = (
     finalAnswer,
     usage,
     failureClass:
-      failed && failureMessage !== null ? classifyCodexFailure(failureMessage) : failed ? "execution_failed" : null,
+      failed && failureMessage !== null
+        ? classifyCodexFailure(failureMessage)
+        : failed
+          ? "execution_failed"
+          : null,
     failureMessage: failed ? failureMessage : null,
     itemCounts,
   };

@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs"
-import { describe, expect, test } from "vite-plus/test"
+import { readFileSync } from "node:fs";
+import { describe, expect, test } from "vite-plus/test";
 import {
   KhalaSyncRuntimeDogfoodEvidenceValidationError,
   validateKhalaSyncRuntimeDogfoodEvidence,
-} from "./validate-khala-sync-runtime-dogfood-evidence"
+} from "./validate-khala-sync-runtime-dogfood-evidence";
 
 const validBundle = () => ({
   schema: "openagents.khala_sync.runtime_ai_sdk_shaped_dogfood.v1",
@@ -25,10 +25,7 @@ const validBundle = () => ({
     "route.khala_sync.bootstrap.v0_1",
     "route.khala_sync.connect.v0_1",
   ],
-  scopeRefs: [
-    "scope.user.owner_runtime_sim",
-    "scope.thread.runtime_thread_sim",
-  ],
+  scopeRefs: ["scope.user.owner_runtime_sim", "scope.thread.runtime_thread_sim"],
   buildRefs: [
     "build.khala_mobile.expo_ios_simulator.local_debug",
     "build.khala_code_desktop.local_debug",
@@ -50,10 +47,7 @@ const validBundle = () => ({
       flowRef: "flow.khala_sync.runtime.simulator.mobile_desktop_resume.v1",
       evidenceMode: "simulator_only",
       sourceSurface: "khala-mobile-ios-simulator",
-      observedSurfaces: [
-        "khala-code-desktop-local",
-        "khala-mobile-ios-simulator-after-restart",
-      ],
+      observedSurfaces: ["khala-code-desktop-local", "khala-mobile-ios-simulator-after-restart"],
       proofs: {
         mobileIntentAppearedOnDesktopWithoutRestart: true,
         desktopRuntimeEventAppearedOnMobileAfterResume: true,
@@ -73,17 +67,9 @@ const validBundle = () => ({
         desktopEventToMobileCatchup: "lt_5s",
         restartResumeCatchup: "lt_30s",
       },
-      routeRefs: [
-        "route.khala_sync.push.v0_1",
-        "route.khala_sync.bootstrap.v0_1",
-      ],
-      scopeRefs: [
-        "scope.user.owner_runtime_sim",
-        "scope.thread.runtime_thread_sim",
-      ],
-      receiptRefs: [
-        "receipt.khala_sync.runtime_dogfood.simulator.2026_07_05",
-      ],
+      routeRefs: ["route.khala_sync.push.v0_1", "route.khala_sync.bootstrap.v0_1"],
+      scopeRefs: ["scope.user.owner_runtime_sim", "scope.thread.runtime_thread_sim"],
+      receiptRefs: ["receipt.khala_sync.runtime_dogfood.simulator.2026_07_05"],
       buildRefs: [
         "build.khala_mobile.expo_ios_simulator.local_debug",
         "build.khala_code_desktop.local_debug",
@@ -99,7 +85,7 @@ const validBundle = () => ({
       issueRefs: ["OpenAgentsInc/openagents#8375"],
     },
   ],
-})
+});
 
 describe("validateKhalaSyncRuntimeDogfoodEvidence", () => {
   test("accepts the committed simulator-only runtime dogfood bundle", () => {
@@ -108,65 +94,61 @@ describe("validateKhalaSyncRuntimeDogfoodEvidence", () => {
         "docs/khala-sync/receipts/2026-07-05-runtime-ai-sdk-shaped-dogfood.simulator.json",
         "utf8",
       ),
-    ) as unknown
-    expect(validateKhalaSyncRuntimeDogfoodEvidence(bundle).status).toBe(
-      "simulator_only",
-    )
-  })
+    ) as unknown;
+    expect(validateKhalaSyncRuntimeDogfoodEvidence(bundle).status).toBe("simulator_only");
+  });
 
   test("accepts a valid public-safe simulator bundle", () => {
-    expect(validateKhalaSyncRuntimeDogfoodEvidence(validBundle()).status).toBe(
-      "simulator_only",
-    )
-  })
+    expect(validateKhalaSyncRuntimeDogfoodEvidence(validBundle()).status).toBe("simulator_only");
+  });
 
   test("rejects raw prompts", () => {
-    const bundle = validBundle()
-    ;(bundle.flows[0] as Record<string, unknown>).prompt = "hidden user text"
+    const bundle = validBundle();
+    (bundle.flows[0] as Record<string, unknown>).prompt = "hidden user text";
     expect(() => validateKhalaSyncRuntimeDogfoodEvidence(bundle)).toThrow(
       KhalaSyncRuntimeDogfoodEvidenceValidationError,
-    )
-  })
+    );
+  });
 
   test("rejects chat bodies", () => {
-    const bundle = validBundle()
-    ;(bundle.flows[0] as Record<string, unknown>).chatBody = "hidden chat body"
+    const bundle = validBundle();
+    (bundle.flows[0] as Record<string, unknown>).chatBody = "hidden chat body";
     expect(() => validateKhalaSyncRuntimeDogfoodEvidence(bundle)).toThrow(
       KhalaSyncRuntimeDogfoodEvidenceValidationError,
-    )
-  })
+    );
+  });
 
   test("rejects provider chunks", () => {
-    const bundle = validBundle()
-    ;(bundle.flows[0] as Record<string, unknown>).providerChunk = {
+    const bundle = validBundle();
+    (bundle.flows[0] as Record<string, unknown>).providerChunk = {
       type: "text-delta",
-    }
+    };
     expect(() => validateKhalaSyncRuntimeDogfoodEvidence(bundle)).toThrow(
       KhalaSyncRuntimeDogfoodEvidenceValidationError,
-    )
-  })
+    );
+  });
 
   test("rejects local paths and secret-shaped strings", () => {
-    const bundle = validBundle()
-    bundle.buildRefs.push("/Users/christopherdavid/work/openagents")
+    const bundle = validBundle();
+    bundle.buildRefs.push("/Users/christopherdavid/work/openagents");
     expect(() => validateKhalaSyncRuntimeDogfoodEvidence(bundle)).toThrow(
       KhalaSyncRuntimeDogfoodEvidenceValidationError,
-    )
-  })
+    );
+  });
 
   test("rejects token-shaped strings", () => {
-    const bundle = validBundle()
-    bundle.routeRefs.push("bearer oa_agent_secret")
+    const bundle = validBundle();
+    bundle.routeRefs.push("bearer oa_agent_secret");
     expect(() => validateKhalaSyncRuntimeDogfoodEvidence(bundle)).toThrow(
       KhalaSyncRuntimeDogfoodEvidenceValidationError,
-    )
-  })
+    );
+  });
 
   test("rejects duplicate events after resume", () => {
-    const bundle = validBundle()
-    bundle.flows[0].counts.duplicateEventsAfterResume = 1
+    const bundle = validBundle();
+    bundle.flows[0].counts.duplicateEventsAfterResume = 1;
     expect(() => validateKhalaSyncRuntimeDogfoodEvidence(bundle)).toThrow(
       KhalaSyncRuntimeDogfoodEvidenceValidationError,
-    )
-  })
-})
+    );
+  });
+});

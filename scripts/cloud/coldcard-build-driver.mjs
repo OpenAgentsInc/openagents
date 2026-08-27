@@ -22,15 +22,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -307,9 +299,16 @@ const main = () => {
   for (const suffix of WITNESSED_OBJECTS) {
     const path = join(buildDir, suffix);
     if (existsSync(path)) {
-      objectRefs.set(suffix, addAvailable("object", ref("artifact", variant, "object", suffix), path));
+      objectRefs.set(
+        suffix,
+        addAvailable("object", ref("artifact", variant, "object", suffix), path),
+      );
     } else {
-      addMissing("object", ref("artifact", variant, "object", suffix), "reason.coldcard.object_not_produced");
+      addMissing(
+        "object",
+        ref("artifact", variant, "object", suffix),
+        "reason.coldcard.object_not_produced",
+      );
     }
   }
 
@@ -375,13 +374,21 @@ const main = () => {
   const mapText = existsSync(mapPath) ? readFileSync(mapPath, "utf8") : undefined;
   const linkMapRef =
     mapText === undefined
-      ? addMissing("link_map", ref("artifact", variant, "link-map"), "reason.coldcard.link_map_not_produced")
+      ? addMissing(
+          "link_map",
+          ref("artifact", variant, "link-map"),
+          "reason.coldcard.link_map_not_produced",
+        )
       : addAvailable("link_map", ref("artifact", variant, "link-map"), mapPath);
 
   const firmwarePath = join(buildDir, "firmware.dfu");
   const firmwareRef = existsSync(firmwarePath)
     ? addAvailable("firmware", ref("artifact", variant, "firmware"), firmwarePath)
-    : addMissing("firmware", ref("artifact", variant, "firmware"), "reason.coldcard.firmware_not_produced");
+    : addMissing(
+        "firmware",
+        ref("artifact", variant, "firmware"),
+        "reason.coldcard.firmware_not_produced",
+      );
 
   let debugRef;
   if (existsSync(elfPath)) {
@@ -410,7 +417,11 @@ const main = () => {
     const path = join(collected, "board-rng.i");
     if (preprocess(boardCommand, join(tree, "external/micropython/ports/stm32"), path, ["-dD"])) {
       preprocessedRefs.push(
-        addAvailable("preprocessed_source", ref("artifact", variant, "preprocessed", "board-rng"), path),
+        addAvailable(
+          "preprocessed_source",
+          ref("artifact", variant, "preprocessed", "board-rng"),
+          path,
+        ),
       );
       const macroDumpPath = join(collected, "board-rng.macros");
       if (
@@ -432,7 +443,9 @@ const main = () => {
   const upstreamCommand = compilerCommandFor(buildLog, `build-${BOARD}/rng.o`);
   if (upstreamCommand !== undefined && !upstreamCommand.includes("/dev/null")) {
     const path = join(collected, "upstream-rng.i");
-    if (preprocess(upstreamCommand, join(tree, "external/micropython/ports/stm32"), path, ["-dD"])) {
+    if (
+      preprocess(upstreamCommand, join(tree, "external/micropython/ports/stm32"), path, ["-dD"])
+    ) {
       preprocessedRefs.push(
         addAvailable(
           "preprocessed_source",
@@ -604,9 +617,6 @@ const main = () => {
 
 // Run only when executed directly, so the pure helpers above stay importable
 // by tests. Comparing resolved URLs keeps this correct under any install name.
-if (
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

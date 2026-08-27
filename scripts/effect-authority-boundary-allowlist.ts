@@ -4,11 +4,11 @@ export type EffectAuthorityBoundaryAllowlistEntry = {
     | "direct-env-read"
     | "bare-catch"
     | "raw-fetch"
-    | "effect-run-promise"
-  readonly path: string
-  readonly pattern: string
-  readonly reason: string
-}
+    | "effect-run-promise";
+  readonly path: string;
+  readonly pattern: string;
+  readonly reason: string;
+};
 
 export const effectAuthorityBoundaryAllowlist = [
   {
@@ -32,4 +32,4 @@ export const effectAuthorityBoundaryAllowlist = [
     reason:
       "CLI process entrypoint reads local process configuration before passing typed options into command handlers.",
   },
-] satisfies readonly EffectAuthorityBoundaryAllowlistEntry[]
+] satisfies readonly EffectAuthorityBoundaryAllowlistEntry[];

@@ -196,7 +196,10 @@ function count(collection: "instances" | "firewall-rules" | "disks", filter: str
   const args = ["compute", collection, "list", "--project", projectId];
   if (collection !== "firewall-rules") args.push("--zones", zone);
   args.push("--filter", filter, "--format", "value(name)");
-  const output = execFileSync(gcloud, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const output = execFileSync(gcloud, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   return output.split("\n").filter((line) => line.trim().length > 0).length;
 }
 
@@ -268,10 +271,7 @@ const observeResidue = () => ({
   scratch: count("disks", `name=oa-msb-${resourceSuffix}`),
   ingress: firewallNames
     .filter((name) => name.includes("-ssh-") || name.includes("-ingress-"))
-    .reduce(
-      (total, name) => total + count("firewall-rules", `name=${name}`),
-      0,
-    ),
+    .reduce((total, name) => total + count("firewall-rules", `name=${name}`), 0),
   grants: 0,
 });
 const preEmergencyResidue = observeResidue();

@@ -1,8 +1,8 @@
 // QA failure learning — the worker Blueprint/GEPA wiring (#6195).
 //
-// The qa-runner (apps/qa-runner) owns the report-side failure-learning
-// strategies + the local FailurePattern capture. THIS module is the Blueprint
-// surface half: it lowers a failed/REFUTED Khala program turn into a CLAIM-LEVEL
+// The retired QA Runner owned the report-side failure-learning strategies and
+// local FailurePattern capture. This module is the remaining Blueprint surface
+// half: it lowers a failed/REFUTED Khala program turn into a CLAIM-LEVEL
 // GEPA CANDIDATE-FEEDBACK signal — the `psionic.probe_gepa_candidate_*`-class
 // feedback the brain/Blueprint audit describes (StudyBench -> GEPA). The
 // optimizer (`gepa_style_reflection` / `retained_failure_replay`) MAY consume it

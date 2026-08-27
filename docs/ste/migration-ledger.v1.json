@@ -204,21 +204,6 @@
       "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
     },
     {
-      "path": "apps/openagents.com/apps/start/public/QA-RUNNER.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents public documentation",
-      "risk": "public",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "human",
-      "ste_accepted_screening_rules": ["STE-2.4"]
-    },
-    {
       "path": "apps/openagents.com/apps/start/public/RULES.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",

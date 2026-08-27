@@ -54,7 +54,8 @@ const parseArgs = (args) => {
   for (const key of ["scope", "sourceBaseRevision", "startedAt", "completedAt", "input"]) {
     if (!parsed[key]) throw new Error(`required privacy export argument is missing: ${key}`);
   }
-  if (!PRIVACY_SCOPES.includes(parsed.scope)) throw new Error("privacy export scope is unsupported");
+  if (!PRIVACY_SCOPES.includes(parsed.scope))
+    throw new Error("privacy export scope is unsupported");
   if (!/^[0-9a-f]{40}$/u.test(parsed.sourceBaseRevision)) {
     throw new Error("source-base-revision must be a full Git revision");
   }

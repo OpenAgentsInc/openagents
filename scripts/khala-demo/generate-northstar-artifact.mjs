@@ -23,8 +23,8 @@
 //   --out <path>      where to write the extracted HTML artifact (required).
 //   --receipt <path>  where to write the receipt JSON (tokens/cost_msat). Optional.
 
-import { writeFileSync } from 'node:fs'
-import { liveStreamTransport, CROSSY_ROAD_PROMPT } from './run-head-to-head.mjs'
+import { writeFileSync } from "node:fs";
+import { liveStreamTransport, CROSSY_ROAD_PROMPT } from "./run-head-to-head.mjs";
 
 // The EXACT state contract the headless acceptance runner reads (see
 // apps/openagents.com/workers/api/src/inference/acceptance-runner/runner.ts). Appended
@@ -61,89 +61,89 @@ Behavioral requirements the headless suite checks:
     moves (worldRowsAhead stays >= 12 ahead; never run out into blue sky).
   - __openagentsCrossyRoadRestart() must fully reset player x/z and progress to the start.
 
-Single self-contained HTML file using three.js from a CDN. Return ONLY the HTML.`
+Single self-contained HTML file using three.js from a CDN. Return ONLY the HTML.`;
 
-const parseArgs = argv => {
-  const opts = {}
+const parseArgs = (argv) => {
+  const opts = {};
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]
-    if (arg === '--contract') {
-      opts.contract = true
-      continue
+    const arg = argv[i];
+    if (arg === "--contract") {
+      opts.contract = true;
+      continue;
     }
-    if (arg.startsWith('--')) {
-      const key = arg.slice(2)
-      const next = argv[i + 1]
-      if (next === undefined || next.startsWith('--')) opts[key] = true
+    if (arg.startsWith("--")) {
+      const key = arg.slice(2);
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith("--")) opts[key] = true;
       else {
-        opts[key] = next
-        i += 1
+        opts[key] = next;
+        i += 1;
       }
     }
   }
-  return opts
-}
+  return opts;
+};
 
 // Pull the single HTML document out of the model's completion. Models often wrap the
 // file in a ```html fenced block; prefer that, else take from the first <!doctype/<html
 // to the last </html>. Returns the raw content untouched if no HTML markers are found
 // (so the caller still saves SOMETHING and the acceptance runner fails it honestly).
-const extractHtml = content => {
-  const fence = content.match(/```(?:html)?\s*\n([\s\S]*?)```/i)
-  const body = fence ? fence[1] : content
-  const lower = body.toLowerCase()
+const extractHtml = (content) => {
+  const fence = content.match(/```(?:html)?\s*\n([\s\S]*?)```/i);
+  const body = fence ? fence[1] : content;
+  const lower = body.toLowerCase();
   const start = (() => {
-    const d = lower.indexOf('<!doctype')
-    if (d !== -1) return d
-    const h = lower.indexOf('<html')
-    return h !== -1 ? h : 0
-  })()
-  const endIdx = lower.lastIndexOf('</html>')
-  const end = endIdx !== -1 ? endIdx + '</html>'.length : body.length
-  return body.slice(start, end).trim()
-}
+    const d = lower.indexOf("<!doctype");
+    if (d !== -1) return d;
+    const h = lower.indexOf("<html");
+    return h !== -1 ? h : 0;
+  })();
+  const endIdx = lower.lastIndexOf("</html>");
+  const end = endIdx !== -1 ? endIdx + "</html>".length : body.length;
+  return body.slice(start, end).trim();
+};
 
 const main = async () => {
-  const args = parseArgs(process.argv.slice(2))
-  const baseUrl = process.env.KHALA_BASE_URL
-  const token = process.env.KHALA_AGENT_TOKEN
-  const model = process.env.KHALA_MODEL || 'openagents/khala-code'
-  const outPath = args.out
+  const args = parseArgs(process.argv.slice(2));
+  const baseUrl = process.env.KHALA_BASE_URL;
+  const token = process.env.KHALA_AGENT_TOKEN;
+  const model = process.env.KHALA_MODEL || "openagents/khala-code";
+  const outPath = args.out;
   if (!baseUrl || !token) {
-    process.stderr.write('KHALA_BASE_URL and KHALA_AGENT_TOKEN are required\n')
-    process.exit(2)
+    process.stderr.write("KHALA_BASE_URL and KHALA_AGENT_TOKEN are required\n");
+    process.exit(2);
   }
-  if (typeof outPath !== 'string') {
-    process.stderr.write('--out <artifact.html> is required\n')
-    process.exit(2)
+  if (typeof outPath !== "string") {
+    process.stderr.write("--out <artifact.html> is required\n");
+    process.exit(2);
   }
 
-  const prompt = args.contract ? CROSSY_ROAD_PROMPT + STATE_CONTRACT : CROSSY_ROAD_PROMPT
+  const prompt = args.contract ? CROSSY_ROAD_PROMPT + STATE_CONTRACT : CROSSY_ROAD_PROMPT;
 
-  const startedAt = new Date()
+  const startedAt = new Date();
   process.stderr.write(
     `submitting north-star prompt (contract=${Boolean(args.contract)}) to ${model} via stream...\n`,
-  )
-  let tokenCount = 0
+  );
+  let tokenCount = 0;
   const response = await liveStreamTransport({
     baseUrl,
     token,
     model,
     prompt,
     onToken: () => {
-      tokenCount += 1
-      if (tokenCount % 500 === 0) process.stderr.write('.')
+      tokenCount += 1;
+      if (tokenCount % 500 === 0) process.stderr.write(".");
     },
-  })
-  const completedAt = new Date()
-  process.stderr.write('\n')
+  });
+  const completedAt = new Date();
+  process.stderr.write("\n");
 
-  const content = response?.choices?.[0]?.message?.content ?? ''
-  const html = extractHtml(content)
-  writeFileSync(outPath, html + '\n')
+  const content = response?.choices?.[0]?.message?.content ?? "";
+  const html = extractHtml(content);
+  writeFileSync(outPath, html + "\n");
 
-  const oa = response?.openagents ?? {}
-  const usage = response?.usage ?? {}
+  const oa = response?.openagents ?? {};
+  const usage = response?.usage ?? {};
   const receipt = {
     model,
     startedAt: startedAt.toISOString(),
@@ -158,24 +158,24 @@ const main = async () => {
       totalTokens: usage.total_tokens ?? null,
     },
     receipt: {
-      ref: typeof oa.receipt === 'string' ? oa.receipt : null,
-      verification: typeof oa.verification === 'string' ? oa.verification : null,
+      ref: typeof oa.receipt === "string" ? oa.receipt : null,
+      verification: typeof oa.verification === "string" ? oa.verification : null,
       verified: oa.verified ?? null,
       scalarReward: oa.scalar_reward ?? null,
-      costMsat: typeof oa.cost_msat === 'number' ? oa.cost_msat : null,
-      priceMsat: typeof oa.price_msat === 'number' ? oa.price_msat : null,
+      costMsat: typeof oa.cost_msat === "number" ? oa.cost_msat : null,
+      priceMsat: typeof oa.price_msat === "number" ? oa.price_msat : null,
     },
-  }
-  if (typeof args.receipt === 'string') {
-    writeFileSync(args.receipt, JSON.stringify(receipt, null, 2) + '\n')
+  };
+  if (typeof args.receipt === "string") {
+    writeFileSync(args.receipt, JSON.stringify(receipt, null, 2) + "\n");
   }
   process.stderr.write(
     `wrote ${html.length} bytes HTML -> ${outPath}; ` +
-      `cost_msat=${receipt.receipt.costMsat ?? 'null'} ` +
-      `completion_tokens=${receipt.usage.completionTokens ?? 'null'} ` +
-      `gateway_verification=${receipt.receipt.verification ?? 'null'}\n`,
-  )
-  process.stdout.write(JSON.stringify(receipt, null, 2) + '\n')
-}
+      `cost_msat=${receipt.receipt.costMsat ?? "null"} ` +
+      `completion_tokens=${receipt.usage.completionTokens ?? "null"} ` +
+      `gateway_verification=${receipt.receipt.verification ?? "null"}\n`,
+  );
+  process.stdout.write(JSON.stringify(receipt, null, 2) + "\n");
+};
 
-await main()
+await main();

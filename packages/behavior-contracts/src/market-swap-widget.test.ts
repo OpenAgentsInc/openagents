@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { Effect } from "effect";
 import { decodeBehaviorContractRegistryDocument } from "./contract";
-import { checkBehaviorContractCoverage, fileOracleSourceLayer } from "./coverage";
+import { checkBehaviorContractCoverage, fileOracleSourceLayer } from "./coverage.test-support";
 import { validateBehaviorContractRegistry } from "./registry";
 import { marketSwapWidgetContractRegistry } from "./market-swap-widget";
 

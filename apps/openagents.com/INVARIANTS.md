@@ -1088,16 +1088,16 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
   `workers/api/src/inference/inference-privacy-entitlement.test.ts`.
 
-## Retired Khala Code Plan Seam
+## Retired Khala Code plan seam
 
 - The public catalog, plan-status read, and purchase route were removed during
   the VP-1 non-MVP payment-path retirement. They are not public projections and
   must not be re-added to the projection ledger without restoring an explicit
   product invariant, shared staleness contract, and owner-authorized payment
   phase.
-- The retained `khala-code-plan-catalog.ts` is inert source material only. It
-  grants no capture, billing, payout, or settlement authority. Regression
-  coverage: `workers/api/src/inference/khala-code-plan-catalog.test.ts`.
+- The compatibility catalog source is deleted. Product promise records and Git
+  history preserve the historical plan IDs without keeping an executable
+  TypeScript projection.
 
 ## Khala Code Outside-User Run Receipts (opt-in only)
 

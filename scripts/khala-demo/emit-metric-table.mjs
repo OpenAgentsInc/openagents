@@ -30,9 +30,7 @@ import { loadManifest, reduceKhalaHeadToHeadManifest } from "./reduce-head-to-he
 
 const NOT_MEASURED = "not_measured";
 
-const TOKENS_NOT_MEASURED_BLOCKERS = new Set([
-  "blocker.khala_demo.tokens_not_measured",
-]);
+const TOKENS_NOT_MEASURED_BLOCKERS = new Set(["blocker.khala_demo.tokens_not_measured"]);
 const COST_NOT_MEASURED_BLOCKERS = new Set([
   "blocker.khala_demo.cost_usd_not_measured",
   "blocker.khala_demo.cost_not_measured",
@@ -140,9 +138,7 @@ function fmtUsd(value) {
 }
 
 function fmtTokens(value) {
-  return typeof value === "number"
-    ? new Intl.NumberFormat("en-US").format(value)
-    : String(value);
+  return typeof value === "number" ? new Intl.NumberFormat("en-US").format(value) : String(value);
 }
 
 function fmtBool(value) {
@@ -209,7 +205,9 @@ if (import.meta.main) {
   const json = args.includes("--json");
   const manifestPath = args.find((arg) => !arg.startsWith("--"));
   if (manifestPath === undefined) {
-    console.error("usage: node --import tsx scripts/khala-demo/emit-metric-table.mjs <manifest.json> [--json]");
+    console.error(
+      "usage: node --import tsx scripts/khala-demo/emit-metric-table.mjs <manifest.json> [--json]",
+    );
     process.exit(2);
   }
   const manifest = loadManifest(manifestPath);

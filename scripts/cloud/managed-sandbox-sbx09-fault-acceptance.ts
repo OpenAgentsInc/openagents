@@ -30,8 +30,7 @@ const required = (name: string): string => {
   return value;
 };
 
-const sha256 = (value: string): string =>
-  createHash("sha256").update(value).digest("hex");
+const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
 const args = process.argv.slice(2);
 let apply = false;
@@ -43,15 +42,10 @@ for (let index = 0; index < args.length; index += 1) {
     evidence = resolve(args[index + 1]!);
     index += 1;
   } else {
-    throw new Error(
-      "usage: managed-sandbox-sbx09-fault-acceptance.ts --apply [--evidence PATH]",
-    );
+    throw new Error("usage: managed-sandbox-sbx09-fault-acceptance.ts --apply [--evidence PATH]");
   }
 }
-if (
-  !apply ||
-  process.env.OA_MANAGED_SANDBOX_OWNER_GATE !== "I_ACCEPT_LIVE_GCP_COST"
-) {
+if (!apply || process.env.OA_MANAGED_SANDBOX_OWNER_GATE !== "I_ACCEPT_LIVE_GCP_COST") {
   throw new Error(
     "live acceptance is default-off; pass --apply and set OA_MANAGED_SANDBOX_OWNER_GATE=I_ACCEPT_LIVE_GCP_COST",
   );
@@ -98,9 +92,7 @@ const profile = {
     programBudgetMicrousd: 40_000,
     maxHourlyCostMicrousd: 20_000,
   },
-  capabilityRefs: [
-    `capability-ref://run/${sha256(`${stamp}|anchor`).slice(0, 32)}`,
-  ],
+  capabilityRefs: [`capability-ref://run/${sha256(`${stamp}|anchor`).slice(0, 32)}`],
 };
 
 const gcloudJson = (args: ReadonlyArray<string>): unknown =>
@@ -155,15 +147,13 @@ const inventory = () => {
     "--filter",
     "name~^oa-msb-guest-",
   ]) as ReadonlyArray<Record<string, unknown>>;
-  const digestOf = (value: unknown) =>
-    `sha256:${sha256(JSON.stringify(value))}`;
+  const digestOf = (value: unknown) => `sha256:${sha256(JSON.stringify(value))}`;
   return {
     managedInstances: instances.length,
     managedDisks: disks.length,
     managedFirewalls: firewalls.length,
-    managedExternalIps: instances.filter((instance) =>
-      JSON.stringify(instance).includes('"natIP"'),
-    ).length,
+    managedExternalIps: instances.filter((instance) => JSON.stringify(instance).includes('"natIP"'))
+      .length,
     managedServiceIdentityGrants: 0,
     managedCapabilityGrants: 0,
     retainedGuestImages: images.length,
@@ -186,55 +176,38 @@ const requestFor = (
   }> = {},
 ) => {
   sequence += 1;
-  const suffix = sha256(`${stamp}|${sequence}|${action}|${sandboxRef}`).slice(
-    0,
-    32,
-  );
+  const suffix = sha256(`${stamp}|${sequence}|${action}|${sandboxRef}`).slice(0, 32);
   return {
     ...(options.requestScope ?? scope),
     sandboxRef,
-    operationRef:
-      options.operationRef ?? `operation-ref://sbx09-fault/${suffix}`,
-    idempotencyRef:
-      options.idempotencyRef ?? `idempotency-ref://sbx09-fault/${suffix}`,
+    operationRef: options.operationRef ?? `operation-ref://sbx09-fault/${suffix}`,
+    idempotencyRef: options.idempotencyRef ?? `idempotency-ref://sbx09-fault/${suffix}`,
     expectedGeneration,
     action,
-    ...(options.requestProfile === undefined
-      ? {}
-      : { profile: options.requestProfile }),
+    ...(options.requestProfile === undefined ? {} : { profile: options.requestProfile }),
   };
 };
 
 const post = async (
   body: unknown,
 ): Promise<{ status: number; body: RuntimeReceipt | RuntimeErrorBody }> => {
-  const response = await fetch(
-    `${baseUrl}/v1/managed-sandbox/runtime/operations`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-openagents-managed-sandbox-token": controlToken,
-      },
-      body: JSON.stringify(body),
+  const response = await fetch(`${baseUrl}/v1/managed-sandbox/runtime/operations`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-openagents-managed-sandbox-token": controlToken,
     },
-  );
+    body: JSON.stringify(body),
+  });
   return {
     status: response.status,
     body: (await response.json()) as RuntimeReceipt | RuntimeErrorBody,
   };
 };
 
-const expectError = async (
-  body: unknown,
-  status: number,
-  code: string,
-): Promise<void> => {
+const expectError = async (body: unknown, status: number, code: string): Promise<void> => {
   const response = await post(body);
-  if (
-    response.status !== status ||
-    (response.body as RuntimeErrorBody).error !== code
-  ) {
+  if (response.status !== status || (response.body as RuntimeErrorBody).error !== code) {
     throw new Error(
       `expected ${status}/${code}, received ${response.status}/${String((response.body as RuntimeErrorBody).error)}`,
     );
@@ -263,52 +236,36 @@ let failure: string | undefined;
 
 try {
   await expectError(
-    requestFor(
-      `sandbox-ref://owner-live/ttl-${sha256(stamp).slice(0, 16)}`,
-      "create",
-      0,
-      {
-        requestProfile: { ...profile, ttlMs: 86_400_001 },
-      },
-    ),
+    requestFor(`sandbox-ref://owner-live/ttl-${sha256(stamp).slice(0, 16)}`, "create", 0, {
+      requestProfile: { ...profile, ttlMs: 86_400_001 },
+    }),
     400,
     "ttl_out_of_bounds",
   );
   proof.ttlRefusal = true;
 
   await expectError(
-    requestFor(
-      `sandbox-ref://owner-live/budget-${sha256(stamp).slice(0, 16)}`,
-      "create",
-      0,
-      {
-        requestProfile: {
-          ...profile,
-          budget: { ...profile.budget, sandboxBudgetMicrousd: 1_000 },
-        },
+    requestFor(`sandbox-ref://owner-live/budget-${sha256(stamp).slice(0, 16)}`, "create", 0, {
+      requestProfile: {
+        ...profile,
+        budget: { ...profile.budget, sandboxBudgetMicrousd: 1_000 },
       },
-    ),
+    }),
     409,
     "budget_refused",
   );
   proof.budgetRefusal = true;
 
   await expectError(
-    requestFor(
-      `sandbox-ref://owner-live/quota-${sha256(stamp).slice(0, 16)}`,
-      "create",
-      0,
-      {
-        requestProfile: {
-          ...profile,
-          capabilityRefs: Array.from(
-            { length: 65 },
-            (_, index) =>
-              `capability-ref://run/${sha256(`${stamp}|${index}`).slice(0, 32)}`,
-          ),
-        },
+    requestFor(`sandbox-ref://owner-live/quota-${sha256(stamp).slice(0, 16)}`, "create", 0, {
+      requestProfile: {
+        ...profile,
+        capabilityRefs: Array.from(
+          { length: 65 },
+          (_, index) => `capability-ref://run/${sha256(`${stamp}|${index}`).slice(0, 32)}`,
+        ),
       },
-    ),
+    }),
     400,
     "capability_ref_count_out_of_bounds",
   );
@@ -318,11 +275,9 @@ try {
     requestProfile: profile,
   });
   const discarded = await post(create);
-  if (discarded.status !== 200)
-    throw new Error("anchor create was not admitted");
+  if (discarded.status !== 200) throw new Error("anchor create was not admitted");
   const replay = await post(create);
-  if (replay.status !== 200)
-    throw new Error("lost acknowledgement replay failed");
+  if (replay.status !== 200) throw new Error("lost acknowledgement replay failed");
   const replayReceipt = replay.body as RuntimeReceipt;
   if (replayReceipt.phase !== "ready" || !replayReceipt.receiptRef) {
     throw new Error("anchor replay did not return exact readiness");
@@ -344,9 +299,7 @@ try {
       ...create,
       profile: {
         ...profile,
-        capabilityRefs: [
-          `capability-ref://run/${sha256(`${stamp}|drift`).slice(0, 32)}`,
-        ],
+        capabilityRefs: [`capability-ref://run/${sha256(`${stamp}|drift`).slice(0, 32)}`],
       },
     },
     409,
@@ -355,12 +308,9 @@ try {
   proof.idempotencyDriftRefusal = true;
 
   await expectError(
-    requestFor(
-      `sandbox-ref://owner-live/capacity-${sha256(stamp).slice(0, 16)}`,
-      "create",
-      0,
-      { requestProfile: profile },
-    ),
+    requestFor(`sandbox-ref://owner-live/capacity-${sha256(stamp).slice(0, 16)}`, "create", 0, {
+      requestProfile: profile,
+    }),
     409,
     "capacity_refused",
   );
@@ -401,28 +351,17 @@ try {
   );
   proof.ownerTenantIsolation = true;
 
-  await expectError(
-    requestFor(anchorSandboxRef, "probe", 2),
-    409,
-    "generation_conflict",
-  );
+  await expectError(requestFor(anchorSandboxRef, "probe", 2), 409, "generation_conflict");
   proof.generationIsolation = true;
 
   const stopped = await post(requestFor(anchorSandboxRef, "stop", 1));
-  if (
-    stopped.status !== 200 ||
-    (stopped.body as RuntimeReceipt).phase !== "stopped"
-  ) {
+  if (stopped.status !== 200 || (stopped.body as RuntimeReceipt).phase !== "stopped") {
     throw new Error("anchor stop did not settle");
   }
   anchorPhase = "stopped";
   const deleted = await post(requestFor(anchorSandboxRef, "delete", 1));
   finalReceipt = deleted.body as RuntimeReceipt;
-  if (
-    deleted.status !== 200 ||
-    finalReceipt.phase !== "deleted" ||
-    !finalReceipt.cleanupObserved
-  ) {
+  if (deleted.status !== 200 || finalReceipt.phase !== "deleted" || !finalReceipt.cleanupObserved) {
     throw new Error("anchor delete did not prove cleanup");
   }
   anchorPhase = "deleted";
@@ -434,20 +373,14 @@ try {
   if (anchorPhase !== undefined && anchorPhase !== "deleted") {
     try {
       if (anchorPhase === "ready") {
-        const stopped = await post(
-          requestFor(anchorSandboxRef, "stop", anchorGeneration || 1),
-        );
+        const stopped = await post(requestFor(anchorSandboxRef, "stop", anchorGeneration || 1));
         anchorPhase = (stopped.body as RuntimeReceipt).phase;
       }
-      const deleted = await post(
-        requestFor(anchorSandboxRef, "delete", anchorGeneration || 1),
-      );
+      const deleted = await post(requestFor(anchorSandboxRef, "delete", anchorGeneration || 1));
       anchorPhase = (deleted.body as RuntimeReceipt).phase;
     } catch {
       try {
-        await post(
-          requestFor(anchorSandboxRef, "reconcile", anchorGeneration || 1),
-        );
+        await post(requestFor(anchorSandboxRef, "reconcile", anchorGeneration || 1));
       } catch {
         // The independent inventory below remains authoritative.
       }

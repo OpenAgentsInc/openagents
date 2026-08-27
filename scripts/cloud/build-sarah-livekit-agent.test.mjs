@@ -15,25 +15,15 @@ test("Sarah worker Cloud Build stays on the existing digest-pinned production la
     buildScript,
     deployerBuildScript,
     deployerDockerfile,
-  ] =
-    await Promise.all([
-      readFile(resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"), "utf8"),
-      readFile(resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile"), "utf8"),
-      readFile(
-        resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile.dockerignore"),
-        "utf8",
-      ),
-      readFile(resolve(repositoryRoot, ".gcloudignore.sarah-livekit-agent"), "utf8"),
-      readFile(resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"), "utf8"),
-      readFile(
-        resolve(repositoryRoot, "scripts/cloud/build-livekit-production-deployer.sh"),
-        "utf8",
-      ),
-      readFile(
-        resolve(repositoryRoot, "infra/livekit-production/deployer.Dockerfile"),
-        "utf8",
-      ),
-    ]);
+  ] = await Promise.all([
+    readFile(resolve(repositoryRoot, "docker/cloud/cloudbuild-sarah-livekit-agent.yaml"), "utf8"),
+    readFile(resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile"), "utf8"),
+    readFile(resolve(repositoryRoot, "apps/sarah-livekit-agent/Dockerfile.dockerignore"), "utf8"),
+    readFile(resolve(repositoryRoot, ".gcloudignore.sarah-livekit-agent"), "utf8"),
+    readFile(resolve(repositoryRoot, "scripts/cloud/build-sarah-livekit-agent.sh"), "utf8"),
+    readFile(resolve(repositoryRoot, "scripts/cloud/build-livekit-production-deployer.sh"), "utf8"),
+    readFile(resolve(repositoryRoot, "infra/livekit-production/deployer.Dockerfile"), "utf8"),
+  ]);
 
   assert.match(
     configuration,

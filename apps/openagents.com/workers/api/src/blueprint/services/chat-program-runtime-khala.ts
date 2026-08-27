@@ -203,15 +203,15 @@ export const khalaTurnToProgramRunRecord = (
  * QA failure learning (#6195) — the Blueprint/GEPA wiring on the Khala surface.
  *
  * Run ONE Khala turn through the Blueprint program runtime and, given an honest
- * failure verdict + the contradicted findings (from the qa-runner verify stage),
+ * failure verdict + contradicted findings from a caller,
  * emit the claim-level, EVIDENCE-ONLY GEPA candidate-feedback signal the
  * optimizer may consume. The program-run record is emitted by the runtime
  * (evidence-only by construction) and the feedback derives ONLY from that
  * record's public-safe refs — so the failure becomes governed optimizer signal
  * without any write authority, self-promotion, or live behavior change.
  *
- * This is reachable from the worker's Khala Blueprint surface; the report-side
- * strategies (suggest/auto_commit/open_pr) live in apps/qa-runner.
+ * This remains reachable from the legacy Worker's Khala Blueprint surface. The
+ * report-side strategies were deleted with the unsupported QA Runner.
  */
 export const khalaFailureTurnToGepaCandidateFeedback = (
   input: KhalaTurnToProgramInput & {

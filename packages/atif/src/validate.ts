@@ -9,7 +9,7 @@
 //   - schema_version is the ATIF-v1.7 literal
 //   - agent.name + agent.version are present (RFC §AgentSchema required)
 //
-// This is the tripwire the qa-runner uses before committing a trajectory: a
+// This is the tripwire retained exporters use before committing a trajectory: a
 // trajectory that does not validate is NEVER written/committed. It is the
 // producer-facing (permissive) validator; the stricter ingest/store schema +
 // public-safety tripwire live in `@openagentsinc/atif/trace`.

@@ -80,7 +80,9 @@ const main = (): void => {
     return;
   }
   if (drift.agree) {
-    console.log(`[afs-apple-fm-version-drift] OK — every version source agrees at ${drift.canonicalVersion}`);
+    console.log(
+      `[afs-apple-fm-version-drift] OK — every version source agrees at ${drift.canonicalVersion}`,
+    );
     return;
   }
   console.error(`[afs-apple-fm-version-drift] FAIL — ${drift.finding}`);

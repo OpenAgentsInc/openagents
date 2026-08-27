@@ -13,8 +13,6 @@
     "apps/openagents.com/workers/api/scripts/probe-gepa-stage0-no-spend-campaign.ts",
     "apps/openagents.com/workers/api/scripts/qwen-remote-pylon-live-training.ts",
     "apps/pylon/deploy/agent-computer/native-codex-auth.ts",
-    "apps/qa-runner/src/compose/cli.ts",
-    "apps/qa-runner/src/ingest-conversation-cli.ts",
     "packages/khala-sync-server/scripts/capture.ts",
     "packages/khala-sync-server/scripts/check-pending-migrations.ts",
     "packages/khala-sync-server/scripts/compact.ts",

@@ -24,7 +24,7 @@ export const marketSwapPairContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "A direction with max=\"0\" on every discovered Offering folds to the typed side_disabled reason, empty corpora and paused/stale carriers fold to their own typed reasons, and the selector discloses unreachability before selection.",
+            'A direction with max="0" on every discovered Offering folds to the typed side_disabled reason, empty corpora and paused/stale carriers fold to their own typed reasons, and the selector discloses unreachability before selection.',
           id: "openagents_web.swap_pair.unreachable_direction_disclosed.corpus",
           kind: "bun-test",
           mode: "unit",
@@ -50,7 +50,7 @@ export const marketSwapPairContractRegistry: BehaviorContractRegistryDocument = 
         "Reachable directions are a function of the live Offering corpus: a direction no live Offering enables renders unreachable with a typed reason (no_offering, side_disabled, provider_paused, offerings_stale) before selection, and can never be selected into a fundable state.",
       surface: "openagents.com/swap",
       verification:
-        "packages/mkt-swp-pair tests fold fixture corpora (max=\"0\" everywhere, paused providers, stale heads, empty corpus) and assert the typed reason per direction, the selector's pre-selection disclosure, and a blocked primary-action gate carrying swp_side_disabled for unreachable selections.",
+        'packages/mkt-swp-pair tests fold fixture corpora (max="0" everywhere, paused providers, stale heads, empty corpus) and assert the typed reason per direction, the selector\'s pre-selection disclosure, and a blocked primary-action gate carrying swp_side_disabled for unreachable selections.',
     },
     {
       authorityBoundary:

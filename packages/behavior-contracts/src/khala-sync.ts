@@ -1,7 +1,4 @@
-import {
-  BehaviorContractSchemaVersion,
-  type BehaviorContractRegistryDocument,
-} from "./contract"
+import { BehaviorContractSchemaVersion, type BehaviorContractRegistryDocument } from "./contract";
 
 /**
  * Khala Sync behavior contracts (KS-3.3 #8293; KS-9.2 #8311).
@@ -246,9 +243,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
     {
       authorityBoundary:
         "This SEAM contract (ST-5 #8511) binds the two-sided bearer WebSocket connect boundary: the real client transport's documented ?token= query-param bearer on the WS upgrade (browser and React Native WebSocket clients cannot set an Authorization header) MEETS the Cloud Run API connect route's query-param-aware authentication, and an authenticated cookie-less session actually reaches the live phase. It does not bind delivery latency, reconnect backoff policy, or scope membership semantics (owned by the access contracts above). Per the seam convention, its oracle must be an e2e suite driving REAL code from both named sides — the fake-transport session suite can never enforce this contract.",
-      blockerRefs: [
-        "blocker.khala_sync.depends_on_8507_live_seam_smoke_landing",
-      ],
+      blockerRefs: ["blocker.khala_sync.depends_on_8507_live_seam_smoke_landing"],
       contractId: "khala_sync.seam.bearer_ws_connect_reaches_live.v1",
       enforcementTier: "unenforced",
       evidenceRefs: [
@@ -318,4 +313,4 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
   ],
   schemaVersion: BehaviorContractSchemaVersion,
   version: "2026-08-27.1",
-}
+};

@@ -112,7 +112,7 @@ const isTestSource = (file) =>
   /(^|\/)(tests?|__tests__|__mocks__|__fixtures__|fixtures|test-fixtures|mocks|stubs|e2e)\//u.test(
     file,
   ) ||
-  /\.(test|spec)\.[cm]?tsx?$/u.test(file) ||
+  /\.(test-support|test|spec)\.[cm]?tsx?$/u.test(file) ||
   /(^|\/)test-[^/]*\.[cm]?tsx?$/u.test(file);
 
 // A NAME IN PROSE IS NOT A CALLER.
@@ -308,12 +308,12 @@ const declarationPattern =
 
 const interfaceBlockPattern =
   /^export\s+(?:declare\s+)?interface\s+([A-Za-z_$][A-Za-z0-9_$]*)[^\n]*\{\n([\s\S]*?)\n\}/gmu;
-const interfaceMemberPattern =
-  /^\s{2}(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*\??\s*:\s*\(/gmu;
+const interfaceMemberPattern = /^\s{2}(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*\??\s*:\s*\(/gmu;
 
 const index = (map, identifier, file, isTest) => {
   let entry = map.get(identifier);
-  if (entry === undefined) map.set(identifier, (entry = { production: new Set(), test: new Set() }));
+  if (entry === undefined)
+    map.set(identifier, (entry = { production: new Set(), test: new Set() }));
   (isTest ? entry.test : entry.production).add(file);
 };
 

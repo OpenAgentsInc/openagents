@@ -13,10 +13,7 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 
-export const releaseImpactActions = [
-  "web_deploy",
-  "no_binary_release",
-] as const;
+export const releaseImpactActions = ["web_deploy", "no_binary_release"] as const;
 export type ReleaseImpactAction = (typeof releaseImpactActions)[number];
 
 export type ReleaseImpactPlan = Readonly<{

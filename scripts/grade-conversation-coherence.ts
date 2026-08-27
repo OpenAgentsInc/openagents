@@ -129,7 +129,9 @@ const worst = [...graded]
   .slice(0, Math.max(0, worstCount));
 
 console.log("conversation coherence screening (deterministic layer)");
-console.log(`graded ${graded.length} conversations, skipped ${conversations.length - graded.length} without a full user/assistant turn`);
+console.log(
+  `graded ${graded.length} conversations, skipped ${conversations.length - graded.length} without a full user/assistant turn`,
+);
 for (const aggregate of aggregates) {
   if (aggregate.graded === 0 && aggregate.skipped === 0) continue;
   console.log(

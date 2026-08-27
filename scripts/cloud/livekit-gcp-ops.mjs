@@ -1,14 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import {
@@ -66,8 +59,7 @@ const PRODUCTION_SECRET_IDS = Object.freeze([
   "oa-livekit-prod-sarah-control-root",
 ]);
 const SARAH_OPENAI_SOURCE_SECRET = "sarah-openai-api-key";
-const DEPLOYMENT_CONTROL_BOUNDARY =
-  "infra/livekit-production/deployment-control-boundary.json";
+const DEPLOYMENT_CONTROL_BOUNDARY = "infra/livekit-production/deployment-control-boundary.json";
 const PRODUCTION_DEPLOYER_SERVICE_ACCOUNT =
   "oa-livekit-prod-deployer@openagentsgemini.iam.gserviceaccount.com";
 const PRODUCTION_DEPLOY_TRIGGER = "oa-livekit-prod-runtime";
@@ -75,19 +67,14 @@ const PRODUCTION_SOURCE_CONNECTION = "oa-livekit-github";
 const PRODUCTION_SOURCE_REPOSITORY = "openagents";
 const PRODUCTION_SOURCE_REPOSITORY_RESOURCE =
   "projects/openagentsgemini/locations/us-central1/connections/oa-livekit-github/repositories/openagents";
-const PRODUCTION_SOURCE_REMOTE_URI =
-  "https://github.com/OpenAgentsInc/openagents.git";
-const PRODUCTION_RECEIPT_BUCKET =
-  "openagentsgemini-livekit-deployment-receipts";
+const PRODUCTION_SOURCE_REMOTE_URI = "https://github.com/OpenAgentsInc/openagents.git";
+const PRODUCTION_RECEIPT_BUCKET = "openagentsgemini-livekit-deployment-receipts";
 const LEGACY_AUTOMATION_SERVICE_ACCOUNT =
   "oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com";
 const PROJECT_NUMBER = "157437760789";
-const DEFAULT_COMPUTE_SERVICE_ACCOUNT =
-  `${PROJECT_NUMBER}-compute@developer.gserviceaccount.com`;
-const PRIVILEGED_IDENTITY_TAG =
-  "openagentsgemini/livekit-privileged-identity/protected";
-const LEGACY_AUTOMATION_DENY_POLICY =
-  "deny-legacy-livekit-privileged-impersonation";
+const DEFAULT_COMPUTE_SERVICE_ACCOUNT = `${PROJECT_NUMBER}-compute@developer.gserviceaccount.com`;
+const PRIVILEGED_IDENTITY_TAG = "openagentsgemini/livekit-privileged-identity/protected";
+const LEGACY_AUTOMATION_DENY_POLICY = "deny-legacy-livekit-privileged-impersonation";
 const CANONICAL_BUILD_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -1142,8 +1129,7 @@ const imageTagAndDigest = (reference) => {
   return value;
 };
 
-const immutableImageIdentity = (reference) =>
-  reference.replace(/:[^/:@]+@sha256:/u, "@sha256:");
+const immutableImageIdentity = (reference) => reference.replace(/:[^/:@]+@sha256:/u, "@sha256:");
 
 const validateInstalledAddons = (addonLock, kubeconfig) => {
   const environment = kubectlEnv(kubeconfig);
@@ -1186,8 +1172,7 @@ const validateInstalledAddons = (addonLock, kubeconfig) => {
       !expectedImage ||
       !Array.isArray(containers) ||
       containers.length !== 1 ||
-      immutableImageIdentity(containers[0]?.image ?? "") !==
-        immutableImageIdentity(expectedImage)
+      immutableImageIdentity(containers[0]?.image ?? "") !== immutableImageIdentity(expectedImage)
     ) {
       throw new Error(`installed addon image does not match the lock for ${key}`);
     }
@@ -1733,9 +1718,7 @@ const validateLegacyAutomationDenyPolicy = (serviceAccounts) => {
     );
     if (
       !Array.isArray(bindings) ||
-      !bindings.some(
-        (binding) => binding?.tagValueNamespacedName === PRIVILEGED_IDENTITY_TAG,
-      )
+      !bindings.some((binding) => binding?.tagValueNamespacedName === PRIVILEGED_IDENTITY_TAG)
     ) {
       throw new Error(`the ${label} is missing its protected identity tag`);
     }
@@ -1762,11 +1745,7 @@ const validateUserSpecifiedBuildIdentityRequired = () => {
       ),
     );
     const rules = policy?.spec?.rules;
-    if (
-      !Array.isArray(rules) ||
-      rules.length !== 1 ||
-      rules[0]?.enforce !== false
-    ) {
+    if (!Array.isArray(rules) || rules.length !== 1 || rules[0]?.enforce !== false) {
       throw new Error(
         `${constraint} does not conclusively require a user-specified build service account`,
       );
@@ -1779,22 +1758,10 @@ const validateLegacyCloudBuildRouteClosed = () => {
   const protectedServiceAccounts = [
     [DEFAULT_COMPUTE_SERVICE_ACCOUNT, "default Compute service account"],
     [PRODUCTION_DEPLOYER_SERVICE_ACCOUNT, "production deployer"],
-    [
-      "oa-livekit-prod-nodes@openagentsgemini.iam.gserviceaccount.com",
-      "LiveKit GKE node identity",
-    ],
-    [
-      "oa-livekit-server@openagentsgemini.iam.gserviceaccount.com",
-      "LiveKit server identity",
-    ],
-    [
-      "oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com",
-      "Sarah agent identity",
-    ],
-    [
-      "livekit-secret-reader@openagentsgemini.iam.gserviceaccount.com",
-      "LiveKit secret reader",
-    ],
+    ["oa-livekit-prod-nodes@openagentsgemini.iam.gserviceaccount.com", "LiveKit GKE node identity"],
+    ["oa-livekit-server@openagentsgemini.iam.gserviceaccount.com", "LiveKit server identity"],
+    ["oa-livekit-agent@openagentsgemini.iam.gserviceaccount.com", "Sarah agent identity"],
+    ["livekit-secret-reader@openagentsgemini.iam.gserviceaccount.com", "LiveKit secret reader"],
     [
       "oa-livekit-cert-manager-reader@openagentsgemini.iam.gserviceaccount.com",
       "LiveKit DNS secret reader",
@@ -1820,30 +1787,18 @@ const validateLegacyCloudBuildRouteClosed = () => {
     return;
   }
   for (const [label, result] of results) {
-    requireNotGranted(
-      result,
-      `legacy automation identity can still act as the ${label}`,
-    );
+    requireNotGranted(result, `legacy automation identity can still act as the ${label}`);
   }
 };
 
 const preflightReceiptArtifact = (temporaryDirectory, buildId) => {
   const marker = resolve(temporaryDirectory, "receipt-artifact-preflight");
   const object =
-    `gs://${PRODUCTION_RECEIPT_BUCKET}/preflight/` +
-    `${buildId}/receipt-artifact-preflight`;
+    `gs://${PRODUCTION_RECEIPT_BUCKET}/preflight/` + `${buildId}/receipt-artifact-preflight`;
   writeFileSync(marker, `${buildId}\n`, { encoding: "utf8", mode: 0o600 });
   captureCommand(
     "gcloud",
-    [
-      "storage",
-      "cp",
-      "--no-clobber",
-      marker,
-      object,
-      "--project",
-      LIVEKIT_OPS.project,
-    ],
+    ["storage", "cp", "--no-clobber", marker, object, "--project", LIVEKIT_OPS.project],
     "preflight deployment receipt artifact write",
   );
   const observed = captureCommand(

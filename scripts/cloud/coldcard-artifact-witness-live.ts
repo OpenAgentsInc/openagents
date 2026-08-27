@@ -71,8 +71,7 @@ interface RuntimeReceipt {
   readonly sandboxBudgetMicrousd: number;
 }
 
-const sha256 = (value: string | Buffer): string =>
-  createHash("sha256").update(value).digest("hex");
+const sha256 = (value: string | Buffer): string => createHash("sha256").update(value).digest("hex");
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -281,7 +280,10 @@ function sourceBundle(): { base64: string; digest: string } {
       : value !== null && typeof value === "object"
         ? `{${Object.keys(value as Record<string, unknown>)
             .sort()
-            .map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`)
+            .map(
+              (key) =>
+                `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`,
+            )
             .join(",")}}`
         : JSON.stringify(value);
   const payload = canonical({
@@ -307,7 +309,10 @@ function count(collection: "instances" | "firewall-rules" | "disks", filter: str
   const args = ["compute", collection, "list", "--project", projectId];
   if (collection !== "firewall-rules") args.push("--zones", zone);
   args.push("--filter", filter, "--format", "value(name)");
-  const output = execFileSync(gcloud, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const output = execFileSync(gcloud, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   return output.split("\n").filter((line) => line.trim().length > 0).length;
 }
 

@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-08-06.1'
+export const PublicProductPromisesVersion = '2026-08-27.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 const tassadarPsionicBackroomArchiveRef =
@@ -347,7 +347,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-07-12',
+    lastUpdated: '2026-08-27',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -4765,31 +4765,25 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'khala_code.free_paid_plans.v1',
         productArea: 'Khala Code',
         audience: ['user', 'customer', 'public'],
-        state: 'planned',
+        state: 'withdrawn',
         claim:
           'Khala Code offers a free plan (pay with data: disclosed, redacted trace capture) and a paid plan (private data: capture opt-out).',
         safeCopy:
-          'Episode 245 launches Khala Code with a two-plan structure on the whiteboard: Free (pay w/ data) and Paid (private data). The plan structure now has source+test evidence (#7966/#8248): the public plan catalog GET /api/public/khala-code/plans projects the honest two-plan structure with real purchasability state, GET /v1/khala-code/plan resolves a caller’s current plan server-side from the privacy-entitlement seam (never fabricating a plan), and the Khala Code desktop settings surface renders the plan cards and current plan through host RPCs. The record stays planned: the paid plan is NOT purchasable in the shipped default — POST /v1/khala-code/plans/purchases is flag-gated by KHALA_CODE_PAID_PLANS_ENABLED, default OFF, fail-closed; when armed it creates a Stripe Checkout or Spark/MPP Lightning payment requirement and grants the existing paid-privacy entitlement only after settled payment — and free-plan desktop capture remains not live (khala_code.free_plan_trace_capture.v1).',
+          'Treat the Episode 245 Khala Code plan design as historical source material. The app, public catalog, status route, purchase route, and inert compatibility catalog are retired. A future OpenAgents plan requires a new promise and implementation.',
         unsafeCopy:
-          'Do not claim Khala Code plans are selectable or purchasable, that free-plan capture is live on the desktop wrapper path, or that buying the paid plan is currently possible.',
+          'Do not claim that Khala Code plans, pricing, capture, or purchase routes are available.',
         evidenceRefs: [
           'docs/transcripts/245.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
-          'apps/openagents.com/workers/api/src/inference/khala-code-plan-catalog.ts',
-          'apps/openagents.com/workers/api/src/inference/khala-code-plan-routes.ts',
-          'apps/openagents.com/workers/api/src/inference/khala-code-plan-routes.test.ts',
-          'clients/khala-code-desktop/src/ui/plans-panel.ts',
-          'clients/khala-code-desktop/tests/plans-panel.test.ts',
-          'route:/api/public/khala-code/plans',
           'promise:privacy.khala_paid_capture_optout.v1',
           'promise:data.free_tier_capture_disclosure.v1',
           'promise:khala_code.desktop_codex_wrapper.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.khala_code_paid_plan_not_purchasable',
+          'blocker.product_promises.khala_code_product_retired',
         ],
         verification:
-          'Run pnpm --dir apps/openagents.com/workers/api run test -- src/inference/khala-code-plan-catalog.test.ts src/inference/khala-code-plan-routes.test.ts plus the khala-code-desktop plans-panel and RPC-handler tests: the catalog must report the real fail-closed purchasability state, the plan-status read must never fabricate a plan (paid only on a real entitlement row; entitlement read errors 503), the unarmed purchase route must fail closed with khala_code_paid_plans_not_enabled while granting nothing, and armed test-mode payment settlement must produce the existing dereferenceable paid-privacy receipt idempotently. Green still requires a real collectable paid-plan purchase receipt in production (owner arms KHALA_CODE_PAID_PLANS_ENABLED, Stripe price / Lightning sats, and live credentials), plan-scoped capture behavior once free-plan capture exists, and owner-approved public copy per proof.claim_upgrade_receipts.v1.',
+          'Repository removal tests keep the retired application and plan routes absent. Git history preserves the former implementation.',
         authorityBoundary:
           'Plan copy grants no capture, billing, payout, or settlement authority; capture behavior stays governed by the disclosure and privacy-entitlement records.',
       },
@@ -5191,30 +5185,28 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'qa.agentic_qa_runner.v1',
         productArea: 'QA',
         audience: ['customer', 'operator', 'public'],
-        state: 'yellow',
+        state: 'withdrawn',
         claim:
           'An open-source agentic QA runner (@openagentsinc/qa-runner) drives real apps through scripted and LLM-driven scenarios and distills live sessions into committed regression tests.',
         safeCopy:
-          'The QA runner shipped as an OSS npm package (@openagentsinc/qa-runner@0.1.0, MIT) out of epic #6181, with an LLM ReAct brain plus scripted brain, Playwright/terminal/native-macOS backends, a distiller that turns live sessions into committed e2e tests, and a verification discipline where CONFIRMED requires observed evidence from the current run. Yellow because it has no paid customer, run-receipt settlement seams stay INERT until deliberately flipped, the Khala Code desktop backend integration is design-stage (the fable QA framework doc), and the broader QA Swarm product records below remain operator-assisted/planned rather than self-serve.',
+          'Treat the TypeScript QA Runner as a retired experiment. Its source, orchestration scripts, and private Khala QA harness were deleted after no active runtime or deployment remained. A future QA product should use a Rust implementation with an explicit current consumer.',
         unsafeCopy:
-          'Do not claim paid QA customers, self-serve hosted QA Swarm runs, revenue, or settlement exist, and do not present INCONCLUSIVE agent observations as CONFIRMED verification.',
+          'Do not advertise the historical npm package as a supported OpenAgents product or runtime.',
         evidenceRefs: [
-          'apps/qa-runner/README.md',
           'https://www.npmjs.com/package/@openagentsinc/qa-runner',
+          'docs/refactor/2026-08-26-codebase-deletion-audit.md',
           'docs/fable/2026-07-01-khala-code-desktop-qa-framework-design.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
           'docs/fable/2026-07-02-qa-swarm-product-plan.md',
           'docs/transcripts/246.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.qa_runner_paid_customer_missing',
-          'blocker.product_promises.qa_runner_settlement_inert',
-          'blocker.product_promises.qa_swarm_self_serve_hosted_runs_missing',
+          'blocker.product_promises.qa_runner_retired',
         ],
         verification:
-          'The shipped package installs and runs its scripted and LLM scenario modes with the documented verdict discipline. Green requires a first paid customer engagement with dereferenceable receipts and owner sign-off per proof.claim_upgrade_receipts.v1.',
+          'Repository removal tests keep the runner and its orchestration scripts absent. Git history preserves the former implementation.',
         authorityBoundary:
-          'The QA runner grants no settlement or payout authority; run receipts stay inert until deliberately flipped, and public traces must stay public-safe.',
+          'The retired runner grants no dispatch, settlement, payout, or product-support authority.',
       },
       {
         ...basePromiseFields,
@@ -5225,7 +5217,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'QA Swarm is the named product surface packaging the ROADMAP_QA machine into an operator-assisted QA engagement, with Khala Code Desktop as customer number one.',
         safeCopy:
-          'QA Swarm is a yellow product definition: it packages the existing qa-runner, trace, coverage, perf, Arbiter, and FleetRun ingredients into an operator-assisted QA engagement. The first customer is OpenAgents itself through the Khala Code Desktop dogfood lane. Episode 246 states the sequencing on camera: QA Swarm is built first for Khala Code, then added to the Autopilot product suite for businesses — that Autopilot-suite step is design intent, not a shipped surface. The /business rate card now publishes operator-assisted QA Swarm audit, sprint, and retainer bands; hosted runs and the share surface remain planned, and it is not self-serve or broadly hosted.',
+          'QA Swarm remains an operator-assisted product definition with public service-package pricing. The former TypeScript runner and Khala QA harness are retired. Hosted execution requires a new Rust implementation and current execution receipts; the share surface remains planned.',
         unsafeCopy:
           'Do not describe QA Swarm as self-serve, generally hosted, automated for arbitrary third-party apps, or proven by paid customer receipts.',
         evidenceRefs: [
@@ -5255,12 +5247,11 @@ export const publicProductPromisesDocument = () => {
         claim:
           'A hosted QA Swarm run can be started as one bounded product run over owned runner capacity.',
         safeCopy:
-          'Hosted QA Swarm runs are planned. The intended path composes qa-runner control APIs, FleetRun parallelism, the nightly-matrix recipe, resource caps, exact accounting, and public-safe run projections, but no one-command hosted run is available to customers today.',
+          'Hosted QA Swarm runs are planned. The retired TypeScript runner is not an implementation dependency. A future Rust runtime must provide bounded execution, resource caps, exact accounting, and public-safe run projections before customers can start a run.',
         unsafeCopy:
           'Do not claim customers can click, buy, or start hosted QA Swarm runs today; do not imply OpenAgents can test arbitrary apps without an operator-assisted target adapter and redaction review.',
         evidenceRefs: [
           'docs/fable/2026-07-02-qa-swarm-product-plan.md',
-          'apps/qa-runner/README.md',
           'promise:qa.agentic_qa_runner.v1',
           'promise:qa_swarm.product_surface.v1',
         ],
@@ -5503,6 +5494,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-08-27.1 withdraws qa.agentic_qa_runner.v1 after deleting the unsupported TypeScript QA Runner, its orchestration scripts, and the private Khala QA harness. QA Swarm remains an operator-assisted product definition, but future hosted execution requires a Rust implementation and current receipts. The pass also removes the inert Khala Code plan catalog source and keeps khala_code.free_paid_plans.v1 withdrawn. Historical npm artifacts and Git history remain evidence only and grant no runtime or product-support authority.',
       'Registry 2026-07-14.1 is the owner-directed supersession withdrawal pass ("khala-code-desktop must itself be deprecated and all relevant promises removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop. sarah get rid of that too etc", 2026-07-14) — green moves 34 -> 33. Seven promises whose surfaces are superseded by OpenAgents Desktop flip to withdrawn with successor promise:openagents.desktop_app.v1: autopilot.agent_character_creation.v1, autopilot.agent_world_scene.v1 (the one green flip down), autopilot.bitcoin_payment_visualization.v1, autopilot.builtin_compute_agent.v1, autopilot.local_apple_fm_tool_chat.v1, autopilot.pylon_growth_visualization.v1, and khala_code.bundled_fleet_skill.v1. Withdrawals are downgrades and need no transition receipt per the mobile.autopilot_remote_control.v1 precedent. In the same change apps/autopilot-desktop, packages/sarah-take-scoreboard, and .agents/skills/khala-fleet were deleted (recoverable from git history at the pre-removal commit recorded in docs/promises/2026-07-14-owner-supersession-removals.md); #8793 later migrated the remaining Pylon/QA dependents and deleted clients/khala-code-desktop; packages/autopilot-ui remains because the live openagents.com web app imports it; and the FleetRun authority gains the neutral canonical path /api/fleet-runs while /api/sarah/fleet-runs stays a served compatibility alias for shipped clients. No promise is deleted from the registry; historical IDs, evidence refs, and receipt routes stay dereferenceable or explicitly tombstoned.',
       'Registry 2026-07-12.1 is the LG-4 operator route-anchor binding pass and flips NO promise state — green stays exactly 34. It binds route:/api/operator/business/outreach/template-approvals and route:/api/operator/business/pipeline/{pipelineRef}/outreach-sends to planned autopilot.lead_gen.v1 as route-level operator approval/send evidence only. The promise stays planned and all four Lead Gen blockers remain. These route refs prove the route anchors for recording an operator approval receipt and capped send receipt, but they are not a live customer run, not a real LG-4 send-approval receipt, not customer-result proof, not self-serve availability, and not Apollo/contact-reveal/payment/payout/settlement authority.',
       'Registry 2026-07-10.2 is the Portal route-evidence binding pass and flips NO promise state — green stays exactly 34. It binds route:/api/portal/admin/engagements, route:/api/portal/content/{itemId}/decision, and route:/api/portal/engagement to planned autopilot.lead_gen.v1 as auth-gated client-engagement and approval-route evidence only. Client `portal_content_decision:*` receipts are distinct from operator LG-4 send-approval receipts and do not authorize sends. The live-customer-run, send-approval, customer-result, and owner-signoff blockers remain. These route refs are not send authority, contact reveal, publishing automation, payment, payout, settlement, self-serve availability, or customer-result proof.',

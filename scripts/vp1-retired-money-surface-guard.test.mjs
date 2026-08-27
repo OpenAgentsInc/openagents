@@ -1,10 +1,10 @@
-import assert from 'node:assert/strict'
-import { test } from 'vite-plus/test'
+import assert from "node:assert/strict";
+import { test } from "vite-plus/test";
 
 import {
   isVp1RetirementException,
   scanVp1RetiredMoneySurfaces,
-} from './vp1-retired-money-surface-guard.mjs'
+} from "./vp1-retired-money-surface-guard.mjs";
 
 const safeOpenApi = `
 const retiredDiscoveryPathPattern = /billing|payments|sites/i
@@ -14,7 +14,7 @@ const activeOpenApiPaths = () => Object.fromEntries(
   ),
 )
 const document = { paths: activeOpenApiPaths() }
-`
+`;
 
 const safeCapabilities = `
 const retiredCapabilityEntryPattern = /billing|payments|sites/i
@@ -33,119 +33,113 @@ const activeManifest = {
     },
   },
 }
-`
+`;
 
-const scan = records =>
+const scan = (records) =>
   scanVp1RetiredMoneySurfaces({
     files: Object.keys(records),
-    readText: path => records[path],
-  })
+    readText: (path) => records[path],
+  });
 
-test('allows immutable history, typed 410, recovery docs, and no-spend fields', () => {
+test("allows immutable history, typed 410, recovery docs, and no-spend fields", () => {
   assert.equal(
     isVp1RetirementException(
-      'apps/openagents.com/workers/api/migrations/9999_retired_payments.sql',
+      "apps/openagents.com/workers/api/migrations/9999_retired_payments.sql",
     ),
     true,
-  )
+  );
   assert.deepEqual(
     scan({
-      'apps/openagents.com/workers/api/migrations/9999_retired_payments.sql':
-        'CREATE TABLE historical_payments(id TEXT);',
-      'apps/openagents.com/workers/api/src/money-surface-retirement.ts':
+      "apps/openagents.com/workers/api/migrations/9999_retired_payments.sql":
+        "CREATE TABLE historical_payments(id TEXT);",
+      "apps/openagents.com/workers/api/src/money-surface-retirement.ts":
         "export const gone = { status: 410, code: 'money_surface_retired' }",
-      'apps/pylon/src/no-spend.ts':
+      "apps/pylon/src/no-spend.ts":
         "export const policy = { paymentMode: 'no-spend', payoutAllowed: false }",
-      'docs/ops/2026-07-14-vp1-treasury-wallet-recovery-runbook.md':
-        'Owner-only recovery reference for the retired treasury.',
-      'docs/sol/receipts/vp1.md': 'Historical payment receipt.',
-      'apps/openagents.com/workers/api/src/openagents-openapi.ts': safeOpenApi,
-      'apps/openagents.com/workers/api/src/openagents-capability-manifest.ts':
-        safeCapabilities,
+      "docs/ops/2026-07-14-vp1-treasury-wallet-recovery-runbook.md":
+        "Owner-only recovery reference for the retired treasury.",
+      "docs/sol/receipts/vp1.md": "Historical payment receipt.",
+      "apps/openagents.com/workers/api/src/openagents-openapi.ts": safeOpenApi,
+      "apps/openagents.com/workers/api/src/openagents-capability-manifest.ts": safeCapabilities,
     }),
     [],
-  )
-})
+  );
+});
 
-test('rejects retired service trees, service names, bindings, and secret mounts', () => {
+test("rejects retired service trees, service names, bindings, and secret mounts", () => {
   const findings = scan({
-    'apps/openagents.com/services/mdk-treasury/src/server.mjs':
-      'export const alive = true',
-    'infra/prod/money.yaml': `
+    "apps/openagents.com/services/mdk-treasury/src/server.mjs": "export const alive = true",
+    "infra/prod/money.yaml": `
       service: oa-mdk-treasury
       env: MDK_TREASURY_MNEMONIC
     `,
-    'apps/openagents.com/packages/sync-worker/src/index.ts':
-      'export type Env = { MDK_TIPS_BUFFER: DurableObjectNamespace }',
-    'apps/openagents.com/workers/api/src/index.ts':
-      `
+    "apps/openagents.com/packages/sync-worker/src/index.ts":
+      "export type Env = { MDK_TIPS_BUFFER: DurableObjectNamespace }",
+    "apps/openagents.com/workers/api/src/index.ts": `
       isRetiredMoneySurfaceRequest(request.method, url.pathname)
       const makeBillingAwareOmniRunStore = env => makeOmniRunStoreForEnv(env)
       const reasonRef = 'continuation.skipped.paid_capacity_retired'
       export class MdkTreasuryContainer {}
       `,
-    'apps/openagents.com/workers/api/src/config.ts':
-      'export type Env = { MDK_TREASURY_SERVICE_TOKEN?: string }',
-  })
+    "apps/openagents.com/workers/api/src/config.ts":
+      "export type Env = { MDK_TREASURY_SERVICE_TOKEN?: string }",
+  });
 
   assert.deepEqual(
-    new Set(findings.map(finding => finding.category)),
+    new Set(findings.map((finding) => finding.category)),
     new Set([
-      'retired-service-tree',
-      'retired-cloud-run-service',
-      'retired-money-secret-mount',
-      'retired-money-container-binding',
-      'retired-money-runtime-authority',
+      "retired-service-tree",
+      "retired-cloud-run-service",
+      "retired-money-secret-mount",
+      "retired-money-container-binding",
+      "retired-money-runtime-authority",
     ]),
-  )
-})
+  );
+});
 
-test('rejects removal of OpenAPI or capability discovery filters', () => {
+test("rejects removal of OpenAPI or capability discovery filters", () => {
   const findings = scan({
-    'apps/openagents.com/workers/api/src/openagents-openapi.ts':
-      'export const document = { paths: paths() }',
-    'apps/openagents.com/workers/api/src/openagents-capability-manifest.ts':
-      'export const manifest = { actions: allActions, resources: allResources }',
-  })
+    "apps/openagents.com/workers/api/src/openagents-openapi.ts":
+      "export const document = { paths: paths() }",
+    "apps/openagents.com/workers/api/src/openagents-capability-manifest.ts":
+      "export const manifest = { actions: allActions, resources: allResources }",
+  });
 
   assert.equal(
-    findings.filter(finding =>
-      finding.category.endsWith('retirement-filter-missing'),
-    ).length,
+    findings.filter((finding) => finding.category.endsWith("retirement-filter-missing")).length,
     10,
-  )
-})
+  );
+});
 
-test('rejects executable client requests to retired money endpoints', () => {
+test("rejects executable client requests to retired money endpoints", () => {
   const findings = scan({
-    'apps/openagents.com/apps/start/src/routes/forum.ts': `
+    "apps/openagents.com/apps/start/src/routes/forum.ts": `
       export const sendTip = postId =>
         fetch('/api/forum/posts/' + postId + '/tips/ladder', { method: 'POST' })
     `,
-    'apps/aiur/src/routes/credits.tsx': `
+    "apps/aiur/src/routes/credits.tsx": `
       export const load = () => fetch('/api/admin/credits/balance')
     `,
-    'clients/khala-mobile/src/screens/settings.tsx': `
+    "clients/khala-mobile/src/screens/settings.tsx": `
       export const load = () => fetch('/api/mobile/credits/history')
     `,
-  })
+  });
 
   assert.equal(
-    findings.filter(finding => finding.category === 'retired-client-money-request')
-      .length,
+    findings.filter((finding) => finding.category === "retired-client-money-request").length,
     3,
-  )
-})
+  );
+});
 
-test('comments mentioning the retired topology do not restore authority', () => {
+test("comments mentioning the retired topology do not restore authority", () => {
   assert.deepEqual(
     scan({
-      'infra/prod/main.tf': `
+      "infra/prod/main.tf": `
         // oa-mdk-treasury and MDK_TREASURY were deleted by VP-1.
         /* STRIPE_API_KEY was never mounted here. */
         resource "google_project" "retained" {}
       `,
     }),
     [],
-  )
-})
+  );
+});

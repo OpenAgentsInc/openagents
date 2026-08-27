@@ -63,9 +63,9 @@ describe("callSites", () => {
   });
 
   it("does not count a function return as an unresolved call site", () => {
-    expect(callSites(["00000000 <f>:", "   0:\t4770      \tbx\tlr"].join("\n")).unresolvedIndirect).toBe(
-      0,
-    );
+    expect(
+      callSites(["00000000 <f>:", "   0:\t4770      \tbx\tlr"].join("\n")).unresolvedIndirect,
+    ).toBe(0);
   });
 });
 

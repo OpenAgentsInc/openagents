@@ -9,8 +9,6 @@ const read = (relative: string): string => readFileSync(path.join(root, relative
 describe("internal GitHub writer cutover audit", () => {
   test("every retained internal issue or progress-comment writer has the native Omega fence", () => {
     const guardedSources = [
-      "packages/khala-qa-harness/src/lag-profiling-sweep.ts",
-      "scripts/qa-observer.ts",
       "apps/openagents.com/workers/api/scripts/marching-orders-agent.ts",
       "apps/openagents.com/workers/api/src/artanis-operator-tools.ts",
       "apps/pylon/scripts/codex-supervisor/standing-tasks.sh",

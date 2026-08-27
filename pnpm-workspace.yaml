@@ -5,7 +5,6 @@ packages:
   - apps/openagents.com/services/*
   - apps/openagents.com/workers/*
   - apps/acceptance-runner
-  - apps/qa-runner
   - apps/forum
   - apps/forge-git-service
   - apps/oa-queue-worker

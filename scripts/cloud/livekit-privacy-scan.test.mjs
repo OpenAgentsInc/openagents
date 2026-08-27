@@ -116,11 +116,7 @@ test("detects only parseable generic PEM private keys", () => {
   const actualKey = fixture();
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
   const privateKeyPem = Buffer.from(privateKey.export({ format: "pem", type: "pkcs8" }));
-  addPayload(
-    actualKey.scopeInputs.packaged_clients,
-    "embedded-key.pem",
-    privateKeyPem,
-  );
+  addPayload(actualKey.scopeInputs.packaged_clients, "embedded-key.pem", privateKeyPem);
   const result = scan(actualKey.scopeInputs);
   assert.equal(result.outcome, "failed");
   assert.ok(result.results.findings > 0);
@@ -143,7 +139,11 @@ test("treats media signatures as file magic rather than interior binary strings"
   addPayload(
     interior.scopeInputs.object_storage,
     "compiled.bin",
-    Buffer.concat([Buffer.from("binary-prefix"), Buffer.from("OggS"), Buffer.from("binary-suffix")]),
+    Buffer.concat([
+      Buffer.from("binary-prefix"),
+      Buffer.from("OggS"),
+      Buffer.from("binary-suffix"),
+    ]),
   );
   assert.equal(scan(interior.scopeInputs).results.rawMediaObjects, 0);
 

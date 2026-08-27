@@ -15,34 +15,26 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "vite-plus/test";
 
-import {
-  DEFAULT_ARTIFACT,
-  runExecutedAcceptance,
-} from "./run-executed-acceptance.mjs";
+import { DEFAULT_ARTIFACT, runExecutedAcceptance } from "./run-executed-acceptance.mjs";
 
 describe("executed acceptance — preserved north-star crossy-road artifact", () => {
-  test(
-    "the verified prod artifact FAILS the EXECUTED suite (its verified:true was a static pre-screen)",
-    async () => {
-      const html = readFileSync(DEFAULT_ARTIFACT, "utf8");
-      const { acceptanceVerdict, khalaCodeVerdict } =
-        await runExecutedAcceptance(html);
+  test("the verified prod artifact FAILS the EXECUTED suite (its verified:true was a static pre-screen)", async () => {
+    const html = readFileSync(DEFAULT_ARTIFACT, "utf8");
+    const { acceptanceVerdict, khalaCodeVerdict } = await runExecutedAcceptance(html);
 
-      // It really ran in a browser.
-      expect(acceptanceVerdict.executed).toBe(true);
-      expect(khalaCodeVerdict.executed).toBe(true);
+    // It really ran in a browser.
+    expect(acceptanceVerdict.executed).toBe(true);
+    expect(khalaCodeVerdict.executed).toBe(true);
 
-      // Honest red: NOT verified, zero passing checks.
-      expect(acceptanceVerdict.verified).toBe(false);
-      expect(acceptanceVerdict.passedChecks.length).toBe(0);
-      expect(acceptanceVerdict.scalarReward).toBe(0);
+    // Honest red: NOT verified, zero passing checks.
+    expect(acceptanceVerdict.verified).toBe(false);
+    expect(acceptanceVerdict.passedChecks.length).toBe(0);
+    expect(acceptanceVerdict.scalarReward).toBe(0);
 
-      // The khala-code verifier, fed the EXECUTED verdict, downgrades to `failed`
-      // (executed) — NOT `test_passed`, NOT the static-prescreen `unverified`.
-      expect(khalaCodeVerdict.verification).toBe("failed");
-      expect(khalaCodeVerdict.verified).toBe(false);
-      expect(khalaCodeVerdict.scalarReward).toBe(0);
-    },
-    120_000,
-  );
+    // The khala-code verifier, fed the EXECUTED verdict, downgrades to `failed`
+    // (executed) — NOT `test_passed`, NOT the static-prescreen `unverified`.
+    expect(khalaCodeVerdict.verification).toBe("failed");
+    expect(khalaCodeVerdict.verified).toBe(false);
+    expect(khalaCodeVerdict.scalarReward).toBe(0);
+  }, 120_000);
 });

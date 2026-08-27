@@ -21,12 +21,14 @@ import {
 
 // A stand-in for the /proc scan so the guarded-root contract can be exercised
 // off Linux. `supported: true` mirrors a successful guest observation.
-const observing = (processes, processGroups = [], inaccessible = 0) => () => ({
-  supported: true,
-  inaccessible,
-  processes,
-  processGroups,
-});
+const observing =
+  (processes, processGroups = [], inaccessible = 0) =>
+  () => ({
+    supported: true,
+    inaccessible,
+    processes,
+    processGroups,
+  });
 
 const source = readFileSync(new URL("./forensic-worker-driver.mjs", import.meta.url), "utf8");
 

@@ -258,7 +258,8 @@ handled together.
 | `apps/forge-git-service` | Verify, then delete | Phoenix owns the forge and Git plane. Verify that the old Cloud Run service has no traffic, then remove its deploy and Terraform wiring. |
 | `apps/acceptance-runner` | Delete with old Worker | It leases work from and sends callbacks to the old TypeScript Worker. Preserve it only if an external settlement loop is proved live. |
 | `apps/oa-queue-worker` | Verify and decommission, then delete with old Worker | It posts to the retired API and mirrors retired queue names, but it also has a Cloud Run deploy path and named secrets. |
-| `apps/ai-sdk-harness-poc` | Delete | Its README says it is not a production sandbox, and no product root consumes it. |
+| `apps/ai-sdk-harness-poc` | Deleted | Commit `14b35d1a5f` removed the unconsumed proof of concept. |
+| `apps/qa-runner` | Deleted | No deployed service or current product root consumed it. The cleanup also removed its root orchestration, private Khala QA harness, and test-only production APIs. The immutable npm artifact remains historical only. |
 | `apps/openagents-mobile` | Deleted | Commit `090b7a4a9a` removed the unsupported app and its command-outbox closure after the push worker and scheduler were deleted. Database rows remain for the database export review. |
 | `apps/aiur` | Deleted | Commit `e65fc2238c` removed the source after its Cloud Run service was deleted. |
 | `apps/khala-capture` and `apps/khala-live-hub` | Deleted | A seven-day sample found no client traffic. The capture daemon produced 9,995 of the 10,000 bounded entries by posting to `/append`; the rest were health checks. The three Cloud Run services were deleted before source removal. Cloud SQL remains. |
@@ -321,10 +322,10 @@ or external consumer.
   by itself.
 - Keep `packages/cloud-contract` until the Rust cloud contract becomes the sole
   authority or a generator replaces the duplicated schemas.
-- Keep `packages/atif` while `qa-runner` depends on it. Rust comments identify
-  its redaction implementation as authoritative, while Rust conformance shares
-  a root redaction fixture rather than importing the package. Consolidate that
-  authority before deleting it.
+- Keep `packages/atif` temporarily while retained trace consumers and migration
+  tests use it. The Rust CLI now owns local conversation persistence and ATIF
+  export. Replace or remove the TypeScript schema after the old Worker and its
+  trace routes leave the repository.
 - Keep voice and cloud package closures until their services are inventoried.
 
 ## External systems that require verification
@@ -376,14 +377,14 @@ The following services form independent closures and need external-state or
 owner verification:
 
 - `apps/pylon`
-- `apps/qa-runner`
-- their Khala Sync, portable-session, SQLite, ACP, harness, and update package
+- its remaining Khala Sync, portable-session, SQLite, ACP, and update package
   dependencies
 
-The update feed and standalone Khala capture/hub services are removed. Cloud
-SQL remains under the duplicate-backend drain because the old monolith, queue,
-and Forge paths still share it. Pylon and QA runner remain until their old
-backend and repository-check callers are removed or replaced.
+The update feed, standalone Khala capture/hub services, QA Runner, and private
+Khala QA harness are removed. Cloud SQL remains under the duplicate-backend
+drain because the old monolith, queue, and Forge paths still share it. Pylon
+remains until its old backend and repository-check callers are removed or
+replaced.
 
 ## Infrastructure and operations
 
@@ -491,6 +492,18 @@ Phase 1 was completed on 2026-08-26 against recovery baseline
 Phase 4 was completed in issue #136. Phases 2, 3, 5, and 6 remain open under
 issues #144 through #150. The duplicate-backend inventory is recorded in
 [`2026-08-27-duplicate-backend-inventory.md`](./2026-08-27-duplicate-backend-inventory.md).
+
+Issue #149 has removed these abandoned roots and their deployment resources:
+
+- the AI SDK harness proof of concept and Python benchmark runner;
+- Aiur and the standalone update service;
+- the mobile client and private mobile command outbox;
+- Khala capture and live hub services;
+- QA Runner, its root orchestration, and the private Khala QA harness.
+
+Removing QA Runner exposed and removed test-only browser, terminal, behavior
+receipt, plan-catalog, Pylon budget, and QA graph APIs. The workspace now has
+108 packages, down from 118 at the audit baseline.
 
 ## Execution order
 

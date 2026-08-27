@@ -55,15 +55,15 @@ describe("parseCodexConversation", () => {
     expect(parsed.assistantTurnCount).toBe(2);
     expect(parsed.interruptCount).toBe(1);
     expect(parsed.fileChangeCount).toBe(1);
-    expect(parsed.signals.map((signal) => signal.kind).sort()).toEqual([
-      "correction",
-      "profanity",
-    ]);
+    expect(parsed.signals.map((signal) => signal.kind).sort()).toEqual(["correction", "profanity"]);
   });
 
   test("ignores injected user lines and corrupt JSON", () => {
     const content = [
-      codexLine({ type: "user_message", message: "<environment_context>injected</environment_context>" }),
+      codexLine({
+        type: "user_message",
+        message: "<environment_context>injected</environment_context>",
+      }),
       "not json at all",
       codexLine({ type: "user_message", message: "real request" }),
       codexLine({ type: "agent_message", message: "ok" }),
@@ -119,10 +119,14 @@ describe("scoreConversation", () => {
       codexLine({ type: "agent_message", message: "ok" }),
     ];
     for (let index = 0; index < 5; index += 1) {
-      messages.push(codexLine({ type: "user_message", message: "no, you did this wrong, this is fucking bad" }));
+      messages.push(
+        codexLine({ type: "user_message", message: "no, you did this wrong, this is fucking bad" }),
+      );
       messages.push(codexLine({ type: "agent_message", message: "retrying" }));
     }
-    const scored = scoreConversation(parseCodexConversation("/tmp/angry.jsonl", messages.join("\n")));
+    const scored = scoreConversation(
+      parseCodexConversation("/tmp/angry.jsonl", messages.join("\n")),
+    );
     expect(scored.deductions.profanity).toBe(45);
     expect(scored.deductions.correction).toBe(40);
     expect(scored.score).toBe(15);
@@ -132,7 +136,10 @@ describe("scoreConversation", () => {
 
   test("threads without a full exchange are skipped", () => {
     const scored = scoreConversation(
-      parseCodexConversation("/tmp/empty.jsonl", codexLine({ type: "user_message", message: "hi" })),
+      parseCodexConversation(
+        "/tmp/empty.jsonl",
+        codexLine({ type: "user_message", message: "hi" }),
+      ),
     );
     expect(scored.disposition).toBe("skipped");
   });
@@ -193,8 +200,20 @@ describe("computeComplexity", () => {
     lines.push(codexLine({ model: "gpt-5.6-terra" }, "turn_context"));
     lines.push(codexLine({ model: "gpt-5.6-mini" }, "turn_context"));
     for (let index = 0; index < 3; index += 1) {
-      lines.push(codexLine({ type: "sub_agent_activity", agent_thread_id: `agent-${index}`, kind: "started" }));
-      lines.push(codexLine({ type: "sub_agent_activity", agent_thread_id: `agent-${index}`, kind: "interacted" }));
+      lines.push(
+        codexLine({
+          type: "sub_agent_activity",
+          agent_thread_id: `agent-${index}`,
+          kind: "started",
+        }),
+      );
+      lines.push(
+        codexLine({
+          type: "sub_agent_activity",
+          agent_thread_id: `agent-${index}`,
+          kind: "interacted",
+        }),
+      );
     }
     for (let index = 0; index < 12; index += 1) {
       lines.push(codexLine({ type: "patch_apply_end", ok: true }));
@@ -269,14 +288,46 @@ describe("parseMultiHarnessConversation", () => {
     const lines = [
       JSON.stringify({ type: "user_message", text: "two tasks, one for each delegate" }),
       JSON.stringify({ type: "agent.child.started", lane: "codex-local", model: "gpt-5.6-terra" }),
-      JSON.stringify({ type: "khala", lane: "codex-local", model: "gpt-5.6-terra", event: { kind: "turn.started" } }),
-      JSON.stringify({ type: "khala", lane: "codex-local", model: "gpt-5.6-terra", event: { kind: "text.delta", text: "poem" } }),
-      JSON.stringify({ type: "khala", lane: "codex-local", model: "gpt-5.6-terra", event: { kind: "turn.finished" } }),
+      JSON.stringify({
+        type: "khala",
+        lane: "codex-local",
+        model: "gpt-5.6-terra",
+        event: { kind: "turn.started" },
+      }),
+      JSON.stringify({
+        type: "khala",
+        lane: "codex-local",
+        model: "gpt-5.6-terra",
+        event: { kind: "text.delta", text: "poem" },
+      }),
+      JSON.stringify({
+        type: "khala",
+        lane: "codex-local",
+        model: "gpt-5.6-terra",
+        event: { kind: "turn.finished" },
+      }),
       JSON.stringify({ type: "agent.child.finished", lane: "codex-local", model: "gpt-5.6-terra" }),
-      JSON.stringify({ type: "agent.child.started", lane: "claude-local", model: "claude-haiku-4-5-20251001" }),
-      JSON.stringify({ type: "agent.child.interacted", lane: "claude-local", fromLane: "codex-local" }),
-      JSON.stringify({ type: "khala", lane: "claude-local", model: "claude-haiku-4-5-20251001", event: { kind: "tool.call", toolName: "Bash" } }),
-      JSON.stringify({ type: "agent.child.finished", lane: "claude-local", model: "claude-haiku-4-5-20251001" }),
+      JSON.stringify({
+        type: "agent.child.started",
+        lane: "claude-local",
+        model: "claude-haiku-4-5-20251001",
+      }),
+      JSON.stringify({
+        type: "agent.child.interacted",
+        lane: "claude-local",
+        fromLane: "codex-local",
+      }),
+      JSON.stringify({
+        type: "khala",
+        lane: "claude-local",
+        model: "claude-haiku-4-5-20251001",
+        event: { kind: "tool.call", toolName: "Bash" },
+      }),
+      JSON.stringify({
+        type: "agent.child.finished",
+        lane: "claude-local",
+        model: "claude-haiku-4-5-20251001",
+      }),
       JSON.stringify({ type: "assistant_message", text: "combined answer" }),
     ].join("\n");
     const parsed = parseMultiHarnessConversation("/tmp/multi.jsonl", lines);

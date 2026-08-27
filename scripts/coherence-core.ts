@@ -150,10 +150,7 @@ const boundedExcerpt = (text: string, index: number, matchLength: number): strin
   return text.slice(start, end).replace(/\s+/g, " ").trim();
 };
 
-export const detectUserSignals = (
-  userText: string,
-  userTurnIndex: number,
-): CoherenceSignal[] => {
+export const detectUserSignals = (userText: string, userTurnIndex: number): CoherenceSignal[] => {
   const lowered = userText.toLowerCase();
   const signals: CoherenceSignal[] = [];
   const scan = (patterns: readonly RegExp[], kind: CoherenceSignalKind): void => {
@@ -208,10 +205,7 @@ const parseJsonLines = (content: string): JsonLine[] => {
 };
 
 /** Parse one Codex CLI rollout JSONL file (~/.codex/sessions). */
-export const parseCodexConversation = (
-  path: string,
-  content: string,
-): ParsedConversation => {
+export const parseCodexConversation = (path: string, content: string): ParsedConversation => {
   let userTurnCount = 0;
   let assistantTurnCount = 0;
   let toolCallCount = 0;
@@ -228,9 +222,7 @@ export const parseCodexConversation = (
     const timestamp = typeof line.timestamp === "string" ? line.timestamp : null;
     if (firstTimestamp === null && timestamp !== null) firstTimestamp = timestamp;
     const payload =
-      typeof line.payload === "object" && line.payload !== null
-        ? (line.payload as JsonLine)
-        : null;
+      typeof line.payload === "object" && line.payload !== null ? (line.payload as JsonLine) : null;
     if (line.type === "turn_context" && payload !== null) {
       if (typeof payload.model === "string" && payload.model !== "") models.add(payload.model);
     } else if (line.type === "event_msg" && payload !== null) {
@@ -238,7 +230,8 @@ export const parseCodexConversation = (
       if (payloadType === "user_message" && typeof payload.message === "string") {
         if (isInjectedUserText(payload.message)) continue;
         userTurnCount += 1;
-        if (userTurnCount > 1) signals.push(...detectUserSignals(payload.message, userTurnCount - 1));
+        if (userTurnCount > 1)
+          signals.push(...detectUserSignals(payload.message, userTurnCount - 1));
       } else if (payloadType === "agent_message") {
         assistantTurnCount += 1;
       } else if (payloadType === "turn_aborted") {
@@ -298,10 +291,7 @@ const claudeTextFromContent = (content: unknown): string[] => {
 };
 
 /** Parse one Claude Code session JSONL file (~/.claude/projects). */
-export const parseClaudeConversation = (
-  path: string,
-  content: string,
-): ParsedConversation => {
+export const parseClaudeConversation = (path: string, content: string): ParsedConversation => {
   let userTurnCount = 0;
   let assistantTurnCount = 0;
   let toolCallCount = 0;
@@ -319,9 +309,7 @@ export const parseClaudeConversation = (
     const timestamp = typeof line.timestamp === "string" ? line.timestamp : null;
     if (firstTimestamp === null && timestamp !== null) firstTimestamp = timestamp;
     const message =
-      typeof line.message === "object" && line.message !== null
-        ? (line.message as JsonLine)
-        : null;
+      typeof line.message === "object" && line.message !== null ? (line.message as JsonLine) : null;
     if (message === null) continue;
     if (line.type === "user" && message.role === "user") {
       const texts = claudeTextFromContent(message.content);
@@ -424,8 +412,7 @@ export const scoreConversation = (parsed: ParsedConversation): ScoredConversatio
     0,
     100 - deductions.profanity - deductions.correction - deductions.interrupt,
   );
-  const grade =
-    score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 50 ? "D" : "F";
+  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 50 ? "D" : "F";
   return {
     ...parsed,
     score,
@@ -558,11 +545,8 @@ export const aggregateBySource = (
       }
     }
     const meanScore =
-      scores.length === 0
-        ? 0
-        : scores.reduce((sum, value) => sum + value, 0) / scores.length;
-    const medianScore =
-      scores.length === 0 ? 0 : scores[Math.floor((scores.length - 1) / 2)];
+      scores.length === 0 ? 0 : scores.reduce((sum, value) => sum + value, 0) / scores.length;
+    const medianScore = scores.length === 0 ? 0 : scores[Math.floor((scores.length - 1) / 2)];
     const tierCounts: Record<ComplexityTier, number> = { C0: 0, C1: 0, C2: 0, C3: 0, C4: 0 };
     let complexitySum = 0;
     let weightSum = 0;
@@ -583,9 +567,11 @@ export const aggregateBySource = (
       gradeCounts,
       signalCounts,
       needsReview: graded.filter((item) => item.disposition === "needs_review").length,
-      meanComplexity: graded.length === 0 ? 0 : Math.round((complexitySum / graded.length) * 10) / 10,
+      meanComplexity:
+        graded.length === 0 ? 0 : Math.round((complexitySum / graded.length) * 10) / 10,
       tierCounts,
-      complexityWeightedCoherence: weightSum === 0 ? 0 : Math.round((weightedCoherenceSum / weightSum) * 10) / 10,
+      complexityWeightedCoherence:
+        weightSum === 0 ? 0 : Math.round((weightedCoherenceSum / weightSum) * 10) / 10,
     });
   }
   return aggregates;

@@ -48,7 +48,10 @@ const withCase = (source: string, replacement: string): string =>
   /^[A-Z]/.test(source) ? replacement[0]!.toUpperCase() + replacement.slice(1) : replacement;
 
 const replaceOutsideInlineCode = (line: string, rewrite: (text: string) => string): string =>
-  line.split(/(`[^`]*`)/g).map((part) => part.startsWith("`") ? part : rewrite(part)).join("");
+  line
+    .split(/(`[^`]*`)/g)
+    .map((part) => (part.startsWith("`") ? part : rewrite(part)))
+    .join("");
 
 export const rewriteSteHardForms = (input: string, mode: SteMode): string => {
   const lines = input.split(/\r?\n/);

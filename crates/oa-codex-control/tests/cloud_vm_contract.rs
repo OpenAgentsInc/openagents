@@ -1,13 +1,12 @@
 //! Contract test for the production Cloud-VM provisioner HTTP surface (#6200).
 //!
-//! Proves the `oa-codex-control` `/v1/cloud-vm/sessions` route satisfies the
-//! qa-runner's typed `CloudVmProvisionerV2` / `CloudVmHandle` seam from
-//! `apps/qa-runner/src/backend.ts`:
+//! Proves the `oa-codex-control` `/v1/cloud-vm/sessions` route still satisfies
+//! the historical `CloudVmProvisionerV2` / `CloudVmHandle` wire shape:
 //!
 //!   provision -> exec -> copyOut -> teardown
 //!
-//! The qa-runner (TypeScript) calls this cloud-side service over HTTP. This test
-//! is the cloud-side end of that wire contract: it boots the real daemon, POSTs
+//! The retired TypeScript QA Runner formerly called this service over HTTP.
+//! This test boots the real daemon, POSTs
 //! a request shaped exactly like the seam (run id + `CloudVmOs` tier + redacted
 //! target/owner + in-VM session command), and asserts the response carries every
 //! lifecycle stage:

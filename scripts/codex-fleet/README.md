@@ -109,8 +109,8 @@ Two server tokens, two stages, then a local translation:
 4. **Local translation** into the codex-CLI-native shape and write to
    `CODEX_HOME/auth.json` (0600):
    `{ auth_mode: "chatgpt", OPENAI_API_KEY: null,
-   tokens: { id_token, access_token, refresh_token, account_id },
-   last_refresh }`.
+tokens: { id_token, access_token, refresh_token, account_id },
+last_refresh }`.
    (This mirrors the server's own `codexOAuthAuthFromAuthMaterial` extraction in
    `operator-provider-account-routes.ts`.)
 

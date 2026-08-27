@@ -13,8 +13,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./core": "./src/core.ts",
-    "./foldkit": "./src/foldkit.ts",
-    "./qa-swarm": "./src/qa-swarm.ts"
+    "./foldkit": "./src/foldkit.ts"
   },
   "publishConfig": {
     "access": "public"

@@ -118,8 +118,7 @@ export function buildRunFromCompletion({
 
   const promptTokens = numberOrNull(usage.prompt_tokens) ?? 0;
   const completionTokens = numberOrNull(usage.completion_tokens) ?? 0;
-  const totalTokens =
-    numberOrNull(usage.total_tokens) ?? promptTokens + completionTokens;
+  const totalTokens = numberOrNull(usage.total_tokens) ?? promptTokens + completionTokens;
 
   const costMsat = numberOrNull(oa.cost_msat) ?? 0;
   const priceMsat = numberOrNull(oa.price_msat) ?? costMsat;
@@ -131,13 +130,9 @@ export function buildRunFromCompletion({
   const costUsd = numberOrNull(oa.cost_usd) ?? derivedUsd ?? 0;
 
   const verificationClass =
-    typeof oa.verification === "string" && oa.verification.length > 0
-      ? oa.verification
-      : "none";
+    typeof oa.verification === "string" && oa.verification.length > 0 ? oa.verification : "none";
   const accepted =
-    verificationClass !== "none" &&
-    verificationClass !== "seeded" &&
-    oa.accepted !== false;
+    verificationClass !== "none" && verificationClass !== "seeded" && oa.accepted !== false;
 
   const receiptRef =
     typeof oa.receipt === "string" && oa.receipt.length > 0
@@ -329,7 +324,10 @@ export function stubTransport({ lane, model }) {
         {
           index: 0,
           finish_reason: "stop",
-          message: { role: "assistant", content: "<!doctype html><!-- stub crossy-road artifact -->" },
+          message: {
+            role: "assistant",
+            content: "<!doctype html><!-- stub crossy-road artifact -->",
+          },
         },
       ],
       usage: { prompt_tokens: 18420, completion_tokens: 71180, total_tokens: 89600 },
@@ -562,7 +560,16 @@ export async function liveStreamTransport({
 /**
  * Run one lane: time the transport call, then build the manifest run.
  */
-export async function runLane({ lane, label, model, provider, transport, live, msatPerUsd, clock = Date.now }) {
+export async function runLane({
+  lane,
+  label,
+  model,
+  provider,
+  transport,
+  live,
+  msatPerUsd,
+  clock = Date.now,
+}) {
   const startMs = clock();
   const startedAt = new Date(startMs).toISOString();
   const response = await transport({ lane, model });
@@ -633,9 +640,7 @@ export async function runHeadToHead(options = {}) {
 
   return {
     schema: MANIFEST_SCHEMA,
-    manifestRef: live
-      ? "live.khala.head_to_head.demo.v1"
-      : "stub.khala.head_to_head.demo.v1",
+    manifestRef: live ? "live.khala.head_to_head.demo.v1" : "stub.khala.head_to_head.demo.v1",
     evidenceMode,
     generatedAt,
     scope: SCOPE,
@@ -755,9 +760,7 @@ async function main() {
   const outPath = args.out;
   if (typeof outPath === "string") {
     writeFileSync(outPath, json);
-    process.stderr.write(
-      `wrote ${manifest.evidenceMode} manifest to ${outPath} (live=${live})\n`,
-    );
+    process.stderr.write(`wrote ${manifest.evidenceMode} manifest to ${outPath} (live=${live})\n`);
   } else {
     process.stdout.write(json);
   }

@@ -217,22 +217,6 @@
       }
     },
     {
-      "path": "apps/openagents.com/apps/start/public/QA-RUNNER.md",
-      "sha256": "9ed16e7704af5a04f9bb8b5284619c3aedf1ec38701fe24918fd1264338c89a8",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "public",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "human",
-        "ste_accepted_screening_rules": ["STE-2.4"],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
       "path": "apps/openagents.com/apps/start/public/RULES.md",
       "sha256": "335eed468b6cb667a9941760c813d1ad00ee63b0cc733641798aa820270b8d65",
       "reason": "Final review of a converted document",

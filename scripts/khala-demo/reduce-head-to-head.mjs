@@ -60,9 +60,7 @@ function requireBoolean(value, path) {
 }
 
 function requireStringArray(value, path) {
-  return requireArray(value, path).map((entry, index) =>
-    requireString(entry, `${path}[${index}]`),
-  );
+  return requireArray(value, path).map((entry, index) => requireString(entry, `${path}[${index}]`));
 }
 
 function roundNumber(value, digits = 4) {
@@ -202,18 +200,20 @@ function validateManifest(manifest) {
   if (runs.length === 0) {
     fail("runs must contain at least one run");
   }
-  requireArray(manifest.externalReportedClaims, "externalReportedClaims").forEach((claim, index) => {
-    const path = `externalReportedClaims[${index}]`;
-    const record = requireRecord(claim, path);
-    requireString(record.claimRef, `${path}.claimRef`);
-    requireString(record.label, `${path}.label`);
-    requireString(record.citationStatus, `${path}.citationStatus`);
-    optionalFiniteNumber(record.tokens, `${path}.tokens`);
-    optionalFiniteNumber(record.costUsd, `${path}.costUsd`);
-    optionalFiniteNumber(record.wallClockMs, `${path}.wallClockMs`);
-    requireString(record.verdictSummary, `${path}.verdictSummary`);
-    requireStringArray(record.blockerRefs, `${path}.blockerRefs`);
-  });
+  requireArray(manifest.externalReportedClaims, "externalReportedClaims").forEach(
+    (claim, index) => {
+      const path = `externalReportedClaims[${index}]`;
+      const record = requireRecord(claim, path);
+      requireString(record.claimRef, `${path}.claimRef`);
+      requireString(record.label, `${path}.label`);
+      requireString(record.citationStatus, `${path}.citationStatus`);
+      optionalFiniteNumber(record.tokens, `${path}.tokens`);
+      optionalFiniteNumber(record.costUsd, `${path}.costUsd`);
+      optionalFiniteNumber(record.wallClockMs, `${path}.wallClockMs`);
+      requireString(record.verdictSummary, `${path}.verdictSummary`);
+      requireStringArray(record.blockerRefs, `${path}.blockerRefs`);
+    },
+  );
 
   const publication = requireRecord(manifest.publication, "publication");
   requireString(publication.status, "publication.status");
@@ -352,8 +352,7 @@ function promotionCheck(checks, id, passed, blockerRef, detail) {
 function deriveLivePromotionAudit(manifest, metrics) {
   const khalaRun = metrics.scoreboard.find((run) => run.lane === "khala");
   const frontierRun = metrics.scoreboard.find((run) => run.lane === "frontier_baseline");
-  const fixtureRefPaths =
-    manifest.evidenceMode === "live" ? collectFixtureRefPaths(manifest) : [];
+  const fixtureRefPaths = manifest.evidenceMode === "live" ? collectFixtureRefPaths(manifest) : [];
   const checks = [];
 
   promotionCheck(
@@ -377,7 +376,9 @@ function deriveLivePromotionAudit(manifest, metrics) {
     "khala_live_run",
     khalaRun !== undefined && khalaRun.evidenceMode === "live",
     "blocker.khala_demo.live_khala_run_missing",
-    khalaRun === undefined ? "missing khala lane" : `khala evidenceMode is ${khalaRun.evidenceMode}`,
+    khalaRun === undefined
+      ? "missing khala lane"
+      : `khala evidenceMode is ${khalaRun.evidenceMode}`,
   );
   promotionCheck(
     checks,
@@ -391,14 +392,18 @@ function deriveLivePromotionAudit(manifest, metrics) {
     "khala_accepted_outcome",
     khalaRun !== undefined && khalaRun.accepted,
     "blocker.khala_demo.khala_accepted_outcome_missing",
-    khalaRun === undefined ? "missing khala lane" : `khala accepted is ${String(khalaRun.accepted)}`,
+    khalaRun === undefined
+      ? "missing khala lane"
+      : `khala accepted is ${String(khalaRun.accepted)}`,
   );
   promotionCheck(
     checks,
     "m7_live_conductor",
     khalaRun !== undefined && khalaRun.coordinatorMode === "live_conductor",
     "blocker.khala_demo.m7_live_conductor_missing",
-    khalaRun === undefined ? "missing khala lane" : `coordinator mode is ${khalaRun.coordinatorMode}`,
+    khalaRun === undefined
+      ? "missing khala lane"
+      : `coordinator mode is ${khalaRun.coordinatorMode}`,
   );
   promotionCheck(
     checks,
@@ -412,7 +417,9 @@ function deriveLivePromotionAudit(manifest, metrics) {
   promotionCheck(
     checks,
     "settlement_receipts",
-    khalaRun !== undefined && khalaRun.settlement.settled && khalaRun.settlement.receiptRefs.length > 0,
+    khalaRun !== undefined &&
+      khalaRun.settlement.settled &&
+      khalaRun.settlement.receiptRefs.length > 0,
     "blocker.khala_demo.settlement_receipts_missing",
     khalaRun === undefined
       ? "missing khala lane"
@@ -525,11 +532,15 @@ export function reduceKhalaHeadToHeadManifest(rawManifest) {
       runCount: scoreboard.length,
       acceptedRunCount,
       verifiedRate:
-        verifiedRunCount > 0 ? roundNumber(verifiedAcceptedRunCount / verifiedRunCount, 6) : "not_measured",
+        verifiedRunCount > 0
+          ? roundNumber(verifiedAcceptedRunCount / verifiedRunCount, 6)
+          : "not_measured",
       totalTokens,
       totalDollars: roundNumber(totalDollars, 6),
       acceptedOutcomesPerKwh:
-        measuredKwh > 0 ? roundNumber(measuredEnergyAcceptedRunCount / measuredKwh, 6) : "not_measured",
+        measuredKwh > 0
+          ? roundNumber(measuredEnergyAcceptedRunCount / measuredKwh, 6)
+          : "not_measured",
     },
     scoreboard,
     externalReportedClaims: manifest.externalReportedClaims,
@@ -557,7 +568,9 @@ export function loadManifest(path) {
 if (import.meta.main) {
   const manifestPath = process.argv[2];
   if (manifestPath === undefined) {
-    console.error("usage: node --import tsx scripts/khala-demo/reduce-head-to-head.mjs <manifest.json>");
+    console.error(
+      "usage: node --import tsx scripts/khala-demo/reduce-head-to-head.mjs <manifest.json>",
+    );
     process.exit(2);
   }
   const manifest = loadManifest(manifestPath);

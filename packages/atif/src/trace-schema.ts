@@ -4,7 +4,7 @@ import { Schema as S } from 'effect'
  * ATIF — Agent Trajectory Interchange Format (#6207, epic #6206).
  *
  * This module pins the PUBLIC-SAFE subset of ATIF-v1.7 that the OpenAgents trace
- * store ingests, stores, and serves so producers (qa-runner), the ingest API,
+ * store ingests, stores, and serves so retained producers, the ingest API,
  * and the `/trace/{uuid}` page agree on one shape. This is the single canonical
  * source for the trace `AtifTrajectory` schema; the API worker and other
  * consumers re-export it from here (`@openagentsinc/atif/trace`) rather than

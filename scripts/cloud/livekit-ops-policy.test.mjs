@@ -169,10 +169,7 @@ test("Sarah signer keeps key custody behind Workload Identity and private Cloud 
   assert.match(signer, /role\s*=\s*"roles\/secretmanager\.secretAccessor"/u);
   assert.match(signer, /secret_id\s*=\s*"sarah-nostr-identity-secret"/u);
   assert.match(signer, /name\s*=\s*"SARAH_NOSTR_EXPECTED_PUBKEY"/u);
-  assert.match(
-    signer,
-    /value\s*=\s*var\.sarah_nostr_signer_expected_pubkey/u,
-  );
+  assert.match(signer, /value\s*=\s*var\.sarah_nostr_signer_expected_pubkey/u);
   assert.match(signer, /role\s*=\s*"roles\/run\.invoker"/u);
   assert.match(
     signer,
@@ -184,10 +181,7 @@ test("Sarah signer keeps key custody behind Workload Identity and private Cloud 
   );
   assert.doesNotMatch(signer, /member\s*=\s*"allUsers"/u);
   assert.doesNotMatch(signer, /module\.platform\.sarah_secret_reader/u);
-  assert.match(
-    variables,
-    /sarah-nostr-signer@sha256:\[0-9a-f\]\{64\}/u,
-  );
+  assert.match(variables, /sarah-nostr-signer@sha256:\[0-9a-f\]\{64\}/u);
 });
 
 test("server key projection binds token minting and runtime authentication", () => {

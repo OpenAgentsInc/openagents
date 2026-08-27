@@ -1,5 +1,5 @@
 // @openagentsinc/atif — one canonical in-repo home for the ATIF (Agent
-// Trajectory Interchange Format, ATIF-v1.7) shape so producers (qa-runner) and
+// Trajectory Interchange Format, ATIF-v1.7) shape so retained producers and
 // consumers (the trace ingest API, the /trace page) stop maintaining parallel
 // definitions (#6207, epic #6206).
 //
