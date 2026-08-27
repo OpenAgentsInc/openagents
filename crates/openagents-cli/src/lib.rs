@@ -1,14 +1,16 @@
-/// The version this binary was published as.
+/// The version this binary reports.
 ///
 /// The crate manifest names the version of the source. A release candidate is
 /// built from a crate at `0.1.0` and published as `0.1.0-rc.2`, and it is the
 /// published name that `oa update` compares against the channel pointer, so
-/// `ops/release-cli.sh` threads that name in at build time. A build that is
-/// not a release falls back to the manifest, which is the honest answer for
-/// one.
+/// `ops/release-cli.sh` threads that name in at build time. Non-release builds
+/// must not fall back to the manifest: the manifest still says `0.1.0`, which
+/// names a withdrawn release and sorts ahead of the active `0.0.x` series.
+/// `0.0.0-dev` is accepted by the update parser, sorts below every published
+/// release, and cannot be mistaken for a release build.
 pub const VERSION: &str = match option_env!("OPENAGENTS_CLI_RELEASE_VERSION") {
     Some(version) => version,
-    None => env!("CARGO_PKG_VERSION"),
+    None => "0.0.0-dev",
 };
 
 pub mod acp;

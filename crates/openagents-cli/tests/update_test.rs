@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use openagents_cli::update::{
-    artifact_name, digest_for, hex_digest, platform, replace_binary, sums_entry_name,
-    valid_version, UpdateError, Updater,
+    artifact_name, digest_for, hex_digest, platform, replace_binary, run, sums_entry_name,
+    valid_version, Outcome, UpdateError, Updater,
 };
 
 /// A release server that serves exactly what it is given and 404s the rest.
@@ -98,6 +98,33 @@ fn the_version_grammar_matches_the_one_the_release_publishes() {
     // name is built out of it.
     assert!(!valid_version("../../etc/passwd"));
     assert!(!valid_version("0.1.0/../stable"));
+}
+
+#[test]
+fn a_non_release_build_reports_a_development_version() {
+    assert_eq!(openagents_cli::VERSION, "0.0.0-dev");
+    assert_ne!(openagents_cli::VERSION, env!("CARGO_PKG_VERSION"));
+    assert!(valid_version(openagents_cli::VERSION));
+}
+
+#[tokio::test]
+async fn a_non_release_build_can_update_to_the_first_published_release() {
+    let outcome = run(
+        None,
+        Some("0.0.1".to_string()),
+        true,
+        false,
+        true,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        outcome,
+        Outcome::Available {
+            version: "0.0.1".to_string()
+        }
+    );
 }
 
 #[test]
