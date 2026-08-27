@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder keeps sign-in links visible
+
+- issues: none (direct owner request)
+- commits: this change
+- contracts-specs: Coder device authorization and OSC 8 terminal links
+- invariants: link repainting preserves the text and style of the completed frame
+- evidence: Coder frame and OSC 8 hyperlink regression tests
+- lane: codex/coder-visible-sign-in-url
+
+Coder now repaints clickable links from the frame that the terminal displays.
+Previously, Ratatui swapped to a cleared buffer before Coder read it, so the
+hyperlink pass replaced the sign-in URL with blank, default-styled cells. The
+sign-in URL now remains visible in amber and supports terminal link actions.
+
 ## CLI credentials use one cross-platform file (#261)
 
 - issues: #261

@@ -344,7 +344,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
         }
 
-        terminal.draw(|f| {
+        let completed_frame = terminal.draw(|f| {
             let size = f.area();
             ui.render(f, size);
         })?;
@@ -353,7 +353,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         // sequences over the frame it just flushed. `emit` re-reads the text
         // out of the buffer, so this can never change what a cell says.
         if !ui.links.is_empty() {
-            let buffer = terminal.current_buffer_mut().clone();
+            // `draw` swaps buffers before returning. `current_buffer_mut()` is
+            // therefore the cleared buffer for the next frame, not the frame
+            // the reader can see. Repainting from it erases every link run.
+            let buffer = completed_frame.buffer.clone();
+            drop(completed_frame);
             let mut out = std::io::stdout();
             let _ = crate::coder::osc8::emit(&mut out, &ui.links, &buffer);
             let cursor = terminal.get_cursor_position()?;

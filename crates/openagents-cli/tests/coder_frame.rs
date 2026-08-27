@@ -14,7 +14,7 @@ use openagents_cli::coder::tui::{CoderUi, Entry, Role};
 use openagents_cli::runtime::TurnUsage;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 
 fn draw(ui: &mut CoderUi) -> ratatui::buffer::Buffer {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
@@ -29,6 +29,34 @@ fn draw(ui: &mut CoderUi) -> ratatui::buffer::Buffer {
 
 fn text_of(buffer: &ratatui::buffer::Buffer) -> String {
     buffer.content.iter().map(|c| c.symbol()).collect()
+}
+
+#[test]
+fn device_sign_in_url_stays_visible_and_clickable() {
+    let mut ui = CoderUi::new();
+    let url = "https://openagents.com/device?user_code=ABCD-EFGH";
+    apply(
+        &mut ui,
+        Control::Output(format!(
+            "Opened the OpenAgents sign-in page in your browser.\n\nURL: {url}\nCode: ABCD-EFGH"
+        )),
+    );
+
+    let buffer = draw(&mut ui);
+    let link = ui
+        .links
+        .iter()
+        .find(|link| link.url == url)
+        .expect("device sign-in URL hyperlink");
+
+    for x in link.x..link.x + link.width {
+        let cell = buffer.cell((x, link.y)).unwrap();
+        assert_eq!(cell.fg, TEXT_COLOR, "URL cell at column {x} is too dark");
+        assert!(
+            !cell.modifier.contains(Modifier::HIDDEN),
+            "URL cell at column {x} is hidden"
+        );
+    }
 }
 
 #[test]
