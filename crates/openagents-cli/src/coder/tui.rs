@@ -31,7 +31,7 @@ const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
 /// Who this session is signed in as.
 ///
 /// Three states rather than a string, and the middle one is the reason this is
-/// an enum. A token sitting in the keychain is a *claim* that the session is
+/// an enum. A token sitting in the credential file is a *claim* that the session is
 /// signed in, not a fact: it may be revoked, expired, or for another
 /// deployment. Rendering that claim as a normal-looking account row is how a
 /// reader watches every turn fail while the screen says they are `AtlantisPleb`.

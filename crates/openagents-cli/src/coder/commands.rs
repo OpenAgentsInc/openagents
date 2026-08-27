@@ -237,7 +237,7 @@ pub async fn logout(session: &mut crate::coder::runtime::Session) -> String {
 /// [`logout`] against a named store.
 ///
 /// Split out so a test can drive the real removal against a store confined to
-/// a directory rather than against the developer's own keychain.
+/// a directory rather than against the owner's credential file.
 pub async fn logout_at(
     session: &mut crate::coder::runtime::Session,
     store: &crate::auth::CredentialStore,

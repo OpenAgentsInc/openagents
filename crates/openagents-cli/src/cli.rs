@@ -1808,7 +1808,7 @@ async fn run_auth_login(
             }));
         } else {
             println!("Authenticated with {}.", endpoint.origin);
-            println!("The token is stored in your OS credential store.");
+            println!("The token is stored in ~/.openagents/credentials.json.");
             println!("Run oa auth setup-git --local to configure git for this repository.");
         }
     };

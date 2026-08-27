@@ -379,8 +379,8 @@ fn setup_git_writes_the_credential_helper_into_git_config() {
     );
 }
 
-/// A local origin no keychain on this machine holds a token for, so `oa auth
-/// status` answers from the git config alone and reaches no network.
+/// A local origin that has no stored token, so `oa auth status` answers from
+/// the git config alone and reaches no network.
 const OFFLINE_ORIGIN: &str = "http://127.0.0.1:59999";
 
 /// Run the real `oa` binary in `directory`, with a `HOME` of its own so

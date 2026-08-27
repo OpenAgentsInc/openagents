@@ -1088,7 +1088,9 @@ fn start_controller_host(
 /// the binary reads real files without touching the developer's own.
 fn stub_home(directory: &std::path::Path, origin: &str, tier: &str, root: &std::path::Path) {
     let config_directory = directory.join(".config").join("openagents");
+    let credential_directory = directory.join(".openagents");
     std::fs::create_dir_all(&config_directory).unwrap();
+    std::fs::create_dir_all(&credential_directory).unwrap();
     std::fs::write(
         config_directory.join("computer.json"),
         serde_json::json!({
@@ -1100,7 +1102,7 @@ fn stub_home(directory: &std::path::Path, origin: &str, tier: &str, root: &std::
     )
     .unwrap();
     std::fs::write(
-        config_directory.join("cli-credentials.json"),
+        credential_directory.join("credentials.json"),
         serde_json::json!({
             "version": 1,
             "tokens": { format!("computer:{origin}"): "smct_stub_machine_token" },

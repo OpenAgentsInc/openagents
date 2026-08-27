@@ -2211,10 +2211,6 @@ pub fn probe_host() -> ComputerProbeResult {
 // the machine credential
 // ---------------------------------------------------------------------------
 
-/// The OS credential store files a machine token under its own service name, so
-/// a Computer pairing and an account login never overwrite each other.
-const COMPUTER_KEYCHAIN_SERVICE: &str = "openagents-cli-computer";
-
 fn machine_token_file_key(origin: &str) -> String {
     format!("computer:{origin}")
 }
@@ -2237,7 +2233,7 @@ fn one() -> u8 {
 pub struct MachineCredentials {
     origin: String,
     path: PathBuf,
-    use_os_store: bool,
+    previous_path: Option<PathBuf>,
 }
 
 impl MachineCredentials {
@@ -2245,22 +2241,25 @@ impl MachineCredentials {
         Self {
             origin: origin.to_string(),
             path: crate::auth::credentials_path(),
-            use_os_store: true,
+            previous_path: Some(crate::auth::previous_credentials_path()),
         }
     }
 
-    /// A store confined to a directory with the OS keychain switched off, so a
-    /// test exercises the real read, write, and delete without touching the
-    /// developer's own credentials.
+    /// A store confined to a directory, so a test exercises the real read,
+    /// write, and delete without touching the owner's credentials.
     pub fn isolated(origin: &str, directory: &Path) -> Self {
         Self {
             origin: origin.to_string(),
-            path: directory.join("cli-credentials.json"),
-            use_os_store: false,
+            path: directory.join("credentials.json"),
+            previous_path: None,
         }
     }
 
     fn load(&self) -> Result<CredentialFile, String> {
+        if let Some(previous) = &self.previous_path {
+            crate::auth::migrate_credential_file(previous, &self.path)
+                .map_err(|error| error.to_string())?;
+        }
         match std::fs::read_to_string(&self.path) {
             Ok(text) => serde_json::from_str(&text)
                 .map_err(|error| format!("could not decode {}: {error}", self.path.display())),
@@ -2285,128 +2284,7 @@ impl MachineCredentials {
         write_private_file(&self.path, &encoded)
     }
 
-    fn os_get(&self) -> Option<String> {
-        if !self.use_os_store || !cfg!(target_os = "macos") && !cfg!(target_os = "linux") {
-            return None;
-        }
-        let output = if cfg!(target_os = "macos") {
-            Command::new("security")
-                .args([
-                    "find-generic-password",
-                    "-a",
-                    &self.origin,
-                    "-s",
-                    COMPUTER_KEYCHAIN_SERVICE,
-                    "-w",
-                ])
-                .stderr(Stdio::null())
-                .output()
-        } else {
-            Command::new("secret-tool")
-                .args([
-                    "lookup",
-                    "service",
-                    COMPUTER_KEYCHAIN_SERVICE,
-                    "origin",
-                    &self.origin,
-                ])
-                .stderr(Stdio::null())
-                .output()
-        };
-        let output = output.ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        // A machine token is an `smct_`. A record that is not one is not a
-        // credential this command can use, and it is not reported as one.
-        if value.starts_with("smct_") {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    fn os_set(&self, token: &str) -> bool {
-        if !self.use_os_store {
-            return false;
-        }
-        if cfg!(target_os = "macos") {
-            let status = Command::new("security")
-                .args([
-                    "add-generic-password",
-                    "-U",
-                    "-a",
-                    &self.origin,
-                    "-s",
-                    COMPUTER_KEYCHAIN_SERVICE,
-                    "-w",
-                    token,
-                ])
-                .stderr(Stdio::null())
-                .stdout(Stdio::null())
-                .status();
-            return matches!(status, Ok(status) if status.success());
-        }
-        if cfg!(target_os = "linux") {
-            let child = Command::new("secret-tool")
-                .args([
-                    "store",
-                    "--label",
-                    COMPUTER_KEYCHAIN_SERVICE,
-                    "service",
-                    COMPUTER_KEYCHAIN_SERVICE,
-                    "origin",
-                    &self.origin,
-                ])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn();
-            if let Ok(mut child) = child {
-                if let Some(mut pipe) = child.stdin.take() {
-                    let _ = pipe.write_all(token.as_bytes());
-                }
-                return matches!(child.wait(), Ok(status) if status.success());
-            }
-        }
-        false
-    }
-
-    fn os_remove(&self) {
-        if !self.use_os_store {
-            return;
-        }
-        if cfg!(target_os = "macos") {
-            let _ = Command::new("security")
-                .args([
-                    "delete-generic-password",
-                    "-a",
-                    &self.origin,
-                    "-s",
-                    COMPUTER_KEYCHAIN_SERVICE,
-                ])
-                .stderr(Stdio::null())
-                .stdout(Stdio::null())
-                .status();
-        } else if cfg!(target_os = "linux") {
-            let _ = Command::new("secret-tool")
-                .args([
-                    "clear",
-                    "service",
-                    COMPUTER_KEYCHAIN_SERVICE,
-                    "origin",
-                    &self.origin,
-                ])
-                .stderr(Stdio::null())
-                .status();
-        }
-    }
-
     pub fn get(&self) -> Result<Option<crate::auth::Secret>, String> {
-        if let Some(token) = self.os_get() {
-            return Ok(Some(crate::auth::Secret::new(token)));
-        }
         let file = self.load()?;
         Ok(file
             .tokens
@@ -2416,21 +2294,26 @@ impl MachineCredentials {
     }
 
     pub fn set(&self, token: &crate::auth::Secret) -> Result<(), String> {
-        if self.os_set(token.expose()) {
-            return Ok(());
+        let key = machine_token_file_key(&self.origin);
+        for _ in 0..32 {
+            let mut file = self.load()?;
+            file.version = 1;
+            file.tokens.insert(key.clone(), token.expose().to_string());
+            self.save(&file)?;
+            let stored = self.load()?.tokens.get(&key).cloned();
+            if stored.as_deref() == Some(token.expose()) {
+                return Ok(());
+            }
+            std::thread::yield_now();
         }
-        let mut file = self.load()?;
-        file.version = 1;
-        file.tokens.insert(
-            machine_token_file_key(&self.origin),
-            token.expose().to_string(),
-        );
-        self.save(&file)
+        Err(format!(
+            "could not verify credentials in {} after concurrent writes",
+            self.path.display()
+        ))
     }
 
     pub fn remove(&self) -> Result<bool, String> {
         let had = self.get()?.is_some();
-        self.os_remove();
         let mut file = self.load()?;
         if file
             .tokens
@@ -4407,7 +4290,7 @@ pub async fn run(args: ComputerArgs, endpoint: &crate::auth::Endpoint, json: boo
             } else {
                 println!("Computer paired with {}.", endpoint.origin);
                 println!("Machine id: {}", claim.machine_id);
-                println!("The machine token is in the OS credential store.");
+                println!("The computer token is in ~/.openagents/credentials.json.");
             }
         }
         ComputerAction::Logout => {

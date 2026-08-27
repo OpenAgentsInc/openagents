@@ -70,8 +70,8 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "The credential oracle proves the macOS Keychain invocation receives the token through its required password argument instead of an ignored standard-input stream.",
-          id: "openagents_cli.agent_device_authorization.keychain",
+            "The credential oracle proves that every platform stores the token in the same protected file and verifies the stored value before reporting success.",
+          id: "openagents_cli.agent_device_authorization.credential_file",
           kind: "script",
           mode: "unit",
           ref: "crates/openagents-cli/tests/auth_repo_test.rs",
@@ -97,6 +97,49 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       surface: "openagents-cli",
       verification:
         "The OpenAgents CLI test sweep runs the device-flow, pending-state, and credential-adapter oracles, and the behavior-contract sweep validates this registry entry.",
+    },
+    {
+      authorityBoundary:
+        "This contract stores OpenAgents account and Computer bearer tokens by API origin. It does not widen token scopes, expose token values in output, or move configuration, transcripts, exports, and policy into the credential file. Unix hosts restrict the directory to mode 0700 and the file to mode 0600.",
+      blockerRefs: [],
+      contractId: "openagents_cli.credentials.predictable_file.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "crates/openagents-cli/src/auth.rs",
+        "crates/openagents-cli/src/computer.rs",
+        "crates/openagents-cli/tests/auth_repo_test.rs",
+        "crates/openagents-cli/tests/computer_api_test.rs",
+      ],
+      oracles: [
+        {
+          description:
+            "The authentication tests prove the cross-platform path, private permissions, previous-file migration, origin isolation, and token removal.",
+          id: "openagents_cli.credentials.account_file",
+          kind: "script",
+          mode: "unit",
+          ref: "crates/openagents-cli/tests/auth_repo_test.rs",
+        },
+        {
+          description:
+            "The Computer tests prove that pairing state reads its origin-scoped token from the same credential file without printing the token.",
+          id: "openagents_cli.credentials.computer_file",
+          kind: "script",
+          mode: "unit",
+          ref: "crates/openagents-cli/tests/computer_api_test.rs",
+        },
+      ],
+      productArea: "OpenAgents CLI credentials",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-08-26",
+      },
+      state: "enforced",
+      statement:
+        "I would rather not mess with the native keychain bullshit of everything. Can we just store all this in a predictable location in ~/.openagents in all platforms",
+      surface: "openagents-cli",
+      verification:
+        "The OpenAgents CLI test sweep verifies account and Computer credentials against one protected file, and the behavior-contract sweep validates this registry entry.",
     },
     {
       authorityBoundary:
@@ -1033,5 +1076,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-08-21.1",
+  version: "2026-08-26.1",
 };

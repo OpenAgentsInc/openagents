@@ -65,9 +65,8 @@ impl Secret {
 
     /// Wipe the buffer now rather than at drop.
     ///
-    /// `oa auth logout` calls this before it asks the OS store to delete the
-    /// record, so the plaintext is gone from this process even if the deletion
-    /// itself fails and the command exits by the error path.
+    /// `oa auth logout` calls this before it updates the credential file, so
+    /// the plaintext is gone from this process even if deletion fails.
     pub fn zeroize_now(&mut self) {
         self.0.zeroize();
     }
@@ -276,15 +275,50 @@ pub fn config_directory() -> PathBuf {
     home_directory().join(".config").join("openagents")
 }
 
-/// The file adapter's path.
-///
-/// Deliberately *not* `credentials.json` in that directory: that name is
-/// already taken by the agent-key store (`{"agents": …, "default": …}`), and
-/// writing this store's shape over it would destroy an unrelated set of keys.
-/// The OS keychain remains the primary store; this file is what a machine
-/// without one falls back to.
+/// The one cross-platform credential file.
 pub fn credentials_path() -> PathBuf {
+    credentials_path_for_home(&home_directory())
+}
+
+fn credentials_path_for_home(home: &Path) -> PathBuf {
+    home.join(".openagents").join("credentials.json")
+}
+
+/// The file path released clients used before `0.0.19`.
+pub(crate) fn previous_credentials_path() -> PathBuf {
     config_directory().join("cli-credentials.json")
+}
+
+/// Move the previous file store into the current location without exposing
+/// its contents. A rename handles the usual same-filesystem case atomically;
+/// the staged copy handles uncommon split mounts.
+pub(crate) fn migrate_credential_file(previous: &Path, current: &Path) -> Result<(), AuthError> {
+    if current.exists() || !previous.exists() {
+        return Ok(());
+    }
+    let parent = current
+        .parent()
+        .ok_or_else(|| AuthError::new(format!("{} has no parent directory", current.display())))?;
+    ensure_private_directory(parent)?;
+
+    match fs::rename(previous, current) {
+        Ok(()) => restrict_private_file(current),
+        Err(_) if current.exists() => Ok(()),
+        Err(_) => {
+            let contents = fs::read_to_string(previous).map_err(|error| {
+                AuthError::new(format!("could not read {}: {error}", previous.display()))
+            })?;
+            write_private_file(current, &contents)?;
+            match fs::remove_file(previous) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(AuthError::new(format!(
+                    "could not remove {} after migration: {error}",
+                    previous.display()
+                ))),
+            }
+        }
+    }
 }
 
 pub fn device_authorizations_path() -> PathBuf {
@@ -372,6 +406,20 @@ fn write_private_file(path: &Path, contents: &str) -> Result<(), AuthError> {
     })
 }
 
+fn restrict_private_file(path: &Path) -> Result<(), AuthError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(|error| {
+            AuthError::new(format!(
+                "could not restrict {} to 0600: {error}",
+                path.display()
+            ))
+        })?;
+    }
+    Ok(())
+}
+
 /// Create the staging file 0600 and put `contents` in it.
 fn stage_private_file(temporary: &Path, contents: &str) -> Result<(), AuthError> {
     let mut options = fs::OpenOptions::new();
@@ -438,7 +486,6 @@ struct CredentialFile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenSource {
     Environment,
-    Store,
     File,
     LegacyConfig,
 }
@@ -447,7 +494,6 @@ impl TokenSource {
     pub fn label(self) -> &'static str {
         match self {
             TokenSource::Environment => "environment",
-            TokenSource::Store => "store",
             TokenSource::File => "file",
             TokenSource::LegacyConfig => "legacy config",
         }
@@ -467,23 +513,11 @@ impl fmt::Debug for StoredToken {
     }
 }
 
-/// The service name the OS credential store files the record under. The
-/// TypeScript CLI uses the same one.
-const KEYCHAIN_SERVICE: &str = "openagents-cli";
-
-/// Longest token the store will hand back. A record longer than this is not a
-/// token the API issues, so it is a corrupt or hostile record, not a credential.
-const MAX_TOKEN_LENGTH: usize = 160;
-
-fn admitted_token(value: &str) -> bool {
-    (value.starts_with("oa_pat_") || value.starts_with("smct_")) && value.len() < MAX_TOKEN_LENGTH
-}
-
 pub struct CredentialStore {
     origin: String,
     credentials_path: PathBuf,
+    previous_credentials_path: Option<PathBuf>,
     legacy_config_path: PathBuf,
-    use_os_store: bool,
 }
 
 impl CredentialStore {
@@ -497,8 +531,8 @@ impl CredentialStore {
         Self {
             origin: PRODUCTION_ORIGIN.to_string(),
             credentials_path: credentials_path(),
+            previous_credentials_path: Some(previous_credentials_path()),
             legacy_config_path: path.unwrap_or_else(Self::default_path),
-            use_os_store: true,
         }
     }
 
@@ -506,20 +540,19 @@ impl CredentialStore {
         Self {
             origin: origin.to_string(),
             credentials_path: credentials_path(),
+            previous_credentials_path: Some(previous_credentials_path()),
             legacy_config_path: Self::default_path(),
-            use_os_store: true,
         }
     }
 
-    /// A store confined to a directory, with the OS keychain switched off.
-    /// Tests use it so they exercise the real read, write, and delete paths
-    /// without touching the developer's own credentials.
+    /// A store confined to a directory. Tests use it to exercise the real
+    /// read, write, and delete paths without touching the owner's credentials.
     pub fn isolated(origin: &str, directory: &Path) -> Self {
         Self {
             origin: origin.to_string(),
             credentials_path: directory.join("credentials.json"),
+            previous_credentials_path: None,
             legacy_config_path: directory.join("config.json"),
-            use_os_store: false,
         }
     }
 
@@ -551,6 +584,9 @@ impl CredentialStore {
     // -- credentials.json ----------------------------------------------------
 
     fn load_credential_file(&self) -> Result<CredentialFile, AuthError> {
+        if let Some(previous) = &self.previous_credentials_path {
+            migrate_credential_file(previous, &self.credentials_path)?;
+        }
         if !self.credentials_path.exists() {
             return Ok(CredentialFile {
                 version: 1,
@@ -588,101 +624,9 @@ impl CredentialStore {
         write_private_file(&self.credentials_path, &encoded)
     }
 
-    // -- OS credential store -------------------------------------------------
-
-    /// Read the OS store.
-    ///
-    /// `Ok(None)` means the store answered and holds nothing. An error means
-    /// the store could not be consulted, and that is never reported as "not
-    /// signed in": the caller would then send an unauthenticated request that
-    /// fails somewhere far away from the actual problem.
-    fn os_get(&self) -> Result<Option<Secret>, AuthError> {
-        if !self.use_os_store {
-            return Ok(None);
-        }
-        let output = match os_store_command_get(&self.origin) {
-            Some(mut command) => match command.output() {
-                Ok(output) => output,
-                // No `security` / `secret-tool` on this machine. That is not a
-                // failure to read: this platform simply has no OS store, and
-                // the file adapter below is the whole store.
-                Err(_) => return Ok(None),
-            },
-            None => return Ok(None),
-        };
-        if !output.status.success() {
-            return Ok(None);
-        }
-        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if value.is_empty() {
-            return Ok(None);
-        }
-        if !admitted_token(&value) {
-            return Err(AuthError::new(format!(
-                "the OS credential store holds a record for {} that is not an OpenAgents token. \
-                 Run oa auth logout, then oa auth login",
-                self.origin
-            )));
-        }
-        Ok(Some(Secret::new(value)))
-    }
-
-    fn os_set(&self, token: &Secret) -> Result<bool, AuthError> {
-        if !self.use_os_store {
-            return Ok(false);
-        }
-        let Some((mut command, stdin_input)) = os_store_command_set(&self.origin, token) else {
-            return Ok(false);
-        };
-        let output = match stdin_input {
-            None => match command.output() {
-                Ok(output) => output,
-                Err(_) => return Ok(false),
-            },
-            Some(input) => {
-                command.stdin(Stdio::piped()).stdout(Stdio::piped());
-                let mut child = match command.spawn() {
-                    Ok(child) => child,
-                    Err(_) => return Ok(false),
-                };
-                if let Some(mut pipe) = child.stdin.take() {
-                    let _ = pipe.write_all(input.expose().as_bytes());
-                    let _ = pipe.write_all(b"\n");
-                }
-                child.wait_with_output().map_err(|error| {
-                    AuthError::new(format!("the OS credential store failed: {error}"))
-                })?
-            }
-        };
-        if !output.status.success() {
-            return Err(AuthError::new(format!(
-                "the OS credential store refused to store a token for {} (exit {})",
-                self.origin,
-                output.status.code().unwrap_or(-1)
-            )));
-        }
-        // Read back. A store that reported success but did not keep the value
-        // would leave the next command sending the previous token.
-        match self.os_get()? {
-            Some(stored) if stored.expose() == token.expose() => Ok(true),
-            _ => Err(AuthError::new(
-                "the OS credential store did not return the token that was just written",
-            )),
-        }
-    }
-
-    fn os_remove(&self) {
-        if !self.use_os_store {
-            return;
-        }
-        if let Some(mut command) = os_store_command_remove(&self.origin) {
-            let _ = command.output();
-        }
-    }
-
     // -- public API ----------------------------------------------------------
 
-    /// Find the token for this endpoint, refusing when a store could not be read.
+    /// Find the token for this endpoint, refusing when the file cannot be read.
     pub fn find_token(&self) -> Result<Option<StoredToken>, AuthError> {
         if let Ok(value) = std::env::var("OPENAGENTS_TOKEN") {
             let trimmed = value.trim();
@@ -692,12 +636,6 @@ impl CredentialStore {
                     source: TokenSource::Environment,
                 }));
             }
-        }
-        if let Some(token) = self.os_get()? {
-            return Ok(Some(StoredToken {
-                token,
-                source: TokenSource::Store,
-            }));
         }
         let file = self.load_credential_file()?;
         if let Some(value) = file.tokens.get(&self.origin) {
@@ -744,8 +682,7 @@ impl CredentialStore {
 
     /// The lenient read the rest of the CLI uses when it wants a bearer token
     /// for an unrelated command. Auth and repository commands call
-    /// [`CredentialStore::find_token`] instead, so a store that cannot be read
-    /// is refused rather than reported as "not signed in".
+    /// [`CredentialStore::find_token`] instead.
     pub fn get_token(&self) -> Option<String> {
         self.find_token()
             .ok()
@@ -758,14 +695,28 @@ impl CredentialStore {
         if token.is_empty() {
             return Err(AuthError::new("refusing to store an empty token"));
         }
-        if self.os_set(token)? {
-            return Ok(TokenSource::Store);
+        // Another CLI process can update a different endpoint in the same
+        // file between this write and its read-back. Merge and retry instead
+        // of claiming success for a value that did not reach disk.
+        for _ in 0..32 {
+            let mut file = self.load_credential_file()?;
+            file.tokens
+                .insert(self.origin.clone(), token.expose().to_string());
+            self.save_credential_file(&file)?;
+            let stored = self
+                .load_credential_file()?
+                .tokens
+                .get(&self.origin)
+                .cloned();
+            if stored.as_deref() == Some(token.expose()) {
+                return Ok(TokenSource::File);
+            }
+            std::thread::yield_now();
         }
-        let mut file = self.load_credential_file()?;
-        file.tokens
-            .insert(self.origin.clone(), token.expose().to_string());
-        self.save_credential_file(&file)?;
-        Ok(TokenSource::File)
+        Err(AuthError::new(format!(
+            "could not verify credentials in {} after concurrent writes",
+            self.credentials_path.display()
+        )))
     }
 
     pub fn set_token(&self, token: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -775,9 +726,8 @@ impl CredentialStore {
 
     /// Remove the token for this endpoint.
     ///
-    /// The in-memory copy is wiped before any deletion is attempted, so the
-    /// plaintext is gone from this process even if a store then refuses to
-    /// delete its record and the command exits by the error path.
+    /// The in-memory copy is wiped before the file is updated, so the plaintext
+    /// is gone from this process even if deletion fails.
     pub fn remove(&self) -> Result<bool, AuthError> {
         let held = self.find_token()?;
         let had_token = held.is_some();
@@ -786,8 +736,6 @@ impl CredentialStore {
             debug_assert!(stored.token.is_empty());
             drop(stored);
         }
-
-        self.os_remove();
 
         let mut file = self.load_credential_file()?;
         if file.tokens.remove(&self.origin).is_some() {
@@ -812,84 +760,6 @@ impl CredentialStore {
     pub fn clear_token(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.remove()?;
         Ok(())
-    }
-}
-
-fn os_store_command_get(origin: &str) -> Option<Command> {
-    if cfg!(target_os = "macos") {
-        let mut command = Command::new("security");
-        command.args([
-            "find-generic-password",
-            "-a",
-            origin,
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-w",
-        ]);
-        command.stderr(Stdio::null());
-        Some(command)
-    } else if cfg!(target_os = "linux") {
-        let mut command = Command::new("secret-tool");
-        command.args(["lookup", "service", KEYCHAIN_SERVICE, "origin", origin]);
-        command.stderr(Stdio::null());
-        Some(command)
-    } else {
-        None
-    }
-}
-
-fn os_store_command_set(origin: &str, token: &Secret) -> Option<(Command, Option<Secret>)> {
-    if cfg!(target_os = "macos") {
-        let mut command = Command::new("security");
-        command.args([
-            "add-generic-password",
-            "-U",
-            "-a",
-            origin,
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-w",
-            token.expose(),
-        ]);
-        command.stderr(Stdio::null());
-        Some((command, None))
-    } else if cfg!(target_os = "linux") {
-        let mut command = Command::new("secret-tool");
-        command.args([
-            "store",
-            "--label=OpenAgents CLI",
-            "service",
-            KEYCHAIN_SERVICE,
-            "origin",
-            origin,
-        ]);
-        command.stderr(Stdio::null());
-        Some((command, Some(token.clone())))
-    } else {
-        None
-    }
-}
-
-fn os_store_command_remove(origin: &str) -> Option<Command> {
-    if cfg!(target_os = "macos") {
-        let mut command = Command::new("security");
-        command.args([
-            "delete-generic-password",
-            "-a",
-            origin,
-            "-s",
-            KEYCHAIN_SERVICE,
-        ]);
-        command.stderr(Stdio::null());
-        command.stdout(Stdio::null());
-        Some(command)
-    } else if cfg!(target_os = "linux") {
-        let mut command = Command::new("secret-tool");
-        command.args(["clear", "service", KEYCHAIN_SERVICE, "origin", origin]);
-        command.stderr(Stdio::null());
-        Some(command)
-    } else {
-        None
     }
 }
 
@@ -1279,7 +1149,7 @@ mod tests {
                 "{:?}",
                 StoredToken {
                     token: secret,
-                    source: TokenSource::Store
+                    source: TokenSource::File
                 }
             )
             .contains("supersecretvalue")
@@ -1327,5 +1197,43 @@ mod tests {
     fn an_empty_computer_name_is_not_sent() {
         let body = device_authorization_body(&[], Some(" \n ".to_string()));
         assert_eq!(body, serde_json::json!({}));
+    }
+
+    #[test]
+    fn credentials_have_one_cross_platform_location() {
+        let home = Path::new("/home/reader");
+        assert_eq!(
+            credentials_path_for_home(home),
+            home.join(".openagents").join("credentials.json")
+        );
+    }
+
+    #[test]
+    fn the_previous_file_store_moves_to_the_cross_platform_location() {
+        let directory = tempfile::tempdir().unwrap();
+        let previous = directory.path().join("old").join("cli-credentials.json");
+        let current = directory.path().join("new").join("credentials.json");
+        std::fs::create_dir_all(previous.parent().unwrap()).unwrap();
+        std::fs::write(
+            &previous,
+            r#"{"version":1,"tokens":{"https://openagents.com":"oa_pat_migrated"}}"#,
+        )
+        .unwrap();
+
+        migrate_credential_file(&previous, &current).unwrap();
+
+        assert!(!previous.exists());
+        assert_eq!(
+            std::fs::read_to_string(&current).unwrap(),
+            r#"{"version":1,"tokens":{"https://openagents.com":"oa_pat_migrated"}}"#
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&current).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
     }
 }

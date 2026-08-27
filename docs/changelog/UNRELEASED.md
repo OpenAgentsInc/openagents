@@ -5,6 +5,26 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI credentials use one cross-platform file (#261)
+
+- issues: #261
+- commits: this change
+- contracts-specs: `openagents_cli.credentials.predictable_file.v1`
+- invariants: credentials stay scoped by API origin, never appear in output, and use private permissions on Unix hosts
+- evidence: OpenAgents CLI authentication, Computer, and concurrent private-file test suites
+- lane: codex/issue-261-credential-file
+
+The OpenAgents CLI now stores account and Computer tokens in
+`~/.openagents/credentials.json` on every platform. It no longer invokes
+macOS Keychain or Linux Secret Service commands. On Unix hosts, the CLI
+restricts `~/.openagents` to mode `0700` and the credential file to mode
+`0600`.
+
+The CLI moves an existing `~/.config/openagents/cli-credentials.json` file to
+the new path during the first credential read. Concurrent writers use atomic
+staged writes and verify that each stored value reached the file before they
+report success.
+
 ## Headless agents can complete CLI device authorization
 
 - issues: none (direct owner request)
@@ -21,8 +41,7 @@ in any browser, `openagents auth login --resume` completes authorization and
 stores the issued OpenAgents token. Interactive use still opens the browser
 automatically and prints a manual instruction if the browser does not open.
 
-The macOS credential adapter now passes the token through the interface that
-Keychain requires and verifies the stored value before it reports success.
+The credential adapter verifies the stored value before it reports success.
 Pending device requests use a private local file and disappear after success
 or detected expiry.
 

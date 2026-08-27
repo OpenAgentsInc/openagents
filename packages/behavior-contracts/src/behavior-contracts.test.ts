@@ -152,13 +152,19 @@ describe("behavior contract registry", () => {
     // desktop loopback PKCE policy outlived that pass because its oracle and
     // evidence lived in apps/openagents.com; its OpenAuth client registration
     // was removed on 2026-08-05. The enforced CLI device-authorization
-    // contract added on 2026-08-21 brings the current registry to 33.
-    expect(decoded.contracts).toHaveLength(33)
+    // contract added on 2026-08-21 brought the registry to 33. The enforced
+    // cross-platform credential-file contract brings it to 34.
+    expect(decoded.contracts).toHaveLength(34)
     const agentDeviceAuthorization = decoded.contracts.find(
       entry => entry.contractId === "openagents_cli.agent_device_authorization.v1",
     )
     expect(agentDeviceAuthorization?.state).toBe("enforced")
     expect(agentDeviceAuthorization?.oracles).toHaveLength(3)
+    const predictableCredentialFile = decoded.contracts.find(
+      entry => entry.contractId === "openagents_cli.credentials.predictable_file.v1",
+    )
+    expect(predictableCredentialFile?.state).toBe("enforced")
+    expect(predictableCredentialFile?.oracles).toHaveLength(2)
     const mobileAutomaticActivity = decoded.contracts.find(
       entry => entry.contractId === "openagents_mobile.home_automatic_desktop_activity.v1",
     )

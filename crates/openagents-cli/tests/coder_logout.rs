@@ -7,7 +7,7 @@
 //!
 //! - **The stored token is gone.** Against a real
 //!   [`openagents_cli::auth::CredentialStore`], confined to a directory so the
-//!   developer's own keychain is never touched, read back through the same
+//!   owner's credential file is never touched, read back through the same
 //!   `find_token` every other command reads it through.
 //! - **The thread was ended by reporting, not abandoned.** The stub records
 //!   every request, and the assertion is that
@@ -173,9 +173,8 @@ fn text(piece: &str) -> String {
 
 // ──────────────────────────────────────────────────────────────── the harness
 
-/// A store confined to a directory of this test's own, with the OS keychain
-/// switched off. The real read, write, and delete paths; none of the
-/// developer's credentials.
+/// A store confined to a directory of this test's own. It uses the real read,
+/// write, and delete paths without accessing the developer's credentials.
 fn store_in(origin: &str, name: &str) -> (CredentialStore, PathBuf) {
     let directory = std::env::temp_dir().join(format!(
         "Coder-logout-{name}-{}-{}",
