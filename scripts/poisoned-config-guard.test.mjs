@@ -154,6 +154,39 @@ test("pre-push guard blocks with a real diagnosis when the config cannot be heal
   }
 });
 
+test("pre-push guard refuses unformatted rust and names the formatter (#241)", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "guard-241-fmt-"));
+  try {
+    const sandbox = buildSandbox(root);
+    const bin = path.join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      path.join(bin, "pnpm"),
+      `#!/usr/bin/env sh
+case " $* " in
+  *" run fmt:check "*)
+    echo "Diff in crates/openagents-cli/src/lib.rs" >&2
+    exit 1
+    ;;
+esac
+exit 0
+`,
+    );
+    chmodSync(path.join(bin, "pnpm"), 0o755);
+    writeFileSync(path.join(bin, "cargo"), "#!/usr/bin/env sh\nexit 0\n");
+    chmodSync(path.join(bin, "cargo"), 0o755);
+    commitLaneWork(sandbox.wt);
+
+    const result = pushLane(sandbox.wt, bin);
+    assert.equal(result.status, 1, `push must be blocked, stderr: ${result.stderr}`);
+    assert.match(result.stderr, /fmt:check failed/i);
+    assert.match(result.stderr, /pnpm run fmt/, "the block must name the formatter");
+    assert.doesNotMatch(result.stderr, /push allowed/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("the healthy path is untouched: a clean repo pushes without healing (#208)", () => {
   const root = mkdtempSync(path.join(tmpdir(), "guard-208-clean-"));
   try {

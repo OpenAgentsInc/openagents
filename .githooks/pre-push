@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-push guard — fast, relevant checks only.
-# Runs: whitespace, vp lint, and targeted cargo/mix for the CLI or Phoenix backend.
+# Runs: whitespace, fmt:check, vp lint, and targeted cargo for the CLI.
 set -uo pipefail
 
 gate=0
@@ -87,6 +87,13 @@ echo "[pre-push guard] push to main -> running fast, targeted checks..." >&2
 # — proven green at 256, at the cost of wall time on constrained machines
 # only.
 ulimit -n 1024 2>/dev/null || true
+
+# Format drift used to walk onto main because this guard never ran fmt:check
+# (#241). The check is sub-second; the named fix is `pnpm run fmt`.
+if ! ( cd "$root" && pnpm run fmt:check ) >&2; then
+  echo "[pre-push guard] BLOCKED: fmt:check failed. Run \`pnpm run fmt\` and commit the result." >&2
+  exit 1
+fi
 
 if ! ( cd "$root" && pnpm exec vp lint --quiet ) >&2; then
   echo "[pre-push guard] BLOCKED: vp lint failed." >&2
