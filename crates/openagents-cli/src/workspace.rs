@@ -397,11 +397,16 @@ impl WorkspacePlan {
 }
 
 /// The root of the checkout `cwd` is in, or nothing if it is not in one.
+///
+/// `-c core.bare=false` keeps a linked worktree of a hub whose common
+/// `.git/config` has `core.bare=true` from looking like it is not a
+/// checkout. Without it, `rev-parse --show-toplevel` exits 128 and
+/// Isolation::Worktree is silently turned into a directory.
 async fn git_toplevel(cwd: &Path) -> Option<PathBuf> {
     let out = Command::new("git")
         .arg("-C")
         .arg(cwd)
-        .args(["rev-parse", "--show-toplevel"])
+        .args(["-c", "core.bare=false", "rev-parse", "--show-toplevel"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()

@@ -134,6 +134,78 @@ async fn each_child_gets_a_worktree_of_its_own() {
     }
 }
 
+/// A linked worktree of a hub whose common config is `core.bare=true`
+/// still counts as a checkout. Without `-c core.bare=false`,
+/// `git rev-parse --show-toplevel` fails and Isolation::Worktree is
+/// silently turned into a directory.
+#[tokio::test]
+async fn a_worktree_of_a_bare_hub_keeps_worktree_isolation() {
+    let root = std::env::temp_dir().join(format!(
+        "oa-delegate-bare-hub-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&root).expect("make a scratch directory");
+    let seed = root.join("seed");
+    let hub = root.join("hub.git");
+    let linked = root.join("linked");
+    std::fs::create_dir_all(&seed).unwrap();
+
+    let git = |dir: &Path, args: &[&str]| {
+        let done = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("run git");
+        assert!(done.status.success(), "git {args:?}: {done:?}");
+    };
+
+    git(&seed, &["init", "--quiet", "-b", "main"]);
+    git(&seed, &["config", "user.email", "test@example.test"]);
+    git(&seed, &["config", "user.name", "Test"]);
+    git(&seed, &["commit", "--quiet", "--allow-empty", "-m", "root"]);
+    let done = std::process::Command::new("git")
+        .args(["clone", "--bare", "--quiet"])
+        .arg(&seed)
+        .arg(&hub)
+        .output()
+        .expect("clone a bare hub");
+    assert!(done.status.success(), "git clone --bare: {done:?}");
+    git(
+        &hub,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            linked.to_str().expect("utf-8 path"),
+            "HEAD",
+        ],
+    );
+
+    let plan = WorkspacePlan::resolve(linked.clone(), Isolation::Worktree).await;
+    assert_eq!(
+        plan.isolation(),
+        Isolation::Worktree,
+        "a linked worktree of a core.bare=true hub is still a checkout"
+    );
+
+    let workspaces = plan
+        .prepare(1)
+        .await
+        .expect("the child worktree was not made");
+    assert!(
+        workspaces[0].path.join(".git").is_file(),
+        "{} is not a git worktree",
+        workspaces[0].path.display()
+    );
+    assert_eq!(workspaces[0].release().await, None);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A child's output reaches the caller while the child is still running.
 ///
 /// The version this replaces called `Command::output()`, which returns when
