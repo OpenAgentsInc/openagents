@@ -47,6 +47,18 @@ fi
 
 echo "[pre-push guard] push to main -> running fast, targeted checks..." >&2
 
+# The guard inherits the caller's descriptor ceiling, and non-interactive
+# shells on macOS default to a soft `ulimit -n` of 256 — under it, the CLI
+# test suite fails intermittently with EMFILE ("Too many open files") in
+# whichever fd-hungry test happens to exhaust the process-wide pool first,
+# and every push to main is blocked by a flake the pushed diff did not
+# cause (#179). Raise the soft limit where the kernel allows it; a child of
+# an already-tight shell may be refused even with room under the hard
+# ceiling, so when the ceiling is still tight, serialize the suite instead
+# — proven green at 256, at the cost of wall time on constrained machines
+# only.
+ulimit -n 1024 2>/dev/null || true
+
 if ! ( cd "$root" && pnpm exec vp lint --quiet ) >&2; then
   echo "[pre-push guard] BLOCKED: vp lint failed." >&2
   exit 1
@@ -59,7 +71,12 @@ cli_changed=$(echo "$changed_files" | grep -E '^crates/openagents-cli/' | sed -n
 if [ -n "$cli_changed" ]; then
   echo "[pre-push guard] Rust CLI changes -> running cargo checks..." >&2
   ( cd "$root" && cargo check -p openagents-cli ) || { echo "[pre-push guard] BLOCKED: cargo check -p openagents-cli failed." >&2; exit 1; }
-  ( cd "$root" && cargo test -p openagents-cli ) || { echo "[pre-push guard] BLOCKED: cargo test -p openagents-cli failed." >&2; exit 1; }
+  if [ "$(ulimit -Sn)" -lt 512 ]; then
+    echo "[pre-push guard] soft fd limit $(ulimit -Sn) is tight -> running the suite serially (#179)..." >&2
+    ( cd "$root" && cargo test -p openagents-cli -- --test-threads=1 ) || { echo "[pre-push guard] BLOCKED: cargo test -p openagents-cli failed." >&2; exit 1; }
+  else
+    ( cd "$root" && cargo test -p openagents-cli ) || { echo "[pre-push guard] BLOCKED: cargo test -p openagents-cli failed." >&2; exit 1; }
+  fi
 fi
 
 echo "[pre-push guard] fast main guard green — push allowed." >&2
