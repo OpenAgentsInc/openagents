@@ -1349,12 +1349,17 @@ pub fn command_heads(cmd: &str) -> Option<Vec<String>> {
         // the binary, and refusing a line that ran both would break ordinary
         // compound work. One more word separates them.
         const RUNNERS: &[&str] = &["pnpm", "npm", "yarn", "bun", "npx", "pnpx"];
+        // Package runners: the tool is the third word, and `pnpm run test`
+        // against `pnpm run lint` are different work. `npx`/`pnpx` shape the
+        // same way — the package is the second word and the command the
+        // third, so `npx vp test` and `npx vp lint` must not collapse.
         const GIT_VERBS: &[&str] = &["stash", "worktree", "remote"];
         let parts: Vec<&str> = head.split(' ').collect();
         if parts.len() == 2 {
             let (first, second) = (parts[0], parts[1]);
             let wants_third = RUNNERS.contains(&first) && second == "run"
-                || first == "git" && GIT_VERBS.contains(&second);
+                || first == "git" && GIT_VERBS.contains(&second)
+                || matches!(first, "npx" | "pnpx");
             if wants_third && let Some(third) = next_word() {
                 head = format!("{head} {third}");
             }

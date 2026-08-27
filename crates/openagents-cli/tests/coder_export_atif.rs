@@ -87,8 +87,7 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
     // call exports as 0 rather than omitting the field, so the schema holds
     // for a document built mid-flight.
     assert_eq!(
-        tool_step["observation"]["results"][0]["duration_ms"],
-        0,
+        tool_step["observation"]["results"][0]["duration_ms"], 0,
         "an unsettled call exports a zero duration"
     );
     entries[2]
@@ -106,8 +105,7 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
         .find(|s| s.get("tool_calls").is_some())
         .unwrap();
     assert_eq!(
-        tool_step2["observation"]["results"][0]["duration_ms"],
-        152_000,
+        tool_step2["observation"]["results"][0]["duration_ms"], 152_000,
         "a settled call exports the reported duration"
     );
 

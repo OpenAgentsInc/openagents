@@ -882,7 +882,9 @@ fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent
                         .and_then(serde_json::Value::as_str)
                         .map(str::to_string),
                     done: true,
-                    duration_ms: payload.get("duration_ms").and_then(serde_json::Value::as_u64),
+                    duration_ms: payload
+                        .get("duration_ms")
+                        .and_then(serde_json::Value::as_u64),
                 });
                 entry
             }

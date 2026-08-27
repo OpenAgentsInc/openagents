@@ -186,6 +186,67 @@ fn file_name(repository: &str, at_iso: &str) -> String {
     format!("{}-{}-atif.json", stamp, safe)
 }
 
+/// Repeat-execution waste, measured at export.
+///
+/// A session that runs the same suite twice pays the second run to learn
+/// something the first already taught it. The exporter is where that cost
+/// becomes visible without anyone hand-parsing the trajectory: every shell
+/// line is reduced to its command heads (the same normalizer the #153 gate
+/// refuses on, so the two can never disagree about identity), and any head
+/// executed more than once reports how much of the total wall time the
+/// repetitions beyond the first spent.
+fn waste_section(entries: &[Entry]) -> Vec<Value> {
+    use std::collections::BTreeMap;
+
+    // Head -> (executions, total seconds across all executions).
+    let mut families: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    for entry in entries {
+        let Some(tool) = entry.tool.as_ref() else {
+            continue;
+        };
+        if tool.function_name != "shell"
+            && tool.function_name != "bash"
+            && tool.function_name != "run"
+        {
+            continue;
+        }
+        let Some(command) = tool
+            .arguments
+            .get("command")
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        let Some(heads) = crate::tools::command_heads(command) else {
+            continue;
+        };
+        let duration_ms = tool.exported_duration_ms();
+        for head in heads {
+            let entry_ = families.entry(head).or_insert((0, 0));
+            entry_.0 += 1;
+            entry_.1 += duration_ms;
+        }
+    }
+
+    families
+        .into_iter()
+        .filter_map(|(head, (executions, total_ms))| {
+            if executions <= 1 {
+                return None;
+            }
+            // Repetitions beyond the first carry their equal share of the
+            // time. A single execution of a suite is not waste; the second
+            // and third are, whatever they were hunting for.
+            let wasted_ms = total_ms * (executions - 1) / executions;
+            Some(json!({
+                "head": head,
+                "executions": executions,
+                "approx_wasted_seconds": wasted_ms / 1000,
+            }))
+        })
+        .collect()
+}
+
 fn trajectory_document(
     entries: &[Entry],
     model: &str,
@@ -260,6 +321,9 @@ fn trajectory_document(
                 "branch": branch,
                 "notices": notices,
                 "turn_outcomes": turn_outcomes,
+                "waste": {
+                    "repeated_command_heads": waste_section(entries),
+                },
             }
         }),
         step_count,
