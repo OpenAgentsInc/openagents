@@ -93,6 +93,9 @@ pub const OUTPUT_LIMIT: usize = 30_000;
 /// two-minute build is exactly the thing a follow-up question wants to grep.
 pub const PERSIST_AFTER_SECS: u64 = 30;
 
+/// How to recover text from a persisted `cmd-N.log` without re-running (#244).
+const HISTORY_RECALL_GREP: &str = r#"Call `history_recall` with {"_tag":"Grep","pattern":"..."} to answer questions about that file without re-running."#;
+
 /// The most an edit reply's region echo may add (#190).
 ///
 /// The echo exists so the model does not spend another call confirming the
@@ -2368,7 +2371,8 @@ pub fn check_duplicate_execution(cmd: &str) -> Option<String> {
                      first run's time again. Run it once with the output kept — append \
                      `2>&1 | tee /tmp/last-run.log`, or rely on the session log this session \
                      writes for long commands — then answer every follow-up question by \
-                     grepping that file instead of executing again."
+                     grepping that file instead of executing again. Call `history_recall` \
+                     to read what the earlier run printed."
                 ));
             }
             RepeatCost::Unsafe => {
@@ -2605,7 +2609,7 @@ async fn run_real_shell_logged(
                 let head = &combined[..cut_at];
                 match &persisted {
                     Some(path) => format!(
-                        "{}\n\n[Output truncated: printed {} characters, limit is {}. Full output kept at `{}`.]",
+                        "{}\n\n[Output truncated: printed {} characters, limit is {}. Full output kept at `{}`. {HISTORY_RECALL_GREP}]",
                         head,
                         total_len,
                         OUTPUT_LIMIT,
@@ -2644,7 +2648,10 @@ async fn run_real_shell_logged(
             // A timed-out command is precisely one whose later output nobody
             // has seen, so the kept transcript earns its file here too.
             let tail_note = match &persisted {
-                Some(path) => format!(" Partial output kept at `{}`.", path.display()),
+                Some(path) => format!(
+                    " Partial output kept at `{}`. {HISTORY_RECALL_GREP}",
+                    path.display()
+                ),
                 None => String::new(),
             };
             (
@@ -4255,6 +4262,14 @@ mod defect_tests {
             text.contains("Full output kept at"),
             "the excerpt names the file: {text}"
         );
+        assert!(
+            text.contains("history_recall"),
+            "the excerpt names recall as the way to read the log: {text}"
+        );
+        assert!(
+            text.contains(r#"{"_tag":"Grep","pattern":"..."}"#),
+            "the excerpt shows the Grep question shape: {text}"
+        );
 
         let log_path = text
             .split("Full output kept at `")
@@ -4265,6 +4280,19 @@ mod defect_tests {
         let logged = std::fs::read_to_string(&log_path).unwrap();
         assert!(logged.contains("END-MARKER"), "whole output survived");
         assert!(logged.len() > OUTPUT_LIMIT);
+    }
+
+    /// The truncation notice's recovery clause is the wording a follow-up
+    /// turn has to see; pin it without waiting on a 30-second persist.
+    #[test]
+    fn the_truncation_notice_points_at_history_recall() {
+        assert!(HISTORY_RECALL_GREP.contains("history_recall"));
+        assert!(
+            HISTORY_RECALL_GREP.contains(r#"{"_tag":"Grep","pattern":"..."}"#),
+            "{HISTORY_RECALL_GREP}"
+        );
+        let notice = format!("Full output kept at `cmd-3.log`. {HISTORY_RECALL_GREP}");
+        assert!(notice.contains("without re-running"), "{notice}");
     }
 
     #[tokio::test]
@@ -4299,6 +4327,10 @@ mod defect_tests {
         .expect("three runs of one suite are two too many");
         assert!(refusal.contains("pnpm run test:rust"), "{refusal}");
         assert!(refusal.contains("tee"), "the refusal names the way out");
+        assert!(
+            refusal.contains("history_recall"),
+            "the refusal names recall as the way to read the earlier run: {refusal}"
+        );
     }
 
     /// The regression this gate shipped with: it refused *every* repeated
