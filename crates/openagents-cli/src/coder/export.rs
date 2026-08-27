@@ -288,6 +288,24 @@ fn trajectory_document(
                 "turn_id": entry.turn_id,
             }));
         }
+        // A milestone note is the model's own words about its work, so it
+        // enters the trajectory as an agent step, not a notice (#189): a
+        // reader of the export sees the checkpoint beside the tool calls
+        // that led to it.
+        if entry.role == Role::Notice && entry.text.starts_with("Checkpoint: ") {
+            let mut step = json!({
+                "step_id": 0,
+                "timestamp": iso_for_ms(entry.at),
+                "source": "agent",
+                "message": entry.text.replacen("Checkpoint: ", "", 1),
+                "checkpoint": true,
+            });
+            if let Some(obj) = step.as_object_mut() {
+                obj.insert("step_id".to_string(), json!(steps.len() + 1));
+            }
+            steps.push(step);
+            continue;
+        }
 
         if let Some(mut step) = step_of(entry, model, entry.tool.as_ref()) {
             if let Some(obj) = step.as_object_mut() {

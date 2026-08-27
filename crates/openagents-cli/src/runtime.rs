@@ -2901,12 +2901,12 @@ impl CoderRuntimeSession {
             // keeps the argument as sent, not the tool's acknowledgement --
             // the acknowledgement is for the model, the note is for whoever
             // reads later.
-            if call.name == "checkpoint" && !result.is_error {
-                if let Some(text) = call.arguments.get("text").and_then(|v| v.as_str()) {
-                    if !text.trim().is_empty() {
-                        ran.push(ThreadRecord::checkpoint(text));
-                    }
-                }
+            if call.name == "checkpoint"
+                && !result.is_error
+                && let Some(text) = call.arguments.get("text").and_then(|v| v.as_str())
+                && !text.trim().is_empty()
+            {
+                ran.push(ThreadRecord::checkpoint(text));
             }
             self.messages.push(ChatMessage {
                 role: "tool".to_string(),
@@ -2919,18 +2919,18 @@ impl CoderRuntimeSession {
         // One countdown line, once per batch, on the reply the model reads
         // next. A model that learns its budget only by dying to it never
         // gets to wrap up; this is how it learns in time (#188).
-        if let Some(notice) = Self::budget_notice(self.last_calls) {
-            if let Some(last) = ran.last_mut() {
-                let mut output = last
-                    .payload
-                    .get("output")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                output.push_str("\n\n");
-                output.push_str(&notice);
-                last.payload["output"] = serde_json::Value::String(output);
-            }
+        if let Some(notice) = Self::budget_notice(self.last_calls)
+            && let Some(last) = ran.last_mut()
+        {
+            let mut output = last
+                .payload
+                .get("output")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            output.push_str("\n\n");
+            output.push_str(&notice);
+            last.payload["output"] = serde_json::Value::String(output);
         }
 
         ToolBatch {

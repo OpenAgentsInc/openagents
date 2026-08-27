@@ -576,3 +576,33 @@ mod tests {
         assert_eq!(file_mode, 0o600);
     }
 }
+
+#[cfg(test)]
+mod summary_tests {
+    use super::*;
+
+    /// A summary written before `last_checkpoint` existed still loads, and a
+    /// checkpoint written by one session is on the summary the next reads
+    /// (#189). The old sessions must not die for the new field.
+    #[test]
+    fn a_summary_without_a_checkpoint_still_loads_and_a_new_one_round_trips() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().join("repo");
+        std::fs::create_dir_all(&cwd).unwrap();
+
+        let loaded = LocalSessionStore::create(root.path(), &cwd, "flash", None, false).unwrap();
+        assert!(loaded.summary.last_checkpoint.is_none());
+        let directory = loaded.store.directory().to_path_buf();
+        let mut store = loaded.store;
+
+        store
+            .set_last_checkpoint("#152: tiers landed; cmd-log tests red; next: failing runs")
+            .unwrap();
+
+        let reloaded = LocalSessionStore::load_path(&directory).unwrap();
+        assert_eq!(
+            reloaded.summary.last_checkpoint.as_deref(),
+            Some("#152: tiers landed; cmd-log tests red; next: failing runs")
+        );
+    }
+}
