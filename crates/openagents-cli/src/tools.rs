@@ -1320,12 +1320,12 @@ pub fn command_heads(cmd: &str) -> Option<Vec<String>> {
         let parts: Vec<&str> = head.split(' ').collect();
         if parts.len() == 2 {
             let (first, second) = (parts[0], parts[1]);
-            let wants_third =
-                RUNNERS.contains(&first) && second == "run" || first == "git" && GIT_VERBS.contains(&second);
-            if wants_third {
-                if let Some(third) = next_word() {
-                    head = format!("{head} {third}");
-                }
+            let wants_third = RUNNERS.contains(&first) && second == "run"
+                || first == "git" && GIT_VERBS.contains(&second);
+            if wants_third
+                && let Some(third) = next_word()
+            {
+                head = format!("{head} {third}");
             }
         }
         heads.push(head);
@@ -1458,13 +1458,13 @@ async fn run_real_shell_logged(
     // truncated or not — because the truncation notice and the log pointer
     // together are what make the next question answerable without a rerun.
     let mut persisted: Option<PathBuf> = None;
-    if elapsed_secs >= PERSIST_AFTER_SECS {
-        if let Some(dir) = session_dir {
-            match write_command_log(dir, cmd, &stdout, &stderr) {
-                Ok(path) => persisted = Some(path),
-                Err(error) => {
-                    tracing::warn!("could not persist shell output: {error}");
-                }
+    if elapsed_secs >= PERSIST_AFTER_SECS
+        && let Some(dir) = session_dir
+    {
+        match write_command_log(dir, cmd, &stdout, &stderr) {
+            Ok(path) => persisted = Some(path),
+            Err(error) => {
+                tracing::warn!("could not persist shell output: {error}");
             }
         }
     }
