@@ -1644,18 +1644,37 @@ enum RepeatCost {
 const RUNNERS: &[&str] = &["pnpm", "npm", "yarn", "bun", "npx", "pnpx"];
 
 /// The cargo subcommands that compile something.
-const CARGO_HEAVY: &[&str] = &["test", "build", "bench", "check", "clippy", "doc", "install", "run"];
+const CARGO_HEAVY: &[&str] = &[
+    "test", "build", "bench", "check", "clippy", "doc", "install", "run",
+];
 
 /// The git verbs that change state, for the unsafe classification. (`git
 /// stash pop` twice pops two different stashes; `git status` twice is free.)
 const GIT_MUTATIONS: &[&str] = &[
-    "commit", "push", "pull", "merge", "rebase", "reset", "revert",
-    "cherry-pick", "checkout", "switch", "restore", "stash", "rm",
-    "clean", "apply", "tag", "am", "bisect",
+    "commit",
+    "push",
+    "pull",
+    "merge",
+    "rebase",
+    "reset",
+    "revert",
+    "cherry-pick",
+    "checkout",
+    "switch",
+    "restore",
+    "stash",
+    "rm",
+    "clean",
+    "apply",
+    "tag",
+    "am",
+    "bisect",
 ];
 
 /// The other mutating commands whose repeat is a different action.
-const BARE_MUTATIONS: &[&str] = &["rm", "rmdir", "mv", "dd", "shred", "truncate", "kill", "pkill"];
+const BARE_MUTATIONS: &[&str] = &[
+    "rm", "rmdir", "mv", "dd", "shred", "truncate", "kill", "pkill",
+];
 
 fn repeat_cost(head: &str) -> RepeatCost {
     let mut words = head.split_whitespace();
