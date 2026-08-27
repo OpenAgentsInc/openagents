@@ -8,7 +8,36 @@
 - Observation window: 2026-08-20 through 2026-08-27, with a focused
   24-hour request-log sample ending at 2026-08-27 06:01 UTC
 - Safety boundary: this inventory reads resource metadata and redacted request
-  paths. It does not read secret values or modify infrastructure.
+  paths. It does not read secret values. The drain uses reversible scheduler
+  pauses before any service or data deletion.
+
+## Drain progress
+
+At 2026-08-27 08:13 UTC, the staging minute scheduler was paused. At
+2026-08-27 08:15 UTC, the production minute scheduler was paused. Both jobs now
+report `PAUSED`. The last observed successful requests were:
+
+- staging `/internal/cron` at 08:13:09 UTC;
+- production `/internal/cron` at 08:15:16 UTC;
+- `oa-cloud-run-bridge` `/v1/cloud-vm/readiness` at 08:13:10 UTC.
+
+The cron table has no retained task. Its entries belong to retired Khala
+capture and mobile flows, deprecated Pylon, Artanis, and Sarah runtimes, old
+Worker-only projections, old email and business automation, or a deliberate
+no-op trace pairer. Phoenix does not call the scheduler or use these jobs.
+
+An attempt to set the staging monolith minimum instance count from one to zero
+failed without changing the service. The cleanup principal lacks
+`iam.serviceAccounts.actAs` on the legacy default compute service account. Keep
+the service intact until an authorized operator scales or deletes it after the
+caller-observation window.
+
+The production authentication compatibility gate remains open. At 08:12 UTC,
+`auth.openagents.com` returned `200` for `/.well-known/jwks.json`, `400` for an
+incomplete `/authorize` request, and `200` for `/code/authorize`. The same
+paths on Phoenix `openagents.com` returned `404`. Do not delete the production
+monolith or old load balancer until Phoenix serves or explicitly retires those
+contracts.
 
 ## Decision
 
