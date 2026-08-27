@@ -2,5 +2,6 @@
 
 pub mod corpus;
 pub mod env;
+pub mod run;
 pub mod schemas;
 pub mod suite;

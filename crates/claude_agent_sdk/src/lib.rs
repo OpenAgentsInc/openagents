@@ -88,8 +88,8 @@ pub use options::{
     SandboxNetworkConfig, SandboxSettings, SettingSource, SystemPromptConfig,
 };
 pub use permissions::{
-    permission_handler, AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions,
-    PermissionHandler, PermissionRequest, PermissionRules, RulesPermissionHandler,
+    AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions, PermissionHandler,
+    PermissionRequest, PermissionRules, RulesPermissionHandler, permission_handler,
 };
 pub use protocol::{
     AssistantMessageError, KeepAliveMessage, ModelUsage, PermissionBehavior, PermissionDenial,
@@ -204,7 +204,10 @@ mod tests {
             .max_budget_usd(5.0)
             .include_partial_messages(true);
 
-        assert_eq!(options.model, Some("claude-sonnet-4-5-20250929".to_string()));
+        assert_eq!(
+            options.model,
+            Some("claude-sonnet-4-5-20250929".to_string())
+        );
         assert_eq!(options.max_turns, Some(10));
         assert_eq!(options.max_budget_usd, Some(5.0));
         assert!(options.include_partial_messages);
@@ -224,7 +227,9 @@ mod tests {
         }
 
         match deny {
-            PermissionResult::Deny { message, interrupt, .. } => {
+            PermissionResult::Deny {
+                message, interrupt, ..
+            } => {
                 assert_eq!(message, "Not allowed");
                 assert!(interrupt.is_none());
             }
@@ -232,7 +237,9 @@ mod tests {
         }
 
         match deny_interrupt {
-            PermissionResult::Deny { message, interrupt, .. } => {
+            PermissionResult::Deny {
+                message, interrupt, ..
+            } => {
                 assert_eq!(message, "Stop everything");
                 assert_eq!(interrupt, Some(true));
             }

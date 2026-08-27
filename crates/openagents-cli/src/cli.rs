@@ -1372,6 +1372,8 @@ pub struct GymArgs {
 pub enum GymAction {
     /// Discover and inspect benchmark suite manifests
     Suite(crate::gym::suite::SuiteArgs),
+    /// Execute and manage Gym runs
+    Run(crate::gym::run::RunArgs),
     /// Gym environment plumbing
     Env(crate::gym::env::EnvArgs),
     /// Walk the three local trace stores and write a corpus inventory
@@ -1411,9 +1413,15 @@ pub fn completion_script(shell: CompletionShell) -> String {
     String::from_utf8_lossy(&buffer).into_owned()
 }
 
-async fn run_gym(action: GymAction, json: bool) -> Result<(), crate::errors::CliError> {
+async fn run_gym(
+    action: GymAction,
+    api_base: &str,
+    token: Option<String>,
+    json: bool,
+) -> Result<(), crate::errors::CliError> {
     match action {
         GymAction::Suite(args) => crate::gym::suite::run_suite(args.action, json),
+        GymAction::Run(run) => crate::gym::run::run(run.action, api_base, token, json).await,
         GymAction::Env(env) => {
             crate::gym::env::run(env.action, json).await;
             Ok(())
@@ -1665,7 +1673,9 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Provider(provider) => run_provider(provider.action, cli.json),
         Commands::Box(b) => run_box(b.action, &api_base, token, cli.json).await,
         Commands::Computer(comp) => crate::computer::run(comp, &endpoint, cli.json).await,
-        Commands::Gym(gym) => or_fail(run_gym(gym.action, cli.json).await),
+        Commands::Gym(gym) => {
+            or_fail(run_gym(gym.action, &api_base, token.clone(), cli.json).await)
+        }
         Commands::Forum(forum) => {
             let client = crate::forum::ForumClient::new(&api_base, token);
             match forum.action {
@@ -1726,7 +1736,6 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
         Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
-        Commands::Gym(gym) => or_fail(run_gym(gym.action, cli.json).await),
         Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
         Commands::Swarm(swarm) => crate::swarm_args::run_swarm(swarm.action, cli.json).await,
         Commands::Update(update) => {

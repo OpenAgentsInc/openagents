@@ -191,7 +191,10 @@ pub struct SandboxSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     /// Auto-allow bash if sandboxed.
-    #[serde(rename = "autoAllowBashIfSandboxed", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "autoAllowBashIfSandboxed",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub auto_allow_bash_if_sandboxed: Option<bool>,
     /// Network configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
