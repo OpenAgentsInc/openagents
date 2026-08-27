@@ -1108,6 +1108,7 @@ fn install_panic_hook() {
 /// gets the plain fan-out wording.
 async fn session_tools(
     lane_name: &str,
+    api_base: &str,
     token: &Option<String>,
     child: crate::delegate::ChildOptions,
 ) -> HarnessToolRegistry {
@@ -1116,6 +1117,7 @@ async fn session_tools(
         DelegationGate {
             lane: lane_name.to_string(),
             user_token: token.clone(),
+            api_base: Some(api_base.to_string()),
             max_count: crate::delegate::MAX_DELEGATE_COUNT,
             child,
             acp_agents: crate::coder::acp::find_agents().await.unwrap_or_default(),
@@ -1140,7 +1142,7 @@ pub async fn run_tui(
         return run_without_a_terminal(args, api_base, token, repository, lane, resumed).await;
     }
 
-    let tools = session_tools(&lane_name, &token, args.child_options()).await;
+    let tools = session_tools(&lane_name, &api_base, &token, args.child_options()).await;
     let mut session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
     session.repository = repository;
@@ -1250,7 +1252,7 @@ async fn run_without_a_terminal(
         return Ok(());
     };
 
-    let tools = session_tools(&lane_name, &token, args.child_options()).await;
+    let tools = session_tools(&lane_name, &api_base, &token, args.child_options()).await;
     let mut session = CoderRuntimeSession::new(lane, Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
     session.repository = repository;
@@ -1317,6 +1319,7 @@ mod tests {
     async fn an_interactive_session_can_delegate() {
         let tools = session_tools(
             "glm-5.3-flash",
+            "https://example.invalid/api/v1",
             &Some("token".to_string()),
             Default::default(),
         )
@@ -1336,6 +1339,7 @@ mod tests {
     async fn the_gate_carries_this_sessions_lane_and_credential() {
         let tools = session_tools(
             "claude",
+            "https://example.invalid/api/v1",
             &Some("secret-token".to_string()),
             Default::default(),
         )

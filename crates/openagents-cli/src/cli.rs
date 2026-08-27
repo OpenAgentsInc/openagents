@@ -4669,6 +4669,7 @@ async fn run_headless_coder(
         crate::tools::DelegationGate {
             lane: lane_name.clone(),
             user_token: token.clone(),
+            api_base: Some(api_base.to_string()),
             max_count: crate::delegate::MAX_DELEGATE_COUNT,
             child: coder.child_options(),
             acp_agents: crate::coder::acp::find_agents().await.unwrap_or_default(),

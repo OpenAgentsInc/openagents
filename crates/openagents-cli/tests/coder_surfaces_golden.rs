@@ -40,6 +40,7 @@ fn registry() -> HarnessToolRegistry {
         DelegationGate {
             lane: "the parent lane".to_string(),
             user_token: None,
+            api_base: Some("https://example.invalid/api/v1".to_string()),
             max_count: 8,
             child: ChildOptions::default(),
             acp_agents: Vec::new(),

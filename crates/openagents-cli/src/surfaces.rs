@@ -58,7 +58,7 @@ pub mod tool_descriptions {
     /// `rust.openagents`
     pub const RUST_OPENAGENTS: &str = "Run the OpenAgents CLI commands (issue, project, repo, auth, etc.). Pass the arguments as a list without openagents itself.";
     /// `rust.delegate`
-    pub const RUST_DELEGATE: &str = "Run one prompt on independent child coding agents in parallel and return what each one found or did. Use it when work splits into parts that do not depend on each other: several files to change the same way, several hypotheses to check, several tests to run down. Each child is a full coding agent with its own shell tool, working in a git worktree of its own so children cannot overwrite each other, and it starts with no context from this conversation and cannot ask questions — so the prompt has to be self-contained. Every child runs the same prompt and each is told separately which number it is, so write the prompt for whichever child reads it: say \"read the file at your own number\" rather than naming one child. Children run on the session's child lane, falling back to `openagents` (this process, the OpenAgents proxy) when the session is on an inference tier name such as `flash`. The resolved child lane is {lane}. At most {max_count} children. Prefer one call with a count over several calls, and prefer `shell` over this for a single command — a child agent is for work worth a whole agent, not one line of output.{external}";
+    pub const RUST_DELEGATE: &str = "Run one self-contained task through a delegated coding agent. Set `agent` to `coder-mini` for a fresh in-process Coder with `read-only` tools by default, `explore` for a fixed read-only investigator, or `coder` for a fixed read-write agent. Coder Mini also accepts `tools` as `read-only`, `read-write`, or `all`; no built-in agent can delegate again. Omit `agent` to keep fan-out: independent children run the same prompt in separate git worktrees on {lane}, up to {max_count} children. Use `description` for an optional 3–5 word tool-call label. Every delegated agent starts with no context from this conversation and cannot ask questions, so the prompt must name the files, commands, constraints, and report. Prefer `shell` for one command; use an agent for work worth a separate coding session.{external}";
     /// `rust.capability`
     pub const RUST_CAPABILITY: &str = "Discover and load installed plugin capabilities: sandboxed, digest-pinned WebAssembly programs this machine already holds for common agent work. Before writing a script for a task, search here first — a capability that covers it is bounded, reviewable, and returns structured output. Call with `query` describing what you need to get the best matches; then call again with `name` set to the exact returned name to load it and make its dedicated tool available. Every later call to the loaded capability uses that exact name as the tool name.";
     /// `goal`
@@ -79,7 +79,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:86fa6a77b5796ea866c00ba68e57a32a0270809aca09289a55433c994c105871",
+        "sha256:d468b5381541909a7efc53a67feb773b3c07eb72cce1c87466b1b765f4e0ba60",
     ),
     (
         "catalog-lines",

@@ -311,6 +311,7 @@ impl Session {
             DelegationGate {
                 lane: lane_name.to_string(),
                 user_token: token.clone(),
+                api_base: Some(api_base.clone()),
                 max_count: crate::delegate::MAX_DELEGATE_COUNT,
                 // Coder takes no `--child-*` flags yet, so children start
                 // on the defaults. Set rather than defaulted at the struct so
@@ -804,6 +805,9 @@ pub fn tool_title(name: &str, arguments: &str) -> String {
         }),
         "capability" => string("name").or_else(|| string("query")),
         "delegate" => {
+            if let Some(description) = string("description") {
+                return format!("delegate {}", one_line(&description));
+            }
             let count = parsed
                 .get("count")
                 .and_then(|v| v.as_u64())
@@ -896,6 +900,13 @@ mod tests {
         assert_eq!(
             tool_title("delegate", r#"{"prompt":"read it","count":3}"#),
             "delegate ×3 read it"
+        );
+        assert_eq!(
+            tool_title(
+                "delegate",
+                r#"{"prompt":"read it","count":3,"description":"Audit auth module"}"#
+            ),
+            "delegate Audit auth module"
         );
         // A multi-line command is one line on the header, and says so.
         assert_eq!(

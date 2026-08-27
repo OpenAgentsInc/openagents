@@ -42,13 +42,14 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::watch;
 
 use crate::coder::acp::Agent;
 use crate::coder::acp_harness::{AcpFailure, AcpHarness, PermissionMode};
+use crate::coder::agents::{self, AgentDefinition, ToolPool};
 use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
@@ -348,6 +349,9 @@ pub struct DelegationGate {
     pub lane: String,
     /// The credential children spend against.
     pub user_token: Option<String>,
+    /// The inference API the parent uses. A Coder Mini child uses the same
+    /// endpoint instead of rediscovering process-global configuration.
+    pub api_base: Option<String>,
     /// The most children one call may start.
     pub max_count: usize,
     /// The `--child-*` flags the session was started with.
@@ -372,6 +376,19 @@ pub struct DelegationGate {
     /// error message; cleared at the top of every turn by
     /// [`crate::coder::runtime::Session::execute_turn`].
     pub acp_spent: Arc<AtomicBool>,
+}
+
+fn installed_agent_ids(gate: &DelegationGate) -> Vec<String> {
+    let mut ids = agents::BUILTIN_AGENTS
+        .iter()
+        .map(|agent| agent.id.to_string())
+        .collect::<Vec<_>>();
+    for agent in &gate.acp_agents {
+        if !ids.iter().any(|id| id == &agent.id) {
+            ids.push(agent.id.clone());
+        }
+    }
+    ids
 }
 
 pub struct HarnessToolRegistry {
@@ -402,22 +419,29 @@ pub struct HarnessToolRegistry {
     /// `.openagents/checks.json`. `None` means the repository has not opted
     /// in and the `check` tool is not declared.
     check_scopes: Option<crate::checks::ChecksConfig>,
+    /// The declarations an in-process delegated agent receives.
+    tool_pool: ToolPool,
 }
 
 impl HarnessToolRegistry {
     pub fn new(cwd: Option<PathBuf>) -> Self {
-        Self::build(cwd, None)
+        Self::build(cwd, None, ToolPool::All)
     }
 
     /// The registry a session gets when it may start children.
     pub fn with_delegation(cwd: Option<PathBuf>, gate: DelegationGate) -> Self {
-        Self::build(cwd, Some(gate))
+        Self::build(cwd, Some(gate), ToolPool::All)
     }
 
     /// The registry a delegated child gets: rooted at the child's own
     /// directory, and with no `delegate` tool.
     pub fn child(cwd: Option<PathBuf>) -> Self {
-        Self::build(cwd, None)
+        Self::build(cwd, None, ToolPool::All)
+    }
+
+    /// A fresh in-process delegated agent with a constructor-selected pool.
+    pub fn with_tool_pool(cwd: Option<PathBuf>, pool: ToolPool) -> Self {
+        Self::build(cwd, None, pool)
     }
 
     /// Point this session's shell logs at one directory, created on first
@@ -457,7 +481,11 @@ impl HarnessToolRegistry {
         self.session_dir = Some(dir);
     }
 
-    fn build(cwd: Option<PathBuf>, delegation: Option<DelegationGate>) -> Self {
+    fn build(
+        cwd: Option<PathBuf>,
+        delegation: Option<DelegationGate>,
+        tool_pool: ToolPool,
+    ) -> Self {
         let root =
             cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let catalog = plugins::discover_catalog(&root);
@@ -476,6 +504,7 @@ impl HarnessToolRegistry {
             host: Vec::new(),
             session_dir: None,
             check_scopes,
+            tool_pool,
         };
         registry.load_local_skills();
         registry
@@ -801,7 +830,16 @@ impl HarnessToolRegistry {
                         },
                         "agent": {
                             "type": "string",
-                            "description": "One installed external agent to hand the whole task to, instead of children on this session's lane. Each call may name at most one."
+                            "description": "The built-in `coder-mini`, `explore`, or `coder` agent, or one installed ACP agent. Omit this field to keep the existing fan-out behavior."
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "An optional 3–5 word label for the tool-call header."
+                        },
+                        "tools": {
+                            "type": "string",
+                            "enum": ["read-only", "read-write", "all"],
+                            "description": "The Coder Mini tool pool. Defaults to `read-only`; ACP agents ignore it."
                         },
                         "mode": {
                             "type": "string",
@@ -828,6 +866,9 @@ impl HarnessToolRegistry {
         }
 
         tools
+            .into_iter()
+            .filter(|tool| self.tool_pool.allows(&tool.name))
+            .collect()
     }
 
     pub async fn execute_tool(&self, call: &ToolCall) -> ToolOutput {
@@ -856,6 +897,18 @@ impl HarnessToolRegistry {
             return ToolOutput {
                 call_id: call.id.clone(),
                 output: CANCELLED_TOOL_RESULT.to_string(),
+                is_error: true,
+                duration_ms: 0,
+            };
+        }
+        if !self.tool_pool.allows(&call.name) {
+            return ToolOutput {
+                call_id: call.id.clone(),
+                output: format!(
+                    "Tool `{}` is not available in the {} delegated tool pool.",
+                    call.name,
+                    self.tool_pool.name()
+                ),
                 is_error: true,
                 duration_ms: 0,
             };
@@ -1035,6 +1088,22 @@ impl HarnessToolRegistry {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                 {
+                    if let Some(agent) = agents::find(wanted) {
+                        return self
+                            .delegate_to_builtin_agent(call, agent, gate, cancel)
+                            .await;
+                    }
+                    if !gate.acp_agents.iter().any(|agent| agent.id == wanted) {
+                        return ToolOutput {
+                            call_id: call.id.clone(),
+                            output: format!(
+                                "No agent named `{wanted}` is installed here. Installed: {}.",
+                                installed_agent_ids(gate).join(", ")
+                            ),
+                            is_error: true,
+                            duration_ms: 0,
+                        };
+                    }
                     if gate.acp_spent.swap(true, Ordering::SeqCst) {
                         return ToolOutput {
                             call_id: call.id.clone(),
@@ -1251,6 +1320,113 @@ impl HarnessToolRegistry {
                 }
             }
         }
+    }
+
+    fn delegate_to_builtin_agent<'a>(
+        &'a self,
+        call: &'a ToolCall,
+        agent: &'static AgentDefinition,
+        gate: &'a DelegationGate,
+        cancel: watch::Receiver<bool>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolOutput> + Send + 'a>> {
+        Box::pin(async move {
+            let make = |output: String, is_error: bool, duration_ms: u64| ToolOutput {
+                call_id: call.id.clone(),
+                output,
+                is_error,
+                duration_ms,
+            };
+            let Some(prompt) = call
+                .arguments
+                .get("prompt")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return make(
+                    "No task was given. `prompt` is required and must say what the agent does."
+                        .to_string(),
+                    true,
+                    0,
+                );
+            };
+
+            let pool = if agent.id == "coder-mini" {
+                match call
+                    .arguments
+                    .get("tools")
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    None => agent.pool,
+                    Some(value) => match ToolPool::parse(value) {
+                        Some(pool) => pool,
+                        None => {
+                            return make(
+                                format!(
+                                    "`{value}` is not a Coder Mini tool pool. Use `read-only`, \
+                                     `read-write`, or `all`."
+                                ),
+                                true,
+                                0,
+                            );
+                        }
+                    },
+                }
+            } else {
+                agent.pool
+            };
+
+            let tools = HarnessToolRegistry::with_tool_pool(Some(self.cwd.clone()), pool);
+            let tool_names = tools
+                .list_tools()
+                .into_iter()
+                .map(|tool| tool.name)
+                .collect::<Vec<_>>();
+            let mut runtime = crate::runtime::CoderRuntimeSession::new(
+                crate::runtime::Lane::from_str(&gate.lane),
+                gate.api_base.clone(),
+                gate.user_token.clone(),
+                tools,
+            );
+            runtime.set_tool_cancellation(cancel);
+            runtime.messages.push(crate::runtime::ChatMessage {
+                role: "system".to_string(),
+                content: Some(agents::system_prompt(agent, pool, &tool_names)),
+                tool_calls: None,
+                tool_call_id: None,
+                images: Vec::new(),
+            });
+
+            let started = Instant::now();
+            let result = runtime.execute_turn(prompt, |_| {}).await;
+            let duration = started.elapsed();
+            let tool_uses = runtime.last_calls;
+            let _ = runtime.finish().await;
+            let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+
+            match result {
+                Ok(report) => make(
+                    format!(
+                        "Done · {tool_uses} tool uses · {}s\n{}",
+                        duration.as_secs(),
+                        report.trim()
+                    ),
+                    false,
+                    duration_ms,
+                ),
+                Err(error) => make(
+                    format!(
+                        "{} failed after {tool_uses} tool uses and {}s: {error}",
+                        agent.label,
+                        duration.as_secs()
+                    ),
+                    true,
+                    duration_ms,
+                ),
+            }
+        })
     }
 
     /// Hand the whole task to one installed ACP agent: the `agent` parameter
@@ -3253,6 +3429,7 @@ mod tests {
             DelegationGate {
                 lane: "test".to_string(),
                 user_token: None,
+                api_base: None,
                 max_count: 2,
                 child: Default::default(),
                 acp_agents: Vec::new(),
@@ -3299,6 +3476,59 @@ mod tests {
                 "`{name}` is declared and unanswered"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn the_read_only_pool_refuses_write_and_edit() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::with_tool_pool(
+            Some(root.path().to_path_buf()),
+            ToolPool::ReadOnly,
+        );
+        let names = registry
+            .list_tools()
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["read", "bash", "skill"]);
+
+        for name in [
+            "write",
+            "edit",
+            "shell",
+            "delegate",
+            "openagents",
+            "capability",
+        ] {
+            let output = registry
+                .execute_tool(&ToolCall {
+                    id: name.to_string(),
+                    name: name.to_string(),
+                    arguments: serde_json::json!({}),
+                })
+                .await;
+            assert!(output.is_error, "`{name}` ran: {}", output.output);
+            assert!(output.output.contains("read-only"), "{}", output.output);
+        }
+    }
+
+    #[test]
+    fn the_read_write_and_all_pools_declare_their_exact_tools() {
+        let root = tempfile::tempdir().unwrap();
+        let names = |pool| {
+            HarnessToolRegistry::with_tool_pool(Some(root.path().to_path_buf()), pool)
+                .list_tools()
+                .into_iter()
+                .map(|tool| tool.name)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names(ToolPool::ReadWrite),
+            vec!["read", "write", "edit", "bash", "shell", "skill"]
+        );
+        let all = names(ToolPool::All);
+        assert!(all.contains(&"capability".to_string()), "{all:?}");
+        assert!(!all.contains(&"delegate".to_string()), "{all:?}");
     }
 
     // ───────────────────────────────────────────────── tools the host answers
@@ -4451,6 +4681,7 @@ mod defect_tests {
             DelegationGate {
                 lane: "test".to_string(),
                 user_token: None,
+                api_base: None,
                 max_count: 2,
                 child: Default::default(),
                 acp_agents: agents,
@@ -4496,6 +4727,15 @@ mod defect_tests {
             "{}",
             tool.description
         );
+        for builtin in ["coder-mini", "explore", "coder"] {
+            assert!(tool.description.contains(builtin), "{}", tool.description);
+        }
+        let properties = tool.parameters["properties"]
+            .as_object()
+            .expect("delegate properties");
+        for parameter in ["prompt", "count", "agent", "description", "tools", "mode"] {
+            assert!(properties.contains_key(parameter), "missing `{parameter}`");
+        }
 
         let (empty, _spent) = gate_with(Vec::new());
         let tool = empty
@@ -4514,8 +4754,8 @@ mod defect_tests {
     }
 
     #[tokio::test]
-    async fn an_agent_that_is_not_installed_is_refused_by_name() {
-        let (registry, _spent) = gate_with(vec![acp_agent("devin")]);
+    async fn an_unknown_agent_is_refused_by_name_with_the_installed_list() {
+        let (registry, spent) = gate_with(vec![acp_agent("devin")]);
         let (output, is_error) = run_delegate(
             &registry,
             serde_json::json!({"agent": "nobody", "prompt": "do it"}),
@@ -4524,6 +4764,44 @@ mod defect_tests {
         assert!(is_error);
         assert!(output.contains("nobody"), "{output}");
         assert!(output.contains("devin"), "{output}");
+        for builtin in ["coder-mini", "explore", "coder"] {
+            assert!(output.contains(builtin), "{output}");
+        }
+        assert!(
+            !spent.load(Ordering::SeqCst),
+            "an unknown name consumed the ACP allowance"
+        );
+    }
+
+    #[tokio::test]
+    async fn old_callers_without_agent_keep_the_fan_out() {
+        let (registry, spent) = gate_with(Vec::new());
+        let (output, is_error) = run_delegate(
+            &registry,
+            serde_json::json!({"prompt": "do it", "count": 2}),
+        )
+        .await;
+        assert!(!is_error, "{output}");
+        assert!(output.starts_with("No children were started:"), "{output}");
+        assert!(output.contains("there is no `test` lane"), "{output}");
+        assert!(!spent.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_builtin_agent_does_not_spend_the_acp_allowance() {
+        let (registry, spent) = gate_with(vec![acp_agent("devin")]);
+        let (output, is_error) = run_delegate(
+            &registry,
+            serde_json::json!({
+                "agent": "coder-mini",
+                "prompt": "inspect it",
+                "tools": "not-a-pool"
+            }),
+        )
+        .await;
+        assert!(is_error, "{output}");
+        assert!(output.contains("not-a-pool"), "{output}");
+        assert!(!spent.load(Ordering::SeqCst));
     }
 
     #[tokio::test]

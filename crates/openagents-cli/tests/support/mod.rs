@@ -35,6 +35,75 @@ pub async fn start_reporting_usage(chunks: Vec<&'static str>, usage: (u64, u64, 
     start_with(chunks, None, Some(usage)).await
 }
 
+/// Start a proxy that asks for one `read` call, then returns `answer`.
+pub async fn start_calling_read(path: String, answer: &'static str) -> StubProxy {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let base = format!("http://127.0.0.1:{port}/api/v1");
+    let grant_url = Arc::new(format!("http://127.0.0.1:{port}/proxy"));
+    let round = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let request = match read_request(&mut socket).await {
+                Some(request) => request,
+                None => continue,
+            };
+            let body = if request.starts_with("GET /api/v1/models") {
+                Some(r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#.to_string())
+            } else if request.starts_with("POST /api/v1/threads ") {
+                Some(format!(
+                    r#"{{"thread":{{"id":"th_mini"}},"grant":{{"token":"tok_test","url":"{grant_url}","model":"glm-5.3-flash"}}}}"#
+                ))
+            } else {
+                None
+            };
+            if let Some(body) = body {
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+                continue;
+            }
+
+            if request.starts_with("POST /proxy") {
+                let step = round.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let payload = if step == 0 {
+                    serde_json::json!({"choices":[{"delta":{"tool_calls":[{
+                        "index": 0,
+                        "id": "call_read",
+                        "function": {"name": "read", "arguments": serde_json::json!({"path": path}).to_string()}
+                    }]}}]})
+                } else {
+                    serde_json::json!({"choices":[{"delta":{"content": answer}}]})
+                };
+                let frame = format!("data: {payload}\n\ndata: [DONE]\n\n");
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{frame}",
+                    frame.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+                continue;
+            }
+
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}",
+                )
+                .await;
+            let _ = socket.flush().await;
+        }
+    });
+
+    StubProxy { base }
+}
+
 async fn start_with(
     chunks: Vec<&'static str>,
     gate: Option<tokio::sync::oneshot::Receiver<()>>,
