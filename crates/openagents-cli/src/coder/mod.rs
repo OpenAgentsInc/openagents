@@ -7,7 +7,6 @@
 
 pub mod acp;
 pub mod acp_harness;
-pub mod acp_tool;
 pub mod commands;
 pub mod credit;
 pub mod export;

@@ -4659,6 +4659,8 @@ async fn run_headless_coder(
             user_token: token.clone(),
             max_count: crate::delegate::MAX_DELEGATE_COUNT,
             child: coder.child_options(),
+            acp_agents: crate::coder::acp::find_agents().await.unwrap_or_default(),
+            acp_spent: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         },
     );
     let lane = crate::runtime::Lane::from_str(&lane_name);

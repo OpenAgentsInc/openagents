@@ -14,6 +14,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use openagents_cli::delegate::ChildOptions;
 use openagents_cli::runtime::{CoderRuntimeSession, Lane};
@@ -41,6 +42,8 @@ fn registry() -> HarnessToolRegistry {
             user_token: None,
             max_count: 8,
             child: ChildOptions::default(),
+            acp_agents: Vec::new(),
+            acp_spent: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         },
     )
 }
