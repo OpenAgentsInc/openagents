@@ -58,7 +58,7 @@ mod unix_pty {
     use std::os::unix::io::RawFd;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, MutexGuard};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -73,6 +73,7 @@ mod unix_pty {
     const FIRST_FRAME: Duration = Duration::from_secs(30);
     /// How long any later frame may take. The session's poll interval is 50ms.
     const REDRAW: Duration = Duration::from_secs(15);
+    static PTY_GATE: Mutex<()> = Mutex::new(());
 
     // ─────────────────────────────────────────────────── the stub deployment
 
@@ -291,6 +292,7 @@ mod unix_pty {
         /// drop.
         home: PathBuf,
         _stub: Stub,
+        _pty_gate: MutexGuard<'static, ()>,
     }
 
     impl Tui {
@@ -326,6 +328,10 @@ mod unix_pty {
             piped_stdin: bool,
             unknown_delay: Duration,
         ) -> Self {
+            // macOS can refuse concurrent openpty calls under a full workspace
+            // test run. One PTY at a time keeps this system-level oracle
+            // deterministic without weakening any assertion.
+            let pty_gate = PTY_GATE.lock().unwrap_or_else(|error| error.into_inner());
             let stub = Stub::start_with_credit_and_unknown_delay(credit, unknown_delay);
             let home = scratch_dir();
             let workdir = home.join("workdir");
@@ -404,6 +410,7 @@ mod unix_pty {
                 emulator,
                 home,
                 _stub: stub,
+                _pty_gate: pty_gate,
             }
         }
 

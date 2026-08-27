@@ -2,12 +2,14 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const TOKEN: &str = "portable-agent-computer-contract-token";
+static NEXT_STATE_DIR: AtomicU64 = AtomicU64::new(0);
 
 struct Daemon {
     child: Child,
@@ -29,11 +31,13 @@ fn start_daemon() -> Daemon {
     drop(listener);
     let addr = format!("127.0.0.1:{port}");
     let state_dir = std::env::temp_dir().join(format!(
-        "oa-portable-agent-computer-contract-{}",
+        "oa-portable-agent-computer-contract-{}-{}-{}",
+        std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT_STATE_DIR.fetch_add(1, Ordering::Relaxed)
     ));
     let auth_root = state_dir.join("auth");
     std::fs::create_dir_all(&auth_root).unwrap();

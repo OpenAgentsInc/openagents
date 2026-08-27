@@ -942,14 +942,18 @@ and deterministic Effect tests. Do not skip it merely because
 - **One completion gate:** `pnpm run check` is the repository definition of
   green for humans, agents, and owned CI. Run it before considering a task
   complete. It is exactly, in order,
-  `fmt:check` → `lint` → `check:fast` → `typecheck` → `test`, so "check green"
-  means the workspace formats, lints, passes every repository policy guard,
-  type-checks, and passes its tests. Measured on an owner machine it takes
-  about 5 minutes warm and about 17 minutes on a cold checkout. Format, lint,
-  and every policy guard together account for about 25 seconds of that, so
-  almost all of the cost is the two components that were missing. Do not
+  `fmt:check` → `lint` → `check:fast` → `typecheck` → `test:rust` → `test`, so
+  "check green" means the TypeScript and Rust workspaces format, lint, pass
+  every repository policy guard, type-check, and pass their tests. The Rust
+  component runs `cargo test --workspace`; it omits no workspace crate.
+  Measured on an owner machine, the Cargo component takes about 2 minutes warm,
+  which raises the warm completion gate from about 5 minutes to about 7
+  minutes. The previous cold measurement was about 17 minutes before Cargo
+  coverage joined the gate; the expanded cold gate has not been remeasured.
+  Format, lint, and every policy guard together account for about 25 seconds of
+  the non-Cargo work. Do not
   substitute a faster command and call the result green. Root `fmt:check`, `lint`, `check:fast`, `typecheck`, and `test` are its
-  components and are fine to run alone while iterating. When you run one alone,
+  components; `test:rust` is the Cargo component. They are fine to run alone while iterating. When you run one alone,
   name the component you ran and never describe it as the completion gate. `check` is a
   strict superset of the `check:fast` profile the pre-push hook invokes, so a
   green `check` is also a pushable tree, and the hook does not maintain a
