@@ -290,6 +290,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         TurnEffect::ReturnedIdle(_)
                     ) {
                         ui.loading = false;
+                        ui.turn_settled();
                         ui.waiting = None;
                         let mut canceled = Entry::new(Role::Notice, "Turn canceled.");
                         canceled.turn_id = Some(id.get());
@@ -873,6 +874,12 @@ fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent
                     .get("model")
                     .and_then(serde_json::Value::as_str)
                     .map(str::to_string);
+                // A restored answer carries its measured duration only when
+                // the store recorded one; older snapshots show the model
+                // alone (#216).
+                entry.duration_seconds = payload
+                    .get("duration_seconds")
+                    .and_then(serde_json::Value::as_u64);
                 entry.finish_text();
                 entry
             }
@@ -1136,6 +1143,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             }
             ui.entries.push(Entry::new(Role::Notice, why));
             ui.loading = false;
+            ui.turn_settled();
             ui.waiting = None;
             ui.scroll_override = None;
         }
@@ -1148,6 +1156,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 last.finish_text();
             }
             ui.loading = false;
+            ui.turn_settled();
             ui.waiting = None;
         }
         Control::Goal(goal) => ui.goal = goal,
@@ -1293,10 +1302,12 @@ async fn start_prompt(
     active_turn: &mut Option<ActiveTurn>,
 ) {
     ui.loading = true;
+    ui.turn_started();
     ui.waiting = None;
 
     let TurnEffect::Started(id) = turns.apply(TurnAction::Start) else {
         ui.loading = false;
+        ui.turn_started_at = None;
         return;
     };
 

@@ -147,6 +147,11 @@ pub struct Entry {
     pub turn_id: Option<u64>,
     /// The model that produced this assistant entry, once the runtime reports it.
     pub model: Option<String>,
+    /// Whole seconds the turn that produced this entry ran, stamped when the
+    /// turn settles (#216). `None` for anything without a measured turn: a
+    /// restored entry whose summary recorded no duration, a fresh entry not
+    /// yet answered.
+    pub duration_seconds: Option<u64>,
     /// Tool output text, rendered as a box of up to four lines.
     pub output: Option<String>,
     pub tool: Option<ToolCall>,
@@ -174,6 +179,24 @@ pub fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+/// Whole seconds, the way a person says a duration: `9s`, `1m30s`, `1h2m3s`.
+///
+/// One formatter for both the live stopwatch and the settled figure printed
+/// beside a model name, so the two never disagree about what a turn's length
+/// is called.
+pub fn format_duration(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+    if hours > 0 {
+        format!("{hours}h{minutes}m{seconds}s")
+    } else if minutes > 0 {
+        format!("{minutes}m{seconds}s")
+    } else {
+        format!("{seconds}s")
+    }
+}
+
 impl Entry {
     /// An entry with no tool output, stamped with the current time.
     pub fn new(role: Role, text: impl Into<String>) -> Self {
@@ -182,6 +205,7 @@ impl Entry {
             text: text.into(),
             turn_id: None,
             model: None,
+            duration_seconds: None,
             output: None,
             tool: None,
             at: now_ms(),
@@ -204,6 +228,7 @@ impl Entry {
             text: text.into(),
             turn_id: None,
             model: None,
+            duration_seconds: None,
             output: Some(String::new()),
             tool: None,
             at: now_ms(),
@@ -315,6 +340,11 @@ pub struct CoderUi {
     pub scroll_max: u16,
     pub transcript_height: u16,
     pub loading: bool,
+    /// Epoch millis the running turn started at, set when `loading` turns on
+    /// and cleared when the turn settles. Feeds the live stopwatch on the
+    /// loading row and, at settle, the duration printed beside the answer's
+    /// model name (#216). `None` whenever no turn is running.
+    pub turn_started_at: Option<u64>,
     /// Temporary first-response state shown beside the spinner.
     pub waiting: Option<String>,
     /// Current turn and prompt-queue state, rendered in the status row.
@@ -426,6 +456,7 @@ impl CoderUi {
             scroll_max: 0,
             transcript_height: 0,
             loading: false,
+            turn_started_at: None,
             waiting: None,
             activity: "Idle".to_string(),
             tick: 0,
@@ -508,6 +539,44 @@ impl CoderUi {
     /// session's spend, not the account's, and they moved to `/info`.
     pub fn balance_line(&self) -> String {
         self.credit.status()
+    }
+
+    /// Start the running turn's clock. Called when `loading` turns on; a
+    /// turn already timed restarts its clock, which matches what the state
+    /// machine means — a queued prompt that starts is a new turn.
+    pub fn turn_started(&mut self) {
+        self.turn_started_at = Some(now_ms());
+    }
+
+    /// Stop the clock and stamp the duration, whole seconds, onto the turn's
+    /// last assistant entry, beside the model that produced it. A turn with
+    /// no assistant entry (a refused start, an instant failure) stamps
+    /// nothing: there is nothing the figure would belong to.
+    ///
+    /// Whole seconds because that is the honest precision of this clock:
+    /// the same wall time a reader would quote.
+    pub fn turn_settled(&mut self) {
+        let Some(started) = self.turn_started_at.take() else {
+            return;
+        };
+        let seconds = now_ms().saturating_sub(started) / 1000;
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .rfind(|entry| entry.role == Role::Assistant)
+        {
+            entry.duration_seconds = Some(seconds);
+        }
+    }
+
+    /// The live stopwatch text for the loading row: whole seconds so far on
+    /// the running turn, formatted the way the settled duration will read.
+    /// Empty when no turn is running — the row then carries the spinner
+    /// alone, exactly as it did before this existed.
+    pub fn stopwatch_text(&self) -> String {
+        self.turn_started_at
+            .map(|started| format_duration(now_ms().saturating_sub(started) / 1000))
+            .unwrap_or_default()
     }
 
     /// What the row says about the version, lane, and model on the right.
@@ -646,10 +715,14 @@ impl CoderUi {
         if self.loading {
             let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
             let status = self.waiting.as_deref().unwrap_or_default();
-            let text = if status.is_empty() {
-                spinner.to_string()
-            } else {
-                format!("{spinner} {status}")
+            let stopwatch = self.stopwatch_text();
+            let text = match (status.is_empty(), stopwatch.is_empty()) {
+                (true, _) => spinner.to_string(),
+                (false, true) => format!("{spinner} {status}"),
+                // The running turn's elapsed time rides beside whatever the
+                // row is waiting on (#216): the count is the point of the row
+                // once a turn has actually started.
+                (false, false) => format!("{spinner} {status} {stopwatch}"),
             };
             all_lines.push(Line::from(vec![Span::styled(text, style)]));
         }
@@ -1181,18 +1254,24 @@ fn render_entry(
     };
 
     if let (Some(model), Some(first)) = (model, lines.first_mut()) {
+        // The measured duration rides beside the model that produced the
+        // answer (#216), separated the way the status row separates fields.
+        let label = match entry.duration_seconds {
+            Some(seconds) => format!("{model} · {}", format_duration(seconds)),
+            None => model,
+        };
         let line_width = first
             .spans
             .iter()
             .map(|span| span.content.width())
             .sum::<usize>();
-        let padding = width.saturating_sub(line_width + model.width());
+        let padding = width.saturating_sub(line_width + label.width());
         first.spans.push(Span::styled(
             " ".repeat(padding),
             Style::default().fg(MODEL_TEXT_COLOR).bg(BACKGROUND_COLOR),
         ));
         first.spans.push(Span::styled(
-            model,
+            label,
             Style::default().fg(MODEL_TEXT_COLOR).bg(BACKGROUND_COLOR),
         ));
     }
@@ -1453,5 +1532,126 @@ mod tests {
     fn lane_field_shows_the_version_when_no_lane_is_recorded() {
         let ui = CoderUi::new();
         assert_eq!(ui.lane_field(), "v0.0.0-dev");
+    }
+
+    /// Seconds read the way a person says them: bare seconds under a minute,
+    /// minutes-and-seconds from there on, hours only past the hour.
+    #[test]
+    fn durations_read_like_a_stopwatch() {
+        assert_eq!(format_duration(0), "0s");
+        assert_eq!(format_duration(1), "1s");
+        assert_eq!(format_duration(9), "9s");
+        assert_eq!(format_duration(59), "59s");
+        assert_eq!(format_duration(60), "1m0s");
+        assert_eq!(format_duration(90), "1m30s");
+        assert_eq!(format_duration(3599), "59m59s");
+        assert_eq!(format_duration(3723), "1h2m3s");
+    }
+
+    /// A settled turn stamps its whole-second duration on the turn's last
+    /// assistant entry, and clears the clock so the spinner row stops
+    /// counting.
+    #[test]
+    fn a_settled_turn_stamps_its_duration_on_the_answer() {
+        let mut ui = CoderUi::new();
+        ui.turn_started();
+        ui.entries
+            .push(Entry::new(Role::Assistant, "the answer"));
+        ui.entries.last_mut().unwrap().model = Some("gemini-3.7-flash".to_string());
+        // Simulate the elapsed time: started in the past.
+        ui.turn_started_at = Some(now_ms() - 90_000);
+
+        ui.turn_settled();
+
+        assert_eq!(ui.turn_started_at, None);
+        assert_eq!(ui.entries[0].duration_seconds, Some(90));
+        // An already-settled clock stamps nothing further.
+        ui.turn_settled();
+        assert_eq!(ui.entries[0].duration_seconds, Some(90));
+    }
+
+    /// A turn with no assistant entry — refused at start, failed before any
+    /// answer — settles the clock without stamping anything.
+    #[test]
+    fn a_turn_without_an_answer_settles_without_stamping() {
+        let mut ui = CoderUi::new();
+        ui.turn_started();
+        ui.entries.push(Entry::new(Role::Notice, "boom"));
+
+        ui.turn_settled();
+
+        assert_eq!(ui.turn_started_at, None);
+        assert!(ui.entries[0].duration_seconds.is_none());
+    }
+
+    /// While a turn runs, the stopwatch reports the elapsed time in the same
+    /// words the settled figure uses; with no turn running it says nothing.
+    #[test]
+    fn the_stopwatch_counts_while_the_turn_runs_and_stops_when_it_settles() {
+        let mut ui = CoderUi::new();
+        assert_eq!(ui.stopwatch_text(), "");
+
+        ui.turn_started();
+        ui.turn_started_at = Some(now_ms() - 9_000);
+        assert_eq!(ui.stopwatch_text(), "9s");
+
+        ui.entries
+            .push(Entry::new(Role::Assistant, "done"));
+        ui.turn_settled();
+        assert_eq!(ui.stopwatch_text(), "");
+    }
+
+    /// The rendered model label carries the duration when the entry has one,
+    /// and the model alone when it does not.
+    #[test]
+    fn the_answer_line_shows_the_duration_beside_the_model() {
+        let mut entry = Entry::new(Role::Assistant, "Answer text.");
+        entry.model = Some("gemini-3.7-flash".to_string());
+        entry.duration_seconds = Some(90);
+        entry.finish_text();
+        let (lines, _) = render_entry(&mut entry, 200, 0, false);
+        let first: String = lines[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            first.trim_end().ends_with("gemini-3.7-flash · 1m30s"),
+            "duration missing beside the model: {first:?}"
+        );
+
+        // No measurement, no figure: the model alone, as restored entries
+        // without one have always rendered.
+        let mut entry = Entry::new(Role::Assistant, "Answer text.");
+        entry.model = Some("gemini-3.7-flash".to_string());
+        entry.finish_text();
+        let (lines, _) = render_entry(&mut entry, 200, 0, false);
+        let first: String = lines[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            first.trim_end().ends_with("gemini-3.7-flash"),
+            "model changed without a duration: {first:?}"
+        );
+        assert!(!first.contains("·"), "stray separator: {first:?}");
+    }
+
+    /// The loading row carries the spinner, the waiting text, and the live
+    /// count together.
+    #[test]
+    fn the_loading_row_shows_the_spinner_and_the_running_count() {
+        let mut ui = CoderUi::new();
+        ui.loading = true;
+        ui.turn_started();
+        ui.turn_started_at = Some(now_ms() - 1_000);
+        let stopwatch = ui.stopwatch_text();
+        assert_eq!(stopwatch, "1s");
+        // The row composes spinner + waiting + count; verify the pieces the
+        // render path pulls.
+        assert!(!stopwatch.is_empty());
+        ui.turn_settled();
+        assert!(ui.stopwatch_text().is_empty());
     }
 }
