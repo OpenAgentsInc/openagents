@@ -15,13 +15,11 @@ import { CoderTaskRegistry } from "../src/coder-tasks.js";
 import type { CoderDelegation } from "../src/coder-session.js";
 
 describe("naming a lane", () => {
-  it("resolves Ox Alpha to the lane this process runs itself", () => {
-    // It is the same model whichever lane serves it — the child's grant is
-    // routed to OpenRouter's `stealth/ox-alpha` — so asking for Ox Alpha means
-    // the lane that costs no second agent and no second credential.
+  it("resolves OpenAgents to the lane this process runs itself", () => {
     expect(resolveChildLane("ox-alpha")).toBe(SELF_CHILD_LANE);
     expect(resolveChildLane("openagents")).toBe(SELF_CHILD_LANE);
     expect(selfChildLane(resolveChildLane("ox-alpha") ?? "")).toBe(true);
+    expect(childLaneName(resolveChildLane("ox-alpha") ?? "")).toBe("openagents");
   });
 
   it("still resolves opencode's own slug, so nothing that worked stops", () => {
@@ -42,16 +40,15 @@ describe("naming a lane", () => {
   it("reports a lane by the name a reader would recognise", () => {
     // Reached by slug or by alias, it reports the same name, so a caller can
     // tell whether the lane they asked for is the lane that answered.
-    expect(childLaneName(SELF_CHILD_LANE)).toBe("ox-alpha");
+    expect(childLaneName(SELF_CHILD_LANE)).toBe("openagents");
     expect(childLaneName("gemini")).toBe("gemini");
   });
 
   it("offers the names first, since those are what a call would say", () => {
-    expect(CHILD_MODELS.slice(0, 2)).toEqual(["ox-alpha", "openagents"]);
+    expect(CHILD_MODELS[0]).toBe("openagents");
     expect(CHILD_MODELS).toContain("gemini");
     expect(CHILD_MODELS).toContain("devin");
-    // One lane, two names for it, offered once each and not duplicated further.
-    expect(CHILD_MODELS.filter((name) => name === "ox-alpha")).toHaveLength(1);
+    expect(CHILD_MODELS).not.toContain("ox-alpha");
   });
 });
 
@@ -76,9 +73,9 @@ describe("choosing a lane in the tool call", () => {
     const { parameters, description } = delegateTool(delegation());
     const model = (parameters["properties"] as Record<string, { enum?: string[] }>)["model"];
 
-    expect(model?.enum).toContain("ox-alpha");
+    expect(model?.enum).toContain("openagents");
     expect(model?.enum).toContain("devin");
-    expect(description).toContain("ox-alpha");
+    expect(description).toContain("openagents");
   });
 
   it("offers no choice when the session runs children one way", () => {
@@ -96,7 +93,7 @@ describe("choosing a lane in the tool call", () => {
     );
 
     expect(output).toContain("no `gpt-9` lane");
-    expect(output).toContain("ox-alpha");
+    expect(output).toContain("openagents");
   });
 });
 
@@ -110,26 +107,22 @@ describe("saying what a lane is", () => {
     for (const name of CHILD_MODELS) {
       const resolved = resolveChildLane(name);
       expect(resolved).toBeDefined();
-      // `openagents` and `ox-alpha` are two names for one lane, described once.
-      const described = lane(name) ?? lane("ox-alpha");
+      const described = lane(name) ?? lane("openagents");
       expect(described?.harness).toBeTruthy();
       expect(described?.model).toBeTruthy();
       expect(described?.served).toBeTruthy();
     }
   });
 
-  it("says the two Ox Alpha lanes are the same model, differing in harness", () => {
-    const ours = lane("ox-alpha");
+  it("distinguishes the OpenAgents and opencode harnesses", () => {
+    const ours = lane("openagents");
     const theirs = lane("opencode/x-preview-f-free");
 
-    expect(ours?.model).toContain("Ox Alpha");
-    expect(theirs?.model).toContain("Ox Alpha");
-    expect(theirs?.model).toContain("same model");
-
-    // What actually differs.
+    expect(ours?.model).toContain("selected for this session");
+    expect(theirs?.model).toContain("OpenCode assigns");
     expect(ours?.harness).toContain("openagents");
     expect(theirs?.harness).toContain("opencode");
-    expect(ours?.served).toContain("OpenRouter");
+    expect(ours?.served).toContain("OpenAgents inference proxy");
     expect(theirs?.served).toContain("OpenCode Zen");
   });
 
@@ -156,7 +149,7 @@ describe("saying what a lane is", () => {
     const { description } = delegateTool({
       registry,
       fleet,
-      label: "openagents (ox-alpha)",
+      label: "openagents",
       models: CHILD_MODELS,
       fleetFor: () => ({ fleet, label: "x" }),
     } as unknown as CoderDelegation);

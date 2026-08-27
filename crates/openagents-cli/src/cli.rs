@@ -939,7 +939,7 @@ pub struct DelegateArgs {
 
     #[arg(
         long,
-        help = "Target harness lane (e.g. flash, free, devin, claude, codex). Defaults to ox-alpha, which spends this account's grant"
+        help = "Target harness lane (for example openagents, gemini, opencode/<model>, devin, claude, or codex). Defaults to openagents, which spends this account's grant"
     )]
     pub lane: Option<String>,
 

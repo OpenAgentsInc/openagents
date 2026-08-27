@@ -327,11 +327,19 @@ sleep 30
 
 /// A lane name that is not a lane is refused rather than quietly redirected.
 #[test]
-fn an_unknown_lane_is_not_silently_ox_alpha() {
+fn an_unknown_lane_is_refused_and_the_retired_alias_names_its_replacement() {
     assert!(ChildLane::known("claude"));
     assert!(ChildLane::known("opencode/x-preview-f-free"));
     assert!(!ChildLane::known("gemni"));
     assert!(!ChildLane::known(""));
+    assert!(ChildLane::parse("gemni").is_err());
+    assert_eq!(
+        ChildLane::parse("ox-alpha")
+            .expect("the compatibility alias remains accepted")
+            .label(),
+        "openagents (this process, the OpenAgents proxy)"
+    );
+    assert_eq!(ChildLane::renamed_alias("ox-alpha"), Some("openagents"));
 }
 
 // ──────────────────────────────────────────────────── the child's own thread
@@ -491,7 +499,7 @@ async fn a_delegated_child_ends_its_own_thread_by_saying_what_it_did() {
     let stub = proxy_stub().await;
     unsafe { std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin)); }
 
-    let supervisor = DelegationSupervisor::new(1, "glm-5.3-flash", Some("oat_test".to_string()))
+    let supervisor = DelegationSupervisor::new(1, "openagents", Some("oat_test".to_string()))
         .with_isolation(Isolation::None)
         .in_directory(Some(std::env::temp_dir()));
     let (results, _events) = run(&supervisor, "say something", None).await;
@@ -758,10 +766,10 @@ async fn the_delegate_tool_carries_the_sessions_child_options() {
 #[tokio::test]
 async fn the_delegate_tool_refuses_a_flag_its_lane_cannot_honour() {
     let options = child_options_from(&["oa", "coder", "--child-model", "gpt-5"]);
-    // glm-5.3-flash children run on the grant the server issues, which pins the
-    // model. There is no honouring `--child-model` there.
+    // OpenAgents children run on the grant the server issues, which pins the
+    // model. There is no honoring `--child-model` there.
     let report =
-        openagents_cli::delegate::fanout_for_tool("go", 1, "glm-5.3-flash", None, options, None).await;
+        openagents_cli::delegate::fanout_for_tool("go", 1, "openagents", None, options, None).await;
     assert!(
         report.starts_with("No children were started:"),
         "the tool ran a fan-out without the model it was given: {report}"

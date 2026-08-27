@@ -1331,7 +1331,7 @@ fn the_reported_isolation_is_the_one_the_children_get() {
 /// A fan-out that was given no `--lane` says which one it chose, and why that
 /// matters, before a child exists.
 ///
-/// `ox-alpha` is the one *delegation* lane that opens a thread per child and
+/// `openagents` is the delegation lane that opens a thread per child and
 /// spends this
 /// account's grant; the others shell out to a harness the reader installed.
 /// The header names the lane either way, so it cannot distinguish a lane that
@@ -1380,12 +1380,22 @@ fn a_fan_out_with_no_lane_says_which_lane_it_picked() {
 
     // Named explicitly, it is not a substitution and there is nothing to
     // report — otherwise this line would be noise on every run.
-    let named = run(Some("ox-alpha"));
+    let named = run(Some("openagents"));
     assert_eq!(named.status, Some(0), "stderr: {}", named.stderr);
     assert!(
         !named.stdout.contains("No --lane given"),
         "a lane the caller named was reported as a default: {}",
         named.stdout
+    );
+
+    let retired = run(Some("ox-alpha"));
+    assert_eq!(retired.status, Some(0), "stderr: {}", retired.stderr);
+    assert!(
+        retired
+            .stdout
+            .contains("ox-alpha delegation lane was renamed to openagents"),
+        "the retired alias did not report its current name: {}",
+        retired.stdout
     );
 
     for at in [&tmp, &plain] {

@@ -23,7 +23,7 @@
 //! - A child that fails is reported as failed, and a fan-out with any failed
 //!   child is a failed command.
 //!
-//! The lanes follow `coder-delegate.ts`: `ox-alpha` runs in this process on
+//! The lanes follow `coder-delegate.ts`: `openagents` runs in this process on
 //! the OpenAgents inference proxy with this session's tools; `claude`,
 //! `codex`, and `gemini`/`opencode/*` run the corresponding CLI on this
 //! machine; `devin` runs the Devin CLI as an ACP server ([`crate::acp`]).
@@ -68,7 +68,7 @@ pub struct ChildWorkerResult {
     /// The child's answer when it succeeded, or why it did not.
     pub output: String,
     pub duration_ms: u128,
-    /// The operating system process, for a child that is one. `ox-alpha` runs
+    /// The operating system process, for a child that is one. `openagents` runs
     /// in this process and reports `None`; what it starts are its `shell` tool
     /// subprocesses.
     pub pid: Option<u32>,
@@ -103,20 +103,20 @@ pub enum ChildEvent {
 
 /// The lane a fan-out runs on when `--lane` names none.
 ///
-/// It is not a neutral choice: `ox-alpha` is this process on the OpenAgents
+/// It is not a neutral choice: `openagents` is this process on the OpenAgents
 /// proxy, so every child on it opens a thread and spends this account's grant.
 /// The other lanes shell out to a harness the reader installed and pays for
 /// themselves. That is why omitting `--lane` is reported at the point of
 /// spending rather than left to be inferred from the header — see
 /// [`run_delegation`].
-pub const DEFAULT_CHILD_LANE: &str = "ox-alpha";
+pub const DEFAULT_CHILD_LANE: &str = "openagents";
 
 /// Which harness and model a child runs on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChildLane {
     /// This process, on the OpenAgents inference proxy, with this session's
     /// tools.
-    OxAlpha,
+    OpenAgents,
     /// The `opencode` CLI on this machine, with its own tools.
     Opencode { model: String },
     /// The Devin CLI as an ACP server.
@@ -128,45 +128,40 @@ pub enum ChildLane {
 }
 
 impl ChildLane {
-    pub fn parse(name: &str) -> Self {
+    pub fn parse(name: &str) -> Result<Self, String> {
         let lowered = name.trim().to_lowercase();
         match lowered.as_str() {
-            "gemini" | "gemini-flash" => ChildLane::Opencode {
+            "gemini" | "gemini-flash" => Ok(ChildLane::Opencode {
                 model: "gemini-3.7-flash".to_string(),
-            },
-            "devin" => ChildLane::Devin,
-            "claude" => ChildLane::Claude,
-            "codex" => ChildLane::Codex,
-            "ox-alpha" | "ox" | "openagents" => ChildLane::OxAlpha,
-            other if other.starts_with("opencode/") => ChildLane::Opencode {
-                model: other.trim_start_matches("opencode/").to_string(),
-            },
-            // An unknown name used to fall through to `ox-alpha` in silence, so
-            // a typo spent this account's budget on a lane the caller did not
-            // ask for. It still runs there, but the caller is told.
-            _ => ChildLane::OxAlpha,
+            }),
+            "devin" => Ok(ChildLane::Devin),
+            "claude" => Ok(ChildLane::Claude),
+            "codex" => Ok(ChildLane::Codex),
+            "openagents" | "ox-alpha" | "ox" => Ok(ChildLane::OpenAgents),
+            other if other.starts_with("opencode/") && other.len() > "opencode/".len() => {
+                Ok(ChildLane::Opencode {
+                    model: other.trim_start_matches("opencode/").to_string(),
+                })
+            }
+            _ => Err(format!(
+                "there is no `{name}` lane. This command runs children on: openagents, gemini, opencode/<model>, devin, claude, codex."
+            )),
         }
     }
 
     /// Whether [`ChildLane::parse`] recognised the name it was given.
     pub fn known(name: &str) -> bool {
-        let lowered = name.trim().to_lowercase();
-        matches!(
-            lowered.as_str(),
-            "gemini"
-                | "gemini-flash"
-                | "devin"
-                | "claude"
-                | "codex"
-                | "ox-alpha"
-                | "ox"
-                | "openagents"
-        ) || lowered.starts_with("opencode/")
+        Self::parse(name).is_ok()
+    }
+
+    /// The current lane name when `name` is a retired compatibility alias.
+    pub fn renamed_alias(name: &str) -> Option<&'static str> {
+        matches!(name.trim().to_lowercase().as_str(), "ox-alpha" | "ox").then_some("openagents")
     }
 
     pub fn label(&self) -> String {
         match self {
-            ChildLane::OxAlpha => "ox-alpha (this process, the OpenAgents proxy)".to_string(),
+            ChildLane::OpenAgents => "openagents (this process, the OpenAgents proxy)".to_string(),
             ChildLane::Opencode { model } => format!("opencode ({model})"),
             ChildLane::Devin => "devin (ACP over the Devin CLI)".to_string(),
             ChildLane::Claude => "claude (Claude Code print mode)".to_string(),
@@ -177,7 +172,7 @@ impl ChildLane {
     /// The binary this lane needs on `PATH`, if it needs one.
     pub fn binary(&self) -> Option<&'static str> {
         match self {
-            ChildLane::OxAlpha => None,
+            ChildLane::OpenAgents => None,
             ChildLane::Opencode { .. } => Some("opencode"),
             ChildLane::Devin => Some("devin"),
             ChildLane::Claude => Some("claude"),
@@ -418,7 +413,7 @@ impl DelegationSupervisor {
         events: mpsc::UnboundedSender<ChildEvent>,
         cancel: watch::Receiver<bool>,
     ) -> Result<Vec<ChildWorkerResult>, String> {
-        let lane = ChildLane::parse(&self.lane);
+        let lane = ChildLane::parse(&self.lane)?;
         let workspaces = plan.prepare(self.count).await?;
 
         let gate = Arc::new(Semaphore::new(self.max_parallel.max(1)));
@@ -516,7 +511,7 @@ async fn run_child(
     let id = task.id;
 
     let outcome = match &lane {
-        ChildLane::OxAlpha => {
+        ChildLane::OpenAgents => {
             let _ = events.send(ChildEvent::Started {
                 id,
                 lane: lane.label(),
@@ -581,10 +576,10 @@ async fn run_proxy_child(
     let tools = HarnessToolRegistry::child(Some(workspace.path.clone()));
     // The default lane, which resolves its model from the catalog. This used
     // to name `ox-alpha` directly, which is exactly the shape that goes stale:
-    // `ChildLane::OxAlpha` is a *harness* name meaning "in this process on the
+    // `ChildLane::OpenAgents` is a harness name meaning "in this process on the
     // OpenAgents proxy", and spending it as a model id tied every delegated
-    // child to one model's continued existence. The harness name is unchanged;
-    // only the model behind it is now asked for rather than assumed.
+    // child to one model's continued existence. The OpenAgents harness now
+    // asks the deployment for its default model instead of assuming one.
     let mut runtime = CoderRuntimeSession::new(Lane::default(), None, user_token, tools);
 
     let id = task.id;
@@ -882,7 +877,7 @@ pub fn harness_binary(lane: &ChildLane) -> String {
         ChildLane::Codex => ("OA_CHILD_CODEX", "codex"),
         ChildLane::Opencode { .. } => ("OA_CHILD_OPENCODE", "opencode"),
         ChildLane::Devin => ("OA_CHILD_DEVIN", "devin"),
-        ChildLane::OxAlpha => ("", ""),
+        ChildLane::OpenAgents => ("", ""),
     };
     std::env::var(variable)
         .ok()
@@ -967,7 +962,7 @@ pub fn harness_command(
             ],
         ),
         // Handled by their own runners; unreachable through this function.
-        ChildLane::OxAlpha => (String::new(), Vec::new()),
+        ChildLane::OpenAgents => (String::new(), Vec::new()),
         ChildLane::Devin => (binary, vec!["acp".to_string()]),
     }
 }
@@ -1140,7 +1135,7 @@ impl Harvest {
                     ChildLane::Codex => "codex",
                     ChildLane::Opencode { .. } => "opencode",
                     ChildLane::Devin => "devin",
-                    ChildLane::OxAlpha => "ox-alpha",
+                    ChildLane::OpenAgents => "openagents",
                 }
             ),
         }
@@ -1381,12 +1376,12 @@ pub async fn run_delegation(
         }
     };
 
-    if !ChildLane::known(&lane_name) {
-        fail(&format!(
-            "there is no `{lane_name}` lane. This command runs children on: ox-alpha, gemini, opencode/<model>, devin, claude, codex."
+    let lane = ChildLane::parse(&lane_name).unwrap_or_else(|problem| fail(&problem));
+    if let Some(current) = ChildLane::renamed_alias(&lane_name) {
+        say(format!(
+            "The {lane_name} delegation lane was renamed to {current}. Using {current}."
         ));
     }
-    let lane = ChildLane::parse(&lane_name);
 
     let asked_isolation = match args.isolation.as_deref() {
         None => Isolation::Worktree,
@@ -1646,7 +1641,11 @@ pub fn fanout_for_tool_cancellable(
         // A flag the lane cannot honour is reported to the caller rather than
         // dropped: the session asked for a model or a dry run and would otherwise
         // get a fan-out without either, with nothing said.
-        if let Err(why) = child.check(&ChildLane::parse(lane)) {
+        let resolved_lane = match ChildLane::parse(lane) {
+            Ok(resolved) => resolved,
+            Err(why) => return format!("No children were started: {why}"),
+        };
+        if let Err(why) = child.check(&resolved_lane) {
             return format!("No children were started: {why}");
         }
         // Children work where the session works. The version this replaces took
@@ -1672,7 +1671,7 @@ pub fn fanout_for_tool_cancellable(
             } else {
                 "children"
             },
-            ChildLane::parse(lane).label()
+            resolved_lane.label()
         )];
         lines.push(String::new());
         for result in &results {
@@ -1812,7 +1811,7 @@ mod child_option_tests {
             model: Some("anything".to_string()),
             ..ChildOptions::default()
         };
-        assert!(model.check(&ChildLane::OxAlpha).is_err());
+        assert!(model.check(&ChildLane::OpenAgents).is_err());
         assert!(model.check(&ChildLane::Devin).is_err());
         assert!(model.check(&ChildLane::Claude).is_ok());
 
@@ -1820,14 +1819,14 @@ mod child_option_tests {
             ask: true,
             ..ChildOptions::default()
         };
-        assert!(ask.check(&ChildLane::OxAlpha).is_err());
+        assert!(ask.check(&ChildLane::OpenAgents).is_err());
         assert!(ask.check(&ChildLane::Codex).is_ok());
 
         let config = ChildOptions {
             config: Some("/tmp/c.json".to_string()),
             ..ChildOptions::default()
         };
-        assert!(config.check(&ChildLane::OxAlpha).is_err());
+        assert!(config.check(&ChildLane::OpenAgents).is_err());
         assert!(
             config
                 .check(&ChildLane::Opencode {
@@ -1838,7 +1837,7 @@ mod child_option_tests {
 
         // Nothing asked for, nothing refused, on any lane.
         for lane in [
-            ChildLane::OxAlpha,
+            ChildLane::OpenAgents,
             ChildLane::Devin,
             ChildLane::Claude,
             ChildLane::Codex,

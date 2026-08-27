@@ -401,7 +401,7 @@ mod tests {
         }
 
         let supervisor =
-            DelegationSupervisor::new(1, "glm-5.3-flash", None).with_isolation(Isolation::None);
+            DelegationSupervisor::new(1, "openagents", None).with_isolation(Isolation::None);
         let results = supervisor.dispatch("test task").await;
 
         unsafe {

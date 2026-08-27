@@ -281,7 +281,9 @@ export function parseClaudeEvent(line: string): DelegateEvent | undefined {
 
   if (type === "assistant") {
     const message = isRecord(event["message"]) ? event["message"] : undefined;
-    const content = Array.isArray(message?.["content"]) ? (message["content"] as unknown[]) : undefined;
+    const content = Array.isArray(message?.["content"])
+      ? (message["content"] as unknown[])
+      : undefined;
     if (content !== undefined && content.length > 0) {
       const first = isRecord(content[0]) ? content[0] : {};
       const blockType = stringField(first, "type");
@@ -324,7 +326,8 @@ export function parseClaudeEvent(line: string): DelegateEvent | undefined {
     }
 
     const resultText = stringField(event, "result");
-    if (resultText !== undefined && resultText.length > 0) return { type: "text", value: resultText };
+    if (resultText !== undefined && resultText.length > 0)
+      return { type: "text", value: resultText };
 
     return undefined;
   }
@@ -465,7 +468,10 @@ export function parseCodexEvent(line: string): DelegateEvent | undefined {
 }
 
 /** The phrase a Codex item is working on, whether it is a tool or a file. */
-function codexToolTarget(input: Record<string, unknown>, item: Record<string, unknown>): string | undefined {
+function codexToolTarget(
+  input: Record<string, unknown>,
+  item: Record<string, unknown>,
+): string | undefined {
   for (const key of [
     "command",
     "file_path",
@@ -504,8 +510,7 @@ function codexItemInput(item: Record<string, unknown>): Record<string, unknown> 
 function parseCodexItem(item: Record<string, unknown>): DelegateEvent | undefined {
   const role = stringField(item, "role");
   const itemType = stringField(item, "type") ?? "";
-  const isAssistant =
-    role === "assistant" || itemType === "assistant" || itemType === "message";
+  const isAssistant = role === "assistant" || itemType === "assistant" || itemType === "message";
 
   if (isAssistant) {
     const content = item["content"];
@@ -608,9 +613,10 @@ function describeHarnessError(event: Record<string, unknown>): string {
  */
 type MutableToolMeta = { -readonly [K in keyof CoderToolActivityMeta]: CoderToolActivityMeta[K] };
 
-function toolTarget(
-  state: Record<string, unknown> | undefined,
-): { readonly target: string | undefined; readonly meta?: CoderToolActivityMeta } {
+function toolTarget(state: Record<string, unknown> | undefined): {
+  readonly target: string | undefined;
+  readonly meta?: CoderToolActivityMeta;
+} {
   if (state === undefined) return { target: undefined };
 
   const title = stringField(state, "title");
@@ -621,7 +627,17 @@ function toolTarget(
   if (title !== undefined && title.length > 0) {
     target = title;
   } else if (input !== undefined) {
-    for (const key of ["filePath", "path", "file_path", "file", "command", "pattern", "query", "description", "url"]) {
+    for (const key of [
+      "filePath",
+      "path",
+      "file_path",
+      "file",
+      "command",
+      "pattern",
+      "query",
+      "description",
+      "url",
+    ]) {
       const value = stringField(input, key);
       if (value !== undefined && value.length > 0) {
         target = value;
@@ -658,8 +674,12 @@ function toolTarget(
     if (hits !== undefined) {
       meta.hitCount = hits;
     } else {
-      const matches = Array.isArray(output["matches"]) ? (output["matches"] as ReadonlyArray<unknown>).length : undefined;
-      const results = Array.isArray(output["results"]) ? (output["results"] as ReadonlyArray<unknown>).length : undefined;
+      const matches = Array.isArray(output["matches"])
+        ? (output["matches"] as ReadonlyArray<unknown>).length
+        : undefined;
+      const results = Array.isArray(output["results"])
+        ? (output["results"] as ReadonlyArray<unknown>).length
+        : undefined;
       if (matches !== undefined) meta.hitCount = matches;
       else if (results !== undefined) meta.hitCount = results;
     }
@@ -1278,16 +1298,16 @@ export const FREE_CHILD_MODELS: ReadonlyArray<string> = [
 export const SELF_CHILD_LANE = "openagents";
 
 export const CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
-  // `ox-alpha` means the self-hosted lane now. It is the same model either
-  // way — the server routes the child's grant to OpenRouter's
-  // `stealth/ox-alpha` — and running it here costs no second agent, no second
-  // credential, and no second idea of what a coding agent is. The opencode
-  // route to the same model is still reachable, by its own slug.
-  "ox-alpha": SELF_CHILD_LANE,
   [SELF_CHILD_LANE]: SELF_CHILD_LANE,
   gemini: SELF_CHILD_LANE,
   claude: "claude",
   codex: "codex",
+};
+
+/** Retired names that remain accepted but are not advertised as lanes. */
+export const DEPRECATED_CHILD_LANE_ALIASES: Readonly<Record<string, string>> = {
+  "ox-alpha": SELF_CHILD_LANE,
+  ox: SELF_CHILD_LANE,
 };
 
 /**
@@ -1322,23 +1342,18 @@ export interface ChildLane {
 
 export const CHILD_LANES: ReadonlyArray<ChildLane> = [
   {
-    name: "ox-alpha",
+    name: "openagents",
     harness: "openagents (this process, one `shell` tool)",
-    model: "Ox Alpha",
-    served:
-      "the OpenAgents inference proxy, routed to OpenRouter `stealth/ox-alpha`, on this session's thread grant",
+    model: "the model selected for this session's OpenAgents lane",
+    served: "the OpenAgents inference proxy, on this session's thread grant",
     bestFor: "work whose shape is the question: design, architecture, an open-ended refactor",
   },
   {
     name: "opencode/x-preview-f-free",
     harness: "opencode (a separate CLI on this machine, its own tools)",
-    // Named as the same model on purpose. The difference between this lane and
-    // the one above is the harness and the credential, and a description that
-    // implies two models sends a caller here for the wrong reason.
-    model: "Ox Alpha — the same model as `ox-alpha`, under opencode's name for it",
+    model: "the model OpenCode assigns to `x-preview-f-free`",
     served: "OpenCode Zen, on this machine's opencode credential",
-    bestFor:
-      "the same work as `ox-alpha`, when you want opencode's harness and tools instead of ours",
+    bestFor: "work that needs opencode's harness and tools",
   },
   {
     name: "gemini",
@@ -1383,12 +1398,7 @@ export const describeChildLane = (lane: ChildLane): string =>
   `Best for ${lane.bestFor}.`;
 
 export const CHILD_MODELS: ReadonlyArray<string> = [
-  // Deduplicated: `ox-alpha` and `openagents` are two names for one lane, and
-  // offering both in the enum would read as two choices.
-  ...new Set(Object.keys(CHILD_LANE_ALIASES)),
-  ...FREE_CHILD_MODELS,
-  "devin",
-  "claude",
+  ...new Set([...Object.keys(CHILD_LANE_ALIASES), ...FREE_CHILD_MODELS, "devin", "claude"]),
 ];
 
 /**
@@ -1409,6 +1419,8 @@ export const resolveChildLane = (name: string): string | undefined => {
   if (/^codex(:.+)?$/.test(asked)) return asked;
   const aliased = CHILD_LANE_ALIASES[asked];
   if (aliased !== undefined) return aliased;
+  const deprecated = DEPRECATED_CHILD_LANE_ALIASES[asked];
+  if (deprecated !== undefined) return deprecated;
   return FREE_CHILD_MODELS.includes(asked) ? asked : undefined;
 };
 
