@@ -30,6 +30,12 @@ pub struct SessionSummary {
     pub last_model: Option<String>,
     #[serde(default)]
     pub cloud_history: bool,
+    /// The model's own end-of-work note (#189): what landed, what is broken,
+    /// what is next. Written whenever the session records a checkpoint and
+    /// shown to whoever resumes the session, so a session that died mid-turn
+    /// -- to the budget, to a crash -- leaves its state in words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checkpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -84,6 +90,7 @@ impl LocalSessionStore {
             reasoning,
             last_model: None,
             cloud_history,
+            last_checkpoint: None,
         };
         write_summary(&directory, &summary)?;
         let store = Self {
@@ -213,6 +220,12 @@ impl LocalSessionStore {
 
     pub fn set_reasoning(&mut self, reasoning: Option<&str>) -> std::io::Result<()> {
         self.summary.reasoning = reasoning.map(str::to_string);
+        self.summary.updated_at_ms = now_ms();
+        write_summary(&self.directory, &self.summary)
+    }
+
+    pub fn set_last_checkpoint(&mut self, note: &str) -> std::io::Result<()> {
+        self.summary.last_checkpoint = Some(note.to_string());
         self.summary.updated_at_ms = now_ms();
         write_summary(&self.directory, &self.summary)
     }

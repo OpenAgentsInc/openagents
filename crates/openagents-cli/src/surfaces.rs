@@ -33,6 +33,10 @@ pub mod system_prompt {
     pub const CODER_LANE_LOCAL_RUST: &str = "You answer from a model running on this machine through Ollama. Nothing in this conversation leaves the machine and nothing is metered, but the context window is a fraction of a hosted model's, so keep large dumps out of the transcript.";
     /// `coder.lane.thread`
     pub const CODER_LANE_THREAD: &str = "You answer through the OpenAgents inference proxy, on a thread opened for this session. Every round of tool calls re-sends the whole conversation to a metered model, so batch independent commands into one call and keep large dumps out of the transcript.";
+    /// `coder.checkpoints`
+    pub const CODER_CHECKPOINTS: &str = "Record your work as you go with the `checkpoint` tool: after an issue lands green, when you hit and work around a blocker, when you switch to different work, and always before the turn's tool budget runs low. A checkpoint says which issue or task you were on, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. The note is what whoever picks this session up reads first -- including a future session of yours after this one ends mid-work.";
+    /// `coder.budget`
+    pub const CODER_BUDGET: &str = "Each turn has a tool-call budget; the countdown appears in tool results as it runs low. On a prompt covering several issues, budget the calls per issue and say the split before you start. If one defect eats more than its share, stop and say so instead of pushing through: a turn cut off at the budget ends with your report, and an honest report of half the work beats no report of all of it.";
 }
 
 /// The tool-description surface: `surfaces/coder/tool-descriptions.v1.json`.
@@ -57,6 +61,8 @@ pub mod tool_descriptions {
     pub const RUST_CAPABILITY: &str = "Discover and load installed plugin capabilities: sandboxed, digest-pinned WebAssembly programs this machine already holds for common agent work. Before writing a script for a task, search here first — a capability that covers it is bounded, reviewable, and returns structured output. Call with `query` describing what you need to get the best matches; then call again with `name` set to the exact returned name to load it and make its dedicated tool available. Every later call to the loaded capability uses that exact name as the tool name.";
     /// `goal`
     pub const GOAL: &str = "Report a state change on the active persistent task goal for this session. The goal's objective, status, and budget already accompany each turn; call this with action='complete' when the goal is done and verified, or 'block'/'pause'/'resume' to update its status.";
+    /// `rust.checkpoint`
+    pub const RUST_CHECKPOINT: &str = "Record one milestone note for this session: which issue or task, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. A few sentences. Write one at every natural milestone -- an issue implemented and green, a blocker hit and worked around, a switch to different work -- and always before the turn's tool budget runs low. The note is shown to whoever resumes this session, including a future session after this one dies; it is the difference between picking up the work and excavating it.";
 }
 
 /// Every staged surface and the digest of the artifact this was built from.
@@ -65,11 +71,11 @@ pub mod tool_descriptions {
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     (
         "system-prompt",
-        "sha256:9dcbe4755e1cdd317afefb3f2b4c694df17ca6aefe07680243c67b7ec7289b0c",
+        "sha256:f6c5556c9d05e5a82fce1de6b8d973e31633488137a2f55ca0416a7cac29c216",
     ),
     (
         "tool-descriptions",
-        "sha256:273000cab096e1adebaaed7143ced5480f7112d23e5c6e965e4a75052599599f",
+        "sha256:eda221619c2f8d0f06cf54460a2f9c226b6ad122c01027fd3d5dc2944c57d86e",
     ),
     (
         "catalog-lines",

@@ -84,6 +84,14 @@ pub const OUTPUT_LIMIT: usize = 30_000;
 /// two-minute build is exactly the thing a follow-up question wants to grep.
 pub const PERSIST_AFTER_SECS: u64 = 30;
 
+/// The most an edit reply's region echo may add (#190).
+///
+/// The echo exists so the model does not spend another call confirming the
+/// splice; a cap an order of magnitude under [`OUTPUT_LIMIT`] keeps the
+/// reply a reply. A change larger than the cap still edits fine -- only the
+/// echo is dropped, and the model reads the file as it always did.
+const ECHO_LIMIT: usize = 2_000;
+
 /// The names [`HarnessToolRegistry::execute_tool`] answers itself.
 ///
 /// A loaded plugin is dispatched from the fallthrough arm, *below* all five of
@@ -97,13 +105,14 @@ pub const PERSIST_AFTER_SECS: u64 = 30;
 /// session answers it with a refusal, which shadows a plugin just as
 /// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
 /// list and the arms in step.
-pub const BUILTIN_TOOL_NAMES: [&str; 9] = [
+pub const BUILTIN_TOOL_NAMES: [&str; 10] = [
     "read",
     "write",
     "edit",
     "bash",
     "shell",
     "skill",
+    "checkpoint",
     "openagents",
     "capability",
     "delegate",
@@ -621,9 +630,10 @@ impl HarnessToolRegistry {
                     "properties": {
                         "path": {"type": "string", "description": "The file to edit, relative to the working directory or an absolute path."},
                         "oldText": {"type": "string", "description": "The exact text to replace. It must appear in the file exactly once."},
-                        "newText": {"type": "string", "description": "What to put in its place. Empty deletes the old text."}
+                        "newText": {"type": "string", "description": "What to put in its place. Empty deletes the old text."},
+                        "edits": {"type": "array", "description": "Several edits to one file, applied in order; all land or none do, and one call prices one against the turn budget. Each element is an object with `oldText` and `newText`; `oldText`/`newText` are not used when this is present.", "items": {"type": "object", "properties": {"oldText": {"type": "string"}, "newText": {"type": "string"}}, "required": ["oldText", "newText"]}}
                     },
-                    "required": ["path", "oldText", "newText"]
+                    "required": ["path"]
                 }),
             },
             ToolDefinition {
@@ -659,6 +669,17 @@ impl HarnessToolRegistry {
                         "name": {"type": "string", "description": "The skill to read."}
                     },
                     "required": ["name"]
+                }),
+            },
+            ToolDefinition {
+                name: "checkpoint".to_string(),
+                description: text::RUST_CHECKPOINT.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string", "description": "The note: which issue or task, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. A few sentences."}
+                    },
+                    "required": ["text"]
                 }),
             },
             ToolDefinition {
@@ -872,6 +893,14 @@ impl HarnessToolRegistry {
                         is_error: true,
                         duration_ms: 0,
                     }
+                }
+            }
+            "checkpoint" => {
+                let (output, is_error) = answer_checkpoint(&call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
                 }
             }
             "openagents" => {
@@ -1781,6 +1810,34 @@ fn write_command_log(
     Ok(next)
 }
 
+/// The `checkpoint` tool: one milestone note, stored and replayed at resume.
+///
+/// The value is durability, not conversation: a session that dies mid-turn —
+/// cap, crash, cancel — leaves its last checkpoint on disk for the next
+/// session, which is exactly the reader the note is for (#189).
+fn answer_checkpoint(arguments: &serde_json::Value) -> (String, bool) {
+    let Some(text) = arguments.get("text").and_then(|v| v.as_str()) else {
+        return (
+            "Nothing was recorded: `text` is required and must be the note itself.".to_string(),
+            true,
+        );
+    };
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return (
+            "Nothing was recorded: the note was empty.".to_string(),
+            true,
+        );
+    }
+    (
+        format!(
+            "Checkpoint recorded ({} bytes). It will be shown when this session resumes.",
+            trimmed.len()
+        ),
+        false,
+    )
+}
+
 // ─────────────────────────────────────────────────────────── the file tools
 
 /// The absolute path `raw` names, or why the attempt failed.
@@ -1914,13 +1971,17 @@ fn answer_write(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
 /// surgical edit safe without a diff format. Both refusals return before the
 /// write, so a refused edit leaves the file exactly as it was.
 fn answer_edit(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
+    // The batch form: several edits over one file, applied in order, all or
+    // nothing. A turn's budget prices every call the same, so three separate
+    // edit calls cost three of the cap while one batched call costs one
+    // (#190) -- the 2026-08-27 session spent roughly forty percent of its
+    // calls on edit work that batching collapses.
+    if let Some(edits) = arguments.get("edits").and_then(|v| v.as_array()) {
+        return answer_edit_batch(cwd, arguments, edits);
+    }
     let raw = arguments.get("path").and_then(|v| v.as_str()).unwrap_or("");
     let old = arguments
         .get("oldText")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let new = arguments
-        .get("newText")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     if old.is_empty() {
@@ -1939,22 +2000,125 @@ fn answer_edit(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
         Err(error) => return (format!("Could not read `{raw}` to edit it: {error}."), true),
     };
 
+    match answer_edit_inner(&content, arguments) {
+        Ok((body, note)) => match write_atomically(&path, &body) {
+            Ok(()) => {
+                let new = arguments
+                    .get("newText")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let reply = format!(
+                    "Replaced {} bytes with {} in {}.",
+                    content.len() - body.len(),
+                    new.len(),
+                    path.display()
+                );
+                (with_region_echo(reply, &note, &body, new), false)
+            }
+            Err(error) => (format!("Could not write `{raw}`: {error}."), true),
+        },
+        Err(refusal) => (format!("Nothing was changed: {refusal}"), true),
+    }
+}
+
+/// Several edits over one file, applied in order, all or nothing (#190).
+///
+/// The per-edit results are computed against the running text as each lands,
+/// and one write at the end is the only durable change: a miss at any edit
+/// refuses the whole batch with the file untouched, which keeps the
+/// unique-match rule's guarantee -- a refused call changes nothing -- true
+/// for the batch the same way it is true for one edit.
+fn answer_edit_batch(
+    cwd: &Path,
+    arguments: &serde_json::Value,
+    edits: &[serde_json::Value],
+) -> (String, bool) {
+    let raw = arguments.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let path = match resolve_path(cwd, raw) {
+        Ok(path) => path,
+        Err(refusal) => return (refusal, true),
+    };
+    let mut content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(error) => return (format!("Could not read `{raw}` to edit it: {error}."), true),
+    };
+    let mut notes: Vec<String> = Vec::new();
+    for (index, one) in edits.iter().enumerate() {
+        let one_args = serde_json::json!({
+            "oldText": one.get("oldText").and_then(|v| v.as_str()).unwrap_or(""),
+            "newText": one.get("newText").and_then(|v| v.as_str()).unwrap_or(""),
+        });
+        match answer_edit_inner(&content, &one_args) {
+            Ok((next, note)) => {
+                content = next;
+                if !note.is_empty() {
+                    notes.push(format!("edit {}: {note}", index + 1));
+                }
+            }
+            Err(refusal) => {
+                return (
+                    format!(
+                        "Nothing was changed: edit {} of {} missed, so the whole batch was \
+                         refused and the file is untouched.\n\n{refusal}",
+                        index + 1,
+                        edits.len()
+                    ),
+                    true,
+                );
+            }
+        }
+    }
+    match write_atomically(&path, &content) {
+        Ok(()) => {
+            let mut reply = format!("Applied {} edits to {}.", edits.len(), path.display());
+            if !notes.is_empty() {
+                reply.push_str(" (");
+                reply.push_str(&notes.join("; "));
+                reply.push_str(".)");
+            }
+            (reply, false)
+        }
+        Err(error) => (
+            format!("Could not write `{raw}`: {error}."),
+            true,
+        ),
+    }
+}
+
+/// One edit over `content` held in memory: the file's own bytes for a single
+/// edit, the running text for an edit inside a batch. `Ok` carries the new
+/// text and any loose-tier note; `Err` is the refusal, with #160's
+/// diagnostics, and means the caller must write nothing.
+fn answer_edit_inner(
+    content: &str,
+    arguments: &serde_json::Value,
+) -> Result<(String, String), String> {
+    let old = arguments
+        .get("oldText")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let new = arguments
+        .get("newText")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if old.is_empty() {
+        return Err(
+            "`oldText` is required and must be the exact text to replace.".to_string(),
+        );
+    }
+
     // Exact first, always: the common case pays nothing, and what follows
     // only runs after the byte-for-byte search has already failed.
     match content.matches(old).count() {
         1 => {
             let site = content.find(old).expect("counted");
-            return finish_edit(&path, &content, site..site + old.len(), new, raw, "");
+            return Ok(finish_edit_in_memory(content, site..site + old.len(), new, ""));
         }
         hits if hits > 1 => {
-            return (
-                format!(
-                    "Nothing was changed: that `oldText` appears {hits} times in {raw} and it has to \
-                     appear exactly once. Add the lines above and below the one you mean until the \
-                     match is unique, then call again."
-                ),
-                true,
-            );
+            return Err(format!(
+                "That `oldText` appears {hits} times and it has to appear exactly once. Add the \
+                 lines above and below the one you mean until the match is unique, then call again."
+            ));
         }
         _ => {}
     }
@@ -1968,20 +2132,16 @@ fn answer_edit(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
     // whitespace the model did not reproduce -- becomes one clean edit
     // instead of three blind retries.
     for tier in MATCH_TIERS {
-        match locate(&content, old, tier.normalize) {
+        match locate(content, old, tier.normalize) {
             Locate::Unique(span) => {
-                let note = tier.note;
-                return finish_edit(&path, &content, span, new, raw, note);
+                return Ok(finish_edit_in_memory(content, span, new, tier.note));
             }
             Locate::Ambiguous(count) => {
-                return (
-                    format!(
-                        "Nothing was changed: `oldText` matches {count} places in {raw} once \
-                         whitespace or escape differences are ignored. Add the lines above and \
-                         below the one you mean until one place is left, then call again."
-                    ),
-                    true,
-                );
+                return Err(format!(
+                    "`oldText` matches {count} places once whitespace or escape differences \
+                     are ignored. Add the lines above and below the one you mean until one \
+                     place is left, then call again."
+                ));
             }
             Locate::Miss => {}
         }
@@ -1990,14 +2150,59 @@ fn answer_edit(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
     // Every tier missed. Show the nearest real text beside what was sent so
     // the next call repairs the needle instead of resending it.
     let mut message = format!(
-        "Nothing was changed: that `oldText` does not appear in {raw}, exactly or up to \
-         whitespace or backslash-escape differences."
+        "That `oldText` does not appear here, exactly or up to whitespace or \
+         backslash-escape differences."
     );
-    if let Some(report) = diagnose_miss(&content, old) {
+    if let Some(report) = diagnose_miss(content, old) {
         message.push_str("\n\n");
         message.push_str(&report);
     }
-    (message, true)
+    Err(message)
+}
+
+/// The changed region of a finished edit, appended to the reply (#190).
+///
+/// The next-best thing to the confirmatory read the model was going to pay a
+/// call for: the new text in place with a file line on each side, so the
+/// model can see the splice landed where it meant. Bounded at
+/// [`ECHO_LIMIT`], cut on a character boundary like every other bounded
+/// reply here.
+fn with_region_echo(mut reply: String, note: &str, body: &str, new: &str) -> String {
+    if !note.is_empty() {
+        reply.push_str(" (");
+        reply.push_str(note);
+        reply.push_str(".)");
+    }
+    if new.is_empty() {
+        return reply;
+    }
+    if let Some(site) = body.find(new) {
+        let before = &body[..site];
+        let after = &body[(site + new.len()).min(body.len())..];
+        let before_line = before
+            .rfind('\n')
+            .map(|at| &before[at + 1..])
+            .unwrap_or(before);
+        let after_line = after.split('\n').next().unwrap_or("");
+        let context = |line: &str, marker: &str| -> String {
+            let mut line = line;
+            let mut ellipsis = "";
+            if line.len() > 80 {
+                let at = floor_char_boundary(line, 80);
+                line = &line[..at];
+                ellipsis = "\u{2026}";
+            }
+            format!("{marker} {line}{ellipsis}\n")
+        };
+        let mut echo = String::from("\n\nThe file now reads, at the edit:\n");
+        echo.push_str(&context(before_line, "\u{2026}"));
+        echo.push_str(&context(new, "\u{b7}"));
+        echo.push_str(&context(after_line, "\u{2026}"));
+        if reply.len() + echo.len() <= ECHO_LIMIT {
+            reply.push_str(&echo);
+        }
+    }
+    reply
 }
 
 /// One rung of the edit rematch ladder.
@@ -2142,14 +2347,17 @@ fn locate(haystack: &str, needle: &str, normalize: fn(&str) -> String) -> Locate
 }
 
 /// Write the replacement and say whether a fallback rung did the finding.
-fn finish_edit(
-    path: &Path,
+/// Splice one edit into text held in memory and say what happened.
+///
+/// No write happens here: the caller owns durability, because a batch's
+/// edits must land as one write and a single edit writes once. Returns the
+/// new text and the loose-tier note, if a tier found the site.
+fn finish_edit_in_memory(
     content: &str,
     span: std::ops::Range<usize>,
     new: &str,
-    raw: &str,
     note: &str,
-) -> (String, bool) {
+) -> (String, String) {
     // Removing whole lines leaves their terminator behind; when `newText` is
     // empty the model asked for deletion, so the line's newline goes with it.
     let mut span = span;
@@ -2160,24 +2368,7 @@ fn finish_edit(
     body.push_str(&content[..span.start]);
     body.push_str(new);
     body.push_str(&content[span.end..]);
-    let replaced = span.end - span.start;
-    match write_atomically(path, &body) {
-        Ok(()) => {
-            let mut reply = format!(
-                "Replaced {} bytes with {} in {}.",
-                replaced,
-                new.len(),
-                path.display()
-            );
-            if !note.is_empty() {
-                reply.push_str(" (");
-                reply.push_str(note);
-                reply.push_str(".)");
-            }
-            (reply, false)
-        }
-        Err(error) => (format!("Could not write `{raw}`: {error}."), true),
-    }
+    (body, note.to_string())
 }
 
 /// Turn a total miss into something the next call can fix: anchor on the
@@ -2756,6 +2947,7 @@ mod tests {
                 "bash",
                 "shell",
                 "skill",
+                "checkpoint",
                 "openagents",
                 "capability",
                 "delegate"
@@ -2821,6 +3013,7 @@ mod tests {
                 "bash",
                 "shell",
                 "skill",
+                "checkpoint",
                 "openagents",
                 "capability",
                 "acp"

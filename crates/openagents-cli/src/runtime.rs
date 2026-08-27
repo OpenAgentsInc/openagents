@@ -263,6 +263,19 @@ pub const OLLAMA_HOST: &str = "http://127.0.0.1:11434";
 /// A backstop against a model that loops, not a budget.
 const MAX_TOOL_STEPS: usize = 100;
 
+/// Tool-call counts at which the countdown notice rides a tool result.
+///
+/// A model that learns its budget only by dying to it never gets to wrap up:
+/// session `1a0434b26a4` burned two full turns to the cap and died mid-fix
+/// with the work unreported (#188). The notice names the number left, so the
+/// model can spend the last calls finishing rather than discovering.
+const BUDGET_NOTICES: [usize; 4] = [50, 20, 5, 1];
+
+/// The tool-call counts a finished turn reports, as `turn.budget` in the
+/// transcript. Riding every turn's end keeps the cost of one turn visible
+/// without anyone reconstructing it from per-call records.
+const BUDGET_REPORT_AT: [usize; 3] = [25, 50, MAX_TOOL_STEPS];
+
 /// How many transcript events one append may carry.
 ///
 /// The server's own cap (`OpenAgents.Threads.maximum_event_batch/0`). A longer
@@ -702,6 +715,54 @@ impl ThreadRecord {
                 "usage": usage,
                 "calls": calls,
             }),
+        )
+    }
+
+    /// The turn reached its tool-call budget. Recorded as its own fact, not a
+    /// failure: the turn goes on to be finalized, and the transcript should
+    /// show the moment the budget bit (#188).
+    pub fn budget_reached(usage: TurnUsage, calls: usize) -> Self {
+        Self::new(
+            "turn.budget",
+            serde_json::json!({
+                "phase": "reached",
+                "calls": calls,
+                "usage": usage,
+            }),
+        )
+    }
+
+    /// The finish-and-report instruction the budget finalization sent, so the
+    /// next turn can see the model was asked for a summary and find it.
+    pub fn budget_instruction() -> Self {
+        Self::new(
+            "turn.budget",
+            serde_json::json!({
+                "phase": "finalization_prompted",
+            }),
+        )
+    }
+
+    /// What a turn spent, recorded when it crosses a report line. The same
+    /// counters `turn.failed` carries, attached to a turn that is still going.
+    pub fn budget_report(usage: TurnUsage, calls: usize) -> Self {
+        Self::new(
+            "turn.budget",
+            serde_json::json!({
+                "phase": "spent",
+                "calls": calls,
+                "usage": usage,
+            }),
+        )
+    }
+
+    /// The model's own milestone note: what landed, what is broken, next step
+    /// (#189). A turn that dies — to the budget, to a crash, to a cancel —
+    /// leaves this behind for whoever picks the work up.
+    pub fn checkpoint(text: &str) -> Self {
+        Self::new(
+            "turn.checkpoint",
+            serde_json::json!({ "text": text }),
         )
     }
 }
@@ -1191,6 +1252,10 @@ impl CoderRuntimeSession {
              Use the next model round to synthesize the result. Text from a tool-call round is \
              withheld from the reader."
                 .to_string(),
+            "".to_string(),
+            prompt::CODER_BUDGET.to_string(),
+            "".to_string(),
+            prompt::CODER_CHECKPOINTS.to_string(),
             "".to_string(),
         ];
 
@@ -1722,16 +1787,29 @@ impl CoderRuntimeSession {
 
     /// Record, keeping a refusal rather than failing the turn over it.
     pub async fn note(&mut self, events: Vec<ThreadRecord>) {
-        if let Some(store) = self.local_session.as_mut()
-            && let Err(error) = store.append(&events)
-        {
-            let kinds = events
-                .iter()
-                .map(|event| event.event_type.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            self.record_failures
-                .push(format!("{kinds} were not saved locally: {error}"));
+        if let Some(store) = self.local_session.as_mut() {
+            if let Err(error) = store.append(&events) {
+                let kinds = events
+                    .iter()
+                    .map(|event| event.event_type.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.record_failures
+                    .push(format!("{kinds} were not saved locally: {error}"));
+            }
+            // A checkpoint is more than an event: it is the note a resuming
+            // session is shown, so it also lands on the summary, which is
+            // the one file a resume reads before any replay (#189).
+            for event in &events {
+                if event.event_type == "turn.checkpoint" {
+                    if let Some(text) = event.payload.get("text").and_then(|v| v.as_str()) {
+                        if let Err(error) = store.set_last_checkpoint(text) {
+                            self.record_failures
+                                .push(format!("the checkpoint was not saved to the summary: {error}"));
+                        }
+                    }
+                }
+            }
         }
         self.note_cloud(&events).await;
     }
@@ -2091,11 +2169,36 @@ impl CoderRuntimeSession {
                 self.tell_stream(ModelStreamEvent::ContentDiscarded);
             }
             let ran = self.run_tools(step).await;
-            self.last_calls += ran.records.len();
             self.note(ran.records).await;
             if ran.cancelled {
                 return Err("The turn was canceled while its tools were running.".into());
             }
+            if self.last_calls >= MAX_TOOL_STEPS {
+                // The budget is spent. Instead of the old bare kill -- a
+                // `turn.failed` with no answer and the work unreported
+                // (#188's two dead turns) -- ask the model once to stop and
+                // report, tools withheld so the request is answerable, and
+                // treat the words it returns as the turn's final answer.
+                final_answer = self.finalize_turn_with_a_report(tool_defs).await?;
+                self.tell_stream(ModelStreamEvent::ContentCommitted);
+                self.messages.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: Some(final_answer.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    images: Vec::new(),
+                });
+                let said = ThreadRecord::assistant_on(
+                    &final_answer,
+                    self.last_usage,
+                    self.last_calls,
+                    self.last_model.as_deref(),
+                );
+                self.note(vec![said]).await;
+                answered = true;
+                break;
+            }
+            self.report_budget_milestones().await;
         }
 
         if !answered {
@@ -2103,6 +2206,214 @@ impl CoderRuntimeSession {
             return Err(self.record_failure(error_code::MAX_STEPS, why).await);
         }
         Ok(final_answer)
+    }
+
+    /// Ask the model for its end-of-turn report, tools withheld (#188).
+    ///
+    /// One model round, no tools declared: the cap is spent, so the only
+    /// useful move left is words. The reply is prefixed so a reader can tell
+    /// a budget report from a completed run. A model that answers the report
+    /// request with more tool calls gets one retry with the instruction
+    /// restated; anything further is what the old code did, a failure, but
+    /// now after the model has had its chance.
+    async fn finalize_turn_with_a_report(&mut self, tool_defs: &[ToolDefinition]) -> Result<String, Failure> {
+        self.note(vec![ThreadRecord::budget_reached(
+            self.last_usage,
+            self.last_calls,
+        )])
+        .await;
+        for attempt in 0..2 {
+            if attempt == 0 {
+                self.messages.push(ChatMessage {
+                    role: "user".to_string(),
+                    content: Some(
+                        "This turn has used its whole tool-call budget. Do not call tools now. \
+                         Reply with the state a reader needs to take over: what this turn was \
+                         doing, what landed (files, commits, test results), what is unfinished \
+                         or broken, and the exact next step. Be brief and concrete."
+                            .to_string(),
+                    ),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    images: Vec::new(),
+                });
+            } else {
+                self.messages.push(ChatMessage {
+                    role: "user".to_string(),
+                    content: Some(
+                        "No tools are available: the turn's budget is spent. Reply in words \
+                         only, with the state summary asked for."
+                            .to_string(),
+                    ),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    images: Vec::new(),
+                });
+            }
+            self.note(vec![ThreadRecord::budget_instruction()])
+                .await;
+            let step = self.step_thread_once(tool_defs).await?;
+            self.last_usage.add(step.usage);
+            self.last_reasoning.push_str(&step.reasoning);
+            if !step.reasoning.trim().is_empty() {
+                self.note(vec![ThreadRecord::reasoning(&step.reasoning)])
+                    .await;
+            }
+            if step.tool_calls.is_empty() {
+                self.note(vec![ThreadRecord::budget_report(
+                    self.last_usage,
+                    self.last_calls,
+                )])
+                .await;
+                return Ok(Self::finalize_answer(self.last_calls, step.content));
+            }
+            self.tell_stream(ModelStreamEvent::ContentDiscarded);
+            let ran = self.run_tools(step).await;
+            self.note(ran.records).await;
+            if ran.cancelled {
+                return Err("The turn was canceled while its tools were running.".into());
+            }
+        }
+        let why = "the model ended the turn without a final answer: asked twice to report its \
+                   state after the tool-call budget was spent, it kept calling tools"
+            .to_string();
+        Err(self.record_failure(error_code::MAX_STEPS, why).await)
+    }
+
+    /// One model round on the thread transport, whatever it yields.
+    ///
+    /// `tools` are declared empty so the model physically cannot spend the
+    /// budget it no longer has; the step still carries usage and reasoning,
+    /// which the finalization records like any other round.
+    async fn step_thread_once(&mut self, _tool_defs: &[ToolDefinition]) -> Result<StepAccumulator, Failure> {
+        let grant = match &self.last_grant {
+            Some(grant) => grant.clone(),
+            None => return Err("the turn's thread grant is gone".into()),
+        };
+        let req_body = serde_json::json!({
+            "model": grant.model,
+            "messages": chat_completion_messages(&self.messages),
+            "tools": [],
+            "stream": true
+        });
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", grant.token))?,
+        );
+        let resp = self
+            .http
+            .post(&grant.proxy_url)
+            .headers(headers)
+            .json(&req_body)
+            .send()
+            .await;
+        let resp = match resp {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                let status = r.status();
+                let body = r.text().await.unwrap_or_default();
+                let why = format!(
+                    "{} refused the turn: {status} {}",
+                    grant.proxy_url,
+                    snippet(&body)
+                );
+                return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+            }
+            Err(error) => {
+                let why = format!("{} could not be reached: {error}", grant.proxy_url);
+                return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+            }
+        };
+        let mut stream = resp.bytes_stream().eventsource();
+        let mut step = StepAccumulator::default();
+        loop {
+            match stream.next().await {
+                Some(Ok(event)) => {
+                    if event.data == "[DONE]" {
+                        break;
+                    }
+                    let Ok(json) = serde_json::from_str::<serde_json::Value>(&event.data) else {
+                        continue;
+                    };
+                    // The report is not streamed live: it is committed once,
+                    // below, with its budget prefix. Chunks land in the
+                    // accumulator only.
+                    let mut sink = |_chunk: &str| {};
+                    step.absorb_openai(&json, &mut sink);
+                }
+                Some(Err(error)) => {
+                    let why = format!(
+                        "the reply from {} stopped mid-stream: {error}",
+                        grant.proxy_url
+                    );
+                    return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
+                }
+                None => break,
+            }
+        }
+        Ok(step)
+    }
+
+    /// One no-tools round on the OpenResponses transport, for the budget
+    /// report. Same request the turn loop sends, tools withheld, stream read
+    /// to completion without painting the frame.
+    async fn step_responses_once(&mut self, model: Option<&str>) -> Result<StepAccumulator, Failure> {
+        let input = messages_to_responses_input(&self.messages);
+        let mut body = serde_json::json!({
+            "input": input,
+            "tools": [],
+            "stream": true
+        });
+        if let Some(model) = model {
+            body["model"] = serde_json::Value::String(model.to_string());
+        }
+        let url = format!("{}/responses", self.api_base);
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(token) = &self.user_token {
+            headers.insert(
+                AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {token}"))?,
+            );
+        }
+        let resp = self.http.post(&url).headers(headers).json(&body).send().await;
+        let resp = match resp {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                let status = r.status();
+                let response_body = r.text().await.unwrap_or_default();
+                let why = format!("{url} refused the turn: {status} {}", snippet(&response_body));
+                return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+            }
+            Err(error) => {
+                let why = format!("{url} could not be reached: {error}");
+                return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+            }
+        };
+        let mut stream = resp.bytes_stream().eventsource();
+        let mut step = StepAccumulator::default();
+        loop {
+            match stream.next().await {
+                Some(Ok(event)) => {
+                    if event.data == "[DONE]" {
+                        break;
+                    }
+                    let Ok(json) = serde_json::from_str::<serde_json::Value>(&event.data) else {
+                        continue;
+                    };
+                    let mut sink = |_chunk: &str| {};
+                    step.absorb_responses(&json, &mut sink);
+                }
+                Some(Err(error)) => {
+                    let why = format!("the reply from {url} stopped mid-stream: {error}");
+                    return Err(self.record_failure(error_code::STREAM_BROKEN, why).await);
+                }
+                None => break,
+            }
+        }
+        Ok(step)
     }
 
     async fn run_responses_turn<F>(
@@ -2348,11 +2659,42 @@ impl CoderRuntimeSession {
             }
 
             let ran = self.run_tools(step).await;
-            self.last_calls += ran.records.len();
             self.note(ran.records).await;
             if ran.cancelled {
                 return Err("The turn was canceled while its tools were running.".into());
             }
+            if self.last_calls >= MAX_TOOL_STEPS {
+                // The budget is spent on the OpenResponses transport too:
+                // one no-tools round, its words prefixed and committed as
+                // the answer (#188). `step_once_responses` shares the
+                // request shape the loop above uses, with tools withheld.
+                let step = self.step_responses_once(resolved_model.as_deref()).await?;
+                self.last_usage.add(step.usage);
+                self.last_reasoning.push_str(&step.reasoning);
+                if !step.reasoning.trim().is_empty() {
+                    self.note(vec![ThreadRecord::reasoning(&step.reasoning)])
+                        .await;
+                }
+                let report = Self::finalize_answer(self.last_calls, step.content);
+                self.tell_stream(ModelStreamEvent::ContentCommitted);
+                self.messages.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: Some(report.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    images: Vec::new(),
+                });
+                self.last_model = resolved_model.clone();
+                self.note(vec![ThreadRecord::assistant_on(
+                    &report,
+                    self.last_usage,
+                    self.last_calls,
+                    self.last_model.as_deref(),
+                )])
+                .await;
+                return Ok(report);
+            }
+            self.report_budget_milestones().await;
         }
 
         if !answered {
@@ -2375,7 +2717,78 @@ impl CoderRuntimeSession {
         self.note(vec![ThreadRecord::failed(&why, usage, calls)])
             .await;
         self.pending_failure = Some(ThreadOutcome::failed(code, &why));
-        why.into()
+        // The counters ride the sentence, not only the structured record:
+        // the sentence is what the live frame, the ATIF export notice, and
+        // this `Err` all carry. A diagnosis that needed a session-store dig
+        // to learn two turns died at 100 calls (#188) reads it here instead.
+        let mut with_budget = why;
+        if calls > 0 {
+            with_budget.push_str(&format!(
+                " ({} tool calls, {} tokens this turn)",
+                calls, usage.total_tokens
+            ));
+        }
+        with_budget.into()
+    }
+
+    /// The countdown line a tool result carries at a budget threshold.
+    ///
+    /// Tool output already names what the model must read; this names what it
+    /// must ration. A model that learns its budget only by dying to it never
+    /// gets to wrap up: session `1a0434b26a4` burned two full turns to the
+    /// cap and died mid-fix with the work unreported (#188). The notice says
+    /// how many calls are left, so the model can spend them finishing rather
+    /// than discovering the limit.
+    fn budget_notice(calls_used: usize) -> Option<String> {
+        let left = MAX_TOOL_STEPS.checked_sub(calls_used)?;
+        if !BUDGET_NOTICES.contains(&left) {
+            return None;
+        }
+        Some(format!(
+            "[Turn budget: {left} tool {} left before this turn is stopped and asked to report. \
+             Spend them finishing, or stop and report what landed, what is broken, and what is \
+             next.]",
+            if left == 1 { "call" } else { "calls" }
+        ))
+    }
+
+    /// The answer a finalizing turn records from the model's words (#188).
+    ///
+    /// The turn ended under budget rules, so this is a real answer, but it is
+    /// a report made at the cap, not a completed run: the prefix says so.
+    /// A model that complied with "no tools" by saying nothing gets the plain
+    /// fact instead of an invented summary.
+    fn finalize_answer(calls: usize, content: String) -> String {
+        if content.trim().is_empty() {
+            format!(
+                "The turn reached its tool-call limit ({calls}) before finishing, and the model \
+                 returned no summary. Work from the transcript: the last tool results show where \
+                 it stopped."
+            )
+        } else {
+            format!(
+                "[The turn reached its tool-call limit before finishing. The model's report of \
+                 where it stopped:]\n\n{content}"
+            )
+        }
+    }
+
+    /// Report the turn's spending when it crosses a report line.
+    ///
+    /// A model that can see what a turn has cost can pace the next one.
+    /// `turn.budget` carries the counters the failure record carries, at the
+    /// same moment, from the same source.
+    async fn report_budget_milestones(&mut self) {
+        for &line in &BUDGET_REPORT_AT {
+            if self.last_calls == line {
+                self.note(vec![ThreadRecord::budget_report(
+                    self.last_usage,
+                    self.last_calls,
+                )])
+                .await;
+                return;
+            }
+        }
     }
 
     /// Record that this session stopped before the turn in flight answered.
@@ -2460,6 +2873,10 @@ impl CoderRuntimeSession {
         }))
         .await;
 
+        // The countdown rides the results of the batch that crossed a
+        // threshold, on the last result of it: one line, in the place the
+        // model reads next. Attached after `last_calls` below is updated.
+        self.last_calls += calls.len();
         let mut ran = Vec::with_capacity(calls.len());
         let mut cancelled = false;
         for ((call, args_str), result) in calls.into_iter().zip(results) {
@@ -2478,6 +2895,19 @@ impl CoderRuntimeSession {
                 &result.output,
                 result.duration_ms,
             ));
+            // The checkpoint's own event, beside its tool record: `note`
+            // replays it into the transcript and, for a local session, onto
+            // the summary the next session resumes from (#189). The note
+            // keeps the argument as sent, not the tool's acknowledgement --
+            // the acknowledgement is for the model, the note is for whoever
+            // reads later.
+            if call.name == "checkpoint" && !result.is_error {
+                if let Some(text) = call.arguments.get("text").and_then(|v| v.as_str()) {
+                    if !text.trim().is_empty() {
+                        ran.push(ThreadRecord::checkpoint(text));
+                    }
+                }
+            }
             self.messages.push(ChatMessage {
                 role: "tool".to_string(),
                 content: Some(result.output),
@@ -2486,6 +2916,23 @@ impl CoderRuntimeSession {
                 images: Vec::new(),
             });
         }
+        // One countdown line, once per batch, on the reply the model reads
+        // next. A model that learns its budget only by dying to it never
+        // gets to wrap up; this is how it learns in time (#188).
+        if let Some(notice) = Self::budget_notice(self.last_calls) {
+            if let Some(last) = ran.last_mut() {
+                let mut output = last
+                    .payload
+                    .get("output")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                output.push_str("\n\n");
+                output.push_str(&notice);
+                last.payload["output"] = serde_json::Value::String(output);
+            }
+        }
+
         ToolBatch {
             records: ran,
             cancelled,
@@ -2737,11 +3184,33 @@ impl CoderRuntimeSession {
             // nothing; it is called anyway so a local session that resumed
             // somebody's thread records against it like any other.
             let ran = self.run_tools(step).await;
-            self.last_calls += ran.records.len();
             self.note(ran.records).await;
             if ran.cancelled {
                 return Err("The turn was canceled while its tools were running.".into());
             }
+            if self.last_calls >= MAX_TOOL_STEPS {
+                // The local lane gets the same soft landing (#188), with one
+                // no-tools round against the local model. Ollama answers a
+                // tools-less chat with words; the report is the answer.
+                let report = Self::finalize_answer(self.last_calls, self.step_local_report().await?);
+                self.tell_stream(ModelStreamEvent::ContentCommitted);
+                self.messages.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: Some(report.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    images: Vec::new(),
+                });
+                self.note(vec![ThreadRecord::assistant_on(
+                    &report,
+                    self.last_usage,
+                    self.last_calls,
+                    self.last_model.as_deref(),
+                )])
+                .await;
+                return Ok(report);
+            }
+            self.report_budget_milestones().await;
         }
 
         if !answered {
@@ -2749,6 +3218,59 @@ impl CoderRuntimeSession {
             return Err(self.record_failure(error_code::MAX_STEPS, why).await);
         }
         Ok(final_answer)
+    }
+
+    /// One no-tools round against the local model, for the budget report.
+    ///
+    /// Ollama takes plain chat; the instruction is pushed as a user message
+    /// and the reply is read whole, since the local lane streams NDJSON and
+    /// only the final content matters here.
+    async fn step_local_report(&mut self) -> Result<String, Failure> {
+        let notice = "This turn has used its whole tool-call budget. Reply in words only, \
+                      with the state a reader needs to take over: what this turn was doing, \
+                      what landed, what is unfinished or broken, and the exact next step. \
+                      Be brief and concrete.";
+        self.messages.push(ChatMessage {
+            role: "user".to_string(),
+            content: Some(notice.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            images: Vec::new(),
+        });
+        self.note(vec![ThreadRecord::budget_instruction()])
+            .await;
+        let Lane::Local(wanted) = self.lane.clone() else {
+            return Err("run_local_turn was called off the local lane".into());
+        };
+        let model = self.resolve_local_model(&wanted).await?;
+        let req_body = serde_json::json!({
+            "model": model,
+            "messages": self.messages.iter().map(ollama_message).collect::<Vec<_>>(),
+            "stream": false
+        });
+        let url = format!("{}/api/chat", self.ollama_host.trim_end_matches('/'));
+        let resp = self.http.post(&url).json(&req_body).send().await;
+        let resp = match resp {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                let status = r.status();
+                let body = r.text().await.unwrap_or_default();
+                let why = format!("{url} refused the turn: {status} {}", snippet(&body));
+                return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+            }
+            Err(error) => {
+                let why = format!("{url} could not be reached: {error}");
+                return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+            }
+        };
+        let value: serde_json::Value = resp.json().await?;
+        let text = value
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+            .to_string();
+        Ok(text)
     }
 }
 

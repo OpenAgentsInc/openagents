@@ -144,6 +144,18 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 entry.model = Some(ui.model.clone());
             }
         }
+        // The model's own last milestone note, ahead of the replayed
+        // transcript (#189): what landed, what is broken, what is next. A
+        // resume that has to re-derive this from raw tool records is the
+        // failure the checkpoint exists to prevent.
+        if let Some(note) = &loaded.summary.last_checkpoint {
+            if !note.trim().is_empty() {
+                ui.entries.push(Entry::new(
+                    Role::Notice,
+                    format!("Last checkpoint:\n{note}"),
+                ));
+            }
+        }
         ui.show_welcome = false;
     }
     let atif_directory = loaded.store.directory().to_path_buf();
@@ -895,7 +907,61 @@ fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent
                 });
                 entry
             }
-            "turn.failed" => Entry::new(Role::Notice, text("error")),
+            "turn.failed" => {
+                // The failure record carries what the ATIF notice used to
+                // drop (#188): the calls spent and the usage, so a diagnosis
+                // reads one line instead of a session-store dig.
+                let mut line = text("error");
+                let calls = payload.get("calls").and_then(serde_json::Value::as_u64);
+                let usage = payload.get("usage");
+                if calls.is_some() || usage.is_some() {
+                    line.push_str(" (");
+                    if let Some(calls) = calls {
+                        line.push_str(&format!("{calls} tool calls"));
+                    }
+                    if let Some(usage) = usage.and_then(|u| u.as_object()) {
+                        let total = usage
+                            .get("total_tokens")
+                            .and_then(serde_json::Value::as_u64);
+                        if let Some(total) = total {
+                            if calls.is_some() {
+                                line.push_str(", ");
+                            }
+                            line.push_str(&format!("{total} tokens"));
+                        }
+                    }
+                    line.push(')');
+                }
+                Entry::new(Role::Notice, line)
+            }
+            "turn.budget" => {
+                let phase = text("phase");
+                let calls = payload.get("calls").and_then(serde_json::Value::as_u64);
+                match phase.as_str() {
+                    "reached" => Entry::new(
+                        Role::Notice,
+                        format!(
+                            "Tool-call budget reached ({} calls). The model was asked to finish and report.",
+                            calls.map(|c| c.to_string()).unwrap_or_else(|| "?".into())
+                        ),
+                    ),
+                    "spent" => Entry::new(
+                        Role::Notice,
+                        format!(
+                            "Turn spending: {} tool calls.",
+                            calls.map(|c| c.to_string()).unwrap_or_else(|| "?".into())
+                        ),
+                    ),
+                    _ => continue,
+                }
+            }
+            "turn.checkpoint" => {
+                let note = text("text");
+                if note.trim().is_empty() {
+                    continue;
+                }
+                Entry::new(Role::Notice, format!("Checkpoint: {note}"))
+            }
             _ => continue,
         };
         entry.at = event.at_ms;
@@ -1502,7 +1568,11 @@ mod tests {
             vec![Role::You, Role::Reasoning, Role::Assistant, Role::Notice]
         );
         assert_eq!(ui.entries[2].model.as_deref(), Some("model/one"));
-        assert_eq!(ui.entries[3].text, "later failure");
+        // The restored failure carries the counters it died with (#188).
+        assert_eq!(
+            ui.entries[3].text,
+            "later failure (0 tool calls, 0 tokens)"
+        );
         assert_eq!(ui.entries[3].at, 40);
     }
 
