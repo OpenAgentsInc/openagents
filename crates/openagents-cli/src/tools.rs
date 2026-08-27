@@ -18,9 +18,11 @@
 //! they cannot drift apart. What the originals did not have is here because
 //! this repository has shipped and fixed each of them: a bounded cut steps
 //! back to a character boundary, a failure reports `is_error: true`, a refusal
-//! is output the model can read and retry from, `write` and `edit` stage and
-//! rename rather than truncating in place (#114), and no path leaves the
-//! session's working directory without the refusal saying where it went.
+//! is output the model can read and retry from, and `write` and `edit` stage
+//! and rename rather than truncating in place (#114). No file tool carries a
+//! working-directory jail (#151): a path may name anything on this machine,
+//! because `shell` always could, and constraining the three tools that cannot
+//! run a single command constrained nothing.
 //!
 //! `capability` searches the local catalog of digest-pinned WebAssembly
 //! plugins and loads one into the session, at which point the plugin's own
@@ -419,7 +421,7 @@ impl HarnessToolRegistry {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "path": {"type": "string", "description": "The file to read, relative to the working directory or absolute inside it."}
+                        "path": {"type": "string", "description": "The file to read, relative to the working directory or an absolute path."}
                     },
                     "required": ["path"]
                 }),
@@ -430,7 +432,7 @@ impl HarnessToolRegistry {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "path": {"type": "string", "description": "The file to write, relative to the working directory or absolute inside it."},
+                        "path": {"type": "string", "description": "The file to write, relative to the working directory or an absolute path."},
                         "content": {"type": "string", "description": "The complete new contents of the file."}
                     },
                     "required": ["path", "content"]
@@ -442,7 +444,7 @@ impl HarnessToolRegistry {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "path": {"type": "string", "description": "The file to edit, relative to the working directory or absolute inside it."},
+                        "path": {"type": "string", "description": "The file to edit, relative to the working directory or an absolute path."},
                         "oldText": {"type": "string", "description": "The exact text to replace. It must appear in the file exactly once."},
                         "newText": {"type": "string", "description": "What to put in its place. Empty deletes the old text."}
                     },
@@ -1184,26 +1186,32 @@ async fn run_real_shell(
 
 // ─────────────────────────────────────────────────────────── the file tools
 
-/// The absolute path `raw` names, or why this session will not touch it.
+/// The absolute path `raw` names, or why the attempt failed.
 ///
 /// A relative path is taken against the session's working directory. `..` is
-/// resolved here rather than by the filesystem, so a path that does not exist
-/// yet is checked too — `write` creates files, and a check that only worked on
-/// what already exists would be no check at all. Then the deepest part of the
-/// path that does exist is canonicalised, which is what catches a symlink
-/// inside the tree pointing out of it.
+/// collapsed lexically so a path that does not exist yet resolves the same
+/// way one that does: `write` creates files, and a resolution that depended
+/// on what already existed would resolve a create differently from a read of
+/// the same name. Symlinks are not followed here — the tool that opens the
+/// path lets the operating system do that, and lives with what it says.
 ///
-/// The refusal is the tool's output: it names where the path landed, so the
-/// model can retry with one inside rather than read an empty result.
-fn resolve_in_cwd(cwd: &Path, raw: &str) -> Result<PathBuf, String> {
+/// There is no working-directory jail here, deliberately (#151): a jail on
+/// these tools withheld nothing from the session — `shell` reaches every
+/// file on the machine unimpeded, including the ones that own the others
+/// (`cat`, `tee`, `rm`) — so the restriction was pure friction, and it fell
+/// hardest on `read`, the one tool built to avoid quoting through a shell.
+/// What constrains a file tool after this is the operating system's own
+/// permissions, which is also all that has ever constrained `shell`.
+fn resolve_path(cwd: &Path, raw: &str) -> Result<PathBuf, String> {
     if raw.trim().is_empty() {
         return Err("No `path` was given.".to_string());
     }
-    let base = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
     let joined = if Path::new(raw).is_absolute() {
         PathBuf::from(raw)
     } else {
-        base.join(raw)
+        cwd.canonicalize()
+            .unwrap_or_else(|_| cwd.to_path_buf())
+            .join(raw)
     };
 
     let mut lexical = PathBuf::new();
@@ -1217,29 +1225,7 @@ fn resolve_in_cwd(cwd: &Path, raw: &str) -> Result<PathBuf, String> {
         }
     }
 
-    if !nearest_existing(&lexical).starts_with(&base) {
-        return Err(format!(
-            "Refusing to touch `{raw}`: it resolves to {}, outside this session's working \
-             directory {}. Name a path inside it.",
-            lexical.display(),
-            base.display()
-        ));
-    }
     Ok(lexical)
-}
-
-/// The deepest ancestor of `path` that exists, resolved through symlinks.
-fn nearest_existing(path: &Path) -> PathBuf {
-    let mut probe = path;
-    loop {
-        if let Ok(real) = probe.canonicalize() {
-            return real;
-        }
-        match probe.parent() {
-            Some(parent) => probe = parent,
-            None => return path.to_path_buf(),
-        }
-    }
 }
 
 /// Write `content` to `path` by staging it beside the destination and renaming.
@@ -1273,7 +1259,7 @@ fn write_atomically(path: &Path, content: &str) -> std::io::Result<()> {
 /// The `read` tool: a file as text, or a refusal saying why not.
 fn answer_read(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
     let raw = arguments.get("path").and_then(|v| v.as_str()).unwrap_or("");
-    let path = match resolve_in_cwd(cwd, raw) {
+    let path = match resolve_path(cwd, raw) {
         Ok(path) => path,
         Err(refusal) => return (refusal, true),
     };
@@ -1309,7 +1295,7 @@ fn answer_write(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
             true,
         );
     };
-    let path = match resolve_in_cwd(cwd, raw) {
+    let path = match resolve_path(cwd, raw) {
         Ok(path) => path,
         Err(refusal) => return (refusal, true),
     };
@@ -1347,7 +1333,7 @@ fn answer_edit(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
             true,
         );
     }
-    let path = match resolve_in_cwd(cwd, raw) {
+    let path = match resolve_path(cwd, raw) {
         Ok(path) => path,
         Err(refusal) => return (refusal, true),
     };
@@ -2370,11 +2356,17 @@ mod defect_tests {
         assert!(worked.output.contains("ok"), "{}", worked.output);
     }
 
-    /// Nothing reaches a path outside the session's working directory, and the
-    /// refusal says so rather than failing somewhere further down with an
-    /// error about permissions.
+    /// No file tool carries a working-directory jail (#151): a path may name
+    /// anything on this machine. `shell` could always reach every one of
+    /// those files — `cat` reads, `tee` writes, and nothing between them
+    /// asks where the session started — so a jail on the three tools that
+    /// cannot run a command constrained nothing real. It cost a quoting-free
+    /// path on `read`, and on `write` legitimate destinations: a config into
+    /// `$HOME`, a fix under `/etc` while the session holds the host. What
+    /// limits any file tool now is the operating system's own permissions,
+    /// which is also all that has ever limited `shell`.
     #[tokio::test]
-    async fn a_path_outside_the_working_directory_is_refused_by_every_file_tool() {
+    async fn every_file_tool_serves_a_path_outside_the_working_directory() {
         let outside = tempfile::tempdir().unwrap();
         let secret = outside.path().join("secret.txt");
         std::fs::write(&secret, "not yours\n").unwrap();
@@ -2382,29 +2374,61 @@ mod defect_tests {
         let dir = tempfile::tempdir().unwrap();
         let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
 
-        for arguments in [
-            serde_json::json!({"path": "../escaped.txt", "content": "x", "oldText": "a", "newText": "b"}),
-            serde_json::json!({"path": secret.display().to_string(), "content": "x", "oldText": "not yours", "newText": "mine"}),
+        // Two shapes per tool — an absolute path outside, and a `..`
+        // traversal out of the working directory — in an order where every
+        // call succeeds: `write` establishes, `read` confirms what landed,
+        // `edit` changes it in place.
+        let escaped = "../escaped.txt";
+        registry
+            .execute_tool(&file_call(
+                "write",
+                serde_json::json!({"path": escaped, "content": "written\n"}),
+            ))
+            .await;
+        let through_read = registry
+            .execute_tool(&file_call("read", serde_json::json!({"path": escaped})))
+            .await;
+        assert!(!through_read.is_error, "{}", through_read.output);
+        assert_eq!(through_read.output, "written\n");
+        let through_edit = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({"path": escaped, "oldText": "written", "newText": "edited"}),
+            ))
+            .await;
+        assert!(!through_edit.is_error, "{}", through_edit.output);
+
+        let absolute = secret.display().to_string();
+        for (tool, arguments) in [
+            ("read", serde_json::json!({"path": absolute})),
+            (
+                "write",
+                serde_json::json!({"path": absolute, "content": "mine\n"}),
+            ),
+            (
+                "edit",
+                serde_json::json!({"path": absolute, "oldText": "mine", "newText": "ours"}),
+            ),
         ] {
-            for tool in ["read", "write", "edit"] {
-                let out = registry
-                    .execute_tool(&file_call(tool, arguments.clone()))
-                    .await;
-                assert!(out.is_error, "`{tool}` did not refuse: {}", out.output);
-                assert!(
-                    out.output
-                        .contains("outside this session's working directory"),
-                    "`{tool}` refused without saying why: {}",
-                    out.output
-                );
-            }
+            let out = registry.execute_tool(&file_call(tool, arguments)).await;
+            assert!(
+                !out.is_error,
+                "`{tool}` refused `{absolute}`: {}",
+                out.output
+            );
         }
 
+        // The traversal actually landed outside, so the assertions above are
+        // not passing because the resolver silently no-op'd.
+        let escaped_abs = dir.path().parent().unwrap().join("escaped.txt");
         assert_eq!(
-            std::fs::read_to_string(&secret).unwrap(),
-            "not yours\n",
-            "a refused write reached outside the working directory"
+            std::fs::read_to_string(&escaped_abs).unwrap(),
+            "edited\n",
+            "the ../ traversal did not escape"
         );
+        std::fs::remove_file(&escaped_abs).ok();
+
+        assert_eq!(std::fs::read_to_string(&secret).unwrap(), "ours\n");
     }
 
     /// `write` creates the parents, and it stages and renames — so the only

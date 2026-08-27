@@ -38,7 +38,7 @@ pub mod system_prompt {
 /// The tool-description surface: `surfaces/coder/tool-descriptions.v1.json`.
 pub mod tool_descriptions {
     /// `rust.read`
-    pub const RUST_READ: &str = "Read a file and return its whole contents as text. `path` is relative to the session's working directory, or an absolute path inside it; a path that resolves outside it is refused. Use this rather than `cat` through the shell — there is nothing to quote and nothing to escape.";
+    pub const RUST_READ: &str = "Read a file and return its whole contents as text. `path` may be relative to the session's working directory or absolute anywhere on this machine. Use this rather than `cat` through the shell — there is nothing to quote and nothing to escape.";
     /// `rust.write`
     pub const RUST_WRITE: &str = "Write `content` to `path`, creating parent directories and replacing any file already there. The file is staged beside its destination and renamed into place, so nothing else on this machine can read it half-written. Use this rather than a shell heredoc. To change part of a file use `edit` instead: it does not ask you to reproduce the rest.";
     /// `rust.edit`
@@ -69,7 +69,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:0e75085542a4f0b61da8a897f8baecc82fe3169cabb55c7a21ed67ac26a89e38",
+        "sha256:1742a3475b2dca0a778d3feb1782bc04df9e8a1dcfc0d9883016edc3df692c2d",
     ),
     (
         "catalog-lines",
