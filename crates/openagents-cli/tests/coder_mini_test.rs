@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 
 use openagents_cli::coder::runtime::Control;
 use openagents_cli::delegate::ChildOptions;
-use openagents_cli::delegate_result::{DelegateAgentResult, DelegateStatus};
+use openagents_cli::delegate_result::{DelegateAgentResult, DelegateStatus, WorktreeOutcome};
 use openagents_cli::tools::{DelegationGate, HarnessToolRegistry, ToolCall};
 
 #[tokio::test]
@@ -49,6 +49,13 @@ async fn a_coder_mini_run_reports_done_with_a_tool_use_count() {
     assert_eq!(result.total_tokens, 116);
     assert_eq!(result.model.as_deref(), Some("glm-5.3-flash"));
     assert_eq!(result.session_id.as_deref(), Some("th_mini"));
+    assert_eq!(result.worktree, WorktreeOutcome::Unused);
+    let raw: serde_json::Value = serde_json::from_str(&output.output).unwrap();
+    assert!(
+        raw.get("worktree").is_none(),
+        "a run without isolation must omit worktree: {}",
+        output.output
+    );
     assert_eq!(result.report, "Read the finding.");
     let shown = result.render();
     assert!(shown.starts_with("Done · 1 tool uses ·"), "{shown}");
@@ -233,10 +240,17 @@ async fn an_unchanged_worktree_is_removed() {
     let result = DelegateAgentResult::parse(&output.output)
         .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
     assert_eq!(result.status, DelegateStatus::Done);
+    assert_eq!(result.worktree, WorktreeOutcome::Removed);
+    let raw: serde_json::Value = serde_json::from_str(&output.output).unwrap();
     assert!(
-        result.worktree.is_none(),
-        "unchanged worktree leaked into the result: {:?}",
-        result.worktree
+        raw.get("worktree").unwrap().is_null(),
+        "removed worktree must be JSON null, not omitted: {}",
+        output.output
+    );
+    assert!(
+        result.render().contains("worktree removed (no changes)"),
+        "{}",
+        result.render()
     );
     assert_eq!(result.model.as_deref(), Some("glm-5.3-flash"));
     assert_eq!(result.session_id.as_deref(), Some("th_mini"));
@@ -277,7 +291,7 @@ async fn a_changed_worktree_is_kept_and_named() {
         .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
     let kept = result
         .worktree
-        .as_ref()
+        .as_kept()
         .unwrap_or_else(|| panic!("missing worktree: {}", output.output));
     assert!(
         kept.branch

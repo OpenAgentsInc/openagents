@@ -1770,7 +1770,7 @@ mod tests {
             model: Some("glm-5.3-flash".to_string()),
             session_id: Some("th_mini".to_string()),
             report: "the finding".to_string(),
-            worktree: None,
+            worktree: crate::delegate_result::WorktreeOutcome::Unused,
         };
         let mut entry = Entry::tool_call("delegate audit auth");
         entry.output = Some(result.to_json());

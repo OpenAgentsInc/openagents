@@ -1831,12 +1831,15 @@ pub fn fanout_for_tool_cancellable(
                 } else {
                     result.output
                 },
-                worktree: result
-                    .workspace
-                    .map(|path| crate::delegate_result::WorktreeRef {
-                        path: path.display().to_string(),
-                        branch: None,
-                    }),
+                worktree: match result.workspace {
+                    Some(path) => crate::delegate_result::WorktreeOutcome::Kept(
+                        crate::delegate_result::WorktreeRef {
+                            path: path.display().to_string(),
+                            branch: None,
+                        },
+                    ),
+                    None => crate::delegate_result::WorktreeOutcome::Unused,
+                },
             })
             .collect();
         crate::delegate_result::DelegateFanoutResult {

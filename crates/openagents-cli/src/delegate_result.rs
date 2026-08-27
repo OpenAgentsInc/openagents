@@ -3,7 +3,7 @@
 //! The parent model reads JSON. The TUI box still shows the S2/S3 trailer
 //! line, built from these fields rather than stored as prose.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// How one delegated agent finished.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -22,6 +22,50 @@ pub struct WorktreeRef {
     pub branch: Option<String>,
 }
 
+/// Isolation closeout. Missing from JSON when the run never made a worktree;
+/// `null` when it made one and removed it; an object when it kept one.
+///
+/// A live #245 session had to `ls` the temp path to tell those last two
+/// apart, because omitted and removed used to look the same.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum WorktreeOutcome {
+    #[default]
+    Unused,
+    Removed,
+    Kept(WorktreeRef),
+}
+
+impl WorktreeOutcome {
+    fn is_unused(&self) -> bool {
+        matches!(self, Self::Unused)
+    }
+
+    pub fn as_kept(&self) -> Option<&WorktreeRef> {
+        match self {
+            Self::Kept(worktree) => Some(worktree),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for WorktreeOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Unused | Self::Removed => serializer.serialize_none(),
+            Self::Kept(worktree) => worktree.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WorktreeOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match Option::<WorktreeRef>::deserialize(deserializer)? {
+            None => Self::Removed,
+            Some(worktree) => Self::Kept(worktree),
+        })
+    }
+}
+
 /// One child's outcome, matching the Task-tool S4 envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DelegateAgentResult {
@@ -35,8 +79,8 @@ pub struct DelegateAgentResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
     pub report: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub worktree: Option<WorktreeRef>,
+    #[serde(default, skip_serializing_if = "WorktreeOutcome::is_unused")]
+    pub worktree: WorktreeOutcome,
 }
 
 /// Fan-out (`count` > 1, no `agent`): the old one-line header plus one record
@@ -83,12 +127,18 @@ impl DelegateAgentResult {
             text.push('\n');
             text.push_str(self.report.trim());
         }
-        if let Some(worktree) = &self.worktree {
-            let branch = worktree.branch.as_deref().unwrap_or("HEAD");
-            text.push_str(&format!(
-                "\nworktree kept: {} (branch {branch})",
-                worktree.path
-            ));
+        match &self.worktree {
+            WorktreeOutcome::Kept(worktree) => {
+                let branch = worktree.branch.as_deref().unwrap_or("HEAD");
+                text.push_str(&format!(
+                    "\nworktree kept: {} (branch {branch})",
+                    worktree.path
+                ));
+            }
+            WorktreeOutcome::Removed => {
+                text.push_str("\nworktree removed (no changes)");
+            }
+            WorktreeOutcome::Unused => {}
         }
         text
     }
@@ -142,6 +192,20 @@ fn format_tokens(total: u64) -> String {
 mod tests {
     use super::*;
 
+    fn sample_result(worktree: WorktreeOutcome) -> DelegateAgentResult {
+        DelegateAgentResult {
+            status: DelegateStatus::Done,
+            agent: "coder-mini".to_string(),
+            total_tool_uses: 1,
+            duration_ms: 1000,
+            total_tokens: 10,
+            model: None,
+            session_id: None,
+            report: "ok".to_string(),
+            worktree,
+        }
+    }
+
     #[test]
     fn render_keeps_the_true_tool_use_count_when_a_box_would_clip() {
         let result = DelegateAgentResult {
@@ -153,7 +217,7 @@ mod tests {
             model: Some("glm-5.3-flash".to_string()),
             session_id: Some("th_mini".to_string()),
             report: "the finding".to_string(),
-            worktree: None,
+            worktree: WorktreeOutcome::Unused,
         };
         let shown = result.render();
         assert!(shown.starts_with("Done · 14 tool uses · 96s · 41.2k tokens · glm-5.3-flash"));
@@ -179,7 +243,7 @@ mod tests {
                     model: None,
                     session_id: None,
                     report: format!("child {id}"),
-                    worktree: None,
+                    worktree: WorktreeOutcome::Unused,
                 })
                 .collect(),
         };
@@ -199,6 +263,32 @@ mod tests {
         assert_eq!(
             displayed_delegate_output("ordinary tool output"),
             "ordinary tool output"
+        );
+    }
+
+    #[test]
+    fn unused_worktree_is_omitted_removed_is_null() {
+        let unused = sample_result(WorktreeOutcome::Unused).to_json();
+        let unused_json: serde_json::Value = serde_json::from_str(&unused).unwrap();
+        assert!(unused_json.get("worktree").is_none(), "{unused}");
+
+        let removed = sample_result(WorktreeOutcome::Removed);
+        let removed_json: serde_json::Value = serde_json::from_str(&removed.to_json()).unwrap();
+        assert!(removed_json.get("worktree").unwrap().is_null());
+        assert!(removed.render().contains("worktree removed (no changes)"));
+        let parsed = DelegateAgentResult::parse(&removed.to_json()).unwrap();
+        assert_eq!(parsed.worktree, WorktreeOutcome::Removed);
+
+        let kept = sample_result(WorktreeOutcome::Kept(WorktreeRef {
+            path: "/tmp/wt".to_string(),
+            branch: Some("agent-x".to_string()),
+        }));
+        let kept_json: serde_json::Value = serde_json::from_str(&kept.to_json()).unwrap();
+        assert_eq!(kept_json["worktree"]["path"], "/tmp/wt");
+        assert_eq!(kept_json["worktree"]["branch"], "agent-x");
+        assert!(
+            kept.render()
+                .contains("worktree kept: /tmp/wt (branch agent-x)")
         );
     }
 }

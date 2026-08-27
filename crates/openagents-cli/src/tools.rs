@@ -52,7 +52,7 @@ use crate::coder::acp::Agent;
 use crate::coder::acp_harness::{AcpFailure, AcpHarness, PermissionMode};
 use crate::coder::agents::{self, AgentDefinition, ToolPool};
 use crate::coder::runtime::Control;
-use crate::delegate_result::{DelegateAgentResult, DelegateStatus, WorktreeRef};
+use crate::delegate_result::{DelegateAgentResult, DelegateStatus, WorktreeOutcome, WorktreeRef};
 use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
@@ -1577,7 +1577,6 @@ impl HarnessToolRegistry {
             let tool_parent = call.id.clone();
             let stream_parent = call.id.clone();
             let content_buf = Arc::new(Mutex::new(LineBuffer::new()));
-            let reasoning_buf = Arc::new(Mutex::new(LineBuffer::new()));
             let tool_uses = Arc::new(AtomicUsize::new(0));
             let counted_uses = Arc::clone(&tool_uses);
             let mut runtime = crate::runtime::CoderRuntimeSession::new(
@@ -1627,10 +1626,10 @@ impl HarnessToolRegistry {
                             buf.push_lines(&chunk, emit_line);
                         }
                     }
-                    ModelStreamEvent::ReasoningDelta(chunk) => {
-                        if let Ok(mut buf) = reasoning_buf.lock() {
-                            buf.push_lines(&chunk, emit_line);
-                        }
+                    ModelStreamEvent::ReasoningDelta(_) => {
+                        // A live #245 session filled the parent box and the
+                        // ATIF export with the child's inner monologue, which
+                        // clipped the tool lines the box exists to show.
                     }
                     ModelStreamEvent::ContentCommitted => {
                         if let Ok(mut buf) = content_buf.lock() {
@@ -1640,9 +1639,6 @@ impl HarnessToolRegistry {
                     ModelStreamEvent::ContentDiscarded => {
                         if let Ok(mut buf) = content_buf.lock() {
                             buf.discard();
-                        }
-                        if let Ok(mut buf) = reasoning_buf.lock() {
-                            buf.flush(emit_line);
                         }
                     }
                 }
@@ -1680,15 +1676,15 @@ impl HarnessToolRegistry {
                 Some(ws) => {
                     let line = ws.close_if_unchanged().await;
                     if line.starts_with("worktree kept: ") {
-                        Some(WorktreeRef {
+                        WorktreeOutcome::Kept(WorktreeRef {
                             path: ws.path.display().to_string(),
                             branch: ws.branch.clone(),
                         })
                     } else {
-                        None
+                        WorktreeOutcome::Removed
                     }
                 }
-                None => None,
+                None => WorktreeOutcome::Unused,
             };
 
             let (status, report, is_error) = match result {
@@ -1912,7 +1908,7 @@ impl HarnessToolRegistry {
             model: None,
             session_id,
             report,
-            worktree: None,
+            worktree: WorktreeOutcome::Unused,
         };
         ToolOutput {
             call_id: call.id.clone(),
