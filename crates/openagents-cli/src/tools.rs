@@ -774,7 +774,7 @@ impl HarnessToolRegistry {
     pub async fn execute_tool_cancellable(
         &self,
         call: &ToolCall,
-        mut cancel: watch::Receiver<bool>,
+        cancel: watch::Receiver<bool>,
     ) -> ToolOutput {
         let started = std::time::Instant::now();
         let mut output = self.execute_tool_inner(call, cancel).await;
@@ -901,6 +901,7 @@ impl HarnessToolRegistry {
                     call_id: call.id.clone(),
                     output,
                     is_error,
+                    duration_ms: 0,
                 }
             }
             "openagents" => {
@@ -1712,12 +1713,7 @@ async fn run_real_shell_logged(
         }
     }
 
-    let mut combined = String::new();
-    combined.push_str(&String::from_utf8_lossy(&stdout));
-    combined.push_str(&String::from_utf8_lossy(&stderr));
-
     match end {
-        End::Status(Ok(status)) if status.success() => (combined, false),
         End::Status(Ok(status)) => {
             let mut combined = String::new();
             combined.push_str(&String::from_utf8_lossy(&stdout));
@@ -3621,107 +3617,59 @@ mod defect_tests {
         );
     }
 
-    /// A logged run leaves a file holding the command and everything it
-    /// printed, and the reply names that file (#152).
+    /// A run long enough to persist leaves the *command itself* in the log,
+    /// so a grep of the file says what produced the output it holds (#152).
     #[tokio::test]
-    async fn a_logged_shell_run_keeps_its_full_output_and_names_the_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let logs = dir.path().join("commands");
-        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()))
-            .with_session_log_dir(logs.clone());
+    async fn a_persisted_log_says_what_ran() {
+        let session = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        let command = "echo header-marker; sleep 31; echo tail-marker";
 
-        let out = registry
-            .execute_tool(&file_call(
-                "bash",
-                serde_json::json!({"command": "printf 'line one\\nline two\\n'"}),
-            ))
-            .await;
+        let (_stop, mut cancel) = watch::channel(false);
+        let (text, failed) =
+            run_real_shell_logged(command, work.path(), 60, &mut cancel, Some(session.path()))
+                .await;
+        assert!(!failed);
 
-        assert!(!out.is_error, "{}", out.output);
-        assert!(
-            out.output.contains("Full output of this run kept"),
-            "the reply must say the log exists: {}",
-            out.output
-        );
-        let log = read_named_log(&out.output, logs.as_path());
-        assert!(log.contains("printf"), "the command is recorded: {log}");
-        assert!(log.contains("line one"), "stdout is recorded: {log}");
+        let logs: Vec<_> = std::fs::read_dir(session.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("cmd-"))
+            .collect();
+        assert_eq!(logs.len(), 1, "one command, one log");
+        let logged = std::fs::read_to_string(logs[0].path()).unwrap();
+        assert!(logged.contains("header-marker"), "{logged}");
+        assert!(logged.contains("tail-marker"), "{logged}");
     }
 
-    /// The point of the log: a follow-up question about output that was cut
-    /// from the reply is answered by reading the file, not by paying for the
-    /// command again.
-    #[tokio::test]
-    async fn a_truncated_logged_run_still_has_everything_on_disk() {
-        let dir = tempfile::tempdir().unwrap();
-        let logs = dir.path().join("commands");
-        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()))
-            .with_session_log_dir(logs.clone());
 
-        let out = registry
-            .execute_tool(&file_call(
-                "bash",
-                serde_json::json!({"command": "seq 1 40000"}),
-            ))
-            .await;
 
-        assert!(!out.is_error, "{}", out.output);
-        assert!(out.output.contains("Output truncated"), "{}", out.output);
-        let log = read_named_log(&out.output, logs.as_path());
-        assert!(
-            log.contains("\n39999\n"),
-            "the truncated tail is recoverable from the log"
-        );
-        assert!(
-            out.output.contains(".log"),
-            "the reply names the file to read: {}",
-            out.output
-        );
-    }
-
-    /// A failing run is logged like a passing one: the failure names are the
-    /// part a follow-up greps for.
+    /// A long *failing* run is logged like a passing one: the failure names
+    /// are the part a follow-up greps for, and they are exactly what a
+    /// bounded reply is most likely to have cut.
     #[tokio::test]
     async fn a_failing_logged_run_keeps_its_output_too() {
-        let dir = tempfile::tempdir().unwrap();
-        let logs = dir.path().join("commands");
-        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()))
-            .with_session_log_dir(logs.clone());
+        let session = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        let command =
+            "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo boom; exit 3";
 
-        let out = registry
-            .execute_tool(&file_call(
-                "bash",
-                serde_json::json!({"command": "echo boom; exit 3"}),
-            ))
-            .await;
+        let (_stop, mut cancel) = watch::channel(false);
+        let (text, failed) =
+            run_real_shell_logged(command, work.path(), 90, &mut cancel, Some(session.path()))
+                .await;
+        assert!(failed);
 
-        assert!(out.is_error, "{}", out.output);
-        let log = read_named_log(&out.output, logs.as_path());
-        assert!(log.contains("boom"), "{}", log);
+        let logs: Vec<_> = std::fs::read_dir(session.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("cmd-"))
+            .collect();
+        assert_eq!(logs.len(), 1, "a failing run is logged too");
+        let logged = std::fs::read_to_string(logs[0].path()).unwrap();
+        assert!(logged.contains("boom"), "the failure name is on disk: {logged}");
     }
 
-    /// Without a session store there is no log and no promise of one; the
-    /// reply is exactly what it always was.
-    #[tokio::test]
-    async fn a_session_without_a_log_dir_keeps_the_untouched_reply() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
-
-        let out = registry
-            .execute_tool(&file_call(
-                "bash",
-                serde_json::json!({"command": "echo hello"}),
-            ))
-            .await;
-
-        assert!(!out.is_error, "{}", out.output);
-        assert!(
-            !out.output.contains("Full output"),
-            "no log was promised: {}",
-            out.output
-        );
-        assert!(out.output.contains("hello"), "{}", out.output);
-    }
 
     /// The escape-sequence tier, on the defect that motivated it: the model
     /// sends two backslashes before the newline where the file holds one,

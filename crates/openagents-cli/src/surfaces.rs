@@ -23,6 +23,8 @@ pub mod system_prompt {
     /// `coder.concision`
     pub const CODER_CONCISION: &str =
         "Answer very concisely unless the reader asks for a longer response.";
+    /// `coder.verification`
+    pub const CODER_VERIFICATION: &str = "Verify in steps, cheapest first: run just the files you changed, then the owning package, then — once, at the end, before you report done — the full suite. A suite run costs minutes; a file-scoped run costs seconds. Never re-execute a command to read something from output you already received but lost: long runs keep their whole transcript on disk and the tool result names the path, so read or grep that file instead of paying for the run twice.";
     /// `coder.no_tools`
     pub const CODER_NO_TOOLS: &str = "You have no tools in this session: you cannot read or write files, run commands, or reach anything outside this conversation. Answer from what the reader tells you, and say plainly when something would need a tool you do not have.";
     /// `coder.tool_list_header.rust`
@@ -54,7 +56,7 @@ pub mod tool_descriptions {
     /// `rust.skill`
     pub const RUST_SKILL: &str = "Read one of this repository skill procedures: a written procedure with conventions, commands, and rules. Call it before doing work a skill covers. Skills available:{skills}";
     /// `rust.openagents`
-    pub const RUST_OPENAGENTS: &str = "Run the OpenAgents CLI commands (issue, project, repo, auth, etc.). Pass the arguments as a list without openagents itself. Every element of `args` must be a string. Never use `-` (standard input) for `--body-file` or any other stdin-reading flag from this tool: write the content to a real file with the write tool and pass its path — a stdin read here blocks forever and kills the turn.";
+    pub const RUST_OPENAGENTS: &str = "Run the OpenAgents CLI commands (issue, project, repo, auth, etc.). Pass the arguments as a list without openagents itself.";
     /// `rust.delegate`
     pub const RUST_DELEGATE: &str = "Run one prompt on independent child coding agents in parallel and return what each one found or did. Use it when work splits into parts that do not depend on each other: several files to change the same way, several hypotheses to check, several tests to run down. Each child is a full coding agent with its own shell tool, working in a git worktree of its own so children cannot overwrite each other, and it starts with no context from this conversation and cannot ask questions — so the prompt has to be self-contained. Every child runs the same prompt and each is told separately which number it is, so write the prompt for whichever child reads it: say \"read the file at your own number\" rather than naming one child. Children run on {lane} and on this session's budget. Prefer one call with a count over several calls, and prefer `shell` over this for a single command — a child agent is for work worth a whole agent, not one line of output. At most {max_count} children.";
     /// `rust.capability`
@@ -71,7 +73,7 @@ pub mod tool_descriptions {
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     (
         "system-prompt",
-        "sha256:f6c5556c9d05e5a82fce1de6b8d973e31633488137a2f55ca0416a7cac29c216",
+        "sha256:e39066be334284adca92e7c12dd7f2a52f0b3455cb8a780d34647280a3512626",
     ),
     (
         "tool-descriptions",
