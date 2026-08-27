@@ -108,24 +108,40 @@ pub type Sink = Arc<Mutex<Sender<Control>>>;
 pub struct TurnRouter {
     active: Option<TurnId>,
     calls: std::collections::HashMap<String, TurnId>,
+    cancellation: Option<(TurnId, tokio::sync::watch::Sender<bool>)>,
 }
 
 pub type SharedTurnRouter = Arc<Mutex<TurnRouter>>;
 
 impl TurnRouter {
-    fn start(&mut self, id: TurnId) {
+    fn start(&mut self, id: TurnId, cancellation: tokio::sync::watch::Sender<bool>) {
         self.active = Some(id);
+        self.cancellation = Some((id, cancellation));
     }
 
-    pub fn cancel(&mut self, id: TurnId) {
+    /// Signal every tool owned by `id` and return how many are still active.
+    pub fn cancel(&mut self, id: TurnId) -> usize {
         if self.active == Some(id) {
             self.active = None;
         }
+        if let Some((turn, cancellation)) = &self.cancellation {
+            if *turn == id {
+                let _ = cancellation.send(true);
+            }
+        }
+        self.calls.values().filter(|turn| **turn == id).count()
     }
 
     fn finish(&mut self, id: TurnId) {
         if self.active == Some(id) {
             self.active = None;
+        }
+        if self
+            .cancellation
+            .as_ref()
+            .is_some_and(|(turn, _)| *turn == id)
+        {
+            self.cancellation = None;
         }
     }
 }
@@ -528,9 +544,11 @@ impl Session {
 
     /// Run one turn under a generation assigned by the frame reducer.
     pub async fn execute_turn_with_id(&mut self, id: TurnId, prompt: &str, tx: Sender<Control>) {
+        let (cancel_tools, tool_cancellation) = tokio::sync::watch::channel(false);
         if let Ok(mut turns) = self.turn_router.lock() {
-            turns.start(id);
+            turns.start(id, cancel_tools);
         }
+        self.inner.set_tool_cancellation(tool_cancellation);
         // A fresh turn may hand work to an agent again. The limit is per user
         // turn, not per session.
         self.acp_spent.store(false, Ordering::SeqCst);
@@ -861,5 +879,19 @@ mod tests {
             session.goal().unwrap().status,
             crate::coder::goal::GoalStatus::Completed
         );
+    }
+
+    #[test]
+    fn cancel_signals_the_matching_turn_once_and_counts_its_tools() {
+        let mut router = TurnRouter::default();
+        let id = TurnId::new(7);
+        let (stop, cancel) = tokio::sync::watch::channel(false);
+        router.start(id, stop);
+        router.calls.insert("one".to_string(), id);
+        router.calls.insert("two".to_string(), id);
+
+        assert_eq!(router.cancel(id), 2);
+        assert!(*cancel.borrow());
+        assert_eq!(router.cancel(id), 2, "a repeated cancel is idempotent");
     }
 }

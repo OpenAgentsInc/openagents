@@ -109,7 +109,7 @@ pub fn acp_host_tool(
         }),
     };
 
-    let run = Arc::new(move |call: &ToolCall| {
+    let run = Arc::new(move |call: &ToolCall, mut cancel| {
         let agents = agents.clone();
         let cwd = cwd.clone();
         let sink = Arc::clone(&sink);
@@ -191,10 +191,6 @@ pub fn acp_host_tool(
 
             let streaming = Arc::clone(&sink);
             let id = call_id.clone();
-            // Nothing here stops the child early, so the cancellation channel
-            // is held open for the length of the run: dropping the sender
-            // would signal a cancel the reader never asked for.
-            let (_stop, mut cancel) = tokio::sync::watch::channel(false);
             let result = AcpHarness {
                 command: agent.command,
                 args: agent.args,
@@ -292,6 +288,11 @@ mod tests {
         }
     }
 
+    async fn run(tool: &HostTool, call: &ToolCall) -> (String, bool) {
+        let (_keep_open, cancel) = tokio::sync::watch::channel(false);
+        (tool.run)(call, cancel).await
+    }
+
     /// A machine with no ACP agent installed does not get the tool. The
     /// alternative is a tool whose `agent` enum is empty, which a model can
     /// call and nothing can answer.
@@ -315,11 +316,14 @@ mod tests {
     async fn an_agent_that_is_not_installed_is_refused_by_name() {
         let (sink, _rx) = sink();
         let tool = fresh(vec![agent("devin")], sink).expect("declared");
-        let (output, is_error) = (tool.run)(&ToolCall {
-            id: "1".to_string(),
-            name: "acp".to_string(),
-            arguments: serde_json::json!({"agent": "nobody", "prompt": "do it"}),
-        })
+        let (output, is_error) = run(
+            &tool,
+            &ToolCall {
+                id: "1".to_string(),
+                name: "acp".to_string(),
+                arguments: serde_json::json!({"agent": "nobody", "prompt": "do it"}),
+            },
+        )
         .await;
         assert!(is_error);
         assert!(output.contains("nobody"), "{output}");
@@ -330,7 +334,7 @@ mod tests {
     async fn a_mode_this_build_does_not_know_is_refused_rather_than_dropped() {
         let (sink, _rx) = sink();
         let tool = fresh(vec![agent("devin")], sink).expect("declared");
-        let (output, is_error) = (tool.run)(&ToolCall {
+        let (output, is_error) = run(&tool, &ToolCall {
             id: "1".to_string(),
             name: "acp".to_string(),
             arguments: serde_json::json!({"agent": "devin", "prompt": "look", "mode": "whatever"}),
@@ -346,11 +350,14 @@ mod tests {
     async fn an_agent_that_will_not_start_is_an_error_and_says_why() {
         let (sink, _rx) = sink();
         let tool = fresh(vec![agent("devin")], sink).expect("declared");
-        let (output, is_error) = (tool.run)(&ToolCall {
-            id: "1".to_string(),
-            name: "acp".to_string(),
-            arguments: serde_json::json!({"agent": "devin", "prompt": "do it"}),
-        })
+        let (output, is_error) = run(
+            &tool,
+            &ToolCall {
+                id: "1".to_string(),
+                name: "acp".to_string(),
+                arguments: serde_json::json!({"agent": "devin", "prompt": "do it"}),
+            },
+        )
         .await;
         assert!(is_error, "{output}");
         assert!(output.contains("could not be started"), "{output}");
@@ -373,15 +380,17 @@ mod tests {
 
         // The first call is let through — it fails only because the stand-in
         // binary does not exist, which is a different refusal.
-        let (first, _) = (tool.run)(&call(
-            serde_json::json!({"agent": "devin", "prompt": "do it"}),
-        ))
+        let (first, _) = run(
+            &tool,
+            &call(serde_json::json!({"agent": "devin", "prompt": "do it"})),
+        )
         .await;
         assert!(first.contains("could not be started"), "{first}");
 
-        let (second, is_error) = (tool.run)(&call(
-            serde_json::json!({"agent": "devin", "prompt": "again"}),
-        ))
+        let (second, is_error) = run(
+            &tool,
+            &call(serde_json::json!({"agent": "devin", "prompt": "again"})),
+        )
         .await;
         assert!(is_error, "{second}");
         assert!(second.contains("already handed work"), "{second}");
@@ -389,9 +398,10 @@ mod tests {
 
         // A new turn clears it.
         spent.store(false, Ordering::SeqCst);
-        let (third, _) = (tool.run)(&call(
-            serde_json::json!({"agent": "devin", "prompt": "next turn"}),
-        ))
+        let (third, _) = run(
+            &tool,
+            &call(serde_json::json!({"agent": "devin", "prompt": "next turn"})),
+        )
         .await;
         assert!(third.contains("could not be started"), "{third}");
     }
@@ -403,7 +413,7 @@ mod tests {
         let spent = Arc::new(AtomicBool::new(true));
         let tool = acp_host_tool(vec![agent("devin")], std::env::temp_dir(), sink, spent)
             .expect("declared");
-        let (output, is_error) = (tool.run)(&call(serde_json::json!({}))).await;
+        let (output, is_error) = run(&tool, &call(serde_json::json!({}))).await;
         assert!(is_error);
         assert!(output.contains("already handed work"), "{output}");
     }

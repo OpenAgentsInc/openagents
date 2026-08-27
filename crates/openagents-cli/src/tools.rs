@@ -40,12 +40,13 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
-use tokio::time::timeout;
+use tokio::sync::watch;
 
 use crate::plugins::{
-    self, answer_capability, capability_tool_definition, plugin_tool_definition, Approval,
-    CatalogEntry, LoadedPlugin,
+    self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
+    plugin_tool_definition,
 };
 
 pub const OUTPUT_LIMIT: usize = 30_000;
@@ -95,10 +96,18 @@ pub struct HostTool {
 
 /// What a host tool does, and whether it worked.
 pub type HostToolFn = Arc<
-    dyn Fn(&ToolCall) -> std::pin::Pin<Box<dyn std::future::Future<Output = (String, bool)> + Send>>
+    dyn Fn(
+            &ToolCall,
+            watch::Receiver<bool>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = (String, bool)> + Send>>
         + Send
         + Sync,
 >;
+
+/// The stable tool result emitted when a turn stops an in-flight tool.
+///
+/// JSON makes the outcome machine-readable in the transcript and ATIF export.
+pub const CANCELLED_TOOL_RESULT: &str = r#"{"status":"cancelled","reason":"turn_cancelled"}"#;
 
 /// The largest index at or below `max` that is a character boundary in `text`.
 ///
@@ -545,6 +554,23 @@ impl HarnessToolRegistry {
     }
 
     pub async fn execute_tool(&self, call: &ToolCall) -> ToolOutput {
+        let (_keep_open, cancel) = watch::channel(false);
+        self.execute_tool_cancellable(call, cancel).await
+    }
+
+    /// Execute one tool under the turn's cancellation signal.
+    pub async fn execute_tool_cancellable(
+        &self,
+        call: &ToolCall,
+        mut cancel: watch::Receiver<bool>,
+    ) -> ToolOutput {
+        if *cancel.borrow() {
+            return ToolOutput {
+                call_id: call.id.clone(),
+                output: CANCELLED_TOOL_RESULT.to_string(),
+                is_error: true,
+            };
+        }
         match call.name.as_str() {
             "read" => {
                 let (output, is_error) = answer_read(&self.cwd, &call.arguments);
@@ -595,7 +621,8 @@ impl HarnessToolRegistry {
                     };
                 }
 
-                let (output_str, failed) = run_real_shell(cmd, &self.cwd, timeout_secs).await;
+                let (output_str, failed) =
+                    run_real_shell(cmd, &self.cwd, timeout_secs, &mut cancel).await;
                 ToolOutput {
                     call_id: call.id.clone(),
                     output: output_str,
@@ -635,7 +662,7 @@ impl HarnessToolRegistry {
                     })
                     .unwrap_or_default();
 
-                let (output_str, failed) = run_openagents_cli(&args_array).await;
+                let (output_str, failed) = run_openagents_cli(&args_array, &mut cancel).await;
                 ToolOutput {
                     call_id: call.id.clone(),
                     output: output_str,
@@ -675,13 +702,14 @@ impl HarnessToolRegistry {
                     .unwrap_or(1)
                     .clamp(1, gate.max_count as u64) as usize;
 
-                let report = crate::delegate::fanout_for_tool(
+                let report = crate::delegate::fanout_for_tool_cancellable(
                     &prompt,
                     count,
                     &gate.lane,
                     gate.user_token.clone(),
                     gate.child.clone(),
                     Some(self.cwd.clone()),
+                    cancel,
                 )
                 .await;
 
@@ -724,7 +752,7 @@ impl HarnessToolRegistry {
                 // any plugin was loaded, and `add_host_tool` has already
                 // refused a name that collides with a built-in.
                 if let Some(tool) = self.host.iter().find(|t| t.definition.name == other) {
-                    let (output, is_error) = (tool.run)(call).await;
+                    let (output, is_error) = (tool.run)(call, cancel).await;
                     return ToolOutput {
                         call_id: call.id.clone(),
                         output,
@@ -737,11 +765,24 @@ impl HarnessToolRegistry {
                     .into_iter()
                     .find(|plugin| plugin.manifest.name == other);
                 match plugin {
-                    Some(plugin) => ToolOutput {
-                        call_id: call.id.clone(),
-                        output: plugins::run_plugin_text(plugin, &call.arguments).await,
-                        is_error: false,
-                    },
+                    Some(plugin) => {
+                        let arguments = call.arguments.clone();
+                        let output = tokio::select! {
+                            output = plugins::run_plugin_text(plugin, &arguments) => output,
+                            changed = cancel.changed() => {
+                                if changed.is_ok() && *cancel.borrow() {
+                                    CANCELLED_TOOL_RESULT.to_string()
+                                } else {
+                                    "The capability cancellation channel closed.".to_string()
+                                }
+                            }
+                        };
+                        ToolOutput {
+                            call_id: call.id.clone(),
+                            is_error: output == CANCELLED_TOOL_RESULT,
+                            output,
+                        }
+                    }
                     None => ToolOutput {
                         call_id: call.id.clone(),
                         output: format!("Unknown tool: {}", call.name),
@@ -1033,7 +1074,12 @@ pub fn check_shell_refusal(cmd: &str) -> Option<String> {
 /// The outcome used to be dropped here and every shell result was reported to
 /// the model as `is_error: false`, so a failing build read like a passing one
 /// and the model carried on as though the step had succeeded.
-async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bool) {
+async fn run_real_shell(
+    cmd: &str,
+    cwd: &Path,
+    timeout_secs: u64,
+    cancel: &mut watch::Receiver<bool>,
+) -> (String, bool) {
     let mut command = Command::new("/bin/sh");
     command
         .arg("-c")
@@ -1048,17 +1094,56 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
-    let child = match command.spawn() {
+    let mut child = match command.spawn() {
         Ok(c) => c,
         Err(e) => return (format!("Failed to spawn shell command: {}", e), true),
     };
 
-    let execution = child.wait_with_output();
-    match timeout(Duration::from_secs(timeout_secs), execution).await {
-        Ok(Ok(output)) => {
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout = tokio::spawn(async move {
+        let mut bytes = Vec::new();
+        if let Some(mut stream) = stdout {
+            let _ = stream.read_to_end(&mut bytes).await;
+        }
+        bytes
+    });
+    let stderr = tokio::spawn(async move {
+        let mut bytes = Vec::new();
+        if let Some(mut stream) = stderr {
+            let _ = stream.read_to_end(&mut bytes).await;
+        }
+        bytes
+    });
+
+    enum End {
+        Status(std::io::Result<std::process::ExitStatus>),
+        Cancelled,
+        TimedOut,
+    }
+    let end = tokio::select! {
+        status = child.wait() => End::Status(status),
+        changed = cancel.changed() => {
+            if changed.is_ok() && *cancel.borrow() {
+                crate::signals::stop_tree(&mut child).await;
+                End::Cancelled
+            } else {
+                End::Status(child.wait().await)
+            }
+        }
+        _ = tokio::time::sleep(Duration::from_secs(timeout_secs)) => {
+            crate::signals::stop_tree(&mut child).await;
+            End::TimedOut
+        }
+    };
+    let stdout = stdout.await.unwrap_or_default();
+    let stderr = stderr.await.unwrap_or_default();
+
+    match end {
+        End::Status(Ok(status)) => {
             let mut combined = String::new();
-            combined.push_str(&String::from_utf8_lossy(&output.stdout));
-            combined.push_str(&String::from_utf8_lossy(&output.stderr));
+            combined.push_str(&String::from_utf8_lossy(&stdout));
+            combined.push_str(&String::from_utf8_lossy(&stderr));
 
             let total_len = combined.len();
             let bounded = if total_len > OUTPUT_LIMIT {
@@ -1072,17 +1157,14 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
                 combined
             };
 
-            if output.status.success() {
+            if status.success() {
                 if bounded.trim().is_empty() {
-                    (
-                        "Success".to_string(),
-                        false,
-                    )
+                    ("Success".to_string(), false)
                 } else {
                     (bounded.trim().to_string(), false)
                 }
             } else {
-                let code = output.status.code().unwrap_or(1);
+                let code = status.code().unwrap_or(1);
                 (
                     format!(
                         "The command exited with code {}.\n\n{}",
@@ -1093,8 +1175,9 @@ async fn run_real_shell(cmd: &str, cwd: &Path, timeout_secs: u64) -> (String, bo
                 )
             }
         }
-        Ok(Err(e)) => (format!("Shell execution error: {}", e), true),
-        Err(_) => (
+        End::Status(Err(e)) => (format!("Shell execution error: {}", e), true),
+        End::Cancelled => (CANCELLED_TOOL_RESULT.to_string(), true),
+        End::TimedOut => (
             format!(
                 "The command timed out after {} seconds and was stopped.",
                 timeout_secs
@@ -1373,7 +1456,7 @@ fn is_executable_file(path: &Path) -> bool {
     }
 }
 
-async fn run_openagents_cli(args: &[String]) -> (String, bool) {
+async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>) -> (String, bool) {
     let (program, source) = match resolve_openagents_cli() {
         Ok(resolved) => resolved,
         Err(error) => return (error, true),
@@ -1396,19 +1479,58 @@ async fn run_openagents_cli(args: &[String]) -> (String, bool) {
     cmd.args(args);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+    cmd.kill_on_drop(true);
+    #[cfg(unix)]
+    cmd.process_group(0);
 
-    match cmd.output().await {
-        Ok(output) => {
-            let mut combined = String::new();
-            combined.push_str(&String::from_utf8_lossy(&output.stdout));
-            combined.push_str(&String::from_utf8_lossy(&output.stderr));
-            (
-                format!("{note}\n\n{}", combined.trim()),
-                !output.status.success(),
-            )
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            return (
+                format!("{note}\n\nFailed to run the openagents CLI: {error}"),
+                true,
+            );
         }
-        Err(e) => (
-            format!("{note}\n\nFailed to run the openagents CLI: {e}"),
+    };
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout = tokio::spawn(async move {
+        let mut bytes = Vec::new();
+        if let Some(mut stream) = stdout {
+            let _ = stream.read_to_end(&mut bytes).await;
+        }
+        bytes
+    });
+    let stderr = tokio::spawn(async move {
+        let mut bytes = Vec::new();
+        if let Some(mut stream) = stderr {
+            let _ = stream.read_to_end(&mut bytes).await;
+        }
+        bytes
+    });
+    let status = tokio::select! {
+        status = child.wait() => status,
+        changed = cancel.changed() => {
+            if changed.is_ok() && *cancel.borrow() {
+                crate::signals::stop_tree(&mut child).await;
+                let _ = stdout.await;
+                let _ = stderr.await;
+                return (CANCELLED_TOOL_RESULT.to_string(), true);
+            }
+            child.wait().await
+        }
+    };
+    let stdout = stdout.await.unwrap_or_default();
+    let stderr = stderr.await.unwrap_or_default();
+    match status {
+        Ok(status) => {
+            let mut combined = String::new();
+            combined.push_str(&String::from_utf8_lossy(&stdout));
+            combined.push_str(&String::from_utf8_lossy(&stderr));
+            (format!("{note}\n\n{}", combined.trim()), !status.success())
+        }
+        Err(error) => (
+            format!("{note}\n\nFailed to wait for the openagents CLI: {error}"),
             true,
         ),
     }
@@ -1550,9 +1672,11 @@ mod tests {
         let tools = registry.list_tools();
         let skill_tool = tools.iter().find(|t| t.name == "skill").expect("declared");
 
-        assert!(skill_tool
-            .description
-            .contains("`brewing`: How to make tea."));
+        assert!(
+            skill_tool
+                .description
+                .contains("`brewing`: How to make tea.")
+        );
         // The catalog is what a session pays for on every turn; a body in it
         // is 46 KB of instructions the model may never use.
         assert!(
@@ -1631,9 +1755,11 @@ mod tests {
         );
         // A temporary directory is not named for either OpenAgents repository,
         // so the workspace note does not apply either.
-        assert!(HarnessToolRegistry::new(Some(root.path().to_path_buf()))
-            .standing_context()
-            .is_none());
+        assert!(
+            HarnessToolRegistry::new(Some(root.path().to_path_buf()))
+                .standing_context()
+                .is_none()
+        );
     }
 
     #[test]
@@ -1739,7 +1865,7 @@ mod tests {
                 description: "A tool the front-end answers.".to_string(),
                 parameters: serde_json::json!({"type": "object"}),
             },
-            run: Arc::new(move |call: &ToolCall| {
+            run: Arc::new(move |call: &ToolCall, _cancel| {
                 let id = call.id.clone();
                 Box::pin(async move { (format!("{answer} for {id}"), false) })
             }),
@@ -1750,7 +1876,9 @@ mod tests {
     async fn a_host_tool_is_declared_alongside_the_built_ins_and_answers() {
         let root = tempfile::tempdir().unwrap();
         let mut registry = HarnessToolRegistry::new(Some(root.path().to_path_buf()));
-        registry.add_host_tool(host_tool("acp", "handed off")).unwrap();
+        registry
+            .add_host_tool(host_tool("acp", "handed off"))
+            .unwrap();
 
         let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
         assert_eq!(
@@ -1913,10 +2041,12 @@ mod tests {
             "{}",
             refused.output
         );
-        assert!(unattended
-            .list_tools()
-            .iter()
-            .all(|t| t.name != "file_stats"));
+        assert!(
+            unattended
+                .list_tools()
+                .iter()
+                .all(|t| t.name != "file_stats")
+        );
 
         let attended = HarnessToolRegistry::new(Some(repo)).allowing_plugin_mounts();
         let loaded = attended
@@ -1995,11 +2125,12 @@ mod defect_tests {
     #[tokio::test]
     async fn a_failing_command_is_reported_as_a_failure() {
         let dir = std::env::temp_dir();
-        let (text, failed) = run_real_shell("exit 7", &dir, 30).await;
+        let (_stop, mut cancel) = watch::channel(false);
+        let (text, failed) = run_real_shell("exit 7", &dir, 30, &mut cancel).await;
         assert!(failed, "exit 7 must be reported as an error, got: {text}");
         assert!(text.contains('7'), "the code belongs in the text: {text}");
 
-        let (text, failed) = run_real_shell("true", &dir, 30).await;
+        let (text, failed) = run_real_shell("true", &dir, 30, &mut cancel).await;
         assert!(!failed, "a successful command must not be an error: {text}");
     }
 
@@ -2007,9 +2138,108 @@ mod defect_tests {
     #[tokio::test]
     async fn a_timed_out_command_is_reported_as_a_failure() {
         let dir = std::env::temp_dir();
-        let (text, failed) = run_real_shell("sleep 5", &dir, 1).await;
+        let (_stop, mut cancel) = watch::channel(false);
+        let (text, failed) = run_real_shell("sleep 5", &dir, 1, &mut cancel).await;
         assert!(failed, "a timeout must be an error, got: {text}");
         assert!(text.contains("timed out"), "{text}");
+    }
+
+    #[cfg(unix)]
+    async fn wait_for_pid(path: &Path) -> u32 {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Ok(text) = tokio::fs::read_to_string(path).await {
+                    if let Ok(pid) = text.trim().parse() {
+                        return pid;
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the shell wrote its child pid")
+    }
+
+    #[cfg(unix)]
+    fn process_exists(pid: u32) -> bool {
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancel_stops_the_shell_process_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("child.pid");
+        let cwd = dir.path().to_path_buf();
+        let (stop, mut cancel) = watch::channel(false);
+        let task = tokio::spawn(async move {
+            run_real_shell(
+                "sleep 30 & echo $! > child.pid; wait",
+                &cwd,
+                60,
+                &mut cancel,
+            )
+            .await
+        });
+
+        let child_pid = wait_for_pid(&pid_file).await;
+        stop.send(true).unwrap();
+        let (output, failed) = task.await.unwrap();
+
+        assert!(failed);
+        assert_eq!(output, CANCELLED_TOOL_RESULT);
+        assert!(
+            !process_exists(child_pid),
+            "child {child_pid} survived cancellation"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn one_cancel_stops_multiple_shell_tools() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_path_buf();
+        let registry = Arc::new(HarnessToolRegistry::new(Some(cwd.clone())));
+        let (stop, cancel) = watch::channel(false);
+        let first_call = ToolCall {
+            id: "one".to_string(),
+            name: "shell".to_string(),
+            arguments: serde_json::json!({
+                "command": "sleep 30 & echo $! > one.pid; wait"
+            }),
+        };
+        let second_call = ToolCall {
+            id: "two".to_string(),
+            name: "shell".to_string(),
+            arguments: serde_json::json!({
+                "command": "sleep 30 & echo $! > two.pid; wait"
+            }),
+        };
+        let first_registry = Arc::clone(&registry);
+        let first_cancel = cancel.clone();
+        let first = tokio::spawn(async move {
+            first_registry
+                .execute_tool_cancellable(&first_call, first_cancel)
+                .await
+        });
+        let second_registry = Arc::clone(&registry);
+        let second = tokio::spawn(async move {
+            second_registry
+                .execute_tool_cancellable(&second_call, cancel)
+                .await
+        });
+
+        let one = wait_for_pid(&cwd.join("one.pid")).await;
+        let two = wait_for_pid(&cwd.join("two.pid")).await;
+        stop.send(true).unwrap();
+        let (first, second) = tokio::join!(first, second);
+
+        for output in [first.unwrap(), second.unwrap()] {
+            assert!(output.is_error);
+            assert_eq!(output.output, CANCELLED_TOOL_RESULT);
+        }
+        assert!(!process_exists(one));
+        assert!(!process_exists(two));
     }
 
     // ─────────────────────────────────────────── read, write, edit and bash

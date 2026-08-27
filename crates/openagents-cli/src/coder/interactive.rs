@@ -886,10 +886,11 @@ fn request_cancel(
         });
         return;
     };
-    if let Ok(mut router) = active.router.lock() {
-        router.cancel(id);
-    }
-    active.task.abort();
+    let active_tools = active
+        .router
+        .lock()
+        .map(|mut router| router.cancel(id))
+        .unwrap_or_default();
 
     let Some(session) = session.cloned() else {
         let _ = tx.send(Control::CancelComplete {
@@ -900,7 +901,20 @@ fn request_cancel(
     };
     let tx = tx.clone();
     tokio::spawn(async move {
-        let _ = active.task.await;
+        let mut task = active.task;
+        if active_tools == 0 {
+            task.abort();
+            let _ = task.await;
+        } else if tokio::time::timeout(
+            crate::signals::KILL_GRACE + Duration::from_secs(1),
+            &mut task,
+        )
+        .await
+        .is_err()
+        {
+            task.abort();
+            let _ = task.await;
+        }
         let recorded = tokio::time::timeout(Duration::from_secs(3), async {
             session.lock().await.note_cancellation().await;
         })

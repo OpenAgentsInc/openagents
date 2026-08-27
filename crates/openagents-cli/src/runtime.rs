@@ -79,8 +79,8 @@
 
 use crate::tools::{HarnessToolRegistry, ToolCall, ToolDefinition};
 use eventsource_stream::Eventsource;
-use futures::{Stream, StreamExt};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use futures::{Stream, StreamExt, future::join_all};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -485,7 +485,9 @@ fn unresolved_lane(spec: &LaneSpec, served: &[ServedModel]) -> Failure {
         .map(|m| m.id.as_str())
         .collect();
     let alternatives = match usable.is_empty() {
-        true => "This deployment serves no model with a configured provider credential.".to_string(),
+        true => {
+            "This deployment serves no model with a configured provider credential.".to_string()
+        }
         false => format!("This deployment serves {}.", usable.join(", ")),
     };
     format!(
@@ -869,6 +871,8 @@ pub struct CoderRuntimeSession {
     pub tool_observer: Option<ToolObserver>,
     /// Told when a model has not begun its response within the watchdog window.
     pub progress_observer: Option<TurnProgressObserver>,
+    /// The current turn's cancellation signal, cloned into every tool call.
+    tool_cancellation: Option<tokio::sync::watch::Receiver<bool>>,
     first_response: FirstResponsePolicy,
     /// The thread to revoke when the session closes.
     thread_id: Option<String>,
@@ -931,6 +935,7 @@ impl CoderRuntimeSession {
             messages: Vec::new(),
             tool_observer: None,
             progress_observer: None,
+            tool_cancellation: None,
             first_response: FirstResponsePolicy::default(),
             thread_id: None,
             outcome: None,
@@ -952,16 +957,17 @@ impl CoderRuntimeSession {
 
     /// Change the first-response watchdog on an existing session.
     #[doc(hidden)]
-    pub fn set_first_response_policy(
-        &mut self,
-        waiting_after: Duration,
-        timeout_after: Duration,
-    ) {
+    pub fn set_first_response_policy(&mut self, waiting_after: Duration, timeout_after: Duration) {
         assert!(waiting_after < timeout_after);
         self.first_response = FirstResponsePolicy {
             waiting_after,
             timeout_after,
         };
+    }
+
+    /// Replace the cancellation signal used by tools in the next turn.
+    pub fn set_tool_cancellation(&mut self, cancellation: tokio::sync::watch::Receiver<bool>) {
+        self.tool_cancellation = Some(cancellation);
     }
 
     /// Use the OpenResponses streaming surface for this session's turns.
@@ -1093,7 +1099,7 @@ impl CoderRuntimeSession {
                      could not be read: {error}. Lanes: {}.",
                     admitted_lanes()
                 )
-                .into())
+                .into());
             }
         };
         let usable: Vec<&str> = served
@@ -1695,12 +1701,16 @@ impl CoderRuntimeSession {
                                 grant.proxy_url,
                                 snippet(&body)
                             );
-                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                            return Err(self
+                                .record_failure(error_code::PROVIDER_FAILED, why)
+                                .await);
                         }
                         Err(error) => {
                             self.tell_progress(TurnProgress::Clear);
                             let why = format!("{} could not be reached: {error}", grant.proxy_url);
-                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                            return Err(self
+                                .record_failure(error_code::PROVIDER_FAILED, why)
+                                .await);
                         }
                     };
 
@@ -1745,16 +1755,17 @@ impl CoderRuntimeSession {
                                 );
                                 self.last_usage.add(step.usage);
                                 self.last_reasoning.push_str(&step.reasoning);
-                                return Err(
-                                    self.record_failure(error_code::STREAM_BROKEN, why).await
-                                );
+                                return Err(self
+                                    .record_failure(error_code::STREAM_BROKEN, why)
+                                    .await);
                             }
                             WatchdogNext::Item(None) => break,
                         };
                         if event.data == "[DONE]" {
                             break;
                         }
-                        let Ok(json) = serde_json::from_str::<serde_json::Value>(&event.data) else {
+                        let Ok(json) = serde_json::from_str::<serde_json::Value>(&event.data)
+                        else {
                             continue;
                         };
                         if !response_started && openai_response_started(&json) {
@@ -1827,8 +1838,11 @@ impl CoderRuntimeSession {
                 break;
             }
             let ran = self.run_tools(step).await;
-            self.last_calls += ran.len();
-            self.note(ran).await;
+            self.last_calls += ran.records.len();
+            self.note(ran.records).await;
+            if ran.cancelled {
+                return Err("The turn was canceled while its tools were running.".into());
+            }
         }
 
         if !answered {
@@ -1904,12 +1918,16 @@ impl CoderRuntimeSession {
                             let body = r.text().await.unwrap_or_default();
                             let why =
                                 format!("{url} refused the turn: {status} {}", snippet(&body));
-                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                            return Err(self
+                                .record_failure(error_code::PROVIDER_FAILED, why)
+                                .await);
                         }
                         Err(error) => {
                             self.tell_progress(TurnProgress::Clear);
                             let why = format!("{url} could not be reached: {error}");
-                            return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
+                            return Err(self
+                                .record_failure(error_code::PROVIDER_FAILED, why)
+                                .await);
                         }
                     };
 
@@ -1945,12 +1963,13 @@ impl CoderRuntimeSession {
                             WatchdogNext::Item(Some(Ok(event))) => event,
                             WatchdogNext::Item(Some(Err(error))) => {
                                 self.tell_progress(TurnProgress::Clear);
-                                let why = format!("the reply from {url} stopped mid-stream: {error}");
+                                let why =
+                                    format!("the reply from {url} stopped mid-stream: {error}");
                                 self.last_usage.add(step.usage);
                                 self.last_reasoning.push_str(&step.reasoning);
-                                return Err(
-                                    self.record_failure(error_code::STREAM_BROKEN, why).await
-                                );
+                                return Err(self
+                                    .record_failure(error_code::STREAM_BROKEN, why)
+                                    .await);
                             }
                             WatchdogNext::Item(None) => break,
                         };
@@ -1961,10 +1980,9 @@ impl CoderRuntimeSession {
                                 self.tell_progress(TurnProgress::Clear);
                             }
                             if event.event == "response.completed" {
-                                step.absorb_responses(
-                                    &value,
-                                    &mut |chunk| deferred_text.push_str(chunk),
-                                );
+                                step.absorb_responses(&value, &mut |chunk| {
+                                    deferred_text.push_str(chunk)
+                                });
                                 completed = true;
                                 break;
                             }
@@ -1979,14 +1997,13 @@ impl CoderRuntimeSession {
                                 let why = format!("{url} reported a failed response: {message}");
                                 self.last_usage.add(step.usage);
                                 self.last_reasoning.push_str(&step.reasoning);
-                                return Err(
-                                    self.record_failure(error_code::PROVIDER_FAILED, why).await
-                                );
+                                return Err(self
+                                    .record_failure(error_code::PROVIDER_FAILED, why)
+                                    .await);
                             }
-                            step.absorb_responses(
-                                &value,
-                                &mut |chunk| deferred_text.push_str(chunk),
-                            );
+                            step.absorb_responses(&value, &mut |chunk| {
+                                deferred_text.push_str(chunk)
+                            });
                         }
                     }
 
@@ -2048,8 +2065,11 @@ impl CoderRuntimeSession {
             }
 
             let ran = self.run_tools(step).await;
-            self.last_calls += ran.len();
-            self.note(ran).await;
+            self.last_calls += ran.records.len();
+            self.note(ran.records).await;
+            if ran.cancelled {
+                return Err("The turn was canceled while its tools were running.".into());
+            }
         }
 
         if !answered {
@@ -2097,7 +2117,7 @@ impl CoderRuntimeSession {
     ///
     /// Hands back one `tool.ran` per call for the transcript: the call and its
     /// result are one fact, and the caller has both only once the tool has run.
-    async fn run_tools(&mut self, step: StepAccumulator) -> Vec<ThreadRecord> {
+    async fn run_tools(&mut self, step: StepAccumulator) -> ToolBatch {
         let recorded: Vec<serde_json::Value> = step
             .tool_calls
             .values()
@@ -2121,32 +2141,54 @@ impl CoderRuntimeSession {
             tool_call_id: None,
         });
 
-        let mut ran = Vec::new();
-        for (id, name, args_str) in step.tool_calls.into_values() {
-            let arguments: serde_json::Value =
-                serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
-            let call = ToolCall {
-                id: id.clone(),
-                name: name.clone(),
-                arguments,
-            };
+        let calls = step
+            .tool_calls
+            .into_values()
+            .map(|(id, name, args_str)| {
+                let arguments: serde_json::Value =
+                    serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
+                (
+                    ToolCall {
+                        id: id.clone(),
+                        name: name.clone(),
+                        arguments,
+                    },
+                    args_str,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        for (call, args_str) in &calls {
             // Before the call, so a caller drawing a frame can show what is in
             // flight rather than only what has already finished.
             self.tell(ToolEvent::Started {
-                call_id: id.clone(),
-                name: name.clone(),
+                call_id: call.id.clone(),
+                name: call.name.clone(),
                 arguments: args_str.clone(),
             });
-            let result = self.tools.execute_tool(&call).await;
+        }
+
+        let (_keep_open, fallback) = tokio::sync::watch::channel(false);
+        let cancellation = self.tool_cancellation.as_ref().cloned().unwrap_or(fallback);
+        let results = join_all(calls.iter().map(|(call, _)| {
+            self.tools
+                .execute_tool_cancellable(call, cancellation.clone())
+        }))
+        .await;
+
+        let mut ran = Vec::with_capacity(calls.len());
+        let mut cancelled = false;
+        for ((call, args_str), result) in calls.into_iter().zip(results) {
+            cancelled |= result.output == crate::tools::CANCELLED_TOOL_RESULT;
             self.tell(ToolEvent::Finished {
-                call_id: id.clone(),
-                name: name.clone(),
+                call_id: call.id.clone(),
+                name: call.name.clone(),
                 output: result.output.clone(),
                 is_error: result.is_error,
             });
             ran.push(ThreadRecord::tool_ran(
-                &id,
-                &name,
+                &call.id,
+                &call.name,
                 &args_str,
                 &result.output,
             ));
@@ -2154,10 +2196,13 @@ impl CoderRuntimeSession {
                 role: "tool".to_string(),
                 content: Some(result.output),
                 tool_calls: None,
-                tool_call_id: Some(id),
+                tool_call_id: Some(call.id),
             });
         }
-        ran
+        ToolBatch {
+            records: ran,
+            cancelled,
+        }
     }
 
     // ────────────────────────────────────────────────────── the local lane
@@ -2367,7 +2412,11 @@ impl CoderRuntimeSession {
             // nothing; it is called anyway so a local session that resumed
             // somebody's thread records against it like any other.
             let ran = self.run_tools(step).await;
-            self.note(ran).await;
+            self.last_calls += ran.records.len();
+            self.note(ran.records).await;
+            if ran.cancelled {
+                return Err("The turn was canceled while its tools were running.".into());
+            }
         }
 
         if !answered {
@@ -2376,6 +2425,11 @@ impl CoderRuntimeSession {
         }
         Ok(final_answer)
     }
+}
+
+struct ToolBatch {
+    records: Vec<ThreadRecord>,
+    cancelled: bool,
 }
 
 /// A thread left open holds its grant's remaining budget, and the interactive
@@ -2513,8 +2567,10 @@ impl StepAccumulator {
                             item.get("arguments").and_then(|v| v.as_str()),
                             value.get("output_index").and_then(|v| v.as_u64()),
                         ) {
-                            self.tool_calls
-                                .insert(index as usize, (call_id.to_string(), name.to_string(), arguments.to_string()));
+                            self.tool_calls.insert(
+                                index as usize,
+                                (call_id.to_string(), name.to_string(), arguments.to_string()),
+                            );
                         }
                     }
                 }
@@ -2845,7 +2901,13 @@ mod tests {
     /// A model id means that model, whatever a tier is called this month.
     #[test]
     fn a_model_id_is_never_read_as_a_tier() {
-        for id in ["gemini-3.7-flash", "gemini", "gemini-flash", "gpt-5.6-luna", "luna"] {
+        for id in [
+            "gemini-3.7-flash",
+            "gemini",
+            "gemini-flash",
+            "gpt-5.6-luna",
+            "luna",
+        ] {
             assert_eq!(
                 Lane::from_str(id),
                 Lane::Named(id.to_string()),
@@ -2932,7 +2994,12 @@ mod tests {
             );
         }
         // It recommends lane names, never a catalog id it has not checked.
-        for guess in ["glm-5.3-flash", "gpt-5.6-luna", "gemini-3.7-flash", "ox-alpha"] {
+        for guess in [
+            "glm-5.3-flash",
+            "gpt-5.6-luna",
+            "gemini-3.7-flash",
+            "ox-alpha",
+        ] {
             assert!(
                 !sentence.contains(guess),
                 "the sentence recommends '{guess}', which it has not confirmed is served"
@@ -3180,9 +3247,11 @@ mod tests {
             None,
             HarnessToolRegistry::new(Some(std::env::temp_dir())),
         );
-        assert!(hosted
-            .build_system_prompt(&[])
-            .contains("OpenAgents inference proxy"));
+        assert!(
+            hosted
+                .build_system_prompt(&[])
+                .contains("OpenAgents inference proxy")
+        );
     }
 
     #[test]

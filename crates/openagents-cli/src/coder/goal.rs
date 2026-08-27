@@ -244,7 +244,7 @@ pub fn host_tool(store: SharedGoal) -> HostTool {
                 "required": ["action"]
             }),
         },
-        run: Arc::new(move |call: &ToolCall| {
+        run: Arc::new(move |call: &ToolCall, _cancel| {
             let store = Arc::clone(&store);
             let action = call
                 .arguments

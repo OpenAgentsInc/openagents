@@ -36,10 +36,10 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::{mpsc, watch, Semaphore};
+use tokio::sync::{Semaphore, mpsc, watch};
 
 use crate::acp::{AcpEvent, AcpFailure, AcpHarness, PermissionMode};
-use crate::cli::{fail, CoderArgs, DelegateArgs};
+use crate::cli::{CoderArgs, DelegateArgs, fail};
 use crate::runtime::{CoderRuntimeSession, Lane};
 use crate::signals::stop_tree;
 use crate::tools::HarnessToolRegistry;
@@ -88,10 +88,16 @@ pub enum ChildEvent {
         pid: Option<u32>,
     },
     /// A piece of what the child wrote, exactly as it arrived.
-    Output { id: usize, text: String },
+    Output {
+        id: usize,
+        text: String,
+    },
     /// Something the child did that is not its answer: a tool call, a token
     /// count, a session id.
-    Activity { id: usize, text: String },
+    Activity {
+        id: usize,
+        text: String,
+    },
     Finished(Box<ChildWorkerResult>),
 }
 
@@ -147,7 +153,14 @@ impl ChildLane {
         let lowered = name.trim().to_lowercase();
         matches!(
             lowered.as_str(),
-            "gemini" | "gemini-flash" | "devin" | "claude" | "codex" | "ox-alpha" | "ox" | "openagents"
+            "gemini"
+                | "gemini-flash"
+                | "devin"
+                | "claude"
+                | "codex"
+                | "ox-alpha"
+                | "ox"
+                | "openagents"
         ) || lowered.starts_with("opencode/")
     }
 
@@ -240,7 +253,7 @@ impl ChildOptions {
                          the grant the server issues, not chosen here. Use a claude, codex, or \
                          opencode/<model> lane.",
                         other.label()
-                    ))
+                    ));
                 }
             }
         }
@@ -253,7 +266,7 @@ impl ChildOptions {
                          ask-before-a-tool mode this command can select. Use a claude or codex \
                          lane.",
                         other.label()
-                    ))
+                    ));
                 }
             }
         }
@@ -265,7 +278,7 @@ impl ChildOptions {
                         "--child-config cannot be honoured on the {} lane: it runs in this \
                          process and reads no harness config file.",
                         other.label()
-                    ))
+                    ));
                 }
             }
         }
@@ -429,8 +442,16 @@ impl DelegationSupervisor {
                 // The cap is here rather than around the spawn so a child that
                 // is waiting for a slot still exists and still reports.
                 let _slot = gate.acquire().await;
-                let result =
-                    run_child(task, lane, workspace, token, &child_options, &events, cancel).await;
+                let result = run_child(
+                    task,
+                    lane,
+                    workspace,
+                    token,
+                    &child_options,
+                    &events,
+                    cancel,
+                )
+                .await;
                 let _ = events.send(ChildEvent::Finished(Box::new(result.clone())));
                 result
             }));
@@ -822,7 +843,7 @@ async fn run_cli_child(
             return Err(ChildFailure {
                 why: format!("the `{command}` child could not be reaped: {error}"),
                 pid,
-            })
+            });
         }
     };
 
@@ -1422,7 +1443,11 @@ pub async fn run_delegation(
         "Delegating {}: {} {} on {}, {} at a time, isolation: {}.",
         description,
         supervisor.count,
-        if supervisor.count == 1 { "child" } else { "children" },
+        if supervisor.count == 1 {
+            "child"
+        } else {
+            "children"
+        },
         lane.label(),
         supervisor.max_parallel,
         isolation.name(),
@@ -1550,7 +1575,11 @@ pub async fn run_delegation(
         println!(
             "{succeeded} of {} {} completed on {}.",
             results.len(),
-            if results.len() == 1 { "child" } else { "children" },
+            if results.len() == 1 {
+                "child"
+            } else {
+                "children"
+            },
             lane.label()
         );
     }
@@ -1589,51 +1618,80 @@ pub fn fanout_for_tool(
     child: ChildOptions,
     directory: Option<PathBuf>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
+    let (keep_open, cancel) = watch::channel(false);
+    let future =
+        fanout_for_tool_cancellable(prompt, count, lane, user_token, child, directory, cancel);
+    Box::pin(async move {
+        let _keep_open = keep_open;
+        future.await
+    })
+}
+
+/// Run the `delegate` tool under the parent turn's cancellation signal.
+pub fn fanout_for_tool_cancellable(
+    prompt: &str,
+    count: usize,
+    lane: &str,
+    user_token: Option<String>,
+    child: ChildOptions,
+    directory: Option<PathBuf>,
+    cancel: watch::Receiver<bool>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
     let prompt = prompt.to_string();
     let lane = lane.to_string();
     Box::pin(async move {
-    let prompt = prompt.as_str();
-    let lane = lane.as_str();
-    let count = count.clamp(1, MAX_DELEGATE_COUNT);
-    // A flag the lane cannot honour is reported to the caller rather than
-    // dropped: the session asked for a model or a dry run and would otherwise
-    // get a fan-out without either, with nothing said.
-    if let Err(why) = child.check(&ChildLane::parse(lane)) {
-        return format!("No children were started: {why}");
-    }
-    // Children work where the session works. The version this replaces took
-    // whatever the process's own directory happened to be, which is the same
-    // thing only until something changes it.
-    let supervisor = DelegationSupervisor::new(count, lane, user_token)
-        .with_child_options(child)
-        .in_directory(directory);
-    let results = supervisor.dispatch(prompt).await;
-
-    let succeeded = results.iter().filter(|result| result.success).count();
-    let mut lines = vec![format!(
-        "{succeeded} of {} {} completed on {}.",
-        results.len(),
-        if results.len() == 1 { "child" } else { "children" },
-        ChildLane::parse(lane).label()
-    )];
-    lines.push(String::new());
-    for result in &results {
-        if result.success {
-            lines.push(format!(
-                "child {} completed in {}ms:\n{}",
-                result.id,
-                result.duration_ms,
-                if result.output.trim().is_empty() {
-                    "(no output)"
-                } else {
-                    result.output.trim()
-                }
-            ));
-        } else {
-            lines.push(format!("child {} failed: {}", result.id, result.output));
+        let prompt = prompt.as_str();
+        let lane = lane.as_str();
+        let count = count.clamp(1, MAX_DELEGATE_COUNT);
+        // A flag the lane cannot honour is reported to the caller rather than
+        // dropped: the session asked for a model or a dry run and would otherwise
+        // get a fan-out without either, with nothing said.
+        if let Err(why) = child.check(&ChildLane::parse(lane)) {
+            return format!("No children were started: {why}");
         }
-    }
-    lines.join("\n")
+        // Children work where the session works. The version this replaces took
+        // whatever the process's own directory happened to be, which is the same
+        // thing only until something changes it.
+        let supervisor = DelegationSupervisor::new(count, lane, user_token)
+            .with_child_options(child)
+            .in_directory(directory);
+        let (events, mut drain) = mpsc::unbounded_channel();
+        let sink = tokio::spawn(async move { while drain.recv().await.is_some() {} });
+        let results = supervisor
+            .dispatch_streaming(prompt, events, cancel)
+            .await
+            .unwrap_or_default();
+        let _ = sink.await;
+
+        let succeeded = results.iter().filter(|result| result.success).count();
+        let mut lines = vec![format!(
+            "{succeeded} of {} {} completed on {}.",
+            results.len(),
+            if results.len() == 1 {
+                "child"
+            } else {
+                "children"
+            },
+            ChildLane::parse(lane).label()
+        )];
+        lines.push(String::new());
+        for result in &results {
+            if result.success {
+                lines.push(format!(
+                    "child {} completed in {}ms:\n{}",
+                    result.id,
+                    result.duration_ms,
+                    if result.output.trim().is_empty() {
+                        "(no output)"
+                    } else {
+                        result.output.trim()
+                    }
+                ));
+            } else {
+                lines.push(format!("child {} failed: {}", result.id, result.output));
+            }
+        }
+        lines.join("\n")
     })
 }
 
@@ -1770,11 +1828,13 @@ mod child_option_tests {
             ..ChildOptions::default()
         };
         assert!(config.check(&ChildLane::OxAlpha).is_err());
-        assert!(config
-            .check(&ChildLane::Opencode {
-                model: "m".to_string()
-            })
-            .is_ok());
+        assert!(
+            config
+                .check(&ChildLane::Opencode {
+                    model: "m".to_string()
+                })
+                .is_ok()
+        );
 
         // Nothing asked for, nothing refused, on any lane.
         for lane in [
@@ -1790,9 +1850,18 @@ mod child_option_tests {
     /// `--description` names the run; without one the prompt does.
     #[test]
     fn a_run_is_named_by_its_description_or_its_prompt() {
-        assert_eq!(describe(Some("port the flags"), "anything"), "port the flags");
-        assert_eq!(describe(Some("   "), "one two three four five six"), "one two three four five");
-        assert_eq!(describe(None, "one two three four five six"), "one two three four five");
+        assert_eq!(
+            describe(Some("port the flags"), "anything"),
+            "port the flags"
+        );
+        assert_eq!(
+            describe(Some("   "), "one two three four five six"),
+            "one two three four five"
+        );
+        assert_eq!(
+            describe(None, "one two three four five six"),
+            "one two three four five"
+        );
         assert_eq!(describe(None, "   "), "delegated task");
     }
 
