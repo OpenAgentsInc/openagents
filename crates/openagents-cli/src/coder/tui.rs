@@ -81,7 +81,6 @@ pub enum Role {
     You,
     Assistant,
     Tool,
-    Reasoning,
     Notice,
     /// What one of the session's own commands printed — `/diff`, `/help`,
     /// `/resume`.
@@ -267,8 +266,6 @@ pub struct CoderUi {
     /// Empty until one has. Never a guess: `--lane` says what was asked for,
     /// and this says what answered, and the two are not the same fact.
     pub model: String,
-    pub reasoning: Option<String>,
-    pub running: bool,
     pub entries: Vec<Entry>,
     /// The current session goal, when one exists.
     pub goal: Option<crate::coder::goal::Goal>,
@@ -374,8 +371,6 @@ impl CoderUi {
             repo: "~/work/openagents".to_string(),
             branch: "main".to_string(),
             model: String::new(),
-            reasoning: None,
-            running: true,
             entries: vec![],
             goal: None,
             show_welcome: true,
@@ -924,9 +919,7 @@ fn render_entry(
             };
 
             let role_style = match entry.role {
-                Role::Notice | Role::Reasoning => {
-                    Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR)
-                }
+                Role::Notice => Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR),
                 Role::You => Style::default().fg(USER_TEXT_COLOR).bg(BACKGROUND_COLOR),
                 _ => text_style,
             };

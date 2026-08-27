@@ -1,17 +1,84 @@
-# coder-lite TUI parity inventory
+# Coder TUI parity inventory
 
-The inventory issue #117 gates its porting half on. Every feature below carries
-exactly one disposition — **ported**, **dropped**, or **to-port** — and every
-claim carries a file, a line, or a count. Best practice V3: parity claims
-quantify, and adjectives are not evidence.
+This inventory closes issue #117. Every feature carries one final disposition:
+**retained** in the native Coder or **dropped** from the parity target. The
+historical inventory remains below because it records what the three former
+interfaces did at `f3bad5277b`. The closure reconciliation records what the
+single installed `openagents` binary does now.
 
 Read `docs/coder/autoimprove.md` §4 and `docs/coder/best-practices.md` V2/V3
-first. The porting half of #117 remains blocked on #116 (the PTY harness): no
-entry here may be marked done on headless evidence.
+first. Issue #116 supplied the PTY gate at
+`crates/openagents-cli/tests/coder_interactive_pty.rs`. Interactive behavior in
+the retained set uses that gate; frame-only behavior also has focused renderer
+tests.
 
 ---
 
-## 0. Two notes on freshness
+## 0. Closure reconciliation
+
+The original matrix contains 36 `to-port` rows, although its summary reported
+31. It also schedules `--offline` outside the matrix. This table resolves all
+37 items. A missing feature from an implementation that no longer ships is not
+by itself a reason to add code. We retained behavior that improves the main
+conversation loop and dropped behavior that duplicates another surface,
+introduces an unresolved runtime contract, or came from neither comparison
+implementation.
+
+| Item | Final disposition | Evidence or reason |
+| --- | --- | --- |
+| `--offline` | **Dropped** | The PTY harness uses a local HTTP fixture for the real catalog, credit, and turn paths. A second stand-in runtime would test a product mode that users do not have. |
+| A9, bracketed paste | **Retained** | `interactive.rs` enables bracketed paste and consumes `Event::Paste` as one edit. `multiline_paste_stays_in_the_composer_until_enter` proves the real PTY contract. |
+| A10, paste placeholders | **Dropped** | Coder keeps pasted text visible and editable. Replacing content with an opaque token would make review and correction harder, and no runtime limit requires it. |
+| A11, image paste | **Dropped** | The runtime has no image content-part contract. Path detection in the frame before that contract exists would claim multimodal input that the turn cannot send. |
+| A12, kill ring and yank | **Dropped** | None of the three inventoried Coder interfaces implemented it. Coder retains the existing line and word deletion chords without adding a new editor subsystem for nominal parity. |
+| A13, undo and redo | **Dropped** | None of the three inventoried interfaces implemented it. This is a possible editor enhancement, not unfinished parity work. |
+| B3, advertised key invariant | **Retained** | `commands::the_key_hints_name_only_keys_the_session_handles` pins the advertised set. The PTY suite exercises submit, paste, cancel, exit, resize, and terminal restoration. |
+| C17, `NO_COLOR` inside the full-screen TUI | **Dropped** | Amber is the product palette. Noninteractive commands still honor their color flags; the full-screen interface instead provides `OPENAGENTS_REDUCED_MOTION` for an accessibility mode that preserves state without animation. |
+| D8, tool collapse and expansion | **Dropped** | The owner selected a four-row animated preview. `tui.rs` shows the beginning, advances once, and settles on the end without adding a second focus mode or hiding old transcript state behind a toggle. |
+| D9, tool status marks | **Retained** | Active calls use an open marker and animated rail; completed calls use a filled marker and settle fade. `ToolCall.done` is set only by `Control::ToolDone`. |
+| D10, fixed blank tool rows | **Retained** | `TOOL_OUTPUT_ROWS` is a maximum of four. The renderer iterates only over output rows that exist, so a one-line result consumes one output row. |
+| D11, diff inspector pane | **Dropped** | `/diff` renders a file summary and highlighted fenced diff in the transcript. A second pane duplicates the repository review surface and adds a competing focus model. |
+| D12, word-level diff | **Dropped** | No inventoried interface implemented it. It is not a parity gap. |
+| D14, nested PTY pane | **Dropped** | `/run` is deliberately noninteractive. Embedding another terminal would make turn cancellation, key ownership, and child-process settlement ambiguous; run interactive programs in the invoking terminal. |
+| D15, transcript search | **Dropped** | No inventoried interface implemented it. It is not a parity gap. |
+| D16, startup state | **Retained** | `CoderUi::render_welcome` centers the working directory, endpoint, installed ACP agents, and help hint, then removes the box when the first conversation entry arrives. The PTY startup test pins the working directory and omission of the redundant lane. |
+| D17, titled outer frame | **Dropped** | The product uses the composer border and centered startup summary. An extra badge frame adds chrome without adding state. |
+| E1, live legacy fan-out rows | **Dropped** | The TypeScript fan-out protocol retired with that CLI. Native delegation is a model tool with normal tool progress and the same cancellation boundary as every other tool. |
+| E2, child full-screen transcript | **Dropped** | A nested child transcript duplicates the parent transcript and introduces another navigation mode. Tool output remains in the conversation that requested it. |
+| E3, fleet-specific `Ctrl+X` | **Dropped** | `Esc` cancels the active turn and its tools; exit cancels before leaving. Separate fleet cancellation would bypass the single turn-settlement contract. |
+| E5, effective model | **Retained** | `Control::Model` records the model that answered. `lane_field_within` preserves that model even when a narrow footer must omit the lane. |
+| E6, lane | **Retained** | The footer shows the active lane and replaces its one transcript notice on rapid lane changes instead of appending duplicates. |
+| E7, repository and branch in the footer | **Dropped** | The owner removed these from the persistent row. The startup summary shows the working directory, and export metadata still records repository and branch. |
+| E8, reasoning setting in the frame | **Dropped** | The reasoning setting still reaches the runtime and thread. The unused `CoderUi.reasoning` mirror was deleted during this reconciliation. |
+| E9, interrupt a running turn | **Retained** | `Esc` requests idempotent cancellation, late events are fenced by `TurnId`, child tools receive cancellation, and settlement runs once. PTY tests cover cancel, queue preservation, and exit during a turn. |
+| E10, reasoning transcript role | **Dropped** | The runtime does not emit a reasoning-summary event. The test-only `Role::Reasoning` variant was deleted instead of preserving a display state no turn can produce. |
+| E11, elapsed-time counter | **Dropped** | The three-second waiting state and ten-second retry state tell you what the session is doing. A continuously changing timer adds repaint noise without a new action. |
+| E12, scroll-position indicator | **Dropped** | Trackpad, wheel, arrow, and page scrolling work while the viewport follows new output when no manual override is active. A permanent counter would compete with the deliberately minimal footer. |
+| E13, transcript Home and End | **Dropped** | Home and End belong to composer editing. Transcript movement uses trackpad, wheel, arrows, and page keys, avoiding a context-dependent override of editing keys. |
+| E14, turn state | **Retained** | `CoderUi.activity` reports waiting, canceling, and queued work when it fits without evicting credit or the effective model. |
+| E15, footer key hints | **Dropped** | `/help` owns the complete key list. The persistent footer is reserved for credit, turn state, goal, lane, and effective model. |
+| E16, thread ID | **Retained** | `Control::Thread` records the server thread and `/info` reports it without spending persistent footer width. |
+| E18, installed ACP agents | **Retained** | The centered startup summary lists the agents that `find_agents` verified on this machine. |
+| F3, typed `/delegate` | **Dropped** | Delegation is a declared model tool. A second command path would duplicate validation, accounting, and cancellation behavior. |
+| F4, `/skills` selection screen | **Dropped** | Skills are runtime context and tools, not a frame-local toggle list. The retired TypeScript screen did not define a contract the native runtime could honor. |
+| F5, `/system` | **Dropped** | The assembled system prompt is a staged artifact and runtime input, not a transcript command. Exposing it would add a second representation that can drift. |
+| F6, `/plugin load` | **Dropped** | The TypeScript plugin loader retired with the TypeScript CLI. Native capabilities use the current skill and tool registries. |
+
+The retained interaction set is covered by the PTY suite, including the bare
+binary, installer-pipe input, multiline paste, submission, cancellation,
+queued prompts, queue clearing, active exit, goals, resize, footer state, and
+terminal cleanup. Tool rendering has frame tests because its state is supplied
+directly to the renderer rather than entered through a key sequence.
+
+The reconciliation also removed three unreachable presentation states:
+`CoderUi.reasoning`, `CoderUi.running`, and `Role::Reasoning`. Runtime reasoning
+configuration remains unchanged.
+
+## Historical snapshot
+
+Sections 1–9 below preserve the inventory as it was written before the native
+consolidation and later TUI work. Their `to-port` labels describe that snapshot;
+the closure table above supersedes them.
 
 **Tree state.** Everything below was read at `f3bad5277b` (2026-08-26). Line
 numbers are from that tree.

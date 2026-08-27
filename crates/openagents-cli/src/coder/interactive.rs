@@ -80,7 +80,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let (repo, branch) = git_info().unwrap_or(("unknown".to_string(), "unknown".to_string()));
     ui.repo = repo;
     ui.branch = branch;
-    ui.reasoning = options.reasoning.clone();
     // The two facts the row under the composer needs that do not depend on a
     // credential: where this session is talking, and what it asked for.
     ui.endpoint = crate::coder::runtime::api_base();

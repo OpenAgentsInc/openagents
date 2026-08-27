@@ -54,27 +54,23 @@ fn delegate_call() -> ToolCall {
     }
 }
 
-// ── 727ab02ece: Remove leading spaces from Notice/Reasoning bullet ──
+// ── 727ab02ece: Remove leading spaces from the notice bullet ──
 
 #[test]
-fn notice_and_reasoning_bullets_sit_flush_left() {
+fn notice_bullets_sit_flush_left() {
     let mut ui = CoderUi::new();
     ui.entries
         .push(Entry::new(Role::Notice, "found ACP agents: cursor, devin"));
-    ui.entries
-        .push(Entry::new(Role::Reasoning, "thinking about it"));
     let lines = draw(&mut ui, 80, 24);
 
-    for role in ["found ACP agents", "thinking about it"] {
-        let line = lines
-            .iter()
-            .find(|l| l.contains(role))
-            .unwrap_or_else(|| panic!("{role:?} was not rendered: {lines:?}"));
-        assert!(
-            line.starts_with("⏺ "),
-            "the bullet is indented again; 727ab02ece put it at column 0: {line:?}"
-        );
-    }
+    let line = lines
+        .iter()
+        .find(|line| line.contains("found ACP agents"))
+        .unwrap_or_else(|| panic!("the notice was not rendered: {lines:?}"));
+    assert!(
+        line.starts_with("⏺ "),
+        "the bullet is indented again; 727ab02ece put it at column 0: {line:?}"
+    );
 }
 
 #[test]
