@@ -21,15 +21,6 @@ describe("release impact planner", () => {
     expect(plan.actions).toEqual(["web_deploy", "mobile_ota"]);
   });
 
-  test("release infrastructure deploys the updates service alone", () => {
-    const plan = planReleaseImpact([
-      "apps/oa-updates/src/release-set-feed.ts",
-      "scripts/release-impact.ts",
-    ]);
-
-    expect(plan.actions).toEqual(["updates_service_deploy"]);
-  });
-
   test("shared UI or lockfile churn no longer manufactures a binary release", () => {
     const plan = planReleaseImpact(["packages/ui/src/workbench.css", "pnpm-lock.yaml"]);
 

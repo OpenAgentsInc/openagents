@@ -527,7 +527,6 @@ const unrelatedServiceDigests = (runCommand) => {
     observationDigest(cloudRun("openagents-monolith", "OpenAgents Cloud Run")),
     observationDigest(database),
     observationDigest(cloudRun("openagents-nostr-relay", "relay", false)),
-    observationDigest(cloudRun("oa-updates", "update")),
     observationDigest({ bridge: sandboxBridge, control: sandboxControl }),
   ];
 };
@@ -558,7 +557,7 @@ const validateSnapshot = (snapshot, bundle, deployedRevision, admissionReceipt) 
   timestamp(snapshot.observedAt, "rollback baseline observedAt");
   assert(
     Array.isArray(snapshot.unrelatedServiceDigests) &&
-      snapshot.unrelatedServiceDigests.length === 5 &&
+      snapshot.unrelatedServiceDigests.length === 4 &&
       snapshot.unrelatedServiceDigests.every((value) => DIGEST.test(value)),
     "rollback baseline service digests are invalid",
   );

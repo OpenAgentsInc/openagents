@@ -211,14 +211,6 @@ resource "google_service_account_iam_member" "automation_cloud_run_source_builde
   member             = "serviceAccount:${local.automation_service_account}"
 }
 
-module "oa_updates" {
-  source = "../modules/cloud-run-service"
-
-  project = var.project_id
-  name    = "oa-updates"
-  region  = var.region
-}
-
 module "oa_cloud_run_bridge" {
   source = "../modules/cloud-run-service"
 
@@ -231,22 +223,16 @@ module "oa_cloud_run_bridge" {
 # Secret Manager (containers only; versions are added out-of-band)
 # ---------------------------------------------------------------------------
 
-# OTA manifest code-signing private key for oa-updates (#8530 / CFG-14).
-# Mounted into the Cloud Run service as the OA_SIGNING_KEY env var via
-# `--set-secrets` (see apps/oa-updates/scripts/deploy-cloudrun.sh). The key
-# bytes live only in Secret Manager versions (added out-of-band) and the
-# local operator backup; never in HCL or state.
+# Recovery copy of the retired update-feed signing key (#8530 / CFG-14).
+# The key bytes live only in Secret Manager versions and the local operator
+# backup; never in HCL or state. No runtime identity retains access.
 module "oa_updates_codesign_key" {
   source = "../modules/secret-manager-secret"
 
   project   = var.project_id
   secret_id = "oa-updates-codesign-key"
 
-  # Default compute SA — the runtime service account of the oa-updates
-  # Cloud Run service.
-  accessor_members = [
-    "serviceAccount:157437760789-compute@developer.gserviceaccount.com",
-  ]
+  accessor_members = []
 }
 
 # The Forge Git service and the monolith policy endpoint use one private

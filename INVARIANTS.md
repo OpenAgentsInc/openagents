@@ -774,34 +774,15 @@ come from the Freerange teardown
   `scripts/khala-code-desktop-removal.test.ts` enforces the bounded absence
   oracle. Historical evidence resolves through git and the backroom
   supersession intake.
-- What survives is the signing contract, not a desktop lane.
-  `packages/release-contract` owns the release/update schema and the pinned
-  Ed25519 release authority. `apps/oa-updates` serves exactly ONE product
-  surface, the signed per-platform Pylon release feed
-  (`/pylon/<channel>/<platform>/feed.json`), plus the two routes that support
-  it (`/assets/<hash>` disk streaming and the `/<owner>/nodes` Pylon discovery
-  registry), and a deploy to it must preserve that feed. The pinned public key
-  stays at `apps/oa-updates/keys/release-pubkey.json`. A future desktop
-  distribution lane requires a new owner decision, a new invariant, and its own
-  enforcement.
-- (retired 2026-08-05, #9325) The OpenAgents mobile Expo OTA feed is no longer
-  a surface of `apps/oa-updates`. Owner direction was that there are no
-  installed mobile users, so the feed was retired rather than frozen: the
-  `/<owner>/manifest` route, Expo Updates Protocol `multipart/mixed`
-  manifest/directive responses, channel/branch negotiation, `expo-signature`
-  manifest code signing, the `expo export` reader and publish builder, the
-  in-memory published-asset store, and `publish-ota.sh` were all deleted, and
-  those routes are ordinary 404s. `apps/openagents-mobile/app.json` sets
-  `updates.enabled: false` and configures no update URL — the key must stay
-  present and false, because `updates.enabled` defaults to true and removing
-  the key would leave the linked expo-updates client enabled with no URL.
-  Mobile JS changes ship in a new store build only. The retired `OA_SEED_*`
-  seed variables and the `OA_SIGNING_KEY` manifest code-signing secret are
-  never read by `apps/oa-updates/src/serve.ts` nor emitted by
-  `apps/oa-updates/scripts/deploy-cloudrun.sh`, so a stale operator environment
-  cannot resurrect the feed; `apps/oa-updates/src/serve.test.ts` and
-  `apps/oa-updates/src/deploy-cloudrun.test.ts` hold those absence oracles. Re-arming a
-  mobile update path requires a new owner decision and a new invariant.
+- (retired 2026-08-27, `OpenAgentsInc/openagents#149`) The Pylon release feed,
+  node registry, asset server, and `oa-updates` Cloud Run services are gone.
+  Every published Pylon package version is deprecated. The update bucket and
+  signing-key container remain only for recovery review and have no runtime
+  caller. The Rust CLI release authority is `ops/release-cli.sh` and
+  `docs/ops/2026-08-25-cli-release-runbook.md`; it publishes checksummed native
+  artifacts through the Forge-backed release path. Restoring any desktop,
+  Pylon, or mobile update feed requires a new owner decision, implementation,
+  and invariant.
 - (#9280, EP263-07, amended 2026-08-04 by #9325) Omega is the OpenAgents
   download product on `openagents.com/download`, with its own name, version
   line, package, and update path. It was admitted as a separate entry beside

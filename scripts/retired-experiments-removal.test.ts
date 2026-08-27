@@ -5,7 +5,9 @@ import { describe, expect, test } from "vite-plus/test"
 const root = resolve(import.meta.dirname, "..")
 
 const retiredPaths = [
+  "apps/aiur/package.json",
   "apps/ai-sdk-harness-poc/package.json",
+  "apps/oa-updates/package.json",
   "runners/py-bench-runner/pyproject.toml",
   "ops/owned-runner/khala-code-qa-nightly.service",
   "ops/owned-runner/khala-code-qa-nightly.timer",
@@ -16,7 +18,7 @@ const retiredPaths = [
 ] as const
 
 describe("retired experiments stay outside live authority", () => {
-  test("removes the unused harness, Python benchmark lane, and nightly unit", () => {
+  test("removes retired services, experiments, and runners", () => {
     for (const path of retiredPaths) {
       expect(existsSync(resolve(root, path)), path).toBe(false)
     }
@@ -25,5 +27,7 @@ describe("retired experiments stay outside live authority", () => {
   test("does not keep the harness in the workspace", () => {
     const workspace = readFileSync(resolve(root, "pnpm-workspace.yaml"), "utf8")
     expect(workspace).not.toContain("apps/ai-sdk-harness-poc")
+    expect(workspace).not.toContain("apps/aiur")
+    expect(workspace).not.toContain("apps/oa-updates")
   })
 })

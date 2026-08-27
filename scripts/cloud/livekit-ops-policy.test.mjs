@@ -1078,12 +1078,10 @@ test("deployment control Terraform fixes identity, source, route, and substituti
 
 test("repository build paths select narrow service accounts explicitly", () => {
   const sourceDeployers = [
-    "apps/aiur/scripts/deploy-cloudrun.sh",
     "apps/forge-git-service/scripts/deploy-cloudrun.sh",
     "apps/khala-capture/scripts/deploy-cloudrun.sh",
     "apps/khala-live-hub/scripts/deploy-cloudrun.sh",
     "apps/oa-queue-worker/scripts/deploy-cloudrun.sh",
-    "apps/oa-updates/scripts/deploy-cloudrun.sh",
     "apps/openagents-audio-edge/deploy-cloudrun.sh",
     "apps/openagents-audio/scripts/deploy-cloudrun.sh",
     "apps/openagents.com/apps/start/scripts/deploy-cloudrun.sh",
@@ -1101,7 +1099,6 @@ test("repository build paths select narrow service accounts explicitly", () => {
     "scripts/cloud/build-livekit-production-deployer.sh",
     "scripts/cloud/deploy-managed-sandbox-bridge.sh",
     "scripts/cloud/provision-managed-sandbox-runtime.sh",
-    "apps/oa-updates/scripts/deploy-cloudrun.sh",
   ];
   for (const path of directBuildPaths) {
     const script = readFileSync(resolve(import.meta.dirname, "../..", path), "utf8");

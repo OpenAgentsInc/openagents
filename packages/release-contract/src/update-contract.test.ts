@@ -5,7 +5,7 @@
  * this test run. The production release private key is owner custody and is
  * never read, loaded, or printed by any test. The only production material
  * referenced is the committed PUBLIC pin, which a drift oracle keeps
- * byte-equal with `apps/oa-updates/keys/release-pubkey.json`.
+ * byte-equal with `packages/release-contract/keys/release-pubkey.json`.
  */
 import { describe, expect, test } from "vite-plus/test"
 import { createHash, generateKeyPairSync, sign as edSign } from "node:crypto"
@@ -196,7 +196,7 @@ describe("artifact digest admission", () => {
 describe("production pin drift oracle", () => {
   test("the embedded pin equals the committed public release key file", () => {
     // PUBLIC key material only — committed, client-pinned, safe to read.
-    const pubkeyPath = path.resolve(import.meta.dirname, "../../../apps/oa-updates/keys/release-pubkey.json")
+    const pubkeyPath = path.resolve(import.meta.dirname, "../keys/release-pubkey.json")
     const committed = JSON.parse(readFileSync(pubkeyPath, "utf8")) as {
       alg: string
       kid: string

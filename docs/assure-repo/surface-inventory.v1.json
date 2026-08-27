@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:81e201771443b8d54e00756a170b03af09119ecb6bda67b5d91945e73e394f29",
+  "sourceDigest": "sha256:f773e13f3f482f9db665f49c0cc8e7b401a8c31c48ed6400f087e4fcea998864",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -13,39 +13,6 @@
         {
           "type": "test",
           "ref": "apps/acceptance-runner (2 tracked test files)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "app:@openagentsinc/ai-sdk-harness-poc",
-      "kind": "app",
-      "owningPath": "apps/ai-sdk-harness-poc",
-      "title": "@openagentsinc/ai-sdk-harness-poc",
-      "derivation": "derived",
-      "oracles": [],
-      "unverified": {
-        "reason": "reference-only",
-        "note": "policy: reference-only"
-      },
-      "obligation": {
-        "state": "out-of-scope",
-        "note": "unverified: reference-only"
-      }
-    },
-    {
-      "id": "app:@openagentsinc/aiur",
-      "kind": "app",
-      "owningPath": "apps/aiur",
-      "title": "@openagentsinc/aiur",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/aiur (16 tracked test files)"
         }
       ],
       "obligation": {
@@ -135,23 +102,6 @@
         {
           "type": "test",
           "ref": "apps/oa-queue-worker (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "app:@openagentsinc/oa-updates",
-      "kind": "app",
-      "owningPath": "apps/oa-updates",
-      "title": "@openagentsinc/oa-updates",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/oa-updates (8 tracked test files)"
         }
       ],
       "obligation": {
@@ -3377,9 +3327,9 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 180,
+    "totalSurfaces": 177,
     "byKind": {
-      "app": 17,
+      "app": 14,
       "crate": 6,
       "document": 52,
       "package": 98,
@@ -3387,18 +3337,17 @@
       "release-pipeline": 4,
       "worker": 1
     },
-    "withOracle": 172,
-    "unverified": 8,
+    "withOracle": 170,
+    "unverified": 7,
     "byUnverifiedReason": {
       "config-only": 2,
-      "no-oracle-authored": 5,
-      "reference-only": 1
+      "no-oracle-authored": 5
     },
     "byObligationState": {
-      "designed": 136,
+      "designed": 134,
       "inconclusive": 4,
       "mapped": 36,
-      "out-of-scope": 4
+      "out-of-scope": 3
     },
     "coverageNotes": [
       "AR-0 rev 1 enumerates surfaces at package/app/worker/crate/public-endpoint/release-pipeline/document granularity derived from the workspace, Cargo, contract, and product-spec graphs.",

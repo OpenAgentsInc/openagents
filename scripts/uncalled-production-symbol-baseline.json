@@ -10,7 +10,6 @@
   ],
   "baselinedAt": "2026-07-31",
   "inheritedDebt": [
-    "apps/aiur/src/lib/relative-time-core.ts#formatRelativeTimeWords",
     "apps/forge-git-service/src/admission.ts#ForgeGitAdmissionShape.readAppliedMergeReceiptRef",
     "apps/forge-git-service/src/auth.ts#makePolicyAuthorityAuthLayer",
     "apps/forge-git-service/src/auth.ts#makeStaticAuthLayer",
@@ -21,7 +20,6 @@
     "apps/forge-git-service/src/web-read-policy.ts#makeForgeWebReadPolicyLayer",
     "apps/forge-git-service/src/web-read.ts#makeForgeWebReadLayer",
     "apps/forum/src/index.ts#describeForumMount",
-    "apps/oa-updates/src/pylon-release.ts#selectPylonUpdate",
     "apps/openagents-audio/src/storage.ts#MemoryPrivateObjectStore",
     "apps/openagents-audio/src/stt.ts#FakeSttAdapter",
     "apps/openagents-audio/src/tts.ts#FakeTtsAdapter",

@@ -8,8 +8,7 @@
  *
  * The Electron Desktop app was removed, so the `desktop_full_matrix` action and
  * the signed-Desktop target/version-bump projection it carried are retired. The
- * surviving owned lanes are the web surface, the mobile Expo OTA, and the
- * updates service.
+ * surviving owned lanes are the web surface and the mobile Expo OTA.
  */
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
@@ -17,7 +16,6 @@ import { resolve } from "node:path";
 export const releaseImpactActions = [
   "web_deploy",
   "mobile_ota",
-  "updates_service_deploy",
   "no_binary_release",
 ] as const;
 export type ReleaseImpactAction = (typeof releaseImpactActions)[number];
@@ -39,12 +37,6 @@ const isDocumentation = (path: string): boolean =>
   path === "AUTHORITY.md" ||
   path === "INVARIANTS.md" ||
   path === "AGENTS.md";
-
-const isReleaseInfrastructure = (path: string): boolean =>
-  isUnder(path, "apps/oa-updates") ||
-  path.startsWith("scripts/release") ||
-  path.startsWith("scripts/changelog") ||
-  path.startsWith("scripts/check-authority-delegation");
 
 const isWeb = (path: string): boolean => isUnder(path, "apps/openagents.com");
 
@@ -71,12 +63,6 @@ export const planReleaseImpact = (inputPaths: readonly string[]): ReleaseImpactP
       actions.add("mobile_ota");
       reasons.add(
         "Mobile JavaScript or Effect Native content changed; use the existing signed Expo OTA lane when its runtime contract permits.",
-      );
-    }
-    if (isReleaseInfrastructure(path)) {
-      actions.add("updates_service_deploy");
-      reasons.add(
-        "Release/update infrastructure changed; verify and deploy that service without manufacturing an application binary.",
       );
     }
   }

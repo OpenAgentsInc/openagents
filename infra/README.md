@@ -50,7 +50,6 @@ its own copies with a different state prefix.
 | Cloud SQL `l402-aperture-db` (PG15) + 3 users, VP-1 cold recovery evidence (`activation_policy=NEVER`)                                                                                                          | `module.l402_aperture_db`        |
 | Cloud SQL `autopilot4-pg` (PG16) + 2 users                                                                                                                                                                      | `module.autopilot4_pg`           |
 | Cloud SQL `oa-convex-nonprod-pg` (PG16) + 2 users                                                                                                                                                               | `module.oa_convex_nonprod_pg`    |
-| Cloud Run `oa-updates` (shell)                                                                                                                                                                                  | `module.oa_updates`              |
 | Cloud Run `oa-cloud-run-bridge` (shell)                                                                                                                                                                         | `module.oa_cloud_run_bridge`     |
 | GCS `openagentsgemini-oa-updates`                                                                                                                                                                               | `module.oa_updates_bucket`       |
 | GCS `openagentsgemini-terraform-state`                                                                                                                                                                          | `module.terraform_state_bucket`  |
@@ -101,11 +100,13 @@ canary destruction remain mandatory. See
   by the provider config. Secret Manager secrets are tracked as **containers
   only** (`modules/secret-manager-secret`): versions/payloads are added
   out-of-band with `gcloud secrets versions add`, never through Terraform.
-  The `oa-updates` `OA_SIGNING_KEY` moved from inline Cloud Run env to the
+  The retired `oa-updates` `OA_SIGNING_KEY` moved from inline Cloud Run env to the
   `oa-updates-codesign-key` secret on 2026-07-06 (#8530 / CFG-14). State was
   refreshed to the secret-ref shape and all superseded GCS state versions
   containing the inline key were purged (they linger in the bucket's 7-day
-  soft-delete window until ~2026-07-13, admin-restore only, then are gone).
+  soft-delete window until ~2026-07-13, admin-restore only, then are gone). The
+  secret container and release bucket remain during the recovery-data review;
+  no service consumes them.
 - **LiveKit is not a Cloud Run or Autopilot workload.** Its SFU requires
   public node candidates, host networking, direct UDP/TCP media, and embedded
   TURN. The canary is GCE and disposable; the production candidate is regional

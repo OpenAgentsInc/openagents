@@ -854,10 +854,9 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   Web and backend deployments belong to the separate
   `OpenAgentsInc/openagents.com` Phoenix repository. Do not use the historical
   TypeScript deployment scripts in this repository.
-- Signing/notarization details live in `apps/oa-updates/docs/release-signing-runbook.md`
-  (ed25519 release key + the `HQWSG26L43` Apple Developer ID) — read before any signed
-  release. Publish/deploy only from a clean `origin/main`, RCs are pre-releases and
-  never take the stable `latest` badge.
+- Build, checksum, publish, and promote the Rust CLI through
+  `docs/ops/2026-08-25-cli-release-runbook.md`. Publish only from a clean Forge
+  `main`. Release candidates never take the stable channel.
 
 ## Effect Development Guidance
 

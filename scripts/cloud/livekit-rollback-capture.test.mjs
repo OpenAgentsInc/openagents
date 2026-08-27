@@ -110,7 +110,7 @@ const commandRunner =
     cloudRunService = service(),
     deploymentInventory = deployments(),
     kubeContext = "gke_openagentsgemini_us-central1_oa-livekit-prod",
-    updateGeneration = "11",
+    unrelatedGeneration = "4",
   } = {}) =>
   (bin, args, environment) => {
     if (bin === "psql") {
@@ -165,7 +165,10 @@ const commandRunner =
       status: 0,
       stdout: JSON.stringify([
         {
-          metadata: { name, generation: name === "oa-updates" ? updateGeneration : "4" },
+          metadata: {
+            name,
+            generation: name === "openagents-monolith" ? unrelatedGeneration : "4",
+          },
           status: { latestReadyRevisionName: `${name}-revision`, traffic: [{ percent: 100 }] },
         },
       ]),
@@ -199,7 +202,7 @@ const capture = (beforeSnapshot, options) =>
 
 test("collects an ordered live baseline and derives a valid controlled rollback capture", () => {
   const before = baseline();
-  assert.equal(before.unrelatedServiceDigests.length, 5);
+  assert.equal(before.unrelatedServiceDigests.length, 4);
   assert.ok(before.unrelatedServiceDigests.every((value) => /^sha256:[0-9a-f]{64}$/u.test(value)));
 
   const result = capture(before);
@@ -251,7 +254,7 @@ test("accepts tagged Cloud Run revisions that receive no traffic", () => {
     revisionName: "openagents-monolith-broker-test",
     tag: "broker-test",
   });
-  assert.equal(baseline({ cloudRunService: tagged }).unrelatedServiceDigests.length, 5);
+  assert.equal(baseline({ cloudRunService: tagged }).unrelatedServiceDigests.length, 4);
 });
 
 test("refuses admission drift, nonterminal database state, and silent transport mismatches", () => {
@@ -281,7 +284,7 @@ test("refuses pin drift and an unrelated service change", () => {
   wrongWorker.items[1].spec.template.spec.containers[0].image = `example.invalid/worker@${digest("wrong-worker")}`;
   assert.throws(() => capture(before, { deploymentInventory: wrongWorker }), /pins do not match/u);
   assert.throws(
-    () => capture(before, { updateGeneration: "12" }),
+    () => capture(before, { unrelatedGeneration: "5" }),
     /unrelated production service changed/u,
   );
 });

@@ -6,5 +6,5 @@
   "x": "P9steasTKRx6gr9QQlbah4kXm17aAh2wLHLAL-Txwak",
   "created": "2026-06-15",
   "use": "release-provenance",
-  "note": "Pinned by clients to verify OpenAgents artifacts/manifests; fail-closed."
+  "note": "Historical public key retained for artifact verification; no active feed uses it."
 }

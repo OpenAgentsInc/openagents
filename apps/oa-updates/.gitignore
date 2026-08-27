@@ -1,7 +1,0 @@
-node_modules/
-
-# Built Cloud Run bundle (vp pack src/serve.ts)
-dist-server/
-
-# Pylon RC release staging (binaries served to the feed)
-pylon-dist/

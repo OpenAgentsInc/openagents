@@ -7,7 +7,7 @@
  * distribution slice: everything here runs against fixture keypairs in tests;
  * the PRODUCTION private key never enters this repo, this process, or any
  * test. Clients pin only the committed PUBLIC release key
- * (`apps/oa-updates/keys/release-pubkey.json`) and reject everything else.
+ * (`packages/release-contract/keys/release-pubkey.json`) and reject everything else.
  *
  * Trust boundary: the signature, never the host/TLS. A manifest that fails
  * alg/kid/sha256/ed25519 verification is REJECTED with a typed reason — there
@@ -165,7 +165,7 @@ export type PinnedReleaseKey = typeof PinnedReleaseKeySchema.Type
 
 /**
  * The production pin, mirrored from the committed PUBLIC key file
- * `apps/oa-updates/keys/release-pubkey.json` (kid `2dbe811d19f67528`).
+ * `packages/release-contract/keys/release-pubkey.json` (kid `2dbe811d19f67528`).
  * A test asserts this constant stays byte-equal with that file so the two
  * can never drift silently. This is public-safe by construction; the private
  * seed lives only in owner custody (Secret Manager + `.secrets`) and is
