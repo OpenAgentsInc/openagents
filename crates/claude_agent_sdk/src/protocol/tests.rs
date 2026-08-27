@@ -129,9 +129,12 @@ mod tests {
             msg_type: ControlResponseType::ControlResponse,
             response: ControlResponseData::Success {
                 request_id: "req-123".to_string(),
-                response: Some(serde_json::to_value(PermissionResult::allow(json!({
-                    "command": "ls -la"
-                }))).unwrap()),
+                response: Some(
+                    serde_json::to_value(PermissionResult::allow(json!({
+                        "command": "ls -la"
+                    })))
+                    .unwrap(),
+                ),
             },
         };
 
@@ -147,7 +150,9 @@ mod tests {
             msg_type: ControlResponseType::ControlResponse,
             response: ControlResponseData::Success {
                 request_id: "req-123".to_string(),
-                response: Some(serde_json::to_value(PermissionResult::deny("Not allowed")).unwrap()),
+                response: Some(
+                    serde_json::to_value(PermissionResult::deny("Not allowed")).unwrap(),
+                ),
             },
         };
 

@@ -763,10 +763,7 @@ impl CoderUi {
             // it reads at the 25% opacity the model labels use: present, but
             // never competing with the row it measures (#216).
             let mut spans = Vec::with_capacity(2);
-            spans.push(Span::styled(
-                loading_prefix(spinner, status),
-                style,
-            ));
+            spans.push(Span::styled(loading_prefix(spinner, status), style));
             if !stopwatch.is_empty() {
                 spans.push(Span::styled(
                     format!(" {stopwatch}"),
@@ -1703,7 +1700,10 @@ mod tests {
         // The ordinary turn: no waiting text, count still visible.
         assert_eq!(loading_prefix('⠹', ""), "⠹");
         // A cancel or first-token wait rides in front of the count.
-        assert_eq!(loading_prefix('⠹', "Canceling turn..."), "⠹ Canceling turn...");
+        assert_eq!(
+            loading_prefix('⠹', "Canceling turn..."),
+            "⠹ Canceling turn..."
+        );
         // The UI-level path agrees: a running turn with `waiting` unset
         // still counts.
         let mut ui = CoderUi::new();

@@ -529,6 +529,69 @@ fn suite_digest(manifest: &SuiteManifest, task_digests: &[String]) -> String {
     format!("suite-manifest:{}", hex_digest(source.as_bytes()))
 }
 
+/// A suite resolved for execution. `gym run` consumes this.
+#[derive(Debug, Clone)]
+pub struct ResolvedTask {
+    pub id: String,
+    pub dataset: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedSuite {
+    pub id: String,
+    pub tasks: Vec<ResolvedTask>,
+}
+
+/// Resolve a suite by id, verify its pins have not drifted, and return the
+/// data `gym run` needs. Drift is refused before any run is registered.
+pub fn resolve_for_run(id: &str) -> Result<ResolvedSuite, CliError> {
+    resolve_for_run_in(&suite_dir()?, id)
+}
+
+/// Resolve a suite from an explicit suites directory. Used by tests.
+pub fn resolve_for_run_in(suites_dir: &Path, id: &str) -> Result<ResolvedSuite, CliError> {
+    let path = manifest_path(suites_dir, id);
+    let manifest = read_manifest(&path)?;
+    let task_digests: Vec<_> = manifest.tasks.iter().map(task_digest).collect();
+    let digest = suite_digest(&manifest, &task_digests);
+
+    let repo_root = repo_root_for_suite(&path).ok_or_else(|| {
+        CliError::Configuration(format!(
+            "could not locate the repository root for {}",
+            path.display()
+        ))
+    })?;
+    if let Some(recorded) = recorded_digest(&manifest.id, &repo_root) {
+        if recorded != digest {
+            return Err(CliError::Configuration(format!(
+                "suite {} has drifted from its recorded digest (recorded {}, current {})",
+                manifest.id, recorded, digest
+            )));
+        }
+    }
+
+    let mut tasks = Vec::with_capacity(manifest.tasks.len());
+    for t in &manifest.tasks {
+        match &t.pin {
+            Pin::HarborRegistry { dataset, .. } => tasks.push(ResolvedTask {
+                id: t.id.clone(),
+                dataset: dataset.clone(),
+            }),
+            Pin::TrackerClosedIssue { .. } => {
+                return Err(CliError::Configuration(format!(
+                    "task {} uses a tracker-closed-issue pin; gym run supports harbor-registry tasks only",
+                    t.id
+                )));
+            }
+        }
+    }
+
+    Ok(ResolvedSuite {
+        id: manifest.id.clone(),
+        tasks,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // tests
 // ---------------------------------------------------------------------------

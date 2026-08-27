@@ -166,7 +166,16 @@ fn body_file_dash_with_piped_content_creates_on_the_stub_not_on_production() {
         &origin,
         // An explicit target: the default repo comes from the checkout's git
         // origin, and pinning a fictional one keeps this test self-contained.
-        &["issue", "create", "--title", "x", "--body-file", "-", "-R", "octavia/project"],
+        &[
+            "issue",
+            "create",
+            "--title",
+            "x",
+            "--body-file",
+            "-",
+            "-R",
+            "octavia/project",
+        ],
         Stdio::piped(),
     );
     // The exact bytes the old test sent — kept so the wire assertion pins
@@ -219,7 +228,11 @@ fn body_file_dash_with_closed_stdin_refuses_instead_of_hanging() {
     assert!(
         server.hits().is_empty(),
         "a refused invocation must not send anything: the stub was asked for {:?}",
-        server.hits().iter().map(|hit| &hit.path).collect::<Vec<_>>()
+        server
+            .hits()
+            .iter()
+            .map(|hit| &hit.path)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -227,7 +240,11 @@ fn body_file_dash_with_closed_stdin_refuses_instead_of_hanging() {
 fn body_file_dash_with_empty_pipe_refuses_with_empty_body_guidance() {
     let server = StubServer::start();
     let origin = server.origin();
-    let mut child = spawn_at(&origin, &["issue", "create", "--title", "x", "--body-file", "-"], Stdio::piped());
+    let mut child = spawn_at(
+        &origin,
+        &["issue", "create", "--title", "x", "--body-file", "-"],
+        Stdio::piped(),
+    );
     // Closing stdin immediately delivers EOF with no content.
     drop(child.stdin.take());
     let output = child.wait_with_output().expect("wait");

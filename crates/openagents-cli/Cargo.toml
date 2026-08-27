@@ -61,6 +61,7 @@ textwrap = "0.16"
 two-face = { version = "0.4", default-features = false, features = ["syntect-fancy"] }
 url = "2"
 base64 = "0.22"
+time = { version = "0.3.55", features = ["formatting"] }
 
 [dev-dependencies]
 tempfile = "3"

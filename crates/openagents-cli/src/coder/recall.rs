@@ -97,8 +97,10 @@ impl RecallCaps {
     fn resolve(self) -> (usize, usize, usize) {
         (
             self.max_spans.unwrap_or(DEFAULT_MAX_SPANS),
-            self.max_entries_scanned.unwrap_or(DEFAULT_MAX_ENTRIES_SCANNED),
-            self.max_chars_per_span.unwrap_or(DEFAULT_MAX_CHARS_PER_SPAN),
+            self.max_entries_scanned
+                .unwrap_or(DEFAULT_MAX_ENTRIES_SCANNED),
+            self.max_chars_per_span
+                .unwrap_or(DEFAULT_MAX_CHARS_PER_SPAN),
         )
     }
 }
@@ -247,9 +249,9 @@ fn at_ms_display(at_ms: u64) -> String {
     let secs = (at_ms / 1000) as i64;
     let millis = (at_ms % 1000) as u32;
     match chrono_like_from_unix(secs) {
-        Some((year, month, day, hour, minute, second)) => format!(
-            "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
-        ),
+        Some((year, month, day, hour, minute, second)) => {
+            format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
+        }
         None => format!("{at_ms}"),
     }
 }
@@ -324,7 +326,6 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
         }
     }
 
-
     match question {
         Question::Grep {
             pattern,
@@ -363,7 +364,13 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                     break;
                 }
             }
-            push(&mut spans, &mut caps_hit, max_spans, max_chars_per_span, matched.into_iter());
+            push(
+                &mut spans,
+                &mut caps_hit,
+                max_spans,
+                max_chars_per_span,
+                matched.into_iter(),
+            );
         }
         Question::CursorSlice { from, to } => {
             let matched: Vec<&Entry> = entries
@@ -372,7 +379,13 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                 .filter(|entry| entry.sequence >= *from && entry.sequence <= *to)
                 .collect();
             scanned = scanned.max(max_entries_scanned.min(entries.len()));
-            push(&mut spans, &mut caps_hit, max_spans, max_chars_per_span, matched.into_iter());
+            push(
+                &mut spans,
+                &mut caps_hit,
+                max_spans,
+                max_chars_per_span,
+                matched.into_iter(),
+            );
         }
         Question::TimeSlice { from, to } => {
             let matched: Vec<&Entry> = entries
@@ -384,7 +397,13 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                 })
                 .collect();
             scanned = scanned.max(max_entries_scanned.min(entries.len()));
-            push(&mut spans, &mut caps_hit, max_spans, max_chars_per_span, matched.into_iter());
+            push(
+                &mut spans,
+                &mut caps_hit,
+                max_spans,
+                max_chars_per_span,
+                matched.into_iter(),
+            );
         }
         Question::KeyTurns { limit } => {
             // One span per turn: a turn starts at `turn.user` and runs to the
@@ -430,7 +449,13 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                     text,
                 });
             }
-            push(&mut spans, &mut caps_hit, max_spans, max_chars_per_span, bounded.iter());
+            push(
+                &mut spans,
+                &mut caps_hit,
+                max_spans,
+                max_chars_per_span,
+                bounded.iter(),
+            );
         }
         Question::TurnSummary { turn_id } => {
             // `turn_id` here is the sequence of the turn's opening
@@ -445,7 +470,7 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                         entries_scanned: 0,
                         entries_total,
                         entries_excluded: 0,
-                    }
+                    };
                 }
             };
             let run: Vec<&Entry> = entries
@@ -465,10 +490,8 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                     entries_excluded: 0,
                 };
             }
-            let tools_used: Vec<String> = run
-                .iter()
-                .filter_map(|entry| entry.tool.clone())
-                .collect();
+            let tools_used: Vec<String> =
+                run.iter().filter_map(|entry| entry.tool.clone()).collect();
             let mut counts: Vec<(String, usize)> = Vec::new();
             for entry in &run {
                 match counts.iter_mut().find(|(kind, _)| kind == &entry.kind) {
@@ -500,7 +523,13 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                 tool: None,
                 text,
             }];
-            push(&mut spans, &mut caps_hit, max_spans, max_chars_per_span, bounded.iter());
+            push(
+                &mut spans,
+                &mut caps_hit,
+                max_spans,
+                max_chars_per_span,
+                bounded.iter(),
+            );
         }
     }
 
@@ -533,7 +562,10 @@ pub fn recall_from_session(
         ));
     }
     let parsed_caps = RecallCaps {
-        max_spans: caps.get("maxSpans").and_then(serde_json::Value::as_u64).map(|v| v as usize),
+        max_spans: caps
+            .get("maxSpans")
+            .and_then(serde_json::Value::as_u64)
+            .map(|v| v as usize),
         max_entries_scanned: caps
             .get("maxEntriesScanned")
             .and_then(serde_json::Value::as_u64)
@@ -660,7 +692,9 @@ mod tests {
 
     #[test]
     fn cursor_slice_is_inclusive_on_both_ends() {
-        let corpus: Vec<Entry> = (1..=5).map(|n| entry(n, "turn.user", &format!("u{n}"))).collect();
+        let corpus: Vec<Entry> = (1..=5)
+            .map(|n| entry(n, "turn.user", &format!("u{n}")))
+            .collect();
         let answer = recall(
             &corpus,
             &Question::CursorSlice { from: 2, to: 4 },
@@ -733,7 +767,10 @@ mod tests {
         let grep = serde_json::json!({"_tag": "Grep", "pattern": "x", "caseSensitive": true});
         assert!(matches!(
             Question::decode(&grep),
-            Some(Question::Grep { case_sensitive: true, .. })
+            Some(Question::Grep {
+                case_sensitive: true,
+                ..
+            })
         ));
         let slice = serde_json::json!({"_tag": "CursorSlice", "fromSequence": 1, "toSequence": 9});
         assert!(matches!(
@@ -765,7 +802,11 @@ mod tests {
         assert_eq!(excluded, 1, "the exclusion is counted, not hidden");
         assert_eq!(corpus[1].tool.as_deref(), Some("bash"));
         assert!(corpus[1].text.contains("a.rs"));
-        assert!(corpus[1].text.contains("ls"), "arguments are kept: {:?}", corpus[1].text);
+        assert!(
+            corpus[1].text.contains("ls"),
+            "arguments are kept: {:?}",
+            corpus[1].text
+        );
     }
 
     #[test]
@@ -894,8 +935,16 @@ pub fn host_tool(session_dir: PathBuf) -> crate::tools::HostTool {
             let session_dir = session_dir.clone();
             Arc::new(move |call: &ToolCall, _cancel| {
                 let session_dir = session_dir.clone();
-                let question = call.arguments.get("question").cloned().unwrap_or(serde_json::Value::Null);
-                let caps = call.arguments.get("caps").cloned().unwrap_or(serde_json::Value::Null);
+                let question = call
+                    .arguments
+                    .get("question")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let caps = call
+                    .arguments
+                    .get("caps")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 Box::pin(async move {
                     match recall_from_session(&session_dir, &question, &caps) {
                         Ok(answer) => (render_answer(&session_dir, &answer), false),

@@ -1624,6 +1624,7 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "textwrap",
+ "time",
  "tokio",
  "tracing",
  "tracing-subscriber",
