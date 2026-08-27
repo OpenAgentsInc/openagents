@@ -197,6 +197,25 @@ pub fn format_duration(total_seconds: u64) -> String {
     }
 }
 
+/// The loading row: spinner, then any waiting text, then the running count,
+/// single-spaced — `⠹ Waiting for first token 4s` or, on an ordinary turn,
+/// `⠹ 4s`. Extracted because the first cut of the composition swallowed the
+/// count on the exact row it existed for: a match over two emptiness flags
+/// let the `(true, _)` arm win whenever `waiting` happened to be unset,
+/// which is to say on every normal turn (#216).
+pub fn loading_line(spinner: char, waiting: &str, stopwatch: &str) -> String {
+    let mut text = spinner.to_string();
+    if !waiting.is_empty() {
+        text.push(' ');
+        text.push_str(waiting);
+    }
+    if !stopwatch.is_empty() {
+        text.push(' ');
+        text.push_str(stopwatch);
+    }
+    text
+}
+
 impl Entry {
     /// An entry with no tool output, stamped with the current time.
     pub fn new(role: Role, text: impl Into<String>) -> Self {
@@ -716,14 +735,7 @@ impl CoderUi {
             let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
             let status = self.waiting.as_deref().unwrap_or_default();
             let stopwatch = self.stopwatch_text();
-            let text = match (status.is_empty(), stopwatch.is_empty()) {
-                (true, _) => spinner.to_string(),
-                (false, true) => format!("{spinner} {status}"),
-                // The running turn's elapsed time rides beside whatever the
-                // row is waiting on (#216): the count is the point of the row
-                // once a turn has actually started.
-                (false, false) => format!("{spinner} {status} {stopwatch}"),
-            };
+            let text = loading_line(spinner, status, &stopwatch);
             all_lines.push(Line::from(vec![Span::styled(text, style)]));
         }
 
@@ -1639,19 +1651,33 @@ mod tests {
     }
 
     /// The loading row carries the spinner, the waiting text, and the live
-    /// count together.
+    /// count together — and the count survives when there is no waiting
+    /// text, which is the ordinary turn. The first cut swallowed it there:
+    /// the `(true, _)` arm of a flag match dropped the stopwatch whenever
+    /// `waiting` was unset, which is every normal turn. This pins the
+    /// composition the row actually renders (#216).
     #[test]
     fn the_loading_row_shows_the_spinner_and_the_running_count() {
+        // The ordinary turn: no waiting text, count still visible.
+        assert_eq!(loading_line('⠹', "", "4s"), "⠹ 4s");
+        // A cancel or first-token wait, with the count riding beside it.
+        assert_eq!(
+            loading_line('⠹', "Canceling turn...", "1m30s"),
+            "⠹ Canceling turn... 1m30s"
+        );
+        // Nothing running: the spinner alone, as before the stopwatch.
+        assert_eq!(loading_line('⠹', "", ""), "⠹");
+        // The UI-level path agrees: a running turn with `waiting` unset
+        // still counts.
         let mut ui = CoderUi::new();
         ui.loading = true;
         ui.turn_started();
-        ui.turn_started_at = Some(now_ms() - 1_000);
+        ui.turn_started_at = Some(now_ms() - 9_000);
+        assert_eq!(ui.stopwatch_text(), "9s");
         let stopwatch = ui.stopwatch_text();
-        assert_eq!(stopwatch, "1s");
-        // The row composes spinner + waiting + count; verify the pieces the
-        // render path pulls.
-        assert!(!stopwatch.is_empty());
-        ui.turn_settled();
-        assert!(ui.stopwatch_text().is_empty());
+        assert_eq!(
+            loading_line(SPINNER_FRAMES[0], "", &stopwatch),
+            "⠋ 9s"
+        );
     }
 }
