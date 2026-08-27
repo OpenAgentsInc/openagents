@@ -211,7 +211,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                     ) {
                         ui.loading = false;
                         ui.waiting = None;
-                        ui.entries.push(Entry::new(Role::Notice, "Turn canceled."));
+                        let mut canceled = Entry::new(Role::Notice, "Turn canceled.");
+                        canceled.turn_id = Some(id.get());
+                        ui.entries.push(canceled);
                         if let Some(diagnostic) = diagnostic {
                             ui.entries.push(Entry::new(Role::Notice, diagnostic));
                         }
@@ -1028,13 +1030,15 @@ fn request_cancel(
             task.abort();
             let _ = task.await;
         }
-        let recorded = tokio::time::timeout(Duration::from_secs(3), async {
-            session.lock().await.note_cancellation().await;
+        let settled = tokio::time::timeout(Duration::from_secs(10), async {
+            session.lock().await.settle_cancellation(id).await
         })
         .await;
-        let diagnostic = recorded
-            .is_err()
-            .then(|| "The canceled turn could not be recorded within 3 seconds.".to_string());
+        let diagnostic = match settled {
+            Ok(Ok(_)) => None,
+            Ok(Err(error)) => Some(format!("The canceled turn could not be settled: {error}")),
+            Err(_) => Some("The canceled turn could not be settled within 10 seconds.".to_string()),
+        };
         let _ = tx.send(Control::CancelComplete { id, diagnostic });
     });
 }

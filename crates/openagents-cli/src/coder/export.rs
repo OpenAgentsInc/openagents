@@ -170,6 +170,13 @@ fn step_of(
         Role::Tool => {
             let tool = tool?;
             let content = entry.output.as_deref().unwrap_or("");
+            let status = if content == crate::tools::CANCELLED_TOOL_RESULT {
+                "cancelled"
+            } else if tool.error.is_some() {
+                "failed"
+            } else {
+                "completed"
+            };
             Some(json!({
                 "step_id": 0,
                 "timestamp": timestamp,
@@ -185,6 +192,7 @@ fn step_of(
                     "results": [{
                         "source_call_id": tool.call_id,
                         "content": content,
+                        "status": status,
                     }]
                 }
             }))
@@ -212,6 +220,7 @@ pub fn export_trajectory(
     let at_iso = now_iso();
     let mut steps = Vec::new();
     let mut notices = Vec::new();
+    let mut turn_outcomes = Vec::new();
 
     for (i, entry) in entries.iter().enumerate() {
         if let Some(notice) = match entry.role {
@@ -225,6 +234,13 @@ pub fn export_trajectory(
             _ => None,
         } {
             notices.push(notice);
+        }
+        if entry.role == Role::Notice && entry.text == "Turn canceled." {
+            turn_outcomes.push(json!({
+                "timestamp": iso_for_ms(entry.at),
+                "status": "cancelled",
+                "turn_id": entry.turn_id,
+            }));
         }
 
         if let Some(mut step) = step_of(entry, model, entry.tool.as_ref()) {
@@ -254,6 +270,7 @@ pub fn export_trajectory(
             "repository": repo,
             "branch": branch,
             "notices": notices,
+            "turn_outcomes": turn_outcomes,
         }
     });
 

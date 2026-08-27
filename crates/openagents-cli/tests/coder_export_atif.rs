@@ -41,6 +41,9 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
         Role::Assistant,
         "Rust is a systems language.",
     ));
+    let mut canceled = Entry::new(Role::Notice, "Turn canceled.");
+    canceled.turn_id = Some(41);
+    entries.push(canceled);
     // `/export` itself is an interface command and must not become a step.
     entries.push(Entry::new(Role::You, "/export"));
 
@@ -92,8 +95,10 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
 
     // The notice is kept out of `steps` and recorded alongside them.
     let notices = document["extra"]["notices"].as_array().unwrap();
-    assert_eq!(notices.len(), 1);
+    assert_eq!(notices.len(), 2);
     assert_eq!(notices[0]["text"], "found ACP agents: devin");
+    assert_eq!(document["extra"]["turn_outcomes"][0]["status"], "cancelled");
+    assert_eq!(document["extra"]["turn_outcomes"][0]["turn_id"], 41);
 
     // The trajectory records the version this binary was *published* as, which
     // is what `openagents_cli::VERSION` carries: `ops/release-cli.sh` threads

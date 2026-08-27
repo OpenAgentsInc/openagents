@@ -117,6 +117,8 @@ pub struct ToolCall {
 pub struct Entry {
     pub role: Role,
     pub text: String,
+    /// The local turn generation this entry terminates, when applicable.
+    pub turn_id: Option<u64>,
     /// The model that produced this assistant entry, once the runtime reports it.
     pub model: Option<String>,
     /// Tool output text, rendered as a box of up to four lines.
@@ -152,6 +154,7 @@ impl Entry {
         Self {
             role,
             text: text.into(),
+            turn_id: None,
             model: None,
             output: None,
             tool: None,
@@ -173,6 +176,7 @@ impl Entry {
         Self {
             role: Role::Tool,
             text: text.into(),
+            turn_id: None,
             model: None,
             output: Some(String::new()),
             tool: None,

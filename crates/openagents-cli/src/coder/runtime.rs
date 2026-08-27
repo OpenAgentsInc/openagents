@@ -237,6 +237,10 @@ pub struct Session {
     goal: crate::coder::goal::SharedGoal,
     turn_router: SharedTurnRouter,
     next_turn: u64,
+    /// Turn generations whose canceled thread has already been reported.
+    settled_cancellations: std::collections::HashSet<TurnId>,
+    /// Canceled turns already written to the transcript, including retries.
+    recorded_cancellations: std::collections::HashSet<TurnId>,
 }
 
 impl Session {
@@ -418,6 +422,8 @@ impl Session {
             goal,
             turn_router,
             next_turn: 1,
+            settled_cancellations: std::collections::HashSet::new(),
+            recorded_cancellations: std::collections::HashSet::new(),
         }
     }
 
@@ -619,11 +625,29 @@ impl Session {
         Arc::clone(&self.turn_router)
     }
 
-    /// Record an interrupted turn after its transport future has stopped.
-    pub async fn note_cancellation(&mut self) {
-        self.inner
-            .note_interruption("The turn was canceled before it finished.")
-            .await;
+    /// Record and settle one interrupted turn after its transport has stopped.
+    ///
+    /// The server accepts an identical report more than once. This method
+    /// records the generation after that idempotent report succeeds, so a lost
+    /// response can retry and a later key or event cannot settle it again.
+    pub async fn settle_cancellation(
+        &mut self,
+        id: TurnId,
+    ) -> Result<Option<String>, Failure> {
+        if self.settled_cancellations.contains(&id) {
+            return Ok(None);
+        }
+        if self.recorded_cancellations.insert(id) {
+            self.inner
+                .note_interruption("The turn was canceled before it finished.")
+                .await;
+        }
+        let spent = self.inner.finish().await?;
+        self.settled_cancellations.insert(id);
+        if let Some(spent) = spent {
+            send(&self.sink, Control::Billed(spent.total_tokens));
+        }
+        Ok(self.inner.spend_line(spent))
     }
 
     /// End this session's thread by saying what it did, and say what the

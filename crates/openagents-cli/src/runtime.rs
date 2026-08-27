@@ -1436,10 +1436,9 @@ impl CoderRuntimeSession {
     /// A thread left open holds its grant's remaining budget, and the reply
     /// returns the grant's spend, which is why it is worth reading.
     pub async fn close(&mut self) -> Result<Option<TurnUsage>, Failure> {
-        let Some(thread_id) = self.thread_id.take() else {
+        let Some(thread_id) = self.thread_id.clone() else {
             return Ok(None);
         };
-        self.last_grant = None;
         let url = format!("{}/threads/{thread_id}", self.api_base);
         let mut request = self.http.delete(&url).timeout(Duration::from_secs(30));
         if let Some(token) = &self.user_token {
@@ -1455,6 +1454,8 @@ impl CoderRuntimeSession {
                 format!("{url} refused the revocation: {status} {}", snippet(&body)).into(),
             );
         }
+        self.thread_id = None;
+        self.last_grant = None;
         let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
         Ok(grant_spend(&body))
     }

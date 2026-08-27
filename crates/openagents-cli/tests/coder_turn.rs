@@ -17,6 +17,7 @@
 //!   `Failed` and on what it says, and assert that no reply text arrived.
 
 use openagents_cli::coder::runtime::{Control, Session};
+use openagents_cli::coder::turn::TurnId;
 use openagents_cli::runtime::Lane;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
@@ -256,6 +257,72 @@ fn dev_session(base: &str, tx: Sender<Control>) -> Session {
     )
 }
 
+async fn cancel_when_progress_contains(expected: &str) -> Vec<String> {
+    let stub = start(|request, origin| {
+        if request.contains("POST /api/v1/threads ") {
+            return Reply::Body(200, "application/json", grant(origin));
+        }
+        if request.contains("POST /api/v1/threads/th_test/report") {
+            return Reply::Body(
+                200,
+                "application/json",
+                r#"{"thread":{"id":"th_test","status":"cancelled"},
+                    "grant":{"spent":{"total_tokens":0}}}"#
+                    .to_string(),
+            );
+        }
+        if request.contains("/api/inference/proxy") {
+            return Reply::DelayedSse(Duration::from_millis(250), vec![text("late")]);
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+    let (tx, rx) = channel();
+    let mut opened = session(&stub.base, tx.clone());
+    opened.set_first_response_policy(Duration::from_millis(5), Duration::from_millis(20));
+    let session = Arc::new(tokio::sync::Mutex::new(opened));
+    let id = TurnId::new(52);
+    let router = session.lock().await.turn_router();
+    let running = Arc::clone(&session);
+    let task = tokio::spawn(async move {
+        running
+            .lock()
+            .await
+            .execute_turn_with_id(id, "wait", tx)
+            .await;
+    });
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Ok(control) = rx.try_recv() {
+                let event = match control {
+                    Control::Turn { event, .. } => *event,
+                    event => event,
+                };
+                if matches!(
+                    event,
+                    Control::Waiting(Some(ref message)) if message.contains(expected)
+                ) {
+                    break;
+                }
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no progress event contained `{expected}`"));
+
+    router.lock().unwrap().cancel(id);
+    task.abort();
+    let _ = task.await;
+    session
+        .lock()
+        .await
+        .settle_cancellation(id)
+        .await
+        .expect("the progress-state cancellation did not settle");
+    stub.requests()
+}
+
 /// Everything the frame was told, in order, once the turn has finished.
 fn drain(rx: &Receiver<Control>) -> Vec<Control> {
     let mut seen = Vec::new();
@@ -480,6 +547,38 @@ async fn a_silent_first_response_is_shown_cancelled_and_retried_once() {
         started.elapsed() < Duration::from_millis(150),
         "the first request was not cancelled: {:?}",
         started.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn cancellation_during_the_waiting_state_settles_once() {
+    let requests = cancel_when_progress_contains("Waiting for the model").await;
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.contains("POST /api/v1/threads/th_test/report"))
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn cancellation_during_retry_transition_settles_once() {
+    let requests = cancel_when_progress_contains("Retrying (1 of 1)").await;
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.contains("POST /api/v1/threads/th_test/report"))
+            .count(),
+        1
+    );
+    assert!(
+        requests
+            .iter()
+            .filter(|request| request.contains("POST /api/inference/proxy"))
+            .count()
+            <= 2,
+        "cancellation started another retry: {requests:?}"
     );
 }
 
@@ -778,6 +877,128 @@ async fn leaving_reports_what_the_session_did_rather_than_cancelling_it() {
             .any(|l| l.starts_with("DELETE /api/v1/threads/")),
         "leaving cancelled the thread instead of reporting: {:?}",
         stub.request_lines()
+    );
+}
+
+#[tokio::test]
+async fn cancellation_reports_and_settles_once_then_a_later_turn_starts_clean() {
+    let proxy_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = Arc::clone(&proxy_calls);
+    let report_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let reported = Arc::clone(&report_calls);
+    let stub = start(move |request, origin| {
+        if request.contains("POST /api/v1/threads ") {
+            return Reply::Body(200, "application/json", grant(origin));
+        }
+        if request.contains("POST /api/v1/threads/th_test/report") {
+            let spent = if reported.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                7
+            } else {
+                9
+            };
+            return Reply::Body(
+                200,
+                "application/json",
+                format!(
+                    r#"{{"thread":{{"id":"th_test","status":"cancelled"}},
+                        "grant":{{"spent":{{"total_tokens":{spent}}}}}}}"#
+                ),
+            );
+        }
+        if request.contains("/api/inference/proxy") {
+            if counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                return Reply::DelayedSse(Duration::from_secs(30), vec![text("late")]);
+            }
+            return Reply::Sse(vec![text("next answered"), usage(2)]);
+        }
+        Reply::Body(200, "application/json", "{}".to_string())
+    });
+
+    let (tx, rx) = channel();
+    let session = Arc::new(tokio::sync::Mutex::new(session(&stub.base, tx.clone())));
+    let id = TurnId::new(41);
+    let router = session.lock().await.turn_router();
+    let running = Arc::clone(&session);
+    let turn_tx = tx.clone();
+    let task = tokio::spawn(async move {
+        running
+            .lock()
+            .await
+            .execute_turn_with_id(id, "cancel this", turn_tx)
+            .await;
+    });
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if stub
+                .request_lines()
+                .iter()
+                .any(|line| line.starts_with("POST /api/inference/proxy"))
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the first transport did not start");
+
+    router.lock().unwrap().cancel(id);
+    task.abort();
+    let _ = task.await;
+
+    let mut session = session.lock().await;
+    let first = session
+        .settle_cancellation(id)
+        .await
+        .expect("the canceled thread did not settle");
+    assert!(first.is_some(), "the server's one settlement was dropped");
+    assert!(
+        session
+            .settle_cancellation(id)
+            .await
+            .expect("an idempotent repeat failed")
+            .is_none(),
+        "the same turn settled twice"
+    );
+
+    session.execute_turn("next", tx.clone()).await;
+    session.finish().await.expect("the later thread did not finish");
+    drop(session);
+
+    let requests = stub.requests();
+    let reports = requests
+        .iter()
+        .filter(|request| request.contains("POST /api/v1/threads/th_test/report"))
+        .collect::<Vec<_>>();
+    assert_eq!(reports.len(), 2, "one cancel report and one later success: {requests:?}");
+    let bodies = reports
+        .iter()
+        .map(|request| {
+            serde_json::from_str::<serde_json::Value>(
+                request.split("\r\n\r\n").nth(1).unwrap_or("{}"),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(bodies[0]["status"], "cancelled");
+    assert_eq!(bodies[0]["error_code"], "interrupted");
+    assert_eq!(bodies[1]["status"], "succeeded");
+    assert_eq!(
+        stub.request_lines()
+            .iter()
+            .filter(|line| *line == "POST /api/v1/threads HTTP/1.1")
+            .count(),
+        2,
+        "the later turn did not open clean authority"
+    );
+    assert_eq!(
+        drain(&rx)
+            .iter()
+            .filter(|event| matches!(event, Control::Billed(7)))
+            .count(),
+        1,
+        "the canceled grant produced duplicate settlement events"
     );
 }
 
