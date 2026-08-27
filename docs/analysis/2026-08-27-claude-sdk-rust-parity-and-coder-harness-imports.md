@@ -1,14 +1,15 @@
-# Consuming Claude via ACP, and imports for the Coder harness
+# Consuming Claude via ACP, and imports for the Coder harness (model-agnostic)
 
 Date: 2026-08-27
+**Direction update (2026-08-27, later the same day):** owner decision — Claude consumption is **Rust-only**, through `crates/claude_agent_sdk`, tracking **upstream latest continuously**. We maintain the port and update it as soon as upstream ships. The §1.5 verdict below ("consume via the ACP adapter") is **overridden**; §1 remains as an interop study and its harness-import recommendations (§2) stand. See "Part 3 — the Rust SDK at parity" for the active plan and what 0.3.247 makes newly possible.
+
 Sources inspected: `~/work/claude-agent-acp` (HEAD `14d192d1`, upstream-current, 0 commits behind origin), `~/work/claude-agent-sdk-typescript` (0.3.247), npm `@anthropic-ai/claude-agent-sdk@0.3.172` in this workspace, `crates/openagents-cli/src/{acp.rs,coder/}`, `~/work/projects/agentclientprotocol/repos/registry/claude-acp/agent.json`.
 
-Two questions, answered in order:
+Three parts:
 
-1. What is needed to consume Claude through ACP — the decision is already made that ACP is the consumption path.
-2. What the Claude Agent SDK (and the ACP adapter built on it) does that our own Coder harness should import for all models, Claude or not.
-
-A concluding section draws the strategic consequence for `crates/claude_agent_sdk` and issue #232.
+1. What `claude-agent-acp` is and what consuming Claude through ACP would need (interop study).
+2. What the Claude Agent SDK (and the adapter built on it) does that our own Coder harness should import for all models, Claude or not.
+3. The active direction: bring `crates/claude_agent_sdk` to wire parity with upstream latest, what the 0.3.247 surface contains, and how parity is checked (`scripts/check-claude-sdk-parity.sh`).
 
 ---
 
@@ -76,17 +77,13 @@ Used by `delegate` (the `agent` parameter, one child per call) and the Computer 
 
 Deliberately not taken yet: goal extension (our own goal model wins for now), async tasks, file-change audit, session-failure records, interactive terminals — all are client-side commitments that only pay off with a real Claude surface in the TUI, which is gated on 1–6 landing first.
 
-### 1.5 Consequence for the Rust `claude_agent_sdk` crate and issue #232
+### 1.5 Interop verdict (overridden by Part 3)
 
-Three consumption paths for Claude exist or are proposed:
+**Overridden — kept for the record.** This section originally concluded that the ACP adapter was the recommended consumption path for Claude. The owner decision is the opposite: Rust-only consumption through `crates/claude_agent_sdk`, maintained by us at upstream-latest parity (Part 3). What remains true and useful here:
 
-| Path | Status | Verdict |
-|---|---|---|
-| npm TS SDK (`0.3.172`) in pylon/pylon-core | In use | Works; version-pinned and bumped manually. |
-| Rust `claude_agent_sdk` crate spawn-path | Restored, no in-repo consumers, ~15 months stale (issue #232) | **Re-scope.** |
-| `claude-agent-acp` via our ACP client | One small compatibility pass away | **Recommended path.** |
-
-If Claude arrives via ACP, the Rust crate's parity treadmill (Part 1 of #232) buys nothing that the adapter does not already maintain. The honest re-scope of #232: keep the two cheap hygiene items — typed surfacing of unrecognized protocol messages and control-request timeouts — and close the parity-chase items as wontfix with a pointer to this document. One crate, `openagents-cli`, remains the single ACP client; the SDK crate stays archived unless a Rust-native spawn consumer appears.
+- The adapter is the reference for how a well-built client *handles* the SDK: capability negotiation, mode availability fallbacks, permission option id discipline, extension design (goal, session failure, permission presentation). Copy its judgment, not its process.
+- The registry entry `claude-acp` stays the interop path for *third-party* tooling that wants Claude (Zed, JetBrains, anything ACP-speaking) — that is not OpenAgents' own consumption path.
+- §1.4's compatibility bugs in *our* ACP client (`launch_for` arg bug, `bypass`/`read-only` mode-id mapping, permission option selection) are real bugs against any claude-acp-using third party and remain worth fixing on their own merits.
 
 ---
 
@@ -157,24 +154,78 @@ Process-per-session spawning of a CLI (we are the harness), plugin/skill filesys
 
 ## Sequencing
 
-1. **ACP compatibility pass** (§1.4 items 1–3, one day): launch fix, mode mapping bug, permission option ids. Unblocks "Claude is installable and behaves."
-2. **ACP session + auth** (§1.4 items 4–5): resume per thread; headless auth decision.
-3. **Harness quick wins** (§2.1, §2.6, §2.13 deny-feedback): typed turn outcomes, retry visibility. No schema churn beyond one enum.
-4. **Permissions and modes** (§2.3, §2.4, §2.12): one policy object, plan mode, live config.
-5. **Queue/steer/background** (§2.2, §2.8, §2.9): the interactive-tier work.
-6. **Durability** (§2.5, §2.7, §2.10, §2.11): checkpointing, receipts, structured output, context telemetry.
-7. **Issue #232 re-scope**: close parity items, keep hygiene items, link here.
+Superseded by Part 3's plan for the Claude path. What remains of the original sequencing:
+
+1. **Harness quick wins** (§2.1, §2.6, §2.13 deny-feedback): typed turn outcomes, retry visibility. No schema churn beyond one enum.
+2. **Permissions and modes** (§2.3, §2.4, §2.12): one policy object, plan mode, live config.
+3. **Queue/steer/background** (§2.2, §2.8, §2.9): the interactive-tier work.
+4. **Durability** (§2.5, §2.7, §2.10, §2.11): checkpointing, receipts, structured output, context telemetry.
+5. **ACP client bug fixes** (§1.4 items 1–3): on their own merits for third-party interop, not as a Claude path.
+
+## Part 3 — the Rust SDK at parity (the active direction)
+
+### 3.1 The corrected version arithmetic
+
+The port commit `230485aa74` (2025-12-11 07:37 −0600 = 13:37 UTC) lines up with the upstream CHANGELOG head at `7a4b371` (2025-12-11 04:39 UTC) = **0.1.65**, parity with Claude Code v2.0.66. Upstream versioning was 0.1.x then — the "0.3.150-era" estimate in issue #232 was wrong. The real gap is **0.1.65 → 0.3.247**: ~180 releases, ~8.5 months, three minor-version generations of protocol.
+
+### 3.2 The decision
+
+- `crates/claude_agent_sdk` is **the** Claude consumption path for OpenAgents, in Rust.
+- Parity target is **upstream latest, continuously** — we update as soon as upstream ships; the changelog cadence (weekly-ish) is the pace.
+- No new TypeScript consumption paths; no adapter intermediary.
+- The parity check is mechanical: `scripts/check-claude-sdk-parity.sh [version]` fetches any npm version, extracts the wire surface from `sdk.d.ts`, and diffs it against the Rust protocol types. Exit 1 = behind, with the missing subtypes/modes listed. As of this writing against 0.3.247 it reports **48 missing wire subtypes** and the **`auto` permission mode** — that is the work list.
+
+### 3.3 What the 0.3.247 surface contains (what parity buys)
+
+Extracted from the 0.3.247 `sdk.d.ts` (8,415 lines, vs 6,460 at the 0.3.172 npm pin):
+
+**38 `SDKMessage` variants** (Rust models 7). The 31 missing fall into five groups, each new capability for a Rust consumer:
+
+- *Conversation structure*: `SDKAPIRetryMessage` (in-turn retry progress), `SDKThinkingTokensMessage`, `SDKToolUseSummaryMessage` (per-tool-group rollups), `SDKConversationResetMessage`, `SDKInformationalMessage`, `SDKControlRequestProgressMessage` (long control ops stream progress).
+- *Tasks & background work*: `SDKTaskStarted/Updated/Progress/NotificationMessage`, `SDKBackgroundTasksChangedMessage` — the subagent/background-shell lifecycle a fleet UI needs.
+- *Hooks & permissions*: `SDKHookStarted/Progress/ResponseMessage`, `SDKPermissionDeniedMessage`, `SDKElicitationCompleteMessage` — without these, hook-driven and elicitation-driven flows are invisible.
+- *Session health*: `SDKSessionStateChangedMessage`, `SDKWorkerShuttingDownMessage`, `SDKCommandsChangedMessage`, `SDKNotificationMessage`, `SDKModelRefusalFallback/NoFallbackMessage`, `SDKRateLimitEvent`, `SDKPromptSuggestionMessage`.
+- *Bookkeeping*: `SDKLocalCommandOutputMessage`, `SDKFilesPersistedEvent`, `SDKMemoryRecallMessage`, `SDKMirrorErrorMessage`.
+
+**33 control request types** (Rust models 10, and its `Initialize` is never sent). New drivable operations: `apply_flag_settings` (live settings merge), `mcp_set_servers` (hot MCP topology), `stop_task`, `background_tasks`, `cancel_async_message`, `read_file`, `seed_read_state`, `rewind_files` with dry-run, `get_context_usage`, `get_session_cost`, `get_usage`, `list_models`, `reload_plugins`/`reload_skills`, `mcp_reconnect`/`mcp_toggle`/`mcp_call`/`mcp_message`, `rename_session`, `set_color`, `register_repo_root`, `file_suggestions`, `get_binary_version`, `request_user_dialog` (blocking dialogs the host renders), `elicitation`.
+
+**Permission modes**: `auto` is new since the port (and `'manual'` is an accepted input alias); unrecognized modes are now rejected server-side (0.3.214), so an outdated mode enum is a hard error, not a degrade.
+
+**Result fidelity**: `terminal_reason` taxonomy on results (budget exhaustion vs clean completion vs malformed tool use), `api_error_status` (429/529 structural detection), `queued_turn_count`, `usage` vs `modelUsage` semantics (the latter is cumulative and the cost-accounting field), per-model `canonicalModel`/`provider`/`costBasis`, `user_message_uuid` linking.
+
+**Wire discipline changes** a Rust consumer must adopt: unrecognized `type` values must surface as typed data, not be dropped (the Rust reader currently logs-and-skips); `initialize` must be sent first and is idempotent (0.3.161); control responses can carry `pending_permission_requests`; steering-adjacent fields (`steeredEchoes`-style turn marking) exist for mid-turn injection.
+
+### 3.4 What this enables for OpenAgents
+
+With the crate at parity, a Rust consumer (Coder, pylon-core via FFI, the fleet) gets, without any TypeScript in the loop:
+
+- **Full-fidelity Claude sessions in Rust**: streaming, hooks, subagents, background tasks, elicitation, dialogs — the whole 0.3.247 surface behind typed enums.
+- **Cost and budget governance** from `modelUsage`/`get_session_cost`/`get_usage`: exact per-model cost attribution for delegated Claude work, matching how `credit.rs` governs our own lanes.
+- **Structured turn outcomes** (`terminal_reason`) — the same taxonomy §2.1 proposes importing into the generic harness, arriving first here.
+- **Live steering of running Claude turns**: `set_model`, `set_permission_mode`, `apply_flag_settings`, `cancel_async_message`, queued sends — the harness features in §2.2/§2.12 with a working transport behind them.
+- **A template for other providers**: the message/control-request/option structure is exactly what a `codex_agent_sdk`-style crate would model; parity work here is reusable design.
+
+### 3.5 Plan
+
+Order is issue #232's, unchanged by the version arithmetic:
+
+1. Protocol catch-up: all 38 message variants + typed unrecognized-message surfacing (`Error::UnrecognizedMessage{..}` on the stream, never silent drop).
+2. Lifecycle: send `initialize` first, `initializationResult()`, control timeouts (the currently-unreachable `Error::ControlTimeout`).
+3. Control surface: the remaining ~23 control requests, prioritizing `apply_flag_settings`, `mcp_set_servers`, `stop_task`, `get_context_usage`, `list_models`.
+4. Options: wire `system_prompt`, `mcp_servers`, `agents`, `sandbox`, `plugins`, `output_format`, `fallback_model` into `build_args()` (they exist as dead fields today) and add `tools`, `thinking`/`effort`, `auto` mode.
+5. Result fidelity: `terminal_reason`, `api_error_status`, `modelUsage` extensions.
+6. Hold at parity: run `scripts/check-claude-sdk-parity.sh` after each upstream release; update and release. A scheduled watcher can automate the check later — the script is the whole interface.
 
 ## Verification
 
-- §1: `oa coder` on this machine after `npm i -g @agentclientprotocol/claude-agent-acp` — `delegate {"agent":"claude-acp"}` runs, `--mode dangerous` lands the session in `bypassPermissions` (read back via `current_mode_update` or a tool that proves it), a second delegate to the same thread resumes the session id, and the stream shows plan/tool_call_update events in the TUI.
+- Part 3: `scripts/check-claude-sdk-parity.sh` exits 0 against upstream latest; `cargo test -p claude_agent_sdk` green; a live smoke (spawn the installed `claude` CLI: init handshake → prompt with `include_partial_messages` → interrupt → close) records zero unrecognized `type` values.
 - §2: each import lands with a reducer or registry unit test in `crates/openagents-cli` (the existing pattern: `turn.rs` tests name the invariant, not the implementation).
-- Regression: `cargo test -p openagents-cli` plus `pnpm run check:coder-surfaces` after any tool-description change (issue #228's gate is already in place).
+- ACP client fixes (§1.4 items 1–3), when taken: `cargo test -p openagents-cli` plus `pnpm run check:coder-surfaces` if tool descriptions change.
 
 ## References
 
-- Adapter: `~/work/claude-agent-acp` — `src/acp-agent.ts`, `src/tools.ts`, `src/session-mode.ts`, `docs/{goal,permission,session-failure}-extension.md`, `docs/model-configuration.md`
-- Registry: `~/work/projects/agentclientprotocol/repos/registry/claude-acp/agent.json`
-- Upstream SDK: `~/work/claude-agent-sdk-typescript/CHANGELOG.md` (0.3.247); pinned npm types at `node_modules/.pnpm/@anthropic-ai+claude-agent-sdk@0.3.172*/…/sdk.d.ts`
-- Our side: `crates/openagents-cli/src/acp.rs`, `src/coder/{runtime,turn,goal,acp}.rs`, `src/delegate.rs`
-- Related: issue #232 (Rust SDK gap analysis), issue #228 (acp/delegate tool consolidation)
+- Upstream SDK: `~/work/claude-agent-sdk-typescript` (git clone of `anthropics/claude-agent-sdk-typescript`, 0.3.247); wire surface extractable from any version via `npm pack @anthropic-ai/claude-agent-sdk@<v>`
+- Parity check: `scripts/check-claude-sdk-parity.sh` (added with this document)
+- Adapter (interop reference): `~/work/claude-agent-acp` — `src/acp-agent.ts`, `src/tools.ts`, `src/session-mode.ts`, `docs/{goal,permission,session-failure}-extension.md`
+- Our side: `crates/claude_agent_sdk/`, `crates/openagents-cli/src/acp.rs`, `src/coder/{runtime,turn,goal,acp}.rs`, `src/delegate.rs`
+- Related: issue #232 (Rust SDK gap analysis — the work list), issue #228 (acp/delegate tool consolidation)
