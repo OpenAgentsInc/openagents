@@ -12,10 +12,10 @@ import {
   EntityId,
   EntityType,
   encodeChangelogEntry,
-  encodeLiveFrame,
   fleetRunScope,
   isScopeCompatibleUserId,
   KHALA_SYNC_PROTOCOL_VERSION,
+  LiveFrame,
   MustRefetchFrame,
   MutationEnvelope,
   MutationId,
@@ -180,7 +180,7 @@ describe("khala-sync live frames", () => {
       entries: [],
       cursor: SyncVersion.make(42),
     })
-    const back = decodeLiveFrame(encodeLiveFrame(delta))
+    const back = decodeLiveFrame(S.encodeSync(LiveFrame)(delta))
     expect(back._tag).toBe("DeltaFrame")
     if (back._tag === "DeltaFrame") {
       expect(back.cursor).toBe(SyncVersion.make(42))

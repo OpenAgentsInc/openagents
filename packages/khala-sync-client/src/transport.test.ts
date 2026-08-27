@@ -1,12 +1,11 @@
 import {
   BootstrapRequest,
-  type LiveFrame,
+  LiveFrame,
   ClientGroupId,
   ClientId,
   CvrPullRequest,
   encodeBootstrapRequest,
   encodeCvrPullRequest,
-  encodeLiveFrame,
   encodePushRequest,
   DeltaFrame,
   PushRequest,
@@ -17,7 +16,7 @@ import {
   SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
 import { describe, expect, test } from "vite-plus/test"
-import { Effect } from "effect"
+import { Effect, Schema as S } from "effect"
 import {
   createHttpKhalaSyncTransport,
   isAccessDeniedSignal,
@@ -359,7 +358,7 @@ describe("createHttpKhalaSyncTransport connectLive", () => {
       entries: [],
       cursor: SyncVersion.make(43),
     })
-    socket.onmessage?.({ data: JSON.stringify(encodeLiveFrame(frame)) })
+    socket.onmessage?.({ data: JSON.stringify(S.encodeSync(LiveFrame)(frame)) })
     expect(frames).toHaveLength(1)
     expect(frames[0]!._tag).toBe("DeltaFrame")
 

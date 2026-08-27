@@ -7,6 +7,8 @@ const root = resolve(import.meta.dirname, "..")
 const retiredPaths = [
   "apps/aiur/package.json",
   "apps/ai-sdk-harness-poc/package.json",
+  "apps/khala-capture/package.json",
+  "apps/khala-live-hub/package.json",
   "apps/oa-updates/package.json",
   "apps/openagents-mobile/package.json",
   "runners/py-bench-runner/pyproject.toml",
@@ -29,6 +31,8 @@ describe("retired experiments stay outside live authority", () => {
     const workspace = readFileSync(resolve(root, "pnpm-workspace.yaml"), "utf8")
     expect(workspace).not.toContain("apps/ai-sdk-harness-poc")
     expect(workspace).not.toContain("apps/aiur")
+    expect(workspace).not.toContain("apps/khala-capture")
+    expect(workspace).not.toContain("apps/khala-live-hub")
     expect(workspace).not.toContain("apps/oa-updates")
     expect(workspace).not.toContain("apps/openagents-mobile")
   })

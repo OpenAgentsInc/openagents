@@ -259,8 +259,9 @@ handled together.
 | `apps/acceptance-runner` | Delete with old Worker | It leases work from and sends callbacks to the old TypeScript Worker. Preserve it only if an external settlement loop is proved live. |
 | `apps/oa-queue-worker` | Verify and decommission, then delete with old Worker | It posts to the retired API and mirrors retired queue names, but it also has a Cloud Run deploy path and named secrets. |
 | `apps/ai-sdk-harness-poc` | Delete | Its README says it is not a production sandbox, and no product root consumes it. |
-| `apps/openagents-mobile` | Owner decision, likely delete | The release document says there are no installed users, and OTA is retired. Delete its stranded package closure at the same time. |
-| `apps/aiur` | Verify, then delete or move | It has independent Cloud Run deployment commands but no Phoenix or CLI dependency. Confirm whether it is a separate supported product. |
+| `apps/openagents-mobile` | Deleted | Commit `090b7a4a9a` removed the unsupported app and its command-outbox closure after the push worker and scheduler were deleted. Database rows remain for the database export review. |
+| `apps/aiur` | Deleted | Commit `e65fc2238c` removed the source after its Cloud Run service was deleted. |
+| `apps/khala-capture` and `apps/khala-live-hub` | Deleted | A seven-day sample found no client traffic. The capture daemon produced 9,995 of the 10,000 bounded entries by posting to `/append`; the rest were health checks. The three Cloud Run services were deleted before source removal. Cloud SQL remains. |
 
 ## TypeScript package reduction
 
@@ -313,8 +314,8 @@ or external consumer.
 
 ### Retain or consolidate carefully
 
-- Keep `packages/all-work-contract` while `apps/openagents-mobile`,
-  `packages/omega-effectd`, or another TypeScript consumer remains. If those
+- Keep `packages/all-work-contract` while `packages/omega-effectd` or another
+  TypeScript consumer remains. If those
   consumers are deleted, decide whether its schema is still canonical. The
   unused Rust wrapper does not justify retaining the entire TypeScript package
   by itself.
@@ -374,19 +375,15 @@ experiments around it.
 The following services form independent closures and need external-state or
 owner verification:
 
-- `apps/khala-capture`
-- `apps/khala-live-hub`
-- `apps/oa-updates`
 - `apps/pylon`
 - `apps/qa-runner`
 - their Khala Sync, portable-session, SQLite, ACP, harness, and update package
   dependencies
 
-Phoenix records that its one-time forum import no longer reads
-`khala_sync_prod`. That fact supports removing old forum synchronization, but
-it does not prove that no independent Khala or Pylon product remains. Require a
-named current user, deployment, and release path for each closure. Otherwise,
-delete it.
+The update feed and standalone Khala capture/hub services are removed. Cloud
+SQL remains under the duplicate-backend drain because the old monolith, queue,
+and Forge paths still share it. Pylon and QA runner remain until their old
+backend and repository-check callers are removed or replaced.
 
 ## Infrastructure and operations
 

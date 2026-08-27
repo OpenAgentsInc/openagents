@@ -136,50 +136,6 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
 
-  apps/khala-capture:
-    dependencies:
-      '@openagentsinc/khala-sync':
-        specifier: workspace:*
-        version: link:../../packages/khala-sync
-      '@openagentsinc/khala-sync-server':
-        specifier: workspace:*
-        version: link:../../packages/khala-sync-server
-      '@openagentsinc/runtime-platform':
-        specifier: workspace:*
-        version: link:../../packages/runtime-platform
-      postgres:
-        specifier: 3.4.9
-        version: 3.4.9
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
-  apps/khala-live-hub:
-    dependencies:
-      '@openagentsinc/khala-sync':
-        specifier: workspace:*
-        version: link:../../packages/khala-sync
-      '@openagentsinc/khala-sync-server':
-        specifier: workspace:*
-        version: link:../../packages/khala-sync-server
-      '@openagentsinc/postgres-runtime':
-        specifier: workspace:*
-        version: link:../../packages/postgres-runtime
-      '@openagentsinc/runtime-platform':
-        specifier: workspace:*
-        version: link:../../packages/runtime-platform
-      '@openagentsinc/sqlite-runtime':
-        specifier: workspace:*
-        version: link:../../packages/sqlite-runtime
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
   apps/oa-queue-worker:
     dependencies:
       '@openagentsinc/oa-infra':

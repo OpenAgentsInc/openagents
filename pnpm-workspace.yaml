@@ -8,8 +8,6 @@ packages:
   - apps/qa-runner
   - apps/forum
   - apps/forge-git-service
-  - apps/khala-capture
-  - apps/khala-live-hub
   - apps/oa-queue-worker
   - apps/sarah-livekit-agent
   - apps/sarah-nostr-signer

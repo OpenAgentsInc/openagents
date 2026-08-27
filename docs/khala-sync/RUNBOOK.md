@@ -1,5 +1,12 @@
 # Khala Sync — Ops Runbook (KS-9.3, #8312)
 
+> **Retired service notice (2026-08-27):** The `khala-capture`,
+> `khala-live-hub`, and `khala-live-hub-staging` Cloud Run services are
+> deleted. No client traffic appeared in the final seven-day sample. Sections
+> that describe those services are recovery history, not deployment
+> instructions. Do not recreate them. Cloud SQL remains under issue #145 until
+> the duplicate backend, queue, and Forge data review closes.
+
 Operational procedures for the Khala Sync replication substrate: Cloud SQL
 Postgres (authoritative) → per-scope live hubs → SQLite clients. The hub
 layer is the owned **LiveHub** Cloud Run service (`apps/khala-live-hub`,

@@ -1,5 +1,10 @@
 # docs/khala-sync
 
+> **Retired service notice (2026-08-27):** The standalone capture and LiveHub
+> services are deleted after a seven-day sample found no client traffic. This
+> document describes the retained legacy contract while issue #145 drains the
+> duplicate TypeScript backend. It does not authorize a new deployment.
+
 **Khala Sync** — the owned replication substrate: Cloud SQL Postgres
 (authoritative) → per-scope Durable Object hubs on Cloudflare → SQLite
 clients with server-authoritative mutators and rebase.
