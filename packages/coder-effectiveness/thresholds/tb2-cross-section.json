@@ -3,6 +3,16 @@
     "Floors for the tb2-cross-section suite (bench/suites/tb2-cross-section.txt).",
     "A run below a floor fails the gate. A floor that cannot be measured on the",
     "run leaves the gate unverifiable, which exits 2 and is not a pass.",
+    "No maxCostPerAcceptedOutcomeUsd. The lane this suite runs on serves",
+    "gpt-5.6-luna, which the forge model catalog deliberately leaves unpriced,",
+    "so cost per accepted outcome resolves to unknown on every proxy run, and a",
+    "dollar ceiling declared here would be unverifiable on every healthy run -",
+    "the gate would exit 2 forever, which is a gate nobody reads (#125). The",
+    "same reasoning is recorded on tb2-quick.json, whose comment assumed the",
+    "proxy lane was priced; it is not, for the one model these suites use.",
+    "When the catalog prices gpt-5.6-luna with accepted rates, restore the",
+    "ceiling in the same change that makes the measurement real, so the floor",
+    "and its measurability land together.",
     "acceptPlaceholderRates is deliberately absent: every rate in the forge",
     "model catalog is marked provisional today, so a dollar ceiling scored",
     "against them would be scored against a guess. Set it to true only for a",
@@ -14,6 +24,5 @@
   "id": "tb2-cross-section",
   "minGradedTrials": 8,
   "minSuccessRate": 0.25,
-  "maxUngradedRatio": 0.2,
-  "maxCostPerAcceptedOutcomeUsd": 2.0
+  "maxUngradedRatio": 0.2
 }

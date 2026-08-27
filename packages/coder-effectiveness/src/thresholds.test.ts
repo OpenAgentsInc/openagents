@@ -49,7 +49,11 @@ describe("parseThresholds", () => {
     const thresholds = parseThresholds(JSON.parse(readFileSync(path, "utf8")));
 
     expect(thresholds.id).toBe("tb2-cross-section");
-    expect(thresholds.maxCostPerAcceptedOutcomeUsd).toBeGreaterThan(0);
+    // No dollar ceiling: the lane serves gpt-5.6-luna, which the forge model
+    // catalog deliberately leaves unpriced, so cost per accepted outcome is
+    // unknown on every run here and a ceiling would leave the gate exit 2
+    // forever (#125) — same reasoning as tb2-quick.json below.
+    expect(thresholds.maxCostPerAcceptedOutcomeUsd).toBeUndefined();
     // Left off deliberately: every catalog rate is provisional today.
     expect(thresholds.acceptPlaceholderRates).toBeUndefined();
   });
