@@ -93,6 +93,15 @@ have no command of their own.
 
 ## Two cautions
 
+**Never read stdin from a tool call.** `--body-file -` (and every other
+stdin-reading flag, like `auth login --token-stdin`) blocks forever when the
+harness spawns the CLI with no stdin — no output, no error, no timeout. The
+tool path now closes stdin so the call fails fast instead of hanging, but the
+working pattern is unchanged: write the content to a real file with the write
+tool and pass its path. The pipe form (`printf '%s' "$body" | openagents ...`)
+belongs in the `bash` tool, where EOF arrives. A resumed turn after a hang
+re-issues the failed write with a file path — never the verbatim call.
+
 **You are already a coder session.** Do not start another one. To run work in
 parallel, use the `delegate` tool, which is what it is for.
 

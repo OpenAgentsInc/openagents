@@ -35,7 +35,7 @@ use crossterm::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::collections::VecDeque;
-use std::io::{stderr, stdout};
+use std::io::{stderr, stdout, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
@@ -360,8 +360,15 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             drop(completed_frame);
             let mut out = std::io::stdout();
             let _ = crate::coder::osc8::emit(&mut out, &ui.links, &buffer);
-            let cursor = terminal.get_cursor_position()?;
-            terminal.set_cursor_position(cursor)?;
+            // The link pass parks the cursor at the last link it repaints.
+            // Put it back where the frame left it — the composer caret — or
+            // the terminal cursor sits mid-transcript and flickers on every
+            // spinner tick (#187). Reading the position back instead would
+            // return exactly the wrong place we just moved it to.
+            if let Some(position) = ui.cursor {
+                let _ = write!(out, "{}", crate::coder::osc8::cursor_restore(position));
+                let _ = out.flush();
+            }
         }
 
         if !event::poll(Duration::from_millis(50))? {

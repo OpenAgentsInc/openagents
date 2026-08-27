@@ -191,6 +191,16 @@ pub fn emit<W: Write>(w: &mut W, placed: &[PlacedLink], buf: &Buffer) -> std::io
     w.flush()
 }
 
+/// Escape sequence that puts the hardware cursor back where the frame left it.
+///
+/// The hyperlink pass parks the cursor at the last link it repaints; without
+/// this the terminal cursor sits mid-transcript and flickers on every redraw
+/// (#187). `position` is the composer caret the frame requested, in ratatui's
+/// 0-based coordinates; CUP is 1-based.
+pub fn cursor_restore(position: ratatui::layout::Position) -> String {
+    format!("\x1b[{};{}H", position.y + 1, position.x + 1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,5 +289,17 @@ mod tests {
             0,
         );
         assert_eq!(sequences(&placed, &buf), "");
+    }
+
+    #[test]
+    fn cursor_restore_moves_the_cursor_to_the_frame_caret() {
+        use ratatui::layout::Position;
+
+        assert_eq!(
+            cursor_restore(Position::new(0, 0)),
+            "\x1b[1;1H",
+            "CUP is 1-based; (0, 0) is home"
+        );
+        assert_eq!(cursor_restore(Position::new(12, 34)), "\x1b[35;13H");
     }
 }

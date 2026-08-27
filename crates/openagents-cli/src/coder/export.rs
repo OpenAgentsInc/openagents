@@ -143,6 +143,10 @@ fn step_of(entry: &Entry, model: &str, tool: Option<&ToolCall>) -> Option<Value>
             let content = entry.output.as_deref().unwrap_or("");
             let status = if content == crate::tools::CANCELLED_TOOL_RESULT {
                 "cancelled"
+            } else if content.starts_with("Timed out: the openagents CLI") {
+                // A watchdog kill is not `completed` (#180): a hung call that
+                // exports as done is how a dead turn reads as a live one.
+                "timeout"
             } else if tool.error.is_some() {
                 "failed"
             } else {

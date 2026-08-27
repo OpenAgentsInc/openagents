@@ -366,6 +366,12 @@ pub struct CoderUi {
     /// The caller emits these as OSC 8 sequences after flushing the frame; see
     /// [`crate::coder::osc8`].
     pub links: Vec<PlacedLink>,
+    /// Where the frame left the cursor: the composer caret, in absolute screen
+    /// coordinates.
+    ///
+    /// The caller must put the cursor back here after the OSC 8 pass parks it
+    /// at the last link (#187). `None` when the frame hid the cursor.
+    pub cursor: Option<Position>,
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -437,6 +443,7 @@ impl CoderUi {
             billed: None,
             agents: Vec::new(),
             links: Vec::new(),
+            cursor: None,
         }
     }
 
@@ -671,6 +678,9 @@ impl CoderUi {
         let cursor_y =
             input_area.y + 1 + caret_screen_row.min(visible_input_lines.saturating_sub(1));
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));
+        // Recorded for the caller: the OSC 8 pass runs after the frame and
+        // must put the cursor back here (#187).
+        self.cursor = Some(Position::new(cursor_x, cursor_y));
 
         // The row under the composer shows the two live facts that matter
         // during a session: the remaining credit on the left and the active

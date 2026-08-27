@@ -1690,7 +1690,13 @@ fn or_fail<T, E: Into<crate::errors::CliError>>(result: Result<T, E>) -> T {
 /// Read a token from standard input, keeping it out of the process table and
 /// the shell history.
 fn read_token_from_stdin() -> Secret {
-    use std::io::BufRead;
+    use std::io::{BufRead, IsTerminal};
+    if std::io::stdin().is_terminal() {
+        fail(
+            "refusing to read the token from a terminal — pipe it in instead, \
+             e.g. `op read ... | openagents auth login --token-stdin`",
+        );
+    }
     let mut buffer = String::new();
     if std::io::stdin().lock().read_line(&mut buffer).is_err() {
         fail("could not read a token from standard input");
@@ -2582,19 +2588,55 @@ fn dependency_human(graph: &serde_json::Value) -> Vec<String> {
 }
 
 /// Reads `--body` or `--body-file`, where `-` is standard input.
+///
+/// Stdin reads are guarded so a caller that can never write stdin hangs the
+/// CLI no more (#178): refuse a TTY, where paste-until-EOF is ambiguous and
+/// Ctrl-D is folklore; refuse an empty EOF instead of creating an empty body;
+/// cap the read at the same maximum body size a file path is subject to. A
+/// piped `printf '%s' "$body" | openagents ...` still works, since it closes
+/// stdin with content.
 fn resolve_body(body: Option<String>, body_file: Option<String>) -> Option<String> {
+    // Match the tool-output cap: an unbounded stdin read is the #178 hang
+    // wearing a different hat.
+    const MAX_BODY_BYTES: usize = crate::tools::OUTPUT_LIMIT;
+
     match (body, body_file) {
         (Some(_), Some(_)) => fail("Use either --body or --body-file, not both."),
         (Some(text), None) => Some(text),
         (None, Some(path)) => {
             if path == "-" {
+                use std::io::IsTerminal;
+                if std::io::stdin().is_terminal() {
+                    fail(
+                        "refusing to read the body from a terminal — pass a file path \
+                         (`--body-file <file>`) or pipe the content in, e.g. \
+                         `printf '%s' \"$(cat body.md)\" | openagents ...`",
+                    );
+                }
                 use std::io::Read;
-                let mut buffer = String::new();
-                if let Err(error) = std::io::stdin().read_to_string(&mut buffer) {
+                let mut bytes = Vec::new();
+                if let Err(error) =
+                    std::io::stdin().lock().take((MAX_BODY_BYTES + 1) as u64).read_to_end(&mut bytes)
+                {
                     fail(&format!(
                         "Could not read the body from standard input: {}",
                         error
                     ));
+                }
+                if bytes.len() > MAX_BODY_BYTES {
+                    fail(&format!(
+                        "the body read from standard input exceeds the {}-byte maximum",
+                        MAX_BODY_BYTES
+                    ));
+                }
+                let buffer = String::from_utf8(bytes)
+                    .map_err(|_| "the body read from standard input is not valid UTF-8".to_string())
+                    .unwrap_or_else(|error| fail(&error));
+                if buffer.trim().is_empty() {
+                    fail(
+                        "the body read from stdin is empty — pass `--body-file <file>` \
+                         or pipe the content in",
+                    );
                 }
                 Some(buffer)
             } else {
@@ -2701,8 +2743,13 @@ async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, j
             milestone,
             repo,
         } => {
-            let target = target_or_fail(repo);
+            // The body is resolved before the repository target: a stdin read
+            // must be refused — and must be refused with the stdin guidance —
+            // before anything else about the invocation is judged (#178). The
+            // pty test spawns with no repository and expects the guard's
+            // refusal, not a repo error.
             let text = resolve_body(body, body_file);
+            let target = target_or_fail(repo);
             let created = or_fail(
                 tracker
                     .create_issue(
@@ -2771,8 +2818,11 @@ async fn run_issue(action: IssueAction, api_base: &str, token: Option<String>, j
             body_file,
             repo,
         } => {
+            // Same order as Create: the stdin guard fires before the
+            // repository target is judged (#178).
+            let text = resolve_body(body, body_file);
             let target = target_or_fail(repo);
-            match resolve_body(body, body_file) {
+            match text {
                 Some(text) => {
                     let comment = or_fail(tracker.comment_issue(&target, number, &text).await);
                     emit(json, &comment, &[format!("Commented on #{}.", number)]);

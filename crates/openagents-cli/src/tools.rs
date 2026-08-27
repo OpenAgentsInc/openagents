@@ -857,17 +857,40 @@ impl HarnessToolRegistry {
                 }
             }
             "openagents" => {
-                let args_array = call
+                // Every element must be a string. Silent coercion (dropping a
+                // non-string) once turned `["issue","comment","178",
+                // "--body-file","-",-999]` into a body-less comment call whose
+                // stdin read hung the turn (#180) — so refuse the whole call
+                // instead of running a command the model did not write.
+                let args_result = call
                     .arguments
                     .get("args")
                     .and_then(|v| v.as_array())
                     .map(|arr| {
                         arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .map(String::from)
-                            .collect::<Vec<_>>()
+                            .map(|v| {
+                                v.as_str().map(String::from).ok_or_else(|| {
+                                    v.to_string()
+                                })
+                            })
+                            .collect::<Result<Vec<_>, _>>()
                     })
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| Ok(Vec::new()));
+
+                let args_array = match args_result {
+                    Ok(args) => args,
+                    Err(value) => {
+                        return ToolOutput {
+                            call_id: call.id.clone(),
+                            output: format!(
+                                "Bad tool call: every element of `args` must be a string, \
+                                 but one element was {value}. Nothing was run."
+                            ),
+                            is_error: true,
+                            duration_ms: 0,
+                        }
+                    }
+                };
 
                 let (output_str, failed) = run_openagents_cli(&args_array, &mut cancel).await;
                 ToolOutput {
@@ -1982,6 +2005,31 @@ fn is_executable_file(path: &Path) -> bool {
 }
 
 async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>) -> (String, bool) {
+    /// How long the CLI may run unanswerable before the watchdog kills it.
+    ///
+    /// Generous: a real forge call answers in seconds; the occasional local
+    /// report takes a few. Ten minutes is far past any legitimate answer and
+    /// far short of a turn budget burned on a hang.
+    const CLI_WATCHDOG: std::time::Duration = std::time::Duration::from_secs(600);
+
+    /// Quote argv the way a shell would, for the `[argv: ...]` header.
+    fn shell_words_quote(args: &[String]) -> String {
+        args.iter()
+            .map(|arg| {
+                if !arg.is_empty()
+                    && arg
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || b"-_./:=@+".contains(&(c as u8)))
+                {
+                    arg.clone()
+                } else {
+                    format!("'{}'", arg.replace('\'', "'\\''"))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     let (program, source) = match resolve_openagents_cli() {
         Ok(resolved) => resolved,
         Err(error) => return (error, true),
@@ -1989,14 +2037,21 @@ async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>)
 
     // Which program answered is part of the result. The two differ in what
     // they support, so a model reading `unknown command` needs to know which
-    // CLI said it rather than guessing.
+    // CLI said it rather than guessing. The effective argv follows: a coerced
+    // or truncated arg list (#180) must be visible in the transcript, not
+    // reconstructible only from a JSON export.
     let note = match source {
         OpenAgentsCliSource::Path => {
-            format!("[ran the `openagents` CLI on PATH: {}]", program.display())
+            format!(
+                "[ran the `openagents` CLI on PATH: {}]\n[argv: openagents {}]",
+                program.display(),
+                shell_words_quote(args)
+            )
         }
         OpenAgentsCliSource::ThisBinary => format!(
-            "[no `openagents` on PATH; ran this binary instead: {}]",
-            program.display()
+            "[no `openagents` on PATH; ran this binary instead: {}]\n[argv: openagents {}]",
+            program.display(),
+            shell_words_quote(args)
         ),
     };
 
@@ -2004,6 +2059,11 @@ async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>)
     cmd.args(args);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+    // Stdin is closed, never inherited. The coder runtime has no stdin worth
+    // reading, so an inherited pipe hands any stdin-reading flag (`--body-file
+    // -`, `--token-stdin`) a read that blocks forever — the #178/#180 hang.
+    // Closed stdin is an immediate EOF the CLI can refuse with an error.
+    cmd.stdin(Stdio::null());
     cmd.kill_on_drop(true);
     #[cfg(unix)]
     cmd.process_group(0);
@@ -2043,6 +2103,23 @@ async fn run_openagents_cli(args: &[String], cancel: &mut watch::Receiver<bool>)
                 return (CANCELLED_TOOL_RESULT.to_string(), true);
             }
             child.wait().await
+        }
+        // The watchdog. A CLI that produces nothing for this long is hung —
+        // most plausibly on a stdin read the harness can never satisfy
+        // (#178/#180) — and a hang must cost the bound, not the turn.
+        _ = tokio::time::sleep(CLI_WATCHDOG) => {
+            crate::signals::stop_tree(&mut child).await;
+            let _ = stdout.await;
+            let _ = stderr.await;
+            return (
+                format!(
+                    "{note}\n\nTimed out: the openagents CLI produced no exit within {:?} \
+                     and was killed. If it was reading stdin, no stdin will ever arrive — \
+                     pass a file path instead of `-` (see issues #178/#180).",
+                    CLI_WATCHDOG
+                ),
+                true,
+            );
         }
     };
     let stdout = stdout.await.unwrap_or_default();
