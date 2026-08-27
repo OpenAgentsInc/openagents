@@ -95,6 +95,11 @@ change, update its linked runbook **and** fix the pointer here.
 
 ## Cloud SQL security posture (CFG-14 #8530 — Postgres ingress hardening)
 
+> **2026-08-27 update:** The cleanup deleted both `oa-queue-worker` services,
+> their source, and their five dedicated secrets after production and staging
+> queue tables remained empty. The CFG-14 queue-worker steps below are a
+> historical migration record. Do not run them.
+
 Project `openagentsgemini`, region `us-central1`. Verify live with
 `gcloud sql instances describe <inst> --format="value(settings.ipConfiguration.authorizedNetworks[].value,settings.ipConfiguration.sslMode)"`.
 

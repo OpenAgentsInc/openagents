@@ -272,23 +272,7 @@ export type KhalaVerificationStore = Readonly<{
   upsert: (record: KhalaVerificationRecord) => Effect.Effect<void>
 }>
 
-// An in-memory verification store. Used by tests + as the reference implementation a
-// D1-backed store mirrors. Pure + synchronous under the Effect wrapper.
-export const makeInMemoryKhalaVerificationStore = (
-  nowIso: () => string = currentIsoTimestamp,
-): KhalaVerificationStore => {
-  const rows = new Map<string, KhalaVerificationRecord>()
-  return {
-    read: requestId => Effect.sync(() => rows.get(requestId) ?? null),
-    upsert: record =>
-      Effect.sync(() => {
-        rows.set(record.requestId, { ...record, updatedAt: nowIso() })
-      }),
-  }
-}
-
-// A D1-backed verification store (prod). Mirrors `makeInMemoryKhalaVerificationStore`
-// against the `khala_acceptance_verdicts` table (migration 0221). Arrays are stored as
+// A D1-backed verification store. Arrays are stored as
 // JSON text. `upsert` is an INSERT ... ON CONFLICT replace so a backfill overwrites the
 // `unverified` row; the caller's `version` guard keeps it idempotent.
 export const makeD1KhalaVerificationStore = (

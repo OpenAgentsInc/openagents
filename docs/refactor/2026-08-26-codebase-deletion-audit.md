@@ -256,8 +256,8 @@ handled together.
 | --- | --- | --- |
 | `apps/forum` | Delete | Phoenix owns the live forum. This directory describes itself as a narrow mount-contract stub. |
 | `apps/forge-git-service` | Verify, then delete | Phoenix owns the forge and Git plane. Verify that the old Cloud Run service has no traffic, then remove its deploy and Terraform wiring. |
-| `apps/acceptance-runner` | Delete with old Worker | It leases work from and sends callbacks to the old TypeScript Worker. Preserve it only if an external settlement loop is proved live. |
-| `apps/oa-queue-worker` | Verify and decommission, then delete with old Worker | It posts to the retired API and mirrors retired queue names, but it also has a Cloud Run deploy path and named secrets. |
+| `apps/acceptance-runner` | Deleted | No deployed process or package existed, and production and staging contained zero acceptance jobs and verdicts. |
+| `apps/oa-queue-worker` | Deleted | The production and staging services were deleted after the schedulers stopped and two SQL observations found no queued, leased, or dead work. |
 | `apps/ai-sdk-harness-poc` | Deleted | Commit `14b35d1a5f` removed the unconsumed proof of concept. |
 | `apps/qa-runner` | Deleted | No deployed service or current product root consumed it. The cleanup also removed its root orchestration, private Khala QA harness, and test-only production APIs. The immutable npm artifact remains historical only. |
 | `apps/openagents-mobile` | Deleted | Commit `090b7a4a9a` removed the unsupported app and its command-outbox closure after the push worker and scheduler were deleted. Database rows remain for the database export review. |
@@ -502,8 +502,9 @@ Issue #149 has removed these abandoned roots and their deployment resources:
 - QA Runner, its root orchestration, and the private Khala QA harness.
 
 Removing QA Runner exposed and removed test-only browser, terminal, behavior
-receipt, plan-catalog, Pylon budget, and QA graph APIs. The workspace now has
-108 packages, down from 118 at the audit baseline.
+receipt, plan-catalog, Pylon budget, and QA graph APIs. Removing the queue and
+acceptance runners reduced the workspace to 106 packages, down from 118 at
+the audit baseline.
 
 ## Execution order
 
@@ -531,13 +532,16 @@ Status: complete on 2026-08-26.
 Status: in progress in issue #145. The first inventory found active monolith
 schedulers, an authentication hostname on the old load balancer, deployed
 queue and bridge services, and durable Forge and SQL state. Source deletion
-must wait for the ordered drain and migration proofs.
+must wait for the ordered drain and migration proofs. Both schedulers are now
+paused. Two observations found no queue or acceptance rows, so the production
+and staging queue-worker services and both standalone runner applications were
+deleted. Authentication and Forge restoration remain open gates.
 
 ### Phase 3: remove the duplicate backend
 
 1. Delete `apps/openagents.com` in full.
-2. Delete `apps/forum`, `apps/acceptance-runner`, and `apps/oa-queue-worker`
-   with their obsolete Worker paths.
+2. Delete `apps/forum` with its obsolete Worker paths. The standalone
+   acceptance and queue runners are already deleted.
 3. Remove root scripts, workspace entries, guards, and site-only packages.
 4. Regenerate the pnpm lockfile and package inventory.
 

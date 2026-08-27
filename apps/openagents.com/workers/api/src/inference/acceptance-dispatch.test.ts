@@ -1,27 +1,6 @@
-// Full-loop proof for the async acceptance-verification dispatch (EPIC #6017).
-//
-// PROVES THE WHOLE CHAIN against the COMMITTED crossy-road fixtures, end to end:
-//
-//   gateway enqueues a job  ->  node-side harness runs the REAL headless runner
-//   (Playwright/chromium)   ->  posts the verdict to the authenticated callback
-//                           ->  the callback BACKFILLS the verification receipt.
-//
-//   - broken fixture  => verdict `failed` (per-test) => receipt backfilled to
-//                        `failed`, scalarReward < 1.
-//   - fixed fixture   => verdict `test_passed`        => receipt backfilled to
-//                        `test_passed`, verified, scalarReward 1.
-//
-// Plus the unit-level guarantees the loop relies on: enqueue is INERT when the flag
-// is off; the callback REJECTS unauthenticated/forged verdicts; backfill is
-// idempotent. Requires a real headless chromium (Playwright); a single browser is
-// reused across cases.
-//
-// Run with:
-//   bun run --cwd apps/openagents.com/workers/api test -- src/inference/acceptance-dispatch
-//   (chromium installed via `bunx playwright install chromium`)
+// Unit proof for the retired acceptance-dispatch compatibility surface.
 
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { chromium, type Browser } from 'playwright'
+import { describe, expect, test } from 'vitest'
 import { Effect } from 'effect'
 
 import {
@@ -32,29 +11,12 @@ import {
   enqueueAcceptanceJob,
   isAcceptanceDispatchEnabled,
   type KhalaVerificationRecord,
-  makeInMemoryKhalaVerificationStore,
+  type KhalaVerificationStore,
   makeMirroredKhalaVerificationStore,
 } from './acceptance-dispatch'
 import { handleAcceptanceVerdictCallback } from './acceptance-verdict-callback-routes'
-import {
-  type RunnerTransport,
-  runAcceptanceJob,
-  type VerdictCallbackPayload,
-} from './acceptance-runner/harness'
 import { crossyRoadAcceptanceSpec } from './acceptance-spec'
-import { CROSSY_ROAD_BROKEN_HTML } from './acceptance-runner/fixtures/crossy-road-broken.html'
-import { CROSSY_ROAD_FIXED_HTML } from './acceptance-runner/fixtures/crossy-road-fixed.html'
 import type { AgentRuntimeRemainderMirror } from '../agent-runtime-remainder-store'
-
-let browser: Browser
-
-beforeAll(async () => {
-  browser = await chromium.launch({ headless: true })
-}, 60_000)
-
-afterAll(async () => {
-  await browser.close().catch(() => undefined)
-})
 
 const CALLBACK_TOKEN = 'test-runner-callback-token'
 
@@ -72,128 +34,18 @@ class MemoryAgentRuntimeRemainderMirror implements AgentRuntimeRemainderMirror {
   }
 }
 
-// Wire the full loop against in-memory seams: a fake queue records the enqueued job;
-// the harness transport resolves the artifact from a fixture map and posts the verdict
-// straight into the verdict-callback ROUTE (with the real bearer token), which
-// backfills the in-memory verification store. This is the production data flow with
-// only the infra boundaries faked.
-const runFullLoop = async (
-  fixtureHtml: string,
-): Promise<{
-  enqueuedMessage: AcceptanceJobMessage
-  callbackStatus: number
-  callbackBody: Record<string, unknown>
-  storeRequestId: string
-}> => {
-  const store = makeInMemoryKhalaVerificationStore(() => '2026-06-22T00:00:00.000Z')
-  const requestId = 'chatcmpl-loop-1'
-  const artifactRef = 'r2://artifacts/loop-1.html'
-
-  // (1) GATEWAY: enqueue the verification job (flag ON, fake queue).
-  const sent: AcceptanceJobMessage[] = []
-  const queue: AcceptanceJobQueue = {
-    send: async message => {
-      sent.push(message)
-    },
-  }
-  const enqueueOutcome = await Effect.runPromise(
-    enqueueAcceptanceJob({
-      artifactRef,
-      enabled: true,
-      meteringReceiptRef: 'receipt.inference.charge.loop-1',
-      queue,
-      requestId,
-      servedModel: 'served/crossy',
-      spec: crossyRoadAcceptanceSpec(),
-      worker: 'pylon-worker-1',
-    }),
-  )
-  expect(enqueueOutcome.enqueued).toBe(true)
-  expect(sent).toHaveLength(1)
-  const enqueuedMessage = sent[0]!
-
-  // (2) NODE-SIDE HARNESS: resolve the artifact + run the REAL headless runner, then
-  //     post the verdict into the verdict-callback ROUTE with the bearer token.
-  let callbackStatus = 0
-  let callbackBody: Record<string, unknown> = {}
-  const transport: RunnerTransport = {
-    resolveArtifact: async ref => {
-      expect(ref).toBe(artifactRef)
-      return fixtureHtml
-    },
-    postVerdict: async (payload: VerdictCallbackPayload) => {
-      const request = new Request(
-        'https://openagents.com/v1/inference/acceptance-verdicts',
-        {
-          body: JSON.stringify(payload),
-          headers: {
-            authorization: `Bearer ${CALLBACK_TOKEN}`,
-            'content-type': 'application/json',
-          },
-          method: 'POST',
-        },
-      )
-      // (3) GATEWAY CALLBACK: authenticate + backfill the receipt.
-      const response = await Effect.runPromise(
-        handleAcceptanceVerdictCallback(request, {
-          callbackToken: CALLBACK_TOKEN,
-          enabled: true,
-          nowIso: () => '2026-06-22T00:00:01.000Z',
-          store,
-        }),
-      )
-      callbackStatus = response.status
-      callbackBody = (await response.json()) as Record<string, unknown>
-      if (!response.ok) {
-        throw new Error(`callback_failed: ${response.status}`)
-      }
-    },
-  }
-
-  const result = await runAcceptanceJob(transport, enqueuedMessage, { browser })
-  expect(result.delivered).toBe(true)
-
-  // (4) The store row is now backfilled from EXECUTION.
-  const record = await Effect.runPromise(store.read(requestId))
-  expect(record).not.toBeNull()
-
+const makeMemoryKhalaVerificationStore = (
+  nowIso: () => string = () => new Date().toISOString(),
+): KhalaVerificationStore => {
+  const rows = new Map<string, KhalaVerificationRecord>()
   return {
-    callbackBody,
-    callbackStatus,
-    enqueuedMessage,
-    storeRequestId: requestId,
+    read: requestId => Effect.sync(() => rows.get(requestId) ?? null),
+    upsert: record =>
+      Effect.sync(() => {
+        rows.set(record.requestId, { ...record, updatedAt: nowIso() })
+      }),
   }
 }
-
-describe('acceptance-dispatch — full loop against committed fixtures', () => {
-  test('FIXED fixture: job -> runner -> verdict test_passed -> receipt backfilled, reward 1', async () => {
-    const out = await runFullLoop(CROSSY_ROAD_FIXED_HTML)
-
-    expect(out.enqueuedMessage.schemaVersion).toBe(
-      'openagents.inference.acceptance_job.v1',
-    )
-    expect(out.callbackStatus).toBe(200)
-    expect(out.callbackBody.verdict).toBe('test_passed')
-    expect(out.callbackBody.verified).toBe(true)
-    expect(out.callbackBody.scalarReward).toBe(1)
-    expect(out.callbackBody.backfilled).toBe(true)
-    expect(out.callbackBody.failedChecks).toEqual([])
-  }, 90_000)
-
-  test('BROKEN fixture: job -> runner -> verdict failed (per-test) -> receipt backfilled failed, low reward', async () => {
-    const out = await runFullLoop(CROSSY_ROAD_BROKEN_HTML)
-
-    expect(out.callbackStatus).toBe(200)
-    expect(out.callbackBody.verdict).toBe('failed')
-    expect(out.callbackBody.verified).toBe(false)
-    expect(out.callbackBody.scalarReward).toBeLessThan(1)
-    expect(out.callbackBody.backfilled).toBe(true)
-    // The four caught bugs surface as per-test failures.
-    const failed = out.callbackBody.failedChecks as ReadonlyArray<string>
-    expect(failed).toContain('loads_without_errors')
-    expect(failed).toContain('play_starts_game')
-  }, 90_000)
-})
 
 describe('acceptance-dispatch — enqueue is inert by default', () => {
   test('flag OFF: nothing is enqueued; the message shape is still derivable', async () => {
@@ -231,7 +83,7 @@ describe('acceptance-dispatch — enqueue is inert by default', () => {
   test('mirrored verification store mirrors verdict upserts by request id', async () => {
     const mirror = new MemoryAgentRuntimeRemainderMirror()
     const store = makeMirroredKhalaVerificationStore(
-      makeInMemoryKhalaVerificationStore(() => '2026-06-22T00:00:00.000Z'),
+      makeMemoryKhalaVerificationStore(() => '2026-06-22T00:00:00.000Z'),
       mirror,
     )
     const record: KhalaVerificationRecord = {
@@ -295,7 +147,7 @@ describe('acceptance-verdict-callback — fail-closed auth + idempotent backfill
     })
 
   test('rejects a missing bearer token (401) and writes nothing', async () => {
-    const store = makeInMemoryKhalaVerificationStore()
+    const store = makeMemoryKhalaVerificationStore()
     const response = await Effect.runPromise(
       handleAcceptanceVerdictCallback(makeRequest(null, verdictBody('r1')), {
         callbackToken: CALLBACK_TOKEN,
@@ -309,7 +161,7 @@ describe('acceptance-verdict-callback — fail-closed auth + idempotent backfill
   })
 
   test('rejects a forged/mismatched token (401)', async () => {
-    const store = makeInMemoryKhalaVerificationStore()
+    const store = makeMemoryKhalaVerificationStore()
     const response = await Effect.runPromise(
       handleAcceptanceVerdictCallback(
         makeRequest('wrong-token', verdictBody('r2')),
@@ -325,7 +177,7 @@ describe('acceptance-verdict-callback — fail-closed auth + idempotent backfill
   })
 
   test('closed when no token is configured (401), even with a bearer present', async () => {
-    const store = makeInMemoryKhalaVerificationStore()
+    const store = makeMemoryKhalaVerificationStore()
     const response = await Effect.runPromise(
       handleAcceptanceVerdictCallback(
         makeRequest(CALLBACK_TOKEN, verdictBody('r3')),
@@ -341,7 +193,7 @@ describe('acceptance-verdict-callback — fail-closed auth + idempotent backfill
   })
 
   test('rejects a malformed body (400)', async () => {
-    const store = makeInMemoryKhalaVerificationStore()
+    const store = makeMemoryKhalaVerificationStore()
     const response = await Effect.runPromise(
       handleAcceptanceVerdictCallback(
         makeRequest(CALLBACK_TOKEN, { schemaVersion: 'nope' }),
@@ -357,7 +209,7 @@ describe('acceptance-verdict-callback — fail-closed auth + idempotent backfill
   })
 
   test('404 when the gateway flag is off', async () => {
-    const store = makeInMemoryKhalaVerificationStore()
+    const store = makeMemoryKhalaVerificationStore()
     const response = await Effect.runPromise(
       handleAcceptanceVerdictCallback(
         makeRequest(CALLBACK_TOKEN, verdictBody('r4')),
@@ -373,7 +225,7 @@ describe('acceptance-verdict-callback — fail-closed auth + idempotent backfill
   })
 
   test('backfill is idempotent: a redelivered executed verdict does not double-write', async () => {
-    const store = makeInMemoryKhalaVerificationStore(() => 'now')
+    const store = makeMemoryKhalaVerificationStore(() => 'now')
     const body = await import('./acceptance-dispatch').then(m =>
       m.AcceptanceVerdictCallbackBody.make(verdictBody('r5')),
     )
@@ -393,7 +245,7 @@ describe('acceptance-verdict-callback — fail-closed auth + idempotent backfill
   })
 
   test('a valid authenticated verdict backfills (200)', async () => {
-    const store = makeInMemoryKhalaVerificationStore(() => 'now')
+    const store = makeMemoryKhalaVerificationStore(() => 'now')
     const response = await Effect.runPromise(
       handleAcceptanceVerdictCallback(
         makeRequest(CALLBACK_TOKEN, verdictBody('r6')),

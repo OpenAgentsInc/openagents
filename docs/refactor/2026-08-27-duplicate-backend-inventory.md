@@ -39,6 +39,19 @@ paths on Phoenix `openagents.com` returned `404`. Do not delete the production
 monolith or old load balancer until Phoenix serves or explicitly retires those
 contracts.
 
+At 08:27 UTC, both queue databases still contained zero rows in
+`oa_infra_jobs`, `khala_acceptance_jobs`, and
+`khala_acceptance_verdicts`. The same observation window contained no new
+monolith cron request and no new cloud-run bridge readiness request. No local
+process, launch agent, Docker container, Compute Engine instance, Cloud Run
+service, or Artifact Registry package ran the acceptance runner. The cleanup
+then deleted the `oa-queue-worker` and `oa-queue-worker-staging` Cloud Run
+services and removed both TypeScript runner applications from the workspace.
+It also deleted the five queue-worker database, delivery-token, and staging
+password secret containers after confirming that neither monolith referenced
+them. The Cloud SQL instance and empty tables remain until the broader database
+and Forge retention review finishes.
+
 ## Decision
 
 The Phoenix application has replaced the TypeScript application as the web,
@@ -103,8 +116,8 @@ Phoenix deployment boundary.
 | --- | --- | ---: | --- | --- |
 | `openagents-monolith` | `openagents-monolith-00412-697` | 1 | 3,628 entries; 1,281 were `/internal/cron`. Remaining traffic was mainly scans, static files, and compatibility pages. | Drain after authentication and scheduled-task migration. |
 | `openagents-monolith-staging` | `openagents-monolith-staging-00159-6kw` | 1 | 1,442 entries; 1,439 were `/internal/cron`, and three were health checks. | Pause its scheduler first, then drain. |
-| `oa-queue-worker` | `oa-queue-worker-00002-2n6` | 1 | Two unauthenticated `403` root requests; no delivery request evidence. | Inspect SQL queue state, then drain. |
-| `oa-queue-worker-staging` | `oa-queue-worker-staging-00005-dcj` | 1 | No current product caller identified. | Inspect staging queue state, then drain. |
+| `oa-queue-worker` | Deleted at 08:27 UTC | 0 | The production queue and acceptance tables contained zero rows before and after the scheduler pause. | Deleted. |
+| `oa-queue-worker-staging` | Deleted at 08:27 UTC | 0 | The staging queue and acceptance tables contained zero rows before and after the scheduler pause. | Deleted. |
 | `forge-git` | `forge-git-00046-xl5` | 0 | No request entries in the 24-hour sample. | Preserve until repository-disk restore and ref comparison pass. |
 | `oa-cloud-run-bridge` | `oa-cloud-run-bridge-00011-ncx` | 0 | 1,439 successful `/v1/cloud-vm/readiness` calls, aligned with staging cron frequency. | Drain after the monolith stops calling it. |
 
@@ -155,9 +168,9 @@ a restore proof.
 | Source root | Disposition | Gate |
 | --- | --- | --- |
 | `apps/forum` | Delete. | Phoenix owns the forum; the TypeScript package contains only a mount contract and no persistence. |
-| `apps/acceptance-runner` | Delete after one host/process and SQL check. | No Cloud Run image or checked-in service unit exists; its deployment document remained a plan. Preserve receipts and ensure no job is pending or leased. |
+| `apps/acceptance-runner` | Deleted. | No deployed runner or packaged image existed, and both databases contained zero acceptance jobs and verdicts. |
 | `apps/openagents.com` | Delete after the controlled drain. | Authentication compatibility, cron task disposition, SQL, buckets, and load-balancer ownership must move first. |
-| `apps/oa-queue-worker` | Delete after queue drain and service removal. | Stop all producers, record counts by topic and status, and preserve dead-letter evidence. |
+| `apps/oa-queue-worker` | Deleted. | Both Cloud Run services were deleted after two zero-row SQL observations and a zero-caller observation. |
 | `apps/forge-git-service` | Delete after Forge migration proof. | Preserve and verify the repository disk, SQL state, outbox, purgatory, and artifact evidence. |
 | `crates/oa-cloud-run-bridge` | Delete after caller separation. | The historical monolith still calls it, and the same image also supports managed-sandbox services handled by the managed-computer issue. |
 
@@ -187,7 +200,6 @@ Issue #145 remains open until these items land:
 
 - authentication hostname and compatibility-route disposition;
 - scheduled-task classification and migration;
-- aggregate queue and acceptance-runner SQL counts;
 - a bounded zero-caller observation after schedulers and producers stop;
 - Forge disk restore, repository integrity, and ref comparison;
 - Terraform transfer, destroy, or retained-resource receipts.

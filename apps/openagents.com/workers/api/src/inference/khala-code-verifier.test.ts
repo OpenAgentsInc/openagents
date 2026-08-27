@@ -5,7 +5,6 @@ import { describe, expect, test } from 'vitest'
 
 import type { AcceptanceVerdict } from './acceptance-runner/verdict'
 import { crossyRoadAcceptanceSpec } from './acceptance-spec'
-import { assembleAcceptanceVerdict } from './acceptance-runner/verdict'
 import {
   KHALA_CODE_CROSSY_ROAD_RUBRIC_REF,
   KHALA_CODE_HEADLESS_COMMAND_REF,
@@ -34,16 +33,29 @@ const verify = (
 
 const executedVerdict = (allPass: boolean): AcceptanceVerdict => {
   const spec = crossyRoadAcceptanceSpec()
-  return assembleAcceptanceVerdict({
-    checks: spec.checks.map((id, index) => ({
-      detail: 'x',
-      id,
-      passed: allPass ? true : index === 0,
-    })),
+  const checks = spec.checks.map((id, index) => ({
+    detail: 'x',
+    id,
+    passed: allPass ? true : index === 0,
+  }))
+  const passedChecks = checks
+    .filter(check => check.passed)
+    .map(check => check.id)
+  const failedChecks = checks
+    .filter(check => !check.passed)
+    .map(check => check.id)
+  return {
+    checks,
     consoleErrors: [],
+    executed: true,
+    failedChecks,
+    kind: spec.kind,
     pageErrors: [],
-    spec,
-  })
+    passedChecks,
+    rubricRef: spec.rubricRef,
+    scalarReward: passedChecks.length / checks.length,
+    verified: failedChecks.length === 0,
+  }
 }
 
 describe('Khala code verifier — honest downgrade (EPIC #6017)', () => {

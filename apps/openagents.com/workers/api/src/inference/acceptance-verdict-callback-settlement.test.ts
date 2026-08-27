@@ -1,11 +1,25 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { makeInMemoryKhalaVerificationStore } from './acceptance-dispatch'
+import type {
+  KhalaVerificationRecord,
+  KhalaVerificationStore,
+} from './acceptance-dispatch'
 import { crossyRoadAcceptanceSpec } from './acceptance-spec'
 import { handleAcceptanceVerdictCallback } from './acceptance-verdict-callback-routes'
 
 const CALLBACK_TOKEN = 'runner-callback-token-test'
+
+const makeMemoryKhalaVerificationStore = (): KhalaVerificationStore => {
+  const rows = new Map<string, KhalaVerificationRecord>()
+  return {
+    read: requestId => Effect.sync(() => rows.get(requestId) ?? null),
+    upsert: record =>
+      Effect.sync(() => {
+        rows.set(record.requestId, record)
+      }),
+  }
+}
 
 describe('VP1 verdict callback', () => {
   test('backfills verification but never invokes a legacy settlement sink', async () => {
@@ -53,7 +67,7 @@ describe('VP1 verdict callback', () => {
               settlementReceiptRefs: [],
             })
           },
-          store: makeInMemoryKhalaVerificationStore(),
+          store: makeMemoryKhalaVerificationStore(),
         },
       ),
     )

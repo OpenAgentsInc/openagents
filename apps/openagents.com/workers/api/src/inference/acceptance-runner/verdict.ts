@@ -37,35 +37,3 @@ export type AcceptanceVerdict = Readonly<{
   consoleErrors: ReadonlyArray<string>
   pageErrors: ReadonlyArray<string>
 }>
-
-// Assemble the verdict from the executed per-check results. PURE — the runner calls
-// this after running the page so the scoring math is testable in isolation.
-export const assembleAcceptanceVerdict = (
-  input: Readonly<{
-    spec: AcceptanceSpec
-    checks: ReadonlyArray<AcceptanceCheckResult>
-    consoleErrors: ReadonlyArray<string>
-    pageErrors: ReadonlyArray<string>
-  }>,
-): AcceptanceVerdict => {
-  const passedChecks = input.checks
-    .filter(item => item.passed)
-    .map(item => item.id)
-  const failedChecks = input.checks
-    .filter(item => !item.passed)
-    .map(item => item.id)
-  const total = input.checks.length
-  const scalarReward = total === 0 ? 0 : passedChecks.length / total
-  return {
-    checks: input.checks,
-    consoleErrors: input.consoleErrors,
-    executed: true,
-    failedChecks,
-    kind: input.spec.kind,
-    pageErrors: input.pageErrors,
-    passedChecks,
-    rubricRef: input.spec.rubricRef,
-    scalarReward,
-    verified: failedChecks.length === 0 && total > 0,
-  }
-}

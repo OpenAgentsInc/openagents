@@ -80,22 +80,6 @@ importers:
         specifier: 0.2.4
         version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
 
-  apps/acceptance-runner:
-    dependencies:
-      '@openagentsinc/runtime-platform':
-        specifier: workspace:*
-        version: link:../../packages/runtime-platform
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-      playwright:
-        specifier: ^1.61.0
-        version: 1.61.1
-    devDependencies:
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-
   apps/forge-git-service:
     dependencies:
       '@openagentsinc/forge-protocol':
@@ -135,22 +119,6 @@ importers:
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
-
-  apps/oa-queue-worker:
-    dependencies:
-      '@openagentsinc/oa-infra':
-        specifier: workspace:*
-        version: link:../../packages/oa-infra
-      '@openagentsinc/runtime-platform':
-        specifier: workspace:*
-        version: link:../../packages/runtime-platform
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
 
   apps/openagents-audio:
     dependencies:

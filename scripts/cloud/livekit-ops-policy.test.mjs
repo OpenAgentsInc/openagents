@@ -1073,7 +1073,6 @@ test("deployment control Terraform fixes identity, source, route, and substituti
 test("repository build paths select narrow service accounts explicitly", () => {
   const sourceDeployers = [
     "apps/forge-git-service/scripts/deploy-cloudrun.sh",
-    "apps/oa-queue-worker/scripts/deploy-cloudrun.sh",
     "apps/openagents-audio-edge/deploy-cloudrun.sh",
     "apps/openagents-audio/scripts/deploy-cloudrun.sh",
     "apps/openagents.com/apps/start/scripts/deploy-cloudrun.sh",
