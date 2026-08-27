@@ -510,55 +510,80 @@ impl CoderUi {
         self.credit.status()
     }
 
-    /// What the row says about the lane and model on the right.
+    /// What the row says about the version, lane, and model on the right.
     ///
-    /// The lane name alone until a model has answered, and the lane name plus
-    /// **the model that answered** from then on — [`Self::model`] is what the
-    /// grant pinned, never what the lane asked for. That is the whole point of
-    /// putting the lane here: `Coder Flash` while Gemini is answering is the
-    /// defect this row exists to prevent, so the two are always drawn
+    /// The build version leads — `v0.1.1-rc1 · Coder Flash` — so a frame, and
+    /// therefore a screenshot, always says which binary produced the session.
+    /// Then the lane name alone until a model has answered, and the lane name
+    /// plus **the model that answered** from then on — [`Self::model`] is what
+    /// the grant pinned, never what the lane asked for. That is the whole
+    /// point of putting the lane here: `Coder Flash` while Gemini is answering
+    /// is the defect this row exists to prevent, so the two are always drawn
     /// together and the reader never has to trust that the label still means
     /// what it meant at open.
     ///
-    /// Empty when no lane has been recorded, so the field costs no columns on
-    /// a frame that has nothing to say.
+    /// Empty only when even the version will not fit, so the field costs no
+    /// columns on a frame that has nothing to say.
     pub fn lane_field(&self) -> String {
         self.lane_field_within(u16::MAX)
     }
 
     /// The same field, narrowed to what will fit beside the credit figure.
     ///
-    /// It gives up the lane name before the model, because the model is the
-    /// load-bearing half: `Coder Flash` while Gemini is answering is the
-    /// defect this field exists to prevent, whereas a bare `gemini-3.7-flash`
-    /// is still true. And it renders **nothing at all** rather than a form
-    /// that would not fit whole — never a truncated id, and never a lane name
-    /// standing alone once a model has answered, which would be the forbidden
-    /// state written out. `/info` carries the lane and the model either way,
-    /// so what is dropped here is recoverable rather than lost.
+    /// It gives up the lane name first, then the version, because the model
+    /// is the load-bearing half: `Coder Flash` while Gemini is answering is
+    /// the defect this field exists to prevent, whereas a bare
+    /// `gemini-3.7-flash` is still true. And it renders **nothing at all**
+    /// rather than a form that would not fit whole — never a truncated id,
+    /// and never a lane name standing alone once a model has answered, which
+    /// would be the forbidden state written out. `/info` carries the version,
+    /// lane, and model either way, so what is dropped here is recoverable
+    /// rather than lost.
     fn lane_field_within(&self, columns: u16) -> String {
-        if self.lane.is_empty() {
-            return String::new();
-        }
         let columns = columns as usize;
         let fits = |text: &str| text.chars().count() <= columns;
+        // The running build, from the same constant the welcome box titles.
+        let version = format!("v{}", crate::VERSION);
 
-        // Nothing has answered yet, so nothing is claimed about a model and
-        // the lane name alone cannot mislead.
-        if self.model.is_empty() {
-            return match fits(&self.lane) {
-                true => self.lane.clone(),
+        // No lane recorded yet: the version is still worth its columns.
+        if self.lane.is_empty() {
+            return match fits(&version) {
+                true => version,
                 false => String::new(),
             };
         }
 
-        let full = format!("{} · {}", self.lane, self.model);
+        // Nothing has answered yet, so nothing is claimed about a model and
+        // the lane name alone cannot mislead.
+        if self.model.is_empty() {
+            let full = format!("{} · {}", version, self.lane);
+            if fits(&full) {
+                return full;
+            }
+            if fits(&self.lane) {
+                return self.lane.clone();
+            }
+            return match fits(&version) {
+                true => version,
+                false => String::new(),
+            };
+        }
+
+        let full = format!("{} · {} · {}", version, self.lane, self.model);
         if fits(&full) {
             return full;
         }
-        // The model alone is still true. The lane name is the nicety.
+        // The model is the load-bearing half; the version rides with it as
+        // long as both fit. The lane name is the nicety.
+        let modelled = format!("{} · {}", version, self.model);
+        if fits(&modelled) {
+            return modelled;
+        }
         if fits(&self.model) {
             return self.model.clone();
+        }
+        if fits(&version) {
+            return version;
         }
         String::new()
     }
@@ -1385,5 +1410,48 @@ mod tests {
             joined.contains("Line one, line two,"),
             "assistant folding changed: {joined}"
         );
+    }
+
+    /// The status row's right field leads with the build version, then the
+    /// lane, then the model that answered — so any frame, and any screenshot
+    /// of one, says which binary produced the session.
+    #[test]
+    fn lane_field_leads_with_the_version() {
+        let mut ui = CoderUi::new();
+        ui.lane = "Coder Flash".to_string();
+        ui.model = "gemini-3.7-flash".to_string();
+
+        let field = ui.lane_field();
+        assert_eq!(field, "v0.0.0-dev · Coder Flash · gemini-3.7-flash");
+
+        // Before anything has answered, the version still leads the lane.
+        ui.model = String::new();
+        assert_eq!(ui.lane_field(), "v0.0.0-dev · Coder Flash");
+    }
+
+    /// Narrow columns drop the version and lane before the model: the
+    /// answering model is the load-bearing half and the version is one of the
+    /// niceties, and a bare model id is still true.
+    #[test]
+    fn lane_field_narrows_to_the_model_before_dropping_anything() {
+        let mut ui = CoderUi::new();
+        ui.lane = "Coder Flash".to_string();
+        ui.model = "gemini-3.7-flash".to_string();
+
+        let narrow = ui.lane_field_within("v0.0.0-dev · gemini-3.7-flash".len() as u16);
+        assert_eq!(narrow, "v0.0.0-dev · gemini-3.7-flash");
+
+        let bare = ui.lane_field_within(ui.model.chars().count() as u16);
+        assert_eq!(bare, "gemini-3.7-flash");
+
+        // Nothing fits whole: nothing at all renders, never a truncation.
+        assert_eq!(ui.lane_field_within(3), "");
+    }
+
+    /// A session with no lane recorded still shows the version it is running.
+    #[test]
+    fn lane_field_shows_the_version_when_no_lane_is_recorded() {
+        let ui = CoderUi::new();
+        assert_eq!(ui.lane_field(), "v0.0.0-dev");
     }
 }
