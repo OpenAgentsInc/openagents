@@ -15,15 +15,15 @@
 use std::collections::BTreeMap;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
 
 use openagents_cli::acp::PermissionQuery;
 use openagents_cli::computer::{
-    agent_catalog, agent_permission, forge_credentials, push_delegated, resolve_agent, serve,
-    validate_refspec, write_credential_helper, AgentEntry, ComputerPaths, Decision,
-    ForgeCredentials, Journal, JournalEntry, PolicyConfig, RefusalReason, ResolvedAgent, Tier,
-    ToolReport,
+    AgentEntry, ComputerPaths, Decision, ForgeCredentials, Journal, JournalEntry, PolicyConfig,
+    RefusalReason, ResolvedAgent, Tier, ToolReport, agent_catalog, agent_permission,
+    forge_credentials, push_delegated, resolve_agent, serve, validate_refspec,
+    write_credential_helper,
 };
 
 // ---------------------------------------------------------------------------
@@ -1131,16 +1131,18 @@ fn test_the_shell_tier_does_not_unlock_denied_commands_for_a_delegated_agent() {
         RefusalReason::DeniedArgument
     );
     // The tier does widen what is otherwise permitted.
-    assert!(agent_permission(
-        &config,
-        directory.path(),
-        &query(
-            "execute",
-            "anything",
-            serde_json::json!({"command": "cargo nextest run"})
+    assert!(
+        agent_permission(
+            &config,
+            directory.path(),
+            &query(
+                "execute",
+                "anything",
+                serde_json::json!({"command": "cargo nextest run"})
+            )
         )
-    )
-    .allowed());
+        .allowed()
+    );
 }
 
 /// A word that merely contains a denied name is not that command.
@@ -1386,11 +1388,13 @@ fn test_an_incomplete_credential_is_not_read_as_a_credential() {
             .is_none(),
         "a token with no repository and branch is unusable"
     );
-    assert!(forge_credentials(&serde_json::json!({
-        "assignment_credential": "oa_assignment_x",
-        "assignment_repository": "OpenAgentsInc/openagents",
-    }))
-    .is_none());
+    assert!(
+        forge_credentials(&serde_json::json!({
+            "assignment_credential": "oa_assignment_x",
+            "assignment_repository": "OpenAgentsInc/openagents",
+        }))
+        .is_none()
+    );
 
     let whole = forge_credentials(&serde_json::json!({
         "assignment_credential": "oa_assignment_x",

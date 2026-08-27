@@ -34,8 +34,8 @@ use crossterm::{
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use std::io::{stderr, stdout};
 use std::collections::VecDeque;
+use std::io::{stderr, stdout};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};

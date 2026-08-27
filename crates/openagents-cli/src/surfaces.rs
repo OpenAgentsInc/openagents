@@ -18,9 +18,11 @@ pub mod system_prompt {
     /// `coder_lite.tool_list_closing`
     pub const CODER_LITE_TOOL_LIST_CLOSING: &str = "That list is complete: a capability not on it is one you do not have. Read a tool's description before assuming what it covers. Never say you ran something you did not run.";
     /// `coder.opening`
-    pub const CODER_OPENING: &str = "You are `openagents coder`, a coding assistant in a terminal. {lane}";
+    pub const CODER_OPENING: &str =
+        "You are `openagents coder`, a coding assistant in a terminal. {lane}";
     /// `coder.concision`
-    pub const CODER_CONCISION: &str = "Answer very concisely unless the reader asks for a longer response.";
+    pub const CODER_CONCISION: &str =
+        "Answer very concisely unless the reader asks for a longer response.";
     /// `coder.no_tools`
     pub const CODER_NO_TOOLS: &str = "You have no tools in this session: you cannot read or write files, run commands, or reach anything outside this conversation. Answer from what the reader tells you, and say plainly when something would need a tool you do not have.";
     /// `coder.tool_list_header.rust`
@@ -61,7 +63,16 @@ pub mod tool_descriptions {
 ///
 /// A run records these so a bench row names exactly which text produced it.
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
-    ("system-prompt", "sha256:9dcbe4755e1cdd317afefb3f2b4c694df17ca6aefe07680243c67b7ec7289b0c"),
-    ("tool-descriptions", "sha256:0e75085542a4f0b61da8a897f8baecc82fe3169cabb55c7a21ed67ac26a89e38"),
-    ("catalog-lines", "sha256:98a96bcf6acfd5847bc1bddcc575761af71be7ea144f3584b3594b24b2f80911"),
+    (
+        "system-prompt",
+        "sha256:9dcbe4755e1cdd317afefb3f2b4c694df17ca6aefe07680243c67b7ec7289b0c",
+    ),
+    (
+        "tool-descriptions",
+        "sha256:0e75085542a4f0b61da8a897f8baecc82fe3169cabb55c7a21ed67ac26a89e38",
+    ),
+    (
+        "catalog-lines",
+        "sha256:98a96bcf6acfd5847bc1bddcc575761af71be7ea144f3584b3594b24b2f80911",
+    ),
 ];

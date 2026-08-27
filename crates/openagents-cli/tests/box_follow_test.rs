@@ -12,8 +12,8 @@
 //! wrong produces the wrong string, and this fails.
 
 use openagents_cli::box_client::BoxClient;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 struct Stub {

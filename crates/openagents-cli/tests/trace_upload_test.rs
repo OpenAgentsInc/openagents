@@ -10,10 +10,10 @@
 //! test that proves upload works by writing to the real store is not one anyone can
 //! run twice.
 
-use openagents_cli::trace_client::{read_visibility, TraceClient, TRACE_VISIBILITIES};
+use openagents_cli::trace_client::{TRACE_VISIBILITIES, TraceClient, read_visibility};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 #[derive(Debug, Clone)]
 struct SeenRequest {

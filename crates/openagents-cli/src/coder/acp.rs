@@ -32,7 +32,11 @@ pub async fn find_agents() -> Result<Vec<Agent>, Box<dyn std::error::Error>> {
     let Some(dir) = registry_dir else {
         return Ok(Vec::new());
     };
-    if !tokio::fs::metadata(&dir).await.map(|m| m.is_dir()).unwrap_or(false) {
+    if !tokio::fs::metadata(&dir)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false)
+    {
         return Ok(Vec::new());
     }
 
@@ -113,7 +117,11 @@ struct NpxUvx {
     args: Option<Vec<String>>,
 }
 
-async fn is_available(agent: &RegistryAgent, npm_root: &Option<String>, uv_tools: &Option<String>) -> bool {
+async fn is_available(
+    agent: &RegistryAgent,
+    npm_root: &Option<String>,
+    uv_tools: &Option<String>,
+) -> bool {
     let Some(dist) = &agent.distribution else {
         return false;
     };
@@ -261,7 +269,10 @@ async fn npx_installed(package: &str, npm_root: &Option<String>) -> bool {
         .join("node_modules")
         .join(package)
         .join("package.json");
-    tokio::fs::metadata(&marker).await.map(|m| m.is_file()).unwrap_or(false)
+    tokio::fs::metadata(&marker)
+        .await
+        .map(|m| m.is_file())
+        .unwrap_or(false)
 }
 
 async fn uvx_installed(package: &str, uv_tools: &Option<String>) -> bool {
@@ -269,9 +280,8 @@ async fn uvx_installed(package: &str, uv_tools: &Option<String>) -> bool {
         return false;
     };
     let package = package_dir(package);
-    list.lines().any(|line| {
-        line.split_whitespace().next() == Some(package)
-    })
+    list.lines()
+        .any(|line| line.split_whitespace().next() == Some(package))
 }
 
 fn package_dir(spec: &str) -> &str {

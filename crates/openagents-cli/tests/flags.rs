@@ -11,8 +11,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::mpsc;
 use std::sync::OnceLock;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -824,11 +824,7 @@ fn serve_routed(mut stream: TcpStream, routes: &[Route], hits: mpsc::Sender<Hit>
     }
 
     let key = format!("{method} {path}");
-    let _ = hits.send(Hit {
-        method,
-        path,
-        body,
-    });
+    let _ = hits.send(Hit { method, path, body });
 
     let answer = routes.iter().find(|(route, ..)| *route == key);
     let (code, reply, content_type) = match answer {
@@ -936,13 +932,7 @@ fn offline_answers_from_the_stand_in_and_the_live_path_refuses_instead() {
         &[("OPENAGENTS_TOKEN", "t")],
     );
     let live = oa_env(
-        &[
-            "--api-url",
-            dead,
-            "coder",
-            "--headless",
-            "count the crates",
-        ],
+        &["--api-url", dead, "coder", "--headless", "count the crates"],
         &[("OPENAGENTS_TOKEN", "t")],
     );
 
@@ -1424,8 +1414,8 @@ fn model_names_the_id_the_thread_opens_on() {
         &[("OPENAGENTS_TOKEN", "t")],
     );
     assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
-    let with = body_of(&named.hits(), "POST", "/api/v1/threads")
-        .expect("the run did not open a thread");
+    let with =
+        body_of(&named.hits(), "POST", "/api/v1/threads").expect("the run did not open a thread");
 
     let plain = RouteServer::start(coder_routes);
     let origin = plain.origin();
@@ -1434,8 +1424,8 @@ fn model_names_the_id_the_thread_opens_on() {
         &[("OPENAGENTS_TOKEN", "t")],
     );
     assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
-    let without = body_of(&plain.hits(), "POST", "/api/v1/threads")
-        .expect("the run did not open a thread");
+    let without =
+        body_of(&plain.hits(), "POST", "/api/v1/threads").expect("the run did not open a thread");
 
     let with: serde_json::Value = serde_json::from_str(&with).expect("the open body is JSON");
     let without: serde_json::Value = serde_json::from_str(&without).expect("the open body is JSON");
@@ -1503,7 +1493,14 @@ fn local_answers_from_this_machine_and_never_reaches_the_server() {
     ];
 
     let local = oa_env(
-        &["--api-url", &origin, "coder", "--headless", "--local", "hello"],
+        &[
+            "--api-url",
+            &origin,
+            "coder",
+            "--headless",
+            "--local",
+            "hello",
+        ],
         &no_ollama,
     );
     assert_eq!(local.status, Some(2), "stdout: {}", local.stdout);
@@ -1631,7 +1628,10 @@ fn an_unadmitted_reasoning_effort_is_refused() {
         &[("OPENAGENTS_TOKEN", "t")],
     );
     assert_eq!(run.status, Some(2));
-    assert!(server.hits().is_empty(), "a refused effort still sent a request");
+    assert!(
+        server.hits().is_empty(),
+        "a refused effort still sent a request"
+    );
 }
 
 // ---------------------------------------------------------------- `--resume`
@@ -1909,7 +1909,14 @@ fn the_bare_picker_needs_a_terminal() {
     // `--all` so the candidate list is not empty: an empty list refuses for a
     // different and earlier reason, and this test is about the picker.
     let run = oa_env(
-        &["--api-url", &origin, "coder", "--headless", "--resume", "--all"],
+        &[
+            "--api-url",
+            &origin,
+            "coder",
+            "--headless",
+            "--resume",
+            "--all",
+        ],
         &[("OPENAGENTS_TOKEN", "t")],
     );
     assert_eq!(run.status, Some(2), "stdout: {}", run.stdout);
@@ -2001,7 +2008,15 @@ fn flags_that_name_different_lanes_are_refused_by_name() {
     // The same command with one of them is not that refusal. It fails for
     // want of a reachable server, which is a different sentence.
     let one = oa_env(
-        &["--api-url", "http://127.0.0.1:1", "coder", "--headless", "--lane", "pro", "hello"],
+        &[
+            "--api-url",
+            "http://127.0.0.1:1",
+            "coder",
+            "--headless",
+            "--lane",
+            "pro",
+            "hello",
+        ],
         &[("OPENAGENTS_TOKEN", "t")],
     );
     assert!(
@@ -2096,18 +2111,16 @@ fn last_and_all_are_refused_without_resume() {
 #[test]
 fn scope_is_asked_for_and_the_servers_answer_is_reported() {
     fn authorization_routes(_port: u16) -> Vec<Route> {
-        vec![
-            (
-                "POST /api/v1/device/authorizations".to_string(),
-                201,
-                r#"{"device_code":"d-1","user_code":"AAAA-BBBB",
+        vec![(
+            "POST /api/v1/device/authorizations".to_string(),
+            201,
+            r#"{"device_code":"d-1","user_code":"AAAA-BBBB",
                     "verification_uri":"https://example.test/device",
                     "verification_uri_complete":"https://example.test/device?user_code=AAAA-BBBB",
                     "expires_in":600,"interval":5,"scope":"forge:write"}"#
-                    .to_string(),
-                "application/json",
-            ),
-        ]
+                .to_string(),
+            "application/json",
+        )]
     }
     fn default_routes(_port: u16) -> Vec<Route> {
         vec![(
@@ -2159,7 +2172,9 @@ fn scope_is_asked_for_and_the_servers_answer_is_reported() {
         "a run without --scope still named one, so the server's default cannot apply: {sent}"
     );
     assert!(
-        plain.stdout.contains("Scope requested: chat:account forge:write"),
+        plain
+            .stdout
+            .contains("Scope requested: chat:account forge:write"),
         "the default run did not name the server's own scopes: {}",
         plain.stdout
     );

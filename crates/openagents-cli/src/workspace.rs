@@ -18,8 +18,8 @@
 //! the tree the reader is working in.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::process::Command;
@@ -110,10 +110,7 @@ impl ChildWorkspace {
             }
             (Isolation::Directory, _) => match tokio::fs::remove_dir_all(&self.path).await {
                 Ok(()) => None,
-                Err(error) => Some(format!(
-                    "could not remove {}: {error}",
-                    self.path.display()
-                )),
+                Err(error) => Some(format!("could not remove {}: {error}", self.path.display())),
             },
             _ => None,
         }
@@ -219,7 +216,9 @@ impl WorkspacePlan {
                 let path = self.base.join(format!("child-{id}"));
                 tokio::fs::create_dir_all(&self.base)
                     .await
-                    .map_err(|error| format!("could not create {}: {error}", self.base.display()))?;
+                    .map_err(|error| {
+                        format!("could not create {}: {error}", self.base.display())
+                    })?;
 
                 let out = Command::new("git")
                     .arg("-C")

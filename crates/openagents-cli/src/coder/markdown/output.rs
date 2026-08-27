@@ -226,7 +226,9 @@ mod code_block_span_tests {
     use ratatui::text::Line;
 
     use crate::coder::markdown::style::test_style::STYLE;
-    use crate::coder::markdown::{CodeBlockSpan, StreamingMarkdownRenderer, render_markdown_ratatui_full};
+    use crate::coder::markdown::{
+        CodeBlockSpan, StreamingMarkdownRenderer, render_markdown_ratatui_full,
+    };
 
     fn lines_text(lines: &[Line<'static>]) -> Vec<String> {
         lines

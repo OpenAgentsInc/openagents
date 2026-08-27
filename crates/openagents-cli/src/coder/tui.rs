@@ -556,9 +556,10 @@ impl CoderUi {
             .style(style);
         frame.render_widget(transcript, transcript_area);
 
-        let conversation_started = self.entries.iter().any(|entry| {
-            matches!(entry.role, Role::You | Role::Assistant | Role::Tool)
-        });
+        let conversation_started = self
+            .entries
+            .iter()
+            .any(|entry| matches!(entry.role, Role::You | Role::Assistant | Role::Tool));
         if self.show_welcome && !conversation_started {
             self.render_welcome(frame, transcript_area);
         }
@@ -615,10 +616,7 @@ impl CoderUi {
         let fits_left = |text: &str| {
             let text_width = text.chars().count() as u16;
             let gap = u16::from(text_width > 0 && lane_width > 0);
-            text_width
-                .saturating_add(gap)
-                .saturating_add(lane_width)
-                <= status_area.width
+            text_width.saturating_add(gap).saturating_add(lane_width) <= status_area.width
         };
         // Activity and goal text are useful progress details, but they must
         // not evict the credit or effective model that govern the next turn.
@@ -706,9 +704,7 @@ impl CoderUi {
             }
             value
         };
-        let label_style = Style::default()
-            .fg(DIM_TEXT_COLOR)
-            .bg(BACKGROUND_COLOR);
+        let label_style = Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR);
         let value_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
         let row = |label: &'static str, value: String| {
             Line::from(vec![
@@ -721,7 +717,10 @@ impl CoderUi {
             row("Endpoint           ", fit(&self.endpoint)),
             row("ACP agents         ", fit(&agents)),
             Line::default(),
-            Line::from(Span::styled("Type /help for commands and keys.", label_style)),
+            Line::from(Span::styled(
+                "Type /help for commands and keys.",
+                label_style,
+            )),
         ]);
         let block = Block::default()
             .title(format!(" Coder v{} ", crate::VERSION))
@@ -981,7 +980,10 @@ fn tool_header_text(entry: &Entry) -> String {
         .as_ref()
         .is_some_and(|tool| tool.function_name == "shell")
     {
-        format!(">{}", entry.text.strip_prefix("shell").unwrap_or(&entry.text))
+        format!(
+            ">{}",
+            entry.text.strip_prefix("shell").unwrap_or(&entry.text)
+        )
     } else {
         entry.text.clone()
     }

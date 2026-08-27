@@ -33,7 +33,7 @@ use std::thread;
 
 use openagents_cli::forum::ForumError;
 use openagents_cli::tracker::{
-    error_sentence, ApiError, IssueListOptions, RepoTarget, TrackerClient,
+    ApiError, IssueListOptions, RepoTarget, TrackerClient, error_sentence,
 };
 
 // ---------------------------------------------------------------------------

@@ -27,7 +27,11 @@ fn renders_delegate_tool_call_and_four_line_box() {
         .map(|c| c.symbol())
         .collect::<String>();
 
-    assert!(text.contains("delegate devin: Read src/main.rs"), "{}", text);
+    assert!(
+        text.contains("delegate devin: Read src/main.rs"),
+        "{}",
+        text
+    );
     assert!(text.contains("Reading file..."), "{}", text);
     assert!(text.contains("Found main()"), "{}", text);
     assert!(text.contains("Done"), "{}", text);

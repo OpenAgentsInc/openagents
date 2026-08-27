@@ -963,7 +963,10 @@ async fn cancellation_reports_and_settles_once_then_a_later_turn_starts_clean() 
     );
 
     session.execute_turn("next", tx.clone()).await;
-    session.finish().await.expect("the later thread did not finish");
+    session
+        .finish()
+        .await
+        .expect("the later thread did not finish");
     drop(session);
 
     let requests = stub.requests();
@@ -971,7 +974,11 @@ async fn cancellation_reports_and_settles_once_then_a_later_turn_starts_clean() 
         .iter()
         .filter(|request| request.contains("POST /api/v1/threads/th_test/report"))
         .collect::<Vec<_>>();
-    assert_eq!(reports.len(), 2, "one cancel report and one later success: {requests:?}");
+    assert_eq!(
+        reports.len(),
+        2,
+        "one cancel report and one later success: {requests:?}"
+    );
     let bodies = reports
         .iter()
         .map(|request| {

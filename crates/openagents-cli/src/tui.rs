@@ -21,11 +21,11 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -764,8 +764,8 @@ mod tests {
     /// Draw the whole chrome into a buffer and report every foreground colour
     /// that is not the terminal's own.
     fn foregrounds(colour: bool) -> std::collections::BTreeSet<String> {
-        use ratatui::backend::TestBackend;
         use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
 
         // The flag is process-wide, so it is set for the length of the draw
         // and put back. These two cases never run at the same time because

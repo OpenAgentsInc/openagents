@@ -10,18 +10,18 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
 
 use openagents_cli::api_passthrough::{
-    admitted_method, api_error_details, decode_request_body, parse_request_fields,
-    parse_request_headers, resolve_api_path, resolve_request_method, ApiPassthroughClient,
+    ApiPassthroughClient, admitted_method, api_error_details, decode_request_body,
+    parse_request_fields, parse_request_headers, resolve_api_path, resolve_request_method,
 };
 use openagents_cli::computer::{
-    curated_allowlist, decide, execute_command, format_allowlist, gh_read_only_allowed,
-    load_config, probe, probe_host, redact, serve, tier_allows, within_root, Cancellation,
-    CommandRequest, ComputerClient, ComputerPaths, Decision, ExecutionLimits, Journal,
-    MachineCredentials, PolicyConfig, RefusalReason, Tier,
+    Cancellation, CommandRequest, ComputerClient, ComputerPaths, Decision, ExecutionLimits,
+    Journal, MachineCredentials, PolicyConfig, RefusalReason, Tier, curated_allowlist, decide,
+    execute_command, format_allowlist, gh_read_only_allowed, load_config, probe, probe_host,
+    redact, serve, tier_allows, within_root,
 };
 
 // ---------------------------------------------------------------------------
@@ -89,9 +89,11 @@ fn test_curated_allowlist_is_the_published_one() {
     );
     assert_eq!(lines[lines.len() - 1], "gh: read-only queries only");
     assert!(lines.iter().any(|line| line == "npm: --version, ls"));
-    assert!(lines
-        .iter()
-        .any(|line| line == "docker: ps, images, version"));
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "docker: ps, images, version")
+    );
 }
 
 /// A declared root is not enough on its own. The probe tier is fixed discovery,
@@ -723,11 +725,13 @@ fn test_up_refuses_a_command_outside_the_allowlist_and_journals_it() {
         refused.get("request_id").and_then(|v| v.as_str()),
         Some("req-refused")
     );
-    assert!(refused
-        .get("detail")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .contains("curated allowlist"));
+    assert!(
+        refused
+            .get("detail")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .contains("curated allowlist")
+    );
     // The stub serves one connection and then stops listening, so the client
     // sees the peer close, retries within its bound, and reports that it ran
     // out of retries rather than claiming a clean shutdown.
@@ -908,9 +912,11 @@ fn test_up_serves_a_bounded_allowed_request() {
     assert_eq!(exit.get("timed_out").and_then(|v| v.as_bool()), Some(false));
 
     let entries = journal.read(50).unwrap();
-    assert!(entries
-        .iter()
-        .any(|entry| entry.request_id == "req-allowed" && entry.outcome == "completed"));
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.request_id == "req-allowed" && entry.outcome == "completed")
+    );
 }
 
 /// Transport loss retries with bounded backoff and then stops. It does not
@@ -1131,11 +1137,13 @@ fn test_the_binary_reports_real_pairing_state_without_printing_a_secret() {
     assert_eq!(value["tier"], serde_json::json!("curated"));
     assert_eq!(
         value["paths"]["journal"],
-        serde_json::json!(directory
-            .path()
-            .join(".config/openagents/journal.ndjson")
-            .display()
-            .to_string())
+        serde_json::json!(
+            directory
+                .path()
+                .join(".config/openagents/journal.ndjson")
+                .display()
+                .to_string()
+        )
     );
     assert!(
         !stdout.contains("smct_"),
@@ -1206,9 +1214,11 @@ fn test_the_binary_serves_a_bounded_request_over_an_outbound_connection() {
 
     let journal = Journal::at(directory.path().join(".config/openagents/journal.ndjson"));
     let entries = journal.read(50).unwrap();
-    assert!(entries
-        .iter()
-        .any(|entry| entry.request_id == "req-binary" && entry.outcome == "completed"));
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.request_id == "req-binary" && entry.outcome == "completed")
+    );
 }
 
 /// The refusal path through the binary, and the journal entry it leaves.
@@ -1362,15 +1372,19 @@ fn test_a_path_that_leaves_the_api_is_refused() {
         "the refusal must say how to write it: {refusal}"
     );
     // Another origin entirely.
-    assert!(resolve_api_path(ORIGIN, "https://example.com/api/v1/user")
-        .unwrap_err()
-        .contains("leaves the configured API origin"));
+    assert!(
+        resolve_api_path(ORIGIN, "https://example.com/api/v1/user")
+            .unwrap_err()
+            .contains("leaves the configured API origin")
+    );
     // A protocol-relative path is another origin in disguise.
     assert!(resolve_api_path(ORIGIN, "//example.com/api/v1/user").is_err());
     // A relative path that climbs out of the API prefix.
-    assert!(resolve_api_path(ORIGIN, "../../admin")
-        .unwrap_err()
-        .contains("resolves outside"));
+    assert!(
+        resolve_api_path(ORIGIN, "../../admin")
+            .unwrap_err()
+            .contains("resolves outside")
+    );
     assert!(resolve_api_path(ORIGIN, "   ").is_err());
     assert!(resolve_api_path(ORIGIN, "ftp://openagents.com/api/v1/user").is_err());
 }
@@ -1552,11 +1566,13 @@ async fn test_api_passthrough_returns_the_repository_the_route_names() {
         value.get("full_name").and_then(|v| v.as_str()),
         Some("OpenAgentsInc/openagents")
     );
-    assert!(!value
-        .get("default_branch")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .is_empty());
+    assert!(
+        !value
+            .get("default_branch")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .is_empty()
+    );
     assert_eq!(
         value.get("visibility").and_then(|v| v.as_str()),
         Some("public")

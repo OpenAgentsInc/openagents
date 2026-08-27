@@ -10,11 +10,11 @@
 //! the store keeps the chain a wrong memory was corrected through rather than
 //! overwriting the row that was wrong.
 
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::tracker::{error_fields, error_sentence, header_request_id, urlencode, ApiError};
+use crate::tracker::{ApiError, error_fields, error_sentence, header_request_id, urlencode};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MemoryRecord {
@@ -97,7 +97,7 @@ impl MemoryClient {
                 return Err(ApiError::Input(format!(
                     "{} is not an HTTP method this client sends.",
                     other
-                )))
+                )));
             }
         }
         .headers(self.headers());

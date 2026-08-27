@@ -371,7 +371,9 @@ mod tests {
     }
 
     /// Snapshot helper used by survival tests below.
-    fn snapshot(view: &crate::coder::markdown::output::MarkdownRenderView<'_>) -> Vec<HyperlinkTarget> {
+    fn snapshot(
+        view: &crate::coder::markdown::output::MarkdownRenderView<'_>,
+    ) -> Vec<HyperlinkTarget> {
         let mut snap: Vec<HyperlinkTarget> = view.hyperlinks.to_vec();
         snap.sort_by_key(|h| (h.line_index, h.column_range.start));
         snap

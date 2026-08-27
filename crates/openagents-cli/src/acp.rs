@@ -513,12 +513,12 @@ where
             Ok(None) => {
                 return Err(AcpFailure::Refused(
                     "the agent exited before it answered".to_string(),
-                ))
+                ));
             }
             Err(error) => {
                 return Err(AcpFailure::Refused(format!(
                     "the agent's output could not be read: {error}"
-                )))
+                )));
             }
         };
 

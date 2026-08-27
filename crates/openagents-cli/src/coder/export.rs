@@ -1,7 +1,7 @@
 //! ATIF session export and clipboard support.
 
 use crate::coder::tui::{Entry, Role, ToolCall};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -52,11 +52,7 @@ fn run_with_input(command: &str, args: &[&str], input: &str) -> Option<()> {
         .take()
         .and_then(|mut s| s.write_all(input.as_bytes()).ok());
     let status = child.wait().ok()?;
-    if status.success() {
-        Some(())
-    } else {
-        None
-    }
+    if status.success() { Some(()) } else { None }
 }
 
 fn copy_to_clipboard(text: &str) -> bool {
@@ -147,11 +143,7 @@ fn is_interface_command(text: &str) -> bool {
     INTERFACE_COMMAND_PREFIXES.iter().any(|cmd| first == *cmd)
 }
 
-fn step_of(
-    entry: &Entry,
-    model: &str,
-    tool: Option<&ToolCall>,
-) -> Option<Value> {
+fn step_of(entry: &Entry, model: &str, tool: Option<&ToolCall>) -> Option<Value> {
     let timestamp = iso_for_ms(entry.at);
     match entry.role {
         Role::You if !is_interface_command(&entry.text) => Some(json!({
@@ -202,11 +194,10 @@ fn step_of(
 }
 
 fn file_name(repository: &str, at_iso: &str) -> String {
-    let safe = repository
-        .split('/')
-        .last()
-        .unwrap_or(repository)
-        .replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '-' && c != '_', "-");
+    let safe = repository.split('/').last().unwrap_or(repository).replace(
+        |c: char| !c.is_alphanumeric() && c != '.' && c != '-' && c != '_',
+        "-",
+    );
     let stamp = at_iso.replace(':', "-").replace('.', "-");
     format!("{}-{}-atif.json", stamp, safe)
 }
@@ -281,8 +272,14 @@ pub fn export_trajectory(
 
     let path = directory.join(file_name(repo, &at_iso));
     let path_str = path.to_string_lossy().to_string();
-    fs::write(&path, format!("{}\n", serde_json::to_string_pretty(&document).unwrap_or_default()))
-        .ok();
+    fs::write(
+        &path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&document).unwrap_or_default()
+        ),
+    )
+    .ok();
 
     let copied = copy_to_clipboard(&path_str);
     ExportedTrajectory {

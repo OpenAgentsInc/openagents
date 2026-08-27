@@ -62,9 +62,15 @@ pub const COMMANDS: &[(&str, &str)] = &[
 const KEYS: &[(&str, &str)] = &[
     ("Enter", "send"),
     ("Alt+Enter / Ctrl+J", "newline"),
-    ("Up / Down", "move the caret, then walk history, then scroll"),
+    (
+        "Up / Down",
+        "move the caret, then walk history, then scroll",
+    ),
     ("Scroll wheel / trackpad", "scroll the transcript"),
-    ("PageUp / PageDown", "scroll a page (Fn+Up / Fn+Down on a Mac)"),
+    (
+        "PageUp / PageDown",
+        "scroll a page (Fn+Up / Fn+Down on a Mac)",
+    ),
     ("Shift+drag", "select and copy text with your terminal"),
     ("Tab", "complete a command or a path"),
     (
@@ -72,7 +78,10 @@ const KEYS: &[(&str, &str)] = &[
         "edit the line",
     ),
     ("Esc", "cancel the active turn and keep queued prompts"),
-    ("Ctrl+C / Ctrl+D / Ctrl+Q", "leave Coder; an active turn is canceled first"),
+    (
+        "Ctrl+C / Ctrl+D / Ctrl+Q",
+        "leave Coder; an active turn is canceled first",
+    ),
 ];
 
 /// The command names, for Tab completion.
@@ -459,7 +468,10 @@ fn render_diff(files: &[crate::diff::FileDiff]) -> String {
         };
         summary.push(format!("- `{named}` +{added} −{removed}"));
 
-        body.push(format!("--- a/{}", file.renamed_from.as_ref().unwrap_or(&file.path)));
+        body.push(format!(
+            "--- a/{}",
+            file.renamed_from.as_ref().unwrap_or(&file.path)
+        ));
         body.push(format!("+++ b/{}", file.path));
         if let Some(note) = &file.note {
             body.push(format!("# {note}"));

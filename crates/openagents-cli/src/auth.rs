@@ -151,7 +151,7 @@ pub fn normalize_api_origin(input: &str) -> Result<String, AuthError> {
         _ => {
             return Err(AuthError::new(
                 "API URLs must use HTTPS. HTTP is allowed only for loopback development",
-            ))
+            ));
         }
     }
     Ok(match url.port() {
@@ -1030,7 +1030,7 @@ impl DeviceClient {
                 DevicePoll::Granted => {
                     return received.ok_or_else(|| {
                         AuthError::new("the device token response carried no token")
-                    })
+                    });
                 }
                 DevicePoll::Pending => {}
                 DevicePoll::SlowDown => interval += 5,
@@ -1274,14 +1274,16 @@ mod tests {
         // Asserting on the redaction marker alone would be satisfied by a
         // prefix swap that leaves the value in the tail, so assert absence.
         assert!(!rendered.contains("supersecretvalue"), "{rendered}");
-        assert!(!format!(
-            "{:?}",
-            StoredToken {
-                token: secret,
-                source: TokenSource::Store
-            }
-        )
-        .contains("supersecretvalue"));
+        assert!(
+            !format!(
+                "{:?}",
+                StoredToken {
+                    token: secret,
+                    source: TokenSource::Store
+                }
+            )
+            .contains("supersecretvalue")
+        );
     }
 
     #[test]

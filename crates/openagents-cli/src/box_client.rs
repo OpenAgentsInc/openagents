@@ -15,11 +15,11 @@
 //!   is an error, not exit code 1 with the failure text pushed into `stderr`,
 //!   which is what a real failing command looks like.
 
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::tracker::{error_fields, error_sentence, header_request_id, urlencode, ApiError};
+use crate::tracker::{ApiError, error_fields, error_sentence, header_request_id, urlencode};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BoxRecord {
@@ -243,7 +243,7 @@ impl BoxClient {
                 return Err(ApiError::Input(format!(
                     "{} is not an HTTP method this client sends.",
                     other
-                )))
+                )));
             }
         }
         .headers(self.headers());
@@ -300,7 +300,13 @@ impl BoxClient {
     /// answering is a refusal — not a default conversation id.
     pub async fn resolve_conversation_id(&self) -> Result<String, ApiError> {
         let named = self
-            .request("resolve user conversation", "GET", "conversation", None, &[200])
+            .request(
+                "resolve user conversation",
+                "GET",
+                "conversation",
+                None,
+                &[200],
+            )
             .await;
         if let Ok(body) = &named {
             if let Some(id) = text(body, "conversation_id") {
@@ -397,13 +403,13 @@ impl BoxClient {
                 &[200],
             )
             .await?;
-        let rows = body
-            .get("boxes")
-            .and_then(Value::as_array)
-            .ok_or_else(|| ApiError::Malformed {
-                operation: "list conversation boxes".to_string(),
-                why: "no `boxes` array in the response".to_string(),
-            })?;
+        let rows =
+            body.get("boxes")
+                .and_then(Value::as_array)
+                .ok_or_else(|| ApiError::Malformed {
+                    operation: "list conversation boxes".to_string(),
+                    why: "no `boxes` array in the response".to_string(),
+                })?;
         Ok(rows.iter().map(parse_box).collect())
     }
 
@@ -467,7 +473,10 @@ impl BoxClient {
             // The server sends the box's exit status. A missing one is not
             // success, and it is not a failure of the command either, so it is
             // reported as -1 the way the TypeScript client reports it.
-            exit_code: result.get("exit_code").and_then(Value::as_i64).unwrap_or(-1),
+            exit_code: result
+                .get("exit_code")
+                .and_then(Value::as_i64)
+                .unwrap_or(-1),
             stdout: text(result, "stdout").unwrap_or_default(),
             stderr: text(result, "stderr").unwrap_or_default(),
             timed_out: result
@@ -541,13 +550,13 @@ impl BoxClient {
                 &[200],
             )
             .await?;
-        let rows = body
-            .get("runs")
-            .and_then(Value::as_array)
-            .ok_or_else(|| ApiError::Malformed {
-                operation: "list box runs".to_string(),
-                why: "no `runs` array in the response".to_string(),
-            })?;
+        let rows =
+            body.get("runs")
+                .and_then(Value::as_array)
+                .ok_or_else(|| ApiError::Malformed {
+                    operation: "list box runs".to_string(),
+                    why: "no `runs` array in the response".to_string(),
+                })?;
         Ok(rows.iter().map(|row| parse_run(row, box_id, "")).collect())
     }
 
@@ -602,9 +611,7 @@ impl BoxClient {
         let flat = nested.as_str().map(String::from);
         Ok(BoxRunOutput {
             run_id: text(&body, "run_id").unwrap_or_else(|| run_id.to_string()),
-            output: flat
-                .or_else(|| text(&nested, "output"))
-                .unwrap_or_default(),
+            output: flat.or_else(|| text(&nested, "output")).unwrap_or_default(),
             next_offset: nested
                 .get("next_offset")
                 .and_then(Value::as_u64)
@@ -759,7 +766,11 @@ fn fresh_idempotency_key() -> String {
         COUNTER.fetch_add(1, Ordering::Relaxed)
     );
     let digest = Sha256::digest(seed.as_bytes());
-    let hex: String = digest.iter().take(16).map(|b| format!("{:02x}", b)).collect();
+    let hex: String = digest
+        .iter()
+        .take(16)
+        .map(|b| format!("{:02x}", b))
+        .collect();
     format!(
         "{}-{}-4{}-a{}-{}",
         &hex[0..8],

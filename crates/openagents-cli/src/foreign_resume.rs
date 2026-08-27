@@ -52,7 +52,7 @@
 
 use crate::plugins::{self, Approval, CatalogEntry, LoadedPlugin};
 use crate::trace::redact_text;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -795,7 +795,7 @@ pub fn run_foreign_resume(
     let output = match normalize_scan_result(&raw) {
         ScanResult::Error(message) => return message,
         ScanResult::Refusal(refusal) => {
-            return format!("The scanner refused ({}): {}", refusal.code, refusal.reason)
+            return format!("The scanner refused ({}): {}", refusal.code, refusal.reason);
         }
         ScanResult::Ok(output) => *output,
     };

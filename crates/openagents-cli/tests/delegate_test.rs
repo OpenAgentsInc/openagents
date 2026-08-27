@@ -108,7 +108,11 @@ async fn each_child_gets_a_worktree_of_its_own() {
         );
         // Each child has its own index, so what one writes the other does not
         // see.
-        std::fs::write(workspace.path.join("only-mine.txt"), format!("{}", workspace.id)).unwrap();
+        std::fs::write(
+            workspace.path.join("only-mine.txt"),
+            format!("{}", workspace.id),
+        )
+        .unwrap();
     }
     assert!(!workspaces[0].path.join("only-mine.txt").is_symlink());
     assert_eq!(
@@ -148,13 +152,17 @@ echo '{"type":"result","is_error":false,"result":"first last"}'
 "#,
     );
     let _exclusive = exclusive();
-    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
+    unsafe {
+        std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    }
 
-    let supervisor = DelegationSupervisor::new(1, "claude", None)
-        .with_isolation(Isolation::Directory);
+    let supervisor =
+        DelegationSupervisor::new(1, "claude", None).with_isolation(Isolation::Directory);
     let started = Instant::now();
     let (results, events) = run(&supervisor, "ignored by the stand-in", None).await;
-    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
+    unsafe {
+        std::env::remove_var("OA_CHILD_CLAUDE");
+    }
 
     assert!(results[0].success, "{}", results[0].output);
     let total = started.elapsed();
@@ -191,10 +199,12 @@ echo "{\"type\":\"result\",\"is_error\":false,\"result\":\"pid $$\"}"
 "#,
     );
     let _exclusive = exclusive();
-    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
+    unsafe {
+        std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    }
 
-    let together = DelegationSupervisor::new(3, "claude", None)
-        .with_isolation(Isolation::Directory);
+    let together =
+        DelegationSupervisor::new(3, "claude", None).with_isolation(Isolation::Directory);
     let at = Instant::now();
     let (parallel, events) = run(&together, "ignored", None).await;
     let parallel_took = at.elapsed();
@@ -205,7 +215,9 @@ echo "{\"type\":\"result\",\"is_error\":false,\"result\":\"pid $$\"}"
     let at = Instant::now();
     let (serial, _) = run(&queued, "ignored", None).await;
     let serial_took = at.elapsed();
-    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
+    unsafe {
+        std::env::remove_var("OA_CHILD_CLAUDE");
+    }
 
     assert_eq!(parallel.iter().filter(|r| r.success).count(), 3);
     assert_eq!(serial.iter().filter(|r| r.success).count(), 3);
@@ -254,23 +266,34 @@ exit 3
 "#,
     );
     let _exclusive = exclusive();
-    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
-    let supervisor = DelegationSupervisor::new(1, "claude", None)
-        .with_isolation(Isolation::Directory);
+    unsafe {
+        std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    }
+    let supervisor =
+        DelegationSupervisor::new(1, "claude", None).with_isolation(Isolation::Directory);
     let (results, _) = run(&supervisor, "ignored", None).await;
-    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
+    unsafe {
+        std::env::remove_var("OA_CHILD_CLAUDE");
+    }
 
-    assert!(!results[0].success, "a child that exited 3 reported success");
+    assert!(
+        !results[0].success,
+        "a child that exited 3 reported success"
+    );
     assert!(results[0].failure.is_some());
     let why = results[0].failure.clone().unwrap();
     assert!(why.contains("code 3"), "{why}");
     assert!(why.contains("the tests did not pass"), "{why}");
 
-    unsafe { std::env::set_var("OA_CHILD_CLAUDE", "/nonexistent/no-such-agent"); }
-    let supervisor = DelegationSupervisor::new(1, "claude", None)
-        .with_isolation(Isolation::Directory);
+    unsafe {
+        std::env::set_var("OA_CHILD_CLAUDE", "/nonexistent/no-such-agent");
+    }
+    let supervisor =
+        DelegationSupervisor::new(1, "claude", None).with_isolation(Isolation::Directory);
     let (missing, _) = run(&supervisor, "ignored", None).await;
-    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
+    unsafe {
+        std::env::remove_var("OA_CHILD_CLAUDE");
+    }
 
     assert!(!missing[0].success);
     assert!(
@@ -301,17 +324,24 @@ sleep 30
         ),
     );
     let _exclusive = exclusive();
-    unsafe { std::env::set_var("OA_CHILD_CLAUDE", &harness); }
+    unsafe {
+        std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    }
 
-    let supervisor = DelegationSupervisor::new(1, "claude", None)
-        .with_isolation(Isolation::Directory);
+    let supervisor =
+        DelegationSupervisor::new(1, "claude", None).with_isolation(Isolation::Directory);
     let at = Instant::now();
     let (results, _) = run(&supervisor, "ignored", Some(Duration::from_millis(700))).await;
     let took = at.elapsed();
-    unsafe { std::env::remove_var("OA_CHILD_CLAUDE"); }
+    unsafe {
+        std::env::remove_var("OA_CHILD_CLAUDE");
+    }
 
     assert!(!results[0].success);
-    assert_eq!(results[0].failure.as_deref(), Some("stopped before finishing"));
+    assert_eq!(
+        results[0].failure.as_deref(),
+        Some("stopped before finishing")
+    );
     assert!(
         took < Duration::from_secs(20),
         "a stopped child ran for {took:?}; the stand-in sleeps for thirty seconds"
@@ -497,14 +527,18 @@ async fn proxy_stub() -> ProxyStub {
 async fn a_delegated_child_ends_its_own_thread_by_saying_what_it_did() {
     let _guard = exclusive();
     let stub = proxy_stub().await;
-    unsafe { std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin)); }
+    unsafe {
+        std::env::set_var("OPENAGENTS_API_BASE", format!("{}/api/v1", stub.origin));
+    }
 
     let supervisor = DelegationSupervisor::new(1, "openagents", Some("oat_test".to_string()))
         .with_isolation(Isolation::None)
         .in_directory(Some(std::env::temp_dir()));
     let (results, _events) = run(&supervisor, "say something", None).await;
 
-    unsafe { std::env::remove_var("OPENAGENTS_API_BASE"); }
+    unsafe {
+        std::env::remove_var("OPENAGENTS_API_BASE");
+    }
 
     assert_eq!(results.len(), 1);
     assert!(
@@ -602,7 +636,11 @@ async fn one_child_reports(argv: &[&str]) -> String {
         .with_isolation(Isolation::Directory)
         .with_child_options(options);
     let (results, _) = run(&supervisor, "ignored", None).await;
-    assert!(results[0].success, "the child failed: {}", results[0].output);
+    assert!(
+        results[0].success,
+        "the child failed: {}",
+        results[0].output
+    );
     let said = results[0].output.clone();
     assert!(
         said.contains("MARK"),
@@ -665,10 +703,7 @@ async fn child_model_and_child_ask_reach_a_real_child_process() {
     );
     // Without --child-ask a delegated child has nobody to ask, so it accepts
     // its own edits.
-    assert!(
-        said.contains("--permission-mode acceptEdits"),
-        "{said}"
-    );
+    assert!(said.contains("--permission-mode acceptEdits"), "{said}");
 
     let asking = one_child_reports(&[
         "oa",

@@ -20,15 +20,15 @@
 //! actually shipped: hardcoded sessions that scanned nothing.
 
 use openagents_cli::foreign_resume::{
-    build_packet, confirm_on_disk, foreign_resume_turn, format_age, load_scanner,
-    normalize_scan_result, run_foreign_resume, scanner_invoke, ForeignResumeDeps,
-    ForeignResumeOptions, ForeignScanOutput, ForeignSession, ForeignSource, OnDisk, ScanResult,
-    DEFAULT_MAX_AGE_DAYS, DEFAULT_PICKER_LIMIT,
+    DEFAULT_MAX_AGE_DAYS, DEFAULT_PICKER_LIMIT, ForeignResumeDeps, ForeignResumeOptions,
+    ForeignScanOutput, ForeignSession, ForeignSource, OnDisk, ScanResult, build_packet,
+    confirm_on_disk, foreign_resume_turn, format_age, load_scanner, normalize_scan_result,
+    run_foreign_resume, scanner_invoke,
 };
 use openagents_cli::interactive::{CoderApp, Control};
 use openagents_cli::runtime::Lane;
 use openagents_cli::trace::redact_text;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::unbounded_channel;
 

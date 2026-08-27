@@ -30,30 +30,30 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cli::CoderArgs;
-use crate::composer::complete::{complete, Completion};
+use crate::composer::complete::{Completion, complete};
 use crate::composer::history::History;
 use crate::composer::{Composer, ComposerAction};
 use crate::diff::{DiffMode, FileDiff};
-use crate::pty::{PtyControl, PtyEvent, PtyScreen, PtySession, DETACH};
+use crate::pty::{DETACH, PtyControl, PtyEvent, PtyScreen, PtySession};
 use crate::runtime::{CoderRuntimeSession, Lane, TurnUsage};
 use crate::tools::{DelegationGate, HarnessToolRegistry};
 use crate::tui::{
-    composer_text_width, pty_viewport, BoxFrame, ChromeView, DiffPane, Entry, Middle, PtyPane, Role,
+    BoxFrame, ChromeView, DiffPane, Entry, Middle, PtyPane, Role, composer_text_width, pty_viewport,
 };
 
 use crossterm::{
-    event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
+    event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use futures::{Stream, StreamExt};
+use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::layout::Rect;
 use ratatui::text::Line;
-use ratatui::Terminal;
-use std::io::{stdout, IsTerminal};
+use std::io::{IsTerminal, stdout};
 use std::time::Duration;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 /// The commands the composer takes, and what each one does.
 ///
@@ -1310,7 +1310,11 @@ mod tests {
     /// exactly like a model choosing not to call it.
     #[test]
     fn an_interactive_session_can_delegate() {
-        let tools = session_tools("glm-5.3-flash", &Some("token".to_string()), Default::default());
+        let tools = session_tools(
+            "glm-5.3-flash",
+            &Some("token".to_string()),
+            Default::default(),
+        );
         let names: Vec<String> = tools.list_tools().into_iter().map(|t| t.name).collect();
         assert!(
             names.iter().any(|n| n == "delegate"),
@@ -1324,7 +1328,11 @@ mod tests {
     /// lane while the session runs on another, which is worse than no gate.
     #[test]
     fn the_gate_carries_this_sessions_lane_and_credential() {
-        let tools = session_tools("claude", &Some("secret-token".to_string()), Default::default());
+        let tools = session_tools(
+            "claude",
+            &Some("secret-token".to_string()),
+            Default::default(),
+        );
         let gate = tools
             .delegation
             .as_ref()

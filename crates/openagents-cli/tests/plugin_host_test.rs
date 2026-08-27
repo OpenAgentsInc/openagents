@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use openagents_cli::plugins::{
-    invoke, load_plugin, Approval, CatalogEntry, Mount, MOUNT_FILE_LIMIT,
+    Approval, CatalogEntry, MOUNT_FILE_LIMIT, Mount, invoke, load_plugin,
 };
 use openagents_cli::tools::{HarnessToolRegistry, ToolCall};
 use sha2::{Digest, Sha256};
@@ -440,11 +440,13 @@ fn a_mounted_capability_needs_an_operator_before_it_can_be_loaded() {
         "approval_unavailable",
         "an unattended session must not grant a directory on its own"
     );
-    assert!(Approval {
-        mounts_allowed: true
-    }
-    .check(&entry)
-    .is_ok());
+    assert!(
+        Approval {
+            mounts_allowed: true
+        }
+        .check(&entry)
+        .is_ok()
+    );
 }
 
 // ──────────────────────────────────────── a name the session already answers

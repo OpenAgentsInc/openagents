@@ -103,7 +103,10 @@ fn an_assistant_message_shows_its_model_at_the_top_right() {
         .expect("the model label is visible");
 
     assert_eq!(model_x, 67, "the label is not flush right");
-    assert_eq!(model_y, 0, "the model label is not on the message's top row");
+    assert_eq!(
+        model_y, 0,
+        "the model label is not on the message's top row"
+    );
     assert!(
         (0..model.len() as u16)
             .all(|offset| buffer.cell((model_x + offset, model_y)).unwrap().fg == MODEL_TEXT_COLOR),
@@ -217,7 +220,10 @@ fn a_shell_tool_uses_a_prompt_marker_on_screen() {
     );
 
     let screen = text_of(&draw(&mut ui));
-    assert!(screen.starts_with(&format!("{}○ > cargo test", " ".repeat(80))), "{screen}");
+    assert!(
+        screen.starts_with(&format!("{}○ > cargo test", " ".repeat(80))),
+        "{screen}"
+    );
     assert!(!screen.contains("shell cargo test"), "{screen}");
     assert_eq!(ui.entries[0].tool.as_ref().unwrap().function_name, "shell");
 }
@@ -339,9 +345,7 @@ fn reduced_motion_keeps_the_active_tool_state_static() {
         first.cell((0, 2)).unwrap().fg,
         second.cell((0, 2)).unwrap().fg
     );
-    assert!(
-        text_of(&second).starts_with(&format!("{}○ > cargo test", " ".repeat(80)))
-    );
+    assert!(text_of(&second).starts_with(&format!("{}○ > cargo test", " ".repeat(80))));
 }
 
 /// Output for a call the frame never saw start goes nowhere rather than onto
@@ -515,7 +519,10 @@ fn cli_help_with_inline_code_stays_literal() {
 
     let frame = draw(&mut ui);
     let screen = text_of(&frame);
-    assert!(screen.contains("such as https://openagents.com"), "{screen}");
+    assert!(
+        screen.contains("such as https://openagents.com"),
+        "{screen}"
+    );
     assert!(screen.contains("`production`"), "{screen}");
     for cell in frame.content.iter().filter(|cell| cell.symbol() != " ") {
         assert_eq!(cell.bg, Color::Rgb(8, 6, 0));

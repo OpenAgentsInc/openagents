@@ -49,9 +49,9 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::time::Duration;
 
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
@@ -245,7 +245,9 @@ pub fn validate_manifest(value: &serde_json::Value) -> Result<Manifest, Refusal>
     if abi_kind != SUPPORTED_ABI {
         return Err(refuse(
             "abi_unsupported",
-            format!("the manifest declares abi `{abi_kind}` and this host speaks `{SUPPORTED_ABI}` only"),
+            format!(
+                "the manifest declares abi `{abi_kind}` and this host speaks `{SUPPORTED_ABI}` only"
+            ),
         ));
     }
 
@@ -300,7 +302,9 @@ pub fn validate_manifest(value: &serde_json::Value) -> Result<Manifest, Refusal>
         if entry.get("readonly").and_then(|v| v.as_bool()) != Some(true) {
             return Err(refuse(
                 "capabilities_unsupported",
-                format!("mount `{path}` is not marked `\"readonly\": true`; only read-only mounts exist"),
+                format!(
+                    "mount `{path}` is not marked `\"readonly\": true`; only read-only mounts exist"
+                ),
             ));
         }
         mounts.push(Mount {
@@ -1792,11 +1796,13 @@ mod tests {
             Approval::default().check(&mounted).unwrap_err().code,
             "approval_unavailable"
         );
-        assert!(Approval {
-            mounts_allowed: true
-        }
-        .check(&mounted)
-        .is_ok());
+        assert!(
+            Approval {
+                mounts_allowed: true
+            }
+            .check(&mounted)
+            .is_ok()
+        );
         assert!(Approval::default().check(&pure).is_ok());
     }
 

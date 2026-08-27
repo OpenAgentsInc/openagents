@@ -7,16 +7,17 @@
 //! passes against a prefix swap, and that is what let the defect ship.
 
 use openagents_cli::trace::{
-    default_trace_stores, discover, is_redacted_copy, path_trace_store, redact_text,
-    redact_trace_file, redacted_path_for, resolve_trace_argument, summarize_trace_file,
-    DiscoveryBounds, TraceSourceKind,
+    DiscoveryBounds, TraceSourceKind, default_trace_stores, discover, is_redacted_copy,
+    path_trace_store, redact_text, redact_trace_file, redacted_path_for, resolve_trace_argument,
+    summarize_trace_file,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Planted secrets, one of each shape the rules claim to cover. None is real.
 const API_KEY: &str = "sk-liveSECRETVALUE123456789abcdef";
-const JWT: &str = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+const JWT: &str =
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const BEARER_BODY: &str = "REALTOKEN456abcdefghij";
 const NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 const ENV_VALUE: &str = "hunter2SUPERSECRET";
@@ -232,9 +233,16 @@ fn discovery_reports_the_files_that_are_there_and_nothing_else() {
         .collect();
     names.sort();
     assert_eq!(names, vec!["one.json", "two.jsonl"]);
-    assert!(candidates.iter().all(|c| c.kind == TraceSourceKind::TracePath));
+    assert!(
+        candidates
+            .iter()
+            .all(|c| c.kind == TraceSourceKind::TracePath)
+    );
     // The reported size is the file's real size.
-    let one = candidates.iter().find(|c| c.path.ends_with("one.json")).unwrap();
+    let one = candidates
+        .iter()
+        .find(|c| c.path.ends_with("one.json"))
+        .unwrap();
     assert_eq!(one.bytes, 2);
     assert!(
         one.modified_at.ends_with('Z') && one.modified_at.len() == 24,
@@ -275,7 +283,10 @@ fn symlinks_are_skipped_and_counted_never_followed() {
     #[cfg(unix)]
     {
         assert_eq!(scans[0].skipped_symlinks, 2);
-        assert_eq!(scans[0].matched, 1, "a symlink must not be counted as a file");
+        assert_eq!(
+            scans[0].matched, 1,
+            "a symlink must not be counted as a file"
+        );
     }
     assert!(candidates.iter().all(|c| c.path.ends_with("real.json")));
 }
@@ -375,8 +386,14 @@ fn an_atif_document_is_summarized_from_its_own_contents() {
     assert_eq!(summary.models.as_deref(), Some(&["opus".to_string()][..]));
     assert_eq!(summary.total_prompt_tokens, Some(100));
     assert_eq!(summary.total_completion_tokens, Some(20));
-    assert_eq!(summary.first_timestamp.as_deref(), Some("2026-08-01T00:00:00Z"));
-    assert_eq!(summary.last_timestamp.as_deref(), Some("2026-08-01T00:01:00Z"));
+    assert_eq!(
+        summary.first_timestamp.as_deref(),
+        Some("2026-08-01T00:00:00Z")
+    );
+    assert_eq!(
+        summary.last_timestamp.as_deref(),
+        Some("2026-08-01T00:01:00Z")
+    );
     let by_source = summary.steps_by_source.unwrap();
     assert_eq!(by_source.get("user"), Some(&1));
     assert_eq!(by_source.get("assistant"), Some(&1));
@@ -391,7 +408,10 @@ fn a_foreign_log_is_reported_as_a_foreign_log_not_given_invented_steps() {
     let summary = summarize_trace_file(&path).unwrap();
     assert_eq!(summary.format, "jsonl");
     assert_eq!(summary.lines, Some(2), "blank lines are not counted");
-    assert_eq!(summary.steps, None, "a foreign log has no step count to report");
+    assert_eq!(
+        summary.steps, None,
+        "a foreign log has no step count to report"
+    );
     assert_eq!(summary.tool_calls, None);
     assert_eq!(summary.models, None);
 }
@@ -461,8 +481,8 @@ struct PlantedSecrets {
 /// Read the fixture from the repository root. A missing or unreadable fixture is a
 /// hard failure: a suite that silently checks nothing is the defect, not the guard.
 fn planted_from_fixture() -> Vec<PlantedSecret> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/redaction/planted-secrets.json");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/redaction/planted-secrets.json");
     let text = fs::read_to_string(&path).unwrap_or_else(|error| {
         panic!(
             "the shared redaction fixture is unreadable at {}: {error}. \

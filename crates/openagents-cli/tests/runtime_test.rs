@@ -990,39 +990,42 @@ async fn no_local_server_ends_the_turn() {
 async fn the_local_lane_runs_tools_and_feeds_the_result_back() {
     let round = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = Arc::clone(&round);
-    let ollama = start(move |request, _origin| {
-        if request.starts_with("GET /api/tags") {
-            return Reply::Body(
-                200,
-                "application/json",
-                r#"{"models":[{"name":"qwen3:0.6b","modified_at":"2026-08-25T15:08:15Z"}]}"#
-                    .to_string(),
-            );
-        }
-        let step = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if step == 0 {
-            return Reply::Ndjson(
-                vec![serde_json::json!({
+    let ollama =
+        start(move |request, _origin| {
+            if request.starts_with("GET /api/tags") {
+                return Reply::Body(
+                    200,
+                    "application/json",
+                    r#"{"models":[{"name":"qwen3:0.6b","modified_at":"2026-08-25T15:08:15Z"}]}"#
+                        .to_string(),
+                );
+            }
+            let step = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if step == 0 {
+                return Reply::Ndjson(
+                    vec![serde_json::json!({
                     "message": {"role":"assistant","content":"","tool_calls":[{
                         "function": {"name":"shell","arguments":{"command":"echo marker-4c1"}}
                     }]},
                     "done": false
                 })
                 .to_string()],
+                    None,
+                );
+            }
+            Reply::Ndjson(
+                vec![
+                    serde_json::json!({
+                        "message": {"role":"assistant","content":"marker-4c1"},
+                        "done": true,
+                        "prompt_eval_count": 5,
+                        "eval_count": 3
+                    })
+                    .to_string(),
+                ],
                 None,
-            );
-        }
-        Reply::Ndjson(
-            vec![serde_json::json!({
-                "message": {"role":"assistant","content":"marker-4c1"},
-                "done": true,
-                "prompt_eval_count": 5,
-                "eval_count": 3
-            })
-            .to_string()],
-            None,
-        )
-    });
+            )
+        });
 
     let mut session = session(Lane::from_str("local"), DEAD.to_string());
     session.ollama_host = ollama.base.trim_end_matches("/api/v1").to_string();
@@ -1091,9 +1094,7 @@ async fn the_second_turn_carries_what_the_first_turn_answered() {
     let bodies: Vec<String> = stub
         .requests()
         .into_iter()
-        .filter(|r| {
-            !r.starts_with("POST /api/v1/threads") && !r.starts_with("GET /api/v1/models")
-        })
+        .filter(|r| !r.starts_with("POST /api/v1/threads") && !r.starts_with("GET /api/v1/models"))
         .collect();
     assert_eq!(bodies.len(), 2, "expected one proxy call per turn");
     assert!(
@@ -2076,16 +2077,20 @@ async fn a_refused_report_still_ends_the_thread_and_is_reported_to_the_reader() 
 #[tokio::test]
 async fn a_session_with_no_thread_reports_nothing() {
     let mut session = session(Lane::Local("qwen3".to_string()), DEAD.to_string());
-    assert!(session
-        .finish()
-        .await
-        .expect("no thread is not a failure")
-        .is_none());
-    assert!(session
-        .report(openagents_cli::runtime::ThreadOutcome::succeeded(
-            "anything"
-        ))
-        .await
-        .expect("no thread is not a failure")
-        .is_none());
+    assert!(
+        session
+            .finish()
+            .await
+            .expect("no thread is not a failure")
+            .is_none()
+    );
+    assert!(
+        session
+            .report(openagents_cli::runtime::ThreadOutcome::succeeded(
+                "anything"
+            ))
+            .await
+            .expect("no thread is not a failure")
+            .is_none()
+    );
 }

@@ -37,10 +37,7 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
     tool.tool = Some(delegate_call());
     tool.output = Some("Reading file...\nDone".to_string());
     entries.push(tool);
-    entries.push(Entry::new(
-        Role::Assistant,
-        "Rust is a systems language.",
-    ));
+    entries.push(Entry::new(Role::Assistant, "Rust is a systems language."));
     let mut canceled = Entry::new(Role::Notice, "Turn canceled.");
     canceled.turn_id = Some(41);
     entries.push(canceled);
@@ -120,7 +117,8 @@ fn export_writes_an_atif_document_for_a_constructor_built_transcript() {
     //
     // That run fails against the old code and passes against this one.
     assert_eq!(
-        document["agent"]["version"], openagents_cli::VERSION,
+        document["agent"]["version"],
+        openagents_cli::VERSION,
         "the exported trajectory must name the published version, not the crate manifest"
     );
 

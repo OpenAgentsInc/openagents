@@ -636,10 +636,7 @@ impl Session {
     /// The server accepts an identical report more than once. This method
     /// records the generation after that idempotent report succeeds, so a lost
     /// response can retry and a later key or event cannot settle it again.
-    pub async fn settle_cancellation(
-        &mut self,
-        id: TurnId,
-    ) -> Result<Option<String>, Failure> {
+    pub async fn settle_cancellation(&mut self, id: TurnId) -> Result<Option<String>, Failure> {
         if self.settled_cancellations.contains(&id) {
             return Ok(None);
         }

@@ -181,13 +181,13 @@ pub fn load_config(paths: &ComputerPaths) -> Result<PolicyConfig, String> {
     let text = match std::fs::read_to_string(&paths.config) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(PolicyConfig::closed(paths.clone()))
+            return Ok(PolicyConfig::closed(paths.clone()));
         }
         Err(error) => {
             return Err(format!(
                 "the local Computer configuration at {} could not be read: {error}",
                 paths.config.display()
-            ))
+            ));
         }
     };
     if text.len() as u64 > MAXIMUM_CONFIGURATION_BYTES {
@@ -999,7 +999,7 @@ impl Journal {
                 return Err(format!(
                     "the local Computer journal at {} could not be read: {error}",
                     self.path.display()
-                ))
+                ));
             }
         };
         let retained_limit = JOURNAL_MAX_BYTES.saturating_sub(line.len());
@@ -1047,7 +1047,7 @@ impl Journal {
                 return Err(format!(
                     "the local Computer journal at {} could not be read: {error}",
                     self.path.display()
-                ))
+                ));
             }
         };
         let tail = if bytes.len() > JOURNAL_READ_TAIL_BYTES {
@@ -1205,7 +1205,7 @@ pub fn execute_command(
                 timed_out: false,
                 cancelled: false,
                 duration_ms: started.elapsed().as_millis() as u64,
-            }
+            };
         }
     };
     let pid = child.id();
@@ -2754,7 +2754,7 @@ fn serve_connection(
     catalog: &[ResolvedAgent],
     mut on_event: impl FnMut(&str),
 ) -> ConnectionEnd {
-    use tungstenite::{client::IntoClientRequest, Message};
+    use tungstenite::{Message, client::IntoClientRequest};
 
     let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -2765,7 +2765,7 @@ fn serve_connection(
             return ConnectionEnd {
                 reason: format!("error:{error}"),
                 retryable: false,
-            }
+            };
         }
     };
     let (mut socket, _response) = match connect_bounded(request) {
@@ -2868,7 +2868,7 @@ fn serve_connection(
                 break ConnectionEnd {
                     reason: "closed".to_string(),
                     retryable: true,
-                }
+                };
             }
             Err(error) => {
                 let reason = format!("error:{error}");
@@ -2883,7 +2883,7 @@ fn serve_connection(
                 break ConnectionEnd {
                     reason: "closed".to_string(),
                     retryable: true,
-                }
+                };
             }
             Message::Ping(payload) => {
                 let _ = socket.send(Message::Pong(payload));

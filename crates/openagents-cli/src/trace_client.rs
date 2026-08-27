@@ -17,11 +17,11 @@
 //!   printing it would hand someone a 404 dressed as a receipt. The id and the
 //!   digest are real, and they are what get reported.
 
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::tracker::{error_fields, error_sentence, header_request_id, urlencode, ApiError};
+use crate::tracker::{ApiError, error_fields, error_sentence, header_request_id, urlencode};
 
 /// The transparency ladder the server stores a trace under.
 ///

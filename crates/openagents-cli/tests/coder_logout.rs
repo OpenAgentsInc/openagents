@@ -19,8 +19,8 @@
 //! still goes, the thread is still disposed of rather than leaked, and the
 //! notice says a report did not happen instead of claiming one did.
 
-use openagents_cli::coder::runtime::{Control, Session};
 use openagents_cli::auth::{CredentialStore, Secret};
+use openagents_cli::coder::runtime::{Control, Session};
 use openagents_cli::runtime::Lane;
 use std::path::PathBuf;
 use std::sync::mpsc::{Sender, channel};

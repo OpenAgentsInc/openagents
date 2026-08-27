@@ -26,7 +26,7 @@
 
 use openagents_cli::runtime::{CoderRuntimeSession, Lane};
 use openagents_cli::tools::{
-    resolve_openagents_cli, HarnessToolRegistry, OpenAgentsCliSource, ToolCall,
+    HarnessToolRegistry, OpenAgentsCliSource, ToolCall, resolve_openagents_cli,
 };
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -403,7 +403,10 @@ async fn a_turn_that_reaches_its_last_step_synthesizes() {
         "the final request should use the reserved thirtieth model step"
     );
     let last = stub.completions().pop().expect("a final request");
-    assert!(last.contains(r#""tools":[]"#), "tools remained on the final step");
+    assert!(
+        last.contains(r#""tools":[]"#),
+        "tools remained on the final step"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────── defect 4
@@ -439,7 +442,9 @@ async fn the_openagents_tool_prefers_path_and_falls_back_to_this_binary() {
     let original = std::env::var("PATH").unwrap_or_default();
 
     // With something named `openagents` on PATH, that is what runs.
-    unsafe { std::env::set_var("PATH", format!("{}:{original}", dir.path().display())); }
+    unsafe {
+        std::env::set_var("PATH", format!("{}:{original}", dir.path().display()));
+    }
     let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
     let output = registry
         .execute_tool(&ToolCall {
@@ -451,10 +456,14 @@ async fn the_openagents_tool_prefers_path_and_falls_back_to_this_binary() {
     let on_path = resolve_openagents_cli();
 
     // With nothing named `openagents` anywhere, this binary answers for it.
-    unsafe { std::env::set_var("PATH", ""); }
+    unsafe {
+        std::env::set_var("PATH", "");
+    }
     let fallback = resolve_openagents_cli();
 
-    unsafe { std::env::set_var("PATH", original); }
+    unsafe {
+        std::env::set_var("PATH", original);
+    }
 
     assert!(
         output.output.contains("SHIM-ON-PATH"),

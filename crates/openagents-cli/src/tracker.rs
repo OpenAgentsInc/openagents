@@ -16,8 +16,8 @@
 //! 3. The list route publishes no `per_page`, so a limit above one page is only
 //!    reachable by paging until the server's own total is covered.
 
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use serde_json::{json, Value};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
+use serde_json::{Value, json};
 use std::fmt;
 
 /// The largest list the CLI will page for; the server holds 25 to a page.
@@ -246,11 +246,7 @@ impl RepoTarget {
     }
 
     fn path(&self) -> String {
-        format!(
-            "repos/{}/{}",
-            urlencode(&self.owner),
-            urlencode(&self.repo)
-        )
+        format!("repos/{}/{}", urlencode(&self.owner), urlencode(&self.repo))
     }
 }
 
@@ -410,7 +406,7 @@ impl TrackerClient {
                 return Err(ApiError::Input(format!(
                     "{} is not an HTTP method this client sends.",
                     other
-                )))
+                )));
             }
         }
         .headers(self.headers());
@@ -693,7 +689,11 @@ impl TrackerClient {
         .await
     }
 
-    pub async fn list_assignees(&self, target: &RepoTarget, number: u64) -> Result<Value, ApiError> {
+    pub async fn list_assignees(
+        &self,
+        target: &RepoTarget,
+        number: u64,
+    ) -> Result<Value, ApiError> {
         self.request(
             "list issue assignees",
             "GET",
@@ -942,7 +942,11 @@ impl TrackerClient {
     /// Deletes a board. The API refuses one that is not archived, so archiving
     /// is the deliberate step that stands in for a prompt an API caller has no
     /// way to see.
-    pub async fn delete_project(&self, target: &RepoTarget, number: u64) -> Result<Value, ApiError> {
+    pub async fn delete_project(
+        &self,
+        target: &RepoTarget,
+        number: u64,
+    ) -> Result<Value, ApiError> {
         self.request(
             "delete a project",
             "DELETE",
@@ -953,7 +957,11 @@ impl TrackerClient {
         .await
     }
 
-    pub async fn project_fields(&self, target: &RepoTarget, number: u64) -> Result<Value, ApiError> {
+    pub async fn project_fields(
+        &self,
+        target: &RepoTarget,
+        number: u64,
+    ) -> Result<Value, ApiError> {
         self.request(
             "list project fields",
             "GET",

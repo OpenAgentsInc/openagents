@@ -4,8 +4,8 @@
 //! no default repository, no assumed visibility, and no invented clone URL: a
 //! repository the API did not describe is one this CLI cannot describe either.
 
-use crate::auth::{api_error_detail, AuthError, Secret};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use crate::auth::{AuthError, Secret, api_error_detail};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::Path;
@@ -396,7 +396,7 @@ impl RepoClient {
                             .provision_error_code
                             .map(|code| format!(": {code}"))
                             .unwrap_or_default()
-                    )))
+                    )));
                 }
                 _ => {}
             }
@@ -507,7 +507,7 @@ impl RepoClient {
                             .error_code
                             .map(|code| format!(": {code}"))
                             .unwrap_or_default()
-                    )))
+                    )));
                 }
                 _ => {}
             }
@@ -1153,16 +1153,20 @@ mod tests {
             .unwrap(),
             "OpenAgentsInc/openagents"
         );
-        assert!(repository_from_remote_url(
-            "https://openagents.com",
-            "https://github.com/OpenAgentsInc/openagents.git"
-        )
-        .is_err());
-        assert!(repository_from_remote_url(
-            "https://openagents.com",
-            "https://openagents.com/OpenAgentsInc/openagents"
-        )
-        .is_err());
+        assert!(
+            repository_from_remote_url(
+                "https://openagents.com",
+                "https://github.com/OpenAgentsInc/openagents.git"
+            )
+            .is_err()
+        );
+        assert!(
+            repository_from_remote_url(
+                "https://openagents.com",
+                "https://openagents.com/OpenAgentsInc/openagents"
+            )
+            .is_err()
+        );
     }
 
     #[test]

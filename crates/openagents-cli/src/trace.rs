@@ -136,9 +136,14 @@ fn matches_extension(name: &str, extensions: &[&str]) -> bool {
 /// Symlinks are never followed and always counted: a symlinked root is refused
 /// outright, and a symlinked entry is skipped, so a planted link can neither escape
 /// the store nor spin the walk in a loop.
-pub fn scan_store(spec: &TraceStoreSpec, bounds: DiscoveryBounds) -> (TraceStoreScan, Vec<TraceCandidate>) {
+pub fn scan_store(
+    spec: &TraceStoreSpec,
+    bounds: DiscoveryBounds,
+) -> (TraceStoreScan, Vec<TraceCandidate>) {
     let root_meta = fs::symlink_metadata(&spec.root).ok();
-    let root_is_symlink = root_meta.as_ref().is_some_and(|m| m.file_type().is_symlink());
+    let root_is_symlink = root_meta
+        .as_ref()
+        .is_some_and(|m| m.file_type().is_symlink());
     let usable = root_meta.as_ref().is_some_and(|m| m.is_dir()) && !root_is_symlink;
 
     if !usable {
@@ -224,7 +229,10 @@ pub fn scan_store(spec: &TraceStoreSpec, bounds: DiscoveryBounds) -> (TraceStore
 }
 
 /// Scan every store and merge the candidates, newest first across all of them.
-pub fn discover(specs: &[TraceStoreSpec], bounds: DiscoveryBounds) -> (Vec<TraceStoreScan>, Vec<TraceCandidate>) {
+pub fn discover(
+    specs: &[TraceStoreSpec],
+    bounds: DiscoveryBounds,
+) -> (Vec<TraceStoreScan>, Vec<TraceCandidate>) {
     let mut scans = Vec::with_capacity(specs.len());
     let mut candidates = Vec::new();
     for spec in specs {

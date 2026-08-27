@@ -1369,13 +1369,13 @@ impl<'a, 'b, 'syn, 'oc> MarkdownParser<'a, 'b, 'syn, 'oc> {
         };
         match crate::coder::markdown::mermaid::render(text, &styles, self.max_table_width) {
             Some(art) => {
-                self.buffers
-                    .mermaid_replaces
-                    .push(crate::coder::markdown::buffers::MermaidReplace {
+                self.buffers.mermaid_replaces.push(
+                    crate::coder::markdown::buffers::MermaidReplace {
                         lines: art.plain_lines,
                         styled_lines: art.styled_lines,
                         range: range.clone(),
-                    });
+                    },
+                );
                 true
             }
             None => false,

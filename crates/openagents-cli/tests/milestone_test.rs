@@ -15,7 +15,7 @@
 use openagents_cli::tracker::{RepoTarget, TrackerClient};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 /// One request the stub server saw, reduced to what these tests assert on.
 #[derive(Debug, Clone)]

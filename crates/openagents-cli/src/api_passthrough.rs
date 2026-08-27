@@ -9,7 +9,7 @@
 //! `api-contract.ts`, and `request-body-input.ts`.
 
 use clap::Args;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 

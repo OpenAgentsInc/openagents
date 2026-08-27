@@ -6,14 +6,14 @@
 //! no zeroization anywhere.
 
 use openagents_cli::auth::{
-    normalize_api_origin, resolve_endpoint, CredentialStore, DeviceClient,
-    PendingDeviceAuthorization, PendingStore, Secret, TokenSource,
+    CredentialStore, DeviceClient, PendingDeviceAuthorization, PendingStore, Secret, TokenSource,
+    normalize_api_origin, resolve_endpoint,
 };
 use openagents_cli::repo::{
-    admitted_credential_request, attach_remote, configure_credential_helper,
+    RepoClient, admitted_credential_request, attach_remote, configure_credential_helper,
     credential_helper_command, credential_helper_state, git_clone_argv, infer_repository,
     parse_repository_target, repository_from_remote_url, require_worktree,
-    run_git_credential_helper, validate_remote_name, RepoClient,
+    run_git_credential_helper, validate_remote_name,
 };
 use std::path::Path;
 use std::process::Command;
@@ -33,13 +33,15 @@ fn git(directory: &Path, args: &[&str]) -> String {
 fn init_repository(directory: &Path) {
     // A repository-local config only, so nothing here reaches the developer's
     // own ~/.gitconfig.
-    assert!(Command::new("git")
-        .arg("init")
-        .arg("--quiet")
-        .arg(directory)
-        .status()
-        .expect("git init runs")
-        .success());
+    assert!(
+        Command::new("git")
+            .arg("init")
+            .arg("--quiet")
+            .arg(directory)
+            .status()
+            .expect("git init runs")
+            .success()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -184,10 +186,12 @@ fn pending_device_authorizations_round_trip_on_disk() {
     assert_eq!(loaded.device_code, "device-code-1");
     assert_eq!(loaded.user_code, "ABCD-EFGH");
     assert_eq!(loaded.interval, 5);
-    assert!(store
-        .get("https://staging.openagents.com")
-        .unwrap()
-        .is_none());
+    assert!(
+        store
+            .get("https://staging.openagents.com")
+            .unwrap()
+            .is_none()
+    );
 
     #[cfg(unix)]
     {
@@ -469,8 +473,14 @@ fn a_helper_written_by_another_build_reads_as_configured() {
     let key = format!("credential.{OFFLINE_ORIGIN}.helper");
 
     let install = |helper: &str| {
-        git(directory.path(), &["config", "--local", "--unset-all", &key]);
-        git(directory.path(), &["config", "--local", "--add", &key, helper]);
+        git(
+            directory.path(),
+            &["config", "--local", "--unset-all", &key],
+        );
+        git(
+            directory.path(),
+            &["config", "--local", "--add", &key, helper],
+        );
     };
 
     for helper in [
@@ -758,8 +768,7 @@ fn the_printed_next_push_can_be_pasted_back_into_a_shell() {
     std::fs::create_dir(&spaced).unwrap();
     init_repository(&spaced);
 
-    let attached =
-        attach_remote(ORIGIN, &format!("{ORIGIN}/a/b.git"), &spaced, "origin").unwrap();
+    let attached = attach_remote(ORIGIN, &format!("{ORIGIN}/a/b.git"), &spaced, "origin").unwrap();
     let line = attached.next_push_command(&spaced);
     assert!(line.starts_with("git -C '"), "{line}");
     assert!(line.ends_with("' push -u origin HEAD"), "{line}");
@@ -807,7 +816,10 @@ fn attach_remote_refuses_what_it_must_not_do_silently() {
     // A directory that is not a worktree.
     let bare = tempfile::tempdir().unwrap();
     let outside = attach_remote(ORIGIN, &url, bare.path(), "origin").unwrap_err();
-    assert!(outside.to_string().contains("not a git worktree"), "{outside}");
+    assert!(
+        outside.to_string().contains("not a git worktree"),
+        "{outside}"
+    );
 
     // A name git will not take as a remote.
     for name in ["", "-dash", "a..b", "trailing.", "a.lock", "with space"] {

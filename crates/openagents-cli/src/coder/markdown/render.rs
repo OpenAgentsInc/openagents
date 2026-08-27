@@ -17,7 +17,9 @@ use crate::coder::markdown::buffers::{
 };
 use crate::coder::markdown::checkpoint::Checkpoint;
 use crate::coder::markdown::colors::adapt_style;
-use crate::coder::markdown::hyperlinks::{ChunkLinkRange, chunk_link_offsets, emit_segment_hyperlinks};
+use crate::coder::markdown::hyperlinks::{
+    ChunkLinkRange, chunk_link_offsets, emit_segment_hyperlinks,
+};
 use crate::coder::markdown::output::{HyperlinkTarget, MarkdownRenderOutput};
 use crate::coder::markdown::parse::ParsedMarkdown;
 use crate::coder::markdown::source_map::SourceMap;
@@ -2082,7 +2084,8 @@ mod tests {
     fn test_table_inline_html_no_raw_text_leak_ansi() {
         let md = "| Col A | Col B |\n|-------|-------|\n| Arc<PathBuf> | optimization |\n| normal | row |\n\n";
 
-        let (output, _) = crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
+        let (output, _) =
+            crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
 
         assert!(
             !output.contains("| normal"),
@@ -2152,7 +2155,8 @@ mod tests {
     fn test_table_multiple_inline_html_tags_ansi() {
         let md = "| Input | Output |\n|-------|--------|\n| Vec<String> | Option<i32> |\n| Box<dyn Trait> | Result<T> |\n\n";
 
-        let (output, _) = crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
+        let (output, _) =
+            crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
 
         assert!(
             !output.contains("| Vec"),
@@ -2170,7 +2174,8 @@ mod tests {
     fn test_table_with_leading_text_ansi() {
         let md = "Hello world\n\n| Col |\n|-----|\n| Arc<PathBuf> |\n\n";
 
-        let (output, _) = crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
+        let (output, _) =
+            crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
 
         assert!(
             output.contains("Hello world"),
@@ -2226,7 +2231,8 @@ mod tests {
     fn test_table_br_tag_ansi() {
         let md = "| Col |\n|-----|\n| hello<br>world |\n\n";
 
-        let (output, _) = crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
+        let (output, _) =
+            crate::coder::markdown::render_markdown(md, test_style::STYLE, true, None);
         assert!(
             !output.contains("<br>"),
             "literal <br> in ANSI output: {output}"
@@ -2295,7 +2301,8 @@ mod tests {
     fn test_soft_break_ansi_render_path_no_mid_sentence_newline() {
         // render_ansi has its own `split('\n')` loop; verify the parser fix reaches it.
         let md = "Foo bar\nbaz qux.";
-        let (output, _) = crate::coder::markdown::render_markdown(md, test_style::STYLE, false, None);
+        let (output, _) =
+            crate::coder::markdown::render_markdown(md, test_style::STYLE, false, None);
         let body = output.trim_end_matches('\n');
         assert!(!body.contains('\n'), "{output:?}");
         assert!(body.contains("Foo bar baz qux."), "{output:?}");

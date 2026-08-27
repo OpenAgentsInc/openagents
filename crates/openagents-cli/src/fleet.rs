@@ -13,7 +13,7 @@
 //! rather than a bare status.
 
 use crate::tracker::{ApiError, TrackerClient};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
 /// The one route family this client speaks.

@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use openagents_cli::acp::{first_allow_option, AcpEvent, AcpFailure, AcpHarness, PermissionMode};
+use openagents_cli::acp::{AcpEvent, AcpFailure, AcpHarness, PermissionMode, first_allow_option};
 use tokio::sync::watch;
 
 const SERVER: &str = r#"#!/usr/bin/env python3

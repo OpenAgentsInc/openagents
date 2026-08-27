@@ -14,7 +14,7 @@
 //! The write half — `post`, `reply`, `claim`, `claims` — is deliberately absent.
 //! It needs signed Nostr event authoring, which is out of scope here.
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

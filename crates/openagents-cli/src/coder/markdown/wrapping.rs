@@ -807,7 +807,8 @@ mod tests {
         // Use the real theme's markdown style to produce spans.
         let md_style = crate::coder::markdown::theme::coder_markdown_style();
         let md = "uses [Buildkite](https://buildkite.com/) here\n";
-        let (out, _) = crate::coder::markdown::render_markdown_ratatui_full(md, md_style, true, None);
+        let (out, _) =
+            crate::coder::markdown::render_markdown_ratatui_full(md, md_style, true, None);
         assert!(!out.lines.is_empty());
 
         // Wrap at narrow width.
@@ -852,7 +853,8 @@ mod tests {
             [Kubernetes](https://kubernetes.io/) clusters. Source code is hosted on \
             [GitHub](https://github.com/) and CI/CD runs via \
             [Buildkite](https://buildkite.com/).\n";
-        let (out, _) = crate::coder::markdown::render_markdown_ratatui_full(md, md_style, true, None);
+        let (out, _) =
+            crate::coder::markdown::render_markdown_ratatui_full(md, md_style, true, None);
         let labels = [
             "Bazel",
             "uv",

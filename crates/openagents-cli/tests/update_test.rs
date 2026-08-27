@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use openagents_cli::update::{
-    artifact_name, digest_for, hex_digest, platform, replace_binary, run, sums_entry_name,
-    valid_version, Outcome, UpdateError, Updater,
+    Outcome, UpdateError, Updater, artifact_name, digest_for, hex_digest, platform, replace_binary,
+    run, sums_entry_name, valid_version,
 };
 
 /// A release server that serves exactly what it is given and 404s the rest.
@@ -109,15 +109,9 @@ fn a_non_release_build_reports_a_development_version() {
 
 #[tokio::test]
 async fn a_non_release_build_can_update_to_the_first_published_release() {
-    let outcome = run(
-        None,
-        Some("0.0.1".to_string()),
-        true,
-        false,
-        true,
-    )
-    .await
-    .unwrap();
+    let outcome = run(None, Some("0.0.1".to_string()), true, false, true)
+        .await
+        .unwrap();
 
     assert_eq!(
         outcome,
