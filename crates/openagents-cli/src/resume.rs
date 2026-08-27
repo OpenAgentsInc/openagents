@@ -210,6 +210,7 @@ pub fn replay_wire(events: &[ThreadEvent]) -> Vec<ChatMessage> {
                 content: Some(text(payload, "text")),
                 tool_calls: None,
                 tool_call_id: None,
+                images: string_list(payload, "images"),
             }),
             "tool.ran" => {
                 let call_id = text(payload, "call_id");
@@ -239,12 +240,14 @@ pub fn replay_wire(events: &[ThreadEvent]) -> Vec<ChatMessage> {
                         }
                     })]),
                     tool_call_id: None,
+                    images: Vec::new(),
                 });
                 messages.push(ChatMessage {
                     role: "tool".to_string(),
                     content: Some(outcome),
                     tool_calls: None,
                     tool_call_id: Some(call_id),
+                    images: Vec::new(),
                 });
             }
             "turn.assistant" => {
@@ -257,6 +260,7 @@ pub fn replay_wire(events: &[ThreadEvent]) -> Vec<ChatMessage> {
                     content: Some(said),
                     tool_calls: None,
                     tool_call_id: None,
+                    images: Vec::new(),
                 });
             }
             _ => {}
@@ -271,6 +275,16 @@ fn text(payload: &serde_json::Value, key: &str) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string()
+}
+
+fn string_list(payload: &serde_json::Value, key: &str) -> Vec<String> {
+    payload
+        .get(key)
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(str::to_string))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -539,6 +553,7 @@ pub async fn apply(
             content: Some(session.build_system_prompt(&tool_defs)),
             tool_calls: None,
             tool_call_id: None,
+            images: Vec::new(),
         }];
         messages.extend(resumption.messages.iter().cloned());
         session.messages = messages;

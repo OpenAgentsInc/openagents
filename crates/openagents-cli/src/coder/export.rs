@@ -119,9 +119,7 @@ pub fn git_info() -> Option<(String, String)> {
 }
 
 fn is_interface_command(text: &str) -> bool {
-    // The interactive dispatch handles every leading slash locally, including
-    // unknown commands. None reaches a model as a user message.
-    text.trim_start().starts_with('/')
+    crate::composer::is_local_slash_input(text, super::commands::COMMANDS)
 }
 
 fn step_of(entry: &Entry, model: &str, tool: Option<&ToolCall>) -> Option<Value> {
@@ -354,6 +352,7 @@ mod tests {
         let entries = vec![
             Entry::new(Role::Notice, "local notice"),
             Entry::new(Role::You, "/goal local command"),
+            Entry::new(Role::You, "/Users/name/repo inspect this path"),
             Entry::new(Role::You, "question"),
             Entry::new(Role::Output, "local output"),
             Entry::new(Role::Reasoning, "inspect the evidence"),
@@ -373,11 +372,15 @@ mod tests {
             .iter()
             .map(|step| step["step_id"].as_u64().unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(count, 2);
-        assert_eq!(ids, vec![1, 2]);
+        assert_eq!(count, 3);
+        assert_eq!(ids, vec![1, 2, 3]);
         assert_eq!(
-            document["steps"][1]["reasoning_content"],
+            document["steps"][2]["reasoning_content"],
             "inspect the evidence"
+        );
+        assert_eq!(
+            document["steps"][0]["message"],
+            "/Users/name/repo inspect this path"
         );
     }
 }

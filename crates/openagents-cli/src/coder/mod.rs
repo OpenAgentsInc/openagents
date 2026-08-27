@@ -12,6 +12,7 @@ pub mod commands;
 pub mod credit;
 pub mod export;
 pub mod goal;
+pub mod image;
 pub mod interactive;
 pub mod markdown;
 pub mod osc8;

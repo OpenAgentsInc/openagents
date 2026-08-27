@@ -1576,6 +1576,7 @@ dependencies = [
  "anstyle-lossy",
  "anstyle-syntect",
  "async-trait",
+ "base64",
  "bech32",
  "bip39",
  "clap",

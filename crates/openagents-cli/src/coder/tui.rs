@@ -18,7 +18,7 @@ use crate::coder::markdown::theme::{
 };
 use crate::coder::osc8::PlacedLink;
 use crate::coder::transcript::MarkdownContent;
-use crate::runtime::TurnUsage;
+use crate::runtime::{ImageAttachment, TurnUsage};
 
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const TOOL_RAIL_WAVE_ROWS: f32 = 32.0;
@@ -26,6 +26,7 @@ const TOOL_RAIL_WAVE_SPEED: f32 = 0.15;
 const TOOL_OUTPUT_ROWS: usize = 4;
 const TOOL_OUTPUT_SCROLL_FRAMES: u64 = 24;
 const TOOL_SETTLE_FRAMES: u64 = 10;
+const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
 
 /// Who this session is signed in as.
 ///
@@ -260,6 +261,9 @@ pub struct CoderUi {
     /// — and word motions work here, and the caret is where the caret is
     /// rather than always at the end of the text.
     pub composer: Composer,
+    /// Images represented by path-free markers in the current draft.
+    pub images: Vec<ImageAttachment>,
+    next_image_id: usize,
     pub repo: String,
     pub branch: String,
     /// The model that answered the last turn, as its grant pinned it.
@@ -374,6 +378,8 @@ impl CoderUi {
     pub fn new() -> Self {
         Self {
             composer: Composer::new(),
+            images: Vec::new(),
+            next_image_id: 1,
             repo: "~/work/openagents".to_string(),
             branch: "main".to_string(),
             model: String::new(),
@@ -403,6 +409,45 @@ impl CoderUi {
             agents: Vec::new(),
             links: Vec::new(),
         }
+    }
+
+    /// Attach a paste made entirely of supported image paths.
+    ///
+    /// Returns `false` for ordinary text, which the caller should insert
+    /// unchanged.
+    pub fn attach_dropped_images(&mut self, text: &str) -> Result<bool, String> {
+        let Some(images) = crate::coder::image::read_dropped_images(text, &mut self.next_image_id)?
+        else {
+            return Ok(false);
+        };
+        if !self.composer.is_empty()
+            && !self
+                .composer
+                .text()
+                .chars()
+                .last()
+                .is_some_and(char::is_whitespace)
+        {
+            self.composer.insert_str(" ");
+        }
+        let markers = images
+            .iter()
+            .map(|image| format!("[Image #{}]", image.id))
+            .collect::<Vec<_>>()
+            .join(" ");
+        self.composer.insert_str(&markers);
+        self.composer.insert_str(" ");
+        self.images.extend(images);
+        Ok(true)
+    }
+
+    /// Remove this draft's image state and return only attachments whose
+    /// markers remain in the submitted text.
+    pub fn take_referenced_images(&mut self, text: &str) -> Vec<ImageAttachment> {
+        self.images
+            .drain(..)
+            .filter(|image| text.contains(&format!("[Image #{}]", image.id)))
+            .collect()
     }
 
     /// Record a turn's reported usage: the last turn, and the running total.
@@ -568,6 +613,8 @@ impl CoderUi {
             self.render_welcome(frame, transcript_area);
         }
 
+        self.render_slash_suggestions(frame, transcript_area);
+
         let input_area = main[1];
 
         let mut input_lines = Vec::new();
@@ -674,6 +721,60 @@ impl CoderUi {
         }
     }
 
+    /// Draw command matches above the composer while you type a slash command.
+    ///
+    /// This follows grok-build's prompt-anchored dropdown: the list is derived
+    /// from the current draft, overlays the transcript temporarily, and never
+    /// becomes a transcript entry. Names use primary amber and descriptions
+    /// use the secondary amber intensity.
+    fn render_slash_suggestions(&self, frame: &mut Frame, area: Rect) {
+        let matches = slash_command_suggestions(self.composer.text());
+        if matches.is_empty() || area.width < 24 || area.height < 3 {
+            return;
+        }
+
+        let visible = matches
+            .iter()
+            .take(MAX_VISIBLE_COMMAND_SUGGESTIONS)
+            .copied()
+            .collect::<Vec<_>>();
+        let height = (visible.len() as u16 + 2).min(area.height);
+        let dropdown = Rect {
+            x: area.x,
+            y: area.bottom().saturating_sub(height),
+            width: area.width,
+            height,
+        };
+        let label_width = visible
+            .iter()
+            .map(|(name, _)| name.len() + 1)
+            .max()
+            .unwrap_or(0);
+        let name_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+        let description_style = Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR);
+        let rows = visible
+            .iter()
+            .map(|(name, description)| {
+                let label = format!("/{name}");
+                Line::from(vec![
+                    Span::styled(format!(" {label:<label_width$}  "), name_style),
+                    Span::styled((*description).to_string(), description_style),
+                ])
+            })
+            .collect::<Vec<_>>();
+        let title = if matches.len() > visible.len() {
+            format!(" Commands · {} matches ", matches.len())
+        } else {
+            " Commands ".to_string()
+        };
+        let block = Block::default()
+            .title(Span::styled(title, description_style))
+            .borders(Borders::ALL)
+            .border_style(description_style)
+            .style(name_style);
+        frame.render_widget(Paragraph::new(Text::from(rows)).block(block), dropdown);
+    }
+
     /// Draw the startup facts as centered UI chrome, outside the transcript.
     fn render_welcome(&self, frame: &mut Frame, area: Rect) {
         if area.width < 20 || area.height < 7 {
@@ -762,6 +863,27 @@ impl CoderUi {
         };
         self.scroll_override = if new >= max { None } else { Some(new) };
     }
+}
+
+/// Commands matching the command-name token currently being typed.
+fn slash_command_suggestions(text: &str) -> Vec<(&'static str, &'static str)> {
+    let trimmed = text.trim_start();
+    let Some(body) = trimmed.strip_prefix('/') else {
+        return Vec::new();
+    };
+    if body.chars().any(char::is_whitespace)
+        || body.contains('/')
+        || body.contains('.')
+        || body.starts_with('~')
+    {
+        return Vec::new();
+    }
+
+    super::commands::COMMANDS
+        .iter()
+        .copied()
+        .filter(|(name, _)| name.starts_with(body))
+        .collect()
 }
 
 impl Default for CoderUi {

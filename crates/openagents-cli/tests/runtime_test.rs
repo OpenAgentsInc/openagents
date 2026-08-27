@@ -1502,9 +1502,10 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
     );
 }
 
-/// The last model step synthesizes an answer instead of offering another tool.
+/// The final allowed model step keeps its tools and fails if it still does not
+/// answer.
 #[tokio::test]
-async fn the_last_step_requires_an_answer_from_the_gathered_evidence() {
+async fn the_tool_step_limit_never_removes_tools() {
     let stub = start(|request, origin| {
         let line = request.lines().next().unwrap_or_default().to_string();
         if line.starts_with("POST") && line.contains("/events") {
@@ -1516,16 +1517,7 @@ async fn the_last_step_requires_an_answer_from_the_gathered_evidence() {
         if line.starts_with("DELETE /api/v1/threads/") {
             return revoked(0);
         }
-        if request.contains(r#""tools":[]"#) {
-            return Reply::Sse(
-                vec![frame(
-                    serde_json::json!({"choices":[{"delta":{"content":"Here is the final answer."}}]}),
-                )],
-                None,
-            );
-        }
-        // Keep asking for tools until the runtime removes them for the final
-        // synthesis step.
+        // Keep asking for tools through the final allowed model step.
         Reply::Sse(
             vec![frame(
                 serde_json::json!({"choices":[{"delta":{"tool_calls":[{
@@ -1539,25 +1531,39 @@ async fn the_last_step_requires_an_answer_from_the_gathered_evidence() {
     });
 
     let mut session = session(Lane::default(), stub.base.clone());
-    let answer = session
+    let failure = session
         .execute_turn("loop forever", |_| {})
         .await
-        .expect("the final synthesis step failed");
+        .expect_err("a turn with no answer succeeded");
 
     let events = recorded(&stub);
     let kinds = kinds(&events);
     assert_eq!(kinds.first().map(String::as_str), Some("turn.user"));
     assert_eq!(
         kinds.last().map(String::as_str),
-        Some("turn.assistant"),
-        "the final synthesis was not recorded: {kinds:?}"
+        Some("turn.failed"),
+        "the exhausted turn was not recorded as a failure: {kinds:?}"
     );
     assert!(
-        !kinds.contains(&"turn.failed".to_string()),
-        "a successful synthesis retained a synthetic limit failure: {kinds:?}"
+        !kinds.contains(&"turn.assistant".to_string()),
+        "the runtime invented an answer: {kinds:?}"
     );
-    assert_eq!(answer, "Here is the final answer.");
-    assert_eq!(events.last().expect("an event")["payload"]["calls"], 29);
+    assert!(failure.to_string().contains("without a final answer"));
+    assert_eq!(events.last().expect("an event")["payload"]["calls"], 100);
+
+    let completions = stub
+        .requests()
+        .into_iter()
+        .filter(|request| request.starts_with("POST /api/inference/proxy"))
+        .collect::<Vec<_>>();
+    assert_eq!(completions.len(), 100);
+    assert!(
+        completions
+            .iter()
+            .all(|request| !request.contains(r#""tools":[]"#)
+                && request.contains(r#""name":"shell""#)),
+        "at least one model request had its tools removed"
+    );
 }
 
 /// A session interrupted mid-turn says so, because its turn never got to.

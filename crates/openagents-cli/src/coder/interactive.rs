@@ -22,7 +22,7 @@ use crate::coder::turn::{TurnAction, TurnEffect, TurnId, TurnPhase, TurnState};
 use crate::composer::ComposerAction;
 use crate::composer::complete::{Completion, complete};
 use crate::composer::history::History;
-use crate::runtime::Lane;
+use crate::runtime::{ImageAttachment, Lane};
 use crossterm::{
     ExecutableCommand,
     event::{
@@ -46,6 +46,11 @@ struct ActiveTurn {
     id: TurnId,
     task: tokio::task::JoinHandle<()>,
     router: crate::coder::runtime::SharedTurnRouter,
+}
+
+struct QueuedPrompt {
+    text: String,
+    images: Vec<ImageAttachment>,
 }
 
 /// How long the exit waits for a thread to be revoked before it says it could
@@ -363,7 +368,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 // Paste is one editing operation, even when it contains
                 // newlines. In particular, do not pass its newlines through
                 // the Enter path below: they belong in the prompt.
-                ui.composer.insert_str(&normalize_paste(&text));
+                match ui.attach_dropped_images(&text) {
+                    Ok(true) => {}
+                    Ok(false) => ui.composer.insert_str(&normalize_paste(&text)),
+                    Err(error) => ui.entries.push(Entry::new(Role::Notice, error)),
+                }
                 history.stop_walking();
                 continue;
             }
@@ -378,15 +387,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
             _ => continue,
         };
-        if key.kind == KeyEventKind::Repeat
-            && !matches!(
-                key.code,
-                KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete
-            )
-        {
-            continue;
-        }
-        if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        if !is_editing_key_event(&key) {
             continue;
         }
 
@@ -786,6 +787,34 @@ fn is_quit(key: &KeyEvent) -> bool {
     )
 }
 
+/// Whether a terminal key event represents an action the frame should apply.
+///
+/// Terminals that support the enhanced keyboard protocol report held keys as
+/// [`KeyEventKind::Repeat`]. Repeat editing and navigation keys so holding an
+/// arrow behaves like a normal text field. Keep one-shot session actions such
+/// as Tab completion, lane switching, cancellation, and exit on their initial
+/// press.
+fn is_editing_key_event(key: &KeyEvent) -> bool {
+    match key.kind {
+        KeyEventKind::Press => true,
+        KeyEventKind::Repeat => matches!(
+            key.code,
+            KeyCode::Char(_)
+                | KeyCode::Backspace
+                | KeyCode::Delete
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::PageUp
+                | KeyCode::PageDown
+        ),
+        KeyEventKind::Release => false,
+    }
+}
+
 /// Normalize the line endings terminal emulators use for bracketed paste.
 ///
 /// The composer stores hard breaks as `\n`; keeping `\r` would put the caret
@@ -1125,11 +1154,12 @@ async fn submit(
     cwd: &std::path::Path,
     turns: &mut TurnState,
     active_turn: &mut Option<ActiveTurn>,
-    prompt_queue: &mut VecDeque<String>,
+    prompt_queue: &mut VecDeque<QueuedPrompt>,
 ) -> commands::Outcome {
     ui.scroll_override = None;
     ui.show_welcome = false;
     ui.entries.push(Entry::new(Role::You, text.clone()));
+    let images = ui.take_referenced_images(&text);
 
     if crate::coder::goal::is_goal_command(&text) {
         let notice = match session.try_lock() {
@@ -1144,17 +1174,17 @@ async fn submit(
         return commands::Outcome::Done;
     }
 
-    if text.trim_start().starts_with('/') {
+    if crate::composer::is_local_slash_input(&text, commands::COMMANDS) {
         return commands::run(ui, text.trim(), tx, cwd);
     }
 
     if !matches!(turns.phase(), TurnPhase::Idle) {
-        prompt_queue.push_back(text);
+        prompt_queue.push_back(QueuedPrompt { text, images });
         update_activity(ui, turns, prompt_queue.len());
         return commands::Outcome::Done;
     }
 
-    start_prompt(ui, text, session, tx, turns, active_turn).await;
+    start_prompt(ui, text, images, session, tx, turns, active_turn).await;
     update_activity(ui, turns, prompt_queue.len());
     commands::Outcome::Done
 }
@@ -1162,6 +1192,7 @@ async fn submit(
 async fn start_prompt(
     ui: &mut CoderUi,
     text: String,
+    images: Vec<ImageAttachment>,
     session: &Arc<Mutex<Session>>,
     tx: &Sender<Control>,
     turns: &mut TurnState,
@@ -1183,7 +1214,7 @@ async fn start_prompt(
         session
             .lock()
             .await
-            .execute_turn_with_id(id, &text, tx)
+            .execute_turn_with_id_and_images(id, &text, &images, tx)
             .await;
     });
     *active_turn = Some(ActiveTurn { id, task, router });
@@ -1191,14 +1222,23 @@ async fn start_prompt(
 
 async fn start_next_prompt(
     ui: &mut CoderUi,
-    prompt_queue: &mut VecDeque<String>,
+    prompt_queue: &mut VecDeque<QueuedPrompt>,
     session: Option<&Arc<Mutex<Session>>>,
     tx: &Sender<Control>,
     turns: &mut TurnState,
     active_turn: &mut Option<ActiveTurn>,
 ) {
-    if let (Some(text), Some(session)) = (prompt_queue.pop_front(), session) {
-        start_prompt(ui, text, session, tx, turns, active_turn).await;
+    if let (Some(prompt), Some(session)) = (prompt_queue.pop_front(), session) {
+        start_prompt(
+            ui,
+            prompt.text,
+            prompt.images,
+            session,
+            tx,
+            turns,
+            active_turn,
+        )
+        .await;
     }
     update_activity(ui, turns, prompt_queue.len());
 }
@@ -1595,6 +1635,16 @@ mod tests {
         apply(&mut ui, Control::Done);
         assert!(!ui.loading);
         assert_eq!(ui.waiting, None);
+    }
+
+    #[test]
+    fn held_arrow_keys_remain_editing_events() {
+        let repeated_left =
+            KeyEvent::new_with_kind(KeyCode::Left, KeyModifiers::NONE, KeyEventKind::Repeat);
+        let repeated_tab =
+            KeyEvent::new_with_kind(KeyCode::Tab, KeyModifiers::NONE, KeyEventKind::Repeat);
+        assert!(is_editing_key_event(&repeated_left));
+        assert!(!is_editing_key_event(&repeated_tab));
     }
 
     #[test]

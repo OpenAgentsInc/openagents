@@ -32,7 +32,8 @@ use std::time::Instant;
 
 use crate::coder::turn::TurnId;
 use crate::runtime::{
-    ChatMessage, CoderRuntimeSession, Lane, ModelStreamEvent, ToolEvent, TurnProgress, TurnUsage,
+    ChatMessage, CoderRuntimeSession, ImageAttachment, Lane, ModelStreamEvent, ToolEvent,
+    TurnProgress, TurnUsage,
 };
 use crate::surfaces::system_prompt as prompt;
 use crate::tools::{DelegationGate, HarnessToolRegistry, ToolDefinition};
@@ -455,6 +456,7 @@ impl Session {
             content: Some(prompt),
             tool_calls: None,
             tool_call_id: None,
+            images: Vec::new(),
         });
 
         Self {
@@ -613,6 +615,18 @@ impl Session {
 
     /// Run one turn under a generation assigned by the frame reducer.
     pub async fn execute_turn_with_id(&mut self, id: TurnId, prompt: &str, tx: Sender<Control>) {
+        self.execute_turn_with_id_and_images(id, prompt, &[], tx)
+            .await;
+    }
+
+    /// Run one turn with the images attached in the composer.
+    pub async fn execute_turn_with_id_and_images(
+        &mut self,
+        id: TurnId,
+        prompt: &str,
+        images: &[ImageAttachment],
+        tx: Sender<Control>,
+    ) {
         let (cancel_tools, tool_cancellation) = tokio::sync::watch::channel(false);
         if let Ok(mut turns) = self.turn_router.lock() {
             turns.start(id, cancel_tools);
@@ -636,7 +650,7 @@ impl Session {
             // The rich stream observer above carries each wire delta. This
             // committed-answer callback remains for non-interactive callers
             // and would repeat the same text here.
-            .execute_turn(&outgoing, |_| {})
+            .execute_turn_with_images(&outgoing, images, |_| {})
             .await;
 
         if let Some(model) = &self.inner.last_model {

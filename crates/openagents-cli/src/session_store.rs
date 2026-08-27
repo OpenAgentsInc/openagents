@@ -463,6 +463,33 @@ mod tests {
     }
 
     #[test]
+    fn image_input_rehydrates_without_the_original_file() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new("/work/repo");
+        let mut loaded = LocalSessionStore::create(root.path(), cwd, "flash", None, false).unwrap();
+        let image = crate::runtime::ImageAttachment {
+            id: 1,
+            filename: "screen.png".to_string(),
+            mime_type: "image/png".to_string(),
+            data_url: "data:image/png;base64,iVBORw0KGgo=".to_string(),
+        };
+        loaded
+            .store
+            .append(&[ThreadRecord::user_with_images(
+                "[Image #1] describe this",
+                std::slice::from_ref(&image),
+            )])
+            .unwrap();
+
+        let resumed = LocalSessionStore::load_last(root.path(), cwd)
+            .unwrap()
+            .unwrap();
+        let messages = replay_messages(&resumed.events);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].images, vec![image.data_url]);
+    }
+
+    #[test]
     fn explicit_id_can_move_between_working_directories() {
         let root = tempfile::tempdir().unwrap();
         let created =

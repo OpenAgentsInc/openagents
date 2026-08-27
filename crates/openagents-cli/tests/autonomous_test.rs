@@ -350,32 +350,25 @@ async fn the_local_lane_records_what_it_answered() {
 
 // ──────────────────────────────────────────────────────────────── defect 3
 
-/// **The final step answers instead of exposing another tool.**
+/// **The final step keeps the same tools as every earlier step.**
 ///
 /// `run_thread_turn` loops `for _ in 0..MAX_TOOL_STEPS` and assigned
 /// `final_answer` only on the step that came back without tool calls. A model
-/// that asked for a tool on all thirty steps fell out of the bottom and the
+/// that asked for a tool on every step fell out of the bottom and the
 /// function returned `Ok(String::new())` — the same `Ok` a finished turn
 /// returns, carrying nothing. `run_headless_coder` printed `Turn result:`
 /// followed by a blank line and exited 0, and the interactive session settled
 /// `TurnEvent::Done("")` as an answered turn.
 ///
-/// The runtime now reserves the last step for synthesis. This keeps the
-/// original protection against an empty success without printing an internal
-/// tool-budget failure into the conversation.
+/// The runtime reports a failure after the safety budget. It never changes the
+/// model's capabilities to force a particular answer on the last request.
 #[tokio::test]
-async fn a_turn_that_reaches_its_last_step_synthesizes() {
+async fn a_turn_that_uses_every_step_fails_without_disabling_tools() {
     // Every step asks for a tool and never stops asking. The name is one no
     // registry has, so the loop spends no time running anything.
     let stub = start(|request, served, origin| {
         if request.starts_with("POST /api/v1/threads") {
             return Reply::Json(grant(origin));
-        }
-        if request.contains(r#""tools":[]"#) {
-            return Reply::Sse(vec![
-                serde_json::json!({"choices":[{"delta":{"content":"Finished from the gathered evidence."}}]})
-                    .to_string(),
-            ]);
         }
         Reply::Sse(vec![call_tool(
             &format!("call_{served}"),
@@ -391,21 +384,21 @@ async fn a_turn_that_reaches_its_last_step_synthesizes() {
         tools,
     );
 
-    let answer = session
+    let failure = session
         .execute_turn("loop forever", |_| {})
         .await
-        .expect("the reserved synthesis step failed");
+        .expect_err("a turn with no answer succeeded");
 
-    assert_eq!(answer, "Finished from the gathered evidence.");
+    assert!(failure.to_string().contains("without a final answer"));
     assert_eq!(
         stub.completions().len(),
-        30,
-        "the final request should use the reserved thirtieth model step"
+        100,
+        "the runtime changed the safety budget"
     );
     let last = stub.completions().pop().expect("a final request");
     assert!(
-        last.contains(r#""tools":[]"#),
-        "tools remained on the final step"
+        !last.contains(r#""tools":[]"#) && last.contains("a_tool_that_does_not_exist"),
+        "the final request removed its tools: {last}"
     );
 }
 

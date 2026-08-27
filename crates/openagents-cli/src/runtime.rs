@@ -257,7 +257,7 @@ pub const OLLAMA_HOST: &str = "http://127.0.0.1:11434";
 /// How many rounds of tool calls one turn may take before it has to answer.
 ///
 /// A backstop against a model that loops, not a budget.
-const MAX_TOOL_STEPS: usize = 30;
+const MAX_TOOL_STEPS: usize = 100;
 
 /// How many transcript events one append may carry.
 ///
@@ -614,7 +614,20 @@ impl ThreadRecord {
 
     /// What the reader asked.
     pub fn user(text: &str) -> Self {
-        Self::new("turn.user", serde_json::json!({ "text": text }))
+        Self::user_with_images(text, &[])
+    }
+
+    /// What the reader asked, including inline images kept in local history.
+    pub fn user_with_images(text: &str, images: &[ImageAttachment]) -> Self {
+        let payload = if images.is_empty() {
+            serde_json::json!({ "text": text })
+        } else {
+            serde_json::json!({
+                "text": text,
+                "images": images.iter().map(|image| &image.data_url).collect::<Vec<_>>(),
+            })
+        };
+        Self::new("turn.user", payload)
     }
 
     /// What the model thought before it answered, recorded whole.
@@ -846,6 +859,18 @@ pub struct ChatMessage {
     pub tool_calls: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Data URLs attached to a user message.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+}
+
+/// One image the composer sends as multimodal user content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageAttachment {
+    pub id: usize,
+    pub filename: String,
+    pub mime_type: String,
+    pub data_url: String,
 }
 
 pub struct CoderRuntimeSession {
@@ -1714,6 +1739,20 @@ impl CoderRuntimeSession {
     where
         F: FnMut(&str) + Send + 'static,
     {
+        self.execute_turn_with_images(prompt, &[], chunk_callback)
+            .await
+    }
+
+    /// Run one turn with image data attached to the user message.
+    pub async fn execute_turn_with_images<F>(
+        &mut self,
+        prompt: &str,
+        images: &[ImageAttachment],
+        chunk_callback: F,
+    ) -> Result<String, Failure>
+    where
+        F: FnMut(&str) + Send + 'static,
+    {
         let tool_defs = self.tools.list_tools();
         if self.messages.is_empty() {
             let sys = self.build_system_prompt(&tool_defs);
@@ -1722,6 +1761,7 @@ impl CoderRuntimeSession {
                 content: Some(sys),
                 tool_calls: None,
                 tool_call_id: None,
+                images: Vec::new(),
             });
         }
 
@@ -1730,8 +1770,10 @@ impl CoderRuntimeSession {
             content: Some(prompt.to_string()),
             tool_calls: None,
             tool_call_id: None,
+            images: images.iter().map(|image| image.data_url.clone()).collect(),
         });
-        self.note(vec![ThreadRecord::user(prompt)]).await;
+        self.note(vec![ThreadRecord::user_with_images(prompt, images)])
+            .await;
 
         self.last_usage = TurnUsage::default();
         self.last_calls = 0;
@@ -1820,19 +1862,11 @@ impl CoderRuntimeSession {
         // tools, which is not an answer and must not be returned as one.
         let mut answered = false;
 
-        for step_index in 0..MAX_TOOL_STEPS {
-            // Reserve the last model step for synthesis. Exposing another
-            // tool here lets the loop end on a synthetic limit error instead
-            // of an answer built from the evidence already gathered.
-            let available_tools = if step_index + 1 == MAX_TOOL_STEPS {
-                &[][..]
-            } else {
-                tool_defs
-            };
+        for _ in 0..MAX_TOOL_STEPS {
             let req_body = serde_json::json!({
                 "model": grant.model,
-                "messages": self.messages,
-                "tools": available_tools.iter().map(|t| serde_json::json!({
+                "messages": chat_completion_messages(&self.messages),
+                "tools": tool_defs.iter().map(|t| serde_json::json!({
                     "type": "function",
                     "function": {
                         "name": t.name,
@@ -2020,6 +2054,7 @@ impl CoderRuntimeSession {
                     },
                     tool_calls: None,
                     tool_call_id: None,
+                    images: Vec::new(),
                 });
                 let said = ThreadRecord::assistant_on(
                     &final_answer,
@@ -2064,16 +2099,11 @@ impl CoderRuntimeSession {
         // this request named after the answer completes.
         let resolved_model = self.lane_model().await?;
 
-        for step_index in 0..MAX_TOOL_STEPS {
-            let available_tools = if step_index + 1 == MAX_TOOL_STEPS {
-                &[][..]
-            } else {
-                tool_defs
-            };
+        for _ in 0..MAX_TOOL_STEPS {
             let input = messages_to_responses_input(&self.messages);
             let mut body = serde_json::json!({
                 "input": input,
-                "tools": available_tools.iter().map(|t| serde_json::json!({
+                "tools": tool_defs.iter().map(|t| serde_json::json!({
                     "type": "function",
                     "function": {
                         "name": t.name,
@@ -2278,6 +2308,7 @@ impl CoderRuntimeSession {
                     },
                     tool_calls: None,
                     tool_call_id: None,
+                    images: Vec::new(),
                 });
                 self.last_model = resolved_model.clone();
                 self.note(vec![ThreadRecord::assistant_on(
@@ -2370,6 +2401,7 @@ impl CoderRuntimeSession {
             },
             tool_calls: Some(recorded),
             tool_call_id: None,
+            images: Vec::new(),
         });
 
         let calls = step
@@ -2428,6 +2460,7 @@ impl CoderRuntimeSession {
                 content: Some(result.output),
                 tool_calls: None,
                 tool_call_id: Some(call.id),
+                images: Vec::new(),
             });
         }
         ToolBatch {
@@ -2540,16 +2573,11 @@ impl CoderRuntimeSession {
         // tools, which is not an answer and must not be returned as one.
         let mut answered = false;
 
-        for step_index in 0..MAX_TOOL_STEPS {
-            let available_tools = if step_index + 1 == MAX_TOOL_STEPS {
-                &[][..]
-            } else {
-                tool_defs
-            };
+        for _ in 0..MAX_TOOL_STEPS {
             let req_body = serde_json::json!({
                 "model": model,
                 "messages": self.messages.iter().map(ollama_message).collect::<Vec<_>>(),
-                "tools": available_tools.iter().map(|t| serde_json::json!({
+                "tools": tool_defs.iter().map(|t| serde_json::json!({
                     "type": "function",
                     "function": {
                         "name": t.name,
@@ -2667,6 +2695,7 @@ impl CoderRuntimeSession {
                     },
                     tool_calls: None,
                     tool_call_id: None,
+                    images: Vec::new(),
                 });
                 self.note(vec![ThreadRecord::assistant_on(
                     &final_answer,
@@ -2931,6 +2960,44 @@ fn field(value: &serde_json::Value, key: &str) -> u64 {
     value.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
 }
 
+/// Convert the session's messages to the OpenAI chat-completions wire shape.
+///
+/// Text-only messages keep the compact string form. A user message carrying
+/// images becomes a content-block array so providers receive image data rather
+/// than a local path they cannot access.
+fn chat_completion_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    messages
+        .iter()
+        .map(|message| {
+            let mut value = serde_json::json!({ "role": message.role });
+            if message.images.is_empty() {
+                if let Some(content) = &message.content {
+                    value["content"] = serde_json::Value::String(content.clone());
+                }
+            } else {
+                let mut content = Vec::with_capacity(message.images.len() + 1);
+                if let Some(text) = message.content.as_deref().filter(|text| !text.is_empty()) {
+                    content.push(serde_json::json!({ "type": "text", "text": text }));
+                }
+                content.extend(message.images.iter().map(|url| {
+                    serde_json::json!({
+                        "type": "image_url",
+                        "image_url": { "url": url }
+                    })
+                }));
+                value["content"] = serde_json::Value::Array(content);
+            }
+            if let Some(calls) = &message.tool_calls {
+                value["tool_calls"] = serde_json::Value::Array(calls.clone());
+            }
+            if let Some(call_id) = &message.tool_call_id {
+                value["tool_call_id"] = serde_json::Value::String(call_id.clone());
+            }
+            value
+        })
+        .collect()
+}
+
 /// Convert the session's message list to OpenResponses input items.
 ///
 /// The OpenResponses surface takes a flat list of `input` items — `user`,
@@ -2941,10 +3008,38 @@ fn messages_to_responses_input(messages: &[ChatMessage]) -> Vec<serde_json::Valu
     let mut items = Vec::new();
     for message in messages {
         match message.role.as_str() {
-            "system" | "user" => {
+            "system" => {
                 if let Some(content) = &message.content {
                     items.push(serde_json::json!({
                         "role": message.role,
+                        "content": content
+                    }));
+                }
+            }
+            "user" => {
+                if message.images.is_empty() {
+                    if let Some(content) = &message.content {
+                        items.push(serde_json::json!({
+                            "role": "user",
+                            "content": content
+                        }));
+                    }
+                } else {
+                    let mut content = Vec::with_capacity(message.images.len() + 1);
+                    if let Some(text) = message.content.as_deref().filter(|text| !text.is_empty()) {
+                        content.push(serde_json::json!({
+                            "type": "input_text",
+                            "text": text
+                        }));
+                    }
+                    content.extend(message.images.iter().map(|url| {
+                        serde_json::json!({
+                            "type": "input_image",
+                            "image_url": url
+                        })
+                    }));
+                    items.push(serde_json::json!({
+                        "role": "user",
                         "content": content
                     }));
                 }
@@ -3010,6 +3105,16 @@ fn ollama_message(message: &ChatMessage) -> serde_json::Value {
         "role": message.role,
         "content": message.content.clone().unwrap_or_default(),
     });
+    if !message.images.is_empty() {
+        out["images"] = serde_json::Value::Array(
+            message
+                .images
+                .iter()
+                .filter_map(|url| url.split_once(";base64,").map(|(_, data)| data))
+                .map(|data| serde_json::Value::String(data.to_string()))
+                .collect(),
+        );
+    }
     if let Some(calls) = &message.tool_calls {
         out["tool_calls"] = serde_json::Value::Array(
             calls
@@ -3402,6 +3507,7 @@ mod tests {
             content: Some("hello".to_string()),
             tool_calls: None,
             tool_call_id: Some("local_0_read_file".to_string()),
+            images: Vec::new(),
         };
         let wire = ollama_message(&message);
         assert_eq!(wire["role"], "tool");
@@ -3420,6 +3526,7 @@ mod tests {
                 "function": { "name": "read_file", "arguments": "{\"path\":\"a.txt\"}" }
             })]),
             tool_call_id: None,
+            images: Vec::new(),
         };
         let wire = ollama_message(&message);
         assert_eq!(wire["tool_calls"][0]["function"]["name"], "read_file");
@@ -3427,6 +3534,35 @@ mod tests {
             wire["tool_calls"][0]["function"]["arguments"]["path"], "a.txt",
             "Ollama takes arguments as an object, not as the proxy's string"
         );
+    }
+
+    #[test]
+    fn image_attachments_use_each_transports_multimodal_shape() {
+        let message = ChatMessage {
+            role: "user".to_string(),
+            content: Some("What is shown? [Image #1]".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            images: vec!["data:image/png;base64,aW1hZ2U=".to_string()],
+        };
+
+        let chat = chat_completion_messages(std::slice::from_ref(&message));
+        assert_eq!(chat[0]["content"][0]["type"], "text");
+        assert_eq!(chat[0]["content"][1]["type"], "image_url");
+        assert_eq!(
+            chat[0]["content"][1]["image_url"]["url"],
+            "data:image/png;base64,aW1hZ2U="
+        );
+
+        let responses = messages_to_responses_input(std::slice::from_ref(&message));
+        assert_eq!(responses[0]["content"][1]["type"], "input_image");
+        assert_eq!(
+            responses[0]["content"][1]["image_url"],
+            "data:image/png;base64,aW1hZ2U="
+        );
+
+        let ollama = ollama_message(&message);
+        assert_eq!(ollama["images"][0], "aW1hZ2U=");
     }
 
     /// The status and the error code cannot disagree, whichever way round.
@@ -3442,7 +3578,7 @@ mod tests {
             ThreadOutcome::succeeded("it answered"),
             ThreadOutcome::failed(error_code::PROVIDER_FAILED, "the proxy refused it"),
             ThreadOutcome::failed(error_code::STREAM_BROKEN, "the reply stopped"),
-            ThreadOutcome::failed(error_code::MAX_STEPS, "no answer in 30 steps"),
+            ThreadOutcome::failed(error_code::MAX_STEPS, "no answer in 100 steps"),
             ThreadOutcome::failed(error_code::TURN_FAILED, "something else"),
             ThreadOutcome::interrupted("ctrl-c"),
             ThreadOutcome::no_turn(),

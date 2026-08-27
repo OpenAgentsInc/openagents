@@ -60,6 +60,59 @@ fn startup_facts_are_centered_outside_the_transcript() {
 }
 
 #[test]
+fn typing_a_slash_opens_an_amber_command_helper() {
+    let mut ui = CoderUi::new();
+    ui.composer.insert_str("/");
+
+    let buffer = draw(&mut ui);
+    let text = text_of(&buffer);
+    assert!(text.contains("Commands · 11 matches"), "{text}");
+    assert!(text.contains("/clear"), "{text}");
+    assert!(text.contains("clear the transcript"), "{text}");
+
+    let command_cell = buffer
+        .content
+        .iter()
+        .find(|cell| cell.symbol() == "/")
+        .expect("a command label");
+    assert_eq!(command_cell.fg, TEXT_COLOR);
+}
+
+#[test]
+fn the_command_helper_filters_and_does_not_open_for_paths() {
+    let mut ui = CoderUi::new();
+    ui.composer.insert_str("/go");
+    let filtered = text_of(&draw(&mut ui));
+    assert!(filtered.contains("/goal"), "{filtered}");
+    assert_eq!(filtered.matches("/help").count(), 1, "{filtered}");
+
+    ui.composer.set_text("/Users/name/work/openagents");
+    let path = text_of(&draw(&mut ui));
+    assert!(!path.contains(" Commands "), "{path}");
+}
+
+#[test]
+fn a_dropped_image_becomes_a_path_free_attachment_marker() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("screen.png");
+    std::fs::write(&path, b"\x89PNG\r\n\x1a\nimage").unwrap();
+    let mut ui = CoderUi::new();
+
+    assert!(
+        ui.attach_dropped_images(path.to_str().unwrap()).unwrap(),
+        "the image paste remained plain text"
+    );
+    assert_eq!(ui.composer.text(), "[Image #1] ");
+    assert_eq!(ui.images.len(), 1);
+    assert!(!ui.composer.text().contains(path.to_str().unwrap()));
+
+    let prompt = ui.composer.text().to_string();
+    let images = ui.take_referenced_images(&prompt);
+    assert_eq!(images.len(), 1);
+    assert!(images[0].data_url.starts_with("data:image/png;base64,"));
+}
+
+#[test]
 fn the_startup_box_leaves_when_the_conversation_starts() {
     let mut ui = CoderUi::new();
     ui.cwd = "/Users/example/work/openagents".to_string();

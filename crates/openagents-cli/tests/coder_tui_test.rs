@@ -1155,6 +1155,25 @@ fn an_unknown_command_is_refused_rather_than_sent_to_the_model() {
 }
 
 #[test]
+fn a_slash_prefixed_path_is_sent_to_the_model() {
+    let (mut app, control, mut rx) = app();
+    let prompt = "/Users/name/work/openagents inspect this file";
+    type_str(&mut app, &control, prompt);
+    app.on_key(&key(KeyCode::Enter), WIDTH, &control);
+
+    let sent = rx.try_recv().expect("the path prompt was not sent");
+    assert!(
+        matches!(sent, Control::Prompt(value) if value == prompt),
+        "the path prompt was changed before it was sent"
+    );
+    assert!(
+        !app.transcript().contains("There is no"),
+        "a path was treated as a command: {}",
+        app.transcript()
+    );
+}
+
+#[test]
 fn slash_help_lists_every_command_the_session_handles() {
     let (mut app, control, _rx) = app();
     let mut term = terminal_of(100, 40);

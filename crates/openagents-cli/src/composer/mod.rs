@@ -19,6 +19,33 @@ use unicode_width::UnicodeWidthStr as _;
 
 use edit::EditBuffer;
 
+/// Whether a slash-prefixed line belongs to the local command dispatcher.
+///
+/// Known commands always stay local. An unknown, command-shaped token such as
+/// `/difff` also stays local so the interface can report the typo. Text that
+/// contains an argument, another path separator, or a filename marker is a
+/// prompt instead. This keeps paths and ordinary prose from being swallowed by
+/// the command interface.
+pub fn is_local_slash_input(text: &str, commands: &[(&str, &str)]) -> bool {
+    let trimmed = text.trim_start();
+    let Some(body) = trimmed.strip_prefix('/') else {
+        return false;
+    };
+    let Some(name) = body.split_whitespace().next() else {
+        return true;
+    };
+
+    if commands.iter().any(|(command, _)| *command == name) {
+        return true;
+    }
+
+    let command_shaped = !body.chars().any(char::is_whitespace)
+        && !name.contains('/')
+        && !name.contains('.')
+        && !name.starts_with('~');
+    command_shaped
+}
+
 /// What a key did to the composer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ComposerAction {
@@ -459,5 +486,23 @@ mod tests {
         let mut c = Composer::new();
         c.insert_str("漢字");
         assert_eq!(c.cursor_rowcol(40), (0, 4));
+    }
+
+    #[test]
+    fn slash_routing_only_keeps_commands_and_command_shaped_typos_local() {
+        const COMMANDS: &[(&str, &str)] = &[("help", "list commands"), ("run", "run a command")];
+
+        assert!(is_local_slash_input("/help", COMMANDS));
+        assert!(is_local_slash_input("/run cargo test", COMMANDS));
+        assert!(is_local_slash_input("/halp", COMMANDS));
+        assert!(is_local_slash_input("/", COMMANDS));
+
+        assert!(!is_local_slash_input(
+            "/Users/name/work/openagents inspect this",
+            COMMANDS
+        ));
+        assert!(!is_local_slash_input("/README.md", COMMANDS));
+        assert!(!is_local_slash_input("/not a command", COMMANDS));
+        assert!(!is_local_slash_input("ordinary prompt", COMMANDS));
     }
 }

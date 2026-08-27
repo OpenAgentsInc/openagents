@@ -1,12 +1,11 @@
-//! The session's own commands: everything typed into the composer that starts
-//! with a `/`.
+//! The session's own slash commands.
 //!
 //! [`COMMANDS`] is one list read by three things — `/help`, Tab completion,
 //! and the dispatch in [`run`] — so a command cannot be listed without being
 //! handled, and `every_listed_command_is_handled` in
-//! [`crate::coder::interactive`] fails if one ever is. A `/` line whose name is not
-//! in the list is refused rather than sent to the model: a mistyped `/diff`
-//! that silently became a prompt is a worse answer than being told.
+//! [`crate::coder::interactive`] fails if one ever is. A bare, unknown command
+//! token is refused so a mistyped `/diff` gets a useful answer. Slash-prefixed
+//! paths and messages go to the model.
 //!
 //! None of these reaches a model. They run here, print into the transcript as
 //! [`Role::Output`], and are exported as notices rather than as model steps.

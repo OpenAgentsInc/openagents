@@ -340,7 +340,7 @@ impl CoderApp {
         self.history.record(&prompt);
         self.completions.clear();
 
-        if prompt.starts_with('/') {
+        if crate::composer::is_local_slash_input(&prompt, COMMANDS) {
             self.run_command(&prompt, control);
             return;
         }
@@ -360,9 +360,8 @@ impl CoderApp {
 
     /// Run one of the session's own commands.
     ///
-    /// Anything starting with `/` comes here. A name this does not know is
-    /// refused rather than sent to the model, because a mistyped `/diff` that
-    /// silently became a prompt is a worse answer than being told.
+    /// Known commands and bare command-shaped typos come here. Slash-prefixed
+    /// paths and messages go to the model.
     fn run_command(&mut self, line: &str, control: &UnboundedSender<Control>) {
         let words = crate::pty::split_command(line.trim_start_matches('/'));
         let Some(name) = words.first().cloned() else {
