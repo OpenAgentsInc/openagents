@@ -1391,6 +1391,8 @@ pub enum GymAction {
         #[arg(help = "Inventory file to qualify")]
         inventory: String,
     },
+    /// Manage named, versioned datasets of traces and tasks
+    Dataset(crate::gym::dataset::DatasetArgs),
 }
 
 /// The completion script for one shell.
@@ -1491,6 +1493,7 @@ async fn run_gym(
             );
             Ok(())
         }
+        GymAction::Dataset(args) => crate::gym::dataset::run_dataset(args, json),
     }
 }
 
