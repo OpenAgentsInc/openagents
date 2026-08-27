@@ -27,9 +27,29 @@ done
 # would for any command typed there.
 unset GIT_DIR GIT_WORK_TREE
 
+# `git -c core.bare=false` does NOT rescue work-tree resolution when the
+# common config carries core.bare=true (#208): the config-file value wins
+# for this query and rev-parse still exits 128. When resolution fails
+# while the repo clearly has linked worktrees AND core.bare=true is set,
+# the config is poisoned — unset core.bare directly in the common config
+# file (a pure file edit, no repository resolution involved). A genuine
+# bare hub has no linked worktrees, so this cannot damage one; a
+# non-bare repository with core.bare=true is corruption by definition.
 root="$(git -c core.bare=false rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
 if [ -z "$root" ] || [ ! -d "$root" ]; then
+  common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  if [ -n "$common" ] && [ -d "$common/worktrees" ] && [ "$(git config --get core.bare 2>/dev/null)" = "true" ]; then
+    echo "[pre-push guard] core.bare=true in the common config while linked worktrees exist — poisoned config, healing (#208)..." >&2
+    if git config --file "$common/config" --unset-all core.bare >/dev/null 2>&1; then
+      root="$(git -c core.bare=false rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
+    fi
+  fi
+fi
+if [ -z "$root" ] || [ ! -d "$root" ]; then
   echo "[pre-push guard] BLOCKED: could not resolve the repository root." >&2
+  if [ "$(git config --get core.bare 2>/dev/null)" = "true" ]; then
+    echo "[pre-push guard] HINT: core.bare=true is set while working trees are attached — that combination is corrupt; unset it: git config --unset core.bare (#208)." >&2
+  fi
   exit 1
 fi
 
