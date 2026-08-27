@@ -1916,35 +1916,346 @@ fn answer_edit(cwd: &Path, arguments: &serde_json::Value) -> (String, bool) {
         Err(error) => return (format!("Could not read `{raw}` to edit it: {error}."), true),
     };
 
+    // Exact first, always: the common case pays nothing, and what follows
+    // only runs after the byte-for-byte search has already failed.
     match content.matches(old).count() {
-        0 => (
-            format!(
-                "Nothing was changed: that `oldText` does not appear in {raw}. It has to match \
-                 byte for byte, whitespace and newlines included."
-            ),
-            true,
-        ),
-        1 => match write_atomically(&path, &content.replacen(old, new, 1)) {
-            Ok(()) => (
+        1 => {
+            let site = content.find(old).expect("counted");
+            return finish_edit(&path, &content, site..site + old.len(), new, raw, "");
+        }
+        hits if hits > 1 => {
+            return (
                 format!(
-                    "Replaced {} bytes with {} in {}.",
-                    old.len(),
-                    new.len(),
-                    path.display()
+                    "Nothing was changed: that `oldText` appears {hits} times in {raw} and it has to \
+                     appear exactly once. Add the lines above and below the one you mean until the \
+                     match is unique, then call again."
                 ),
-                false,
-            ),
-            Err(error) => (format!("Could not write `{raw}`: {error}."), true),
-        },
-        hits => (
-            format!(
-                "Nothing was changed: that `oldText` appears {hits} times in {raw} and it has to \
-                 appear exactly once. Add the lines above and below the one you mean until the \
-                 match is unique, then call again."
-            ),
-            true,
-        ),
+                true,
+            );
+        }
+        _ => {}
     }
+
+    // Zero exact hits. Before refusing, rematch with progressively looser
+    // comparisons -- the ladder codex's apply_patch walks when a hunk fails
+    // to land. Normalization chooses where a replacement goes, never what is
+    // written: a tier locates a span of the file's own bytes, and `newText`
+    // is spliced over it verbatim. Serialization damage -- two backslashes
+    // sent where the file holds one (#160, steps 40 and 43), or trailing
+    // whitespace the model did not reproduce -- becomes one clean edit
+    // instead of three blind retries.
+    for tier in MATCH_TIERS {
+        match locate(&content, old, tier.normalize) {
+            Locate::Unique(span) => {
+                let note = tier.note;
+                return finish_edit(&path, &content, span, new, raw, note);
+            }
+            Locate::Ambiguous(count) => {
+                return (
+                    format!(
+                        "Nothing was changed: `oldText` matches {count} places in {raw} once \
+                         whitespace or escape differences are ignored. Add the lines above and \
+                         below the one you mean until one place is left, then call again."
+                    ),
+                    true,
+                );
+            }
+            Locate::Miss => {}
+        }
+    }
+
+    // Every tier missed. Show the nearest real text beside what was sent so
+    // the next call repairs the needle instead of resending it.
+    let mut message = format!(
+        "Nothing was changed: that `oldText` does not appear in {raw}, exactly or up to \
+         whitespace or backslash-escape differences."
+    );
+    if let Some(report) = diagnose_miss(&content, old) {
+        message.push_str("\n\n");
+        message.push_str(&report);
+    }
+    (message, true)
+}
+
+/// One rung of the edit rematch ladder.
+struct MatchTier {
+    /// Applied to both the file and `oldText` line by line; matching compares
+    /// the results.
+    normalize: fn(&str) -> String,
+    /// Said in the success reply when this rung found the site.
+    note: &'static str,
+}
+
+/// The ladder, loosest last. Byte equality ran before the loop. The order is
+/// codex's `seek_sequence`, plus one rung for JSON string-escape damage on
+/// Rust line continuations: a `\` before a newline is exactly the pair
+/// models miscount, and no whitespace rule touches it. Every rung after byte
+/// equality works at line granularity -- physical lines compared after
+/// normalization, replaced as whole lines -- because trimming inside
+/// character-by-character offset arithmetic hides phantom newlines; codex
+/// made the same call, hunks land on line boundaries there too.
+const MATCH_TIERS: [MatchTier; 3] = [
+    MatchTier {
+        normalize: trim_end_lines,
+        note: "matched after ignoring trailing whitespace; whole lines were \
+               replaced, so check them",
+    },
+    MatchTier {
+        normalize: trim_lines,
+        note: "matched after ignoring leading and trailing whitespace; whole \
+               lines were replaced, so check them",
+    },
+    MatchTier {
+        normalize: collapse_escaped_backslashes,
+        note: "matched after collapsing doubled backslashes before newlines \
+               (escape-sequence mismatch); check the result",
+    },
+];
+
+fn trim_end_lines(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.split('\n') {
+        out.push_str(line.trim_end());
+        out.push('\n');
+    }
+    out.pop();
+    out
+}
+
+fn trim_lines(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.split('\n') {
+        out.push_str(line.trim());
+        out.push('\n');
+    }
+    out.pop();
+    out
+}
+
+/// Collapse every run of two or more backslashes to one, anywhere. Applied
+/// only after the trim rungs failed, and only to decide where an edit lands:
+/// the replaced bytes stay the file's own.
+fn collapse_escaped_backslashes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut slashes = 0usize;
+    for ch in text.chars() {
+        if ch == '\\' {
+            slashes += 1;
+        } else {
+            if slashes > 0 {
+                out.push('\\');
+                slashes = 0;
+            }
+            out.push(ch);
+        }
+    }
+    if slashes > 0 {
+        out.push('\\');
+    }
+    out
+}
+
+/// What one rematch rung concluded.
+enum Locate {
+    /// Exactly one site, as a byte span into the original text.
+    Unique(std::ops::Range<usize>),
+    /// More than one site under this rung's comparison, with the count.
+    Ambiguous(usize),
+    /// No site under this rung's comparison.
+    Miss,
+}
+
+/// Where `needle` sits among `haystack`'s physical lines under one
+/// normalization, if it sits there exactly once. Lines are compared after
+/// normalization and reported as a span of the *original* bytes covering the
+/// whole first-through-last matched line, so what gets replaced is the
+/// file's own text and the arithmetic never crosses a line boundary.
+///
+/// A `needle` ending in a newline loses its empty final segment, so `a\nb\n`
+/// names the same two lines as `a\nb`; a needle naming fewer lines than it
+/// spans cannot arise. A needle whose first line names only part of a file
+/// line finds nothing here -- partial-line work belongs to the exact search,
+/// and refusing it loose keeps a trim from swallowing half a statement.
+fn locate(haystack: &str, needle: &str, normalize: fn(&str) -> String) -> Locate {
+    let hay_lines: Vec<&str> = haystack.split('\n').collect();
+    let mut wanted: Vec<&str> = needle.split('\n').collect();
+    if wanted.last() == Some(&"") {
+        wanted.pop();
+    }
+    if wanted.is_empty() || wanted.len() > hay_lines.len() {
+        return Locate::Miss;
+    }
+
+    // Byte offset where each physical line starts; the last entry is one past
+    // the end, kept for measuring the final line of a window.
+    let mut starts = Vec::with_capacity(hay_lines.len() + 1);
+    let mut at = 0usize;
+    for line in &hay_lines {
+        starts.push(at);
+        at += line.len() + 1;
+    }
+    starts.push(at);
+
+    let mut count = 0usize;
+    let mut hit = 0usize;
+    for begin in 0..=hay_lines.len() - wanted.len() {
+        if hay_lines[begin..begin + wanted.len()]
+            .iter()
+            .zip(&wanted)
+            .all(|(have, sent)| normalize(have) == normalize(sent))
+        {
+            count += 1;
+            if count > 1 {
+                return Locate::Ambiguous(count);
+            }
+            hit = begin;
+        }
+    }
+    if count != 1 {
+        return Locate::Miss;
+    }
+    let last = hit + wanted.len() - 1;
+    Locate::Unique(starts[hit]..starts[last] + hay_lines[last].len())
+}
+
+/// Write the replacement and say whether a fallback rung did the finding.
+fn finish_edit(
+    path: &Path,
+    content: &str,
+    span: std::ops::Range<usize>,
+    new: &str,
+    raw: &str,
+    note: &str,
+) -> (String, bool) {
+    // Removing whole lines leaves their terminator behind; when `newText` is
+    // empty the model asked for deletion, so the line's newline goes with it.
+    let mut span = span;
+    if new.is_empty() && content.as_bytes().get(span.end) == Some(&b'\n') {
+        span.end += 1;
+    }
+    let mut body = String::with_capacity(content.len() - (span.end - span.start) + new.len());
+    body.push_str(&content[..span.start]);
+    body.push_str(new);
+    body.push_str(&content[span.end..]);
+    let replaced = span.end - span.start;
+    match write_atomically(path, &body) {
+        Ok(()) => {
+            let mut reply = format!(
+                "Replaced {} bytes with {} in {}.",
+                replaced,
+                new.len(),
+                path.display()
+            );
+            if !note.is_empty() {
+                reply.push_str(" (");
+                reply.push_str(note);
+                reply.push_str(".)");
+            }
+            (reply, false)
+        }
+        Err(error) => (format!("Could not write `{raw}`: {error}."), true),
+    }
+}
+
+/// Turn a total miss into something the next call can fix: anchor on the
+/// submitted text's first line, print the file's real lines there beside the
+/// ones sent, control characters shown, count named where they differ.
+fn diagnose_miss(content: &str, old: &str) -> Option<String> {
+    let sent_lines: Vec<&str> = old.split('\n').collect();
+    let first_line = *sent_lines.first()?;
+    let trimmed_first = first_line.trim();
+    if trimmed_first.is_empty() {
+        return None;
+    }
+
+    let file_lines: Vec<&str> = content.split('\n').collect();
+    let wanted = collapse_escaped_backslashes(trimmed_first);
+    let mut anchor = None;
+    for (index, line) in file_lines.iter().enumerate() {
+        let candidate = collapse_escaped_backslashes(line.trim());
+        if candidate.contains(&wanted) || wanted.contains(&candidate) && !candidate.is_empty() {
+            anchor = Some(index);
+            break;
+        }
+    }
+    let anchor = anchor?;
+
+    let window_start = anchor.saturating_sub(2);
+    let shown = sent_lines.len().max(5);
+    let window_end = (anchor + shown).min(file_lines.len());
+
+    let mut report = format!(
+        "Closest region for the first submitted line (file line {}):\n",
+        anchor + 1
+    );
+    report.push_str(
+        "file shows vs you sent (backslashes doubled so the count is visible):
+",
+    );
+    for (step, file_index) in (window_start..window_end).enumerate() {
+        let file_side = reveal(file_lines[file_index]);
+        let sent_side = reveal(sent_lines.get(step).copied().unwrap_or(""));
+        let marker = if file_side == sent_side { " " } else { "!" };
+        report.push_str(&format!(
+            "{marker} {:>4} | {:<60} | {}
+",
+            file_index + 1,
+            cut(&file_side, 60),
+            cut(&sent_side, 40)
+        ));
+    }
+    for line in sent_lines.iter().skip(window_end - window_start) {
+        report.push_str(&format!(
+            "      . | {:<60} | {}
+",
+            " ".repeat(0),
+            cut(&reveal(line), 40)
+        ));
+    }
+    report.push_str(&format!(
+        "Your line 1 differs from file line {} first at column {}; repair `oldText` from what the file shows.",
+        anchor + 1,
+        first_diff_column(file_lines[anchor], first_line)
+    ));
+    Some(report)
+}
+
+fn cut(line: &str, width: usize) -> String {
+    if line.chars().count() <= width {
+        line.to_string()
+    } else {
+        line.chars().take(width).collect()
+    }
+}
+
+/// First differing column between two strings; the number the reply points
+/// at is the repair the model needs to make.
+fn first_diff_column(file_line: &str, sent_line: &str) -> usize {
+    let file_chars: Vec<char> = file_line.chars().collect();
+    let sent_chars: Vec<char> = sent_line.trim_end().chars().collect();
+    let last = file_chars.len().max(sent_chars.len());
+    for column in 0..last {
+        match (file_chars.get(column), sent_chars.get(column)) {
+            (Some(a), Some(b)) if a == b => {}
+            _ => return column + 1,
+        }
+    }
+    last
+}
+
+/// Rendering for the two characters that matter here: backslash shown
+/// doubled so its count survives anything, tab and carriage return named.
+fn reveal(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    for ch in line.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// As [`run_real_shell`]: the text, and whether it worked. A CLI that could
@@ -3078,6 +3389,145 @@ mod defect_tests {
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
             "keep\nchanged\nkeep\n"
+        );
+    }
+
+    /// The escape-sequence tier, on the defect that motivated it: the model
+    /// sends two backslashes before the newline where the file holds one,
+    /// byte-exact fails, and the ladder lands the edit in one call instead of
+    /// three refusals (#160 steps 40/43).
+    #[tokio::test]
+    async fn an_edit_with_a_doubled_line_continuation_backslash_still_lands() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        // What `sed` showed the model: `working \` then newline (one slash).
+        let before =
+            "let msg = format!(\n    \"outside this session's working \\\n     directory.\",\n);\n";
+        std::fs::write(dir.path().join("jail.rs"), before).unwrap();
+        assert_eq!(
+            before.matches("working \\\n").count(),
+            1,
+            "fixture: the file's own line holds one backslash before its newline"
+        );
+
+        // What the model resends after JSON double-escaping: two backslashes.
+        let doubled = "let msg = format!(\n    \"outside this session's working \\\\\n     directory.\",\n);\n";
+        assert_ne!(
+            doubled, before,
+            "the submitted text must differ from the file"
+        );
+        assert_eq!(
+            doubled.matches("working \\\\\n").count(),
+            1,
+            "fixture: the submitted line holds two backslashes before its newline"
+        );
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({"path": "jail.rs", "oldText": doubled, "newText": ""}),
+            ))
+            .await;
+
+        assert!(
+            !out.is_error,
+            "the escape tier should land it: {}",
+            out.output
+        );
+        assert!(
+            out.output.contains("escape-sequence mismatch"),
+            "the reply must say which tier fired: {}",
+            out.output
+        );
+        let after = std::fs::read_to_string(dir.path().join("jail.rs")).unwrap();
+        assert!(
+            !after.contains("format!"),
+            "the file's own bytes were replaced"
+        );
+        assert_eq!(after.matches("\\\\\n").count(), 0);
+    }
+
+    /// Trailing whitespace only, so the first rung catches it and says which
+    /// rung fired.
+    #[tokio::test]
+    async fn an_edit_whose_text_misses_only_trailing_whitespace_is_matched_by_the_first_tier() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        std::fs::write(dir.path().join("w.txt"), "value = 42;   \ncount = 7;\n").unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({
+                    "path": "w.txt",
+                    "oldText": "value = 42;\ncount = 7;",
+                    "newText": "value = 43;\ncount = 8;"
+                }),
+            ))
+            .await;
+
+        assert!(!out.is_error, "{}", out.output);
+        assert!(out.output.contains("trailing whitespace"), "{}", out.output);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("w.txt")).unwrap(),
+            "value = 43;\ncount = 8;\n",
+            "normalization located the site; the written text comes from newText alone"
+        );
+    }
+
+    /// Looseness never buys a second match site: ambiguous even under the
+    /// loosest tier stays refused.
+    #[tokio::test]
+    async fn a_fuzzy_match_that_hits_twice_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        // Both windows carry a trailing space on their first line, so the
+        // exact search misses; both agree once trailing whitespace is
+        // ignored -- which must refuse rather than pick one.
+        std::fs::write(dir.path().join("d.txt"), "ping \npong\nping \npong\n").unwrap();
+        let before = std::fs::read_to_string(dir.path().join("d.txt")).unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({"path": "d.txt", "oldText": "ping\npong\n", "newText": "x"}),
+            ))
+            .await;
+
+        assert!(
+            out.is_error,
+            "an ambiguous fuzzy hit must be refused: {}",
+            out.output
+        );
+        assert!(out.output.contains("matches 2 places"), "{}", out.output);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("d.txt")).unwrap(),
+            before,
+            "a refused fuzzy edit wrote to the file"
+        );
+    }
+
+    /// A total miss now shows the file's real text beside what was sent,
+    /// backslash counts visible, instead of one bare sentence.
+    #[tokio::test]
+    async fn a_total_miss_shows_the_file_region_beside_what_was_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        std::fs::write(dir.path().join("m.rs"), "fn main() {}\nlet p = \"a\\b\";\n").unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({"path": "m.rs", "oldText": "let p = \"a\\\\b\"; x", "newText": ""}),
+            ))
+            .await;
+
+        assert!(out.is_error, "{}", out.output);
+        assert!(out.output.contains("file line"), "{}", out.output);
+        assert!(
+            out.output.contains('|'),
+            "a side-by-side table is the point: {}",
+            out.output
         );
     }
 
