@@ -21,7 +21,6 @@ export const USER_FACING_SURFACE_PREFIXES = [
   "apps/openagents.com/workers/api/migrations/",
   "apps/qa-runner/",
   "apps/forum/",
-  "apps/openagents-mobile/",
   "apps/pylon/",
   "packages/input-bindings/",
 ] as const

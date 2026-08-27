@@ -2,28 +2,18 @@ import { describe, expect, test } from "vite-plus/test";
 
 import { assertThemeContrast, themeContrastViolations } from "./contrast.ts";
 import { defaultTheme, khalaTheme, ThemeSchema } from "./index.ts";
-import { khalaNativeTheme, projectNativeTheme } from "./native.ts";
 import { renderWebDesignTokens } from "./web.ts";
 
-describe("cross-renderer semantic projections", () => {
-  test("one semantic value reaches native and web projections", () => {
+describe("web semantic projections", () => {
+  test("semantic values reach the web projection", () => {
     const css = renderWebDesignTokens();
-    const lightNativeTheme = projectNativeTheme(defaultTheme);
 
-    expect(khalaNativeTheme.color.attentionApproval).toBe(khalaTheme.color.attentionApproval);
-    expect(khalaNativeTheme.color.attentionInput).toBe(khalaTheme.color.attentionInput);
-    expect(lightNativeTheme.color.attentionWorking).toBe(defaultTheme.color.attentionWorking);
     expect(css).toContain(`--oa-color-attention-approval: ${khalaTheme.color.attentionApproval};`);
     expect(css).toContain(`--oa-color-attention-input: ${defaultTheme.color.attentionInput};`);
     expect(css).toContain("--color-oa-attention-working: var(--oa-color-attention-working);");
   });
 
-  test("reduced-motion projections remove every duration", () => {
-    expect(Object.values(khalaNativeTheme.motion.reduced)).toContain(0);
-    expect(khalaNativeTheme.motion.reduced.durationFastMs).toBe(0);
-    expect(khalaNativeTheme.motion.reduced.durationEnterMs).toBe(0);
-    expect(khalaNativeTheme.motion.reduced.durationExitMs).toBe(0);
-    expect(khalaNativeTheme.motion.reduced.durationLoopMs).toBe(0);
+  test("the reduced-motion projection removes loop duration", () => {
     expect(renderWebDesignTokens()).toContain("--oa-motion-loop: 0ms;");
   });
 });

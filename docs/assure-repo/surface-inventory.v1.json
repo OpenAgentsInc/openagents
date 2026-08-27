@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:f773e13f3f482f9db665f49c0cc8e7b401a8c31c48ed6400f087e4fcea998864",
+  "sourceDigest": "sha256:6eec5280059f4d5d3bf9cd51660dc31434561c844fec1b296b3c098486890d01",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -216,75 +216,6 @@
         {
           "type": "behavior-contract",
           "ref": "openagents_web.portal_owner_scoped_engagement.v1"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "app:@openagentsinc/openagents-mobile",
-      "kind": "app",
-      "owningPath": "apps/openagents-mobile",
-      "title": "@openagentsinc/openagents-mobile",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "apps/openagents-mobile (20 tracked test files)"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.chat.authoritative_sync_mode.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.chat.post_auth_live_upgrade.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.home_automatic_desktop_activity.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.home_honest_connection_state.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.minerals_sheet_user_dismiss_only.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.no_internal_issue_references.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.owner_private_source_coverage.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.sarah_owner_orchestrator.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.sarah_text_surface.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.session.pkce_sign_in_sign_out.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.session.recovered_validation_rotation.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.session.secure_store_custody.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "openagents_mobile.sync.host_owned_expo_sqlite.v1"
         }
       ],
       "obligation": {
@@ -1793,23 +1724,6 @@
         {
           "type": "test",
           "ref": "packages/blueprint-contracts (2 tracked test files)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/client-command-outbox",
-      "kind": "package",
-      "owningPath": "packages/client-command-outbox",
-      "title": "@openagentsinc/client-command-outbox",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/client-command-outbox (1 tracked test file)"
         }
       ],
       "obligation": {
@@ -3327,24 +3241,24 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 177,
+    "totalSurfaces": 175,
     "byKind": {
-      "app": 14,
+      "app": 13,
       "crate": 6,
       "document": 52,
-      "package": 98,
+      "package": 97,
       "public-endpoint": 2,
       "release-pipeline": 4,
       "worker": 1
     },
-    "withOracle": 170,
+    "withOracle": 168,
     "unverified": 7,
     "byUnverifiedReason": {
       "config-only": 2,
       "no-oracle-authored": 5
     },
     "byObligationState": {
-      "designed": 134,
+      "designed": 132,
       "inconclusive": 4,
       "mapped": 36,
       "out-of-scope": 3

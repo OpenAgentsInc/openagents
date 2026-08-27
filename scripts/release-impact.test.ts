@@ -12,13 +12,13 @@ describe("release impact planner", () => {
     expect(plan.actions).toEqual(["web_deploy"]);
   });
 
-  test("selects independent mobile and web lanes", () => {
+  test("does not restore a retired mobile release lane", () => {
     const plan = planReleaseImpact([
       "apps/openagents-mobile/src/App.tsx",
       "apps/openagents.com/apps/start/src/routes/index.tsx",
     ]);
 
-    expect(plan.actions).toEqual(["web_deploy", "mobile_ota"]);
+    expect(plan.actions).toEqual(["web_deploy"]);
   });
 
   test("shared UI or lockfile churn no longer manufactures a binary release", () => {

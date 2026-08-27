@@ -324,10 +324,6 @@ export const createIssue31PrivateEnvelope = async (
   }
 };
 
-export const createIssue31PrivateGiftWrap = async (
-  input: Parameters<typeof createIssue31PrivateEnvelope>[0],
-): Promise<Issue31SignedNostrEvent> => (await createIssue31PrivateEnvelope(input)).giftWrap;
-
 export const unwrapIssue31PrivateGiftWrap = async (
   input: Readonly<{
     signer: Issue31NostrSigner;

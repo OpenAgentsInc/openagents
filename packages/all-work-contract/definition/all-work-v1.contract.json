@@ -81,9 +81,7 @@
     "StrictBugCandidateReceipt",
     "StrictBugCandidateExecuteResult",
     "StrictBugCandidateReadRequest",
-    "StrictBugCandidateReadResult",
-    "WorkTranscriptPage",
-    "WorkComposerDraft"
+    "StrictBugCandidateReadResult"
   ],
   "semanticChecks": [
     "issue_projection_work_ref_matches_snapshot_work_ref",

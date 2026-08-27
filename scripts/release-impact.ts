@@ -8,14 +8,13 @@
  *
  * The Electron Desktop app was removed, so the `desktop_full_matrix` action and
  * the signed-Desktop target/version-bump projection it carried are retired. The
- * surviving owned lanes are the web surface and the mobile Expo OTA.
+ * The surviving owned lane is the web surface.
  */
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 
 export const releaseImpactActions = [
   "web_deploy",
-  "mobile_ota",
   "no_binary_release",
 ] as const;
 export type ReleaseImpactAction = (typeof releaseImpactActions)[number];
@@ -40,9 +39,6 @@ const isDocumentation = (path: string): boolean =>
 
 const isWeb = (path: string): boolean => isUnder(path, "apps/openagents.com");
 
-const isMobile = (path: string): boolean =>
-  isUnder(path, "apps/openagents-mobile");
-
 const actionOrder = new Map<ReleaseImpactAction, number>(
   releaseImpactActions.map((action, index) => [action, index]),
 );
@@ -58,12 +54,6 @@ export const planReleaseImpact = (inputPaths: readonly string[]): ReleaseImpactP
     if (isWeb(path)) {
       actions.add("web_deploy");
       reasons.add("The openagents.com product surface changed; deploy the web lane.");
-    }
-    if (isMobile(path)) {
-      actions.add("mobile_ota");
-      reasons.add(
-        "Mobile JavaScript or Effect Native content changed; use the existing signed Expo OTA lane when its runtime contract permits.",
-      );
     }
   }
 

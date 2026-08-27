@@ -8,6 +8,7 @@ const retiredPaths = [
   "apps/aiur/package.json",
   "apps/ai-sdk-harness-poc/package.json",
   "apps/oa-updates/package.json",
+  "apps/openagents-mobile/package.json",
   "runners/py-bench-runner/pyproject.toml",
   "ops/owned-runner/khala-code-qa-nightly.service",
   "ops/owned-runner/khala-code-qa-nightly.timer",
@@ -29,5 +30,6 @@ describe("retired experiments stay outside live authority", () => {
     expect(workspace).not.toContain("apps/ai-sdk-harness-poc")
     expect(workspace).not.toContain("apps/aiur")
     expect(workspace).not.toContain("apps/oa-updates")
+    expect(workspace).not.toContain("apps/openagents-mobile")
   })
 })

@@ -1,9 +1,0 @@
-{
-  "platforms": ["android", "apple"],
-  "apple": {
-    "modules": ["ExpoRealtimeAudioModule"]
-  },
-  "android": {
-    "modules": ["expo.modules.realtimeaudio.ExpoRealtimeAudioModule"]
-  }
-}

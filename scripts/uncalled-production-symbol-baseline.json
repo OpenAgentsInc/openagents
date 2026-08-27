@@ -23,8 +23,6 @@
     "apps/openagents-audio/src/storage.ts#MemoryPrivateObjectStore",
     "apps/openagents-audio/src/stt.ts#FakeSttAdapter",
     "apps/openagents-audio/src/tts.ts#FakeTtsAdapter",
-    "apps/openagents-mobile/src/workroom/omega-device-bridge-client.ts#OmegaDeviceBridgeClient.observeRelay",
-    "apps/openagents-mobile/src/workroom/omega-device-bridge-client.ts#createMemoryOmegaDeviceBridgeStore",
     "apps/openagents.com/apps/start/src/agent-surface/web-agent-surface-read-model.ts#readWebAgentSurfaceFactSummary",
     "apps/openagents.com/apps/start/src/agent-surface/web-agent-surface-read-model.ts#readWebSupervisionRows",
     "apps/openagents.com/apps/start/src/agent-surface/web-agent-surface-read-model.ts#webAgentSurfaceFactsAreSecretFree",
@@ -1795,6 +1793,10 @@
     {
       "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workSnapshotRead",
       "reason": "Published generated SDK method; Omega and other All Work clients will call it after they adopt the v0.2 client package."
+    },
+    {
+      "ref": "packages/sarah/src/issue31-nostr/private-envelope.ts#createIssue31PrivateEnvelope",
+      "reason": "Issue 147 retains the tested NIP-59 producer while it determines whether the surviving Rust Omega path adopts this wire contract or the Sarah TypeScript package is deleted. No new TypeScript caller may adopt it."
     },
     {
       "ref": "packages/all-work-contract/src/client.generated.ts#AllWorkClient.workroomActivityCommit",

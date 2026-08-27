@@ -2,13 +2,13 @@
   "contractRef": "openagents.all_work_boundary.v1",
   "contractVersion": 1,
   "profileVersion": "openagents.contract_profile.v1",
-  "definitionSha256": "ae4029ee1b46e681903a309584b1a510ec6112794e17bdc6645faf187efafe11",
+  "definitionSha256": "2f64fc79ad683937d737ed956b75d3669dee62fd141f5ef12aca13c1ca59c4cc",
   "artifacts": {
-    "effectSha256": "acdd816ba57a29714b17a4ac1665b761fee5ff265d5bd7a89cfe7c2a35f8e050",
-    "typescriptClientSha256": "8738f3134358be6ff05dc9845fb79953ea1cf7d555f3c5f840aeccd40a476006",
-    "rustSha256": "cb494210b83a00efcf22bd91aa18e2222f4eb73321db4ff33be5cde2adf3b8b2",
-    "jsonSchemaSha256": "9a6cc03f717e9f21738b9ebdb3404a7969eb3fa02415a11e3b82664fd6fffb57",
-    "fixtureIndexSha256": "8b558425f32064de644c4d6941359d84390af1bb081a353870e4fe5557e66122"
+    "effectSha256": "93f51c7bcc258bf8eaec1dd7592b487a1b77d75ac040bc1d89bdcdd03c593d16",
+    "typescriptClientSha256": "2a3afc75072d14690fc56397b1a023b5cf7bbd36128e53d6d66833235cd47247",
+    "rustSha256": "d31aa4178672c8a17302530d0e5b852eb03572803ee8303dae065b81607f3f22",
+    "jsonSchemaSha256": "f6c45664d4bbd1580b40854b266fd1ca0a67f1f6236b71d204db51cc01b6e7cb",
+    "fixtureIndexSha256": "17be2c45421c1d4ba29d8146bd1ce35a87a73c0ea715411ca8a5938b3c67b82e"
   },
   "protocol": {
     "supportedVersions": [
@@ -378,8 +378,8 @@
     "WorkTranscriptPlanFollowUp": "structural_only",
     "WorkTranscriptResponse": "structural_only",
     "WorkTranscriptRow": "structural_only",
-    "WorkTranscriptPage": "implemented",
-    "WorkComposerDraft": "implemented",
+    "WorkTranscriptPage": "structural_only",
+    "WorkComposerDraft": "structural_only",
     "ProtocolCapability": "structural_only",
     "ProtocolErrorCode": "structural_only",
     "ProtocolError": "structural_only",

@@ -153,7 +153,10 @@ const effectType = (type) => {
 
 const effectSchemas = definition.types.map(effectType).join("\n");
 const effectRootMap = definition.roots.map((name) => `  ${quote(name)}: ${name}Schema,`).join("\n");
-const effectDecoders = definition.roots
+const effectDecoderTypes = definition.roots.filter(
+  (name) => implementedTypes.has(name) || name.startsWith("ProtocolInitialize"),
+);
+const effectDecoders = effectDecoderTypes
   .map(
     (name) =>
       `export const decode${name} = (input: unknown): ${name} => S.decodeUnknownSync(${name}Schema)(input, STRICT_DECODE_OPTIONS)`,

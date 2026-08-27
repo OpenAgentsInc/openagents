@@ -1959,53 +1959,21 @@ format or imply that a spending rail exists.
 
 ## Retired Mobile Surfaces
 
-- The owner directed a blank-slate rebuild of `apps/openagents-mobile` on
-  2026-07-27: keep the desktop handshake, remove the rest, and rebuild the UI
-  on plain React Native in the arcade idiom. The conversation, coding
-  navigation, agent-graph, authoritative-home, native-target-delivery, and
-  Sarah-drawer surfaces were deleted with their oracles.
-- The clauses below that named an `apps/openagents-mobile/tests/*` oracle
-  therefore describe intent, not a currently enforced boundary. Each one is
-  marked in place. Do not cite an unenforced clause as evidence, and do not
-  restore one of these surfaces without restoring its oracle in the same
-  change.
-- The mobile app that remains is a read-only desktop mirror plus its pairing
-  path. Its live boundary is the device-bridge contract, not these clauses.
-- The 2026-07-29 mobile Sarah command-center restoration is additive to that
-  read-only mirror. Authenticated owner voice sessions bootstrap Sarah's
-  canonical owner-private thread and may execute only the server-owned,
-  receipted `codex_workers_{capacity,start,status}` and
-  `full_auto_{status,control}` tools. The phone receives no editor, file,
-  shell, Git, credential, payment, account, or device authority; the paired
-  Omega bridge remains read-only and Full Auto control stays pending until
-  Desktop applies it. Started/succeeded/failed tool activity remains visible,
-  call refs are replay-fenced, tool execution is serialized, and shutdown
-  awaits the tool tail before closing SQL. Final user, assistant, and tool
-  transcript items append to app-private JSONL while audio remains no-store.
-  The enforcing oracles are
-  `apps/openagents-mobile/tests/sarah-voice-client.test.ts`,
-  `apps/openagents-mobile/tests/sarah-voice-transcript-store.test.ts`,
-  `apps/openagents.com/workers/api/src/cloudrun/sarah-realtime-bridge.test.ts`,
-  and `apps/openagents.com/workers/api/src/sarah-runtime-tools.test.ts`.
-- The Desktop end-to-end test named `native-conversation-continuation`, which
-  lived under `apps/openagents-desktop/tests/`, was deleted on 2026-07-27 for
-  the same reason. It proved Desktop-to-mobile
-  conversation continuation against the mobile sync host, and that host went
-  with the rebuild, so the test could no longer compile or prove its claim.
-  Three assurance documents still name it as an oracle: the MVP AssuranceSpec
-  and its coverage matrix, plus the Full Auto AssuranceSpec. Those citations
-  are now unbacked and need an owner disposition. Do not treat cross-device
-  continuation as covered until a replacement oracle exists.
+- (retired 2026-08-27, `OpenAgentsInc/openagents#149`) The OpenAgents mobile
+  application, push worker, scheduler, native bridge, and release lane are
+  gone. There are no installed users or public store listing. The legacy
+  Postgres token and preference rows remain until the database export and
+  deletion review closes; no worker consumes them. Mobile product claims and
+  assurance citations are historical and do not describe a supported surface.
 
 ## Retired Client Boundary
 
 - `clients/khala-cli`, `clients/khala-ios`, and `clients/khala-mobile` were
   removed by owner direction on 2026-07-14. They are Git-history evidence, not
   workspace members, install surfaces, release inputs, or compatibility roots.
-- Pylon is the supported terminal/Codex-capacity path, `apps/openagents-mobile`
-  is the only supported mobile app, and Omega, in its own repository, is the
-  only supported desktop app. The Electron desktop app in this repository was
-  deleted at owner direction on 2026-08-04 (#9325).
+- The Rust OpenAgents CLI is the supported terminal path. Omega, in its own
+  repository, is the supported desktop app. This repository has no supported
+  mobile app.
 - Shared Khala Sync, protocol, runtime, and QA packages remain
   only when a supported app/service consumes them. A removed client path may
   appear in historical docs or explicit negative sentinels, never in a live

@@ -1,9 +1,20 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { Schema as S } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
-import { decodeWorkComposerDraft, decodeWorkTranscriptPage } from "../src/generated.ts";
+import {
+  WorkComposerDraftSchema,
+  WorkTranscriptPageSchema,
+} from "../src/generated.ts";
+
+const decodeWorkComposerDraft = S.decodeUnknownSync(WorkComposerDraftSchema, {
+  onExcessProperty: "error",
+});
+const decodeWorkTranscriptPage = S.decodeUnknownSync(WorkTranscriptPageSchema, {
+  onExcessProperty: "error",
+});
 
 const fixture = (path: string): unknown =>
   JSON.parse(readFileSync(resolve(import.meta.dirname, "../fixtures", path), "utf8")) as unknown;

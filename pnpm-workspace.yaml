@@ -13,7 +13,6 @@ packages:
   - apps/oa-queue-worker
   - apps/sarah-livekit-agent
   - apps/sarah-nostr-signer
-  - apps/openagents-mobile
   - apps/openagents-audio
   - apps/openagents-audio-edge
   - apps/pylon

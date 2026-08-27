@@ -11,7 +11,7 @@ import {
   ISSUE31_HOST_ANNOUNCEMENT_SCHEMA,
   ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2,
   ISSUE31_PAIRING_SCHEMA,
-  createIssue31PrivateGiftWrap,
+  createIssue31PrivateEnvelope,
   decodeIssue31CommandRecord,
   decodeIssue31CommandRecordV2,
   decodeIssue31HostAnnouncementV2,
@@ -27,6 +27,10 @@ import {
   type Issue31PairingEvent,
   type Issue31PairingRecord,
 } from "./index.ts";
+
+const createIssue31PrivateGiftWrap = async (
+  input: Parameters<typeof createIssue31PrivateEnvelope>[0],
+) => (await createIssue31PrivateEnvelope(input)).giftWrap;
 
 describe("Device mirror command v2 and owner projection", () => {
   test("decodes canonical discovery, command, handling, and source projection fixtures", () => {

@@ -825,20 +825,11 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   `https://registry.npmjs.org/<package>` directly, before concluding a publish
   failed.
 
-- **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
-  Read it first for any of: deploying the `openagents.com` Cloud Run service,
-  publishing Pylon to npm, publishing signed Pylon binaries, the
-  `updates.openagents.com` feed (signed Pylon releases only), or the greenfield
-  mobile app. The Electron OpenAgents Desktop release lane was deleted with the
-  app on 2026-08-04 (#9325): there is no desktop package, publish, promote, or
-  update command in this repository, and Omega releases from the Omega
-  repository. The mobile Expo OTA lane was retired on 2026-08-05 (#9325) at
-  owner direction — there are no installed mobile users, `updates.enabled` is
-  `false` in `apps/openagents-mobile/app.json`, and JS changes ship only in a
-  new store build. The deprecated Khala clients have no active release lane. The hub indexes the per-surface runbooks (the sources of
-  truth), the one-line recipe for each, the GitHub release-tag convention, and
-  where the signing secrets live (`~/work/.secrets/` + GCP Secret Manager,
-  project `openagentsgemini`).
+- **Use the current owner repository for every deployment.** Phoenix and web
+  deployments belong to `OpenAgentsInc/openagents.com`. Rust CLI releases use
+  `docs/ops/2026-08-25-cli-release-runbook.md`. Omega releases from the Omega
+  repository. The Pylon, mobile, update-feed, and Electron release lanes in
+  this repository are retired; do not use their historical deployment docs.
 - **Publish npm packages with `pnpm publish`, never `npm publish`.** This is a
   pnpm workspace and 100 of its `package.json` files declare dependencies as
   `"catalog:"`. pnpm resolves those to real versions as it packs; npm does not,
@@ -974,36 +965,24 @@ and deterministic Effect tests. Do not skip it merely because
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
-- **Product shape (owner decision, 2026-07-09, amended 2026-07-18 and
-  2026-08-04):** there are three product apps: the OpenAgents web app (`/`,
-  `/forum`, and `/promises`), the **OpenAgents** mobile app, and **Omega** on
-  Desktop. Omega lives in the Omega repository. The Electron OpenAgents Desktop
-  app that used to hold the Desktop slot was deleted at owner direction on
-  2026-08-04 (#9325).
+- **Product shape (owner decision, amended 2026-08-27):** the supported apps
+  are the OpenAgents web app and Omega on Desktop. Phoenix owns the web app;
+  Omega lives in its own repository. The Electron desktop app and the
+  OpenAgents mobile app in this repository are retired.
   The standalone Sarah surface remains removed: `/sarah` and every
   `/sarah/api/*` route are 404 tombstones and `apps/sarah` is deleted. The
   2026-07-18 reboot makes `principal.sarah` an authenticated owner-orchestrator
-  capability inside the supported apps, beginning with OpenAgents mobile, it
-  does not create a fourth app. Khala Code, Autopilot,
+  capability inside supported surfaces; it does not create another app. Khala
+  Code, Autopilot,
   Pylon cockpit, Sites, and other prior product ideas are capabilities,
   engine-room services, or migration sources—not additional product apps. P0
   is Sarah-managed parallel coding across Codex, Claude, and Grok accounts on
-  owner-local Pylons, with cloud capacity additive after the local path works.
+  the Rust CLI, with cloud capacity additive after the local path works.
   The canonical order and issue set live in `docs/sol/MASTER_ROADMAP.md`.
-- **Greenfield app boundary (owner decision, 2026-07-09):** mobile and desktop
-  are new applications, not rename-in-place conversions. Build OpenAgents
-  mobile at `apps/openagents-mobile` in plain React Native on an Expo host
-  (amended 2026-08-05, #9325: this clause said "with Effect Native" until the
-  framework was removed; the app itself has been plain React Native since
-  `017ae3dedb`, 2026-07-27), its product name is `OpenAgents`, its iOS bundle identifier and Android
-  application ID are exactly `com.openagents.app`, and its checked-in icon is
-  the canonical `apps/openagents-mobile/assets/images/icon.png` (SHA-256
-  `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`). The
-  greenfield Electron desktop half of this decision ended on 2026-08-04
-  (#9325): the desktop app was deleted and Omega carries Desktop from its own
-  repository. Do not rebuild an Electron host here. The retired Khala mobile
-  clients were removed on 2026-07-14 and must not be restored or imported into
-  the supported apps.
+- **Retired native apps (owner decision, 2026-08-27):** do not rebuild mobile
+  or Electron applications in this repository. Their final source remains in
+  Git history. New installed software belongs in Rust unless an explicit owner
+  decision establishes another boundary.
 - **Supersession removals (owner decision, 2026-07-14):** the owner directed
   ("khala-code-desktop must itself be deprecated and all relevant promises
   removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop.
@@ -1019,7 +998,7 @@ and deterministic Effect tests. Do not skip it merely because
   A later owner direction on 2026-07-14 removed all three remaining `clients/`
   applications (`khala-cli`, `khala-ios`, and `khala-mobile`) and their live
   release/onboarding dependents. Historical evidence remains recoverable from
-  Git, and Pylon, OpenAgents mobile, and Omega are the supported paths.
+  Git, and the Rust OpenAgents CLI and Omega are the supported installed paths.
   `clients/khala-code-desktop` was deleted after its live Pylon/QA dependents
   were migrated in #8793. Recover its final source with
   `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`, QA-owned fixture
@@ -1056,8 +1035,6 @@ and deterministic Effect tests. Do not skip it merely because
     (`OPENAGENTS_DIAMOND_HANDS_ENABLED`, stood down per
     `docs/hardening/2026-08-04-gpui-on-web-addendum.md` §13), plus omega's
     own panels in the omega repo.
-  - **Mobile: plain React Native** on Expo in `apps/openagents-mobile`, per
-    the owner-directed rebuild in `017ae3dedb` (2026-07-27).
   - Tokens are shared across surfaces through
     `@openagentsinc/design-tokens`; shared React components through
     `packages/ui`.
@@ -1113,48 +1090,15 @@ and deterministic Effect tests. Do not skip it merely because
   had to carve them out of was withdrawn on 2026-08-05 (#9325), so the
   carve-out is now moot — the crates stay Rust because they are systems
   infrastructure, not because a UI mandate spared them. TypeScript callers
-  never link the crates directly, they use the Effect Schema mirrors in
-  `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
-  Worker, and Pylon logic stays on Effect/TypeScript and moves to the selected
-  Node runtime under the conversion contract.
-- **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
-  no-Expo mandate for the framework, amended 2026-07-09):** the mobile
-  destination is a new **OpenAgents** app at `apps/openagents-mobile`, built
-  from scratch as one Expo React Native codebase for iOS + Android (no separate
-  Swift and Kotlin apps), authored in **plain React Native** with typed style
-  objects on the shared `@openagentsinc/design-tokens` vocabulary. (Amended
-  2026-08-05, #9325: this clause read "authored in Effect Native with React
-  Native as renderer/host machinery" and named `@effect-native/tokens`, both
-  of which stopped being true at `017ae3dedb`, 2026-07-27, when the owner
-  directed the plain-RN rebuild. NativeWind/Tailwind class strings remain
-  REJECTED per `docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md`,
-  owner-confirmed 2026-07-09 — that part of the decision survives the
-  framework it was written about.) TanStack DB +
-  `khala-sync-db-collection` as the data layer, and expo-modules ports of the
-  native Swift pieces (voice/STT, Apple FM bridge). See
-  `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`
-  §6.2–6.4. Build/ship posture stays **local-first**: `expo prebuild` +
-  local Xcode/Gradle, archive with `xcodebuild`, upload to TestFlight with
-  `xcrun altool` (ASC key in `.secrets/appstoreconnect.env`, Apple Team
-  `HQWSG26L43`). **Updates: there is no OTA lane.** The owned drop-in EAS
-  Updates replacement (`apps/oa-updates`: expo-updates protocol v1, signed
-  manifests via `expo-signature` code signing, asset store, channels/branches,
-  runtime fingerprints, `publish-ota.sh`) was **retired on 2026-08-05
-  (#9325)** at owner direction — there are no installed mobile users.
-  `apps/openagents-mobile/app.json` sets `updates.enabled: false` and
-  configures no update URL; the `/<owner>/manifest` route 404s.
-  `apps/oa-updates` now serves the signed Pylon release feed only. JS changes
-  ship in a **new store build**, never `eas update` and never a resurrected
-  OTA feed. **Builds are local** (`expo prebuild` + Xcode/Gradle); `eas
-  build`/`eas submit` stay unused unless the owner explicitly changes that.
-  The new app's display name is exactly `OpenAgents`, its iOS bundle identifier
-  and Android application ID are exactly `com.openagents.app`, its icon is the
-  exact Khala Code mobile icon pinned above. Store build/version numbers and
-  signing/provisioning must remain monotonic and valid against the owner-
-  designated existing store records before upload. The deleted Khala RN and
-  native SwiftUI clients are historical evidence only. The earlier Expo app
-  `AutopilotRemoteControl` remains retired
-  (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`).
+  never link the crates directly; they use documented contracts. Rust is the
+  default for CLI, local runtime, and standalone service work. Phoenix and
+  Elixir remain the web and backend authority. Retained TypeScript must name a
+  current consumer and retirement plan.
+- **Mobile policy (owner decision, amended 2026-08-27):** the OpenAgents mobile
+  application, push worker, scheduler, and OTA service are retired. No installed
+  users or store listing require a compatibility path. Preserve database rows
+  until the legacy database export closes, but do not restore a mobile build,
+  push delivery loop, or update feed without a new owner decision.
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
 - **Behavior contracts (owner mandate, 2026-07-03):** when the owner (or a
