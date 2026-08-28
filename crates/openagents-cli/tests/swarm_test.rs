@@ -854,6 +854,132 @@ async fn the_tool_refuses_a_malformed_data_argument_by_name() {
     }
 }
 
+#[tokio::test]
+async fn the_wait_tool_parks_returns_the_match_and_never_stamps_it() {
+    let mut pair = bound_pair();
+
+    // Park first, deliver from this thread mid-wait: the tool call returns
+    // early with the message visible.
+    let deliver = tokio::task::spawn_blocking({
+        let home = pair._home.path().to_path_buf();
+        move || {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            send(
+                &home,
+                "session-a",
+                &pair.a_dir,
+                "session-b",
+                "question",
+                None,
+                true,
+                "wake up",
+                None,
+                None,
+            )
+        }
+    });
+    let output = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_wait",
+            serde_json::json!({ "timeout_seconds": 20, "sender": "session-a" }),
+        ))
+        .await;
+    deliver.await.unwrap().unwrap();
+    assert!(!output.is_error, "{}", output.output);
+    let document: serde_json::Value = serde_json::from_str(&output.output).unwrap();
+    assert_eq!(document["matched"], true);
+    assert_eq!(document["messages"][0]["body"], "wake up");
+    assert!(document["messages"][0]["read_at_ms"].is_null());
+
+    // The message is still unread: the wait did not spend the obligation.
+    let unread = Mailbox::at(&pair.b_dir).unread().unwrap();
+    assert_eq!(unread.len(), 1, "a wait leaves mail for the drain");
+
+    // A real drain now injects it exactly once.
+    pair.b.drain_swarm_inbox().await;
+    assert!(
+        pair.b.messages.iter().any(|message| message
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .contains("wake up"))
+    );
+}
+
+#[tokio::test]
+async fn the_wait_tool_times_out_empty_and_refuses_bad_arguments() {
+    let pair = bound_pair();
+    let output = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_wait",
+            serde_json::json!({ "timeout_seconds": 1 }),
+        ))
+        .await;
+    assert!(!output.is_error, "{}", output.output);
+    let document: serde_json::Value = serde_json::from_str(&output.output).unwrap();
+    assert_eq!(document["matched"], false);
+    assert_eq!(document["messages"].as_array().unwrap().len(), 0);
+    assert!(document["elapsed_ms"].as_u64().unwrap() >= 900);
+
+    // Missing, fractional, and over-ceiling timeouts refuse by name.
+    for arguments in [
+        serde_json::json!({}),
+        serde_json::json!({ "timeout_seconds": 1.5 }),
+        serde_json::json!({ "timeout_seconds": 61 }),
+    ] {
+        let output = pair
+            .b
+            .tools
+            .execute_tool(&tool_call("swarm_wait", arguments))
+            .await;
+        assert!(output.is_error, "must refuse: {}", output.output);
+        assert!(
+            output.output.contains("timeout_seconds"),
+            "{}",
+            output.output
+        );
+    }
+
+    // An unbound session is told so, the same as every swarm tool.
+    let home = tempfile::tempdir().unwrap();
+    let unbound_store = openagents_cli::session_store::LocalSessionStore::create(
+        home.path(),
+        std::path::Path::new("/work-unbound"),
+        "flash",
+        None,
+        false,
+    )
+    .unwrap();
+    let unbound_tools = openagents_cli::tools::HarnessToolRegistry::new(Some(
+        unbound_store.store.directory().to_path_buf(),
+    ));
+    let unbound = openagents_cli::runtime::CoderRuntimeSession::new(
+        openagents_cli::runtime::Lane::default(),
+        None,
+        None,
+        unbound_tools,
+    )
+    .with_local_session(unbound_store.store, Vec::new())
+    .with_cloud_history(false);
+    let output = unbound
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_wait",
+            serde_json::json!({ "timeout_seconds": 5 }),
+        ))
+        .await;
+    assert!(output.is_error);
+    assert!(
+        output.output.contains("not registered"),
+        "{}",
+        output.output
+    );
+}
+
 #[test]
 fn the_schema_names_travel_on_the_wire() {
     let home = tempfile::tempdir().unwrap();

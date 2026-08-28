@@ -541,6 +541,7 @@ async fn a_plugin_named_after_a_builtin_is_never_declared_and_every_declared_too
             "swarm_list",
             "swarm_send",
             "swarm_inbox",
+            "swarm_wait",
             "capability",
             "word_count"
         ],

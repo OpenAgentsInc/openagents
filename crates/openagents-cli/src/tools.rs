@@ -120,7 +120,7 @@ const ECHO_LIMIT: usize = 2_000;
 /// session answers it with a refusal, which shadows a plugin just as
 /// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
 /// list and the arms in step.
-pub const BUILTIN_TOOL_NAMES: [&str; 13] = [
+pub const BUILTIN_TOOL_NAMES: [&str; 14] = [
     "read",
     "write",
     "edit",
@@ -132,6 +132,7 @@ pub const BUILTIN_TOOL_NAMES: [&str; 13] = [
     "swarm_list",
     "swarm_send",
     "swarm_inbox",
+    "swarm_wait",
     "capability",
     "delegate",
 ];
@@ -987,6 +988,21 @@ impl HarnessToolRegistry {
                     }
                 }),
             },
+            ToolDefinition {
+                name: "swarm_wait".to_string(),
+                description: text::RUST_SWARM_WAIT.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "timeout_seconds": {"type": "number", "description": "How long to park before giving up. Required, capped at 60."},
+                        "sender": {"type": "string", "description": "Only match mail from this session id."},
+                        "kind": {"type": "string", "description": "Only match this kind: question, answer, status, handoff, broadcast."},
+                        "thread": {"type": "string", "description": "Only match mail in this thread, by root message id (chain closure)."},
+                        "unread_only": {"type": "boolean", "description": "Match only unread mail. Defaults to true; false widens to history."}
+                    },
+                    "required": ["timeout_seconds"]
+                }),
+            },
         ];
 
         // The standing capability tool. Constant-size: it names no installed
@@ -1304,6 +1320,31 @@ impl HarnessToolRegistry {
             }
             "swarm_inbox" => {
                 let (output, is_error) = answer_swarm_inbox(self.swarm.as_ref(), &call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                    duration_ms: 0,
+                }
+            }
+            "swarm_wait" => {
+                // A wait parks up to sixty seconds, which must not hold the
+                // async runtime: the poll loop runs on the blocking pool and
+                // the turn's other machinery stays live (#287).
+                let (output, is_error) = match self.swarm.clone() {
+                    Some(binding) => {
+                        let arguments = call.arguments.clone();
+                        tokio::task::spawn_blocking(move || answer_swarm_wait(&binding, &arguments))
+                            .await
+                            .unwrap_or_else(|_| {
+                                (
+                                    "the wait task could not run on the blocking pool".to_string(),
+                                    true,
+                                )
+                            })
+                    }
+                    None => swarm_unbound(),
+                };
                 ToolOutput {
                     call_id: call.id.clone(),
                     output,
@@ -3348,6 +3389,77 @@ fn set_mute(binding: &SwarmBinding, target: &str, muted: bool) -> Result<(), Str
     }
 }
 
+/// Park for up to sixty seconds until a matching message is visible, then
+/// report it exactly as a peek would (#287). Never stamps: a reply surfaced
+/// here still needs a real drain before an answer is owed. Runs on the
+/// blocking pool — see the dispatch arm — so the async runtime never sits
+/// inside the poll loop.
+fn answer_swarm_wait(binding: &SwarmBinding, arguments: &serde_json::Value) -> (String, bool) {
+    let timeout_seconds =
+        match arguments.get("timeout_seconds") {
+            Some(value) => match value.as_f64() {
+                Some(seconds) if seconds > 0.0 && seconds.fract() == 0.0 => seconds as u64,
+                _ => return (
+                    "`timeout_seconds` is required and must be a whole number of seconds, 1 to 60."
+                        .to_string(),
+                    true,
+                ),
+            },
+            None => {
+                return (
+                    "`timeout_seconds` is required and must be a whole number of seconds, 1 to 60."
+                        .to_string(),
+                    true,
+                );
+            }
+        };
+    let filter = crate::swarm::InboxFilter {
+        sender: arguments
+            .get("sender")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string),
+        kind: arguments
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string),
+        thread: arguments
+            .get("thread")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string),
+        unread_only: arguments
+            .get("unread_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+    };
+    match crate::swarm::wait_filtered(binding, &filter, timeout_seconds.saturating_mul(1000)) {
+        Ok(outcome) => {
+            let mut document = serde_json::json!({
+                "schema": "openagents.swarm.wait.v1",
+                "source": "swarm_wait",
+                "matched": outcome.matched,
+                "elapsed_ms": outcome.elapsed_ms,
+                "messages": outcome
+                    .messages
+                    .iter()
+                    .map(crate::swarm::message_document)
+                    .collect::<Vec<_>>(),
+                "note": match outcome.matched {
+                    true => "nothing was stamped read; drain to take ownership of these messages",
+                    false => "the timeout expired with nothing matching visible",
+                },
+            });
+            (document.to_string(), false)
+        }
+        Err(why) => (why, true),
+    }
+}
+
 fn answer_checkpoint(arguments: &serde_json::Value) -> (String, bool) {
     let Some(text) = arguments.get("text").and_then(|v| v.as_str()) else {
         return (
@@ -4678,6 +4790,7 @@ mod tests {
                 "swarm_list",
                 "swarm_send",
                 "swarm_inbox",
+                "swarm_wait",
                 "capability",
                 "delegate"
             ]
@@ -4813,6 +4926,7 @@ mod tests {
                 "swarm_list",
                 "swarm_send",
                 "swarm_inbox",
+                "swarm_wait",
                 "capability",
                 "acp"
             ]

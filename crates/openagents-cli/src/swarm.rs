@@ -1512,6 +1512,86 @@ pub fn drain_by_ids(binding: &SwarmBinding, ids: &[String]) -> Result<Vec<SwarmM
         .collect())
 }
 
+/// How long one [`wait_filtered`] may park before returning empty. The
+/// issue's cap: a wait is a bounded pause at the turn boundary, not a
+/// subscription — anything longer belongs to the next turn's drain.
+pub const MAXIMUM_WAIT_MS: u128 = 60 * 1000;
+
+/// The wait poll cadence. The mailbox is an append-only file, not a channel,
+/// so waiting is a bounded poll; 250 ms is fast against a 60 s ceiling and
+/// the poll itself is a directory read, cheaper than the model turn the wait
+/// exists to save.
+pub const WAIT_POLL_MS: u64 = 250;
+
+/// Park until a message matching `filter` arrives or `timeout_ms` expires,
+/// then report what is visible — the same shape as a peek, and **never** a
+/// stamp: a `reply_expected` message surfaced by a wait is not committed to
+/// an answer until a real drain stamps it (#287). A wait that returned a
+/// read-stamped reply would quietly spend the recipient's turn on an
+/// obligation it never saw the human approve.
+pub fn wait_filtered(
+    binding: &SwarmBinding,
+    filter: &InboxFilter,
+    timeout_ms: u64,
+) -> Result<WaitOutcome, String> {
+    if timeout_ms == 0 {
+        return Err(
+            "a wait of zero time is a peek, not a wait: give a timeout or use the inbox"
+                .to_string(),
+        );
+    }
+    if timeout_ms as u128 > MAXIMUM_WAIT_MS {
+        return Err(format!(
+            "`timeout_seconds` may park at most {MAXIMUM_WAIT_MS} ms; {timeout_ms} was asked for"
+        ));
+    }
+    let started = std::time::Instant::now();
+    let deadline = started + std::time::Duration::from_millis(timeout_ms);
+    let mailbox = Mailbox::at(&binding.session_directory);
+    loop {
+        let messages = mailbox.messages()?;
+        let muted = binding.muted();
+        let visible: Vec<SwarmMessage> = filter
+            .select(&messages)
+            .into_iter()
+            .filter(|message| !muted.contains(&message.from))
+            .filter(|message| !filter.unread_only || message.read_at_ms.is_none())
+            .cloned()
+            .collect();
+        if !visible.is_empty() {
+            return Ok(WaitOutcome {
+                matched: true,
+                elapsed_ms: started.elapsed().as_millis(),
+                messages: visible,
+            });
+        }
+        if std::time::Instant::now() >= deadline {
+            return Ok(WaitOutcome {
+                matched: false,
+                elapsed_ms: started.elapsed().as_millis(),
+                messages: Vec::new(),
+            });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(
+            WAIT_POLL_MS.min(
+                deadline
+                    .saturating_duration_since(std::time::Instant::now())
+                    .as_millis() as u64,
+            ),
+        ));
+    }
+}
+
+/// What one wait returned: whether a match ended it early, how long it
+/// actually parked, and what was visible when it did. `messages` is empty
+/// when the timeout expired.
+#[derive(Debug)]
+pub struct WaitOutcome {
+    pub matched: bool,
+    pub elapsed_ms: u128,
+    pub messages: Vec<SwarmMessage>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1672,5 +1752,185 @@ mod tests {
         );
         // An unknown handle stays itself so send can refuse by name.
         assert_eq!(expand_destination(&path, "sess-a", "child-9"), "child-9");
+    }
+    #[test]
+    fn swarm_wait_returns_a_match_without_stamping_it() {
+        let home = tempfile::tempdir().unwrap();
+        let home_path = home.path().to_path_buf();
+        let dir = tempfile::tempdir().unwrap();
+        register(
+            &home_path,
+            &Registration {
+                schema: REGISTRATION_SCHEMA.to_string(),
+                session_id: "waiter".to_string(),
+                pid: std::process::id(),
+                cwd: "/work".to_string(),
+                lane: "flash".to_string(),
+                model: None,
+                role: "root".to_string(),
+                parent: None,
+                worktree: None,
+                status: None,
+                inbox: dir.path().join("inbox.jsonl").display().to_string(),
+                alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
+                started_at_ms: now_ms(),
+                heartbeat_at_ms: now_ms(),
+            },
+        )
+        .unwrap();
+        let binding = SwarmBinding::new(home_path.clone(), "waiter", dir.path().to_path_buf());
+
+        // Nothing in the box: a short wait expires honestly.
+        let outcome = wait_filtered(&binding, &InboxFilter::unread(), 600).unwrap();
+        assert!(!outcome.matched);
+        assert!(outcome.messages.is_empty());
+        assert!(
+            outcome.elapsed_ms >= 500,
+            "waited the timeout: {}",
+            outcome.elapsed_ms
+        );
+
+        // A sender delivers mid-wait: the wait returns early with the
+        // message visible, still unread.
+        let sender_dir = tempfile::tempdir().unwrap();
+        let sender_home = home_path.clone();
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let _ = register(
+                &sender_home,
+                &Registration {
+                    schema: REGISTRATION_SCHEMA.to_string(),
+                    session_id: "sender".to_string(),
+                    pid: std::process::id(),
+                    cwd: "/work".to_string(),
+                    lane: "flash".to_string(),
+                    model: None,
+                    role: "root".to_string(),
+                    parent: None,
+                    worktree: None,
+                    status: None,
+                    inbox: sender_dir.path().join("inbox.jsonl").display().to_string(),
+                    alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
+                    started_at_ms: now_ms(),
+                    heartbeat_at_ms: now_ms(),
+                },
+            );
+            send(
+                &sender_home,
+                "sender",
+                sender_dir.path(),
+                "waiter",
+                "question",
+                None,
+                true,
+                "are you there?",
+                None,
+                None,
+            )
+        });
+        let outcome = wait_filtered(&binding, &InboxFilter::unread(), 10_000).unwrap();
+        writer.join().unwrap().unwrap();
+        assert!(outcome.matched, "the mid-wait delivery ended the wait");
+        assert!(
+            outcome.elapsed_ms < 5_000,
+            "returned early: {}",
+            outcome.elapsed_ms
+        );
+        assert_eq!(outcome.messages.len(), 1);
+        assert_eq!(outcome.messages[0].from, "sender");
+        assert!(
+            outcome.messages[0].read_at_ms.is_none(),
+            "a wait never stamps"
+        );
+        assert_eq!(outcome.messages[0].reply_expected, Some(true));
+
+        // Still unread after the wait: the next drain owns it.
+        let unread = Mailbox::at(dir.path()).unread().unwrap();
+        assert_eq!(unread.len(), 1, "the wait left the message unread");
+    }
+
+    #[test]
+    fn swarm_wait_honors_filters_and_never_blocks_past_the_ceiling() {
+        let home = tempfile::tempdir().unwrap();
+        let home_path = home.path().to_path_buf();
+        let dir = tempfile::tempdir().unwrap();
+        register(
+            &home_path,
+            &Registration {
+                schema: REGISTRATION_SCHEMA.to_string(),
+                session_id: "waiter".to_string(),
+                pid: std::process::id(),
+                cwd: "/work".to_string(),
+                lane: "flash".to_string(),
+                model: None,
+                role: "root".to_string(),
+                parent: None,
+                worktree: None,
+                status: None,
+                inbox: dir.path().join("inbox.jsonl").display().to_string(),
+                alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
+                started_at_ms: now_ms(),
+                heartbeat_at_ms: now_ms(),
+            },
+        )
+        .unwrap();
+        let binding = SwarmBinding::new(home_path.clone(), "waiter", dir.path().to_path_buf());
+        let sender_dir = tempfile::tempdir().unwrap();
+        register(
+            &home_path,
+            &Registration {
+                schema: REGISTRATION_SCHEMA.to_string(),
+                session_id: "sender".to_string(),
+                pid: std::process::id(),
+                cwd: "/work".to_string(),
+                lane: "flash".to_string(),
+                model: None,
+                role: "root".to_string(),
+                parent: None,
+                worktree: None,
+                status: None,
+                inbox: sender_dir.path().join("inbox.jsonl").display().to_string(),
+                alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
+                started_at_ms: now_ms(),
+                heartbeat_at_ms: now_ms(),
+            },
+        )
+        .unwrap();
+
+        // A message that does not match the filter leaves the wait waiting.
+        send(
+            &home_path,
+            "sender",
+            sender_dir.path(),
+            "waiter",
+            "status",
+            None,
+            false,
+            "not the kind you asked for",
+            None,
+            None,
+        )
+        .unwrap();
+        let outcome = wait_filtered(
+            &binding,
+            &InboxFilter {
+                sender: None,
+                kind: Some("question".to_string()),
+                thread: None,
+                unread_only: true,
+            },
+            600,
+        )
+        .unwrap();
+        assert!(
+            !outcome.matched,
+            "a status does not satisfy a question wait"
+        );
+
+        // Zero and over-ceiling are refused by name.
+        let why = wait_filtered(&binding, &InboxFilter::unread(), 0).unwrap_err();
+        assert!(why.contains("zero"), "{why}");
+        let why = wait_filtered(&binding, &InboxFilter::unread(), 61_000).unwrap_err();
+        assert!(why.contains("timeout_seconds"), "{why}");
     }
 }
