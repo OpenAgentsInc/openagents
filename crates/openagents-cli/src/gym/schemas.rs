@@ -15,6 +15,9 @@ pub const ENV_REPORT_SCHEMA: &str = "openagents.gym.env_report.v1";
 /// Schema name carried in every `run_status` document.
 pub const RUN_STATUS_SCHEMA: &str = "openagents.gym.run_status.v1";
 
+/// Schema name carried in every `results_trend` document.
+pub const RESULTS_TREND_SCHEMA: &str = "openagents.gym.results_trend.v1";
+
 /// `openagents.gym.suite_manifest_view.v1`
 ///
 /// A list/show view over a pinned effectiveness suite. The manifest itself

@@ -529,6 +529,35 @@ fn suite_digest(manifest: &SuiteManifest, task_digests: &[String]) -> String {
     format!("suite-manifest:{}", hex_digest(source.as_bytes()))
 }
 
+/// Manifest facts `gym results` needs without running the suite.
+#[derive(Debug, Clone)]
+pub struct SuiteMeta {
+    pub id: String,
+    pub tier: String,
+    pub digest: String,
+    pub task_ids: Vec<String>,
+}
+
+/// Read a suite manifest by id. Drift is reported, not refused — scoring a
+/// job directory does not require the pins to still match.
+pub fn suite_meta(id: &str) -> Result<SuiteMeta, CliError> {
+    suite_meta_in(&suite_dir()?, id)
+}
+
+/// Test seam: read a suite from an explicit suites directory.
+pub fn suite_meta_in(suites_dir: &Path, id: &str) -> Result<SuiteMeta, CliError> {
+    let path = manifest_path(suites_dir, id);
+    let manifest = read_manifest(&path)?;
+    let task_digests: Vec<_> = manifest.tasks.iter().map(task_digest).collect();
+    let digest = suite_digest(&manifest, &task_digests);
+    Ok(SuiteMeta {
+        id: manifest.id,
+        tier: manifest.tier,
+        digest,
+        task_ids: manifest.tasks.iter().map(|t| t.id.clone()).collect(),
+    })
+}
+
 /// A suite resolved for execution. `gym run` consumes this.
 #[derive(Debug, Clone)]
 pub struct ResolvedTask {
