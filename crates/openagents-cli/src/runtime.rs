@@ -3545,21 +3545,64 @@ impl StepAccumulator {
         }
         if let Some(calls) = delta.get("tool_calls").and_then(|v| v.as_array()) {
             for call in calls {
-                let index = call.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                let entry = self.tool_calls.entry(index).or_default();
-                if let Some(id) = call.get("id").and_then(|v| v.as_str()) {
-                    entry.0.push_str(id);
-                }
-                if let Some(function) = call.get("function") {
-                    if let Some(name) = function.get("name").and_then(|v| v.as_str()) {
-                        entry.1.push_str(name);
-                    }
-                    if let Some(args) = function.get("arguments").and_then(|v| v.as_str()) {
-                        entry.2.push_str(args);
-                    }
-                }
+                self.absorb_openai_tool_call(call);
             }
         }
+    }
+
+    /// One OpenAI-shaped tool-call delta.
+    ///
+    /// Fragments of one call share an `index` and, after the first chunk, omit
+    /// `id` and `name`. A second complete call that reuses that index — GLM
+    /// and the live proxy both do this — is a new call, not more of the first.
+    /// Concatenating `id` and `name` is what produced `openagentsopenagents`.
+    fn absorb_openai_tool_call(&mut self, call: &serde_json::Value) {
+        let incoming_id = nonempty_str(call.get("id"));
+        let function = call.get("function");
+        let incoming_name = function.and_then(|value| nonempty_str(value.get("name")));
+        let incoming_args = function
+            .and_then(|value| value.get("arguments"))
+            .and_then(|value| value.as_str());
+
+        let index = self.tool_call_slot(call.get("index"), incoming_id);
+        let entry = self.tool_calls.entry(index).or_default();
+        if let Some(id) = incoming_id
+            && entry.0.is_empty()
+        {
+            entry.0 = id.to_string();
+        }
+        if let Some(name) = incoming_name {
+            if entry.1.is_empty() {
+                entry.1 = name.to_string();
+            } else if name.starts_with(&entry.1) {
+                entry.1 = name.to_string();
+            }
+        }
+        if let Some(args) = incoming_args {
+            entry.2.push_str(args);
+        }
+    }
+
+    fn tool_call_slot(
+        &self,
+        raw_index: Option<&serde_json::Value>,
+        incoming_id: Option<&str>,
+    ) -> usize {
+        let index = parse_tool_call_index(raw_index).unwrap_or(0);
+        match (self.tool_calls.get(&index), incoming_id) {
+            (Some((held_id, _, _)), Some(id)) if !held_id.is_empty() && held_id != id => {
+                self.next_tool_call_slot()
+            }
+            _ => index,
+        }
+    }
+
+    fn next_tool_call_slot(&self) -> usize {
+        self.tool_calls
+            .keys()
+            .next_back()
+            .map(|key| key + 1)
+            .unwrap_or(0)
     }
 
     /// One OpenResponses-shaped streaming event.
@@ -3680,6 +3723,20 @@ fn grant_spend(body: &serde_json::Value) -> Option<TurnUsage> {
 
 fn field(value: &serde_json::Value, key: &str) -> u64 {
     value.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
+}
+
+fn nonempty_str(value: Option<&serde_json::Value>) -> Option<&str> {
+    value
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+}
+
+fn parse_tool_call_index(value: Option<&serde_json::Value>) -> Option<usize> {
+    match value {
+        Some(serde_json::Value::Number(number)) => number.as_u64().map(|n| n as usize),
+        Some(serde_json::Value::String(text)) => text.parse().ok(),
+        _ => None,
+    }
 }
 
 /// Convert the session's messages to the OpenAI chat-completions wire shape.
@@ -4163,24 +4220,92 @@ mod tests {
         assert_eq!(step.usage.completion_tokens, 17);
     }
 
-    #[test]
-    fn tool_call_fragments_are_joined_by_their_index() {
-        let frames = [
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"read_","arguments":"{\"path\":"}}]}}]}"#,
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"file","arguments":"\"a.txt\"}"}}]}}]}"#,
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_b","function":{"name":"ls","arguments":"{}"}}]}}]}"#,
-        ];
+    fn absorb_tool_frames(frames: &[&str]) -> Vec<(String, String, String)> {
         let mut step = StepAccumulator::default();
         let mut sink = |_: &str| {};
         for frame in frames {
             step.absorb_openai(&serde_json::from_str(frame).unwrap(), &mut sink);
         }
-        let calls: Vec<_> = step.tool_calls.into_values().collect();
+        step.tool_calls.into_values().collect()
+    }
+
+    #[test]
+    fn tool_call_fragments_are_joined_by_their_index() {
+        let calls = absorb_tool_frames(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"read_file","arguments":"{\"path\":"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"a.txt\"}"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_b","function":{"name":"ls","arguments":"{}"}}]}}]}"#,
+        ]);
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].0, "call_a");
         assert_eq!(calls[0].1, "read_file");
         assert_eq!(calls[0].2, r#"{"path":"a.txt"}"#);
         assert_eq!(calls[1].1, "ls");
+    }
+
+    /// The live proxy emits every complete tool call with `index: 0`. GLM also
+    /// puts two finished calls on that same slot. Concatenating them is how
+    /// `openagentsopenagents` and `skillbash` reached the tool runner.
+    #[test]
+    fn parallel_tool_calls_that_share_an_index_stay_separate() {
+        let calls = absorb_tool_frames(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_e36103fd27e348c78f6296c4","function":{"name":"openagents","arguments":"{\"name\":\"openagents-cli\"}"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_b65f63297876475a819300bf","function":{"name":"openagents","arguments":"{\"command\":\"git status\"}"}}]}}]}"#,
+        ]);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].0, "call_e36103fd27e348c78f6296c4");
+        assert_eq!(calls[0].1, "openagents");
+        assert_eq!(calls[0].2, r#"{"name":"openagents-cli"}"#);
+        assert_eq!(calls[1].0, "call_b65f63297876475a819300bf");
+        assert_eq!(calls[1].1, "openagents");
+        assert_eq!(calls[1].2, r#"{"command":"git status"}"#);
+    }
+
+    #[test]
+    fn a_resent_tool_name_is_not_concatenated() {
+        let calls = absorb_tool_frames(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"openagents","arguments":"{"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"openagents","arguments":"\"x\":1}"}}]}}]}"#,
+        ]);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "call_a");
+        assert_eq!(calls[0].1, "openagents");
+        assert_eq!(calls[0].2, r#"{"x":1}"#);
+    }
+
+    #[test]
+    fn tool_calls_without_an_index_are_split_by_id() {
+        let calls = absorb_tool_frames(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"id":"call_a","function":{"name":"skill","arguments":"{\"name\":\"openagents-cli\"}"}},{"id":"call_b","function":{"name":"bash","arguments":"{\"command\":\"git status\"}"}}]}}]}"#,
+        ]);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0],
+            (
+                "call_a".into(),
+                "skill".into(),
+                r#"{"name":"openagents-cli"}"#.into()
+            )
+        );
+        assert_eq!(
+            calls[1],
+            (
+                "call_b".into(),
+                "bash".into(),
+                r#"{"command":"git status"}"#.into()
+            )
+        );
+    }
+
+    #[test]
+    fn a_string_tool_call_index_is_still_an_index() {
+        let calls = absorb_tool_frames(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":"0","id":"call_a","function":{"name":"skill","arguments":"{}"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":"1","id":"call_b","function":{"name":"bash","arguments":"{}"}}]}}]}"#,
+        ]);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].1, "skill");
+        assert_eq!(calls[1].1, "bash");
     }
 
     /// The exact frames a live `qwen3:0.6b` turn sent.
