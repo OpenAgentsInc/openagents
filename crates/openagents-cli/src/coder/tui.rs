@@ -423,6 +423,8 @@ pub struct CoderUi {
     ///
     /// Drawn on the left of the row under the composer.
     pub credit: crate::coder::credit::CreditField,
+    /// Optional gym results pane, rendered from `openagents.gym.results_trend.v1`.
+    pub gym_panel: Option<crate::gym::schemas::ResultsTrend>,
     /// What the server billed this session's thread, once it has said.
     ///
     /// `None` until a figure arrives, and `/info` says "not reported yet"
@@ -537,6 +539,7 @@ impl CoderUi {
             last_usage: TurnUsage::default(),
             total_usage: TurnUsage::default(),
             credit: crate::coder::credit::CreditField::Unread,
+            gym_panel: None,
             billed: None,
             agents: Vec::new(),
             links: Vec::new(),
@@ -759,7 +762,21 @@ impl CoderUi {
             ])
             .split(area);
 
-        let transcript_area = main[0];
+        let body = if self.gym_panel.is_some() {
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(0), Constraint::Length(42)])
+                .split(main[0])
+        } else {
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(0)])
+                .split(main[0])
+        };
+        let transcript_area = body[0];
+        if self.gym_panel.is_some() {
+            self.render_gym_panel(frame, body[1], style);
+        }
         let width = transcript_area.width as usize;
 
         let mut all_lines: Vec<Line<'static>> = Vec::new();
@@ -925,6 +942,73 @@ impl CoderUi {
         if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
             cell.modifier.insert(Modifier::REVERSED);
         }
+    }
+
+    fn render_gym_panel(&self, frame: &mut Frame, area: Rect, style: Style) {
+        let Some(trend) = &self.gym_panel else {
+            return;
+        };
+        let mut lines = vec![
+            Line::from(Span::styled(
+                format!("gym  {}", trend.suite_id),
+                style.add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                format!(
+                    "chain={}",
+                    if trend.verified { "verified" } else { "broken" }
+                ),
+                style,
+            )),
+        ];
+        for cmp in &trend.lane_comparisons {
+            lines.push(Line::from(Span::styled(
+                format!("lanes vs {}", cmp.baseline_lane),
+                style.fg(DIM_TEXT_COLOR),
+            )));
+            for lane in &cmp.lanes {
+                let rate = lane
+                    .success_rate
+                    .map(|v| format!("{v:.2}"))
+                    .unwrap_or_else(|| "unknown".into());
+                let cost = lane
+                    .cost_per_accepted_outcome_usd
+                    .map(|v| format!("${v:.2}"))
+                    .unwrap_or_else(|| "unknown".into());
+                lines.push(Line::from(Span::styled(
+                    format!("  {}  rate={rate}  cost={cost}", lane.lane),
+                    style,
+                )));
+            }
+        }
+        for lane_trend in &trend.trends {
+            lines.push(Line::from(Span::styled(
+                format!("trend {}", lane_trend.lane),
+                style.fg(DIM_TEXT_COLOR),
+            )));
+            for step in &lane_trend.steps {
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "  {} → {}",
+                        step.success_rate_delta.direction, step.cost_delta.direction
+                    ),
+                    style,
+                )));
+            }
+        }
+        if trend.lane_comparisons.is_empty() && trend.trends.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "no comparable rows",
+                style.fg(DIM_TEXT_COLOR),
+            )));
+        }
+        let panel = Paragraph::new(Text::from(lines)).style(style).block(
+            Block::default()
+                .borders(Borders::LEFT)
+                .border_style(style)
+                .style(style),
+        );
+        frame.render_widget(panel, area);
     }
 
     /// Draw command matches above the composer while you type a slash command.

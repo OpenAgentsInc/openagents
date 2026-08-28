@@ -57,6 +57,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "swarm",
         "the local swarm: /swarm list, /swarm tree, /swarm inbox [id], /swarm send <id> <text>",
     ),
+    (
+        "gym",
+        "show or hide the gym results pane: /gym, /gym <suite>, /gym close",
+    ),
 ];
 
 /// The keys the frame handles. Listed by `/help`, and every one of them is
@@ -108,6 +112,7 @@ pub fn handles(name: &str) -> bool {
             | "resume"
             | "run"
             | "swarm"
+            | "gym"
     )
 }
 
@@ -161,6 +166,7 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
         "diff" => spawn_diff(ui, arguments, tx, cwd),
         "run" => spawn_run(ui, &rest, tx, cwd),
         "swarm" => run_swarm_command(ui, &arguments, &rest),
+        "gym" => run_gym_command(ui, &arguments),
         "resume" => spawn_resume(ui, &arguments, tx, cwd),
         other => output(
             ui,
@@ -173,6 +179,32 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
 fn output(ui: &mut CoderUi, text: &str) {
     ui.entries.push(Entry::new(Role::Output, text));
     ui.scroll_override = None;
+}
+
+fn run_gym_command(ui: &mut CoderUi, arguments: &[String]) {
+    if arguments.first().map(String::as_str) == Some("close") {
+        ui.gym_panel = None;
+        output(ui, "Closed the gym pane.");
+        return;
+    }
+    let suite = arguments.first().map(String::as_str).unwrap_or("tb2-quick");
+    match crate::gym::results::load_suite_trend(suite) {
+        Ok(trend) => {
+            let verified = trend.verified;
+            ui.gym_panel = Some(trend);
+            output(
+                ui,
+                &format!(
+                    "Opened the gym pane for `{suite}` (chain={}). `/gym close` hides it.",
+                    if verified { "verified" } else { "broken" }
+                ),
+            );
+        }
+        Err(error) => output(
+            ui,
+            &format!("Could not load gym results for `{suite}`: {error}"),
+        ),
+    }
 }
 
 fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {

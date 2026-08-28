@@ -439,6 +439,11 @@ fn compare_headline(trend: &ResultsTrend) -> String {
     }
 }
 
+/// Load a verified trend document for the TUI gym pane.
+pub fn load_suite_trend(suite_id: &str) -> Result<ResultsTrend, CliError> {
+    load_verified_trend(suite_id).map(|(_, trend)| trend)
+}
+
 fn load_verified_trend(suite_id: &str) -> Result<(Vec<Value>, ResultsTrend), CliError> {
     let store = store_path(suite_id)?;
     let rows = read_result_rows(&store)?;
