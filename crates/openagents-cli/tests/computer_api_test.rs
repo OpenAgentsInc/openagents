@@ -465,7 +465,7 @@ fn test_probe_reports_this_host_and_the_roots_it_was_given() {
         !report.host.release.is_empty(),
         "the probe reads the kernel release"
     );
-    assert_eq!(report.coding_agents.len(), 11);
+    assert_eq!(report.coding_agents.len(), 12);
     assert_eq!(report.toolchains.len(), 14);
     assert_eq!(report.roots.len(), 1);
     assert_eq!(report.worktrees.len(), 1);

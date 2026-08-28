@@ -1288,6 +1288,31 @@ fn test_the_catalog_offers_claude_only_when_the_adapter_is_installed() {
     );
 }
 
+#[test]
+fn test_the_catalog_offers_grok_and_grok_build_when_grok_is_installed() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = PolicyConfig::closed(ComputerPaths::in_directory(directory.path()));
+
+    assert_eq!(
+        acp_invocation("grok"),
+        Some(vec![
+            "grok".to_string(),
+            "agent".to_string(),
+            "stdio".to_string()
+        ])
+    );
+    assert_eq!(acp_invocation("grok-build"), acp_invocation("grok"));
+
+    let without = agent_catalog(&config, &[tool("devin", true)]);
+    assert!(resolve_agent(&without, "grok").is_err());
+    assert!(resolve_agent(&without, "grok-build").is_err());
+
+    let with = agent_catalog(&config, &[tool("devin", true), tool("grok", true)]);
+    let argv = vec!["grok".to_string(), "agent".to_string(), "stdio".to_string()];
+    assert_eq!(resolve_agent(&with, "grok").unwrap().argv, argv);
+    assert_eq!(resolve_agent(&with, "grok-build").unwrap().argv, argv);
+}
+
 /// A declared command is still a command this machine runs, so it is held to
 /// the same metacharacter rule as every other one.
 #[test]

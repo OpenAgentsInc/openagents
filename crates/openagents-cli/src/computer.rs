@@ -1337,15 +1337,17 @@ pub const MAXIMUM_SESSION_ID_LENGTH: usize = 128;
 /// How a known coding agent is put into ACP mode.
 ///
 /// The first argv element is the binary that must be on PATH. For Devin,
-/// OpenCode, and Gemini that is the coding-agent CLI. For Claude it is the
-/// `claude-agent-acp` adapter, not `claude` itself — presence of the CLI is
-/// not enough to speak ACP, and this build does not `npx -y` the adapter.
+/// OpenCode, Gemini, and Grok that is the coding-agent CLI. For Claude it is
+/// the `claude-agent-acp` adapter, not `claude` itself — presence of the CLI
+/// is not enough to speak ACP, and this build does not `npx -y` the adapter.
+/// Grok's mode is `agent stdio`, not a trailing `acp`.
 pub fn acp_invocation(agent_id: &str) -> Option<Vec<String>> {
     let argv: &[&str] = match agent_id {
         "devin" => &["devin", "acp"],
         "opencode" => &["opencode", "acp"],
         "gemini" => &["gemini", "--experimental-acp"],
         "claude" => &["claude-agent-acp"],
+        "grok" | "grok-build" => &["grok", "agent", "stdio"],
         _ => return None,
     };
     Some(argv.iter().map(|part| part.to_string()).collect())
@@ -1360,6 +1362,7 @@ pub fn acp_probe_name(agent_id: &str) -> Option<&'static str> {
         "opencode" => Some("opencode"),
         "gemini" => Some("gemini"),
         "claude" => Some("claude-agent-acp"),
+        "grok" | "grok-build" => Some("grok"),
         _ => None,
     }
 }
@@ -1386,7 +1389,14 @@ pub fn agent_catalog(config: &PolicyConfig, installed: &[ToolReport]) -> Vec<Res
     let mut catalog: Vec<ResolvedAgent> = Vec::new();
     // Offer by agent id, not by coding-agent CLI name. Claude's CLI being
     // present must not list `claude` under ACP; only a runnable adapter does.
-    for id in ["claude", "devin", "gemini", "opencode"] {
+    for id in [
+        "claude",
+        "devin",
+        "gemini",
+        "grok",
+        "grok-build",
+        "opencode",
+    ] {
         let Some(required) = acp_probe_name(id) else {
             continue;
         };
@@ -1988,11 +1998,12 @@ pub struct ProbeReport {
     pub acp_agents: Vec<AcpAgentReport>,
 }
 
-pub const CODING_AGENT_CATALOG: [(&str, &str); 11] = [
+pub const CODING_AGENT_CATALOG: [(&str, &str); 12] = [
     ("claude", "--version"),
     ("codex", "--version"),
     ("devin", "--version"),
     ("gemini", "--version"),
+    ("grok", "version"),
     ("cursor-agent", "--version"),
     ("aider", "--version"),
     ("goose", "--version"),
@@ -4427,8 +4438,19 @@ mod tests {
             Some(vec!["gemini".to_string(), "--experimental-acp".to_string()])
         );
         assert_eq!(acp_invocation("aider"), None);
+        assert_eq!(
+            acp_invocation("grok"),
+            Some(vec![
+                "grok".to_string(),
+                "agent".to_string(),
+                "stdio".to_string()
+            ])
+        );
+        assert_eq!(acp_invocation("grok-build"), acp_invocation("grok"));
         assert_eq!(acp_probe_name("claude"), Some("claude-agent-acp"));
         assert_eq!(acp_probe_name("devin"), Some("devin"));
+        assert_eq!(acp_probe_name("grok"), Some("grok"));
+        assert_eq!(acp_probe_name("grok-build"), Some("grok"));
     }
 
     fn tool(name: &str, present: bool, version: &str) -> ToolReport {
@@ -4457,5 +4479,47 @@ mod tests {
         assert_eq!(claude.source, "local");
         let devin = reports.iter().find(|entry| entry.id == "devin").unwrap();
         assert_eq!(devin.version, "devin 2.0");
+    }
+
+    #[test]
+    fn grok_and_grok_build_are_offered_when_grok_is_installed() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = PolicyConfig::closed(ComputerPaths::in_directory(directory.path()));
+        let without = agent_catalog(&config, &[tool("devin", true, "devin 2.0")]);
+        assert!(without.iter().all(|entry| entry.id != "grok"));
+        assert!(without.iter().all(|entry| entry.id != "grok-build"));
+
+        let with = agent_catalog(
+            &config,
+            &[
+                tool("devin", true, "devin 2.0"),
+                tool("grok", true, "grok 0.2.101"),
+            ],
+        );
+        let grok = with.iter().find(|entry| entry.id == "grok").unwrap();
+        let aliased = with.iter().find(|entry| entry.id == "grok-build").unwrap();
+        assert_eq!(
+            grok.argv,
+            vec!["grok".to_string(), "agent".to_string(), "stdio".to_string()]
+        );
+        assert_eq!(aliased.argv, grok.argv);
+        assert_eq!(grok.source, "local");
+        let reports = acp_agent_reports(
+            &config,
+            &[
+                tool("devin", true, "devin 2.0"),
+                tool("grok", true, "grok 0.2.101"),
+            ],
+        );
+        let grok_report = reports.iter().find(|entry| entry.id == "grok").unwrap();
+        assert_eq!(grok_report.version, "grok 0.2.101");
+        assert_eq!(
+            reports
+                .iter()
+                .find(|entry| entry.id == "grok-build")
+                .unwrap()
+                .version,
+            "grok 0.2.101"
+        );
     }
 }

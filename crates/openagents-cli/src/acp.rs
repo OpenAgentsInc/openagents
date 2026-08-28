@@ -272,7 +272,43 @@ impl std::fmt::Display for AcpFailure {
     }
 }
 
+/// Insert `--always-approve` after `agent` and before `stdio`.
+///
+/// Grok takes agent flags between those two tokens. A trailing `--always-approve`
+/// is a stdio-mode flag it does not read. Idempotent if the flag or `--yolo`
+/// is already present.
+pub fn with_always_approve_before_stdio(args: &[String]) -> Vec<String> {
+    if args
+        .iter()
+        .any(|arg| arg == "--always-approve" || arg == "--yolo")
+    {
+        return args.to_vec();
+    }
+    let Some(stdio_at) = args.iter().position(|arg| arg == "stdio") else {
+        return args.to_vec();
+    };
+    let Some(agent_at) = args[..stdio_at].iter().rposition(|arg| arg == "agent") else {
+        return args.to_vec();
+    };
+    let mut out = args.to_vec();
+    out.insert(agent_at + 1, "--always-approve".to_string());
+    out
+}
+
+fn grok_stdio_argv(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "agent") && args.iter().any(|arg| arg == "stdio")
+}
+
 impl AcpHarness {
+    fn spawn_args(&self) -> Vec<String> {
+        let unattended = matches!(self.mode, None | Some(PermissionMode::Dangerous));
+        if unattended && grok_stdio_argv(&self.args) {
+            with_always_approve_before_stdio(&self.args)
+        } else {
+            self.args.clone()
+        }
+    }
+
     /// Agent id used for `session/set_mode`. An explicit catalog id wins;
     /// otherwise the Claude adapter binary is recognised from the command.
     fn mode_agent_id(&self) -> &str {
@@ -327,7 +363,7 @@ impl AcpHarness {
     {
         let mut command = Command::new(&self.command);
         command
-            .args(&self.args)
+            .args(&self.spawn_args())
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -899,5 +935,69 @@ mod tests {
             ..AcpHarness::default()
         };
         assert_eq!(named.mode_agent_id(), "claude");
+    }
+
+    #[test]
+    fn always_approve_sits_between_agent_and_stdio() {
+        assert_eq!(
+            with_always_approve_before_stdio(&["agent".to_string(), "stdio".to_string()]),
+            vec![
+                "agent".to_string(),
+                "--always-approve".to_string(),
+                "stdio".to_string()
+            ]
+        );
+        assert_eq!(
+            with_always_approve_before_stdio(&[
+                "-y".to_string(),
+                "@xai-official/grok@1.0.10".to_string(),
+                "agent".to_string(),
+                "stdio".to_string()
+            ]),
+            vec![
+                "-y".to_string(),
+                "@xai-official/grok@1.0.10".to_string(),
+                "agent".to_string(),
+                "--always-approve".to_string(),
+                "stdio".to_string()
+            ]
+        );
+        let already = vec![
+            "agent".to_string(),
+            "--always-approve".to_string(),
+            "stdio".to_string(),
+        ];
+        assert_eq!(with_always_approve_before_stdio(&already), already);
+        assert_eq!(
+            with_always_approve_before_stdio(&["acp".to_string()]),
+            vec!["acp".to_string()]
+        );
+    }
+
+    #[test]
+    fn dangerous_grok_harness_inserts_always_approve() {
+        let harness = AcpHarness {
+            command: "grok".to_string(),
+            args: vec!["agent".to_string(), "stdio".to_string()],
+            agent_id: "grok".to_string(),
+            mode: Some(PermissionMode::Dangerous),
+            ..AcpHarness::default()
+        };
+        assert_eq!(
+            harness.spawn_args(),
+            vec![
+                "agent".to_string(),
+                "--always-approve".to_string(),
+                "stdio".to_string()
+            ]
+        );
+        let prompt = AcpHarness {
+            mode: Some(PermissionMode::Prompt),
+            ..harness.clone()
+        };
+        assert_eq!(
+            prompt.spawn_args(),
+            vec!["agent".to_string(), "stdio".to_string()]
+        );
     }
 }

@@ -66,17 +66,35 @@ pub async fn find_agents() -> Result<Vec<Agent>, Box<dyn std::error::Error>> {
 
         if is_available(&agent, &npm_root, &uv_tools).await {
             let (command, args) = launch_for(&agent);
-            found.push(Agent {
-                id: agent.id,
-                name: agent.name,
-                command,
-                args,
-            });
+            if is_grok_registry_id(&agent.id) {
+                push_grok_aliases(&mut found, agent.name.clone(), command, args);
+            } else {
+                found.push(Agent {
+                    id: agent.id,
+                    name: agent.name,
+                    command,
+                    args,
+                });
+            }
         }
     }
 
     found.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(found)
+}
+
+fn push_grok_aliases(found: &mut Vec<Agent>, name: String, command: String, args: Vec<String>) {
+    for id in ["grok", "grok-build"] {
+        if found.iter().any(|agent| agent.id == id) {
+            continue;
+        }
+        found.push(Agent {
+            id: id.to_string(),
+            name: name.clone(),
+            command: command.clone(),
+            args: args.clone(),
+        });
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,6 +144,11 @@ async fn is_available(
         return false;
     };
 
+    // Grok is the `grok` binary, not the registry id and not an npx fallback.
+    if is_grok_registry_id(&agent.id) {
+        return has_command("grok").await;
+    }
+
     // Binary distribution for this platform.
     if let Some(binary) = &dist.binary {
         let platform = current_platform();
@@ -140,7 +163,7 @@ async fn is_available(
         }
     }
 
-    // An executable named exactly like the agent id (e.g., `grok-build`).
+    // An executable named exactly like the agent id (e.g. `devin`).
     if has_command(&agent.id).await {
         return true;
     }
@@ -162,7 +185,33 @@ async fn is_available(
     false
 }
 
+fn is_grok_registry_id(id: &str) -> bool {
+    id == "grok-build" || id == "grok"
+}
+
+/// Grok's ACP server is `grok agent stdio`. A trailing `acp` is a different
+/// product's mode token and takes Grok out of the protocol.
+pub fn grok_stdio_args() -> Vec<String> {
+    vec!["agent".to_string(), "stdio".to_string()]
+}
+
+fn already_in_acp_mode(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg == "acp" || arg == "stdio" || arg == "--experimental-acp")
+}
+
+fn ensure_acp_mode(mut args: Vec<String>) -> Vec<String> {
+    if !already_in_acp_mode(&args) {
+        args.push("acp".to_string());
+    }
+    args
+}
+
 fn launch_for(agent: &RegistryAgent) -> (String, Vec<String>) {
+    if is_grok_registry_id(&agent.id) {
+        return ("grok".to_string(), grok_stdio_args());
+    }
+
     let Some(dist) = &agent.distribution else {
         return (agent.id.clone(), Vec::new());
     };
@@ -175,11 +224,7 @@ fn launch_for(agent: &RegistryAgent) -> (String, Vec<String>) {
                 .and_then(|s| s.to_str())
                 .unwrap_or(&target.cmd)
                 .to_string();
-            let mut args = target.args.clone().unwrap_or_default();
-            // ACP mode is the agent's streaming protocol.
-            if !args.iter().any(|a| a == "acp") {
-                args.push("acp".to_string());
-            }
+            let args = ensure_acp_mode(target.args.clone().unwrap_or_default());
             return (name, args);
         }
     }
@@ -189,10 +234,7 @@ fn launch_for(agent: &RegistryAgent) -> (String, Vec<String>) {
         if let Some(extra) = &npx.args {
             args.extend(extra.iter().cloned());
         }
-        if !args.iter().any(|a| a == "acp") {
-            args.push("acp".to_string());
-        }
-        return ("npx".to_string(), args);
+        return ("npx".to_string(), ensure_acp_mode(args));
     }
 
     if let Some(uvx) = &dist.uvx {
@@ -200,10 +242,7 @@ fn launch_for(agent: &RegistryAgent) -> (String, Vec<String>) {
         if let Some(extra) = &uvx.args {
             args.extend(extra.iter().cloned());
         }
-        if !args.iter().any(|a| a == "acp") {
-            args.push("acp".to_string());
-        }
-        return ("uvx".to_string(), args);
+        return ("uvx".to_string(), ensure_acp_mode(args));
     }
 
     (agent.id.clone(), Vec::new())
@@ -315,6 +354,104 @@ mod tests {
         // The call must simply return Ok and not panic on missing registry or which.
         for agent in &agents {
             assert!(!agent.id.is_empty());
+        }
+    }
+
+    fn registry(id: &str, npx_package: &str, npx_args: &[&str]) -> RegistryAgent {
+        RegistryAgent {
+            id: id.to_string(),
+            name: id.to_string(),
+            version: "1.0.0".to_string(),
+            distribution: Some(Distribution {
+                binary: None,
+                npx: Some(NpxUvx {
+                    package: npx_package.to_string(),
+                    args: Some(npx_args.iter().map(|s| s.to_string()).collect()),
+                }),
+                uvx: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn grok_build_registry_launch_is_grok_agent_stdio() {
+        let agent = registry(
+            "grok-build",
+            "@xai-official/grok@1.0.10",
+            &["agent", "stdio"],
+        );
+        let (command, args) = launch_for(&agent);
+        assert_eq!(command, "grok");
+        assert_eq!(args, grok_stdio_args());
+        assert!(!args.iter().any(|arg| arg == "acp"));
+    }
+
+    #[test]
+    fn grok_registry_id_also_pins_stdio() {
+        let agent = registry("grok", "@xai-official/grok@1.0.10", &["agent", "stdio"]);
+        let (command, args) = launch_for(&agent);
+        assert_eq!(command, "grok");
+        assert_eq!(args, vec!["agent".to_string(), "stdio".to_string()]);
+    }
+
+    #[test]
+    fn launch_for_does_not_append_acp_when_stdio_is_already_present() {
+        let agent = registry("other", "@example/other", &["agent", "stdio"]);
+        let (_command, args) = launch_for(&agent);
+        assert_eq!(
+            args,
+            vec![
+                "-y".to_string(),
+                "@example/other".to_string(),
+                "agent".to_string(),
+                "stdio".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn launch_for_still_appends_acp_for_devin_shaped_npx() {
+        let agent = registry("devin", "@cognition/devin", &[]);
+        let (_command, args) = launch_for(&agent);
+        assert_eq!(
+            args,
+            vec![
+                "-y".to_string(),
+                "@cognition/devin".to_string(),
+                "acp".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn launch_for_keeps_experimental_acp() {
+        let agent = registry("gemini", "@google/gemini", &["--experimental-acp"]);
+        let (_command, args) = launch_for(&agent);
+        assert_eq!(
+            args,
+            vec![
+                "-y".to_string(),
+                "@google/gemini".to_string(),
+                "--experimental-acp".to_string()
+            ]
+        );
+        assert!(!args.iter().any(|arg| arg == "acp"));
+    }
+
+    #[test]
+    fn grok_aliases_are_both_offered() {
+        let mut found = Vec::new();
+        push_grok_aliases(
+            &mut found,
+            "Grok Build".to_string(),
+            "grok".to_string(),
+            grok_stdio_args(),
+        );
+        let ids: Vec<&str> = found.iter().map(|agent| agent.id.as_str()).collect();
+        assert_eq!(ids, vec!["grok", "grok-build"]);
+        for agent in &found {
+            assert_eq!(agent.command, "grok");
+            assert_eq!(agent.args, grok_stdio_args());
         }
     }
 }
