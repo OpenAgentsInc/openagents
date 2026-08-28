@@ -82,6 +82,11 @@ fn startup_facts_are_centered_outside_the_transcript() {
         text.contains("ATIF export keeps subagent streams"),
         "{text}"
     );
+    assert!(text.contains("ATIF export keeps the swarm inbox"), "{text}");
+    assert!(
+        text.contains("Flash routes simple requests to Gemini 3.7 Flash"),
+        "{text}"
+    );
 
     let row_at = |y: u16| {
         (0..buffer.area.width)
@@ -134,7 +139,7 @@ fn startup_facts_are_centered_outside_the_transcript() {
         "changelog box should wrap its lines, not match the facts box: news={news_box_width} facts={facts_box_width}\n{news_title:?}\n{facts_title:?}"
     );
 
-    let longest = "ATIF export keeps subagent streams";
+    let longest = "Flash routes simple requests to Gemini 3.7 Flash";
     assert_eq!(
         news_box_width,
         longest.len() + 4,

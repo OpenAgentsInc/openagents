@@ -30,7 +30,7 @@ const TOOL_SETTLE_FRAMES: u64 = 10;
 /// into one `+N earlier` counter, counted rather than stored as text.
 pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
-/// Idle "New in v0.1.1" card. Five lines is the ceiling so the pair of
+/// Idle "New in v0.1.1" card. Seven lines is the ceiling so the pair of
 /// boxes still fits an ordinary terminal.
 const WELCOME_WHAT_IS_NEW: &[&str] = &[
     "Improved subagent delegation",
@@ -38,6 +38,8 @@ const WELCOME_WHAT_IS_NEW: &[&str] = &[
     "Grok is a first-class delegate",
     "Timing on each message",
     "ATIF export keeps subagent streams",
+    "ATIF export keeps the swarm inbox",
+    "Flash routes simple requests to Gemini 3.7 Flash",
 ];
 
 /// Who this session is signed in as.

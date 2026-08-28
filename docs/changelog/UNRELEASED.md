@@ -5,6 +5,18 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder idle card names swarm inbox and Flash routing
+
+- issues: none (direct owner request)
+- commits: this change
+- contracts-specs: Coder idle welcome chrome
+- invariants: the changelog card stays wrap-width and centered; ATIF `extra.swarm` is named on the idle card
+- evidence: `crates/openagents-cli/tests/coder_frame.rs` startup-facts frame test
+- lane: grok v0.1.1-stable
+
+The idle "New in v0.1.1" card now also says ATIF export keeps the swarm inbox
+and Flash routes simple requests to Gemini 3.7 Flash.
+
 ## Coder idle changelog card wraps its lines
 
 - issues: none (direct owner request)
