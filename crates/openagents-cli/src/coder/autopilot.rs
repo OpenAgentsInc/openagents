@@ -41,6 +41,13 @@ pub struct AutopilotState {
     pub directive: Option<String>,
     /// The iteration discipline: failure accounting, skips, claims seen.
     pub discipline: IterationDiscipline,
+    /// The budget and stop conditions (§7). Default-armed: one hour of wall
+    /// clock, the token ledger as primary signal, visibility-loss and
+    /// forge-unreachable counters at zero.
+    pub stops: StopConditions,
+    /// The stop word, when armed. `None` means only interactive Meta+A can
+    /// stop the mode.
+    pub stop_word: Option<StopWord>,
 }
 
 /// What the reader asked for on an `/autopilot` line.
@@ -59,7 +66,9 @@ pub enum AutopilotCommand {
 ///
 /// `off` is a named state, not a directive, because a directive that spelled
 /// the word "off" would be ambiguous with the one word that must never steer
-/// work. Everything after the command name is the directive, verbatim.
+/// work. A `--stop-word <token>` prefix arms the stop word at engage time
+/// (spec §7) and is stripped from the directive; the rest is the directive,
+/// verbatim.
 pub fn parse_command(input: &str) -> Option<AutopilotCommand> {
     let trimmed = input.trim();
     let body = trimmed.strip_prefix('/')?;
@@ -78,6 +87,33 @@ pub fn parse_command(input: &str) -> Option<AutopilotCommand> {
             directive: body["autopilot".len()..].trim().to_string(),
         }),
     }
+}
+
+/// Split an engage directive into its stop-word arm and the remaining pick
+/// filter. `--stop-word <token>` at the front of the directive arms the
+/// token; everything after it is the directive. Returns the unchanged
+/// directive when the prefix is absent. The word `off` as the first bare
+/// token was already handled by [`parse_command`] and never reaches here.
+pub fn split_stop_word(directive: &str) -> (Option<String>, &str) {
+    let trimmed = directive.trim();
+    let Some(rest) = trimmed.strip_prefix("--stop-word") else {
+        return (None, trimmed);
+    };
+    let rest = rest.trim_start();
+    let Some((token, remainder)) = rest.split_once(char::is_whitespace) else {
+        // `--stop-word <token>` with nothing after it: the token arms the
+        // mechanism and the directive is empty — the loop picks unfiltered.
+        let token = rest.trim();
+        if token.is_empty() {
+            return (None, trimmed);
+        }
+        return (Some(token.to_string()), "");
+    };
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return (None, trimmed);
+    }
+    (Some(token), remainder.trim())
 }
 
 impl AutopilotState {
@@ -134,6 +170,218 @@ impl AutopilotState {
         } else {
             String::new()
         }
+    }
+}
+
+/// The budget and stop conditions for one engaged autopilot run (spec §7,
+/// series slice 3).
+///
+/// An autopilot that cannot stop is a liability, not an autopilot. Every
+/// condition here stops the mode **on the iteration boundary** — never
+/// mid-unit, never mid-verify — and a stop is a report, not a halt: the mode
+/// hands the wheel back and waits like a normal session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StopConditions {
+    /// The engage-time wall-clock budget, in seconds. The default is one
+    /// hour; an unset budget is not an option (spec §7 — `None` is refused
+    /// by [`Self::new`], which clamps to the default instead).
+    pub wall_clock_seconds: u64,
+    /// Seconds the engaged loop has already spent on iterations.
+    pub elapsed_seconds: u64,
+    /// Consecutive swarm send failures (heartbeats, claim broadcasts). The
+    /// visibility mechanism failing silently is the #306 shape; when it
+    /// fails this many times in a row, the mode stops rather than run
+    /// unseen.
+    pub heartbeat_failures: u32,
+    /// Consecutive forge ledger failures (an issue read or write that
+    /// erred). While the evidence system is dark, a landing cannot satisfy
+    /// §6, so the mode must not keep landing.
+    pub forge_failures: u32,
+}
+
+/// Default wall-clock budget: one hour. The goal's own token budget, when
+/// one exists, is checked independently and whichever runs out first stops
+/// the mode.
+pub const DEFAULT_WALL_CLOCK_SECONDS: u64 = 60 * 60;
+
+/// Consecutive heartbeat failures after which the mode stops. Three: one is
+/// a hiccup, two is suspicious, three means nobody can see this loop.
+pub const MAX_HEARTBEAT_FAILURES: u32 = 3;
+
+/// Consecutive forge failures after which the mode stops. Three: fewer
+/// would stop on a single hiccup while the forge retries.
+pub const MAX_FORGE_FAILURES: u32 = 3;
+
+/// Why the mode stopped. The stop report (§7) names the reason in the
+/// transcript, so the returning reader knows which condition fired without
+/// reconstructing it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StopReason {
+    /// The wall-clock budget ran out, or the goal's token budget did.
+    BudgetExhausted,
+    /// Every remaining open issue needs credentials, boots, or spend.
+    OwnerGatedWall,
+    /// The same unit failed verification [`MAX_UNIT_VERIFY_FAILURES`] times.
+    /// (Recorded by [`IterationDiscipline`]; carried here so the stop report
+    /// can name it.)
+    RepeatFailure { unit: String },
+    /// Swarm sends failed this many times consecutively — the loop went
+    /// unseen, so it stopped.
+    VisibilityLost,
+    /// The forge ledger failed this many times consecutively — landings
+    /// cannot be evidenced, so the mode stopped.
+    ForgeUnreachable,
+    /// The configured stop word was sighted in inbound swarm mail, on either
+    /// delivery path (injected-at-boundary or returned-by-drain).
+    StopWord,
+    /// The reader pressed Meta+A or ran `/autopilot off`. Listed for the
+    /// stop report's completeness; an interactive disengage is the reader
+    /// taking the wheel, not a condition the loop discovered.
+    ReaderDisengage,
+}
+
+impl StopReason {
+    /// The one-line transcript text of the stop report (spec §7: a stop is
+    /// a report, not a halt).
+    pub fn line(&self) -> String {
+        match self {
+            StopReason::BudgetExhausted => {
+                "[autopilot] stopped: budget exhausted — the ledger above is current, the \
+                 session waits for you."
+                    .to_string()
+            }
+            StopReason::OwnerGatedWall => {
+                "[autopilot] stopped: every remaining open issue is owner-gated \
+                 (credentials, boots, or spend). Asks go to the workspace-root \
+                 NEEDS_OWNER.md."
+                    .to_string()
+            }
+            StopReason::RepeatFailure { unit } => format!(
+                "[autopilot] stopped: unit {unit} failed verification the maximum \
+                 number of times and was skipped."
+            ),
+            StopReason::VisibilityLost => {
+                "[autopilot] stopped: swarm sends failed repeatedly — the loop went \
+                 unseen, so it stopped rather than run silent."
+                    .to_string()
+            }
+            StopReason::ForgeUnreachable => {
+                "[autopilot] stopped: the forge ledger is unreachable — landings \
+                 cannot be evidenced while the evidence system is dark."
+                    .to_string()
+            }
+            StopReason::StopWord => {
+                "[autopilot] stopped: the stop word was sighted in inbound swarm mail.".to_string()
+            }
+            StopReason::ReaderDisengage => {
+                "[autopilot] stopped: disengaged by the reader.".to_string()
+            }
+        }
+    }
+}
+
+impl Default for StopConditions {
+    fn default() -> Self {
+        Self::new(DEFAULT_WALL_CLOCK_SECONDS)
+    }
+}
+
+impl StopConditions {
+    /// A fresh condition set with the given wall-clock budget. Zero is
+    /// clamped to the default: a mode that stops immediately is not a mode,
+    /// and "no budget" is not an option (spec §7).
+    pub fn new(wall_clock_seconds: u64) -> Self {
+        Self {
+            wall_clock_seconds: if wall_clock_seconds == 0 {
+                DEFAULT_WALL_CLOCK_SECONDS
+            } else {
+                wall_clock_seconds
+            },
+            elapsed_seconds: 0,
+            heartbeat_failures: 0,
+            forge_failures: 0,
+        }
+    }
+
+    /// Whether any boundary condition has fired. Checked before next-unit
+    /// selection, never mid-unit. `goal_budget_exhausted` carries the goal
+    /// ledger's answer: the token ledger is the **primary** budget signal
+    /// and wall clock secondary, because the lane cycles freely under the
+    /// mode and an hour on Pro is different work from an hour on Flash.
+    pub fn should_stop(&self, goal_budget_exhausted: bool) -> Option<StopReason> {
+        if goal_budget_exhausted {
+            return Some(StopReason::BudgetExhausted);
+        }
+        if self.elapsed_seconds >= self.wall_clock_seconds {
+            return Some(StopReason::BudgetExhausted);
+        }
+        if self.heartbeat_failures >= MAX_HEARTBEAT_FAILURES {
+            return Some(StopReason::VisibilityLost);
+        }
+        if self.forge_failures >= MAX_FORGE_FAILURES {
+            return Some(StopReason::ForgeUnreachable);
+        }
+        None
+    }
+
+    /// Record one iteration's wall-clock cost.
+    pub fn record_elapsed(&mut self, seconds: u64) {
+        self.elapsed_seconds = self.elapsed_seconds.saturating_add(seconds);
+    }
+
+    /// Record one swarm send outcome; a success resets the consecutive
+    /// count, matching the doctrine's consecutive-failure shape.
+    pub fn record_heartbeat(&mut self, delivered: bool) {
+        if delivered {
+            self.heartbeat_failures = 0;
+        } else {
+            self.heartbeat_failures = self.heartbeat_failures.saturating_add(1);
+        }
+    }
+
+    /// Record one forge ledger outcome; a success resets the count.
+    pub fn record_forge(&mut self, succeeded: bool) {
+        if succeeded {
+            self.forge_failures = 0;
+        } else {
+            self.forge_failures = self.forge_failures.saturating_add(1);
+        }
+    }
+}
+
+/// The stop word: the token that ends the mode from the network (spec §7).
+///
+/// The mechanism is a token carried by a swarm message, not a sender
+/// register — sessions carry no identity metadata, so "a message from the
+/// owner's session" is not checkable today; "a message carrying this token"
+/// is. Sighting the token on **either** delivery path ends the mode: the
+/// injected-and-stamped mail at the boundary, or the fallback drain's
+/// return. The mode never relies on one path alone to see its own off
+/// switch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StopWord {
+    pub token: String,
+}
+
+impl StopWord {
+    /// A stop word from the engage flag or config. An empty token disables
+    /// the mechanism: with no token, only interactive Meta+A can stop the
+    /// mode, and the welcome card says so.
+    pub fn new(token: impl Into<String>) -> Self {
+        Self {
+            token: token.into().trim().to_string(),
+        }
+    }
+
+    /// Whether the mechanism is armed.
+    pub fn armed(&self) -> bool {
+        !self.token.is_empty()
+    }
+
+    /// Whether inbound mail (one message body, or a whole drained batch)
+    /// sights the token.
+    pub fn sighted_in(&self, mail: &str) -> bool {
+        self.armed() && mail.contains(&self.token)
     }
 }
 
@@ -326,6 +574,8 @@ mod tests {
             engaged: true,
             directive: Some("work the P0 column".to_string()),
             discipline: IterationDiscipline::default(),
+            stops: StopConditions::default(),
+            stop_word: None,
         };
         let prompt = state.iteration_prompt();
         assert!(prompt.contains("[autopilot]"));
@@ -341,6 +591,8 @@ mod tests {
             engaged: true,
             directive: None,
             discipline: IterationDiscipline::default(),
+            stops: StopConditions::default(),
+            stop_word: None,
         };
         let prompt = state.iteration_prompt();
         assert!(prompt.contains("[autopilot]"));
@@ -357,6 +609,8 @@ mod tests {
             engaged: true,
             directive: None,
             discipline: IterationDiscipline::default(),
+            stops: StopConditions::default(),
+            stop_word: None,
         };
         assert!(on.card_line().contains("autopilot ENGAGED"));
         assert_eq!(on.status_cell(), "AUTOPILOT");
@@ -484,5 +738,125 @@ mod tests {
         assert_eq!(taken, Some("310"));
         assert!(d.foreign_claims.contains("308"));
         assert_eq!(d.skipped, vec!["309".to_string()]);
+    }
+
+    // ───────────────────────────────────── budget and stop conditions
+
+    #[test]
+    fn the_default_budget_exists_and_zero_clamps_to_it() {
+        let default = StopConditions::default();
+        assert_eq!(default.wall_clock_seconds, DEFAULT_WALL_CLOCK_SECONDS);
+        // "No budget" is not an option: a zero engage-time budget clamps to
+        // the default rather than producing a mode that stops immediately.
+        assert_eq!(
+            StopConditions::new(0).wall_clock_seconds,
+            DEFAULT_WALL_CLOCK_SECONDS
+        );
+        assert_eq!(StopConditions::new(120).wall_clock_seconds, 120);
+    }
+
+    #[test]
+    fn wall_clock_is_secondary_to_the_token_ledger() {
+        // The goal ledger's answer wins: an exhausted token budget stops the
+        // mode even with wall clock left, and wall clock alone never stops a
+        // mode the ledger still funds.
+        let mut conditions = StopConditions::new(1_000);
+        assert!(
+            conditions
+                .should_stop(true)
+                .is_some_and(|reason| { reason == StopReason::BudgetExhausted })
+        );
+        conditions.record_elapsed(500);
+        assert!(conditions.should_stop(false).is_none());
+        conditions.record_elapsed(500);
+        assert_eq!(
+            conditions.should_stop(false),
+            Some(StopReason::BudgetExhausted)
+        );
+    }
+
+    #[test]
+    fn consecutive_failures_stop_the_mode_and_successes_reset() {
+        let mut conditions = StopConditions::new(1_000);
+        conditions.record_heartbeat(false);
+        conditions.record_heartbeat(false);
+        assert!(conditions.should_stop(false).is_none());
+        conditions.record_heartbeat(false);
+        assert_eq!(
+            conditions.should_stop(false),
+            Some(StopReason::VisibilityLost)
+        );
+        // A success resets the consecutive count: recovery is possible.
+        conditions.record_heartbeat(true);
+        assert!(conditions.should_stop(false).is_none());
+
+        let mut forge = StopConditions::new(1_000);
+        for _ in 0..(MAX_FORGE_FAILURES - 1) {
+            forge.record_forge(false);
+        }
+        assert!(forge.should_stop(false).is_none());
+        forge.record_forge(false);
+        assert_eq!(forge.should_stop(false), Some(StopReason::ForgeUnreachable));
+        forge.record_forge(true);
+        assert!(forge.should_stop(false).is_none());
+    }
+
+    #[test]
+    fn the_stop_word_sights_on_either_path_and_disarms_cleanly() {
+        let word = StopWord::new("flywheel-home");
+        assert!(word.armed());
+        // Injected-and-stamped mail and a drained batch are the same check:
+        // the token either appears or it does not.
+        assert!(word.sighted_in("status from a sibling: flywheel-home please"));
+        assert!(word.sighted_in("batch: flywheel-home"));
+        assert!(!word.sighted_in("nothing here"));
+
+        // An empty token disarms the mechanism: only Meta+A stops the mode,
+        // and the welcome card says so.
+        let disarmed = StopWord::new("   ");
+        assert!(!disarmed.armed());
+        assert!(!disarmed.sighted_in("flywheel-home"));
+    }
+
+    #[test]
+    fn stop_lines_say_what_fired() {
+        assert!(
+            StopReason::BudgetExhausted
+                .line()
+                .contains("budget exhausted")
+        );
+        assert!(
+            StopReason::RepeatFailure {
+                unit: "309".to_string()
+            }
+            .line()
+            .contains("309")
+        );
+        assert!(StopReason::StopWord.line().contains("stop word"));
+        assert!(StopReason::VisibilityLost.line().contains("unseen"));
+        assert!(StopReason::ForgeUnreachable.line().contains("evidence"));
+        assert!(StopReason::OwnerGatedWall.line().contains("NEEDS_OWNER"));
+        assert!(StopReason::ReaderDisengage.line().contains("reader"));
+    }
+
+    #[test]
+    fn the_stop_word_prefix_splits_from_the_directive() {
+        assert_eq!(
+            split_stop_word("--stop-word flywheel-home work the P0 column"),
+            (Some("flywheel-home".to_string()), "work the P0 column")
+        );
+        // No prefix: the directive passes through whole.
+        assert_eq!(
+            split_stop_word("work the P0 column"),
+            (None, "work the P0 column")
+        );
+        // A token with nothing after it still arms — the directive is simply
+        // empty, meaning the loop picks without a filter.
+        assert_eq!(
+            split_stop_word("--stop-word flywheel-home"),
+            (Some("flywheel-home".to_string()), "")
+        );
+        // A bare `--stop-word` with no token does not arm half a mechanism.
+        assert_eq!(split_stop_word("--stop-word"), (None, "--stop-word"));
     }
 }

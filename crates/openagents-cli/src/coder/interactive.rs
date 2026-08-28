@@ -383,19 +383,46 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         // they were typed while the turn ran, and the loop
                         // works for the reader, not instead of them.
                         if autopilot.engaged && prompt_queue.is_empty() {
-                            let prompt = autopilot.iteration_prompt();
-                            start_prompt(
-                                &mut ui,
-                                prompt,
-                                Vec::new(),
-                                session.as_ref().expect("a turn ran, so a session exists"),
-                                &tx,
-                                &mut turns,
-                                &mut active_turn,
-                            )
-                            .await;
-                            update_activity(&mut ui, &turns, prompt_queue.len());
-                            continue;
+                            // The budget and stop conditions are checked
+                            // before next-unit selection, never mid-unit
+                            // (spec §7). The goal ledger is the primary
+                            // budget signal: `goal_budget_exhausted` is the
+                            // store's own BudgetLimited state, which the
+                            // turn just updated with its usage.
+                            let goal_budget_exhausted = session
+                                .as_ref()
+                                .and_then(|s| s.try_lock().ok())
+                                .and_then(|s| s.goal())
+                                .is_some_and(|goal| {
+                                    goal.status == crate::coder::goal::GoalStatus::BudgetLimited
+                                });
+                            match autopilot.stops.should_stop(goal_budget_exhausted) {
+                                Some(reason) => {
+                                    // A stop is a report, not a halt: the
+                                    // ledger state above is current, the
+                                    // mode hands the wheel back, and the
+                                    // session waits like a normal one.
+                                    autopilot.engaged = false;
+                                    autopilot.directive = None;
+                                    ui.autopilot_engaged = false;
+                                    ui.entries.push(Entry::new(Role::Notice, reason.line()));
+                                }
+                                None => {
+                                    let prompt = autopilot.iteration_prompt();
+                                    start_prompt(
+                                        &mut ui,
+                                        prompt,
+                                        Vec::new(),
+                                        session.as_ref().expect("a turn ran, so a session exists"),
+                                        &tx,
+                                        &mut turns,
+                                        &mut active_turn,
+                                    )
+                                    .await;
+                                    update_activity(&mut ui, &turns, prompt_queue.len());
+                                    continue;
+                                }
+                            }
                         }
                         start_next_prompt(
                             &mut ui,
@@ -1551,7 +1578,14 @@ async fn submit(
             }
             AutopilotCommand::Engage { directive } => {
                 autopilot.engaged = true;
-                autopilot.directive = Some(directive);
+                // A `--stop-word <token>` prefix arms the remote off switch
+                // at engage time (spec §7); the rest is the pick filter.
+                let (token, remaining) = crate::coder::autopilot::split_stop_word(&directive);
+                autopilot.stop_word = token.map(crate::coder::autopilot::StopWord::new);
+                autopilot.directive = (!remaining.is_empty()).then(|| remaining.to_string());
+                // Engaging re-arms the condition set: the budget the reader
+                // asked for starts now, not from some previous engage.
+                autopilot.stops = crate::coder::autopilot::StopConditions::default();
             }
         }
         ui.autopilot_engaged = autopilot.engaged;
