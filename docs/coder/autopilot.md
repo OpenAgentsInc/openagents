@@ -111,15 +111,28 @@ the AFK loop's §1, compressed for one session.
    (`openagents issue list`), the session's goal store if one is set
    (`coder/goal.rs`), and anything that arrived since the last boundary
    under the dual-path rule (§10: recorded injections, plus the fallback
-   drain). Reconcile in-flight work
-   first: anything uncommitted from the previous iteration gets verified,
-   committed, or rolled back before anything new starts.
-2. **Pick the next unit.** Highest-priority open issue whose acceptance the
-   session can actually verify, or the next project item if the forge is
-   clean. Skip anything owner-gated (credentials, spend, a live boot) and
-   record the skip. Never idle on a gated item while fannable work exists.
+   drain). Reconcile in-flight work first, and only this session's own
+   work: anything uncommitted from the previous iteration gets verified,
+   committed, or rolled back before anything new starts. Orphaned
+   worktrees from a dead predecessor (staleness confirmed via the swarm
+   session list) are reconciled the same way — explicitly, named in the
+   announce line, never silently rolled back. The shared checkout's
+   uncommitted state is **foreign WIP**: other live sessions share this
+   cwd, it is recorded as present and never touched, because an autopilot
+   that "cleans up" the shared tree destroys sibling work.
+2. **Claim, then pick the next unit.** Before selecting, check sibling
+   heartbeats (§5) for an open claim on the candidate issue — many
+   sessions, one forge: two pickers will grab the same issue, duplicate
+   the work, and race the close. On collision take the next candidate. A
+   claim is announced in the §4.3 line and as a swarm status, refreshed
+   each heartbeat. Then pick: highest-priority open issue whose acceptance
+   the session can actually verify, or the next project item if the forge
+   is clean. Skip anything owner-gated (credentials, spend, a live boot)
+   and record the skip. Never idle on a gated item while fannable work
+   exists.
 3. **Announce the unit.** One transcript line: what was picked, which issue
-   or item it advances, and what "done" will mean. This line is what makes
+   or item it advances, what "done" will mean, and the claim if one was
+   broadcast (§4.2). This line is what makes
    the owner's return skimmable (§11).
 4. **Do the work.** Normal tools, normal delegation rules, fresh worktree
    per unit per the runbook. Scope discipline: files the issue names, tests
@@ -140,9 +153,13 @@ The Coder binary already has `swarm_list` / `swarm_send` / `swarm_inbox`.
 Under Autopilot these stop being conversational and become operational:
 
 - **Heartbeats.** At every iteration boundary, a status message to the
-   swarm naming the unit just closed and the unit just picked. This is the
+   swarm naming the unit just closed and the unit just picked, and
+   refreshing any open claim (§4.2). This is the
    cheapest possible "still alive, still productive" signal, and it is what
    makes a stuck autopilot visible from outside its own process (§11).
+   A heartbeat send failure renders in the status line; N consecutive
+   failures is itself a stop condition (§7) — the visibility mechanism
+   failing silently is the #306 shape, and it must not fail silently.
 - **Broadcasts stay one per milestone.** A mode that broadcasts every
    iteration is spam; the budget rules for swarm sends stay as they are.
 - **No new lanes.** Autopilot may delegate to children exactly as a
@@ -176,7 +193,9 @@ any of these fires:
   (default: none is not an option; the default is one hour or the
   goal's budget, whichever is shorter). The budget-report ending the turn
   already exists on every lane; autopilot checks it before selecting the
-  next unit.
+  next unit. The **goal-store token ledger is the primary signal**, wall
+  clock secondary: the lane cycles freely under autopilot, and an hour on
+  Pro is different work from an hour on Flash.
 - **Owner-gated wall.** Every remaining open issue needs credentials, live
   boots, or spend the mode cannot authorize. The `NEEDS_OWNER.md` rule
   applies unchanged: asks go to the workspace root file the owner actually
@@ -184,16 +203,31 @@ any of these fires:
 - **Repeated failure.** The same unit failing verification twice is
   recorded and skipped, not retried a third time. Failure loops are the
   AFK failure mode with the worst cost shape.
-- **A stop word from the network.** A stop word is a swarm message from the
-  owner's session; it ends the mode at the next boundary (§10). The rule is
-  dual-path by construction: owner mail is recognized on *either* delivery
+- **Visibility loss.** The swarm send budget exhausted, or N consecutive
+  heartbeat failures. A mode whose visibility mechanism has died is a
+  mode running silent — stop and report in the transcript, where the
+  owner will eventually look.
+- **Forge unreachable.** The ledger's reads or writes failing N times
+  consecutively. If the forge is down, landed work cannot satisfy §2 and
+  §6 — no commit-citing close is possible — so the mode must not keep
+  landing while its evidence system is dark.
+- **A stop word from the network.** A stop word is a token carried by a
+  swarm message; sighting it ends the mode at the next boundary (§10).
+  The token is named at engage time — `--stop-word <token>`, defaulting
+  to a value derived from the engaging directive — or pinned in config as
+  `autopilot_stop_word`. Alternative mechanism: `--stop-word-from
+  <session-id>`, pre-filled from the swarm session list. Either is
+  honest; both beat an owner-identity register that sessions cannot back
+  today (ids are opaque, no identity metadata exists). Detection is
+  announced in the transcript.
+  The rule is
+  dual-path by construction: the stop word is recognized on *either*
+  delivery
   path — injected-and-stamped at the boundary, or returned by the fallback
   drain — and either sighting ends the mode. The mode never relies on the
   drain alone to see its own off switch.
-  **Owner identity** is a config-pinned session id (a new
-  `autopilot_owner_session` key, set once by the owner; sessions carry no
-  identity metadata today, so the register cannot be inferred). Unset
-  register: only interactive Meta+A can stop the mode, and the welcome card
+  Unset mechanism: only interactive Meta+A can stop the mode, and the
+  welcome card
   says so. Anyone standing in front of the terminal hits Meta+A; the point
   of the stop word is that nobody is standing there.
 
@@ -211,6 +245,11 @@ session. It does not kill the process; it hands back the wheel.
 - While engaged, every iteration boundary renders the same three lines:
   unit picked, oracle result, unit closed. No decorative progress bars; the
   transcript is the progress bar.
+- **`/autopilot status`** is the in-terminal return surface (§11): one
+  screen — units closed, oracle results, budget burned, next unit, last
+  heartbeat, mode state. It is what the owner's eyes land on first when
+  they walk back in; the three-line boundary stream scrolls away, and the
+  ledger requires leaving the terminal.
 - `/autopilot` with no argument toggles; with a directive, engages with
   that directive as the initial pick filter. `/autopilot off` disengages
   at the next boundary — never mid-unit, never mid-verify.
@@ -327,10 +366,16 @@ and nothing in this spec closes on headless narration.
 
 ## 14. Review record
 
-Reviewed by the swarm session `1a04a2afc3c` (full 289-line read) before the
-implementation issues were filed. Verdict: the load-bearing choices hold
-(mode-vs-lane orthogonality, ledger-first succession, stop-as-report);
-§10 and the §7 stop word were reworked on its finding that the
-prescribed drain is a no-op under current injection semantics, the stop
-word gained the `autopilot_owner_session` register, and the path pins were
-corrected (`runtime.rs` → `coder/runtime.rs`).
+Reviewed twice by the swarm session `1a04a2afc3c` (full 289-line read, then
+an eight-item second pass) before the implementation issues were filed.
+Verdict after the first pass: the load-bearing choices hold (mode-vs-lane
+orthogonality, ledger-first succession, stop-as-report); §10 and the §7
+stop word were reworked on its finding that the prescribed drain is a no-op
+under current injection semantics, and the path pins were corrected
+(`runtime.rs` → `coder/runtime.rs`). The second pass landed: shared-cwd
+reconciliation scoped to the session's own worktrees (§4.1), claim-before-
+pick with sibling heartbeats (§4.2), visibility-loss and forge-unreachable
+stop conditions (§7), the token-based stop word replacing the unbackable
+owner register (§7), heartbeat-failure surfacing (§5), the token ledger as
+primary budget signal (§7), `/autopilot status` (§8), and the orphaned-
+worktree succession rule (§4.1).
