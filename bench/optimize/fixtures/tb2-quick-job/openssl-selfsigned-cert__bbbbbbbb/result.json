@@ -1,0 +1,13 @@
+{
+  "trial_name": "openssl-selfsigned-cert__bbbbbbbb",
+  "task_name": "openssl-selfsigned-cert",
+  "agent_execution": {
+    "started_at": "2026-08-28T00:01:00Z",
+    "finished_at": "2026-08-28T00:02:30Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1
+    }
+  }
+}

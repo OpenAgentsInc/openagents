@@ -1,0 +1,10 @@
+# Offline GEPA lane over the Gym (OpenAgentsInc/openagents#123).
+# Install in a venv; do not pip-install onto the host globally.
+#
+#   python3 -m venv .venv-optimize
+#   .venv-optimize/bin/pip install -r bench/optimize/requirements.txt
+#   PYTHONPATH=bench .venv-optimize/bin/python -m optimize --help
+#
+# The fixture dry-run (--dry-run --max-metric-calls 1) uses the stdlib only
+# and does not need this file. gepa is required for --engine gepa.
+gepa>=0.1.4

@@ -1,0 +1,46 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "fixture-openssl",
+  "trajectory_id": "fixture-openssl",
+  "agent": {
+    "name": "openagents-coder",
+    "version": "0.4.0",
+    "model_name": "fixture"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-08-28T00:01:00Z",
+      "source": "user",
+      "message": "make a self-signed cert"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-08-28T00:01:40Z",
+      "source": "agent",
+      "message": "openssl req",
+      "model_name": "fixture",
+      "metrics": {
+        "prompt_tokens": 12000,
+        "completion_tokens": 400
+      },
+      "tool_calls": [
+        {
+          "tool_call_id": "c1",
+          "function_name": "shell",
+          "arguments": {
+            "command": "openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj /CN=test"
+          }
+        }
+      ]
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 12000,
+    "total_completion_tokens": 400,
+    "total_steps": 2
+  },
+  "extra": {
+    "exporter": "openagents.coder.atif_export.v1"
+  }
+}

@@ -117,10 +117,23 @@ One per cycle (best practice M1). Sources, in order of cost:
 4. **Structural gaps** (autoimprove §2.3: compaction, history, shell
    parsing) — only when cheaper levers have stopped paying, and with the
    designated suite oracle named before you start.
-5. **Optimizer candidates** (autoimprove §2.4), once the lane exists — a
-   GEPA candidate is a lever like any other and enters at §4 with its
+5. **Optimizer candidates** (`bench/optimize/`, OpenAgentsInc/openagents#123)
+   — a GEPA candidate is a lever like any other and enters at §4 with its
    evidence rows, transfer label, and stated acceptance floor. It does not
-   land on the optimizer's say-so (ledger O1).
+   land on the optimizer's say-so (ledger O1). Screen on `tb2-quick`. Do not
+   pass `tb2-cross-section` as the optimizer's valset (ledger O3).
+
+   ```sh
+   python3 -m venv .venv-optimize
+   .venv-optimize/bin/pip install -r bench/optimize/requirements.txt
+   PYTHONPATH=bench python3 -m optimize --dry-run --max-metric-calls 1 \
+     --output bench/optimize/output/dry
+   ```
+
+   `--dry-run` scores a fixture `result.json` (stdlib only; `gepa` is not
+   required). `--engine gepa --live` is the upstream search over Harbor and
+   is not this packet's evidence. Output stays under `--output`. Nothing
+   lands on `surfaces/coder`.
 
 Write down, before implementing: the lever, the suite that will measure it,
 and the delta direction that would confirm it. If you cannot name the
@@ -346,13 +359,19 @@ Two flags matter for the lanes below the live one:
   rule for every surface the gate does reach, and by that harness for the
   one it does not.
 - The automated review (autoimprove §7.5) exists as `pnpm run coder:review`
-  (#121). Its candidate schema, `openagents.coder_candidate.v1` in
-  `packages/coder-review/src/candidate.ts`, is the object
-  #122 staged surfaces for and #123's optimizer will mutate; a review
-  proposal and an optimizer mutation are the same type, documented in
-  `docs/coder/candidate-format.md`. No review has been recorded through it
-  yet, so `docs/coder/reviews/` holds only its README.
-- The optimizer lane (autoimprove §2.4) does not exist yet, but the text it
-  would mutate is now staged (#122): `surfaces/coder/`, pinned by digest and
-  guarded by `check:coder-surfaces`. Until #123 lands, every cycle is still a
-  hand-written lever, and the ledger's O-series applies to nothing running.
+  (#121). The candidate schema is `openagents.coder_candidate.v1`, documented
+  in `docs/coder/candidate-format.md` and emitted by `bench/optimize`
+  (`candidate.py`) after the TypeScript package was deleted. A review
+  proposal and an optimizer mutation are the same type. No review has been
+  recorded through the review command yet; `docs/coder/reviews/` holds the
+  README and the T2 review.
+- The optimizer lane (autoimprove §2.4) exists as `bench/optimize/` (#123):
+  a Python wrapper around upstream `gepa`, a metric over Harbor
+  `result.json` plus ATIF tokens and wall clock with the cost term inside
+  the objective (ledger O4), seed from `surfaces/coder`, screening on
+  `tb2-quick`, holdout named as `tb2-cross-section` and never used for
+  screening (ledger O3). `PYTHONPATH=bench python3 -m optimize --dry-run
+  --max-metric-calls 1` completes on fixtures. No live Harbor GEPA cycle
+  ran in the landing packet. Residual: live search (`--engine gepa --live`)
+  and holdout confirmation of a survivor. Optimizer output is a candidate,
+  never a deployment (ledger O1).

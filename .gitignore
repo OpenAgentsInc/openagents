@@ -33,5 +33,13 @@ NEEDS_OWNER.md
 
 /target
 var/agent-computer/
+
+__pycache__/
+*.py[cod]
+
+# Optimizer run artifacts (OpenAgentsInc/openagents#123). Candidates stay
+# under --output and are not landings.
+bench/optimize/output/
+.venv-optimize/
 .sarah-data/
 /runs/

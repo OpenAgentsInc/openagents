@@ -1,0 +1,13 @@
+{
+  "trial_name": "regex-log__aaaaaaaa",
+  "task_name": "regex-log",
+  "agent_execution": {
+    "started_at": "2026-08-28T00:00:00Z",
+    "finished_at": "2026-08-28T00:01:00Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 0
+    }
+  }
+}

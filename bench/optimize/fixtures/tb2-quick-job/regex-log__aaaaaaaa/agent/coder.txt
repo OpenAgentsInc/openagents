@@ -1,0 +1,3 @@
+[oa:thread aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa]
+[oa:surfaces system-prompt=sha256:fixture,tool-descriptions=sha256:fixture,catalog-lines=sha256:fixture]
+fixture regex-log trial

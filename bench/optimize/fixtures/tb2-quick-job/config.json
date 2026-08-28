@@ -1,0 +1,5 @@
+{
+  "dataset": "terminal-bench@2.0",
+  "model": "fixture/fixture",
+  "agent_import_path": "adapters.openagents_coder:OpenAgentsCoder"
+}
