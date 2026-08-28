@@ -61,6 +61,22 @@ pub enum ControlRequestData {
     /// Rewind files to a specific message
     #[serde(rename = "rewind_files")]
     RewindFiles(RewindFilesRequest),
+
+    /// Merge settings into the flag settings layer.
+    #[serde(rename = "apply_flag_settings")]
+    ApplyFlagSettings(ApplyFlagSettingsRequest),
+
+    /// Replace dynamically managed MCP servers.
+    #[serde(rename = "mcp_set_servers")]
+    McpSetServers(McpSetServersRequest),
+
+    /// Stop a running task.
+    #[serde(rename = "stop_task")]
+    StopTask(StopTaskRequest),
+
+    /// Context-window usage by category.
+    #[serde(rename = "get_context_usage")]
+    GetContextUsage,
 }
 
 /// Initialize request data.
@@ -199,6 +215,24 @@ pub struct McpMessageRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RewindFilesRequest {
     pub user_message_id: String,
+}
+
+/// Merge settings into the flag settings layer (TS `applyFlagSettings`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyFlagSettingsRequest {
+    pub settings: Value,
+}
+
+/// Replace dynamically managed MCP servers (TS `setMcpServers`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpSetServersRequest {
+    pub servers: Value,
+}
+
+/// Stop a running task (TS `stopTask`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StopTaskRequest {
+    pub task_id: String,
 }
 
 /// Control response wrapper.

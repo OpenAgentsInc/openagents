@@ -374,6 +374,39 @@ impl Query {
         Ok(())
     }
 
+    /// Merge settings into the flag settings layer (TS `applyFlagSettings`).
+    pub async fn apply_flag_settings(&self, settings: Value) -> Result<Value> {
+        self.send_control_request(ControlRequestData::ApplyFlagSettings(
+            crate::protocol::ApplyFlagSettingsRequest { settings },
+        ))
+        .await
+    }
+
+    /// Replace dynamically managed MCP servers (TS `setMcpServers`).
+    pub async fn set_mcp_servers(&self, servers: Value) -> Result<Value> {
+        self.send_control_request(ControlRequestData::McpSetServers(
+            crate::protocol::McpSetServersRequest { servers },
+        ))
+        .await
+    }
+
+    /// Stop a running task (TS `stopTask`).
+    pub async fn stop_task(&self, task_id: &str) -> Result<()> {
+        self.send_control_request(ControlRequestData::StopTask(
+            crate::protocol::StopTaskRequest {
+                task_id: task_id.to_string(),
+            },
+        ))
+        .await?;
+        Ok(())
+    }
+
+    /// Context-window usage by category (TS `getContextUsage`).
+    pub async fn get_context_usage(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::GetContextUsage)
+            .await
+    }
+
     /// Get the session ID (available after receiving first message).
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
@@ -385,6 +418,14 @@ impl Query {
     /// `Query.initializationResult()`.
     pub fn initialization_result(&self) -> Option<&Value> {
         self.initialization.as_ref()
+    }
+
+    /// Models advertised in the initialize handshake (TS `supportedModels`).
+    ///
+    /// There is no `list_models` control subtype; this is the handshake
+    /// field. Absent until initialize completes.
+    pub fn supported_models(&self) -> Option<&Value> {
+        self.initialization.as_ref().map(|value| &value["models"])
     }
 
     /// Check if the query has completed.
@@ -509,13 +550,9 @@ rl.on('line', (line) => {
   if (log) fs.appendFileSync(log, line + '\n');
   let msg;
   try { msg = JSON.parse(line); } catch { return; }
-  if (msg.type === 'control_request' && msg.request && msg.request.subtype === 'initialize') {
-    process.stdout.write(JSON.stringify({
-      type: 'control_response',
-      response: {
-        subtype: 'success',
-        request_id: msg.request_id,
-        response: {
+  if (msg.type === 'control_request' && msg.request) {
+    const payload = msg.request.subtype === 'initialize'
+      ? {
           commands: [{ name: 'help', description: 'help' }],
           agents: [],
           output_style: 'default',
@@ -523,6 +560,13 @@ rl.on('line', (line) => {
           models: [{ value: 'sonnet', displayName: 'Sonnet' }],
           account: { email: 't@example.com' }
         }
+      : { echo: msg.request.subtype };
+    process.stdout.write(JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: msg.request_id,
+        response: payload
       }
     }) + '\n');
   }
@@ -573,6 +617,7 @@ readline.createInterface({ input: process.stdin });
         assert_eq!(init["output_style"], "default");
         assert_eq!(init["commands"][0]["name"], "help");
         assert_eq!(init["account"]["email"], "t@example.com");
+        assert_eq!(query.supported_models().unwrap()[0]["value"], "sonnet");
 
         // Drop the query so the child exits and flushes the log.
         drop(query);
@@ -590,6 +635,80 @@ readline.createInterface({ input: process.stdin });
         assert_eq!(first["request"]["subtype"], "initialize");
         assert_eq!(second["type"], "user");
         assert_eq!(second["message"]["content"], "hello");
+    }
+
+    #[tokio::test]
+    async fn p3_control_methods_round_trip_on_the_fake_cli() {
+        let dir = unique_temp_dir();
+        let fake = write_executable(&dir, "fake-claude", FAKE_OK);
+        let log = dir.join("stdin.jsonl");
+        let mut options = options_for_fake(fake, Duration::from_secs(5));
+        options.env = Some(
+            [("FAKE_LOG".to_string(), log.display().to_string())]
+                .into_iter()
+                .collect(),
+        );
+
+        let query = Query::new("hello", options, None).await.unwrap();
+        query
+            .apply_flag_settings(serde_json::json!({"permissions": {}}))
+            .await
+            .unwrap();
+        query
+            .set_mcp_servers(serde_json::json!({"docs": {"type": "stdio", "command": "npx"}}))
+            .await
+            .unwrap();
+        query.stop_task("task-1").await.unwrap();
+        query.get_context_usage().await.unwrap();
+        drop(query);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let recorded = fs::read_to_string(&log).unwrap();
+        let subtypes: Vec<String> = recorded
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|value| value["type"] == "control_request")
+            .filter_map(|value| value["request"]["subtype"].as_str().map(str::to_string))
+            .collect();
+        assert_eq!(
+            subtypes,
+            vec![
+                "initialize",
+                "apply_flag_settings",
+                "mcp_set_servers",
+                "stop_task",
+                "get_context_usage",
+            ]
+        );
+    }
+
+    #[test]
+    fn p3_control_request_subtypes_serialize_on_the_wire() {
+        let cases = [
+            (
+                ControlRequestData::ApplyFlagSettings(crate::protocol::ApplyFlagSettingsRequest {
+                    settings: serde_json::json!({"a": 1}),
+                }),
+                "apply_flag_settings",
+            ),
+            (
+                ControlRequestData::McpSetServers(crate::protocol::McpSetServersRequest {
+                    servers: serde_json::json!({}),
+                }),
+                "mcp_set_servers",
+            ),
+            (
+                ControlRequestData::StopTask(crate::protocol::StopTaskRequest {
+                    task_id: "t1".into(),
+                }),
+                "stop_task",
+            ),
+            (ControlRequestData::GetContextUsage, "get_context_usage"),
+        ];
+        for (request, subtype) in cases {
+            let value = serde_json::to_value(&request).unwrap();
+            assert_eq!(value["subtype"], subtype);
+        }
     }
 
     #[tokio::test]

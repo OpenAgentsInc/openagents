@@ -42,15 +42,21 @@ the handshake payload, and exposes it as `Query::initialization_result()`
 initialize is `Error::InitializationFailed`. The stdout reader no longer
 holds the stdin lock across `recv`, so the handshake cannot deadlock.
 
+## P3 first slice landed (issue #232)
+
+Queryable control methods now include `apply_flag_settings`, `set_mcp_servers`,
+`stop_task`, and `get_context_usage`. `supported_models()` reads the
+initialize payload (there is no `list_models` wire subtype). Remaining
+control-request subtypes and hook callbacks are still open.
+
 ## Remaining work (do not expand this packet)
 
 P1 is items 1–2 of issue #232 (message variants + no silent drop). P2 is
 items 3 and 6 (initialize handshake + control timeouts). Later priorities,
 still open:
 
-- **P3 control surface** — remaining control-request subtypes (~23), including
-  `apply_flag_settings`, `mcp_set_servers`, `stop_task`, `background_tasks`,
-  `cancel_async_message`, `get_context_usage`, `list_models`, elicitation, and
+- **P3 remainder** — remaining control-request subtypes, including
+  `background_tasks`, `cancel_async_message`, elicitation, and
   hook callbacks (the handler is still a TODO that always continues).
 - **P4 options and result fidelity** — wire the dead `QueryOptions` fields
   (`system_prompt`, `mcp_servers`, `agents`, `sandbox`, `plugins`,
