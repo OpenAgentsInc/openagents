@@ -1155,6 +1155,15 @@ pub async fn run_tui(
             .ok()
             .and_then(|v| v.trim().parse::<u32>().ok())
     });
+    // The bench adapter sets `OLLAMA_HOST` (not `OPENAGENTS_OLLAMA_HOST`)
+    // for local-lane trials, pointing at the host's Ollama from inside the
+    // Harbor container. Honor it, or a graded local row is a row of
+    // connection refusals.
+    if let Ok(host) = std::env::var("OLLAMA_HOST") {
+        if !host.trim().is_empty() {
+            session.ollama_host = host;
+        }
+    }
     session.repository = repository;
     // A resumed thread is adopted before the screen is entered, so its refusal
     // is readable rather than painted over and wiped on exit.
@@ -1270,6 +1279,15 @@ async fn run_without_a_terminal(
             .ok()
             .and_then(|v| v.trim().parse::<u32>().ok())
     });
+    // The bench adapter sets `OLLAMA_HOST` (not `OPENAGENTS_OLLAMA_HOST`)
+    // for local-lane trials, pointing at the host's Ollama from inside the
+    // Harbor container. Honor it, or a graded local row is a row of
+    // connection refusals.
+    if let Ok(host) = std::env::var("OLLAMA_HOST") {
+        if !host.trim().is_empty() {
+            session.ollama_host = host;
+        }
+    }
     session.repository = repository;
     if let Some(resumption) = &resumed {
         crate::resume::apply(&mut session, resumption).await?;
