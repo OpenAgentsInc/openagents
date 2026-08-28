@@ -241,9 +241,14 @@ class OpenAgentsCoder(BaseInstalledAgent):
 
         env = {"OPENAGENTS_TOKEN": self._token}
         if self._local_lane:
-            env["OLLAMA_HOST"] = os.environ.get(
+            host = os.environ.get(
                 "OPENAGENTS_CODER_OLLAMA_HOST", "http://host.docker.internal:11434"
             )
+            # Ollama's own variable, and the CLI's documented override. A
+            # headless turn that only honored the latter talked to loopback
+            # inside the Harbor container (issue #294).
+            env["OLLAMA_HOST"] = host
+            env["OPENAGENTS_OLLAMA_HOST"] = host
 
         # The trial exists before the agent phase does anything, and the
         # thread link lands while the agent still works: the container writes

@@ -255,8 +255,38 @@ pub const THREAD_LANE_NOTICE: &str = crate::surfaces::system_prompt::CODER_LANE_
 
 pub const LOCAL_LANE_NOTICE: &str = crate::surfaces::system_prompt::CODER_LANE_LOCAL_RUST;
 
-/// Where an Ollama server listens unless `OPENAGENTS_OLLAMA_HOST` says otherwise.
+/// Where an Ollama server listens unless an environment host says otherwise.
+///
+/// `OPENAGENTS_OLLAMA_HOST` wins when both are set. `OLLAMA_HOST` is Ollama's
+/// own variable and is what the Harbor adapter exports into the container
+/// (issue #294): a headless local turn that ignored it talked to loopback
+/// inside the trial and failed every graded task.
 pub const OLLAMA_HOST: &str = "http://127.0.0.1:11434";
+
+fn nonempty_host(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// Resolve the local-lane server address.
+///
+/// `openagents` is `OPENAGENTS_OLLAMA_HOST`; `ollama` is `OLLAMA_HOST`. Empty
+/// strings are absent. The constant is the last fallback, not a competing
+/// candidate.
+pub(crate) fn resolve_ollama_host(openagents: Option<&str>, ollama: Option<&str>) -> String {
+    nonempty_host(openagents)
+        .or_else(|| nonempty_host(ollama))
+        .unwrap_or_else(|| OLLAMA_HOST.to_string())
+}
+
+fn ollama_host_from_env() -> String {
+    resolve_ollama_host(
+        std::env::var("OPENAGENTS_OLLAMA_HOST").ok().as_deref(),
+        std::env::var("OLLAMA_HOST").ok().as_deref(),
+    )
+}
 
 /// How many rounds of tool calls one turn may take before it has to answer.
 ///
@@ -1199,10 +1229,7 @@ impl CoderRuntimeSession {
                 })
                 .unwrap_or_else(|| "https://openagents.com/api/v1".to_string()),
             user_token,
-            ollama_host: std::env::var("OPENAGENTS_OLLAMA_HOST")
-                .ok()
-                .filter(|v| !v.trim().is_empty())
-                .unwrap_or_else(|| OLLAMA_HOST.to_string()),
+            ollama_host: ollama_host_from_env(),
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(300))
                 .build()
@@ -3280,7 +3307,8 @@ impl CoderRuntimeSession {
     /// which re-resolves against the live server and fails honestly if the
     /// model vanished between the probe and the prompt.
     pub async fn probe_local_lane() -> Option<String> {
-        Self::probe_local_lane_at(&OLLAMA_HOST).await
+        let host = ollama_host_from_env();
+        Self::probe_local_lane_at(&host).await
     }
 
     /// The model family the cycle gate requires (issue #292).
@@ -4181,6 +4209,33 @@ fn ollama_message(message: &ChatMessage) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ollama_host_resolution_prefers_the_openagents_variable() {
+        assert_eq!(
+            resolve_ollama_host(None, None),
+            OLLAMA_HOST,
+            "neither variable leaves the loopback default"
+        );
+        assert_eq!(
+            resolve_ollama_host(Some(""), Some("http://host.docker.internal:11434")),
+            "http://host.docker.internal:11434",
+            "an empty OPENAGENTS_OLLAMA_HOST is absent, so OLLAMA_HOST answers"
+        );
+        assert_eq!(
+            resolve_ollama_host(
+                Some("http://openagents-host:11434"),
+                Some("http://host.docker.internal:11434")
+            ),
+            "http://openagents-host:11434",
+            "OPENAGENTS_OLLAMA_HOST wins when both are set"
+        );
+        assert_eq!(
+            resolve_ollama_host(None, Some("http://host.docker.internal:11434")),
+            "http://host.docker.internal:11434",
+            "OLLAMA_HOST is enough for the Harbor adapter"
+        );
+    }
 
     /// Every id a lane can send is resolved from the catalog it was handed.
     fn served(ids: &[&str]) -> Vec<ServedModel> {

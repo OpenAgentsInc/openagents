@@ -847,8 +847,9 @@ fn serve_routed(mut stream: TcpStream, routes: &[Route], hits: mpsc::Sender<Hit>
 /// `oa`, with environment of the caller's choosing.
 ///
 /// The coder paths read `OPENAGENTS_TOKEN` for the account credential and
-/// `OPENAGENTS_OLLAMA_HOST` for the local lane, and a test that does not set
-/// them is testing whatever the developer's machine happens to hold.
+/// `OPENAGENTS_OLLAMA_HOST` / `OLLAMA_HOST` for the local lane, and a test
+/// that does not set them is testing whatever the developer's machine happens
+/// to hold.
 fn oa_env(args: &[&str], env: &[(&str, &str)]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_openagents"));
     command.args(args).env("NO_COLOR", "");
@@ -1523,6 +1524,50 @@ fn local_answers_from_this_machine_and_never_reaches_the_server() {
     assert!(
         paths.iter().any(|p| p == "/api/v1/threads"),
         "the hosted run did not open a thread: {paths:?}"
+    );
+}
+
+/// Harbor's adapter exports `OLLAMA_HOST` (Ollama's own variable), not
+/// `OPENAGENTS_OLLAMA_HOST`. A headless local turn that ignored it talked to
+/// loopback inside the trial — the 12/12 NonZeroAgentExitCodeError on #294.
+#[test]
+fn headless_local_lane_honors_ollama_host_when_the_openagents_host_is_unset() {
+    let server = RouteServer::start(coder_routes);
+    let origin = server.origin();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_openagents"));
+    command
+        .args([
+            "--api-url",
+            &origin,
+            "coder",
+            "--headless",
+            "--model",
+            "ollama:qwen3.8:27b-mtp-q8_0",
+            "hello",
+        ])
+        .env("NO_COLOR", "")
+        .env("OPENAGENTS_TOKEN", "t")
+        .env("OLLAMA_HOST", "http://127.0.0.1:1")
+        .env_remove("OPENAGENTS_OLLAMA_HOST");
+    let result = command.output().expect("run oa");
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(
+        result.status.code(),
+        Some(2),
+        "stdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("http://127.0.0.1:1"),
+        "the headless local turn did not name OLLAMA_HOST: {stderr}"
+    );
+    assert!(
+        !stderr.contains("http://127.0.0.1:11434"),
+        "the headless local turn still used loopback: {stderr}"
+    );
+    assert!(
+        server.hits().is_empty(),
+        "an OLLAMA_HOST local turn still reached the server"
     );
 }
 
