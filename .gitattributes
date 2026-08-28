@@ -1,9 +1,0 @@
-# Third-party licence texts ship byte-exact.
-#
-# The pre-push guard runs `git diff --check`, which refuses trailing
-# whitespace. These files are the SIL Open Font License and the IBM Plex
-# licence as their authors wrote them, and they travel with the font files they
-# cover. Reformatting somebody else's licence to satisfy our own lint is the
-# wrong trade, so the check is turned off for them rather than the text edited.
-apps/openagents-mobile/assets/fonts/OFL.txt -whitespace
-apps/openagents-mobile/assets/fonts/license.txt -whitespace

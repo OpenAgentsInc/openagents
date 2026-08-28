@@ -363,41 +363,16 @@ the Rust OpenAgents CLI. Coding work is delegated through `openagents coder`.
 
 ## Deploying & Releasing
 
-- **Publish npm packages with pnpm, never npm.** This workspace uses pnpm
-  catalogs, so a dependency is written `catalog:` in the source manifest and
-  must be rewritten to a concrete version before it is published. `pnpm pack`
-  and `pnpm publish` do that rewrite; `npm pack` does not. A package packed
-  with `npm pack` publishes a manifest npm itself cannot resolve, and the
-  consumer sees `EUNSUPPORTEDPROTOCOL "catalog:"` — a message that names the
-  protocol rather than the mistake. It has shipped that way before.
-- **Never publish a tarball you have not verified installs.** Run the package's
-  installation check against the packed artifact before you publish it. Note
-  that `npm publish <file.tgz>` skips `prepublishOnly`, so a pre-packed tarball
-  needs an explicit verification step.
-- **Confirm the published artifact from the registry, not from the build.**
-  Install the exact published version into an empty directory and run a real
-  command against a live surface. Registry metadata is cached locally, so
-  `npm view` and `npm install` may report the previous version for a few
-  minutes after a successful publish; use `--prefer-online`, or read
-  `https://registry.npmjs.org/<package>` directly, before concluding a publish
-  failed.
-
+- **This repository does not publish npm packages.** The TypeScript lane,
+  including every `@openagentsinc/*` workspace package that used `catalog:`,
+  is deleted. Do not add a `package.json` or run `pnpm publish` / `npm publish`
+  from this tree. Historical warning: `@openagentsinc/cli@0.2.0` shipped with
+  literal `catalog:` dependencies on 2026-08-21 and had to be deprecated.
 - **Use the current owner repository for every deployment.** Phoenix and web
   deployments belong to `OpenAgentsInc/openagents.com`. Rust CLI releases use
   `docs/ops/2026-08-25-cli-release-runbook.md`. Omega releases from the Omega
   repository. The Pylon, mobile, update-feed, and Electron release lanes in
   this repository are retired; do not use their historical deployment docs.
-- **Publish npm packages with `pnpm publish`, never `npm publish`.** This is a
-  pnpm workspace and 100 of its `package.json` files declare dependencies as
-  `"catalog:"`. pnpm resolves those to real versions as it packs; npm does not,
-  and publishes the literal string. The tarball reaches the registry looking
-  healthy and fails for every consumer at install time with
-  `EUNSUPPORTEDPROTOCOL: Unsupported URL Type "catalog:"`. `@openagentsinc/cli@0.2.0`
-  shipped that way on 2026-08-21, was unusable, and could only be deprecated —
-  npm does not allow unpublishing after the window. Verify a publish by
-  installing it from the registry (`npx --yes <pkg>@<version> --help` in an
-  empty directory), not by reading the publish output, and check
-  `npm view <pkg>@<version> dependencies` for a surviving `catalog:`.
 - **Google Cloud Authentication (`gcloud` on Chris's dev machine):** Do NOT attempt interactive `gcloud auth login` or user OAuth. Prefix all `gcloud` commands and deployment scripts with `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` (or `/Users/christopherdavid/work/.secrets/gcloud-sa-config`). This uses the pre-authenticated workspace service account (`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`).
   Web and backend deployments belong to the separate
   `OpenAgentsInc/openagents.com` Phoenix repository. Do not use the historical
@@ -408,9 +383,8 @@ the Rust OpenAgents CLI. Coding work is delegated through `openagents coder`.
 
 ## Effect Development Guidance
 
-Effect TypeScript is not this repository's implementation host. Current
-product Effect code, if any remains during the TypeScript-lane deletion,
-is historical and is deleted with `packages/`. New work in this repository
+Effect TypeScript is not this repository's implementation host. The Effect
+skill under `.agents/skills/effect` is removed. New work in this repository
 is Rust. Phoenix Effect-or-Elixir questions belong in
 `OpenAgentsInc/openagents.com`.
 
@@ -454,7 +428,7 @@ is Rust. Phoenix Effect-or-Elixir questions belong in
 - **Docs-only changes push with `--no-verify` (owner mandate, 2026-07-20).**
   When a change touches ONLY documentation (Markdown and other docs, with no
   code, config, schema, or generated surface), commit and push to `main` with
-  `git push --no-verify` so the pre-push `check:fast` code gate (`.githooks/pre-push`,
+  `git push --no-verify` so the pre-push Cargo gate (`.githooks/pre-push`,
   the only hook this repository installs) does not run on an unrelated code surface. This is a deliberate skip of the code
   checks ONLY — you must still run the documentation-relevant checks by hand
   first: above all the neutral-language guard, plus the doc-coverage /
@@ -538,8 +512,7 @@ is Rust. Phoenix Effect-or-Elixir questions belong in
   `apps/openagents.com/apps/web` app, are both **gone** — the app was deleted
   in `67adbe523c` (2026-07-14) and neither path exists in the tree; this
   clause said the opposite until it was corrected on 2026-08-05 (#9325).
-  Shared React components live in `packages/ui`. The FleetRun
-  authority's neutral canonical path is `/api/fleet-runs`,
+  The FleetRun authority's neutral canonical path is `/api/fleet-runs`,
   `/api/sarah/fleet-runs` remains a served compatibility alias for shipped
   desktop/mobile binaries (do not 410 it).
 - Do not add TypeScript, Node workspace packages, or a pnpm/Vite Plus host
@@ -606,14 +579,8 @@ is Rust. Phoenix Effect-or-Elixir questions belong in
   reports should be rejected by the issue form or moved back to the Forum.
 - Do not commit secrets, dependency caches, build output, `target/`, `dist/`,
   `node_modules/`, or local runtime state.
-- Before publishing ANY npm package from this repo, read
-  `apps/pylon/docs/npm-publishing-runbook.md`. The scope is
-  `@openagentsinc/` (never `@openagents/`), the auth token lives in
-  workspace `.secrets/npm-publish.env`, use `pnpm pack` plus
-  `npm publish <tarball>`. Pylon pre-stable
-  releases publish under `--tag rc` only, and registry-CDN propagation
-  makes fresh publishes look 404 to registry clients for minutes — the runbook covers
-  all of it.
+- Do not publish npm packages from this repository. The TypeScript lane and
+  its npm runbooks are deleted.
 - Keep Git operations scoped to this repository when working here.
 - Do not put individual people’s names in commit messages, commit trailers, or
   other committed metadata unless the user explicitly asks for a legally or
@@ -639,8 +606,7 @@ Start with `docs/cloud/README.md` and `docs/cloud/MIGRATION.md` before changing
 Cloud crate behavior. Read `docs/cloud/INVARIANTS.md` before node/workroom/
 capability/receipt/VM changes.
 
-Do **not** re-open private `OpenAgentsInc/cloud` for new features. Do **not**
-bury Cloud under `apps/pylon` — Pylon is contributor/local runtime, Cloud is
+Do **not** re-open private `OpenAgentsInc/cloud` for new features. Cloud is
 first-class infra under `crates/*`.
 
 ## Product Specs (`specs/`)
@@ -657,11 +623,9 @@ The owner-directed first-MVP package is the single co-located exception:
 and is included in the ProductSpec test sweep, do not create a mirror under
 `specs/`.
 
-- Validate general specs with
-  `node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs` and the MVP
-  with `... validate docs/mvp/openagents-codex-workroom-mvp.product-spec.md`
-  (both enforced by `pnpm run test:product-spec` in the normal sweep),
-  scaffold with `... init specs/<area>/<name>.product-spec.md`.
+- The TypeScript ProductSpec CLI is deleted. Follow
+  `specs/CONVENTIONS.md` when adding or editing a spec. Do not add a Node
+  validator.
 - Specs declare and index: link behavior-contract IDs, Eval Suite names,
   promise IDs, and approved durable evidence refs without duplicating their
   content. Registries/evidence systems enforce or observe, never treat a

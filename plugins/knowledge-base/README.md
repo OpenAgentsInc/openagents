@@ -5,8 +5,9 @@ attaches to a turn, compiled into a WebAssembly plugin the CLI loads.
 
 - `kb/stances.json` — the curated stances. Reviewed like content, edited like
   content.
-- `build-kb.mjs` — harvests the served docs site into compact entries and
-  merges the stances into `kb.json`.
+- `build-kb.mjs` — optional harvest of the served docs site into compact
+  entries; `kb.json` is the committed corpus. The script needs a local Node
+  binary. This repository does not pin one.
 - `src/lib.rs` — the scoring and selection the plugin runs at query time.
 - `manifest.json` — the declared interface and the pinned artifact digest.
 

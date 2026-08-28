@@ -4265,10 +4265,19 @@ mod tests {
             "discovered: {:?}",
             registry.skills.keys().collect::<Vec<_>>()
         );
-        // The `effect` skill's description is a `|` block; a parser that took
-        // the marker would catalogue it as "|".
-        let effect = registry.skills.get("effect").expect("the effect skill");
-        assert!(effect.description.len() > 20, "{:?}", effect.description);
+        let fast_follow = registry
+            .skills
+            .get("fast-follow")
+            .expect("the fast-follow skill");
+        assert!(
+            fast_follow.description.len() > 20,
+            "{:?}",
+            fast_follow.description
+        );
+        assert!(
+            !registry.skills.contains_key("effect"),
+            "the Effect TypeScript skill is deleted"
+        );
 
         // `superdelegate` ships with `auto: true`, so its body is the standing
         // context this session starts with.

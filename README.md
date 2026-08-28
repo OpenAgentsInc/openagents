@@ -203,45 +203,23 @@ thesis narrowed into the current Desktop product without disappearing.
 This repository owns the released Rust CLI and retained supporting services,
 contracts, and tools. The separate `OpenAgentsInc/openagents.com` repository
 owns the sole current web application and backend, implemented in Phoenix.
-The TypeScript application under `apps/openagents.com` is historical and is
-not a current deploy target.
-
-Retained TypeScript code uses Node.js, pnpm, Vite Plus, Effect, and Effect
-Schema. The toolchain is pinned in [`package.json`](package.json).
+This repository is Rust-only. Do not add TypeScript, Node workspace packages,
+or a pnpm/Vite Plus host.
 
 - [`crates/openagents-cli`](crates/openagents-cli) — released `openagents`
   binary and its `coder` front door.
-- [`apps/openagents-mobile`](apps/openagents-mobile/README.md) — React
-  Native/Expo host for the compact OpenAgents client.
-- [`apps/openagents.com`](apps/openagents.com/README.md) — historical
-  TypeScript web and API implementation pending deletion.
-- [`apps/pylon`](apps/pylon) — account custody and owner-local execution.
-- [`packages`](packages) — shared schemas, runtime, Sync, UI, evidence, and
-  infrastructure contracts.
+- [`crates/`](crates/) — coder API, contracts, and managed-computer daemons.
+- [`plugins/`](plugins/) — Wasm plugins the CLI loads.
 - [`docs/mvp`](docs/mvp/README.md) — exact first-product definition and
   release-candidate evidence.
 - [`docs/sol`](docs/sol/README.md) — canonical product direction, roadmap,
   decisions, and implementation evidence.
-- [`docs/effect-native`](docs/effect-native/README.md) — the shared typed
-  application and renderer architecture.
 
-Use Node `24.13.1` and pnpm `11.10.0`, then run checks scoped to the area being
-changed:
+The repository definition of done is Cargo format plus the workspace tests:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm run test:openagents-mobile
-pnpm run test:openagents.com
-pnpm run check:fast
-```
-
-Those are scoped, iterate-fast commands. The repository definition of done is
-the single completion gate, which runs format, lint, every policy guard,
-typecheck, and the full test suite (about 5 minutes warm, about 17 minutes on a
-cold checkout):
-
-```sh
-pnpm run check
+cargo fmt --all -- --check
+cargo test --workspace
 ```
 
 Read [`AGENTS.md`](AGENTS.md) before working, and read

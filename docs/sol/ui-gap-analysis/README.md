@@ -38,16 +38,17 @@ It is not a direct output from match counts.
 ## Files
 
 - `ui-gap-evidence.schema.json` defines the evidence format.
-- `ui-gap.mjs` runs the common checks and comparisons.
 - `macos-ui-capture.swift` captures a native macOS window and accessibility tree.
 - `macos-vision-ocr.swift` reads visible text from a reviewed fixture screenshot.
-- `openagents-electron-capture.mjs` captures the isolated OpenAgents Electron DOM.
 - `openagents-zed.config.json` pins the two source corpora and their probes.
-- `ui-gap.test.mjs` tests the common runner.
+
+The Node runners (`ui-gap.mjs`, `ui-gap.test.mjs`,
+`openagents-electron-capture.mjs`) were removed with the TypeScript lane.
+Recover them from Git history if an operator needs the old Electron capture.
 
 ## Requirements
 
-Use Node.js 24 or a later compatible release.
+The remaining capture tools are Swift. Do not add a Node runner.
 Use Git for source identity and source inventory.
 The macOS adapter also requires Swift and `screencapture`.
 The OpenAgents adapter requires the repository `pnpm` install.

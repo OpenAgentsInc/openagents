@@ -15,66 +15,54 @@ Quick map — what do you want to install?
 
 | Product             | What it is                                                  | Fastest path                                                                                            |
 | ------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| **OpenAgents apps** | Sarah-first web, Omega on Desktop, and greenfield mobile     | Web and the Omega alpha are live. Mobile is not installable until its release gates pass — [section 1](#1-openagents-apps) |
-| **Pylon**           | Headless contributor node (the agent path)                  | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node)                             |
+| **OpenAgents apps** | Web app and Omega on Desktop                                 | Web and the Omega alpha are live — [section 1](#1-openagents-apps) |
+| **OpenAgents CLI**  | Released Rust CLI (`openagents`)                             | [section 2](#2-openagents-cli) |
 
 ## 1. OpenAgents apps
 
 The supported product surface today is <https://openagents.com>. Omega is the
 Desktop application, released from the Omega repository and downloaded from
-<https://openagents.com/download>. The new OpenAgents mobile app
-(`apps/openagents-mobile`, Effect Native + React Native/Expo) is a greenfield
-build tracked by #8597. It is not yet installable and must not be represented
-as released.
+<https://openagents.com/download>. The OpenAgents mobile application in this
+repository is retired. Do not restore it.
 
 The Electron OpenAgents Desktop application was deleted at owner direction on
 2026-08-04 (#9325). It has no install, download, or update path. All former
 `clients/` applications have been removed. Do not recover or distribute any of
-them as current products. Use Omega, OpenAgents mobile, or Pylon.
+them as current products. Use Omega or the Rust OpenAgents CLI.
 
-**Connect coding capacity from the terminal**
+The TypeScript Pylon package (`@openagentsinc/pylon`) is retired with the
+TypeScript lane. Do not install it from this repository.
 
-```sh
-npm install -g @openagentsinc/pylon
-pylon auth codex             # isolated, paste-free device login
-pylon accounts list --json   # inspect connected accounts
-```
+## 2. OpenAgents CLI
 
-`pylon auth codex` uses an **isolated per-account home** — it never
-touches your live `~/.codex` session. Each distinct Codex account you connect
-adds real concurrency for delegated coding work.
+The supported installed path from this repository is the Rust `openagents`
+binary. Build, checksum, and promote it through
+[`docs/ops/2026-08-25-cli-release-runbook.md`](docs/ops/2026-08-25-cli-release-runbook.md).
 
-## 2. Pylon (headless contributor node)
-
-The agent-native path for contributing compute and earning bitcoin for
-verified work:
+From a clone of this repository:
 
 ```sh
-npx @openagentsinc/pylon
+cargo build --release -p openagents-cli
 ```
 
-macOS + Linux. No coding-agent SDK required. Full node guide — signed
-binaries, verification, the agent smoke path, and joining the live Tassadar
-training run: <https://openagents.com/INSTALL.md> and
-<https://openagents.com/AGENTS.md>. Honest scope: installing or running a
-node is a **capability, not an automatic earning path** — paid work and
-settlement stay behind their own gated public promises.
+Coding work is delegated through `openagents coder`. Honest scope: installing
+or running the CLI is a **capability, not an automatic earning path** — paid
+work and settlement stay behind their own gated public promises.
 
 ## Notes for AI agents
 
 - **Clone shallow.** Always `git clone --depth 1` this repo. A full clone
   downloads the entire history (~460 MB of `.git`, shallow is ~40 MB) for
   zero benefit — the working tree at HEAD is all any build needs.
-- **Do not sparse-checkout.** The pnpm workspace resolves `workspace:*`
-  dependencies against the checked-out tree. Partial checkouts break the
-  frozen install. Shallow-full is the supported cheap path.
-- **Run `pnpm install --frozen-lockfile` at the repo root**, never inside an
-  individual workspace.
+- **Do not sparse-checkout.** A full working tree at HEAD is the supported
+  cheap path.
+- **This is a Cargo workspace.** Do not run `pnpm install` or look for
+  `package.json`. The completion gate is `cargo fmt --all -- --check` then
+  `cargo test --workspace`.
 - **Never disturb an existing Codex login.** Do not run `codex login` (or
   any device-auth flow) against the default `~/.codex` home if a session
   already exists there, unless the owner explicitly asks — the flow wipes
-  the stored login at start and kills the owner's live session. Fleet flows
-  (`pylon auth codex`) already use isolated per-account homes.
+  the stored login at start and kills the owner's live session.
 - **Report honestly.** After installing, report what you ran and what you
   observed (versions, the command that launched, any errors) — do not claim
   earning, payout, or settlement capability from an install alone.
