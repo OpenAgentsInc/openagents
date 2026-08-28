@@ -21,8 +21,8 @@ use std::time::Duration;
 use openagents_cli::acp::PermissionQuery;
 use openagents_cli::computer::{
     AgentEntry, ComputerPaths, Decision, ForgeCredentials, Journal, JournalEntry, PolicyConfig,
-    RefusalReason, ResolvedAgent, Tier, ToolReport, agent_catalog, agent_permission,
-    forge_credentials, push_delegated, resolve_agent, serve, validate_refspec,
+    RefusalReason, ResolvedAgent, Tier, ToolReport, acp_invocation, agent_catalog,
+    agent_permission, forge_credentials, push_delegated, resolve_agent, serve, validate_refspec,
     write_credential_helper,
 };
 
@@ -1245,6 +1245,46 @@ fn test_the_catalog_reports_only_agents_this_machine_has() {
     assert_eq!(
         resolve_agent(&catalog, "house-agent").unwrap().env,
         vec!["HOUSE_TOKEN".to_string()]
+    );
+}
+
+/// Claude is offered over ACP only when the adapter binary is installed.
+/// Presence of the `claude` CLI is not enough, and this build does not
+/// install the adapter through `npx`.
+#[test]
+fn test_the_catalog_offers_claude_only_when_the_adapter_is_installed() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = PolicyConfig::closed(ComputerPaths::in_directory(directory.path()));
+
+    assert_eq!(
+        acp_invocation("claude"),
+        Some(vec!["claude-agent-acp".to_string()])
+    );
+
+    let without_adapter = agent_catalog(&config, &[tool("claude", true), tool("devin", true)]);
+    let without_ids: Vec<&str> = without_adapter
+        .iter()
+        .map(|entry| entry.id.as_str())
+        .collect();
+    assert_eq!(without_ids, vec!["devin"]);
+    assert!(
+        resolve_agent(&without_adapter, "claude").is_err(),
+        "claude without claude-agent-acp must not be listed"
+    );
+
+    let with_adapter = agent_catalog(
+        &config,
+        &[
+            tool("claude", true),
+            tool("claude-agent-acp", true),
+            tool("devin", true),
+        ],
+    );
+    let with_ids: Vec<&str> = with_adapter.iter().map(|entry| entry.id.as_str()).collect();
+    assert_eq!(with_ids, vec!["claude", "devin"]);
+    assert_eq!(
+        resolve_agent(&with_adapter, "claude").unwrap().argv,
+        vec!["claude-agent-acp".to_string()]
     );
 }
 

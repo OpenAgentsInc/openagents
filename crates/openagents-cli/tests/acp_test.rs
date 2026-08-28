@@ -229,6 +229,88 @@ sleep 120
     );
 }
 
+/// Claude's adapter gets its own mode ids on the wire, not Devin's.
+#[tokio::test]
+async fn claude_set_mode_sends_the_adapter_mode_id() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+mode = ""
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": 1}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_claude"}})
+    elif method == "session/set_mode":
+        mode = message["params"]["modeId"]
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"modeId": mode}})
+    elif method == "session/prompt":
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": message["params"]["sessionId"],
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": mode}}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-claude-mode", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "claude".to_string(),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = harness
+        .run("do the thing", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "bypassPermissions");
+
+    let readonly = AcpHarness {
+        command: stand_in("acp-claude-plan", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "claude".to_string(),
+        mode: Some(PermissionMode::ReadOnly),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = readonly
+        .run("do the thing", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "plan");
+
+    let other = AcpHarness {
+        command: stand_in("acp-devin-mode", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "devin".to_string(),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = other
+        .run("do the thing", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "bypass");
+}
+
 /// The permission answer prefers an option that allows.
 #[test]
 fn the_allowing_option_is_the_one_chosen() {

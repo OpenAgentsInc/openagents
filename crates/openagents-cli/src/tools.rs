@@ -1800,6 +1800,7 @@ impl HarnessToolRegistry {
         let result = AcpHarness {
             command: agent.command,
             args: agent.args,
+            agent_id: wanted.to_string(),
             mode,
             resume_session_id,
             ..AcpHarness::default()

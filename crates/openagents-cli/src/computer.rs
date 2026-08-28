@@ -1336,18 +1336,32 @@ pub const MAXIMUM_SESSION_ID_LENGTH: usize = 128;
 
 /// How a known coding agent is put into ACP mode.
 ///
-/// Every one of these is a binary the probe already looks for. An agent that is
-/// installed but has no ACP mode this build knows is not delegable by name; the
-/// owner declares it in `computer.json` instead, which is the honest way to
-/// widen what this machine runs.
+/// The first argv element is the binary that must be on PATH. For Devin,
+/// OpenCode, and Gemini that is the coding-agent CLI. For Claude it is the
+/// `claude-agent-acp` adapter, not `claude` itself — presence of the CLI is
+/// not enough to speak ACP, and this build does not `npx -y` the adapter.
 pub fn acp_invocation(agent_id: &str) -> Option<Vec<String>> {
     let argv: &[&str] = match agent_id {
         "devin" => &["devin", "acp"],
         "opencode" => &["opencode", "acp"],
         "gemini" => &["gemini", "--experimental-acp"],
+        "claude" => &["claude-agent-acp"],
         _ => return None,
     };
     Some(argv.iter().map(|part| part.to_string()).collect())
+}
+
+/// The installed binary whose presence decides whether `agent_id` is offered
+/// over ACP. That is the first element of [`acp_invocation`], which for Claude
+/// is the adapter rather than the coding-agent CLI.
+pub fn acp_probe_name(agent_id: &str) -> Option<&'static str> {
+    match agent_id {
+        "devin" => Some("devin"),
+        "opencode" => Some("opencode"),
+        "gemini" => Some("gemini"),
+        "claude" => Some("claude-agent-acp"),
+        _ => None,
+    }
 }
 
 /// An agent this machine can actually run, and how.
@@ -1370,18 +1384,27 @@ pub struct ResolvedAgent {
 /// whatever string the server sent.
 pub fn agent_catalog(config: &PolicyConfig, installed: &[ToolReport]) -> Vec<ResolvedAgent> {
     let mut catalog: Vec<ResolvedAgent> = Vec::new();
-    for tool in installed {
-        if !tool.present {
+    // Offer by agent id, not by coding-agent CLI name. Claude's CLI being
+    // present must not list `claude` under ACP; only a runnable adapter does.
+    for id in ["claude", "devin", "gemini", "opencode"] {
+        let Some(required) = acp_probe_name(id) else {
+            continue;
+        };
+        if !installed
+            .iter()
+            .any(|tool| tool.present && tool.name == required)
+        {
             continue;
         }
-        if let Some(argv) = acp_invocation(&tool.name) {
-            catalog.push(ResolvedAgent {
-                id: tool.name.clone(),
-                argv,
-                env: Vec::new(),
-                source: "local",
-            });
-        }
+        let Some(argv) = acp_invocation(id) else {
+            continue;
+        };
+        catalog.push(ResolvedAgent {
+            id: id.to_string(),
+            argv,
+            env: Vec::new(),
+            source: "local",
+        });
     }
     // A declared agent wins over a discovered one of the same id: the owner
     // said how to run it.
@@ -1979,6 +2002,10 @@ pub const CODING_AGENT_CATALOG: [(&str, &str); 11] = [
     ("crush", "--version"),
 ];
 
+/// ACP adapters that are not the coding-agent CLI. `coding_agents` still
+/// probes `claude --version`; `acp_agents` probes this adapter instead.
+pub const ACP_ADAPTER_CATALOG: [(&str, &str); 1] = [("claude-agent-acp", "--version")];
+
 pub const TOOLCHAIN_CATALOG: [(&str, &str); 14] = [
     ("git", "--version"),
     ("gh", "--version"),
@@ -2122,18 +2149,22 @@ fn worktree_report(root: &Path) -> WorktreeReport {
     }
 }
 
-/// Inspect this machine with fixed read-only probes. It needs no account and no
-/// pairing.
-pub fn probe(roots: &[PathBuf]) -> ProbeReport {
+fn probe_working_directory(roots: &[PathBuf]) -> PathBuf {
     let cwd = roots
         .first()
         .cloned()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let cwd = if cwd.is_dir() {
+    if cwd.is_dir() {
         cwd
     } else {
         std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    };
+    }
+}
+
+/// Inspect this machine with fixed read-only probes. It needs no account and no
+/// pairing.
+pub fn probe(roots: &[PathBuf]) -> ProbeReport {
+    let cwd = probe_working_directory(roots);
     let system = sysinfo::System::new_all();
     ProbeReport {
         schema: "openagents.computer_probe.v1".to_string(),
@@ -2161,6 +2192,37 @@ pub fn probe(roots: &[PathBuf]) -> ProbeReport {
     }
 }
 
+/// Installed coding agents plus ACP adapters, which is what the delegation
+/// catalog consults. `coding_agents` on the probe stays the CLI roster.
+pub fn installed_for_catalog(roots: &[PathBuf]) -> Vec<ToolReport> {
+    let cwd = probe_working_directory(roots);
+    let mut reports = probe_catalog(&CODING_AGENT_CATALOG, &cwd);
+    reports.extend(probe_catalog(&ACP_ADAPTER_CATALOG, &cwd));
+    reports
+}
+
+fn acp_agent_reports(config: &PolicyConfig, installed: &[ToolReport]) -> Vec<AcpAgentReport> {
+    let versions: BTreeMap<&str, &str> = installed
+        .iter()
+        .map(|tool| (tool.name.as_str(), tool.version.as_str()))
+        .collect();
+    agent_catalog(config, installed)
+        .into_iter()
+        .map(|entry| {
+            let version_key = acp_probe_name(entry.id.as_str()).unwrap_or(entry.id.as_str());
+            AcpAgentReport {
+                version: versions
+                    .get(version_key)
+                    .copied()
+                    .unwrap_or_default()
+                    .to_string(),
+                source: entry.source.to_string(),
+                id: entry.id,
+            }
+        })
+        .collect()
+}
+
 /// The same probe, carrying the delegation catalog this machine will honour.
 ///
 /// The server refuses an `agent_id` that is not in this list, so what it says
@@ -2168,23 +2230,13 @@ pub fn probe(roots: &[PathBuf]) -> ProbeReport {
 /// controller resolves against, not from a hardcoded roster.
 pub fn probe_for(config: &PolicyConfig) -> ProbeReport {
     let mut report = probe(&config.roots);
-    let versions: BTreeMap<&str, &str> = report
-        .coding_agents
-        .iter()
-        .map(|tool| (tool.name.as_str(), tool.version.as_str()))
-        .collect();
-    report.acp_agents = agent_catalog(config, &report.coding_agents)
-        .into_iter()
-        .map(|entry| AcpAgentReport {
-            version: versions
-                .get(entry.id.as_str())
-                .copied()
-                .unwrap_or_default()
-                .to_string(),
-            source: entry.source.to_string(),
-            id: entry.id,
-        })
-        .collect();
+    let adapters = probe_catalog(
+        &ACP_ADAPTER_CATALOG,
+        &probe_working_directory(&config.roots),
+    );
+    let mut installed = report.coding_agents.clone();
+    installed.extend(adapters);
+    report.acp_agents = acp_agent_reports(config, &installed);
     report
 }
 
@@ -3629,6 +3681,7 @@ fn handle_agent(
     let harness = AcpHarness {
         command: entry.argv[0].clone(),
         args: entry.argv[1..].to_vec(),
+        agent_id: entry.id.clone(),
         // Ask, so the gate below gets to answer. An agent left in its own
         // default mode may be in a bypass mode that never sends
         // `session/request_permission` at all, and a gate nothing consults
@@ -3870,7 +3923,7 @@ pub fn serve(
     // Which agents this machine will delegate to is decided once, here, from
     // what the owner declared and what is actually installed. It is not read
     // from the request, and a reconnect does not widen it.
-    let catalog = agent_catalog(config, &installed_coding_agents(&config.roots));
+    let catalog = agent_catalog(config, &installed_for_catalog(&config.roots));
     let mut attempts: u32 = 0;
     loop {
         let end = serve_connection(
@@ -4011,7 +4064,7 @@ pub async fn run(args: ComputerArgs, endpoint: &crate::auth::Endpoint, json: boo
         }
         ComputerAction::Policy { root } => {
             let roots = roots_for(&config, &root);
-            let catalog = agent_catalog(&config, &installed_coding_agents(&roots));
+            let catalog = agent_catalog(&config, &installed_for_catalog(&roots));
             if json {
                 let value = serde_json::json!({
                     "schema": "openagents.computer_policy.v1",
@@ -4348,5 +4401,61 @@ pub async fn run(args: ComputerArgs, endpoint: &crate::auth::Endpoint, json: boo
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acp_invocation_starts_claude_through_the_installed_adapter() {
+        assert_eq!(
+            acp_invocation("claude"),
+            Some(vec!["claude-agent-acp".to_string()])
+        );
+        assert_eq!(
+            acp_invocation("devin"),
+            Some(vec!["devin".to_string(), "acp".to_string()])
+        );
+        assert_eq!(
+            acp_invocation("opencode"),
+            Some(vec!["opencode".to_string(), "acp".to_string()])
+        );
+        assert_eq!(
+            acp_invocation("gemini"),
+            Some(vec!["gemini".to_string(), "--experimental-acp".to_string()])
+        );
+        assert_eq!(acp_invocation("aider"), None);
+        assert_eq!(acp_probe_name("claude"), Some("claude-agent-acp"));
+        assert_eq!(acp_probe_name("devin"), Some("devin"));
+    }
+
+    fn tool(name: &str, present: bool, version: &str) -> ToolReport {
+        ToolReport {
+            name: name.to_string(),
+            present,
+            path: format!("/usr/local/bin/{name}"),
+            version: version.to_string(),
+        }
+    }
+
+    #[test]
+    fn acp_agent_reports_record_the_adapter_version_for_claude() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = PolicyConfig::closed(ComputerPaths::in_directory(directory.path()));
+        let reports = acp_agent_reports(
+            &config,
+            &[
+                tool("claude", true, "claude 1.0"),
+                tool("claude-agent-acp", true, "claude-agent-acp 0.4.2"),
+                tool("devin", true, "devin 2.0"),
+            ],
+        );
+        let claude = reports.iter().find(|entry| entry.id == "claude").unwrap();
+        assert_eq!(claude.version, "claude-agent-acp 0.4.2");
+        assert_eq!(claude.source, "local");
+        let devin = reports.iter().find(|entry| entry.id == "devin").unwrap();
+        assert_eq!(devin.version, "devin 2.0");
     }
 }

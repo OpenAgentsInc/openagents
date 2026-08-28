@@ -70,12 +70,23 @@ impl PermissionMode {
         }
     }
 
-    /// The mode id sent in `session/set_mode`.
-    pub fn mode_id(&self) -> &'static str {
-        match self {
-            PermissionMode::Dangerous => "bypass",
-            PermissionMode::Prompt => "default",
-            PermissionMode::ReadOnly => "read-only",
+    /// The mode id sent in `session/set_mode` for this agent.
+    ///
+    /// The names are this CLI's; the wire carries the agent's own. Devin,
+    /// OpenCode, and Gemini use `bypass` / `default` / `read-only`. The Claude
+    /// adapter uses `bypassPermissions` / `default` / `plan`.
+    pub fn mode_id(&self, agent_id: &str) -> &'static str {
+        match agent_id {
+            "claude" => match self {
+                PermissionMode::Dangerous => "bypassPermissions",
+                PermissionMode::Prompt => "default",
+                PermissionMode::ReadOnly => "plan",
+            },
+            _ => match self {
+                PermissionMode::Dangerous => "bypass",
+                PermissionMode::Prompt => "default",
+                PermissionMode::ReadOnly => "read-only",
+            },
         }
     }
 }
@@ -156,6 +167,9 @@ pub struct AcpHarness {
     pub command: String,
     /// The subcommand that puts it in ACP mode.
     pub args: Vec<String>,
+    /// Catalog id this child is started as. `session/set_mode` uses this
+    /// agent's own mode ids. Empty keeps the default (Devin-shaped) ids.
+    pub agent_id: String,
     pub mode: Option<PermissionMode>,
     /// Who decides what the agent may do.
     ///
@@ -187,6 +201,7 @@ impl std::fmt::Debug for AcpHarness {
         f.debug_struct("AcpHarness")
             .field("command", &self.command)
             .field("args", &self.args)
+            .field("agent_id", &self.agent_id)
             .field("mode", &self.mode)
             .field("gated", &self.permission.is_some())
             .field("reverse_handler", &self.on_request.is_some())
@@ -201,6 +216,7 @@ impl Default for AcpHarness {
         Self {
             command: "devin".to_string(),
             args: vec!["acp".to_string()],
+            agent_id: String::new(),
             mode: Some(PermissionMode::Dangerous),
             permission: None,
             on_request: None,
@@ -257,6 +273,21 @@ impl std::fmt::Display for AcpFailure {
 }
 
 impl AcpHarness {
+    /// Agent id used for `session/set_mode`. An explicit catalog id wins;
+    /// otherwise the Claude adapter binary is recognised from the command.
+    fn mode_agent_id(&self) -> &str {
+        if !self.agent_id.is_empty() {
+            return &self.agent_id;
+        }
+        match Path::new(&self.command)
+            .file_name()
+            .and_then(|name| name.to_str())
+        {
+            Some("claude-agent-acp") => "claude",
+            _ => self.agent_id.as_str(),
+        }
+    }
+
     /// Run one prompt to completion and return what the agent said.
     ///
     /// `on_event` is called as the agent works, so a caller can stream rather
@@ -449,7 +480,7 @@ impl AcpHarness {
                 lines,
                 &mut seq,
                 "session/set_mode",
-                serde_json::json!({"sessionId": session_id, "modeId": mode.mode_id()}),
+                serde_json::json!({"sessionId": session_id, "modeId": mode.mode_id(self.mode_agent_id())}),
                 REQUEST_TIMEOUT,
                 &mut answer,
                 on_event,
@@ -834,5 +865,39 @@ mod tests {
             }),
             None
         );
+    }
+
+    #[test]
+    fn permission_mode_ids_are_translated_per_agent() {
+        assert_eq!(PermissionMode::Dangerous.mode_id("devin"), "bypass");
+        assert_eq!(PermissionMode::Prompt.mode_id("opencode"), "default");
+        assert_eq!(PermissionMode::ReadOnly.mode_id("gemini"), "read-only");
+        assert_eq!(PermissionMode::Dangerous.mode_id(""), "bypass");
+        assert_eq!(
+            PermissionMode::Dangerous.mode_id("claude"),
+            "bypassPermissions"
+        );
+        assert_eq!(PermissionMode::Prompt.mode_id("claude"), "default");
+        assert_eq!(PermissionMode::ReadOnly.mode_id("claude"), "plan");
+    }
+
+    #[test]
+    fn claude_adapter_command_selects_claude_mode_ids() {
+        let harness = AcpHarness {
+            command: "/usr/local/bin/claude-agent-acp".to_string(),
+            args: Vec::new(),
+            ..AcpHarness::default()
+        };
+        assert_eq!(harness.mode_agent_id(), "claude");
+        assert_eq!(
+            PermissionMode::Dangerous.mode_id(harness.mode_agent_id()),
+            "bypassPermissions"
+        );
+        let named = AcpHarness {
+            command: "/tmp/stub-acp-agent".to_string(),
+            agent_id: "claude".to_string(),
+            ..AcpHarness::default()
+        };
+        assert_eq!(named.mode_agent_id(), "claude");
     }
 }
