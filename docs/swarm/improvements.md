@@ -159,17 +159,19 @@ cycles to receive two messages — the measured pain behind item 6.
 
 ## 3. Issues filed from this list
 
-| Section | Issue | Improvement |
-| --- | --- | --- |
-| §1.1 | [#281](https://openagents.com/OpenAgentsInc/openagents/issues/281) | Presence: `last_seen_at` + status line |
-| §1.2 | [#282](https://openagents.com/OpenAgentsInc/openagents/issues/282) | `send_report` honesty fields |
-| §1.3 | [#285](https://openagents.com/OpenAgentsInc/openagents/issues/285) | Reachable mute setter |
-| §1.4 | [#288](https://openagents.com/OpenAgentsInc/openagents/issues/288) | Selective drain by message id |
-| §1.5 | [#283](https://openagents.com/OpenAgentsInc/openagents/issues/283) | Queued mail to stale sessions |
-| §1.6 | [#287](https://openagents.com/OpenAgentsInc/openagents/issues/287) | `swarm_wait` |
-| §1.7 | [#280](https://openagents.com/OpenAgentsInc/openagents/issues/280) | Gap quarantine + repair path |
-| §1.8 | [#284](https://openagents.com/OpenAgentsInc/openagents/issues/284) | Inbox filters |
-| §1.9 | [#286](https://openagents.com/OpenAgentsInc/openagents/issues/286) | Structured payloads |
+All nine issues are closed (status as of 2026-08-28):
+
+| Section | Issue | Improvement | Landed in |
+| --- | --- | --- | --- |
+| §1.1 | [#281](https://openagents.com/OpenAgentsInc/openagents/issues/281) | Presence: `last_seen_at` + status line | `c728093e9b` |
+| §1.2 | [#282](https://openagents.com/OpenAgentsInc/openagents/issues/282) | `send_report` honesty fields | `641a8cbbc2` |
+| §1.3 | [#285](https://openagents.com/OpenAgentsInc/openagents/issues/285) | Reachable mute setter | `7e15bbe40d` |
+| §1.4 | [#288](https://openagents.com/OpenAgentsInc/openagents/issues/288) | Selective drain by message id | `44e289e34f` |
+| §1.5 | [#283](https://openagents.com/OpenAgentsInc/openagents/issues/283) | Queued mail to stale sessions | `f0ff7c89cf` |
+| §1.6 | [#287](https://openagents.com/OpenAgentsInc/openagents/issues/287) | `swarm_wait` | `e73d669558` |
+| §1.7 | [#280](https://openagents.com/OpenAgentsInc/openagents/issues/280) | Gap quarantine + repair path | `a0412adc4c` |
+| §1.8 | [#284](https://openagents.com/OpenAgentsInc/openagents/issues/284) | Inbox filters | `20c302e79e` |
+| §1.9 | [#286](https://openagents.com/OpenAgentsInc/openagents/issues/286) | Structured payloads | `0538404c45` |
 
 §1.10 (group channels) is deliberately unfiled, per its own
 do-not-file-until-observed gate.
