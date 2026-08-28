@@ -1,9 +1,0 @@
-{
-  "task": { "path": "regex-log", "source": "terminal-bench" },
-  "trial_name": "regex-log__F1xTur3",
-  "agent": {
-    "import_path": "adapters.openagents_coder:OpenAgentsCoder",
-    "model_name": "openai/fixture-model"
-  },
-  "job_id": "f1x7u12e-0000-4000-8000-000000000001"
-}

@@ -1,8 +1,4 @@
-packages:
-  - packages/*
-  - packages/probe
-  - packages/probe/packages/*
-  - types/*
+packages: []
 
 publicHoistPattern:
   - fs-xattr

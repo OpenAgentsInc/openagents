@@ -1,4 +1,0 @@
-[oa:thread 11111111-2222-4333-8444-555555555555]
-
-coder> Written to regex.txt. The lookahead requires an IPv4 address on the line
-and the capture takes the date.

@@ -1,8 +1,0 @@
-{
-  "method": "work.index.read",
-  "id": "request-1",
-  "version": "omega-effectd.v2",
-  "params": {
-    "limit": 100
-  }
-}

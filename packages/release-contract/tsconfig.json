@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "lib": ["ES2023"],
-    "noEmit": true,
-    "types": ["node", "vite-plus-matchers"]
-  },
-  "include": ["src/**/*"]
-}
