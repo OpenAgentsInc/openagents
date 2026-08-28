@@ -58,7 +58,7 @@ use crate::plugins::{
     self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
     plugin_tool_definition,
 };
-use crate::runtime::{Lane, ModelStreamEvent, ToolEvent};
+use crate::runtime::{ModelStreamEvent, ToolEvent};
 use crate::surfaces::tool_descriptions as text;
 use crate::swarm::SwarmBinding;
 use crate::workspace;
@@ -1006,7 +1006,7 @@ impl HarnessToolRegistry {
                         },
                         "agent": {
                             "type": "string",
-                            "description": "The built-in `coder-mini`, `explore`, or `coder` agent, or one installed ACP agent. Omit this field to keep the existing fan-out behavior."
+                            "description": "The built-in `coder-mini`, `explore`, `plan`, or `coder` agent, or one installed ACP agent. Omit this field to keep the existing fan-out behavior."
                         },
                         "description": {
                             "type": "string",
@@ -1019,7 +1019,7 @@ impl HarnessToolRegistry {
                         },
                         "model": {
                             "type": "string",
-                            "description": "With `agent` set to Coder Mini: a catalog id resolved like `--model`. On a fan-out (no `agent`): this call's `--child-model`, applied only to these children."
+                            "description": "With a built-in `agent`: a catalog id resolved like `--model`, overriding that agent's default (`explore` defaults to `gemini-3.7-flash`, `plan` to `glm-5.3-flash`, `coder-mini` and `coder` inherit this session). On a fan-out (no `agent`): this call's `--child-model`, applied only to these children."
                         },
                         "isolation": {
                             "type": "string",
@@ -1644,20 +1644,13 @@ impl HarnessToolRegistry {
                 }
             }
 
-            let lane = if agent.id == "coder-mini" {
-                match call
-                    .arguments
-                    .get("model")
-                    .and_then(|value| value.as_str())
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                {
-                    Some(model) => Lane::from_str(model),
-                    None => Lane::from_str(&gate.lane),
-                }
-            } else {
-                Lane::from_str(&gate.lane)
-            };
+            let model_arg = call
+                .arguments
+                .get("model")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let lane = agent.lane(model_arg, &gate.lane);
 
             let probe_tools = HarnessToolRegistry::with_tool_pool(Some(self.cwd.clone()), pool);
             let probe = crate::runtime::CoderRuntimeSession::new(
@@ -5769,7 +5762,7 @@ let dir = tempfile::tempdir().unwrap();
             "{}",
             tool.description
         );
-        for builtin in ["coder-mini", "explore", "coder"] {
+        for builtin in ["coder-mini", "explore", "plan", "coder"] {
             assert!(tool.description.contains(builtin), "{}", tool.description);
         }
         let properties = tool.parameters["properties"]
@@ -5819,7 +5812,7 @@ let dir = tempfile::tempdir().unwrap();
         assert!(is_error);
         assert!(output.contains("nobody"), "{output}");
         assert!(output.contains("devin"), "{output}");
-        for builtin in ["coder-mini", "explore", "coder"] {
+        for builtin in ["coder-mini", "explore", "plan", "coder"] {
             assert!(output.contains(builtin), "{output}");
         }
         assert!(

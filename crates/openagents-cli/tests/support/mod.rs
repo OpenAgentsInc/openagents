@@ -15,6 +15,29 @@ pub struct StubProxy {
     pub base: String,
 }
 
+/// Catalog the Mini tests and Explore/Plan defaults both need: GLM as the
+/// default Flash pick, Gemini available so Explore can pin it.
+const DEFAULT_MODELS: &str = r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true},{"id":"gemini-3.7-flash","availability":"available","default":false}]}"#;
+
+fn grant_for_thread(request: &str, grant_url: &str) -> String {
+    let fallback = "glm-5.3-flash";
+    let model = request
+        .split("\r\n\r\n")
+        .nth(1)
+        .and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
+        .and_then(|value| {
+            value
+                .get("model")
+                .and_then(|model| model.as_str())
+                .map(str::to_string)
+        })
+        .filter(|model| !model.is_empty())
+        .unwrap_or_else(|| fallback.to_string());
+    format!(
+        r#"{{"thread":{{"id":"th_mini"}},"grant":{{"token":"tok_test","url":"{grant_url}","model":"{model}"}}}}"#
+    )
+}
+
 /// Start a stub that streams `chunks` as one assistant message.
 ///
 /// If `gate` is given, the stream pauses after its first chunk until that
@@ -37,6 +60,16 @@ pub async fn start_reporting_usage(chunks: Vec<&'static str>, usage: (u64, u64, 
 
 /// Start a proxy that asks for one `read` call, then returns `answer`.
 pub async fn start_calling_read(path: String, answer: &'static str) -> StubProxy {
+    start_calling_read_with_catalog(path, answer, DEFAULT_MODELS).await
+}
+
+/// The same as [`start_calling_read`], with an explicit `GET /api/v1/models`
+/// body so a test can mark a catalog id unavailable.
+pub async fn start_calling_read_with_catalog(
+    path: String,
+    answer: &'static str,
+    models: &'static str,
+) -> StubProxy {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let base = format!("http://127.0.0.1:{port}/api/v1");
@@ -53,11 +86,9 @@ pub async fn start_calling_read(path: String, answer: &'static str) -> StubProxy
                 None => continue,
             };
             let body = if request.starts_with("GET /api/v1/models") {
-                Some(r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#.to_string())
+                Some(models.to_string())
             } else if request.starts_with("POST /api/v1/threads ") {
-                Some(format!(
-                    r#"{{"thread":{{"id":"th_mini"}},"grant":{{"token":"tok_test","url":"{grant_url}","model":"glm-5.3-flash"}}}}"#
-                ))
+                Some(grant_for_thread(&request, &grant_url))
             } else {
                 None
             };
@@ -134,11 +165,9 @@ pub async fn start_calling_write(path: String, content: String, answer: &'static
                 None => continue,
             };
             let body = if request.starts_with("GET /api/v1/models") {
-                Some(r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#.to_string())
+                Some(DEFAULT_MODELS.to_string())
             } else if request.starts_with("POST /api/v1/threads ") {
-                Some(format!(
-                    r#"{{"thread":{{"id":"th_mini"}},"grant":{{"token":"tok_test","url":"{grant_url}","model":"glm-5.3-flash"}}}}"#
-                ))
+                Some(grant_for_thread(&request, &grant_url))
             } else {
                 None
             };

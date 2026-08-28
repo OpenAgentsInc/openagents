@@ -319,3 +319,137 @@ async fn a_changed_worktree_is_kept_and_named() {
         .current_dir(root.path())
         .output();
 }
+
+#[tokio::test]
+async fn explore_opens_on_gemini_flash() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("finding.txt");
+    std::fs::write(&source, "the finding").unwrap();
+    let stub = support::start_calling_read(source.display().to_string(), "Read the finding.").await;
+    let registry = HarnessToolRegistry::with_delegation(
+        Some(root.path().to_path_buf()),
+        mini_gate(root.path(), stub.base),
+    );
+
+    let output = registry
+        .execute_tool(&ToolCall {
+            id: "delegate-explore".to_string(),
+            name: "delegate".to_string(),
+            arguments: serde_json::json!({
+                "agent": "explore",
+                "prompt": "Read finding.txt and report it."
+            }),
+        })
+        .await;
+
+    assert!(!output.is_error, "{}", output.output);
+    let result = DelegateAgentResult::parse(&output.output)
+        .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
+    assert_eq!(result.status, DelegateStatus::Done);
+    assert_eq!(result.agent, "explore");
+    assert_eq!(result.model.as_deref(), Some("gemini-3.7-flash"));
+}
+
+#[tokio::test]
+async fn plan_opens_on_glm_flash() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("finding.txt");
+    std::fs::write(&source, "the finding").unwrap();
+    let stub = support::start_calling_read(source.display().to_string(), "Read the finding.").await;
+    let registry = HarnessToolRegistry::with_delegation(
+        Some(root.path().to_path_buf()),
+        mini_gate(root.path(), stub.base),
+    );
+
+    let output = registry
+        .execute_tool(&ToolCall {
+            id: "delegate-plan".to_string(),
+            name: "delegate".to_string(),
+            arguments: serde_json::json!({
+                "agent": "plan",
+                "prompt": "Read finding.txt and report a plan."
+            }),
+        })
+        .await;
+
+    assert!(!output.is_error, "{}", output.output);
+    let result = DelegateAgentResult::parse(&output.output)
+        .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
+    assert_eq!(result.status, DelegateStatus::Done);
+    assert_eq!(result.agent, "plan");
+    assert_eq!(result.model.as_deref(), Some("glm-5.3-flash"));
+}
+
+#[tokio::test]
+async fn an_explicit_model_overrides_the_explore_default() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("finding.txt");
+    std::fs::write(&source, "the finding").unwrap();
+    let stub = support::start_calling_read(source.display().to_string(), "Read the finding.").await;
+    let registry = HarnessToolRegistry::with_delegation(
+        Some(root.path().to_path_buf()),
+        mini_gate(root.path(), stub.base),
+    );
+
+    let output = registry
+        .execute_tool(&ToolCall {
+            id: "delegate-explore-override".to_string(),
+            name: "delegate".to_string(),
+            arguments: serde_json::json!({
+                "agent": "explore",
+                "model": "glm-5.3-flash",
+                "prompt": "Read finding.txt and report it."
+            }),
+        })
+        .await;
+
+    assert!(!output.is_error, "{}", output.output);
+    let result = DelegateAgentResult::parse(&output.output)
+        .unwrap_or_else(|| panic!("expected result JSON: {}", output.output));
+    assert_eq!(result.agent, "explore");
+    assert_eq!(result.model.as_deref(), Some("glm-5.3-flash"));
+}
+
+#[tokio::test]
+async fn unavailable_explore_model_is_refused_by_name_without_falling_through() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("finding.txt"), "the finding").unwrap();
+    let stub = support::start_calling_read_with_catalog(
+        root.path().join("finding.txt").display().to_string(),
+        "unused",
+        r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true},{"id":"gemini-3.7-flash","availability":"unavailable","default":false}]}"#,
+    )
+    .await;
+    let registry = HarnessToolRegistry::with_delegation(
+        Some(root.path().to_path_buf()),
+        mini_gate(root.path(), stub.base),
+    );
+
+    let output = registry
+        .execute_tool(&ToolCall {
+            id: "delegate-explore-unavailable".to_string(),
+            name: "delegate".to_string(),
+            arguments: serde_json::json!({
+                "agent": "explore",
+                "prompt": "Read finding.txt and report it."
+            }),
+        })
+        .await;
+
+    assert!(output.is_error, "{}", output.output);
+    assert!(
+        output.output.contains("gemini-3.7-flash"),
+        "{}",
+        output.output
+    );
+    assert!(
+        output.output.contains("not configured") || output.output.contains("unavailable"),
+        "{}",
+        output.output
+    );
+    assert!(
+        DelegateAgentResult::parse(&output.output).is_none(),
+        "unavailable Gemini must not fall through to a completed child: {}",
+        output.output
+    );
+}
