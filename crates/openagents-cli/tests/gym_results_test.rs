@@ -21,6 +21,15 @@ fn score_reproduces_typescript_priced_lane_verdict() {
     assert_eq!(report.rejected, 2);
     assert_eq!(report.ungraded, 0);
     assert_eq!(report.success_rate, Some(0.5));
+    assert_eq!(report.models, vec!["gemini-3.7-flash".to_string()]);
+    assert_eq!(report.cost_disposition, "cost_unknown");
+}
+
+#[test]
+fn local_lane_records_unmetered_cost_and_the_harbor_model() {
+    let report = score_harbor_job(&fixture("priced-lane"), "tb2-cross-section", "local").unwrap();
+    assert_eq!(report.cost_disposition, "unmetered_local_lane");
+    assert_eq!(report.models, vec!["gemini-3.7-flash".to_string()]);
 }
 
 #[test]
@@ -111,6 +120,8 @@ fn complete_coderbench_smoke_run_may_append_as_smoke() {
         cost_disposition: "cost_unknown".into(),
         cost_per_accepted_outcome_usd: None,
         tasks: vec!["openssl-selfsigned-cert".into(), "regex-log".into()],
+        models: Vec::new(),
+        wall_clock_seconds: None,
     };
     assert_eq!(
         append_refusal(&report, &meta),

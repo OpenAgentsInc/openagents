@@ -92,6 +92,10 @@ pub struct ScoreReport {
     pub cost_disposition: String,
     pub cost_per_accepted_outcome_usd: Option<f64>,
     pub tasks: Vec<String>,
+    /// Catalog ids from Harbor `config.json` (`ollama/<tag>` becomes `<tag>`).
+    pub models: Vec<String>,
+    /// `finished_at - started_at` on the Harbor envelope, when both parse.
+    pub wall_clock_seconds: Option<f64>,
 }
 
 pub fn score_harbor_job(job_dir: &Path, suite: &str, lane: &str) -> Result<ScoreReport, CliError> {
@@ -155,11 +159,15 @@ pub fn score_harbor_job(job_dir: &Path, suite: &str, lane: &str) -> Result<Score
     };
     let cost_disposition = if accepted == 0 {
         "no_accepted_outcomes"
+    } else if lane == "local" {
+        "unmetered_local_lane"
     } else {
         "cost_unknown"
     };
     let mut tasks: Vec<String> = trials.into_iter().map(|(t, _)| t).collect();
     tasks.sort();
+    let models = models_from_job(job_dir);
+    let wall_clock_seconds = wall_clock_seconds_of(&envelope);
 
     Ok(ScoreReport {
         suite: suite.to_string(),
@@ -175,7 +183,90 @@ pub fn score_harbor_job(job_dir: &Path, suite: &str, lane: &str) -> Result<Score
         cost_disposition: cost_disposition.to_string(),
         cost_per_accepted_outcome_usd: None,
         tasks,
+        models,
+        wall_clock_seconds,
     })
+}
+
+fn models_from_job(job_dir: &Path) -> Vec<String> {
+    let Ok(cfg) = read_json(&job_dir.join("config.json")) else {
+        return Vec::new();
+    };
+    let mut models = Vec::new();
+    if let Some(agents) = cfg.get("agents").and_then(Value::as_array) {
+        for agent in agents {
+            if let Some(name) = agent.get("model_name").and_then(Value::as_str) {
+                models.push(harbor_model_id(name));
+            }
+        }
+    }
+    if models.is_empty() {
+        if let Some(name) = cfg.get("model").and_then(Value::as_str) {
+            models.push(harbor_model_id(name));
+        }
+    }
+    models
+}
+
+/// Harbor spells `provider/name`. The store records the catalog id: the name,
+/// except `ollama/<tag>` which is the local-lane tag itself.
+fn harbor_model_id(name: &str) -> String {
+    match name.split_once('/') {
+        Some((_, rest)) if !rest.is_empty() => rest.to_string(),
+        _ => name.to_string(),
+    }
+}
+
+fn wall_clock_seconds_of(envelope: &Value) -> Option<f64> {
+    let start = envelope.get("started_at").and_then(Value::as_str)?;
+    let end = envelope
+        .get("finished_at")
+        .and_then(Value::as_str)
+        .or_else(|| envelope.get("updated_at").and_then(Value::as_str))?;
+    let a = harbor_unix_seconds(start)?;
+    let b = harbor_unix_seconds(end)?;
+    let delta = b - a;
+    (delta >= 0.0).then_some(delta)
+}
+
+/// Unix seconds for a Harbor timestamp such as `2026-08-28T14:48:43.879875`.
+fn harbor_unix_seconds(stamp: &str) -> Option<f64> {
+    let stamp = stamp.trim().trim_end_matches('Z');
+    let (date, time) = stamp.split_once('T')?;
+    let mut date_parts = date.split('-');
+    let year: i32 = date_parts.next()?.parse().ok()?;
+    let month: i32 = date_parts.next()?.parse().ok()?;
+    let day: i32 = date_parts.next()?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let time = time.split(['+', '-']).next().unwrap_or(time);
+    let (hms, frac) = match time.split_once('.') {
+        Some((hms, frac)) => (hms, Some(frac)),
+        None => (time, None),
+    };
+    let mut hms_parts = hms.split(':');
+    let hour: f64 = hms_parts.next()?.parse().ok()?;
+    let minute: f64 = hms_parts.next()?.parse().ok()?;
+    let second: f64 = hms_parts.next()?.parse().ok()?;
+    let mut sub = 0.0;
+    if let Some(frac) = frac {
+        let digits: String = frac.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            let n: f64 = digits.parse().ok()?;
+            sub = n / 10f64.powi(digits.len() as i32);
+        }
+    }
+    let mut y = year;
+    if month <= 2 {
+        y -= 1;
+    }
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u32;
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy as u32;
+    let days = era * 146097 + doe as i32 - 719468;
+    Some(days as f64 * 86400.0 + hour * 3600.0 + minute * 60.0 + second + sub)
 }
 
 fn score_job(
@@ -215,6 +306,8 @@ fn score_json(report: &ScoreReport) -> Value {
         "costPerAcceptedOutcomeUsd": report.cost_per_accepted_outcome_usd,
         "costDisposition": report.cost_disposition,
         "tasks": report.tasks,
+        "models": report.models,
+        "wallClockSeconds": report.wall_clock_seconds,
     })
 }
 
@@ -609,7 +702,10 @@ fn build_result_row(
     obj.insert("suiteId".into(), Value::String(meta.id.clone()));
     obj.insert("suiteDigest".into(), Value::String(meta.digest.clone()));
     obj.insert("tier".into(), Value::String(meta.tier.clone()));
-    obj.insert("models".into(), Value::Array(vec![]));
+    obj.insert(
+        "models".into(),
+        Value::Array(report.models.iter().cloned().map(Value::String).collect()),
+    );
     obj.insert("agentVersions".into(), Value::Array(vec![]));
     obj.insert(
         "rateCatalogVersion".into(),
@@ -635,13 +731,29 @@ fn build_result_row(
         Value::String(report.cost_disposition.clone()),
     );
     obj.insert("totalCostUsd".into(), Value::Null);
-    obj.insert("costCoverage".into(), Value::String("unknown".into()));
+    obj.insert(
+        "costCoverage".into(),
+        Value::String(
+            if report.cost_disposition == "unmetered_local_lane" {
+                "unmetered"
+            } else {
+                "unknown"
+            }
+            .into(),
+        ),
+    );
     obj.insert("rateBasis".into(), Value::Null);
     obj.insert("promptTokens".into(), Value::Null);
     obj.insert("completionTokens".into(), Value::Null);
     obj.insert("cachedInputTokens".into(), json_u64(0));
     obj.insert("toolCalls".into(), Value::Null);
-    obj.insert("wallClockSeconds".into(), Value::Null);
+    obj.insert(
+        "wallClockSeconds".into(),
+        report
+            .wall_clock_seconds
+            .map(json_f64)
+            .unwrap_or(Value::Null),
+    );
     obj.insert("gateStatus".into(), Value::Null);
     obj.insert("thresholdsId".into(), Value::Null);
     obj.insert(
@@ -1001,6 +1113,15 @@ mod tests {
         assert_eq!(report.success_rate, Some(0.5));
         assert_eq!(report.cost_per_accepted_outcome_usd, None);
         assert_eq!(report.cost_disposition, "cost_unknown");
+        assert_eq!(report.models, vec!["gemini-3.7-flash".to_string()]);
+    }
+
+    #[test]
+    fn harbor_unix_seconds_subtracts_the_qwen38_cross_section_span() {
+        let start = harbor_unix_seconds("2026-08-28T14:48:43.879875").unwrap();
+        let end = harbor_unix_seconds("2026-08-28T16:36:34.054776").unwrap();
+        let delta = end - start;
+        assert!((delta - 6470.174901).abs() < 1e-6, "wall clock was {delta}");
     }
 
     #[test]

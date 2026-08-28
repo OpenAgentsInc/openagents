@@ -62,6 +62,19 @@ current native Flash comparison row, not a priced-lane measurement.
 Harbor job `5ea06a86-b084-4afa-890c-c64784125adb`. Three of the five
 rejects were inference-proxy unreachable from the container.
 
+The first local-lane cross-section row landed on 2026-08-28 (#294):
+`qwen3.8:27b-mtp-q8_0` at 7 of 12 over 6470.2s, 0 ungraded. Harbor job
+`ce5bc1c9-7fa4-44ff-9507-e4a8eacadbea`, `--n-concurrent 1`. Cost is
+`null` / `unmetered_local_lane`. On the same 12-task board, `gpt-5.6-luna`
+is 9 of 12 (75%) and `glm-5.3-flash` is 7 of 12 (58.3%). Accepted:
+`merge-diff-arc-agi-task`, `count-dataset-tokens`, `fix-code-vulnerability`,
+`git-leak-recovery`, `nginx-request-logging`, `sqlite-with-gcov`,
+`openssl-selfsigned-cert`. Rejected: `password-recovery`, `build-cython-ext`,
+and `sanitize-git-repo` on agent timeout; `schemelike-metacircular-eval` and
+`regex-log` when Ollama stopped mid-stream (`error decoding response body`
+at `host.docker.internal:11434`). `--num-ctx` / `--reasoning` were unset, so
+the lane used Ollama's defaults.
+
 `coderbench-agent-building-v1.jsonl` holds the first CoderBench smoke-marked
 row from that same Harbor job (`tier: smoke`). Distiller drafts are not in
 that suite. The TypeScript score store still refuses the dedicated liveness
