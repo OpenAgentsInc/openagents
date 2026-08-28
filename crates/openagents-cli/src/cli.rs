@@ -4675,7 +4675,10 @@ async fn run_headless_coder(
     println!("Executing coder prompt headlessly: {}", prompt);
     let lane_name = coder.lane_name().unwrap_or_else(|reason| fail(&reason));
     // A headless session may start children. They run on the same lane and the
-    // same credential, and they do not get the tool themselves.
+    // same credential, and they do not get the tool themselves. A headless
+    // run also has an operator who typed the command, so the read-only mount
+    // tier is granted: `capability` may load the foreign-session scanner and
+    // conversation readers here too.
     let tools = crate::tools::HarnessToolRegistry::with_delegation(
         None,
         crate::tools::DelegationGate {
@@ -4687,7 +4690,8 @@ async fn run_headless_coder(
             acp_agents: crate::coder::acp::find_agents().await.unwrap_or_default(),
             acp_spent: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         },
-    );
+    )
+    .allowing_plugin_mounts();
     let lane = crate::runtime::Lane::from_str(&lane_name);
     let mut runtime =
         crate::runtime::CoderRuntimeSession::new(lane, Some(api_base.to_string()), token, tools);

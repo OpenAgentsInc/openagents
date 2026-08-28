@@ -267,6 +267,71 @@ fn cwd_directory(root: &Path, cwd: &Path) -> PathBuf {
     root.join("sessions").join(encoded)
 }
 
+/// The session directory of one working directory, for callers outside this
+/// module that need to enumerate it (#289).
+pub fn cwd_session_directory(root: &Path, cwd: &Path) -> PathBuf {
+    cwd_directory(root, cwd)
+}
+
+/// Every parsed summary under one working directory's session directory,
+/// in no particular order. Unreadable entries are skipped, as in `load_last`
+/// — a malformed neighbor must not take the enumeration down.
+pub fn summaries_for(root: &Path, cwd: &Path) -> Vec<(PathBuf, SessionSummary)> {
+    summaries_in(&cwd_directory(root, cwd)).unwrap_or_default()
+}
+
+/// Whether `id` is a session id this store would load. Shared with the
+/// cross-session recall target check so both refuse the same shapes.
+pub fn id_is_valid(id: &str) -> bool {
+    valid_session_id(id)
+}
+
+/// Decode an encoded cwd directory name back to the path it names.
+///
+/// `form_urlencoded` percent-encodes with `+` for spaces, so the reverse is a
+/// plus-for-space swap and a percent decode. A name that does not decode to a
+/// plausible absolute path decodes to `None` — the caller treats the
+/// directory as unknown rather than guessing.
+pub fn decode_cwd_directory(encoded: &Path) -> Option<PathBuf> {
+    let name = encoded.to_str()?;
+    let bytes = name.replace('+', " ");
+    let decoded = percent_decode(&bytes)?;
+    let path = PathBuf::from(&decoded);
+    path.is_absolute().then_some(path)
+}
+
+fn percent_decode(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'%' => {
+                let hex = bytes.get(index + 1..index + 3)?;
+                let value = u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?;
+                out.push(value);
+                index += 3;
+            }
+            byte => {
+                out.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// The session id a store directory holds, from its `summary.json`.
+///
+/// The cross-session recall arguments need the running session's own id to
+/// keep the listing from offering it as a target; this is that, read from the
+/// one file every store directory is required to carry.
+pub fn session_id_for_directory(directory: &Path) -> Option<String> {
+    let bytes = std::fs::read(directory.join(SUMMARY_FILE)).ok()?;
+    let summary: SessionSummary = serde_json::from_slice(&bytes).ok()?;
+    (summary.format_version == FORMAT_VERSION).then_some(summary.id)
+}
+
 fn summaries_in(directory: &Path) -> std::io::Result<Vec<(PathBuf, SessionSummary)>> {
     let Ok(entries) = std::fs::read_dir(directory) else {
         return Ok(Vec::new());

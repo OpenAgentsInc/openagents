@@ -1112,6 +1112,10 @@ async fn session_tools(
     token: &Option<String>,
     child: crate::delegate::ChildOptions,
 ) -> HarnessToolRegistry {
+    // An interactive session has an operator at the keyboard, so the
+    // read-only mount tier is granted here: `capability` may load the
+    // foreign-session scanner and conversation readers without a refusal the
+    // operator would have to work around by hand.
     HarnessToolRegistry::with_delegation(
         None,
         DelegationGate {
@@ -1124,6 +1128,7 @@ async fn session_tools(
             acp_spent: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         },
     )
+    .allowing_plugin_mounts()
 }
 
 pub async fn run_tui(

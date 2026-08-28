@@ -1,4 +1,6 @@
-//! Tier D deterministic recall over this session's own record (#159).
+//! Tier D deterministic recall over this session's own record (#159) — and,
+//! since #289, over the other sessions this working directory keeps and the
+//! `cmd-N.log` artifacts a long shell run leaves beside the record.
 //!
 //! The RLM program (docs/rlm/2026-07-21-rlm-integration-audit-and-roadmap.md,
 //! RLM-02) gives every lane a way to ask questions about past conversation
@@ -548,8 +550,9 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
     }
 }
 
-/// Answer from the session directory in one call: load, decode, recall.
-/// The `question`/`caps` values are the raw JSON the tool call carried.
+/// Answer a recall question with no cross-session scope: this session's
+/// record only, no artifact reads. The pre-#289 shape, kept for callers that
+/// hold nothing but a directory.
 pub fn recall_from_session(
     session_dir: &Path,
     question: &serde_json::Value,
@@ -593,6 +596,135 @@ pub fn recall_from_session(
     }
 }
 
+/// The optional #289 arguments of one recall call, decoded.
+#[derive(Debug, Clone, Default)]
+pub struct RecallScope {
+    pub session: Option<String>,
+    pub artifact: Option<String>,
+}
+
+impl RecallScope {
+    fn decode(args: &serde_json::Value) -> Result<Self, String> {
+        let session = match args.get("session") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .ok_or("`session` must be a session id or \"last\"")?
+                    .to_string(),
+            ),
+        };
+        let artifact = match args.get("artifact") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .ok_or("`artifact` must be a `cmd-N.log` name")?
+                    .to_string(),
+            ),
+        };
+        Ok(Self { session, artifact })
+    }
+}
+
+/// The directories a scoped recall needs, resolved once.
+struct RecallTargets {
+    /// Where the question is answered: the current record, or the requested
+    /// other session's.
+    corpus_dir: PathBuf,
+    /// Where the `artifact` excerpt is read from — the same directory unless
+    /// a cross-session artifact was asked for by name.
+    artifact_dir: PathBuf,
+}
+
+/// Answer a recall question under the #289 scope.
+///
+/// `root` is the session-store root (`~/.openagents`), `cwd` the working
+/// directory the sessions belong to, and `current_id`/`current_dir` the
+/// running session's own identity, used to resolve `"last"` and to keep the
+/// listing from offering the caller its own record.
+pub fn recall_scoped(
+    root: &Path,
+    cwd: &Path,
+    current_id: Option<&str>,
+    current_dir: Option<&Path>,
+    question: &serde_json::Value,
+    caps: &serde_json::Value,
+    scope: &RecallScope,
+) -> Result<String, String> {
+    let targets = match &scope.session {
+        None => RecallTargets {
+            corpus_dir: current_dir
+                .ok_or("no session record is attached to this call")?
+                .to_path_buf(),
+            artifact_dir: current_dir
+                .ok_or("no session record is attached to this call")?
+                .to_path_buf(),
+        },
+        Some(requested) => {
+            let dir = resolve_session_target(root, cwd, requested, current_id, current_dir)?;
+            RecallTargets {
+                corpus_dir: dir.clone(),
+                artifact_dir: dir,
+            }
+        }
+    };
+
+    // The artifact ask never loads the corpus: it is a bounded read of one
+    // named file, and a question alongside it is answered separately.
+    if let Some(artifact) = &scope.artifact {
+        let excerpt = command_log_excerpt(&targets.artifact_dir, artifact, {
+            let parsed = RecallCaps {
+                max_spans: caps
+                    .get("maxSpans")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|v| v as usize),
+                max_entries_scanned: caps
+                    .get("maxEntriesScanned")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|v| v as usize),
+                max_chars_per_span: caps
+                    .get("maxCharsPerSpan")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|v| v as usize),
+            };
+            let (max_spans, _, max_chars) = parsed.resolve();
+            let _ = max_spans;
+            max_chars
+        })?;
+        let mut rendered = format!(
+            "{{\n  \"artifact\": \"{artifact}\",\n  \"session\": {},\n  \"excerpt\": {}\n}}",
+            serde_json::to_string(&scope.session).unwrap_or_else(|_| "null".to_string()),
+            serde_json::to_string(&excerpt).unwrap_or_default()
+        );
+        rendered.push_str(&format!(
+            "\n\nExcerpt of {} (zero model calls). Read or grep the file for the rest.",
+            targets.artifact_dir.join(artifact).display()
+        ));
+        return Ok(rendered);
+    }
+
+    if !targets.corpus_dir.join("updates.jsonl").is_file() {
+        return Err(format!(
+            "this session keeps no record at {} — nothing to recall for session {}",
+            targets.corpus_dir.display(),
+            scope
+                .session
+                .clone()
+                .unwrap_or_else(|| "requested".to_string())
+        ));
+    }
+    let answer = recall_from_session(&targets.corpus_dir, question, caps)?;
+    let mut rendered = render_answer(&targets.corpus_dir, &answer);
+    if scope.session.is_some() {
+        rendered.push_str(&format!(
+            "\n\nAnswered from session {}'s record, not this session's.",
+            scope.session.clone().unwrap_or_default()
+        ));
+    }
+    Ok(rendered)
+}
+
 /// Render an answer as the tool reply: the JSON answer plus the rule that
 /// keeps the next question from costing an execution.
 pub fn render_answer(session_dir: &Path, answer: &RecallAnswer) -> String {
@@ -604,9 +736,355 @@ pub fn render_answer(session_dir: &Path, answer: &RecallAnswer) -> String {
     )
 }
 
+/// One session another turn of this working directory keeps: enough to pick a
+/// target for a cross-session question without opening its record.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SessionListingEntry {
+    pub id: String,
+    pub cwd: String,
+    pub lane: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_model: Option<String>,
+    pub updated_at_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_checkpoint: Option<String>,
+}
+
+/// Every session this working directory holds, newest first, minus one id.
+///
+/// The excluded id is the running session's own: recall already answers about
+/// it by default, and a listing that offers it as a target would make the
+/// common question — "what did the session *before* this one do?" — need a
+/// second call to get right. Unreadable or malformed stores are skipped here
+/// exactly as [`crate::session_store::summaries_in`] skips them; a directory
+/// entry that parses is a session the operator can already read.
+pub fn list_sessions(
+    root: &Path,
+    cwd: &Path,
+    exclude_id: Option<&str>,
+) -> Vec<SessionListingEntry> {
+    let mut candidates = crate::session_store::summaries_for(root, cwd);
+    candidates.sort_by(|a, b| b.1.updated_at_ms.cmp(&a.1.updated_at_ms));
+    candidates
+        .into_iter()
+        .filter(|(_, summary)| Some(summary.id.as_str()) != exclude_id)
+        .map(|(_, summary)| SessionListingEntry {
+            id: summary.id,
+            cwd: summary.cwd,
+            lane: summary.lane,
+            last_model: summary.last_model,
+            updated_at_ms: summary.updated_at_ms,
+            last_checkpoint: summary.last_checkpoint,
+        })
+        .collect()
+}
+
+/// Resolve the optional `session` argument of a recall call to a directory.
+///
+/// `"last"` means the most recent *other* session of this working directory —
+/// the resume-question target. Anything else is a session id, validated by
+/// the same character rule the store loads ids under, so a question can never
+/// walk out of the session root with `..` or an absolute path. An id that no
+/// session in this working directory holds is an error naming the nearest
+/// alternatives, not an empty answer.
+pub fn resolve_session_target(
+    root: &Path,
+    cwd: &Path,
+    requested: &str,
+    current_id: Option<&str>,
+    current_dir: Option<&Path>,
+) -> Result<PathBuf, String> {
+    if requested == "last" {
+        let listing = list_sessions(root, cwd, current_id);
+        let Some(entry) = listing.first() else {
+            return Err(
+                "no other session of this working directory keeps a record — `session: \"last\"` \
+                 has nothing to read"
+                    .to_string(),
+            );
+        };
+        return Ok(directory_for_id(root, cwd, &entry.id));
+    }
+    if let Some(current) = current_id
+        && requested == current
+        && let Some(dir) = current_dir
+    {
+        return Ok(dir.to_path_buf());
+    }
+    if !crate::session_store::id_is_valid(requested) {
+        return Err(format!(
+            "session ids may contain only letters, numbers, `-`, and `_`; \
+             `{requested}` is not a session id"
+        ));
+    }
+    let directory = directory_for_id(root, cwd, requested);
+    if directory.join("updates.jsonl").is_file() {
+        return Ok(directory);
+    }
+    let listing = list_sessions(root, cwd, None);
+    let known = listing
+        .iter()
+        .take(8)
+        .map(|entry| entry.id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let hint = if known.is_empty() {
+        "this working directory keeps no other session records".to_string()
+    } else {
+        format!("sessions this working directory keeps: {known}")
+    };
+    Err(format!(
+        "no session `{requested}` under this working directory; {hint}"
+    ))
+}
+
+/// The store directory of one session id under this working directory.
+///
+/// The caller has already validated the id's characters; this is the same
+/// join [`crate::session_store::LocalSessionStore::load_id`] does before its
+/// own validation, so the two agree on where a session lives.
+fn directory_for_id(root: &Path, cwd: &Path, id: &str) -> PathBuf {
+    crate::session_store::cwd_session_directory(root, cwd).join(id)
+}
+
+/// A bounded head-and-tail excerpt of one `cmd-N.log` artifact.
+///
+/// Long shell runs keep their whole output in the artifact, but a `tool.ran`
+/// record only carries the bounded reply the live turn received — so failure
+/// names can exist *only* in the file. When a recall answer cites a record
+/// whose tool ran a shell command, the excerpt makes the artifact readable
+/// without a second tool call, under the same span ceiling as every other
+/// excerpt. `keep` is bytes at each end; the middle is elided honestly, with
+/// the elision said, never smoothed over.
+pub fn command_log_excerpt(session_dir: &Path, name: &str, keep: usize) -> Result<String, String> {
+    let valid = name
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        && name.starts_with("cmd-")
+        && name.ends_with(".log")
+        && !name.contains("..");
+    if !valid {
+        return Err(format!(
+            "`{name}` is not a command artifact name; artifacts are `cmd-N.log` files beside \
+             the session record"
+        ));
+    }
+    let path = session_dir.join(name);
+    let Ok(bytes) = std::fs::read(&path) else {
+        return Err(format!(
+            "{} does not exist in the session record directory (artifacts are written only \
+             when a command ran at least {PERSIST} seconds)",
+            path.display(),
+            PERSIST = crate::tools::PERSIST_AFTER_SECS
+        ));
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(excerpt_head_tail(&text, keep))
+}
+
+/// Head and tail of one text with an honest middle elision.
+fn excerpt_head_tail(text: &str, keep: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count <= keep.saturating_mul(2) {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(keep).collect();
+    let tail_start = char_count - keep;
+    let tail: String = text.chars().skip(tail_start).collect();
+    format!(
+        "{head}\n[… {elided} characters elided from the middle of the artifact …]\n{tail}",
+        elided = char_count - keep.saturating_mul(2)
+    )
+}
+
 /// The session directory of a running session, when one is attached.
 pub fn session_dir_for(store_directory: Option<&Path>) -> Option<PathBuf> {
     store_directory.map(Path::to_path_buf)
+}
+
+#[cfg(test)]
+mod cross_session_tests {
+    use super::*;
+
+    /// One session directory with a working summary and a one-record journal.
+    fn make_session(root: &Path, cwd: &Path, id: &str, text: &str) -> PathBuf {
+        let directory = crate::session_store::cwd_session_directory(root, cwd).join(id);
+        std::fs::create_dir_all(&directory).unwrap();
+        let summary = serde_json::json!({
+            "format_version": 1,
+            "id": id,
+            "cwd": cwd.to_string_lossy(),
+            "created_at_ms": 1_u64,
+            "updated_at_ms": 1_u64,
+            "lane": "flash",
+        });
+        std::fs::write(
+            directory.join("summary.json"),
+            serde_json::to_vec_pretty(&summary).unwrap(),
+        )
+        .unwrap();
+        let record = format!(
+            r#"{{"format_version":1,"sequence":1,"at_ms":1700000000000,"event_type":"turn.user","payload":{{"text":"{text}"}}}}"#
+        );
+        std::fs::write(directory.join("updates.jsonl"), record).unwrap();
+        directory
+    }
+
+    const CWD: &str = "/work/repo";
+
+    #[test]
+    fn listing_is_newest_first_and_excludes_the_current_session() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        make_session(root.path(), cwd, "id-aaa", "older session");
+        make_session(root.path(), cwd, "id-bbb", "newer session");
+        let listing = list_sessions(root.path(), cwd, Some("id-bbb"));
+        assert_eq!(listing.len(), 1);
+        assert_eq!(listing[0].id, "id-aaa");
+        let full = list_sessions(root.path(), cwd, None);
+        assert_eq!(full.len(), 2);
+        assert_eq!(
+            full[0].id, "id-bbb",
+            "same updated_at_ms sorts are stable; both present"
+        );
+    }
+
+    #[test]
+    fn a_question_about_the_last_other_session_answers_from_that_record() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        make_session(root.path(), cwd, "current", "the current conversation");
+        make_session(root.path(), cwd, "earlier", "the decision was: use sqlite");
+        let scope = RecallScope {
+            session: Some("last".to_string()),
+            artifact: None,
+        };
+        let rendered = recall_scoped(
+            root.path(),
+            cwd,
+            Some("current"),
+            None,
+            &serde_json::json!({"_tag": "Grep", "pattern": "sqlite"}),
+            &serde_json::Value::Null,
+            &scope,
+        )
+        .unwrap();
+        assert!(rendered.contains("use sqlite"), "{rendered}");
+        assert!(
+            rendered.contains("session last"),
+            "the answer names its scope"
+        );
+    }
+
+    #[test]
+    fn an_unknown_session_id_refuses_with_alternatives_not_an_empty_answer() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        make_session(root.path(), cwd, "id-real", "here");
+        let error = resolve_session_target(root.path(), cwd, "id-nope", None, None).unwrap_err();
+        assert!(error.contains("id-nope"), "{error}");
+        assert!(
+            error.contains("id-real"),
+            "the refusal names what exists: {error}"
+        );
+    }
+
+    #[test]
+    fn a_traversal_shaped_session_argument_never_leaves_the_store() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        let error =
+            resolve_session_target(root.path(), cwd, "../../outside", None, None).unwrap_err();
+        assert!(error.contains("not a session id"), "{error}");
+    }
+
+    #[test]
+    fn the_current_session_resolves_to_its_own_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        let directory = make_session(root.path(), cwd, "current", "mine");
+        let resolved = resolve_session_target(
+            root.path(),
+            cwd,
+            "current",
+            Some("current"),
+            Some(&directory),
+        )
+        .unwrap();
+        assert_eq!(resolved, directory);
+    }
+
+    #[test]
+    fn an_artifact_excerpt_keeps_head_and_tail_and_says_what_it_cut() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        let directory = make_session(root.path(), cwd, "with-log", "x");
+        let body = format!("{}{}{}", "a".repeat(500), "b".repeat(500), "c".repeat(500));
+        std::fs::write(
+            directory.join("cmd-0.log"),
+            format!("$ cargo test\n\n{body}"),
+        )
+        .unwrap();
+        let excerpt = command_log_excerpt(&directory, "cmd-0.log", 120).unwrap();
+        assert!(excerpt.starts_with("$ cargo test"), "{excerpt}");
+        assert!(excerpt.ends_with("ccc"), "the tail survives: {excerpt}");
+        assert!(excerpt.contains("elided"), "the cut is stated, not silent");
+    }
+
+    #[test]
+    fn an_artifact_name_that_is_not_a_command_log_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        let directory = make_session(root.path(), cwd, "victim", "x");
+        for name in [
+            "summary.json",
+            "cmd-0.log/../updates.jsonl",
+            "updates.jsonl",
+        ] {
+            let error = command_log_excerpt(&directory, name, 100).unwrap_err();
+            assert!(error.contains("not a command artifact"), "{name}: {error}");
+        }
+    }
+
+    #[test]
+    fn an_artifact_ask_crosses_sessions_when_one_is_named() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new(CWD);
+        make_session(root.path(), cwd, "current", "the current conversation");
+        let earlier = make_session(root.path(), cwd, "earlier", "x");
+        std::fs::write(
+            earlier.join("cmd-3.log"),
+            "$ cargo test\n7 failed; 2282 passed",
+        )
+        .unwrap();
+        let scope = RecallScope {
+            session: Some("earlier".to_string()),
+            artifact: Some("cmd-3.log".to_string()),
+        };
+        let rendered = recall_scoped(
+            root.path(),
+            cwd,
+            Some("current"),
+            None,
+            &serde_json::Value::Null,
+            &serde_json::Value::Null,
+            &scope,
+        )
+        .unwrap();
+        assert!(rendered.contains("2282 passed"), "{rendered}");
+        assert!(rendered.contains("cmd-3.log"), "{rendered}");
+    }
+
+    #[test]
+    fn cwd_decoding_round_trips_the_encoded_form() {
+        let encoded = crate::session_store::cwd_session_directory(
+            Path::new("/root"),
+            Path::new("/work/repo with spaces"),
+        );
+        let name = encoded.file_name().unwrap();
+        let decoded = crate::session_store::decode_cwd_directory(Path::new(name)).unwrap();
+        assert_eq!(decoded, Path::new("/work/repo with spaces"));
+    }
 }
 
 #[cfg(test)]
@@ -912,6 +1390,33 @@ mod tests {
 /// RLM-03 re-entry contract, no special surface. Zero model calls; the
 /// answer is a bounded cited candidate, never authority.
 pub fn host_tool(session_dir: PathBuf) -> crate::tools::HostTool {
+    // `<root>/sessions/<encoded-cwd>/<id>`: the root is three ancestors up
+    // from the session's own directory, and the encoded cwd two.
+    host_tool_scoped(
+        session_dir.clone(),
+        session_dir.ancestors().nth(3).map(Path::to_path_buf),
+    )
+}
+
+/// The `history_recall` host tool with the #289 scope attached.
+///
+/// `store_root` is the session-store root (`~/.openagents`): the ancestor
+/// path `host_tool` derives when it can, and the caller-supplied root the
+/// runtime passes when the store lives elsewhere. When the root cannot be
+/// resolved the tool still answers about its own record — only the
+/// cross-session arguments are declined.
+pub fn host_tool_scoped(
+    session_dir: PathBuf,
+    store_root: Option<PathBuf>,
+) -> crate::tools::HostTool {
+    let root = store_root.unwrap_or_else(|| session_dir.clone());
+    // The encoded cwd directory is the session directory's parent; decoded it
+    // is this session's working directory, which is what cross-session
+    // targeting scopes to.
+    let cwd = session_dir
+        .parent()
+        .and_then(crate::session_store::decode_cwd_directory)
+        .unwrap_or_else(|| session_dir.clone());
     crate::tools::HostTool {
         definition: crate::tools::ToolDefinition {
             name: "history_recall".to_string(),
@@ -926,6 +1431,14 @@ pub fn host_tool(session_dir: PathBuf) -> crate::tools::HostTool {
                     "caps": {
                         "type": "object",
                         "description": "Optional {maxSpans, maxEntriesScanned, maxCharsPerSpan}. Defaults: 24 / 2000 / 600. A cap hit is reported in the answer's honesty field."
+                    },
+                    "session": {
+                        "type": "string",
+                        "description": "Optional: answer about another session of this working directory instead of this one — the literal `last` (the most recent other session) or a session id as `list_sessions` reports. The answer names the store it read."
+                    },
+                    "artifact": {
+                        "type": "string",
+                        "description": "Optional: instead of a question, a bounded head-and-tail excerpt of one `cmd-N.log` beside the session record (the current session's, or the one `session` names). Failure names that only survived in the artifact are recoverable here without re-running anything."
                     }
                 },
                 "required": ["question"]
@@ -933,21 +1446,35 @@ pub fn host_tool(session_dir: PathBuf) -> crate::tools::HostTool {
         },
         run: {
             let session_dir = session_dir.clone();
+            let root = root.clone();
+            let cwd = cwd.clone();
             Arc::new(move |call: &ToolCall, _cancel| {
                 let session_dir = session_dir.clone();
-                let question = call
-                    .arguments
-                    .get("question")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
-                let caps = call
-                    .arguments
-                    .get("caps")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
+                let root = root.clone();
+                let cwd = cwd.clone();
+                let arguments = call.arguments.clone();
                 Box::pin(async move {
-                    match recall_from_session(&session_dir, &question, &caps) {
-                        Ok(answer) => (render_answer(&session_dir, &answer), false),
+                    let scope = match RecallScope::decode(&arguments) {
+                        Ok(scope) => scope,
+                        Err(message) => return (format!("Nothing was recalled: {message}"), true),
+                    };
+                    let current_id = crate::session_store::session_id_for_directory(&session_dir);
+                    match recall_scoped(
+                        &root,
+                        &cwd,
+                        current_id.as_deref(),
+                        Some(&session_dir),
+                        &arguments
+                            .get("question")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null),
+                        &arguments
+                            .get("caps")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null),
+                        &scope,
+                    ) {
+                        Ok(answer) => (answer, false),
                         Err(message) => (format!("Nothing was recalled: {message}"), true),
                     }
                 })
