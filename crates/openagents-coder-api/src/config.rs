@@ -11,24 +11,46 @@ pub struct Config {
     pub ai_gateway_api_key: Option<String>,
     pub openrouter_api_key: Option<String>,
     pub credit_allowance_microusd: i64,
+    /// When true, `/api/*` requires a Bearer token. `/health` stays open.
+    /// Cloud Run sets this so an unsigned public host cannot mint grants.
+    pub require_bearer: bool,
 }
 
 impl Config {
     pub fn from_env() -> Self {
-        load_dotenv_quietly();
+        let on_cloud_run = std::env::var_os("K_SERVICE").is_some();
+        if !on_cloud_run {
+            load_dotenv_quietly();
+        }
         let bind = std::env::var("OPENAGENTS_CODER_API_BIND")
             .ok()
             .filter(|value| !value.is_empty())
+            .or_else(|| {
+                std::env::var("PORT")
+                    .ok()
+                    .filter(|value| !value.is_empty())
+                    .map(|port| format!("0.0.0.0:{port}"))
+            })
             .unwrap_or_else(|| "127.0.0.1:4000".to_string());
         let public_origin = std::env::var("OPENAGENTS_CODER_API_ORIGIN")
             .ok()
             .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| format!("http://{bind}"));
+            .unwrap_or_else(|| {
+                if on_cloud_run {
+                    "https://coder.openagents.com".to_string()
+                } else {
+                    format!("http://{bind}")
+                }
+            });
         let db_path = std::env::var("OPENAGENTS_CODER_API_DB")
             .ok()
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
-            .unwrap_or_else(default_db_path);
+            .unwrap_or_else(|| default_db_path(on_cloud_run));
+        let require_bearer = on_cloud_run
+            || std::env::var("OPENAGENTS_CODER_API_REQUIRE_BEARER")
+                .ok()
+                .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
         Self {
             bind,
             db_path,
@@ -39,6 +61,7 @@ impl Config {
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(20_000_000),
+            require_bearer,
         }
     }
 
@@ -64,7 +87,10 @@ fn first_env(names: &[&str]) -> Option<String> {
     })
 }
 
-fn default_db_path() -> PathBuf {
+fn default_db_path(on_cloud_run: bool) -> PathBuf {
+    if on_cloud_run {
+        return PathBuf::from("/tmp/openagents-coder-api/state.sqlite");
+    }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home)
         .join(".openagents")

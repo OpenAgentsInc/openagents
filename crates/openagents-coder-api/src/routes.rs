@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, Request, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -41,7 +42,27 @@ pub fn router(app: App) -> Router {
         .route("/api/v1/threads/{thread_id}/report", post(report_thread))
         .route("/api/v1/threads/{thread_id}/grants", post(remint))
         .route("/api/inference/proxy", post(inference_proxy))
+        .layer(middleware::from_fn_with_state(app.clone(), require_bearer))
         .with_state(app)
+}
+
+async fn require_bearer(
+    State(app): State<App>,
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let path = request.uri().path();
+    if path == "/health" || !app.config.require_bearer {
+        return next.run(request).await;
+    }
+    if bearer(request.headers()).is_none() {
+        return fail(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "bearer token required",
+        );
+    }
+    next.run(request).await
 }
 
 async fn health(State(app): State<App>) -> Json<Value> {

@@ -22,6 +22,7 @@ fn test_app(gateway_key: Option<&str>) -> App {
             ai_gateway_api_key: gateway_key.map(str::to_string),
             openrouter_api_key: None,
             credit_allowance_microusd: 20_000_000,
+            require_bearer: false,
         },
         store: Arc::new(store),
     }
@@ -48,6 +49,23 @@ async fn json(
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
     (status, value)
+}
+
+#[tokio::test]
+async fn a_public_host_refuses_unsigned_api_calls_but_health_stays_open() {
+    let mut app = test_app(None);
+    app.config.require_bearer = true;
+    let (status, _) = json(app.clone(), "GET", "/health", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = json(
+        app,
+        "POST",
+        "/api/v1/threads",
+        Some(serde_json::json!({"objective":"x","lane":"thread"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["code"], "unauthorized");
 }
 
 #[tokio::test]

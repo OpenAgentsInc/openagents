@@ -27,7 +27,9 @@ async fn main() {
     let args = Args::parse();
     let mut config = Config::from_env();
     if let Some(bind) = args.bind {
-        config.public_origin = format!("http://{bind}");
+        if std::env::var_os("OPENAGENTS_CODER_API_ORIGIN").is_none() {
+            config.public_origin = format!("http://{bind}");
+        }
         config.bind = bind;
     }
     if let Some(db) = args.db {

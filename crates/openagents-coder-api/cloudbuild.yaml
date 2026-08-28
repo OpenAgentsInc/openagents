@@ -1,0 +1,23 @@
+# Build from the workspace root:
+#   gcloud builds submit --config crates/openagents-coder-api/cloudbuild.yaml --project openagentsgemini .
+substitutions:
+  _IMAGE: us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-coder-api
+  _TAG: latest
+timeout: 1200s
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - crates/openagents-coder-api/Dockerfile
+      - -t
+      - ${_IMAGE}:${_TAG}
+      - -t
+      - ${_IMAGE}:latest
+      - .
+images:
+  - ${_IMAGE}:${_TAG}
+  - ${_IMAGE}:latest
