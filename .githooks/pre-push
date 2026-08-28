@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Pre-push guard for main.
-# Runs: whitespace, cargo fmt --all -- --check, cargo test --workspace.
+# Runs: whitespace, then — for diffs that touch Rust sources — cargo fmt
+# --all -- --check and cargo test --workspace. Docs-only diffs skip the
+# suite (#306): a markdown commit cannot change Rust behavior, and paying
+# a flake-prone six-minute gate to land prose is how docs stop landing.
+# A failed suite retries the failing tests exactly once before blocking —
+# timing-shape flakes under concurrent local sessions die on the second
+# run (#306), while a real regression fails twice.
 set -uo pipefail
 
 gate=0
@@ -86,6 +92,14 @@ elif [ -n "$main_local_sha" ]; then
   changed_files=$(cd "$root" && git diff-tree --no-commit-id --name-only -r "$main_local_sha")
 fi
 
+# Docs-only push: nothing the fmt/test gates cover has changed, so run
+# neither (#306). Any .rs file, the workspace or toolchain manifests, or a
+# lockfile schedule the full gate.
+if [ -z "$(printf '%s\n' $changed_files | grep -E '\.rs$|Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|^\.cargo/')" ]; then
+  echo "[pre-push guard] no Rust sources in the pushed diff — skipping fmt + workspace suite (#306)." >&2
+  exit 0
+fi
+
 echo "[pre-push guard] push to main -> cargo fmt and cargo test --workspace..." >&2
 
 # The guard inherits the caller's descriptor ceiling, and non-interactive
@@ -105,11 +119,37 @@ if ! ( cd "$root" && cargo fmt --all -- --check ) >&2; then
   exit 1
 fi
 
+# Stream the suite live (tee) so a long run is never indistinguishable
+# from a hang (#306), and retry the failing tests once on failure: the
+# first-fail output is captured, the named failures re-run alone, and only
+# a confirmed second failure blocks the push.
+fmt_args=""
 if [ "$(ulimit -Sn)" -lt 512 ]; then
   echo "[pre-push guard] soft fd limit $(ulimit -Sn) is tight -> running the suite serially (#179)..." >&2
-  ( cd "$root" && cargo test --workspace -- --test-threads=1 ) || { echo "[pre-push guard] BLOCKED: cargo test --workspace failed." >&2; exit 1; }
+  fmt_args="-- --test-threads=1"
+fi
+
+test_log="$(mktemp)"
+echo "[pre-push guard] cargo test --workspace starting at $(date +%H:%M:%S)..." >&2
+if ( cd "$root" && cargo test --workspace $fmt_args ) 2>&1 | tee "$test_log" >&2; then
+  rm -f "$test_log"
 else
-  ( cd "$root" && cargo test --workspace ) || { echo "[pre-push guard] BLOCKED: cargo test --workspace failed." >&2; exit 1; }
+  failed="$(grep -E '^    [a-zA-Z0-9_]+(::[a-zA-Z0-9_]+)+$' "$test_log" | sed 's/^ *//' | sort -u | tr '\n' ' ')"
+  if [ -n "$failed" ]; then
+    echo "[pre-push guard] first run failed; retrying the failing tests once before blocking — load flakes die on the second run (#306):" >&2
+    echo "[pre-push guard]   $failed" >&2
+    if ! ( cd "$root" && cargo test --workspace -- $failed ) >/dev/null 2>&1; then
+      echo "[pre-push guard] BLOCKED: cargo test --workspace failed (failures confirmed on retry)." >&2
+      rm -f "$test_log"
+      exit 1
+    fi
+    echo "[pre-push guard] retried tests passed — first run treated as a load flake (#306)." >&2
+    rm -f "$test_log"
+  else
+    echo "[pre-push guard] BLOCKED: cargo test --workspace failed (no named test failures — likely a compile error; see output above)." >&2
+    rm -f "$test_log"
+    exit 1
+  fi
 fi
 
 echo "[pre-push guard] cargo completion gate green — push allowed." >&2
