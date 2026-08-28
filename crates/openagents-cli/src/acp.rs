@@ -299,6 +299,66 @@ fn grok_stdio_argv(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "agent") && args.iter().any(|arg| arg == "stdio")
 }
 
+fn advertised_auth_method_ids(initialized: &serde_json::Value) -> Vec<String> {
+    initialized
+        .get("authMethods")
+        .and_then(|value| value.as_array())
+        .map(|methods| {
+            methods
+                .iter()
+                .filter_map(|method| {
+                    method
+                        .get("id")
+                        .and_then(|id| id.as_str())
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_interactive_auth_method(id: &str) -> bool {
+    id == "grok.com" || id == "oidc"
+}
+
+fn select_auth_method_id(
+    initialized: &serde_json::Value,
+    methods: &[String],
+    has_api_key: bool,
+) -> Result<String, AcpFailure> {
+    let preferred = initialized
+        .get("_meta")
+        .and_then(|meta| meta.get("defaultAuthMethodId"))
+        .and_then(|id| id.as_str())
+        .map(str::to_string);
+    let candidates = preferred
+        .into_iter()
+        .chain(methods.iter().cloned())
+        .filter(|id| methods.is_empty() || methods.iter().any(|method| method == id));
+
+    let mut saw_interactive = false;
+    for id in candidates {
+        if is_interactive_auth_method(&id) {
+            saw_interactive = true;
+            continue;
+        }
+        if id == "xai.api_key" && !has_api_key {
+            continue;
+        }
+        return Ok(id);
+    }
+
+    if saw_interactive {
+        return Err(AcpFailure::Refused(format!(
+            "Grok needs an interactive login ({}). Run `grok login` or set XAI_API_KEY for delegate.",
+            methods.join(", ")
+        )));
+    }
+    Err(AcpFailure::Refused(
+        "Grok is not signed in. Run `grok login` or set XAI_API_KEY.".to_string(),
+    ))
+}
+
 impl AcpHarness {
     fn spawn_args(&self) -> Vec<String> {
         let unattended = matches!(self.mode, None | Some(PermissionMode::Dangerous));
@@ -307,6 +367,60 @@ impl AcpHarness {
         } else {
             self.args.clone()
         }
+    }
+
+    fn is_grok_agent(&self) -> bool {
+        matches!(self.mode_agent_id(), "grok" | "grok-build")
+    }
+
+    fn child_has_xai_api_key(&self) -> bool {
+        if let Some(environment) = &self.env {
+            return environment
+                .iter()
+                .any(|(key, value)| key == "XAI_API_KEY" && !value.is_empty());
+        }
+        std::env::var("XAI_API_KEY")
+            .map(|value| !value.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Grok requires `authenticate` after `initialize`. Agents that advertise
+    /// no methods keep the Devin/Claude path: skip the round-trip.
+    async fn authenticate_if_needed<F>(
+        &self,
+        initialized: &serde_json::Value,
+        stdin: &mut ChildStdin,
+        lines: &mut tokio::io::Lines<BufReader<ChildStdout>>,
+        seq: &mut u64,
+        answer: &mut String,
+        on_event: &mut F,
+        cancel: &mut watch::Receiver<bool>,
+    ) -> Result<(), AcpFailure>
+    where
+        F: FnMut(AcpEvent) + Send,
+    {
+        let methods = advertised_auth_method_ids(initialized);
+        if methods.is_empty() && !self.is_grok_agent() {
+            return Ok(());
+        }
+        let method_id = select_auth_method_id(initialized, &methods, self.child_has_xai_api_key())?;
+        request(
+            stdin,
+            lines,
+            seq,
+            "authenticate",
+            serde_json::json!({
+                "methodId": method_id,
+                "_meta": { "headless": true }
+            }),
+            HANDSHAKE_TIMEOUT,
+            answer,
+            on_event,
+            cancel,
+            self,
+        )
+        .await?;
+        Ok(())
     }
 
     /// Agent id used for `session/set_mode`. An explicit catalog id wins;
@@ -320,6 +434,7 @@ impl AcpHarness {
             .and_then(|name| name.to_str())
         {
             Some("claude-agent-acp") => "claude",
+            Some("grok") => "grok",
             _ => self.agent_id.as_str(),
         }
     }
@@ -443,6 +558,17 @@ impl AcpHarness {
             on_event,
             cancel,
             self,
+        )
+        .await?;
+
+        self.authenticate_if_needed(
+            &initialized,
+            stdin,
+            lines,
+            &mut seq,
+            &mut answer,
+            on_event,
+            cancel,
         )
         .await?;
 
@@ -998,6 +1124,67 @@ mod tests {
         assert_eq!(
             prompt.spawn_args(),
             vec!["agent".to_string(), "stdio".to_string()]
+        );
+    }
+
+    #[test]
+    fn grok_command_selects_the_grok_agent_id() {
+        let harness = AcpHarness {
+            command: "/usr/local/bin/grok".to_string(),
+            args: grok_stdio_argv_for_test(),
+            ..AcpHarness::default()
+        };
+        assert_eq!(harness.mode_agent_id(), "grok");
+        assert!(harness.is_grok_agent());
+    }
+
+    fn grok_stdio_argv_for_test() -> Vec<String> {
+        vec!["agent".to_string(), "stdio".to_string()]
+    }
+
+    #[test]
+    fn auth_method_prefers_default_then_cached_token() {
+        let initialized = serde_json::json!({
+            "authMethods": [
+                {"id": "grok.com"},
+                {"id": "cached_token"},
+                {"id": "xai.api_key"}
+            ],
+            "_meta": {"defaultAuthMethodId": "cached_token"}
+        });
+        let methods = advertised_auth_method_ids(&initialized);
+        assert_eq!(
+            select_auth_method_id(&initialized, &methods, false).unwrap(),
+            "cached_token"
+        );
+    }
+
+    #[test]
+    fn auth_method_uses_api_key_when_the_env_has_one() {
+        let initialized = serde_json::json!({
+            "authMethods": [{"id": "xai.api_key"}, {"id": "cached_token"}]
+        });
+        let methods = advertised_auth_method_ids(&initialized);
+        assert_eq!(
+            select_auth_method_id(&initialized, &methods, true).unwrap(),
+            "xai.api_key"
+        );
+        assert_eq!(
+            select_auth_method_id(&initialized, &methods, false).unwrap(),
+            "cached_token"
+        );
+    }
+
+    #[test]
+    fn auth_method_refuses_interactive_only_agents() {
+        let initialized = serde_json::json!({
+            "authMethods": [{"id": "grok.com"}, {"id": "oidc"}]
+        });
+        let methods = advertised_auth_method_ids(&initialized);
+        let error = select_auth_method_id(&initialized, &methods, false).unwrap_err();
+        assert!(
+            matches!(error, AcpFailure::Refused(ref why) if why.contains("grok login")),
+            "{error}"
         );
     }
 }

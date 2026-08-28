@@ -327,3 +327,163 @@ fn the_allowing_option_is_the_one_chosen() {
 
     assert_eq!(first_allow_option(&serde_json::json!({})), None);
 }
+
+const GROK_AUTH_SERVER: &str = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+authenticated = ""
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {
+            "protocolVersion": 1,
+            "authMethods": [{"id": "cached_token"}, {"id": "xai.api_key"}, {"id": "grok.com"}],
+            "_meta": {"defaultAuthMethodId": "cached_token", "headless": True}
+        }})
+    elif method == "authenticate":
+        params = message.get("params") or {}
+        meta = params.get("_meta") or {}
+        if meta.get("headless") is not True:
+            send({"jsonrpc": "2.0", "id": message["id"], "error": {"message": "headless required"}})
+            continue
+        authenticated = params.get("methodId") or ""
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "session/new":
+        if not authenticated:
+            send({"jsonrpc": "2.0", "id": message["id"], "error": {"message": "auth_required"}})
+            continue
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_grok"}})
+    elif method == "session/prompt":
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": message["params"]["sessionId"],
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": "authed:" + authenticated}}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+
+#[tokio::test]
+async fn grok_authenticates_with_cached_token_before_opening_a_session() {
+    let harness = AcpHarness {
+        command: stand_in("acp-grok-auth", GROK_AUTH_SERVER)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "grok".to_string(),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = harness
+        .run("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "authed:cached_token");
+}
+
+#[tokio::test]
+async fn grok_uses_the_api_key_method_when_the_env_has_one() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+authenticated = ""
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {
+            "protocolVersion": 1,
+            "authMethods": [{"id": "xai.api_key"}, {"id": "cached_token"}]
+        }})
+    elif method == "authenticate":
+        authenticated = (message.get("params") or {}).get("methodId") or ""
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_key"}})
+    elif method == "session/prompt":
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": "sess_key",
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": authenticated}}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-grok-key", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "grok".to_string(),
+        env: Some(vec![("XAI_API_KEY".to_string(), "test-key".to_string())]),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = harness
+        .run("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "xai.api_key");
+}
+
+#[tokio::test]
+async fn grok_with_only_interactive_auth_is_refused_before_session_new() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {
+            "protocolVersion": 1,
+            "authMethods": [{"id": "grok.com"}]
+        }})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "error": {"message": "session opened without authenticate"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-grok-oidc", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "grok".to_string(),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let failure = harness
+        .run("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect_err("interactive-only Grok opened a session");
+    assert!(
+        matches!(&failure, AcpFailure::Refused(why) if why.contains("grok login")),
+        "{failure}"
+    );
+}
