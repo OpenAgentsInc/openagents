@@ -90,7 +90,7 @@ Absent configuration returns typed `503`. There is no local, fake, alternate
 provider, broad host, wallet, payment, or cloud-admin fallback.
 
 SBX-09 supplies the live driver at
-`scripts/cloud/managed-sandbox-io-driver.mjs` and installs the guest executor
+`scripts/cloud/managed-sandbox-io-driver.py` and installs the guest executor
 from `scripts/cloud/managed-sandbox-guest-io.py` in the immutable image. The
 control image includes the OpenSSH client (`ssh`, `scp`, and `ssh-keygen`), and
 the control driver uses those tools through `gcloud compute ssh/scp` over the
@@ -140,15 +140,13 @@ disk, scratch, ingress, and grants. An incomplete delete remains
 ## Verification
 
 ```bash
-pnpm --dir packages/managed-sandbox-contract run typecheck
-pnpm --dir packages/managed-sandbox-contract run test
-pnpm --dir apps/openagents.com/workers/api run typecheck
-pnpm --dir apps/openagents.com/workers/api exec vp test --run src/managed-sandbox-box-v1-routes.test.ts
 cargo test -p oa-codex-control managed_sandbox_guest_io
 bash -n scripts/cloud/gcp-codex-control-deploy.sh
-node --check scripts/cloud/managed-sandbox-io-driver.mjs
+python3 -m py_compile scripts/cloud/managed-sandbox-io-driver.py
 python3 -m py_compile scripts/cloud/managed-sandbox-guest-io.py
-pnpm run check:fast
+python3 scripts/cloud/managed-sandbox-driver_test.py
+cargo fmt --all -- --check
+cargo test --workspace
 ```
 
 The contract suite checks the closed request and receipt shapes. The Worker

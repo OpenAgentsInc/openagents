@@ -318,8 +318,8 @@ Outcome: documentation, issues, and inventories match the tree.
   - npm OTP deprecation of remaining `@openagentsinc/*` that this repo
     used to publish
   - Google credential `invalid_rapt` for OpenTofu state (already on #149)
-- #148 stays open only if it still asks a computer-product question
-  about the Rust daemons. It is not a TypeScript issue after Wave 1.
+- #148 retained the Rust daemons and replaced the Node sandbox drivers
+  with Python. It is closed by that disposition.
 - Remove `dev:openagents.com` / `test:pylon` / `typecheck:*` fossils
   from docs and runbooks.
 

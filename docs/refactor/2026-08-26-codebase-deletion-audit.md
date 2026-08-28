@@ -632,5 +632,14 @@ package graph, or Node workspace.
 The completion gate is `cargo fmt --all -- --check` and
 `cargo test --workspace`. Rust crates under `crates/` and plugins under
 `plugins/` remain. Phoenix in `OpenAgentsInc/openagents.com` is unchanged.
-Live DNS/Terraform residuals stay on #145; Rust computer daemons stay on
-#148.
+Live DNS/Terraform residuals stay on #145.
+
+## Managed-computer control plane (#148)
+
+Retain `crates/oa-codex-control`, `crates/oa-node`, `crates/oa-workroomd`,
+and `crates/openagents-cloud-contract`. They are the GCE/Cloud Run managed
+computer daemons. Phoenix does not own them. The Node guest/host drivers
+deleted in Wave 4 are replaced by Python scripts under `scripts/cloud/`
+that match the remaining `managed-sandbox-guest-io.py` executor. Guest
+images no longer install Node or the Codex/Claude npm SDKs. The guest turn
+talks HTTP to the control-plane provider broker.

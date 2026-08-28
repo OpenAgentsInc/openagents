@@ -363,7 +363,7 @@ zero-residue rules are specified in
 
 ### Guest residue and interrupt proofs are measurements
 
-`forensic-worker-driver.mjs prepare-stop` and `managed-sandbox-guest-interrupt.mjs`
+`forensic-worker-driver.py prepare-stop` and `managed-sandbox-guest-interrupt.py`
 produce the process and scratch evidence that the runtime consumes before it
 admits a stop or an interrupt. Every field in those proofs is a value observed
 after the removal or the signal. None of them may be emitted as a literal.

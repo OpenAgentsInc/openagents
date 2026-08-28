@@ -26,7 +26,7 @@ const MAX_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const GCE_METADATA_SERVER_CIDR: &str = "169.254.169.254/32";
 const GUEST_IO_EXECUTABLE: &str = "/opt/openagents-managed-sandbox/managed-sandbox-guest-io.py";
 const FORENSIC_WORKER_EXECUTABLE: &str =
-    "/opt/openagents-managed-sandbox/forensic-worker-driver.mjs";
+    "/opt/openagents-managed-sandbox/forensic-worker-driver.py";
 const FORENSIC_WORKER_DRIVER_REF: &str = "driver.openagents.forensic-worker.v1";
 const LIVE_ACTIVE_SANDBOX_FILTER: &str =
     "labels.openagents-managed=managed-sandbox AND status!=TERMINATED";
@@ -3751,7 +3751,7 @@ mod tests {
         assert!(args.contains(&"--ssh-flag=-oConnectTimeout=5".to_string()));
         assert_eq!(
             args.last().map(String::as_str),
-            Some("test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py && test -d /workspace && test \"$(uname -s)\" = Linux && test -x /usr/bin/bwrap && test -x /opt/openagents-managed-sandbox/forensic-worker-driver.mjs && /opt/openagents-managed-sandbox/forensic-worker-driver.mjs preflight >/dev/null")
+            Some("test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py && test -d /workspace && test \"$(uname -s)\" = Linux && test -x /usr/bin/bwrap && test -x /opt/openagents-managed-sandbox/forensic-worker-driver.py && /opt/openagents-managed-sandbox/forensic-worker-driver.py preflight >/dev/null")
         );
     }
 

@@ -212,9 +212,9 @@ control_args=(
   --managed-sandbox-control-internal-ip "$control_ip"
   --managed-sandbox-provider-broker-url "$provider_broker_url"
   --managed-sandbox-provider-broker-port 8790
-  --managed-sandbox-turn-driver /usr/local/bin/managed-sandbox-turn-driver.mjs
-  --managed-sandbox-io-driver /usr/local/bin/managed-sandbox-io-driver.mjs
-  --managed-sandbox-phase2-driver /usr/local/bin/managed-sandbox-phase2-driver.mjs
+  --managed-sandbox-turn-driver /usr/local/bin/managed-sandbox-turn-driver.py
+  --managed-sandbox-io-driver /usr/local/bin/managed-sandbox-io-driver.py
+  --managed-sandbox-phase2-driver /usr/local/bin/managed-sandbox-phase2-driver.py
   --managed-sandbox-phase2-bucket "$checkpoint_bucket"
 )
 if [[ "$apply" == "true" ]]; then control_args+=(--apply); fi

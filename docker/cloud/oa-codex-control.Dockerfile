@@ -59,9 +59,15 @@ RUN apt-get update \
 COPY --from=builder /usr/local/bin/oa-codex-control /usr/local/bin/oa-codex-control
 COPY scripts/cloud/managed-sandbox-provider-proxy.py /usr/local/bin/managed-sandbox-provider-proxy.py
 COPY scripts/cloud/managed-sandbox-control-entrypoint.sh /usr/local/bin/managed-sandbox-control-entrypoint.sh
+COPY scripts/cloud/managed-sandbox-io-driver.py /usr/local/bin/managed-sandbox-io-driver.py
+COPY scripts/cloud/managed-sandbox-turn-driver.py /usr/local/bin/managed-sandbox-turn-driver.py
+COPY scripts/cloud/managed-sandbox-phase2-driver.py /usr/local/bin/managed-sandbox-phase2-driver.py
 RUN chmod 0755 \
       /usr/local/bin/managed-sandbox-provider-proxy.py \
-      /usr/local/bin/managed-sandbox-control-entrypoint.sh
+      /usr/local/bin/managed-sandbox-control-entrypoint.sh \
+      /usr/local/bin/managed-sandbox-io-driver.py \
+      /usr/local/bin/managed-sandbox-turn-driver.py \
+      /usr/local/bin/managed-sandbox-phase2-driver.py
 
 # State root for the durable local job registry (job.json / events.jsonl).
 ENV OA_CODEX_CONTROL_STATE_ROOT=/var/lib/openagents/codex-control
