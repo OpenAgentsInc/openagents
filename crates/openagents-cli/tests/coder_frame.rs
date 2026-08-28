@@ -73,18 +73,41 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(text.contains("/Users/example/work/openagents"));
     assert!(text.contains("https://openagents.com/api/v1"));
     assert!(text.contains("Type /help for commands and keys."));
-
-    let title_row = (0..buffer.area.height)
-        .find(|y| {
-            (0..buffer.area.width)
-                .map(|x| buffer.cell((x, *y)).unwrap().symbol())
-                .collect::<String>()
-                .contains("Coder v")
-        })
-        .expect("startup box title");
+    assert!(text.contains("New in v0.1.1"), "{text}");
+    assert!(text.contains("Improved subagent delegation"), "{text}");
+    assert!(text.contains("Added streaming to thinking"), "{text}");
+    assert!(text.contains("Grok is a first-class delegate"), "{text}");
     assert!(
-        (6..=9).contains(&title_row),
-        "the startup box is not vertically centered: row {title_row}"
+        text.contains("Live credit on the signed-in account"),
+        "{text}"
+    );
+    assert!(
+        text.contains("ATIF export keeps the child stream"),
+        "{text}"
+    );
+
+    let row_at = |y: u16| {
+        (0..buffer.area.width)
+            .map(|x| buffer.cell((x, y)).unwrap().symbol())
+            .collect::<String>()
+    };
+    let title_row = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains("Coder v"))
+        .expect("startup box title");
+    let news_row = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains("New in v0.1.1"))
+        .expect("changelog box title");
+    assert!(
+        news_row > title_row,
+        "the changelog box must sit under the startup box: Coder v on {title_row}, New in on {news_row}"
+    );
+    let facts_row = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains("Working directory"))
+        .expect("working directory row");
+    let facts = row_at(facts_row);
+    assert!(
+        facts.contains("│ Working directory") || facts.contains(" Working directory"),
+        "the startup box needs one column of inner padding: {facts:?}"
     );
 }
 
@@ -113,7 +136,10 @@ fn the_command_helper_filters_and_does_not_open_for_paths() {
     ui.composer.insert_str("/go");
     let filtered = text_of(&draw(&mut ui));
     assert!(filtered.contains("/goal"), "{filtered}");
-    assert_eq!(filtered.matches("/help").count(), 1, "{filtered}");
+    assert!(
+        !filtered.contains("/help"),
+        "filtering /go must not list /help: {filtered}"
+    );
 
     ui.composer.set_text("/Users/name/work/openagents");
     let path = text_of(&draw(&mut ui));

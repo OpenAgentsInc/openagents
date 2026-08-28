@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Padding, Paragraph},
 };
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -30,6 +30,15 @@ const TOOL_SETTLE_FRAMES: u64 = 10;
 /// into one `+N earlier` counter, counted rather than stored as text.
 pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
+/// Idle "New in v0.1.1" card. Five lines is the ceiling so the pair of
+/// boxes still fits an ordinary terminal.
+const WELCOME_WHAT_IS_NEW: &[&str] = &[
+    "Improved subagent delegation",
+    "Added streaming to thinking",
+    "Grok is a first-class delegate",
+    "Live credit on the signed-in account",
+    "ATIF export keeps the child stream",
+];
 
 /// Who this session is signed in as.
 ///
@@ -834,11 +843,14 @@ impl CoderUi {
             .style(style);
         frame.render_widget(transcript, transcript_area);
 
-        let conversation_started = self
-            .entries
-            .iter()
-            .any(|entry| matches!(entry.role, Role::You | Role::Assistant | Role::Tool));
-        if self.show_welcome && !conversation_started {
+        let conversation_started = self.entries.iter().any(|entry| {
+            matches!(
+                entry.role,
+                Role::You | Role::Assistant | Role::Tool | Role::Output
+            )
+        });
+        let slash_open = !slash_command_suggestions(self.composer.text()).is_empty();
+        if self.show_welcome && !conversation_started && !slash_open {
             self.render_welcome(frame, transcript_area);
         }
 
@@ -1052,13 +1064,26 @@ impl CoderUi {
         }
 
         let width = area.width.saturating_sub(4).min(100);
-        let height = 8.min(area.height);
+        let welcome_height = 8.min(area.height);
+        let news_height = (WELCOME_WHAT_IS_NEW.len() as u16).saturating_add(2);
+        let gap = 1u16;
+        let stack_height = welcome_height
+            .saturating_add(gap)
+            .saturating_add(news_height);
+        let show_news = area.height >= stack_height;
+        let used_height = if show_news {
+            stack_height
+        } else {
+            welcome_height
+        };
+        let origin_y = area.y + area.height.saturating_sub(used_height) / 2;
         let welcome_area = Rect {
             x: area.x + area.width.saturating_sub(width) / 2,
-            y: area.y + area.height.saturating_sub(height) / 2,
+            y: origin_y,
             width,
-            height,
+            height: welcome_height,
         };
+        // Borders take one column each side; the inner padding takes one more.
         let body_width = width.saturating_sub(4) as usize;
         let value_width = body_width.saturating_sub("Working directory  ".len());
         let agents = if self.agents.is_empty() {
@@ -1102,8 +1127,35 @@ impl CoderUi {
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
             .border_style(value_style)
-            .style(value_style);
+            .style(value_style)
+            .padding(Padding::horizontal(1));
         frame.render_widget(Paragraph::new(content).block(block), welcome_area);
+
+        if show_news {
+            let news_area = Rect {
+                x: welcome_area.x,
+                y: welcome_area
+                    .y
+                    .saturating_add(welcome_height)
+                    .saturating_add(gap),
+                width,
+                height: news_height,
+            };
+            let news = Text::from(
+                WELCOME_WHAT_IS_NEW
+                    .iter()
+                    .map(|line| Line::from(Span::styled(*line, label_style)))
+                    .collect::<Vec<_>>(),
+            );
+            let news_block = Block::default()
+                .title(" New in v0.1.1 ")
+                .title_alignment(Alignment::Center)
+                .borders(Borders::ALL)
+                .border_style(value_style)
+                .style(value_style)
+                .padding(Padding::horizontal(1));
+            frame.render_widget(Paragraph::new(news).block(news_block), news_area);
+        }
     }
 
     /// Calculate the scroll offset that keeps the viewport at the bottom

@@ -5,6 +5,18 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder idle frame shows what is new in 0.1.1
+
+- issues: none (direct owner request)
+- commits: this change
+- contracts-specs: Coder idle welcome chrome
+- invariants: the startup facts box keeps one column of inner padding; the changelog card is at most five lines
+- evidence: `crates/openagents-cli/tests/coder_frame.rs` startup-facts frame test
+- lane: grok welcome-pad-rc10
+
+The idle Coder screen pads the startup facts box by one column and draws a
+matching "New in v0.1.1" card under it.
+
 ## Gym views render frozen schemas in the terminal and TUI (#165)
 
 - issues: #165
