@@ -23,6 +23,7 @@ live `grok --help` / `docs.x.ai`.
 | [`agent-dashboard.md`](./agent-dashboard.md) | Multi-agent dashboard (`Ctrl+\`, `grok dashboard`) |
 | [`enterprise.md`](./enterprise.md) | Network, auth, sandbox, permissions, ZDR (CI-relevant) |
 | [`examples/acp-stdio-hello.mjs`](./examples/acp-stdio-hello.mjs) | Minimal ACP JSON-RPC client |
+| [Grok Build ACP consumption](../acp/2026-08-27-grok-build-acp-consumption.md) | How grok-build speaks ACP, and how the OpenAgents host matches it |
 
 ## Upstream sources
 
