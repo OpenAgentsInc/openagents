@@ -156,14 +156,16 @@ openagents gym run cancel <run-id>
   Silicon — probe it, name the Rosetta fix in the refusal), then executes the
   suite through the harness with `OPENAGENTS_TOKEN` from the stored
   credential, not the environment.
-- **Execution target, in order of preference:** (1) the pinned Harbor
+- **Execution target, in order of preference:** (1) `bench/run-suite.sh` —
+  packs the working-tree native CLI, registers the Gym run, and invokes
+  Harbor, the path `docs/coder/runbook.md` already documents; set
+  `OPENAGENTS_GYM_RUN_TARGET=container` to skip it; (2) the pinned Harbor
   container — `gym env` builds/pulls an image holding Harbor and the adapter,
-  the CLI starts it with the job directory mounted, and nothing Python lives
-  on the host; (2) a Box VM (`gym env box create`) for lanes that want the
-  trials off this machine entirely; (3) host-native Harbor, the documented
-  fallback, kept for parity with the current `bench/run-suite.sh` path. All
-  three write the same job-directory shape, so everything downstream —
-  scoring, ingest, rendering — is identical.
+  the CLI starts it with the job directory mounted; (3) a Box VM (`gym env
+  box create`) for lanes that want the trials off this machine entirely;
+  (4) host-native Harbor, the last fallback. All four write the same
+  job-directory shape, so everything downstream — scoring, ingest,
+  rendering — is identical.
 - Registers the run (`POST /api/v1/gym/runs/start`) when a token is present,
   streams trial states live (subscribing to the API's run stream or polling
   the job directory when running against a dev server), and finalizes through
@@ -197,9 +199,12 @@ openagents gym results trend <suite-id>
   and returned a positive reward; ungraded never counts in the denominator) —
   and appends through the results store. Refusals pass through verbatim
   (`unclassified_run`, `smoke_run`, exit 3): the CLI prints the store's
-  reason and does not editorialize. `--append` requires the suite to be at
-  `score` tier in its manifest — a smoke-tier suite records nowhere, and the
-  refusal says so.
+  reason and does not editorialize. `--append` records a complete run of the
+  named suite. Incomplete coverage is `smoke_run`. A score-tier suite lands
+  as `tier: score` (a published score). A smoke-tier suite lands as
+  `tier: smoke` so the first CoderBench row can exist before burn-in;
+  compare and trend treat those rows as smoke, never as score. The dedicated
+  liveness suite `smoke` still records nowhere.
 - `show`/`compare`/`trend` read `bench-results/<suite>.jsonl`. Verify-first:
   the hash chain is checked before the trend is drawn; a broken chain stops
   the command with the offending row named.

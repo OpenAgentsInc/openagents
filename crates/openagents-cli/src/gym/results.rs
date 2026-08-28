@@ -245,12 +245,16 @@ fn score_lines(report: &ScoreReport) -> Vec<String> {
 }
 
 /// Why `--append` must refuse this report, or `None` when the row may land.
+///
+/// A complete run of a score-tier suite lands as `tier: score`. A complete
+/// run of any other smoke-tier suite lands as `tier: smoke` — a smoke-marked
+/// row, never a published score. The dedicated liveness suite `smoke` still
+/// records nowhere. Incomplete coverage is `smoke_run` for every suite.
 pub fn append_refusal(report: &ScoreReport, meta: &crate::gym::suite::SuiteMeta) -> Option<String> {
-    if meta.tier != "score" {
-        return Some(format!(
-            "smoke_run: suite {} is tier {}, and a smoke-tier suite records nowhere",
-            meta.id, meta.tier
-        ));
+    if meta.id == "smoke" {
+        return Some(
+            "smoke_run: suite smoke is the liveness check and records nowhere".to_string(),
+        );
     }
     let mut expected = meta.task_ids.clone();
     expected.sort();
@@ -661,7 +665,7 @@ fn build_result_row(
     );
     obj.insert("suiteId".into(), Value::String(meta.id.clone()));
     obj.insert("suiteDigest".into(), Value::String(meta.digest.clone()));
-    obj.insert("tier".into(), Value::String("score".into()));
+    obj.insert("tier".into(), Value::String(meta.tier.clone()));
     obj.insert("models".into(), Value::Array(vec![]));
     obj.insert("agentVersions".into(), Value::Array(vec![]));
     obj.insert(

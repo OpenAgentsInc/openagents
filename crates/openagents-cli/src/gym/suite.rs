@@ -701,4 +701,20 @@ mod tests {
                 .all(|t| matches!(t.pin, SuiteTaskPin::HarborRegistry { .. }))
         );
     }
+
+    #[test]
+    fn coderbench_agent_building_v1_resolves_as_harbor_registry_smoke() {
+        let dir = suite_dir().expect("suite dir");
+        let suite = resolve_for_run_in(&dir, "coderbench-agent-building-v1").expect("resolve");
+        assert_eq!(suite.id, "coderbench-agent-building-v1");
+        assert_eq!(suite.tasks.len(), 2);
+        assert!(
+            suite
+                .tasks
+                .iter()
+                .all(|t| t.dataset == "terminal-bench@2.0")
+        );
+        let meta = suite_meta_in(&dir, "coderbench-agent-building-v1").expect("meta");
+        assert_eq!(meta.tier, "smoke");
+    }
 }

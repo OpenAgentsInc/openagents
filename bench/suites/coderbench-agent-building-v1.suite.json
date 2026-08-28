@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "coderbench-agent-building-v1",
+  "tier": "smoke",
+  "description": "First CoderBench suite. Smoke until agent-building Harbor environments exist. The two tasks are Terminal-Bench 2.0 harbor-registry pins so gym run can execute and gym results can record a smoke-marked row; distiller drafts stay candidates under bench/tasks/coderbench/drafts/ and are not in this manifest.",
+  "tasks": [
+    {
+      "id": "openssl-selfsigned-cert",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "openssl-selfsigned-cert"
+      },
+      "environmentAvailable": true,
+      "rationale": "CoderBench gym-pipeline smoke: a fully specified checklist, Harbor-runnable today. Not a promoted distiller draft."
+    },
+    {
+      "id": "regex-log",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "regex-log"
+      },
+      "environmentAvailable": true,
+      "rationale": "CoderBench gym-pipeline smoke: near-zero tool surface, Harbor-runnable today. Not a promoted distiller draft."
+    }
+  ]
+}

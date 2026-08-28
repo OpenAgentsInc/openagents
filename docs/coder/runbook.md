@@ -282,10 +282,16 @@ Two flags matter for the lanes below the live one:
 
 - Baselines on record: `tb2-quick`, local lane, `qwen3.8:27b-mtp-q8_0` at
   0.5 success (two runs), plus the deliberate `qwen3:0.6b` regression row;
-  and `tb2-quick`, proxy lane, `gpt-5.6-luna` at 1.0 success over 2 graded
-  trials, 221.9s, gate passed (2026-08-26, #118). The proxy row is the
-  iteration baseline; cost is `null` because `gpt-5.6-luna` is unpriced.
-  No cross-section rows recorded on any lane yet.
+  `tb2-quick`, proxy lane, `gpt-5.6-luna` at 1.0 success over 2 graded
+  trials, 221.9s, gate passed (2026-08-26, #118); and `tb2-quick`, proxy
+  lane, native Coder Flash `glm-5.3-flash` at 0.5 success over 2 graded
+  trials, 462.1s, gate passed (2026-08-28, #143, Harbor job
+  `7695aa83-ece2-4083-8092-4968b6e738bf`). Flash accepted
+  `openssl-selfsigned-cert` and rejected `regex-log` after the container
+  could not reach `https://openagents.com/api/inference/proxy` (agent exit
+  2). Cost is `unknown` because `glm-5.3-flash` is absent from the rate
+  catalog. That Flash row is the current native Coder Flash baseline.
+  `tb2-cross-section` has no Flash row yet.
 - `tb2-cross-section`, proxy lane, `gpt-5.6-luna`: 9 of 12 accepted, 0.75
   success over 12 graded trials, 0 ungraded, 12 of 12 pinned tasks covered,
   3151.4s, 6,006,329 prompt and 88,163 output tokens over 250 tool calls
@@ -311,6 +317,10 @@ Two flags matter for the lanes below the live one:
   Rosetta-enabled Docker Desktop.
 - `owned-closed-issues` is a smoke suite until its environments exist
   (`bench/tasks/owned/README.md`).
+- First CoderBench suite `coderbench-agent-building-v1` is smoke: two
+  Harbor-runnable Terminal-Bench 2.0 pins until agent-building environments
+  exist. One smoke-marked row recorded 2026-08-28 (#164 D5), same Harbor job
+  as the Flash `tb2-quick` baseline.
 - Cached-token splits are not surfaced end to end
   (OpenAgentsInc/openagents.com#220); until then, metered-lane dollar
   figures are ceilings, and lane comparisons lean on success rate and

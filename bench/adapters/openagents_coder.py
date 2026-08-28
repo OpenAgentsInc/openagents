@@ -8,7 +8,7 @@ OpenAgentsInc/openagents#35, first slice. Loads out-of-tree by import path:
       --model openai/gpt-5.6-luna \
       --n-concurrent 1
 
-The coder runs headless (`--plain`) on its thread lane against an
+The coder runs one turn (`--headless --plain`) on its thread lane against an
 OpenAgents server: `OPENAGENTS_TOKEN` carries authority and
 `OPENAGENTS_CODER_API_URL` names the server (default
 `http://host.docker.internal:4000`, the dev forge on the container's host,
@@ -183,15 +183,16 @@ class OpenAgentsCoder(BaseInstalledAgent):
         if self._catalog_model:
             model_flag = f"--model {shlex.quote(self._catalog_model)} "
 
-        # The instruction goes down stdin, then /export so the session writes
-        # its ATIF trajectory before exiting on end-of-file. stdin carries the
-        # instruction verbatim; nothing here re-quotes its content.
+        # The instruction is the positional prompt. Stdin is not a prompt:
+        # `oa coder --plain` with no argument prints "needs a terminal" and
+        # exits 0, which Harbor grades as a completed-but-empty agent. `--`
+        # keeps a prompt that starts with `-` from becoming a flag.
         command = (
             "set -uo pipefail; "
-            f"printf '%s\\n/export\\n' {shlex.quote(instruction)} | "
-            "openagents coder --plain "
+            "openagents coder --headless --plain "
             f"--api-url {shlex.quote(self._api_url)} "
             f"{model_flag}"
+            f"-- {shlex.quote(instruction)} "
             f"2>&1 | tee {shlex.quote(str(self.environment_logs_dir))}/coder.txt; "
             "status=$?; "
             f"latest=$(ls -t {_EXPORT_DIR}/*.json 2>/dev/null | head -1 || true); "

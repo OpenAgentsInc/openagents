@@ -48,6 +48,7 @@ Harbor's registry and the tracker's closed issues.
 | `tb2-quick`                | score | 2     | Narrow but real, small enough to run repeatedly on one machine, floored for its own size. Shares no suite key with the headline suite, so no comparison will ever place its rows beside it. |
 | `smoke`                    | smoke | 2     | A liveness check. Declared smoke, so it can never be recorded.                                                                                                                              |
 | `owned-closed-issues`      | smoke | 6     | Closed issues in this tracker with their closing commits. Smoke until the environments exist — see `bench/tasks/owned/README.md`.                                                           |
+| `coderbench-agent-building-v1` | smoke | 2 | First CoderBench suite. Harbor-runnable Terminal-Bench 2.0 pins until agent-building environments exist. `gym results --append` records a smoke-marked row, not a published score. Distiller drafts stay candidates. |
 
 Issue #34 names SWE-bench-lite as the public candidate. Harbor's registry
 carries `swebench-verified@1.0` instead, and that is the better half of the same

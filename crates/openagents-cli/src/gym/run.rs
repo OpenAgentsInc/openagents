@@ -419,8 +419,14 @@ async fn execute(
     }
 
     // 5. Register when a token is present; say so when not — never silently.
+    //    `bench/run-suite.sh` owns registration when it is the execution
+    //    target, so this client does not start a second run beside it.
     let client = GymClient::new(api_base, token.clone());
-    let registration = if let Some(_token) = &token {
+    let use_suite_script = will_use_suite_script();
+    let registration = if use_suite_script {
+        println!("run registration: deferred to bench/run-suite.sh");
+        None
+    } else if let Some(_token) = &token {
         let started = client
             .start_run(&suite.id, &catalog_model, &lane, suite.tasks.len())
             .await
@@ -512,15 +518,76 @@ pub struct HostPlan {
 const CONTAINER_JOBS_DIR: &str = "/jobs";
 const DOCKER_SOCKET: &str = "/var/run/docker.sock";
 
-/// Prefer the pinned harbor-runner image. Fall back to host-native Harbor
-/// only when the image is not present, and say so.
+fn prefer_container_target() -> bool {
+    std::env::var("OPENAGENTS_GYM_RUN_TARGET")
+        .map(|v| v.eq_ignore_ascii_case("container"))
+        .unwrap_or(false)
+}
+
+fn suite_script_path() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    let script = cwd.join("bench").join("run-suite.sh");
+    script.is_file().then_some(script)
+}
+
+fn will_use_suite_script() -> bool {
+    !prefer_container_target() && suite_script_path().is_some()
+}
+
+/// Prefer `bench/run-suite.sh` (packs the working-tree CLI, registers the
+/// Gym run, invokes Harbor). The digest-pinned harbor-runner image is the
+/// container target when `OPENAGENTS_GYM_RUN_TARGET=container` or the
+/// script is missing. Host-native Harbor is the last fallback.
 async fn run_on_target(plan: &HostPlan) -> Result<PathBuf, CliError> {
+    if will_use_suite_script() {
+        let script = suite_script_path().expect("will_use_suite_script implies the script");
+        println!("execution target: {}", script.display());
+        return run_on_suite_script(plan, &script).await;
+    }
     if harbor_runner_image_present().await {
         println!("execution target: container ({HARBOR_RUNNER_IMAGE})");
         return run_on_container(plan).await;
     }
     eprintln!("execution target: host-native Harbor (image missing; {HARBOR_PULL_REMEDY})");
     run_on_host(plan).await
+}
+
+/// Drive Harbor through the same script `docs/coder/runbook.md` documents.
+async fn run_on_suite_script(plan: &HostPlan, script: &Path) -> Result<PathBuf, CliError> {
+    let suite_file = format!("bench/suites/{}.suite.json", plan.suite.id);
+    let mut cmd = Command::new("bash");
+    cmd.arg(script)
+        .arg(&suite_file)
+        .arg("--model")
+        .arg(&plan.model)
+        .arg("--lane")
+        .arg(&plan.lane)
+        .arg("--jobs-dir")
+        .arg(&plan.jobs_dir)
+        .arg("--n-concurrent")
+        .arg(plan.n_concurrent.to_string())
+        .arg("--api-url")
+        .arg(&plan.api_base);
+    if let Some(m) = plan.timeout_multiplier {
+        cmd.arg("--timeout-multiplier").arg(m.to_string());
+    }
+    if let Some(token) = &plan.token {
+        cmd.env("OPENAGENTS_TOKEN", token);
+    }
+    cmd.stdout(std::process::Stdio::inherit());
+    cmd.stderr(std::process::Stdio::inherit());
+    let status = cmd
+        .status()
+        .await
+        .map_err(|e| CliError::Internal(format!("could not start {}: {e}", script.display())))?;
+    if !status.success() {
+        return Err(CliError::Internal(format!(
+            "{} exited with status {}",
+            script.display(),
+            status.code().unwrap_or(-1)
+        )));
+    }
+    locate_job_dir(&plan.jobs_dir).await
 }
 
 /// Run Harbor inside the digest-pinned harbor-runner image. The job directory
@@ -577,6 +644,9 @@ async fn run_on_host(plan: &HostPlan) -> Result<PathBuf, CliError> {
 fn apply_host_env(cmd: &mut Command, plan: &HostPlan) {
     if let Some(token) = &plan.token {
         cmd.env("OPENAGENTS_TOKEN", token);
+    }
+    if let Ok(binary) = std::env::var("OPENAGENTS_CODER_BINARY") {
+        cmd.env("OPENAGENTS_CODER_BINARY", binary);
     }
     cmd.env("OPENAGENTS_CODER_API_URL", &plan.api_base);
     if let Some(run_id) = &plan.run_id {
@@ -1054,10 +1124,20 @@ fn print_dry_run_plan(
         api_base: String::new(),
         token: None,
     };
+    if will_use_suite_script() {
+        println!(
+            "[dry-run] preferred: bash bench/run-suite.sh bench/suites/{}.suite.json --model {} --lane {} --jobs-dir {} --n-concurrent {} --api-url <api-url>",
+            suite.id,
+            model,
+            lane,
+            jobs.display(),
+            args.n_concurrent
+        );
+    }
     let docker_args = container_docker_args(&plan, &jobs);
-    println!("[dry-run] preferred: docker {}", docker_args.join(" "));
+    println!("[dry-run] container: docker {}", docker_args.join(" "));
     let host_args = harbor_args(&plan, &jobs);
-    println!("[dry-run] fallback: harbor {}", host_args.join(" "));
+    println!("[dry-run] host-native: harbor {}", host_args.join(" "));
     println!("[dry-run] POST /api/v1/gym/runs/<run-id>/trials (once per task)");
     println!("[dry-run] PATCH /api/v1/gym/runs/<run-id>");
     println!(

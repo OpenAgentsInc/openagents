@@ -1,7 +1,7 @@
 //! `gym results` scoring, chain verification, and compare/trend tests.
 
 use openagents_cli::gym::results::{
-    BENCH_RESULT_SCHEMA_V2, ChainVerdict, ResultsAction, ResultsArgs, append_refusal,
+    BENCH_RESULT_SCHEMA_V2, ChainVerdict, ResultsAction, ResultsArgs, ScoreReport, append_refusal,
     read_result_rows, receipt_of, run_results, score_harbor_job, verify_result_chain,
 };
 use openagents_cli::gym::suite::suite_meta;
@@ -91,6 +91,32 @@ fn smoke_tier_append_is_refused_with_the_tier_named() {
     let reason = append_refusal(&report, &meta).expect("smoke must refuse");
     assert!(reason.contains("smoke_run"), "{reason}");
     assert!(reason.contains("smoke"), "{reason}");
+}
+
+#[test]
+fn complete_coderbench_smoke_run_may_append_as_smoke() {
+    let meta = suite_meta("coderbench-agent-building-v1").expect("D5 suite is checked in");
+    assert_eq!(meta.tier, "smoke");
+    let report = ScoreReport {
+        suite: "coderbench-agent-building-v1".into(),
+        lane: "proxy".into(),
+        job_id: Some("job-coderbench-smoke".into()),
+        trials_total: 2,
+        accepted: 1,
+        rejected: 1,
+        ungraded: 0,
+        graded: 2,
+        success_rate: Some(0.5),
+        ungraded_ratio: 0.0,
+        cost_disposition: "cost_unknown".into(),
+        cost_per_accepted_outcome_usd: None,
+        tasks: vec!["openssl-selfsigned-cert".into(), "regex-log".into()],
+    };
+    assert_eq!(
+        append_refusal(&report, &meta),
+        None,
+        "a complete smoke-tier CoderBench run must be recordable as smoke"
+    );
 }
 
 #[test]

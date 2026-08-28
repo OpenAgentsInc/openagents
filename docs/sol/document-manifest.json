@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-21",
-  "sourceTreeSha256": "670f57d2b2e2b427d203426e865c50cf3e2839bed4b910645cf979e730ed553f",
+  "sourceTreeSha256": "63d5bca5cb7f116560b19564e6fc7dcdac441c499b4051ac795ebb49664fab63",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2528,6 +2528,24 @@
       "inboundSourceCount": 3,
       "issueLinks": [
         9303
+      ]
+    },
+    {
+      "path": "docs/sol/2026-08-27-task-tool-coder-mini-plan.md",
+      "class": "historical-analysis",
+      "owner": "Sol roadmap",
+      "disposition": "retain-default-analysis",
+      "dispatch": false,
+      "sha256": "25e589deab90846b3d6aec9770adf407292ab1b8f4fd199cf07b4cdaa94de2e7",
+      "status": "retain-default-analysis",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-21",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        228,
+        232
       ]
     },
     {

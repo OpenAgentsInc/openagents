@@ -1,0 +1,12 @@
+{
+  "id": "openssl-selfsigned-cert",
+  "pin": {
+    "kind": "harbor-registry",
+    "dataset": "terminal-bench@2.0",
+    "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+    "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+    "path": "openssl-selfsigned-cert"
+  },
+  "environmentAvailable": true,
+  "rationale": "CoderBench gym-pipeline smoke: a fully specified checklist, Harbor-runnable today. Not a promoted distiller draft."
+}

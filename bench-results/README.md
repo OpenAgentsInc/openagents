@@ -46,9 +46,21 @@ not zero and not infinity. An agent that gets cheaper per attempt while
 accepting less is the regression this metric exists to catch, and it is the one
 a per-attempt average would report as an improvement.
 
-All three rows report cost as `null`. The local lane bills no metered tokens,
-so there is no per-token rate to apply — `unmetered_local_lane`, which is not
-the same as free. No run has yet been recorded on a priced lane.
+All three local-lane rows report cost as `null`. The local lane bills no
+metered tokens, so there is no per-token rate to apply —
+`unmetered_local_lane`, which is not the same as free.
+
+A later proxy-lane row (2026-08-26) recorded `gpt-5.6-luna` at 2 of 2. The
+native Coder Flash baseline (2026-08-28, #143) is `glm-5.3-flash` at 1 of 2
+over 462.1s: `openssl-selfsigned-cert` accepted, `regex-log` rejected after
+the Harbor container could not reach the inference proxy. Cost is
+`unknown` (`glm-5.3-flash` is absent from the rate catalog). That is the
+current native Flash comparison row, not a priced-lane measurement.
+
+`coderbench-agent-building-v1.jsonl` holds the first CoderBench smoke-marked
+row from that same Harbor job (`tier: smoke`). Distiller drafts are not in
+that suite. The TypeScript score store still refuses the dedicated liveness
+suite `smoke`.
 
 ## Appending a run
 
