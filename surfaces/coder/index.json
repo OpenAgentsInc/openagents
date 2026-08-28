@@ -5,13 +5,13 @@
       "file": "system-prompt.v1.json",
       "schema": "openagents.coder_surface.system_prompt.v1",
       "keys": 14,
-      "digest": "sha256:e39066be334284adca92e7c12dd7f2a52f0b3455cb8a780d34647280a3512626"
+      "digest": "sha256:fa726224d5deea4b03055bbd70904b72a57eed99384b5bee4b77c306bb8821ab"
     },
     "tool-descriptions": {
       "file": "tool-descriptions.v1.json",
       "schema": "openagents.coder_surface.tool_descriptions.v1",
       "keys": 15,
-      "digest": "sha256:ac28851a4dde0219a09e4c9a90d7640cc13d0bc978febd04efde45b1f815e66e"
+      "digest": "sha256:1938e28489cb7eaa56060b70ec5ceb33bc248693a11f6266e260575bcada9785"
     },
     "catalog-lines": {
       "file": "catalog-lines.v1.json",

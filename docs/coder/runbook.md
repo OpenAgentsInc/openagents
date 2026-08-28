@@ -290,7 +290,12 @@ Two flags matter for the lanes below the live one:
   `openssl-selfsigned-cert` and rejected `regex-log` after the container
   could not reach `https://openagents.com/api/inference/proxy` (agent exit
   2). Cost is `unknown` because `glm-5.3-flash` is absent from the rate
-  catalog. That Flash row is the current native Coder Flash baseline.
+  catalog. That Flash row is the current native Coder Flash baseline
+  for a run whose agent opened a turn. Two later Flash `tb2-quick` rows
+  (2026-08-28T03:06Z and 03:18Z, jobs `72928cbc` and `8600a533`) are 0 of
+  2: both trials died with the inference proxy unreachable before any
+  tool call. Those rows stay in the chain. They are lane degradation, not
+  a T2 verdict (`docs/coder/reviews/2026-08-28-t2-stat-before-p.md`).
 - Native Coder Flash `tb2-cross-section`, proxy lane, `glm-5.3-flash`: 7 of
   12 accepted, 0.583 success over 12 graded trials, 0 ungraded, 4243.4s,
   gate passed (2026-08-28, #143, Harbor job

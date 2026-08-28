@@ -96,6 +96,12 @@ Survey with `--stat`, then read the one file in question. A patch dumped
 early is re-sent every round after.
 **Provenance:** fix-git (two `git log -p` dumps re-sent ~12 times).
 **Detection:** review flags full-patch dumps followed by further rounds.
+Staged 2026-08-28 on `coder.lane.thread`, `coder.lane.local.rust`,
+`rust.shell`, and `rust.bash`. The first Flash `tb2-quick` after-rows
+(`row:tb2-quick#2026-08-28T03:06:00.236Z`,
+`row:tb2-quick#2026-08-28T03:18:11.677Z`) are 0 of 2 because the
+inference proxy was unreachable; T2 is unmeasured, not refuted. Review:
+`docs/coder/reviews/2026-08-28-t2-stat-before-p.md`.
 
 ### T3. Verbosity guidance is lane-aware — `adopted`
 

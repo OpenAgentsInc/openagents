@@ -32,9 +32,9 @@ pub mod system_prompt {
     /// `coder.tool_list_closing`
     pub const CODER_TOOL_LIST_CLOSING: &str = "That list is complete: a capability not on it is one you do not have, whatever a model like you usually has. Read a tool's description before assuming what it covers. Where a description says what a child agent can do, that is the child's capability and not yours. Never say you ran something you did not run.";
     /// `coder.lane.local.rust`
-    pub const CODER_LANE_LOCAL_RUST: &str = "You answer from a model running on this machine through Ollama. Nothing in this conversation leaves the machine and nothing is metered, but the context window is a fraction of a hosted model's, so keep large dumps out of the transcript.";
+    pub const CODER_LANE_LOCAL_RUST: &str = "You answer from a model running on this machine through Ollama. Nothing in this conversation leaves the machine and nothing is metered, but the context window is a fraction of a hosted model's, so keep large dumps out of the transcript. When inspecting git, survey with `--stat` or `--name-only` before `-p`; a full patch dumped early is re-sent every later round.";
     /// `coder.lane.thread`
-    pub const CODER_LANE_THREAD: &str = "You answer through the OpenAgents inference proxy, on a thread opened for this session. Every round of tool calls re-sends the whole conversation to a metered model, so batch independent commands into one call and keep large dumps out of the transcript.";
+    pub const CODER_LANE_THREAD: &str = "You answer through the OpenAgents inference proxy, on a thread opened for this session. Every round of tool calls re-sends the whole conversation to a metered model, so batch independent commands into one call and keep large dumps out of the transcript. When inspecting git, survey with `--stat` or `--name-only` before `-p`; a full patch dumped early is re-sent every later round.";
     /// `coder.checkpoints`
     pub const CODER_CHECKPOINTS: &str = "Record your work as you go with the `checkpoint` tool: after an issue lands green, when you hit and work around a blocker, when you switch to different work, and always before the turn's tool budget runs low. A checkpoint says which issue or task you were on, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. The note is what whoever picks this session up reads first -- including a future session of yours after this one ends mid-work.";
     /// `coder.budget`
@@ -50,9 +50,9 @@ pub mod tool_descriptions {
     /// `rust.edit`
     pub const RUST_EDIT: &str = "Replace one exact run of text in a file. `oldText` must appear exactly once: if it appears more than once the edit is refused and the file is left alone, so add the lines above and below the one you mean until the match is unique, then call again. Several replacements on one file can be sent as `edits: [{oldText, newText}, ...]`; they apply in order, all land or none do, and the call prices as one against the turn budget. `oldText`/`newText` are not used when `edits` is present. Match byte for byte first; if nothing matches exactly, the site is still found when the difference is only trailing or leading whitespace, or doubled backslashes before a newline, and whole lines are replaced -- but a miss is cheaper than a misspelled guess, so copy the text rather than retyping it. On a miss the reply shows the file's real lines beside what you sent. `newText` may be empty to delete the run. Use this rather than `sed` for a surgical change.";
     /// `rust.bash`
-    pub const RUST_BASH: &str = "Run a command through `/bin/sh -c` in the session's working directory, {cwd}. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. This is the same runner as `shell`, and either name reaches it.";
+    pub const RUST_BASH: &str = "Run a command through `/bin/sh -c` in the session's working directory, {cwd}. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. For git, survey with `--stat` or `--name-only` before `-p`; a full patch in the transcript is re-sent every later round. This is the same runner as `shell`, and either name reaches it.";
     /// `rust.shell`
-    pub const RUST_SHELL: &str = "Run a shell command on this machine. The working directory is {cwd}, so paths are relative to it and you do not need to ask where you are. Returns combined stdout and stderr with the exit code. Batch independent commands into one call with && instead of one call each: every call replays the conversation so far.";
+    pub const RUST_SHELL: &str = "Run a shell command on this machine. The working directory is {cwd}, so paths are relative to it and you do not need to ask where you are. Returns combined stdout and stderr with the exit code. Batch independent commands into one call with && instead of one call each: every call replays the conversation so far. For git, survey with `--stat` or `--name-only` before `-p`; a full patch in the transcript is re-sent every later round.";
     /// `rust.skill`
     pub const RUST_SKILL: &str = "Read one of this repository skill procedures: a written procedure with conventions, commands, and rules. Call it before doing work a skill covers. Skills available:{skills}";
     /// `rust.openagents`
@@ -81,11 +81,11 @@ pub mod tool_descriptions {
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     (
         "system-prompt",
-        "sha256:e39066be334284adca92e7c12dd7f2a52f0b3455cb8a780d34647280a3512626",
+        "sha256:fa726224d5deea4b03055bbd70904b72a57eed99384b5bee4b77c306bb8821ab",
     ),
     (
         "tool-descriptions",
-        "sha256:ac28851a4dde0219a09e4c9a90d7640cc13d0bc978febd04efde45b1f815e66e",
+        "sha256:1938e28489cb7eaa56060b70ec5ceb33bc248693a11f6266e260575bcada9785",
     ),
     (
         "catalog-lines",
