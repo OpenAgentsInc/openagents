@@ -77,10 +77,7 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(text.contains("Improved subagent delegation"), "{text}");
     assert!(text.contains("Added streaming to thinking"), "{text}");
     assert!(text.contains("Grok is a first-class delegate"), "{text}");
-    assert!(
-        text.contains("Live credit on the signed-in account"),
-        "{text}"
-    );
+    assert!(text.contains("Timing on each message"), "{text}");
     assert!(
         text.contains("ATIF export keeps the child stream"),
         "{text}"

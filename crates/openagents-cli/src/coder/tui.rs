@@ -36,7 +36,7 @@ const WELCOME_WHAT_IS_NEW: &[&str] = &[
     "Improved subagent delegation",
     "Added streaming to thinking",
     "Grok is a first-class delegate",
-    "Live credit on the signed-in account",
+    "Timing on each message",
     "ATIF export keeps the child stream",
 ];
 
@@ -1396,16 +1396,26 @@ fn render_entry(
             };
             let header_body = width.saturating_sub(2);
             let header_text = tool_header_text(entry);
+            let duration = tool_duration_seconds(entry);
+            let duration_reserve = match duration {
+                Some((true, seconds)) => format!(" ({})", format_duration(seconds)).width(),
+                Some((false, seconds)) => format_duration(seconds).width() + 1,
+                None => 0,
+            };
             // The whole header, wrapped: a call whose title runs long used to
             // lose everything past the first line, which for `checkpoint`
             // meant the note itself — the one part a reader needs. A multi-line
             // header indents its continuation under the text, not the marker.
-            // Wrapping runs against the width the model label leaves, so a
-            // header never runs under the answer's model name the way the
-            // assistant body does not.
+            // Wrapping leaves room for the live inline count or the settled
+            // right-edge figure, the same way the assistant body leaves room
+            // for the model label.
             let header_chunks = wrap_text(
                 &header_text,
-                header_body.min(width).saturating_sub(2).max(1),
+                header_body
+                    .min(width)
+                    .saturating_sub(2)
+                    .saturating_sub(duration_reserve)
+                    .max(1),
             );
             let mut header_iter = header_chunks.iter();
             let header = header_iter.next().cloned().unwrap_or_default();
@@ -1414,10 +1424,36 @@ fn render_entry(
             } else {
                 text_style
             };
-            lines.push(Line::from(vec![
+            let mut header_spans = vec![
                 Span::styled(marker, marker_style),
                 Span::styled(header, header_style),
-            ]));
+            ];
+            match duration {
+                Some((true, seconds)) => {
+                    header_spans.push(Span::styled(
+                        format!(" ({})", format_duration(seconds)),
+                        text_style.fg(DIM_TEXT_COLOR),
+                    ));
+                }
+                Some((false, seconds)) => {
+                    let label = format_duration(seconds);
+                    let line_width = header_spans
+                        .iter()
+                        .map(|span| span.content.width())
+                        .sum::<usize>();
+                    let padding = width.saturating_sub(line_width + label.width());
+                    header_spans.push(Span::styled(
+                        " ".repeat(padding),
+                        Style::default().fg(MODEL_TEXT_COLOR).bg(BACKGROUND_COLOR),
+                    ));
+                    header_spans.push(Span::styled(
+                        label,
+                        Style::default().fg(MODEL_TEXT_COLOR).bg(BACKGROUND_COLOR),
+                    ));
+                }
+                None => {}
+            }
+            lines.push(Line::from(header_spans));
             let continuation = format!("{} ", " ".repeat(marker.chars().count()));
             for chunk in header_iter {
                 lines.push(Line::from(vec![
@@ -1523,6 +1559,20 @@ fn render_entry(
     }
 
     (lines, links)
+}
+
+/// Whole seconds this tool has been on screen, and whether it is still live.
+///
+/// In-flight calls count from [`Entry::at`]. Settled calls use the runtime's
+/// `duration_ms`. The same formatter as the turn stopwatch, so a 9-second
+/// read and a 9-second turn never disagree about what nine seconds is called.
+fn tool_duration_seconds(entry: &Entry) -> Option<(bool, u64)> {
+    let tool = entry.tool.as_ref()?;
+    if tool.done {
+        tool.duration_ms.map(|ms| (false, ms / 1000))
+    } else {
+        Some((true, now_ms().saturating_sub(entry.at) / 1000))
+    }
 }
 
 /// Use a prompt marker for shell calls without changing their stored tool name.
@@ -1897,6 +1947,43 @@ mod tests {
             "model changed without a duration: {first:?}"
         );
         assert!(!first.contains("·"), "stray separator: {first:?}");
+    }
+
+    /// An in-flight tool counts beside its title; a settled one puts the
+    /// figure on the right edge, the way the answer line does.
+    #[test]
+    fn a_tool_header_shows_a_live_count_then_a_settled_duration() {
+        let mut entry = Entry::tool_call("read a.rs");
+        entry.at = now_ms() - 9_000;
+        entry.tool = Some(ToolCall {
+            call_id: "c1".to_string(),
+            function_name: "read".to_string(),
+            arguments: serde_json::json!({"path": "a.rs"}),
+            output: None,
+            error: None,
+            done: false,
+            duration_ms: None,
+        });
+        let (lines, _) = render_entry(&mut entry, 80, 0, false);
+        let first: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            first.contains("read a.rs (9s)"),
+            "live count missing inline: {first:?}"
+        );
+
+        entry.tool.as_mut().unwrap().done = true;
+        entry.tool.as_mut().unwrap().duration_ms = Some(90_000);
+        let (lines, _) = render_entry(&mut entry, 80, 0, false);
+        let first: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            first.trim_end().ends_with("1m30s"),
+            "settled duration missing on the right: {first:?}"
+        );
+        assert!(
+            !first.contains("(1m30s)"),
+            "settled duration stayed inline: {first:?}"
+        );
+        assert!(first.contains("read a.rs"), "{first:?}");
     }
 
     /// The loading row carries the spinner, the waiting text, and the live

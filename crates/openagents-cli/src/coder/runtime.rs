@@ -849,8 +849,12 @@ pub fn tool_title(name: &str, arguments: &str) -> String {
         }),
         "capability" => string("name").or_else(|| string("query")),
         "delegate" => {
+            let verb = match string("agent") {
+                Some(agent) => format!("delegate: {agent}"),
+                None => "delegate".to_string(),
+            };
             if let Some(description) = string("description") {
-                return format!("delegate {}", one_line(&description));
+                return format!("{verb} {}", one_line(&description));
             }
             let count = parsed
                 .get("count")
@@ -858,7 +862,10 @@ pub fn tool_title(name: &str, arguments: &str) -> String {
                 .filter(|n| *n > 1)
                 .map(|n| format!("×{n} "))
                 .unwrap_or_default();
-            string("prompt").map(|prompt| format!("{count}{prompt}"))
+            return match string("prompt") {
+                Some(prompt) => format!("{verb} {count}{}", one_line(&prompt)),
+                None => verb,
+            };
         }
         // The note itself, never the JSON envelope. The fallthrough below
         // would have put `{"text":"..."}` in the header — the one tool whose
@@ -983,6 +990,14 @@ mod tests {
                 r#"{"prompt":"read it","count":3,"description":"Audit auth module"}"#
             ),
             "delegate Audit auth module"
+        );
+        assert_eq!(
+            tool_title("delegate", r#"{"prompt":"read it","agent":"grok"}"#),
+            "delegate: grok read it"
+        );
+        assert_eq!(
+            tool_title("delegate", r#"{"agent":"grok"}"#),
+            "delegate: grok"
         );
         // A multi-line command is one line on the header, and says so.
         assert_eq!(

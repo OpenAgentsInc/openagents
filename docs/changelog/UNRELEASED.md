@@ -5,6 +5,21 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder times each tool call (#277)
+
+- issues: #277
+- commits: this change
+- contracts-specs: Coder tool-header timing
+- invariants: in-flight tool headers count inline; settled headers put the duration on the right in the same words as the turn clock
+- evidence: `a_tool_header_shows_a_live_count_then_a_settled_duration`
+- lane: grok tool-call timers
+
+Each tool box now shows how long that call has been running. The count sits
+beside the title while the call is in flight, then moves to the right edge
+when it settles, matching the turn duration on the answer line. A `delegate`
+header names the agent (`delegate: grok`). The idle card names message
+timing instead of signed-in credit.
+
 ## Coder idle frame shows what is new in 0.1.1
 
 - issues: none (direct owner request)
