@@ -998,25 +998,171 @@ pub fn send(
     Ok(report)
 }
 
-/// Read one session's inbox. Refuses an inbox whose sequence numbers gap:
-/// the file is the transport of record, and a silent gap is a lost message
-/// pretending to be a quiet day.
-pub fn read_inbox(session_directory: &Path) -> Result<Vec<SwarmMessage>, String> {
-    let messages = Mailbox::at(session_directory).deliver_count_guard()?;
+/// How a gap check came out. An intact inbox carries no quarantine; a gapped
+/// one carries the readable prefix, the first message after the gap, and the
+/// sequence that went missing (#280).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuarantineSplit {
+    /// The messages before the gap, contiguous from sequence 1.
+    pub readable: Vec<SwarmMessage>,
+    /// The first message after the gap — lost territory, not delivered mail.
+    /// Present whenever a gap was found.
+    pub first_after_gap: Option<SwarmMessage>,
+    /// The last contiguous sequence before the gap: the last good sequence.
+    pub last_good_sequence: u64,
+}
+
+impl QuarantineSplit {
+    pub fn gap(&self) -> bool {
+        self.first_after_gap.is_some()
+    }
+}
+
+/// Split an inbox at its first sequence gap: everything from sequence 1
+/// contiguous is readable, the message sitting after the missing sequence is
+/// quarantined. Nothing here rewrites the file — the split is what the
+/// quarantine notice names and what `repair` acts on.
+fn quarantine_split(messages: &[SwarmMessage]) -> QuarantineSplit {
     let mut expected = 0u64;
-    for message in &messages {
+    for (index, message) in messages.iter().enumerate() {
         if let Some(sequence) = message.sequence {
             if sequence != expected + 1 {
-                return Err(format!(
-                    "the inbox at {} gaps at sequence {expected}: a message is missing, and \
-                     reading past the gap would pretend it never existed",
-                    session_directory.join(INBOX_FILE).display()
-                ));
+                return QuarantineSplit {
+                    readable: messages[..index].to_vec(),
+                    first_after_gap: Some(message.clone()),
+                    last_good_sequence: expected,
+                };
             }
             expected = sequence;
         }
     }
+    QuarantineSplit {
+        readable: messages.to_vec(),
+        first_after_gap: None,
+        last_good_sequence: expected,
+    }
+}
+
+/// Read one session's inbox, refusing a gap the way the contract always has.
+/// The refusal names the missing sequence and the repair path;
+/// [`inbox_quarantine`] is the form that keeps reading instead.
+pub fn read_inbox(session_directory: &Path) -> Result<Vec<SwarmMessage>, String> {
+    let messages = Mailbox::at(session_directory).messages()?;
+    let split = quarantine_split(&messages);
+    if split.gap() {
+        return Err(format!(
+            "the inbox at {} gaps at sequence {}: a message is missing, and \
+             reading past the gap would pretend it never existed — \
+             `openagents swarm inbox repair` truncates to the last good sequence",
+            session_directory.join(INBOX_FILE).display(),
+            split.last_good_sequence
+        ));
+    }
     Ok(messages)
+}
+
+/// What a reader is told when an inbox has a gap (#280).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QuarantineNotice {
+    /// The last contiguous sequence; the next number is the one missing.
+    pub missing_after_sequence: u64,
+    /// The id of the first message stranded past the gap.
+    pub first_quarantined_id: String,
+    /// Who sent it, so the human can decide whether to ask for a re-send.
+    pub first_quarantined_from: String,
+    /// How many messages total sit past the gap.
+    pub quarantined_count: usize,
+    /// The exact repair path, so the refusal is never the end of the story.
+    pub repair_hint: String,
+}
+
+/// The tool-facing read: everything readable plus a quarantine notice when a
+/// gap exists (#280). A lost line is reported, never papered over — and it
+/// no longer bricks every read: the readable prefix keeps flowing, the
+/// notice names the gap, and nothing after it is silently dropped.
+pub fn inbox_quarantine(
+    session_directory: &Path,
+) -> Result<(Vec<SwarmMessage>, Option<QuarantineNotice>), String> {
+    let messages = Mailbox::at(session_directory).messages()?;
+    let split = quarantine_split(&messages);
+    if !split.gap() {
+        return Ok((messages, None));
+    }
+    let after = split.first_after_gap.as_ref().unwrap();
+    let notice = QuarantineNotice {
+        missing_after_sequence: split.last_good_sequence,
+        first_quarantined_id: after.id.clone(),
+        first_quarantined_from: after.from.clone(),
+        quarantined_count: messages.len() - split.readable.len(),
+        repair_hint: format!(
+            "`openagents swarm inbox repair` truncates this inbox to sequence {} \
+             (the tail is preserved at inbox-quarantined.jsonl)",
+            split.last_good_sequence
+        ),
+    };
+    Ok((split.readable, Some(notice)))
+}
+
+/// Repair a gapped inbox by truncating it to the last contiguous sequence:
+/// everything before the gap is kept, the orphaned tail is preserved at
+/// `inbox-quarantined.jsonl` beside the mailbox (#280). Refuses an intact
+/// inbox: a repair that "succeeded" on healthy mail is a bug with a receipt.
+pub fn repair_inbox(session_directory: &Path) -> Result<RepairReport, String> {
+    let mailbox = Mailbox::at(session_directory);
+    let messages = Mailbox::read(&mailbox.inbox)?;
+    let split = quarantine_split(&messages);
+    if !split.gap() {
+        return Err(
+            "this inbox has no gap, so there is nothing to repair: refusing to rewrite healthy mail"
+                .to_string(),
+        );
+    }
+    let tail: Vec<SwarmMessage> = messages[split.readable.len()..].to_vec();
+    let quarantine_path = session_directory.join("inbox-quarantined.jsonl");
+    let mut preserved = String::new();
+    for message in &tail {
+        let mut line = serde_json::to_string(message)
+            .map_err(|error| format!("the message could not be rendered: {error}"))?;
+        line.push('\n');
+        preserved.push_str(&line);
+    }
+    use std::io::Write as _;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&quarantine_path)
+        .map_err(|error| {
+            format!(
+                "the quarantine file at {} could not be opened: {error}",
+                quarantine_path.display()
+            )
+        })?;
+    file.write_all(preserved.as_bytes()).map_err(|error| {
+        format!(
+            "the quarantined tail could not be preserved at {}: {error}",
+            quarantine_path.display()
+        )
+    })?;
+    file.flush().map_err(|error| {
+        format!(
+            "the quarantine file at {} could not be flushed: {error}",
+            quarantine_path.display()
+        )
+    })?;
+    mailbox.rewrite(&split.readable)?;
+    Ok(RepairReport {
+        truncated_after_sequence: split.last_good_sequence,
+        quarantined_count: tail.len(),
+        preserved_at: quarantine_path.display().to_string(),
+    })
+}
+
+/// What one repair did, for the receipt the confirmation gate prints.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RepairReport {
+    pub truncated_after_sequence: u64,
+    pub quarantined_count: usize,
+    pub preserved_at: String,
 }
 
 impl Mailbox {
@@ -1070,6 +1216,9 @@ pub struct DrainPlan {
     /// Unread unmuted messages past the cap. They stay unread for the next
     /// turn; they are never dropped.
     pub deferred: usize,
+    /// Set when the inbox has a sequence gap (#280): the readable prefix
+    /// flowed, the gap is reported, nothing past it is silently dropped.
+    pub quarantine: Option<QuarantineNotice>,
 }
 
 /// Decide what this turn injects. `messages` is the inbox in file order;
@@ -1447,9 +1596,16 @@ pub fn drain_turn_filtered(
     let mailbox = Mailbox::at(&binding.session_directory);
     let muted = binding.muted();
     let cap = binding.policy().drain_cap;
-    let unread = mailbox.unread()?;
+    // Quarantine-aware read (#280): a gapped inbox drains what is readable
+    // and reports the gap, instead of refusing every read forever.
+    let (readable, quarantine) = inbox_quarantine(&binding.session_directory)?;
+    let unread: Vec<SwarmMessage> = readable
+        .into_iter()
+        .filter(|message| message.read_at_ms.is_none())
+        .collect();
     let selected: Vec<SwarmMessage> = filter.select(&unread).into_iter().cloned().collect();
-    let plan = plan_drain(&selected, &muted, cap);
+    let mut plan = plan_drain(&selected, &muted, cap);
+    plan.quarantine = quarantine;
     let sequences: Vec<u64> = plan
         .inject
         .iter()

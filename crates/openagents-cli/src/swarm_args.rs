@@ -78,6 +78,16 @@ pub enum SwarmAction {
         )]
         inbox: Option<String>,
     },
+    /// Repair a gapped inbox: keep the readable prefix, preserve the tail
+    Repair {
+        #[arg(help = "Session id; omit to repair the newest session's inbox")]
+        session: Option<String>,
+        #[arg(
+            long,
+            help = "Confirm the truncation. Without this the command reports what it would do."
+        )]
+        yes: bool,
+    },
 }
 
 /// Run one `swarm` subcommand.
@@ -118,6 +128,7 @@ pub async fn run_swarm(action: SwarmAction, json: bool) {
         }
         SwarmAction::Mute { session, inbox } => mute(&session, inbox.as_deref(), true, json),
         SwarmAction::Unmute { session, inbox } => mute(&session, inbox.as_deref(), false, json),
+        SwarmAction::Repair { session, yes } => repair(session.as_deref(), yes, json),
     }
 }
 
@@ -365,6 +376,74 @@ fn send(
         human.push("No recipient accepted the message.".to_string());
     }
     crate::cli::emit(json, &document, &human);
+}
+
+/// The confirmation-gated repair for a gapped inbox (#280). Without `--yes`
+/// the command reports what it would truncate and stops; with it, the tail
+/// is preserved at inbox-quarantined.jsonl and the readable prefix stays.
+fn repair(session: Option<&str>, yes: bool, json: bool) {
+    let home = crate::auth::home_directory();
+    let session_id = match session {
+        Some(id) => id.to_string(),
+        None => match newest_session_id(&home) {
+            Some(id) => id,
+            None => crate::cli::fail("No sessions are registered, so there is no inbox to repair."),
+        },
+    };
+    let registration = match crate::swarm::load_registration(&home, &session_id) {
+        Ok(Some(registration)) => registration,
+        Ok(None) => crate::cli::fail(&format!("No session `{session_id}` is registered.")),
+        Err(why) => crate::cli::fail(&why),
+    };
+    let directory = inbox_directory(&registration);
+    match crate::swarm::inbox_quarantine(&directory) {
+        Ok((_, None)) => crate::cli::fail(
+            "this inbox has no gap, so there is nothing to repair: refusing to rewrite healthy mail",
+        ),
+        Ok((readable, Some(notice))) => {
+            if !yes {
+                let document = serde_json::json!({
+                    "session_id": session_id,
+                    "would_truncate_after_sequence": notice.missing_after_sequence,
+                    "quarantined_count": notice.quarantined_count,
+                    "first_quarantined_id": notice.first_quarantined_id,
+                    "first_quarantined_from": notice.first_quarantined_from,
+                    "confirmed": false,
+                    "hint": "rerun with --yes to perform the repair",
+                });
+                let human = vec![format!(
+                    "The inbox of {session_id} gaps at sequence {}. {} message(s) sit past the gap, the first from {}. Rerun with --yes to keep sequences 1..{} and preserve the tail at inbox-quarantined.jsonl.",
+                    notice.missing_after_sequence,
+                    notice.quarantined_count,
+                    notice.first_quarantined_from,
+                    notice.missing_after_sequence
+                )];
+                crate::cli::emit(json, &document, &human);
+                return;
+            }
+            match crate::swarm::repair_inbox(&directory) {
+                Ok(report) => {
+                    let document = serde_json::json!({
+                        "session_id": session_id,
+                        "confirmed": true,
+                        "truncated_after_sequence": report.truncated_after_sequence,
+                        "quarantined_count": report.quarantined_count,
+                        "preserved_at": report.preserved_at,
+                        "readable_kept": readable.len(),
+                    });
+                    let human = vec![format!(
+                        "Repaired {session_id}: kept sequences 1..{}, quarantined {} message(s) to {}.",
+                        report.truncated_after_sequence,
+                        report.quarantined_count,
+                        report.preserved_at
+                    )];
+                    crate::cli::emit(json, &document, &human);
+                }
+                Err(why) => crate::cli::fail(&why),
+            }
+        }
+        Err(why) => crate::cli::fail(&why),
+    }
 }
 
 fn mute(session: &str, inbox: Option<&str>, silencing: bool, json: bool) {

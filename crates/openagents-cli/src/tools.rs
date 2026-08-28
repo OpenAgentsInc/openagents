@@ -3324,6 +3324,15 @@ fn answer_swarm_inbox(
                 if !mute_changed.is_empty() {
                     document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
                 }
+                if let Some(notice) = &plan.quarantine {
+                    document["quarantine"] = serde_json::json!({
+                        "missing_after_sequence": notice.missing_after_sequence,
+                        "first_quarantined_id": notice.first_quarantined_id,
+                        "first_quarantined_from": notice.first_quarantined_from,
+                        "quarantined_count": notice.quarantined_count,
+                        "repair_hint": notice.repair_hint,
+                    });
+                }
                 (document.to_string(), false)
             }
             Err(why) => (why, true),
@@ -3331,34 +3340,45 @@ fn answer_swarm_inbox(
     } else {
         // A peek reports the total match even beyond the drain cap, so the
         // caller paging through 30 matches never mistakes page one for the
-        // whole set.
-        let mailbox = crate::swarm::Mailbox::at(&binding.session_directory);
-        match mailbox.messages() {
-            Ok(messages) => {
-                let muted = binding.muted();
-                let selected = filter.select(&messages);
-                let visible: Vec<_> = selected
-                    .into_iter()
-                    .filter(|message| !muted.contains(&message.from))
-                    .filter(|message| !filter.unread_only || message.read_at_ms.is_none())
-                    .collect();
-                let mut document = serde_json::json!({
-                    "schema": "openagents.swarm.inbox.v1",
-                    "source": "swarm_inbox",
-                    "drained": false,
-                    "total_matches": visible.len(),
-                    "muted_senders": muted.iter().collect::<Vec<_>>(),
-                    "messages": visible
-                        .iter()
-                        .map(|message| crate::swarm::message_document(message))
-                        .collect::<Vec<_>>(),
-                });
-                if !mute_changed.is_empty() {
-                    document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
-                }
-                (document.to_string(), false)
+        // whole set. Quarantine-aware (#280): a gapped inbox peeks its
+        // readable prefix and names the gap.
+        let (messages, quarantine) =
+            match crate::swarm::inbox_quarantine(&binding.session_directory) {
+                Ok(pair) => pair,
+                Err(why) => return (why, true),
+            };
+        {
+            let muted = binding.muted();
+            let selected = filter.select(&messages);
+            let visible: Vec<_> = selected
+                .into_iter()
+                .filter(|message| !muted.contains(&message.from))
+                .filter(|message| !filter.unread_only || message.read_at_ms.is_none())
+                .collect();
+            let mut document = serde_json::json!({
+                "schema": "openagents.swarm.inbox.v1",
+                "source": "swarm_inbox",
+                "drained": false,
+                "total_matches": visible.len(),
+                "muted_senders": muted.iter().collect::<Vec<_>>(),
+                "messages": visible
+                    .iter()
+                    .map(|message| crate::swarm::message_document(message))
+                    .collect::<Vec<_>>(),
+            });
+            if !mute_changed.is_empty() {
+                document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
             }
-            Err(why) => (why, true),
+            if let Some(notice) = &quarantine {
+                document["quarantine"] = serde_json::json!({
+                    "missing_after_sequence": notice.missing_after_sequence,
+                    "first_quarantined_id": notice.first_quarantined_id,
+                    "first_quarantined_from": notice.first_quarantined_from,
+                    "quarantined_count": notice.quarantined_count,
+                    "repair_hint": notice.repair_hint,
+                });
+            }
+            (document.to_string(), false)
         }
     }
 }
@@ -3454,6 +3474,19 @@ fn answer_swarm_wait(binding: &SwarmBinding, arguments: &serde_json::Value) -> (
                     false => "the timeout expired with nothing matching visible",
                 },
             });
+            // A wait sees the same quarantine view as a drain or peek (#280):
+            // readable mail flows, the gap is named, nothing is hidden.
+            if let Ok((_, Some(notice))) =
+                crate::swarm::inbox_quarantine(&binding.session_directory)
+            {
+                document["quarantine"] = serde_json::json!({
+                    "missing_after_sequence": notice.missing_after_sequence,
+                    "first_quarantined_id": notice.first_quarantined_id,
+                    "first_quarantined_from": notice.first_quarantined_from,
+                    "quarantined_count": notice.quarantined_count,
+                    "repair_hint": notice.repair_hint,
+                });
+            }
             (document.to_string(), false)
         }
         Err(why) => (why, true),

@@ -10,8 +10,9 @@
 
 use openagents_cli::swarm::{
     DEFAULT_ALIVE_AFTER_MS, MAXIMUM_BODY_BYTES, MESSAGE_SCHEMA, Mailbox, REGISTRATION_SCHEMA,
-    Registration, SwarmMessage, SwarmState, list, load_registration, read_inbox, register,
-    registration_path, send, set_status, unregister,
+    Registration, SwarmBinding, SwarmMessage, SwarmState, drain_turn, inbox_quarantine, list,
+    load_registration, now_ms, read_inbox, register, registration_path, repair_inbox, send,
+    set_status, unregister,
 };
 use openagents_cli::tools::status_from_checkpoint;
 use std::path::PathBuf;
@@ -281,6 +282,139 @@ fn a_gap_in_the_inbox_is_refused_not_papered_over() {
         why.contains("gaps at sequence 1"),
         "the refusal names the gap: {why}"
     );
+    // The refusal now also names the repair path (#280): it is the start of
+    // a story, not the end.
+    assert!(
+        why.contains("repair"),
+        "the refusal names the repair: {why}"
+    );
+}
+
+#[test]
+fn a_gapped_inbox_reads_its_prefix_with_a_quarantine_notice() {
+    let dir = tempfile::tempdir().unwrap();
+    let line_one = r#"{"schema":"openagents.swarm.message.v2","id":"msg_1","sequence":1,"from":"a","to":"b","kind":"status","body":"first","created_at_ms":1}"#;
+    let line_three = r#"{"schema":"openagents.swarm.message.v2","id":"msg_3","sequence":3,"from":"a","to":"b","kind":"status","body":"third","created_at_ms":3}"#;
+    std::fs::write(
+        dir.path().join("inbox.jsonl"),
+        format!("{line_one}\n{line_three}\n"),
+    )
+    .unwrap();
+
+    // The quarantine read flows: sequence 1 is readable, the gap is named,
+    // and the stranded message is described, never silently dropped.
+    let (readable, notice) = inbox_quarantine(dir.path()).unwrap();
+    assert_eq!(readable.len(), 1);
+    assert_eq!(readable[0].body, "first");
+    let notice = notice.expect("a gap produces a notice");
+    assert_eq!(notice.missing_after_sequence, 1);
+    assert_eq!(notice.first_quarantined_id, "msg_3");
+    assert_eq!(notice.first_quarantined_from, "a");
+    assert_eq!(notice.quarantined_count, 1);
+    assert!(notice.repair_hint.contains("repair"));
+}
+
+#[test]
+fn repair_truncates_to_the_last_good_sequence_preserves_the_tail_and_refuses_healthy_mail() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let healthy = tempfile::tempdir().unwrap();
+    let line_one = r#"{"schema":"openagents.swarm.message.v2","id":"msg_1","sequence":1,"from":"a","to":"b","kind":"status","body":"first","created_at_ms":1,"delivered_at_ms":1}"#;
+    let line_three = r#"{"schema":"openagents.swarm.message.v2","id":"msg_3","sequence":3,"from":"a","to":"b","kind":"status","body":"third","created_at_ms":3,"delivered_at_ms":3}"#;
+    let line_four = r#"{"schema":"openagents.swarm.message.v2","id":"msg_4","sequence":4,"from":"a","to":"b","kind":"status","body":"fourth","created_at_ms":4,"delivered_at_ms":4}"#;
+    let gapped = format!("{line_one}\n{line_three}\n{line_four}\n");
+    std::fs::write(dir.path().join("inbox.jsonl"), &gapped).unwrap();
+    std::fs::write(healthy.path().join("inbox.jsonl"), format!("{line_one}\n")).unwrap();
+
+    // Healthy mail refuses repair: a rewrite that "succeeded" there is a
+    // bug with a receipt.
+    let why = repair_inbox(healthy.path()).unwrap_err();
+    assert!(why.contains("no gap"), "{why}");
+
+    // The gapped inbox repairs: sequence 1 kept, the tail (3 and 4)
+    // preserved verbatim, the inbox gapless again.
+    let report = repair_inbox(dir.path()).unwrap();
+    assert_eq!(report.truncated_after_sequence, 1);
+    assert_eq!(report.quarantined_count, 2);
+    assert!(report.preserved_at.ends_with("inbox-quarantined.jsonl"));
+
+    let (readable, notice) = inbox_quarantine(dir.path()).unwrap();
+    assert_eq!(readable.len(), 1);
+    assert!(notice.is_none(), "the repaired inbox is intact");
+    let preserved = std::fs::read_to_string(&report.preserved_at).unwrap();
+    assert!(preserved.contains("\"id\":\"msg_3\""));
+    assert!(preserved.contains("\"id\":\"msg_4\""));
+    assert!(preserved.contains("third"), "bodies ride along verbatim");
+
+    // Delivery continues into the repaired inbox with a gapless sequence.
+    let mailbox = Mailbox::at(dir.path());
+    let next = mailbox
+        .deliver(SwarmMessage {
+            schema: MESSAGE_SCHEMA.to_string(),
+            id: "msg_next".to_string(),
+            sequence: None,
+            from: "a".to_string(),
+            to: "b".to_string(),
+            thread: None,
+            kind: "status".to_string(),
+            reply_expected: None,
+            reply_depth: None,
+            data: None,
+            stale_when_queued: None,
+            body: "after repair".to_string(),
+            created_at_ms: 9,
+            delivered_at_ms: None,
+            read_at_ms: None,
+        })
+        .unwrap();
+    assert_eq!(next, 2, "delivery resumes at the first free sequence");
+}
+
+#[test]
+fn the_drain_plan_carries_the_quarantine_notice() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    register(
+        &home.path(),
+        &Registration {
+            schema: REGISTRATION_SCHEMA.to_string(),
+            session_id: "quarantined".to_string(),
+            pid: std::process::id(),
+            cwd: "/work".to_string(),
+            lane: "flash".to_string(),
+            model: None,
+            role: "root".to_string(),
+            parent: None,
+            worktree: None,
+            status: None,
+            inbox: dir.path().join("inbox.jsonl").display().to_string(),
+            alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
+            started_at_ms: now_ms(),
+            heartbeat_at_ms: now_ms(),
+        },
+    )
+    .unwrap();
+    let binding = SwarmBinding::new(
+        home.path().to_path_buf(),
+        "quarantined",
+        dir.path().to_path_buf(),
+    );
+    let line_one = r#"{"schema":"openagents.swarm.message.v2","id":"msg_1","sequence":1,"from":"a","to":"b","kind":"status","body":"readable","created_at_ms":1,"delivered_at_ms":1}"#;
+    let line_three = r#"{"schema":"openagents.swarm.message.v2","id":"msg_3","sequence":3,"from":"a","to":"b","kind":"status","body":"stranded","created_at_ms":3,"delivered_at_ms":3}"#;
+    std::fs::write(
+        dir.path().join("inbox.jsonl"),
+        format!("{line_one}\n{line_three}\n"),
+    )
+    .unwrap();
+
+    // The drain flows the readable prefix and names the gap; it does not
+    // refuse, and it does not touch the stranded line.
+    let plan = drain_turn(&binding).unwrap();
+    assert_eq!(plan.inject.len(), 1);
+    assert_eq!(plan.inject[0].body, "readable");
+    let notice = plan.quarantine.expect("the drain carries the notice");
+    assert_eq!(notice.missing_after_sequence, 1);
+    assert_eq!(notice.first_quarantined_id, "msg_3");
 }
 
 #[test]
@@ -852,6 +986,71 @@ async fn the_tool_refuses_a_malformed_data_argument_by_name() {
         assert!(output.is_error, "must refuse: {}", output.output);
         assert!(output.output.contains(expected), "{}", output.output);
     }
+}
+
+#[tokio::test]
+async fn the_drain_tool_reports_the_quarantine_and_flows_the_readable_prefix() {
+    let mut pair = bound_pair();
+    // A lost line between 1 and 2: what a crashed sender leaves behind.
+    let mailbox = Mailbox::at(&pair.b_dir);
+    let good = SwarmMessage {
+        schema: MESSAGE_SCHEMA.to_string(),
+        id: "msg_lost_gap".to_string(),
+        sequence: None,
+        from: "session-a".to_string(),
+        to: "session-b".to_string(),
+        thread: None,
+        kind: "status".to_string(),
+        reply_expected: None,
+        reply_depth: None,
+        data: None,
+        stale_when_queued: None,
+        body: "the readable one".to_string(),
+        created_at_ms: 1,
+        delivered_at_ms: None,
+        read_at_ms: None,
+    };
+    let _sequence = mailbox.deliver(good).unwrap();
+    let stranded = r#"{"schema":"openagents.swarm.message.v2","id":"msg_stranded","sequence":3,"from":"session-a","to":"session-b","kind":"status","body":"past the gap","created_at_ms":3,"delivered_at_ms":3}"#;
+    use std::io::Write as _;
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(pair.b_dir.join("inbox.jsonl"))
+        .unwrap();
+    writeln!(file, "{stranded}").unwrap();
+    drop(file);
+
+    // The drain answers: the readable message injects, the gap is named,
+    // the stranded line is described — never silently dropped.
+    let output = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({ "drain": true }),
+        ))
+        .await;
+    assert!(
+        !output.is_error,
+        "a gapped inbox no longer refuses: {}",
+        output.output
+    );
+    let document: serde_json::Value = serde_json::from_str(&output.output).unwrap();
+    let messages = document["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["body"], "the readable one");
+    let quarantine = &document["quarantine"];
+    // The field is the last contiguous sequence; the missing one is the next
+    // number after it (2, here).
+    assert_eq!(quarantine["missing_after_sequence"], 1);
+    assert_eq!(quarantine["first_quarantined_id"], "msg_stranded");
+    assert_eq!(quarantine["quarantined_count"], 1);
+    assert!(
+        quarantine["repair_hint"]
+            .as_str()
+            .unwrap()
+            .contains("repair")
+    );
 }
 
 #[tokio::test]
