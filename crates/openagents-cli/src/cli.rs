@@ -709,6 +709,18 @@ pub struct CoderArgs {
     )]
     pub reasoning: Option<String>,
 
+    /// The context window the local lane asks Ollama for.
+    ///
+    /// Sent as `options.num_ctx` on every local chat request. Without it the
+    /// server resolves the window itself, which can silently truncate a long
+    /// session below what the model could carry. `OPENAGENTS_OLLAMA_NUM_CTX`
+    /// sets the same thing; the flag wins.
+    #[arg(
+        long,
+        help = "Context window for the local lane, as options.num_ctx (OPENAGENTS_OLLAMA_NUM_CTX sets the default)"
+    )]
+    pub num_ctx: Option<u32>,
+
     /// Continue a thread of the account's instead of opening a new one.
     ///
     /// Bare `--resume` shows a picker over this repository's recent threads;

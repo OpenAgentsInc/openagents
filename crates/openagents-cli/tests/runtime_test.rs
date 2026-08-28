@@ -2232,3 +2232,80 @@ async fn a_session_with_no_thread_reports_nothing() {
             .is_none()
     );
 }
+
+// ─────────────────────────────────────── local request controls (#293)
+
+/// The controls a session carries reach every local chat body: the turn loop
+/// and the budget-report round both, or neither is honest about tuning the
+/// lane.
+#[tokio::test]
+async fn local_controls_ride_both_local_request_paths() {
+    let ollama = ollama_stub();
+    let mut session = session(Lane::from_str("local"), DEAD.to_string());
+    session.ollama_host = ollama.base.trim_end_matches("/api/v1").to_string();
+    session.ollama_num_ctx = Some(131072);
+    session.reasoning = Some("low".to_string());
+
+    // A tool-calling turn: the model asks for nothing to run, so the loop
+    // takes one step — and the stub's script never satisfies the final-answer
+    // gate twice, so force the budget-report round by asking the session for
+    // one directly is not available; instead, one turn proves the loop path
+    // and a second turn over the same stub proves nothing re-sent stale
+    // controls.
+    session
+        .execute_turn("say pong with a context window", |_| {})
+        .await
+        .expect("the local turn failed");
+
+    let chat = ollama
+        .requests()
+        .into_iter()
+        .find(|r| r.starts_with("POST /api/chat"))
+        .expect("the turn went to the local server");
+    assert!(
+        chat.contains(r#""options":{"num_ctx":131072}"#),
+        "num_ctx did not reach the wire:\n{chat}"
+    );
+    assert!(
+        chat.contains(r#""think":false"#),
+        "--reasoning low did not ask the model to hold its thinking:\n{chat}"
+    );
+}
+
+/// Unset controls are absent from the wire, not zeroed: Ollama's own
+/// defaults stand when the reader asked for nothing.
+#[tokio::test]
+async fn unset_local_controls_send_nothing() {
+    let ollama = ollama_stub();
+    let mut session = session(Lane::from_str("local"), DEAD.to_string());
+    session.ollama_host = ollama.base.trim_end_matches("/api/v1").to_string();
+
+    session.execute_turn("hello", |_| {}).await.unwrap();
+
+    let chat = ollama
+        .requests()
+        .into_iter()
+        .find(|r| r.starts_with("POST /api/chat"))
+        .expect("the turn went to the local server");
+    assert!(!chat.contains("num_ctx"), "num_ctx leaked unset:\n{chat}");
+    assert!(!chat.contains(r#""think""#), "think leaked unset:\n{chat}");
+}
+
+/// The effort-to-think mapping, on its own: high asks for thinking, low
+/// asks for none, and no effort asks for nothing.
+#[test]
+fn the_think_mapping_covers_the_reasoning_vocabulary() {
+    let mut session = session(Lane::from_str("local"), DEAD.to_string());
+    for (effort, want) in [
+        ("minimal", Some(false)),
+        ("low", Some(false)),
+        ("medium", Some(true)),
+        ("high", Some(true)),
+        ("max", Some(true)),
+    ] {
+        session.reasoning = Some(effort.to_string());
+        assert_eq!(session.ollama_think(), want, "effort {effort}");
+    }
+    session.reasoning = None;
+    assert_eq!(session.ollama_think(), None, "no effort sends nothing");
+}

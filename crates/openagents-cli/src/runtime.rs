@@ -1095,6 +1095,10 @@ pub struct CoderRuntimeSession {
     /// as `reasoning_effort`, and the proxy reads it from the thread rather
     /// than from each request. `None` leaves the deployment's own default.
     pub reasoning: Option<String>,
+    /// `options.num_ctx` for the local lane, when the reader set one
+    /// (`--num-ctx` / `OPENAGENTS_OLLAMA_NUM_CTX`, issue #293). `None` sends
+    /// nothing and leaves Ollama's default resolution standing.
+    pub ollama_num_ctx: Option<u32>,
     /// The repository this session was opened from, as `owner/name`.
     ///
     /// Recorded on the thread so `--resume` has something to filter on. A
@@ -1168,6 +1172,9 @@ impl CoderRuntimeSession {
             record_failures: Vec::new(),
             last_reasoning: String::new(),
             reasoning: None,
+            ollama_num_ctx: std::env::var("OPENAGENTS_OLLAMA_NUM_CTX")
+                .ok()
+                .and_then(|v| v.trim().parse::<u32>().ok()),
             repository: None,
             // `OPENAGENTS_API_BASE` points the session at another host. A test
             // that has to prove the streaming path end to end needs somewhere
@@ -1344,6 +1351,34 @@ impl CoderRuntimeSession {
     pub fn with_cloud_history(mut self, enabled: bool) -> Self {
         self.cloud_history = enabled;
         self
+    }
+
+    /// Set the Ollama request controls the local lane sends (issue #293).
+    ///
+    /// `num_ctx` rides every local chat request as `options.num_ctx`, so a
+    /// long session is not silently truncated to the server's default
+    /// window. `think` is derived from `--reasoning` at the call sites
+    /// (minimal/low → false, medium/high/max → true); the session carries
+    /// the effort, the mapping lives with the wire shape.
+    pub fn with_ollama_options(mut self, num_ctx: Option<u32>) -> Self {
+        self.ollama_num_ctx = num_ctx;
+        self
+    }
+
+    /// The `think` value the local lane sends for this session's reasoning
+    /// effort, or `None` to send nothing and leave Ollama's own default.
+    ///
+    /// A thinking-default model (Qwen 3.8 thinks, at `xhigh` by default)
+    /// spends context on scratch the harness never asked for; `--reasoning
+    /// low` on a local session should mean the same kind of restraint it
+    /// means on a thread. `None` stays `None`: an unset effort is the
+    /// deployment's default, not a lie about one.
+    pub fn ollama_think(&self) -> Option<bool> {
+        match self.reasoning.as_deref() {
+            Some("minimal") | Some("low") => Some(false),
+            Some("medium") | Some("high") | Some("max") => Some(true),
+            _ => None,
+        }
     }
 
     pub fn local_session_summary(&self) -> Option<&crate::session_store::SessionSummary> {
@@ -3395,7 +3430,7 @@ impl CoderRuntimeSession {
 
         for _ in 0..MAX_TOOL_STEPS {
             self.drain_swarm_inbox().await;
-            let req_body = serde_json::json!({
+            let mut req_body = serde_json::json!({
                 "model": model,
                 "messages": self.messages.iter().map(ollama_message).collect::<Vec<_>>(),
                 "tools": tool_defs.iter().map(|t| serde_json::json!({
@@ -3408,6 +3443,7 @@ impl CoderRuntimeSession {
                 })).collect::<Vec<_>>(),
                 "stream": true
             });
+            self.apply_ollama_options(&mut req_body);
 
             let resp = self.http.post(&url).json(&req_body).send().await;
             let resp = match resp {
@@ -3577,6 +3613,22 @@ impl CoderRuntimeSession {
     /// Ollama takes plain chat; the instruction is pushed as a user message
     /// and the reply is read whole, since the local lane streams NDJSON and
     /// only the final content matters here.
+    /// Fold this session's Ollama request controls into a local chat body
+    /// (issue #293).
+    ///
+    /// `options.num_ctx` when the reader set one; `think` when the session
+    /// carries a reasoning effort. Both are additive: unset controls are
+    /// absent from the body, so Ollama's own defaults stand and a body that
+    /// never asked for a control cannot be blamed for one.
+    fn apply_ollama_options(&self, body: &mut serde_json::Value) {
+        if let Some(num_ctx) = self.ollama_num_ctx {
+            body["options"]["num_ctx"] = serde_json::json!(num_ctx);
+        }
+        if let Some(think) = self.ollama_think() {
+            body["think"] = serde_json::json!(think);
+        }
+    }
+
     async fn step_local_report(&mut self) -> Result<String, Failure> {
         let notice = "This turn has used its whole tool-call budget. Reply in words only, \
                       with the state a reader needs to take over: what this turn was doing, \
@@ -3594,11 +3646,12 @@ impl CoderRuntimeSession {
             return Err("run_local_turn was called off the local lane".into());
         };
         let model = self.resolve_local_model(&wanted).await?;
-        let req_body = serde_json::json!({
+        let mut req_body = serde_json::json!({
             "model": model,
             "messages": self.messages.iter().map(ollama_message).collect::<Vec<_>>(),
             "stream": false
         });
+        self.apply_ollama_options(&mut req_body);
         let url = format!("{}/api/chat", self.ollama_host.trim_end_matches('/'));
         let resp = self.http.post(&url).json(&req_body).send().await;
         let resp = match resp {

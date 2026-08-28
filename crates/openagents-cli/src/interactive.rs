@@ -1150,6 +1150,11 @@ pub async fn run_tui(
     let tools = session_tools(&lane_name, &api_base, &token, args.child_options()).await;
     let mut session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
+    session.ollama_num_ctx = args.num_ctx.or_else(|| {
+        std::env::var("OPENAGENTS_OLLAMA_NUM_CTX")
+            .ok()
+            .and_then(|v| v.trim().parse::<u32>().ok())
+    });
     session.repository = repository;
     // A resumed thread is adopted before the screen is entered, so its refusal
     // is readable rather than painted over and wiped on exit.
@@ -1260,6 +1265,11 @@ async fn run_without_a_terminal(
     let tools = session_tools(&lane_name, &api_base, &token, args.child_options()).await;
     let mut session = CoderRuntimeSession::new(lane, Some(api_base), token, tools);
     session.reasoning = args.reasoning.clone();
+    session.ollama_num_ctx = args.num_ctx.or_else(|| {
+        std::env::var("OPENAGENTS_OLLAMA_NUM_CTX")
+            .ok()
+            .and_then(|v| v.trim().parse::<u32>().ok())
+    });
     session.repository = repository;
     if let Some(resumption) = &resumed {
         crate::resume::apply(&mut session, resumption).await?;

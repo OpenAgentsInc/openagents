@@ -2424,6 +2424,7 @@ mod child_option_tests {
             local: false,
             offline: false,
             reasoning: None,
+            num_ctx: None,
             resume: None,
             last: false,
             all: false,

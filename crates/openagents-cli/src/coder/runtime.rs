@@ -299,7 +299,10 @@ impl Session {
         dev: bool,
         tx: Sender<Control>,
     ) -> Self {
-        Self::open_at(
+        let num_ctx = std::env::var("OPENAGENTS_OLLAMA_NUM_CTX")
+            .ok()
+            .and_then(|v| v.trim().parse::<u32>().ok());
+        let mut session = Self::open_at(
             lane,
             lane_name,
             reasoning,
@@ -308,7 +311,11 @@ impl Session {
             user_token(),
             dev,
             tx,
-        )
+        );
+        // The local-lane request controls (#293) are process-global like the
+        // rest of the environment `open` reads once.
+        session.inner.ollama_num_ctx = num_ctx;
+        session
     }
 
     /// [`Self::open`] against a named server with a named credential.
