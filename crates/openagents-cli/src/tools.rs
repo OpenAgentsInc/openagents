@@ -1,7 +1,8 @@
 //! The tools a session declares to the model, and what running them does.
 //!
-//! Nine tools: `read`, `write`, `edit`, `bash`, `shell`, `skill`,
-//! `openagents`, `capability`, and — only where a delegation gate exists —
+//! The built-in tools: `read`, `write`, `edit`, `bash`, `shell`, `skill`,
+//! `checkpoint`, `openagents`, `swarm_list`, `swarm_send`, `swarm_inbox`,
+//! `capability`, and — only where a delegation gate exists —
 //! `delegate`. Each is declared to the model and
 //! each has an implementation in [`HarnessToolRegistry::execute_tool`]; the
 //! list and the match arms carry the same names, which is the only property
@@ -59,6 +60,7 @@ use crate::plugins::{
 };
 use crate::runtime::{Lane, ModelStreamEvent, ToolEvent};
 use crate::surfaces::tool_descriptions as text;
+use crate::swarm::SwarmBinding;
 use crate::workspace;
 use crate::workspace::Isolation;
 
@@ -118,7 +120,7 @@ const ECHO_LIMIT: usize = 2_000;
 /// session answers it with a refusal, which shadows a plugin just as
 /// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
 /// list and the arms in step.
-pub const BUILTIN_TOOL_NAMES: [&str; 10] = [
+pub const BUILTIN_TOOL_NAMES: [&str; 13] = [
     "read",
     "write",
     "edit",
@@ -127,13 +129,16 @@ pub const BUILTIN_TOOL_NAMES: [&str; 10] = [
     "skill",
     "checkpoint",
     "openagents",
+    "swarm_list",
+    "swarm_send",
+    "swarm_inbox",
     "capability",
     "delegate",
 ];
 
 /// A tool the front-end driving the session answers itself.
 ///
-/// The nine tools above are every session's, and they stay here. A front-end
+/// The built-in tools above are every session's, and they stay here. A front-end
 /// can have a capability no other caller has — coder-lite's ACP path, which
 /// hands a task to a coding agent installed on this machine, is the one this
 /// exists for — and it belongs in the same declaration the other five are in,
@@ -510,6 +515,10 @@ pub struct HarnessToolRegistry {
     /// Last ACP session id per agent id, so a later call to the same agent
     /// on this registry can resume.
     acp_sessions: Mutex<BTreeMap<String, String>>,
+    /// This session's swarm identity, when it has registered. Absent on a
+    /// gateless one-shot or a test that never joined; the swarm tools then
+    /// refuse rather than invent a sender.
+    swarm: Option<SwarmBinding>,
 }
 
 impl HarnessToolRegistry {
@@ -593,6 +602,22 @@ impl HarnessToolRegistry {
         self.session_dir = Some(dir);
     }
 
+    /// Attach this session's swarm identity so the `swarm_*` tools can send
+    /// and drain as this session rather than as an anonymous caller.
+    pub fn bind_swarm(&mut self, binding: SwarmBinding) {
+        self.swarm = Some(binding);
+    }
+
+    pub fn with_swarm(mut self, binding: SwarmBinding) -> Self {
+        self.bind_swarm(binding);
+        self
+    }
+
+    /// This session's swarm identity, when it has one.
+    pub fn swarm(&self) -> Option<&SwarmBinding> {
+        self.swarm.as_ref()
+    }
+
     fn build(
         cwd: Option<PathBuf>,
         delegation: Option<DelegationGate>,
@@ -619,6 +644,7 @@ impl HarnessToolRegistry {
             tool_pool,
             event_sink: None,
             acp_sessions: Mutex::new(BTreeMap::new()),
+            swarm: None,
         };
         registry.load_local_skills();
         registry
@@ -867,6 +893,42 @@ impl HarnessToolRegistry {
                         }
                     },
                     "required": ["args"]
+                }),
+            },
+            ToolDefinition {
+                name: "swarm_list".to_string(),
+                description: text::RUST_SWARM_LIST.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "cwd": {"type": "string", "description": "Keep sessions whose working directory is this path."},
+                        "tree": {"type": "string", "description": "A parent session id; keep that session and its children."}
+                    }
+                }),
+            },
+            ToolDefinition {
+                name: "swarm_send".to_string(),
+                description: text::RUST_SWARM_SEND.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "to": {"type": "string", "description": "Destination: a session id, role:children-of:<id>, or all."},
+                        "body": {"type": "string", "description": "The message text."},
+                        "kind": {"type": "string", "description": "question, answer, status, handoff, or broadcast. Defaults to status."},
+                        "reply_expected": {"type": "boolean", "description": "Ask the recipient to spend a turn answering."},
+                        "thread": {"type": "string", "description": "The message id this one answers or continues."}
+                    },
+                    "required": ["to", "body"]
+                }),
+            },
+            ToolDefinition {
+                name: "swarm_inbox".to_string(),
+                description: text::RUST_SWARM_INBOX.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks."}
+                    }
                 }),
             },
         ];
@@ -1159,6 +1221,33 @@ impl HarnessToolRegistry {
             }
             "checkpoint" => {
                 let (output, is_error) = answer_checkpoint(&call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                    duration_ms: 0,
+                }
+            }
+            "swarm_list" => {
+                let (output, is_error) = answer_swarm_list(self.swarm.as_ref(), &call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                    duration_ms: 0,
+                }
+            }
+            "swarm_send" => {
+                let (output, is_error) = answer_swarm_send(self.swarm.as_ref(), &call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                    duration_ms: 0,
+                }
+            }
+            "swarm_inbox" => {
+                let (output, is_error) = answer_swarm_inbox(self.swarm.as_ref(), &call.arguments);
                 ToolOutput {
                     call_id: call.id.clone(),
                     output,
@@ -2729,6 +2818,192 @@ fn write_command_log(
 /// The value is durability, not conversation: a session that dies mid-turn —
 /// cap, crash, cancel — leaves its last checkpoint on disk for the next
 /// session, which is exactly the reader the note is for (#189).
+fn swarm_unbound() -> (String, bool) {
+    (
+        "This session is not registered with the swarm, so it cannot list, send, or drain."
+            .to_string(),
+        true,
+    )
+}
+
+fn answer_swarm_list(
+    binding: Option<&SwarmBinding>,
+    arguments: &serde_json::Value,
+) -> (String, bool) {
+    let Some(binding) = binding else {
+        return swarm_unbound();
+    };
+    let cwd = arguments.get("cwd").and_then(|v| v.as_str());
+    let tree = arguments.get("tree").and_then(|v| v.as_str());
+    match crate::swarm::list_filtered(&binding.home, cwd, tree) {
+        Ok(registrations) => {
+            let rows: Vec<serde_json::Value> = registrations
+                .iter()
+                .map(|registration| {
+                    serde_json::json!({
+                        "session_id": registration.session_id,
+                        "state": registration.state().as_str(),
+                        "role": registration.role,
+                        "parent": registration.parent,
+                        "cwd": registration.cwd,
+                        "lane": registration.lane,
+                        "model": registration.model,
+                        "self": registration.session_id == binding.session_id,
+                    })
+                })
+                .collect();
+            (
+                serde_json::json!({
+                    "schema": crate::swarm::LISTING_SCHEMA,
+                    "sessions": rows,
+                    "live": registrations
+                        .iter()
+                        .filter(|registration| registration.state() == crate::swarm::SwarmState::Live)
+                        .count(),
+                    "total": registrations.len(),
+                })
+                .to_string(),
+                false,
+            )
+        }
+        Err(why) => (why, true),
+    }
+}
+
+fn answer_swarm_send(
+    binding: Option<&SwarmBinding>,
+    arguments: &serde_json::Value,
+) -> (String, bool) {
+    let Some(binding) = binding else {
+        return swarm_unbound();
+    };
+    let Some(to) = arguments
+        .get("to")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    else {
+        return (
+            "Name a destination: `to` is a session id, `role:children-of:<id>`, or `all`."
+                .to_string(),
+            true,
+        );
+    };
+    let Some(body) = arguments.get("body").and_then(|v| v.as_str()) else {
+        return ("The message body is missing.".to_string(), true);
+    };
+    let kind = arguments
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("status");
+    let reply_expected = arguments
+        .get("reply_expected")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let thread = arguments
+        .get("thread")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    let mailbox = crate::swarm::Mailbox::at(&binding.session_directory);
+    let parent_depth = mailbox.thread_depth(thread);
+    {
+        let mut policy = binding
+            .policy
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Err(why) = policy.admit_send(reply_expected, parent_depth, crate::swarm::now_ms()) {
+            return (why, true);
+        }
+    }
+    match crate::swarm::send(
+        &binding.home,
+        &binding.session_id,
+        &binding.session_directory,
+        to,
+        kind,
+        thread,
+        reply_expected,
+        body,
+    ) {
+        Ok(report) => (
+            serde_json::json!({
+                "schema": "openagents.swarm.send_report.v1",
+                "from": report.from,
+                "to": report.to,
+                "kind": report.kind,
+                "thread": report.thread,
+                "message_id": report.message_id,
+                "deliveries": report.deliveries,
+                "undeliverable": report.undeliverable,
+            })
+            .to_string(),
+            false,
+        ),
+        Err(why) => (why, true),
+    }
+}
+
+fn answer_swarm_inbox(
+    binding: Option<&SwarmBinding>,
+    arguments: &serde_json::Value,
+) -> (String, bool) {
+    let Some(binding) = binding else {
+        return swarm_unbound();
+    };
+    let drain = arguments
+        .get("drain")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    if drain {
+        match crate::swarm::drain_turn(binding) {
+            Ok(plan) => (
+                serde_json::json!({
+                    "schema": "openagents.swarm.inbox.v1",
+                    "source": "swarm_inbox",
+                    "drained": true,
+                    "deferred": plan.deferred,
+                    "muted": plan.muted.len(),
+                    "messages": plan
+                        .inject
+                        .iter()
+                        .map(crate::swarm::message_document)
+                        .collect::<Vec<_>>(),
+                })
+                .to_string(),
+                false,
+            ),
+            Err(why) => (why, true),
+        }
+    } else {
+        match crate::swarm::Mailbox::at(&binding.session_directory).unread() {
+            Ok(messages) => {
+                let muted = binding.muted();
+                let visible: Vec<_> = messages
+                    .into_iter()
+                    .filter(|message| !muted.contains(&message.from))
+                    .collect();
+                (
+                    serde_json::json!({
+                        "schema": "openagents.swarm.inbox.v1",
+                        "source": "swarm_inbox",
+                        "drained": false,
+                        "messages": visible
+                            .iter()
+                            .map(crate::swarm::message_document)
+                            .collect::<Vec<_>>(),
+                    })
+                    .to_string(),
+                    false,
+                )
+            }
+            Err(why) => (why, true),
+        }
+    }
+}
+
 fn answer_checkpoint(arguments: &serde_json::Value) -> (String, bool) {
     let Some(text) = arguments.get("text").and_then(|v| v.as_str()) else {
         return (
@@ -4047,11 +4322,14 @@ mod tests {
                 "skill",
                 "checkpoint",
                 "openagents",
+                "swarm_list",
+                "swarm_send",
+                "swarm_inbox",
                 "capability",
                 "delegate"
             ]
         );
-        // The same nine names `plugins::validate_manifest` refuses a plugin
+        // The same reserved names `plugins::validate_manifest` refuses a plugin
         // for taking. An arm added here and not there would leave a name a
         // plugin can claim and never be called under.
         assert_eq!(
@@ -4089,7 +4367,10 @@ mod tests {
             .into_iter()
             .map(|tool| tool.name)
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["read", "bash", "skill"]);
+        assert_eq!(
+            names,
+            vec!["read", "bash", "skill", "swarm_list", "swarm_inbox"]
+        );
 
         for name in [
             "write",
@@ -4123,7 +4404,17 @@ mod tests {
         };
         assert_eq!(
             names(ToolPool::ReadWrite),
-            vec!["read", "write", "edit", "bash", "shell", "skill"]
+            vec![
+                "read",
+                "write",
+                "edit",
+                "bash",
+                "shell",
+                "skill",
+                "swarm_list",
+                "swarm_send",
+                "swarm_inbox"
+            ]
         );
         let all = names(ToolPool::All);
         assert!(all.contains(&"capability".to_string()), "{all:?}");

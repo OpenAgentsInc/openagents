@@ -55,7 +55,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "swarm",
-        "the local swarm: /swarm list, /swarm tree, /swarm inbox [id], /swarm send <id> <text>",
+        "the local swarm: /swarm list, /swarm tree, /swarm inbox [id], /swarm send <id> <text>, /swarm mute <id>",
     ),
     (
         "gym",
@@ -791,11 +791,11 @@ mod tests {
 /// both transcripts.
 fn run_swarm_command(ui: &mut CoderUi, arguments: &[String], rest: &str) {
     use crate::swarm;
-    let home = crate::session_store::default_root();
+    let home = crate::swarm::default_home();
     let Some(sub) = arguments.first().map(String::as_str) else {
         output(
             ui,
-            "Use `/swarm list`, `/swarm tree`, `/swarm inbox [id]`, or `/swarm send <id> <text>`.",
+            "Use `/swarm list`, `/swarm tree`, `/swarm inbox [id]`, `/swarm send <id> <text>`, or `/swarm mute <id>`.",
         );
         return;
     };
@@ -917,7 +917,7 @@ fn run_swarm_command(ui: &mut CoderUi, arguments: &[String], rest: &str) {
                 return;
             };
             match swarm::send(
-                &crate::session_store::default_root(),
+                &crate::swarm::default_home(),
                 &from_id,
                 &directory,
                 target,
@@ -945,9 +945,64 @@ fn run_swarm_command(ui: &mut CoderUi, arguments: &[String], rest: &str) {
                 Err(why) => output(ui, &why),
             }
         }
+        "mute" => {
+            let Some(target) = arguments.get(1) else {
+                output(ui, "Name a session: `/swarm mute <session-id>`.");
+                return;
+            };
+            match own_inbox_directory() {
+                Some((directory, owner)) => {
+                    match crate::swarm::SwarmBinding::new(
+                        crate::swarm::default_home(),
+                        owner,
+                        directory,
+                    )
+                    .mute(target)
+                    {
+                        Ok(()) => output(
+                            ui,
+                            &format!(
+                                "Muted {target}. Their messages stay unread and will not be injected."
+                            ),
+                        ),
+                        Err(why) => output(ui, &why),
+                    }
+                }
+                None => output(
+                    ui,
+                    "This session is not registered with the swarm, so it cannot mute anyone.",
+                ),
+            }
+        }
+        "unmute" => {
+            let Some(target) = arguments.get(1) else {
+                output(ui, "Name a session: `/swarm unmute <session-id>`.");
+                return;
+            };
+            match own_inbox_directory() {
+                Some((directory, owner)) => {
+                    match crate::swarm::SwarmBinding::new(
+                        crate::swarm::default_home(),
+                        owner,
+                        directory,
+                    )
+                    .unmute(target)
+                    {
+                        Ok(()) => output(ui, &format!("Unmuted {target}.")),
+                        Err(why) => output(ui, &why),
+                    }
+                }
+                None => output(
+                    ui,
+                    "This session is not registered with the swarm, so it cannot unmute anyone.",
+                ),
+            }
+        }
         other => output(
             ui,
-            &format!("`/swarm {other}` is not a swarm command. Use list, tree, inbox, or send."),
+            &format!(
+                "`/swarm {other}` is not a swarm command. Use list, tree, inbox, send, mute, or unmute."
+            ),
         ),
     }
 }
@@ -956,7 +1011,7 @@ fn run_swarm_command(ui: &mut CoderUi, arguments: &[String], rest: &str) {
 fn resolve_inbox_directory(
     session: &Option<String>,
 ) -> Result<(std::path::PathBuf, String), String> {
-    let home = crate::session_store::default_root();
+    let home = crate::swarm::default_home();
     match session {
         Some(id) => {
             let registration = swarm_load(&home, id)?;
@@ -979,7 +1034,7 @@ fn swarm_load(home: &std::path::Path, id: &str) -> Result<crate::swarm::Registra
 /// This session's own swarm identity, when it has one: the registration whose
 /// pid is this process and whose store directory is beside this transcript.
 fn own_inbox_directory() -> Option<(std::path::PathBuf, String)> {
-    let root = crate::session_store::default_root();
+    let root = crate::swarm::default_home();
     let registrations = crate::swarm::list(&root).ok()?;
     let pid = std::process::id();
     let registration = registrations

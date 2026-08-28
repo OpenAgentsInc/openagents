@@ -1333,9 +1333,23 @@ fn render_entry(
             let window = &out_lines[start..end];
 
             // One-line tool call header, flush left.
+            let swarm = entry
+                .tool
+                .as_ref()
+                .is_some_and(|tool| crate::swarm::is_swarm_tool(&tool.function_name));
             let done = entry.tool.as_ref().is_some_and(|tool| tool.done);
-            let marker = if done { "⏺ " } else { "○ " };
-            let marker_style = if done {
+            // Swarm traffic uses a distinct marker so it cannot be read as
+            // user speech (`>`) or as the model's own words (unmarked amber).
+            let marker = if swarm {
+                "↔ "
+            } else if done {
+                "⏺ "
+            } else {
+                "○ "
+            };
+            let marker_style = if swarm {
+                text_style.fg(DIM_TEXT_COLOR)
+            } else if done {
                 text_style.fg(tool_settle_color(entry, tick, motion_enabled))
             } else if !motion_enabled {
                 text_style
@@ -1357,15 +1371,20 @@ fn render_entry(
             );
             let mut header_iter = header_chunks.iter();
             let header = header_iter.next().cloned().unwrap_or_default();
+            let header_style = if swarm {
+                text_style.fg(DIM_TEXT_COLOR)
+            } else {
+                text_style
+            };
             lines.push(Line::from(vec![
                 Span::styled(marker, marker_style),
-                Span::styled(header, text_style),
+                Span::styled(header, header_style),
             ]));
             let continuation = format!("{} ", " ".repeat(marker.chars().count()));
             for chunk in header_iter {
                 lines.push(Line::from(vec![
                     Span::styled(continuation.clone(), marker_style),
-                    Span::styled(chunk.clone(), text_style),
+                    Span::styled(chunk.clone(), header_style),
                 ]));
             }
 
@@ -1481,6 +1500,31 @@ fn tool_header_text(entry: &Entry) -> String {
         )
     } else {
         entry.text.clone()
+    }
+}
+
+#[cfg(test)]
+mod swarm_style_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_swarm_header_names_the_sender_and_kind() {
+        let mut entry = Entry::tool_call("swarm ← session-b [question]");
+        entry.tool = Some(ToolCall {
+            call_id: "swarm-inbox-1".to_string(),
+            function_name: crate::swarm::INBOX_TOOL.to_string(),
+            arguments: json!({"from": "session-b", "kind": "question", "count": 1}),
+            output: None,
+            error: None,
+            done: true,
+            duration_ms: Some(0),
+        });
+        assert_eq!(tool_header_text(&entry), "swarm ← session-b [question]");
+        assert!(
+            !entry.text.contains('>'),
+            "a swarm header must not use the user-speech marker"
+        );
     }
 }
 

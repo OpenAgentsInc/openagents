@@ -577,7 +577,7 @@ async fn run_child(
     // parent (and any other tab) can address it while it works, and `swarm
     // tree` shows the fan-out as what it is. The registration is best-effort:
     // a swarm that cannot see one child is degraded, not broken.
-    let swarm_home = crate::session_store::default_root();
+    let swarm_home = crate::swarm::default_home();
     let swarm_id = format!(
         "delegate-{id}-{}",
         workspace.path.to_string_lossy().replace('/', "_")

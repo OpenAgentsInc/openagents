@@ -762,6 +762,27 @@ impl ThreadRecord {
     pub fn checkpoint(text: &str) -> Self {
         Self::new("turn.checkpoint", serde_json::json!({ "text": text }))
     }
+
+    /// One swarm send or receive, attributed to the sessions that talked.
+    /// Never a user turn: the ATIF exporter and resume skip this as speech
+    /// and carry it as a tool observation when the TUI drew one.
+    pub fn swarm_message(direction: &str, message: &crate::swarm::SwarmMessage) -> Self {
+        Self::new(
+            "swarm_message",
+            serde_json::json!({
+                "direction": direction,
+                "id": message.id,
+                "from": message.from,
+                "to": message.to,
+                "kind": message.kind,
+                "thread": message.thread,
+                "reply_expected": message.reply_expected,
+                "reply_depth": message.reply_depth,
+                "body": message.body,
+                "sequence": message.sequence,
+            }),
+        )
+    }
 }
 
 /// The three ways a thread may end, as the server spells them.
@@ -1050,6 +1071,9 @@ pub struct CoderRuntimeSession {
     /// one to the other so the reported outcome is specific rather than
     /// `turn_failed` for everything. Cleared at the top of every turn.
     pending_failure: Option<ThreadOutcome>,
+    /// This session's swarm identity. Set when the session registers; drain
+    /// and the swarm tools are no-ops without it.
+    swarm: Option<crate::swarm::SwarmBinding>,
 }
 
 impl CoderRuntimeSession {
@@ -1106,7 +1130,112 @@ impl CoderRuntimeSession {
             thread_id: None,
             outcome: None,
             pending_failure: None,
+            swarm: None,
         }
+    }
+
+    /// Attach this session's swarm identity so turn-boundary drain and the
+    /// `swarm_*` tools share one budget and one mute list.
+    pub fn bind_swarm(&mut self, binding: crate::swarm::SwarmBinding) {
+        self.tools.bind_swarm(binding.clone());
+        self.swarm = Some(binding);
+    }
+
+    pub fn with_swarm(mut self, binding: crate::swarm::SwarmBinding) -> Self {
+        self.bind_swarm(binding);
+        self
+    }
+
+    /// Drain new inbox messages into the tool stream. Called before every
+    /// model call. Injected entries are `role: tool` with name `swarm.inbox`;
+    /// they are never user speech, even when a neighbor's body looks like it.
+    pub async fn drain_swarm_inbox(&mut self) {
+        let Some(binding) = self.swarm.clone() else {
+            return;
+        };
+        let _ = crate::swarm::heartbeat(&binding.home, &binding.session_id);
+        let plan = match crate::swarm::drain_turn(&binding) {
+            Ok(plan) => plan,
+            Err(why) => {
+                self.record_failures
+                    .push(format!("swarm inbox could not be drained: {why}"));
+                return;
+            }
+        };
+        if plan.inject.is_empty() {
+            return;
+        }
+        let call_id = format!(
+            "swarm-inbox-{}",
+            plan.inject
+                .last()
+                .and_then(|message| message.sequence)
+                .unwrap_or_default()
+        );
+        let first = plan.inject.first();
+        let arguments = serde_json::json!({
+            "from": first.map(|message| message.from.as_str()),
+            "kind": first.map(|message| message.kind.as_str()),
+            "count": plan.inject.len(),
+            "deferred": plan.deferred,
+        })
+        .to_string();
+        let output = serde_json::json!({
+            "schema": "openagents.swarm.inbox.v1",
+            "source": "turn_boundary",
+            "deferred": plan.deferred,
+            "muted": plan.muted.len(),
+            "messages": plan
+                .inject
+                .iter()
+                .map(crate::swarm::message_document)
+                .collect::<Vec<_>>(),
+        })
+        .to_string();
+        self.messages.push(ChatMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: Some(vec![serde_json::json!({
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": crate::swarm::INBOX_TOOL,
+                    "arguments": arguments,
+                }
+            })]),
+            tool_call_id: None,
+            images: Vec::new(),
+        });
+        self.messages.push(ChatMessage {
+            role: "tool".to_string(),
+            content: Some(output.clone()),
+            tool_calls: None,
+            tool_call_id: Some(call_id.clone()),
+            images: Vec::new(),
+        });
+        self.tell(ToolEvent::Started {
+            call_id: call_id.clone(),
+            name: crate::swarm::INBOX_TOOL.to_string(),
+            arguments: arguments.clone(),
+        });
+        self.tell(ToolEvent::Finished {
+            call_id: call_id.clone(),
+            name: crate::swarm::INBOX_TOOL.to_string(),
+            output: output.clone(),
+            is_error: false,
+            duration_ms: 0,
+        });
+        let mut records = vec![ThreadRecord::tool_ran_on(
+            &call_id,
+            crate::swarm::INBOX_TOOL,
+            &arguments,
+            &output,
+            0,
+        )];
+        for message in &plan.inject {
+            records.push(ThreadRecord::swarm_message("received", message));
+        }
+        self.note(records).await;
     }
 
     /// Report every tool this session runs to `observer`.
@@ -1973,6 +2102,7 @@ impl CoderRuntimeSession {
         let mut answered = false;
 
         for _ in 0..MAX_TOOL_STEPS {
+            self.drain_swarm_inbox().await;
             let req_body = serde_json::json!({
                 "model": grant.model,
                 "messages": chat_completion_messages(&self.messages),
@@ -2460,6 +2590,7 @@ impl CoderRuntimeSession {
         let resolved_model = self.lane_model().await?;
 
         for _ in 0..MAX_TOOL_STEPS {
+            self.drain_swarm_inbox().await;
             let input = messages_to_responses_input(&self.messages);
             let mut body = serde_json::json!({
                 "input": input,
@@ -2936,6 +3067,23 @@ impl CoderRuntimeSession {
             {
                 ran.push(ThreadRecord::checkpoint(text));
             }
+            if call.name == "swarm_send" && !result.is_error {
+                if let Ok(report) = serde_json::from_str::<serde_json::Value>(&result.output) {
+                    ran.push(ThreadRecord::new(
+                        "swarm_message",
+                        serde_json::json!({
+                            "direction": "sent",
+                            "id": report.get("message_id"),
+                            "from": report.get("from"),
+                            "to": report.get("to"),
+                            "kind": report.get("kind"),
+                            "thread": report.get("thread"),
+                            "reply_expected": call.arguments.get("reply_expected"),
+                            "body": call.arguments.get("body"),
+                        }),
+                    ));
+                }
+            }
             self.messages.push(ChatMessage {
                 role: "tool".to_string(),
                 content: Some(result.output),
@@ -3072,6 +3220,7 @@ impl CoderRuntimeSession {
         let mut answered = false;
 
         for _ in 0..MAX_TOOL_STEPS {
+            self.drain_swarm_inbox().await;
             let req_body = serde_json::json!({
                 "model": model,
                 "messages": self.messages.iter().map(ollama_message).collect::<Vec<_>>(),

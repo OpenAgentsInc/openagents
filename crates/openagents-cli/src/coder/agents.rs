@@ -34,10 +34,23 @@ impl ToolPool {
     /// Whether this pool declares `name` to the delegated model.
     pub fn allows(self, name: &str) -> bool {
         match self {
-            Self::ReadOnly => matches!(name, "read" | "bash" | "skill" | "grep" | "glob"),
+            Self::ReadOnly => matches!(
+                name,
+                "read" | "bash" | "skill" | "grep" | "glob" | "swarm_list" | "swarm_inbox"
+            ),
             Self::ReadWrite => matches!(
                 name,
-                "read" | "write" | "edit" | "bash" | "shell" | "skill" | "grep" | "glob"
+                "read"
+                    | "write"
+                    | "edit"
+                    | "bash"
+                    | "shell"
+                    | "skill"
+                    | "grep"
+                    | "glob"
+                    | "swarm_list"
+                    | "swarm_send"
+                    | "swarm_inbox"
             ),
             Self::All => true,
         }

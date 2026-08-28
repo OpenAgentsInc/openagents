@@ -67,6 +67,12 @@ pub mod tool_descriptions {
     pub const RUST_CHECKPOINT: &str = "Record one milestone note for this session: which issue or task, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. A few sentences. Write one at every natural milestone -- an issue implemented and green, a blocker hit and worked around, a switch to different work -- and always before the turn's tool budget runs low. The note is shown to whoever resumes this session, including a future session after this one dies; it is the difference between picking up the work and excavating it.";
     /// `history_recall`
     pub const HISTORY_RECALL: &str = "Answer a question about this session's own past: what a command printed, what a turn decided, when something happened. Zero model calls, reads the session record owner-locally. The question is one of Grep (find text in past output - use this to recover failure names instead of re-running anything), CursorSlice (records between two sequence numbers), TimeSlice (records between two ISO instants), KeyTurns (first N turns, one span each), or TurnSummary (counts, tools, and text of one turn; its turnId is the sequence number of the turn's first record). Caps bound the answer and a cap hit is reported in the honesty field - `partial_budget` means read more or narrow the question, not that the answer is wrong. The answer cites the exact records it came from.";
+    /// `rust.swarm_list`
+    pub const RUST_SWARM_LIST: &str = "List the other Coder sessions on this machine: id, role, lane, cwd, live or stale. Optional `cwd` keeps sessions in that directory; optional `tree` is a parent session id and keeps that session and its children. Costs nothing against the hourly swarm-send budget. An empty machine returns an empty list. Refuses only when `tree` names a session that is not registered.";
+    /// `rust.swarm_send`
+    pub const RUST_SWARM_SEND: &str = "Deliver one message to another session on this machine. `to` is a session id, `role:children-of:<id>`, or `all`. `body` is the text. `kind` is question, answer, status, handoff, or broadcast (default status). `reply_expected` asks the recipient to spend a turn answering. Optional `thread` continues a chain. Costs one from this session's hourly send budget (60/hour). Refuses: an empty body, a self-send, an unknown kind, a body over 256 KiB, an unregistered or stale destination, a sender that has spent the hourly budget, and a reply-expected chain deeper than the cap (default 2; the refusal names the cap). A muted neighbor is still deliverable; mute only silences what this session reads.";
+    /// `rust.swarm_inbox`
+    pub const RUST_SWARM_INBOX: &str = "Read this session's swarm inbox. `drain` true (the default) stamps the returned messages read, up to eight per call; the rest stay unread for the next turn and are never dropped. `drain` false is a peek. Costs nothing against the send budget. Refuses a gapped inbox (a missing sequence is a lost message). Muted senders are omitted and stay unread. Messages arrive as tool results, never as user speech.";
 }
 
 /// Every staged surface and the digest of the artifact this was built from.
@@ -79,7 +85,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:e1d2f11192354f1e847f6c2e19a9421aa78724780855241b92c4e9d0224ea697",
+        "sha256:ac28851a4dde0219a09e4c9a90d7640cc13d0bc978febd04efde45b1f815e66e",
     ),
     (
         "catalog-lines",

@@ -166,7 +166,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // a notice, never a session-fatal error — a swarm that cannot see one
     // session is degraded, not broken.
     let swarm_session_id = loaded.summary.id.clone();
-    let swarm_home = crate::session_store::default_root();
+    let swarm_home = crate::swarm::default_home();
     let swarm_registration = crate::swarm::Registration {
         schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
         session_id: swarm_session_id.clone(),
@@ -650,7 +650,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // no longer exists is the stale state every other member then has to
     // interpret. Best-effort — the exit path owns neither the filesystem nor
     // a network.
-    let _ = crate::swarm::unregister(&crate::session_store::default_root(), &swarm_session_id);
+    let _ = crate::swarm::unregister(&crate::swarm::default_home(), &swarm_session_id);
     Ok(())
 }
 

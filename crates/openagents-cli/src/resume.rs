@@ -199,7 +199,9 @@ pub struct ThreadEvent {
 ///
 /// Event types outside this vocabulary are skipped rather than refused: the
 /// transcript is append-only and a future writer may know words this reader
-/// does not.
+/// does not. `swarm_message` is one of those: the drain also records a
+/// `tool.ran` for `swarm.inbox`, which replays as a tool result, never as
+/// user speech.
 pub fn replay_wire(events: &[ThreadEvent]) -> Vec<ChatMessage> {
     let mut messages = Vec::new();
     for event in events {

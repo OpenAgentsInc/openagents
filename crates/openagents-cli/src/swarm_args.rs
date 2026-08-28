@@ -46,6 +46,26 @@ pub enum SwarmAction {
         #[arg(long, help = "Send as this registered session instead of `human`")]
         from: Option<String>,
     },
+    /// Stop injecting messages from one session; they stay unread
+    Mute {
+        #[arg(help = "Session id to silence")]
+        session: String,
+        #[arg(
+            long,
+            help = "The inbox that holds the mute list; omit for the newest session"
+        )]
+        inbox: Option<String>,
+    },
+    /// Resume injecting messages from a previously muted session
+    Unmute {
+        #[arg(help = "Session id to hear again")]
+        session: String,
+        #[arg(
+            long,
+            help = "The inbox that holds the mute list; omit for the newest session"
+        )]
+        inbox: Option<String>,
+    },
 }
 
 /// Run one `swarm` subcommand.
@@ -72,6 +92,8 @@ pub async fn run_swarm(action: SwarmAction, json: bool) {
                 json,
             );
         }
+        SwarmAction::Mute { session, inbox } => mute(&session, inbox.as_deref(), true, json),
+        SwarmAction::Unmute { session, inbox } => mute(&session, inbox.as_deref(), false, json),
     }
 }
 
@@ -317,11 +339,49 @@ fn send(
     crate::cli::emit(json, &document, &human);
 }
 
+fn mute(session: &str, inbox: Option<&str>, silencing: bool, json: bool) {
+    let home = crate::auth::home_directory();
+    let owner = match inbox {
+        Some(id) => id.to_string(),
+        None => match newest_session_id(&home) {
+            Some(id) => id,
+            None => {
+                crate::cli::fail("No sessions are registered, so there is no mute list to write.")
+            }
+        },
+    };
+    let registration = match crate::swarm::load_registration(&home, &owner) {
+        Ok(Some(registration)) => registration,
+        Ok(None) => crate::cli::fail(&format!("No session `{owner}` is registered.")),
+        Err(why) => crate::cli::fail(&why),
+    };
+    let directory = inbox_directory(&registration);
+    let mut muted = crate::swarm::load_mute_list(&directory);
+    if silencing {
+        muted.insert(session.to_string());
+    } else {
+        muted.remove(session);
+    }
+    if let Err(why) = crate::swarm::save_mute_list(&directory, &muted) {
+        crate::cli::fail(&why);
+    }
+    let verb = if silencing { "Muted" } else { "Unmuted" };
+    let document = serde_json::json!({
+        "schema": crate::swarm::MUTE_SCHEMA,
+        "owner": owner,
+        "session": session,
+        "muted": silencing,
+        "list": muted.iter().collect::<Vec<_>>(),
+    });
+    crate::cli::emit(
+        json,
+        &document,
+        &[format!("{verb} {session} on {owner}'s inbox.")],
+    );
+}
+
 fn inbox_directory(registration: &crate::swarm::Registration) -> std::path::PathBuf {
-    std::path::Path::new(&registration.inbox)
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .to_path_buf()
+    crate::swarm::inbox_directory(registration)
 }
 
 fn message_document(message: &crate::swarm::SwarmMessage) -> serde_json::Value {

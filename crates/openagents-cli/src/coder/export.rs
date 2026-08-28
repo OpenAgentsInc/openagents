@@ -199,6 +199,24 @@ fn file_name(repository: &str, at_iso: &str) -> String {
 /// refuses on, so the two can never disagree about identity), and any head
 /// executed more than once reports how much of the total wall time the
 /// repetitions beyond the first spent.
+fn swarm_section(entries: &[Entry]) -> Vec<Value> {
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let tool = entry.tool.as_ref()?;
+            if !crate::swarm::is_swarm_tool(&tool.function_name) {
+                return None;
+            }
+            Some(json!({
+                "timestamp": iso_for_ms(entry.at),
+                "tool": tool.function_name,
+                "header": entry.text,
+                "output": entry.output,
+            }))
+        })
+        .collect()
+}
+
 fn waste_section(entries: &[Entry]) -> Vec<Value> {
     use std::collections::BTreeMap;
 
@@ -354,6 +372,7 @@ fn trajectory_document(
                 "waste": {
                     "repeated_command_heads": waste_section(entries),
                 },
+                "swarm": swarm_section(entries),
             }
         }),
         step_count,
@@ -364,6 +383,12 @@ fn trajectory_document(
 ///
 /// `updates.jsonl` remains the crash-safe source of truth. This file is a
 /// complete, directly consumable interchange artifact derived from it.
+///
+/// Swarm send/receive events are typed `swarm_message` in that jsonl. This
+/// exporter carries them as `swarm.inbox` / `swarm_send` tool observations
+/// (source `agent`, never source `user`) when the TUI drew the matching
+/// entry. A `swarm_message` with no TUI entry is omitted here and stays in
+/// the jsonl archive.
 pub fn write_session_trajectory(
     entries: &[Entry],
     model: &str,
@@ -434,6 +459,44 @@ pub fn export_trajectory(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_swarm_inbox_entry_exports_as_a_tool_not_as_user_speech() {
+        let mut entry = Entry::tool_call("swarm ← session-b [question]");
+        entry.tool = Some(ToolCall {
+            call_id: "swarm-inbox-1".to_string(),
+            function_name: crate::swarm::INBOX_TOOL.to_string(),
+            arguments: serde_json::json!({
+                "from": "session-b",
+                "kind": "question",
+                "count": 1
+            }),
+            output: Some(r#"{"body":"what failed?"}"#.to_string()),
+            error: None,
+            done: true,
+            duration_ms: Some(0),
+        });
+        let (document, count) = trajectory_document(
+            &[entry],
+            "model",
+            "/repo",
+            "main",
+            "session",
+            "2026-08-27T00:00:00.000Z",
+        );
+        assert_eq!(count, 1);
+        let step = &document["steps"][0];
+        assert_eq!(step["source"], "agent");
+        assert_eq!(
+            step["tool_calls"][0]["function_name"],
+            crate::swarm::INBOX_TOOL
+        );
+        assert_eq!(
+            document["extra"]["swarm"][0]["tool"],
+            crate::swarm::INBOX_TOOL
+        );
+        assert_ne!(step["source"], "user");
+    }
 
     #[test]
     fn timestamps_do_not_depend_on_an_external_runtime() {

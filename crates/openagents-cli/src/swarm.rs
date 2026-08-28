@@ -29,24 +29,43 @@
 //! path in this contract; the remote widening is separate work with its own
 //! consent and redaction review.
 //!
-//! Budgets and anti-livelock caps live with the consumers of this module (the
-//! turn-boundary drain, `#182` slice 3); delivery itself stays cheap and
-//! dumb, which is what makes it safe to call from anywhere.
+//! Delivery itself stays cheap and dumb. Budgets, the reply-depth cap, the
+//! per-sender mute list, and the per-turn drain cap live in [`SwarmPolicy`]
+//! and [`plan_drain`]: the turn loop and the `swarm_*` tools ask before they
+//! send or inject, and a refusal names the cap it hit.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const REGISTRATION_SCHEMA: &str = "openagents.swarm.registration.v1";
 pub const MESSAGE_SCHEMA: &str = "openagents.swarm.message.v1";
 pub const LISTING_SCHEMA: &str = "openagents.swarm.listing.v1";
+pub const MUTE_SCHEMA: &str = "openagents.swarm.mute.v1";
+pub const INBOX_TOOL: &str = "swarm.inbox";
 
 const INBOX_FILE: &str = "inbox.jsonl";
 const OUTBOX_FILE: &str = "outbox.jsonl";
+const MUTE_FILE: &str = "swarm-mute.json";
 const SWARM_DIR: &str = "swarm";
+
+/// How many unread messages one turn will inject. The rest stay unread for
+/// the next turn; they are never dropped.
+pub const DEFAULT_DRAIN_CAP: usize = 8;
+
+/// How many messages one session may send in any rolling hour.
+pub const DEFAULT_HOURLY_BUDGET: usize = 60;
+
+/// How deep a `reply_expected` chain may go. Default 2: ask, answer, stop.
+pub const DEFAULT_REPLY_DEPTH_CAP: u32 = 2;
+
+/// One hour, in milliseconds, for the send-budget window.
+pub const HOUR_MS: u128 = 60 * 60 * 1000;
 
 /// The largest message body one delivery accepts, in bytes. The ingest routes
 /// cap trace documents; this is the same discipline for mail, sized for
@@ -165,6 +184,12 @@ pub struct SwarmMessage {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_expected: Option<bool>,
+    /// How many `reply_expected` hops this message sits from the start of
+    /// its chain. Stamped at send time so a recipient can refuse the next
+    /// hop without walking the whole thread. Absent on a message that does
+    /// not ask for a reply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_depth: Option<u32>,
     pub body: String,
     pub created_at_ms: u128,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -480,11 +505,29 @@ impl Mailbox {
     /// Rewrites the inbox with atomic staging; the read stamp is the only
     /// field that changes.
     pub fn mark_read_through(&self, through: u64) -> Result<usize, String> {
+        let sequences: Vec<u64> = Self::read(&self.inbox)?
+            .iter()
+            .filter_map(|message| message.sequence)
+            .filter(|sequence| *sequence <= through)
+            .collect();
+        self.mark_read_sequences(&sequences)
+    }
+
+    /// Stamp `read_at_ms` only on the named sequences, leaving everything
+    /// else unread. The drain uses this so a muted sender between two
+    /// injected messages stays unread.
+    pub fn mark_read_sequences(&self, sequences: &[u64]) -> Result<usize, String> {
+        if sequences.is_empty() {
+            return Ok(0);
+        }
+        let wanted: BTreeSet<u64> = sequences.iter().copied().collect();
         let messages = Self::read(&self.inbox)?;
         let mut marked = 0;
         let mut updated = Vec::with_capacity(messages.len());
         for mut message in messages {
-            if message.sequence.is_some_and(|sequence| sequence <= through)
+            if message
+                .sequence
+                .is_some_and(|sequence| wanted.contains(&sequence))
                 && message.read_at_ms.is_none()
             {
                 message.read_at_ms = Some(now_ms());
@@ -497,6 +540,37 @@ impl Mailbox {
         }
         self.rewrite(&updated)?;
         Ok(marked)
+    }
+
+    /// The `reply_expected` depth of the message `thread` names, looking in
+    /// this mailbox's inbox and outbox. Zero when there is no thread, or the
+    /// named message carries no depth: the next send with `reply_expected`
+    /// then starts (or continues) a chain at depth 1.
+    pub fn thread_depth(&self, thread: Option<&str>) -> u32 {
+        let Some(thread_id) = thread else {
+            return 0;
+        };
+        let mut found = Vec::new();
+        if let Ok(messages) = self.messages() {
+            found.extend(messages);
+        }
+        if let Ok(messages) = Self::read(&self.outbox) {
+            found.extend(messages);
+        }
+        found
+            .iter()
+            .find(|message| message.id == thread_id)
+            .and_then(|message| message.reply_depth)
+            .unwrap_or(0)
+    }
+
+    /// Messages that have arrived and have not been stamped read.
+    pub fn unread(&self) -> Result<Vec<SwarmMessage>, String> {
+        Ok(self
+            .messages()?
+            .into_iter()
+            .filter(|message| message.read_at_ms.is_none())
+            .collect())
     }
 
     /// Replace the inbox's contents, staged-then-renamed. Used only by the
@@ -599,6 +673,11 @@ pub fn send(
     let at_ms = now_ms();
     let id = message_id(from, to, thread, trimmed, at_ms);
     let sender_mailbox = Mailbox::at(from_directory);
+    let reply_depth = if reply_expected {
+        Some(sender_mailbox.thread_depth(thread).saturating_add(1))
+    } else {
+        None
+    };
 
     // `all` and `role:children-of:` resolve against the live registrations.
     let registrations = list(home)?;
@@ -679,6 +758,7 @@ pub fn send(
             thread: thread.map(str::to_string),
             kind: kind.to_string(),
             reply_expected: reply_expected.then_some(true),
+            reply_depth,
             body: trimmed.to_string(),
             created_at_ms: at_ms,
             delivered_at_ms: None,
@@ -719,6 +799,7 @@ pub fn send(
         thread: thread.map(str::to_string),
         kind: kind.to_string(),
         reply_expected: reply_expected.then_some(true),
+        reply_depth,
         body: trimmed.to_string(),
         created_at_ms: at_ms,
         delivered_at_ms: None,
@@ -758,5 +839,379 @@ impl Mailbox {
     /// line a crashed sender owed.
     pub fn messages(&self) -> Result<Vec<SwarmMessage>, String> {
         Self::read(&self.inbox)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Drain, budgets, mute — slice 3
+// ---------------------------------------------------------------------------
+
+/// The home directory the swarm lives under. Registrations land at
+/// `<home>/.openagents/swarm`. Tests pass a temporary home instead.
+pub fn default_home() -> PathBuf {
+    crate::auth::home_directory()
+}
+
+/// The session-store directory that holds a registration's inbox.
+pub fn inbox_directory(registration: &Registration) -> PathBuf {
+    Path::new(&registration.inbox)
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf()
+}
+
+/// Whether `name` is a swarm tool or the synthetic drain entry. Used by the
+/// TUI and the ATIF exporter so swarm traffic is never drawn or exported as
+/// user speech.
+pub fn is_swarm_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "swarm_list" | "swarm_send" | "swarm_inbox" | "swarm.inbox"
+    )
+}
+
+/// What one drain pass will inject, skip, and leave for later.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DrainPlan {
+    /// Unread, unmuted messages, in file order, up to the cap.
+    pub inject: Vec<SwarmMessage>,
+    /// Unread messages from muted senders. They stay unread.
+    pub muted: Vec<SwarmMessage>,
+    /// Unread unmuted messages past the cap. They stay unread for the next
+    /// turn; they are never dropped.
+    pub deferred: usize,
+}
+
+/// Decide what this turn injects. `messages` is the inbox in file order;
+/// already-read lines are ignored. Muted senders do not consume the cap.
+pub fn plan_drain(messages: &[SwarmMessage], muted: &BTreeSet<String>, cap: usize) -> DrainPlan {
+    let mut plan = DrainPlan::default();
+    for message in messages {
+        if message.read_at_ms.is_some() {
+            continue;
+        }
+        if muted.contains(&message.from) {
+            plan.muted.push(message.clone());
+            continue;
+        }
+        if plan.inject.len() >= cap {
+            plan.deferred += 1;
+            continue;
+        }
+        plan.inject.push(message.clone());
+    }
+    plan
+}
+
+/// The live anti-livelock knobs for one session: hourly send budget, reply
+/// chain cap, drain cap. Mute is a file beside the inbox so a slash command
+/// and the drain path share it without sharing a lock.
+#[derive(Debug, Clone)]
+pub struct SwarmPolicy {
+    pub hourly_budget: usize,
+    pub reply_depth_cap: u32,
+    pub drain_cap: usize,
+    send_times: Vec<u128>,
+}
+
+impl Default for SwarmPolicy {
+    fn default() -> Self {
+        Self {
+            hourly_budget: DEFAULT_HOURLY_BUDGET,
+            reply_depth_cap: DEFAULT_REPLY_DEPTH_CAP,
+            drain_cap: DEFAULT_DRAIN_CAP,
+            send_times: Vec::new(),
+        }
+    }
+}
+
+impl SwarmPolicy {
+    /// Admit one send, or refuse naming the cap that stopped it.
+    ///
+    /// `parent_depth` is the `reply_depth` of the message this one answers,
+    /// or 0 when this send starts a chain. Returns the depth this send will
+    /// carry when `reply_expected` is set.
+    pub fn admit_send(
+        &mut self,
+        reply_expected: bool,
+        parent_depth: u32,
+        now: u128,
+    ) -> Result<u32, String> {
+        self.send_times
+            .retain(|sent| now.saturating_sub(*sent) < HOUR_MS);
+        if self.send_times.len() >= self.hourly_budget {
+            return Err(format!(
+                "this session has already sent {} messages in the last hour, which is the \
+                 per-session budget. Wait, or mute the neighbor that is filling the hour.",
+                self.hourly_budget
+            ));
+        }
+        let depth = if reply_expected {
+            parent_depth.saturating_add(1)
+        } else {
+            0
+        };
+        if reply_expected && depth > self.reply_depth_cap {
+            return Err(format!(
+                "the reply-expected chain would reach depth {depth}, and the cap is {}. \
+                 The cap exists so two agents cannot livelock each other.",
+                self.reply_depth_cap
+            ));
+        }
+        self.send_times.push(now);
+        Ok(depth)
+    }
+}
+
+/// The identity a running session uses to send, drain, and mute. Shared
+/// between the tool registry and the turn loop so a `swarm_send` and a
+/// turn-boundary drain see the same budget.
+#[derive(Debug, Clone)]
+pub struct SwarmBinding {
+    pub home: PathBuf,
+    pub session_id: String,
+    pub session_directory: PathBuf,
+    pub policy: Arc<Mutex<SwarmPolicy>>,
+}
+
+impl SwarmBinding {
+    pub fn new(home: PathBuf, session_id: impl Into<String>, session_directory: PathBuf) -> Self {
+        Self {
+            home,
+            session_id: session_id.into(),
+            session_directory,
+            policy: Arc::new(Mutex::new(SwarmPolicy::default())),
+        }
+    }
+
+    fn policy(&self) -> std::sync::MutexGuard<'_, SwarmPolicy> {
+        self.policy
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Senders this session will not inject, file plus any in-memory extras.
+    pub fn muted(&self) -> BTreeSet<String> {
+        load_mute_list(&self.session_directory)
+    }
+
+    pub fn mute(&self, session: &str) -> Result<(), String> {
+        let mut muted = load_mute_list(&self.session_directory);
+        muted.insert(session.to_string());
+        save_mute_list(&self.session_directory, &muted)
+    }
+
+    pub fn unmute(&self, session: &str) -> Result<(), String> {
+        let mut muted = load_mute_list(&self.session_directory);
+        muted.remove(session);
+        save_mute_list(&self.session_directory, &muted)
+    }
+}
+
+/// The mute list stored beside this session's inbox.
+pub fn load_mute_list(session_directory: &Path) -> BTreeSet<String> {
+    let path = session_directory.join(MUTE_FILE);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(_) => return BTreeSet::new(),
+    };
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+    value
+        .get("muted")
+        .and_then(|muted| muted.as_array())
+        .map(|muted| {
+            muted
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Replace the mute list. Atomic: staged beside, renamed in.
+pub fn save_mute_list(session_directory: &Path, muted: &BTreeSet<String>) -> Result<(), String> {
+    std::fs::create_dir_all(session_directory).map_err(|error| {
+        format!(
+            "the session directory at {} could not be created: {error}",
+            session_directory.display()
+        )
+    })?;
+    let path = session_directory.join(MUTE_FILE);
+    let staged = session_directory.join(format!(".{MUTE_FILE}.tmp"));
+    let document = serde_json::json!({
+        "schema": MUTE_SCHEMA,
+        "muted": muted.iter().collect::<Vec<_>>(),
+    });
+    let text = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("the mute list could not be rendered: {error}"))?;
+    std::fs::write(&staged, text).map_err(|error| {
+        format!(
+            "the staged mute list at {} could not be written: {error}",
+            staged.display()
+        )
+    })?;
+    std::fs::rename(&staged, &path).map_err(|error| {
+        format!(
+            "the mute list at {} could not be moved into place: {error}",
+            path.display()
+        )
+    })?;
+    Ok(())
+}
+
+/// Registrations, optionally kept to one cwd or one parent tree.
+pub fn list_filtered(
+    home: &Path,
+    cwd: Option<&str>,
+    tree: Option<&str>,
+) -> Result<Vec<Registration>, String> {
+    let mut found = list(home)?;
+    if let Some(cwd) = cwd.map(str::trim).filter(|value| !value.is_empty()) {
+        found.retain(|registration| {
+            registration.cwd == cwd
+                || registration
+                    .cwd
+                    .starts_with(&format!("{cwd}{}", std::path::MAIN_SEPARATOR))
+        });
+    }
+    if let Some(root) = tree.map(str::trim).filter(|value| !value.is_empty()) {
+        let ids: BTreeSet<String> = found.iter().map(|r| r.session_id.clone()).collect();
+        if !ids.contains(root) {
+            return Err(format!("no session `{root}` is registered"));
+        }
+        let mut keep: BTreeSet<String> = BTreeSet::new();
+        keep.insert(root.to_string());
+        let mut grew = true;
+        while grew {
+            grew = false;
+            for registration in &found {
+                if let Some(parent) = &registration.parent
+                    && keep.contains(parent)
+                    && keep.insert(registration.session_id.clone())
+                {
+                    grew = true;
+                }
+            }
+        }
+        found.retain(|registration| keep.contains(&registration.session_id));
+    }
+    Ok(found)
+}
+
+/// A public-safe JSON object for one message, used as a tool result.
+pub fn message_document(message: &SwarmMessage) -> serde_json::Value {
+    serde_json::json!({
+        "id": message.id,
+        "sequence": message.sequence,
+        "from": message.from,
+        "to": message.to,
+        "kind": message.kind,
+        "thread": message.thread,
+        "reply_expected": message.reply_expected,
+        "reply_depth": message.reply_depth,
+        "body": message.body,
+        "delivered_at_ms": message.delivered_at_ms,
+        "read_at_ms": message.read_at_ms,
+    })
+}
+
+/// Drain this session's inbox for one turn: inject up to the cap, skip muted
+/// senders (leaving them unread), defer the rest. The caller is responsible
+/// for putting `plan.inject` on the tool stream — never as user speech.
+pub fn drain_turn(binding: &SwarmBinding) -> Result<DrainPlan, String> {
+    let mailbox = Mailbox::at(&binding.session_directory);
+    let muted = binding.muted();
+    let cap = binding.policy().drain_cap;
+    let unread = mailbox.unread()?;
+    let plan = plan_drain(&unread, &muted, cap);
+    let sequences: Vec<u64> = plan
+        .inject
+        .iter()
+        .filter_map(|message| message.sequence)
+        .collect();
+    mailbox.mark_read_sequences(&sequences)?;
+    Ok(plan)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unread(from: &str, sequence: u64, body: &str) -> SwarmMessage {
+        SwarmMessage {
+            schema: MESSAGE_SCHEMA.to_string(),
+            id: format!("msg_{sequence}"),
+            sequence: Some(sequence),
+            from: from.to_string(),
+            to: "here".to_string(),
+            thread: None,
+            kind: "status".to_string(),
+            reply_expected: None,
+            reply_depth: None,
+            body: body.to_string(),
+            created_at_ms: sequence as u128,
+            delivered_at_ms: Some(sequence as u128),
+            read_at_ms: None,
+        }
+    }
+
+    #[test]
+    fn swarm_drain_skips_muted_senders_without_consuming_the_cap() {
+        let messages = vec![
+            unread("noisy", 1, "ignore me"),
+            unread("friend", 2, "hello"),
+            unread("friend", 3, "again"),
+        ];
+        let muted = BTreeSet::from(["noisy".to_string()]);
+        let plan = plan_drain(&messages, &muted, 1);
+        assert_eq!(plan.inject.len(), 1);
+        assert_eq!(plan.inject[0].from, "friend");
+        assert_eq!(plan.muted.len(), 1);
+        assert_eq!(plan.deferred, 1, "the second friend message waits");
+    }
+
+    #[test]
+    fn swarm_drain_defers_overflow_and_never_drops_it() {
+        let messages = (1..=5).map(|n| unread("a", n, "x")).collect::<Vec<_>>();
+        let plan = plan_drain(&messages, &BTreeSet::new(), 2);
+        assert_eq!(plan.inject.len(), 2);
+        assert_eq!(plan.deferred, 3);
+        assert!(plan.muted.is_empty());
+    }
+
+    #[test]
+    fn swarm_already_read_messages_are_not_injected_again() {
+        let mut message = unread("a", 1, "old");
+        message.read_at_ms = Some(1);
+        let plan = plan_drain(&[message, unread("a", 2, "new")], &BTreeSet::new(), 8);
+        assert_eq!(plan.inject.len(), 1);
+        assert_eq!(plan.inject[0].sequence, Some(2));
+    }
+
+    #[test]
+    fn swarm_reply_depth_cap_names_the_cap() {
+        let mut policy = SwarmPolicy {
+            reply_depth_cap: 2,
+            hourly_budget: 10,
+            ..SwarmPolicy::default()
+        };
+        assert_eq!(policy.admit_send(true, 0, 1).unwrap(), 1);
+        assert_eq!(policy.admit_send(true, 1, 2).unwrap(), 2);
+        let why = policy.admit_send(true, 2, 3).unwrap_err();
+        assert!(why.contains("cap is 2"), "{why}");
+        assert!(why.contains("depth 3"), "{why}");
+    }
+
+    #[test]
+    fn swarm_hourly_budget_refuses_the_next_send() {
+        let mut policy = SwarmPolicy {
+            hourly_budget: 1,
+            ..SwarmPolicy::default()
+        };
+        policy.admit_send(false, 0, 1_000).unwrap();
+        let why = policy.admit_send(false, 0, 2_000).unwrap_err();
+        assert!(why.contains("per-session budget"), "{why}");
+        // A send after the window rolls is admitted.
+        policy.admit_send(false, 0, 1_000 + HOUR_MS).unwrap();
     }
 }

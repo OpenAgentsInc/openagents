@@ -506,7 +506,7 @@ impl Session {
         match self
             .inner
             .tools
-            .add_host_tool(crate::coder::recall::host_tool(record_directory))
+            .add_host_tool(crate::coder::recall::host_tool(record_directory.clone()))
         {
             Ok(()) => self.refresh_system_prompt(),
             Err(refusal) => {
@@ -516,10 +516,16 @@ impl Session {
                 eprintln!("history_recall host tool not registered: {refusal}");
             }
         }
+        let session_id = store.summary().id.clone();
         self.inner = self
             .inner
             .with_local_session(store, crate::session_store::replay_messages(events))
             .with_cloud_history(cloud_history);
+        self.inner.bind_swarm(crate::swarm::SwarmBinding::new(
+            crate::swarm::default_home(),
+            session_id,
+            record_directory,
+        ));
         self
     }
 
@@ -673,6 +679,7 @@ impl Session {
         if let Some(gate) = &self.inner.tools.delegation {
             gate.acp_spent.store(false, Ordering::SeqCst);
         }
+        self.inner.drain_swarm_inbox().await;
         let sink: Sink = Arc::new(Mutex::new(tx));
         self.live_streaming.store(false, Ordering::Relaxed);
         let started = Instant::now();
@@ -843,6 +850,28 @@ pub fn tool_title(name: &str, arguments: &str) -> String {
         // name and over its own schema, so there is nothing general to read
         // out of it but the arguments themselves.
         "checkpoint" => string("text"),
+        "swarm.inbox" | "swarm_inbox" => {
+            let from = string("from");
+            let kind = string("kind");
+            let count = parsed
+                .get("count")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(1);
+            return match (from, kind) {
+                (Some(from), Some(kind)) if count > 1 => {
+                    format!("swarm ← {from} [{kind}] +{}", count - 1)
+                }
+                (Some(from), Some(kind)) => format!("swarm ← {from} [{kind}]"),
+                _ => "swarm inbox".to_string(),
+            };
+        }
+        "swarm_send" => {
+            return match string("to") {
+                Some(to) => format!("swarm → {to}"),
+                None => "swarm send".to_string(),
+            };
+        }
+        "swarm_list" => return "swarm list".to_string(),
         _ => (parsed != serde_json::Value::Null).then(|| parsed.to_string()),
     };
 
@@ -865,6 +894,16 @@ fn one_line(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_swarm_inbox_title_names_the_sender_and_kind() {
+        let title = tool_title(
+            "swarm.inbox",
+            r#"{"from":"session-b","kind":"question","count":1}"#,
+        );
+        assert_eq!(title, "swarm ← session-b [question]");
+        assert!(!title.contains('>'));
+    }
 
     /// The prompt is the product. A merge that reworded it would pass every
     /// other test in this crate.
