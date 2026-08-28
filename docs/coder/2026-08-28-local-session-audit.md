@@ -1,9 +1,12 @@
 # Local Coder session audit
 
-Date: 2026-08-28.
-Status: evidence. Read-only over the owner's local session store.
+Date: 2026-08-28, extended 2026-08-29.
+Status: evidence, then a cost-unlock reading of the same store.
 Companion: this directory's other dated notes describe product intent; this
-file describes what the live Coder TUI actually recorded.
+file describes what the live Coder TUI actually recorded. Sections 11–13
+measure where the tokens and tool calls went, and list the unlocks that
+would have produced the same landings at roughly half the calls and half
+the wall clock.
 
 ## 1. Where the conversations are
 
@@ -143,6 +146,28 @@ autopilot spec over swarm. Replicated bugs in those later sessions: drain
 schema vs description (`#302`), turn-boundary injection emptying subsequent
 drains (`#303`), CLI inbox defaulting to the newest session (`#304`),
 `history_recall` refusing sibling lookup (`#301`).
+
+### F9. Fourteen plugins were installed. Zero ran.
+
+9,756 `tool.ran` events. `capability` was called twice. No `git_facts`,
+`code_search`, `repo_map`, `repo_tree`, `test_report`, `session_search`,
+`foreign_sessions`, `read_conversation`, `patch_check`, or `git_lost_work`
+call appears. The model did that work with `bash`/`shell` (7,867 calls,
+81% of all tools). The harvest in
+`docs/2026-08-25-plugin-harvest-targets.md` already named these guests
+as the orientation and test-iteration delta. They exist in `plugins/`.
+The standing `capability` tool is constant-size and **names no installed
+plugin**, so a Flash tab that never searches the catalog never sees them.
+The plugin A/B disposition (`docs/coder/plugin-ab-disposition.md`)
+already recorded the same non-invocation on Gym.
+
+### F10. Reasoning text is larger than the work
+
+User text in the window: 28k characters. Assistant finals: 283k.
+Reasoning: **5.36 million characters**. Tool output: 12.2 million.
+The cost of a long Flash tab is re-sending those two dumps every round,
+not the owner's prompt. Session 18's last snapshot was 28.9M tokens
+because the transcript was the product.
 
 ## 5. Theme clusters
 
@@ -540,17 +565,500 @@ checkout at audit time.
 
 ## 10. Suggested follow-ups, from the log itself
 
-These are already filed or implied by the sessions; this list is a
-reading order, not new authority.
+The short list that was already in the sessions: empty-session GC; one
+name for `bash`/`shell`; concatenated tool-name bug (sessions 43/44);
+fresh session per claimed unit; proxy errors as TUI status; close
+#301–#304; stop using ATIF-export as resume. The cost-unlock reading
+that turns those into a half-calls / half-time plan is §11–§13.
 
-1. Empty-session GC or "don't catalog until the first user turn."
-2. One name for `bash`/`shell`.
-3. Concatenated tool-name bug (session 43/44), with a regression test.
-4. Keep the 1,000-call cap, but start a fresh session per claimed unit
-   (Autopilot spec § already leans this way).
-5. Inference-proxy 413 / 502 / unreachability as a first-class TUI
-   status, not a silent `turn.failed`.
-6. Close the swarm defects the later tabs reproduced: #301–#304.
-7. Do not treat ATIF-export handoff as the long-term resume path;
-   `history_recall` was built in session 54 and then reported broken
-   across sessions in #301.
+## 11. What we were actually trying to do
+
+The owner's sentence, from the Autopilot spec (`docs/coder/autopilot.md`)
+and from session 5's continuation envelope, is the job of this window:
+
+> do all of my issues. Then I want to be able to go AFK and have it
+> actually work.
+
+Everything in the 65 sessions is a way of doing that job with a fleet of
+Flash tabs, because Autopilot is not implemented yet. The tabs that
+produced landings all ran the same loop:
+
+1. Orient (git status, log, fetch, issue list, screenshot, ATIF export).
+2. File or pick an OpenAgents issue.
+3. Make a fresh worktree off forge `main`.
+4. Edit, search, test, rebase when a sibling lands first.
+5. Push, comment, close.
+6. If the tab dies: paste the ATIF path into a new tab and say continue.
+
+The expensive part of that loop is not the edit. `edit` was 698 calls;
+`write` 212; `read` 116. The expensive part is **orientation and
+verification done by a thinking Flash model through a shell**, replayed
+into a growing transcript, until the turn dies and the next tab pays the
+orientation tax again.
+
+A session that achieved the same landing with half the tool calls and
+half the wall clock is one that:
+
+- already knew git state, the issue board, and the file to touch
+  (deterministic plugins / host injection, not 10 `git` + 10 `rg`)
+- ran one typed test and got typed failures back (`test_report`, not
+  `cargo test | rg` 635 times)
+- did not re-send 12 MB of tool output and 5 MB of reasoning every
+  round (compaction)
+- did not die at 100 tools and did not get recovered via a 1000-step
+  ATIF dump (fresh session per unit + working resume)
+- was not fighting a sibling on the same cwd (host worktree, not 72
+  `git worktree` shells)
+- was not waiting for the owner to type `continue` (80 of 261 user
+  turns) because the loop itself kept going
+
+Half is not a slogan. Round count is the metered cost
+(`docs/coder/autoimprove.md` §2.1; best practice T1). On `git-leak-recovery`
+the same accepted outcome was 33,963 tokens with T1 and 51,485 without
+(+52%). These 65 sessions mostly did not follow T1: median bash command
+was 174 characters of one action, 7,867 times. Cutting rounds in half
+cuts prompt tokens by more than half on a long tab, because the
+transcript is quadratic in rounds.
+
+## 12. Where the tokens and time went
+
+Recounted 2026-08-29 over the same store (9,756 `tool.ran`; later
+sessions added a few events after the first pass).
+
+| Spend | Count | What it was in this window |
+|---|---|---|
+| `bash` + `shell` | 7,867 (81%) | Orientation, search, git, cargo, worktree, issue CLI, python one-offs |
+| `cargo test` (inside those shells) | 1,047 | 635 piped to grep, 498 piped to tail, 488 package+`--test`, 10 `--workspace` |
+| Search (`rg`/`grep`, including `cd &&`) | ~1,431 | `code_search` was sitting in `plugins/` and never loaded |
+| `git log` / `status` / `diff` / `show` / `fetch` | 258 / 218 / 206 / 140 / 129 | `git_facts` never loaded |
+| `ls` / `find` | ~366 | `repo_tree` never loaded |
+| `edit` / `write` / `read` | 698 / 212 / 116 | The actual mutation. `read` lost to `cat`/`head`/`tail` (224) |
+| `openagents` | 448 | 51 `issue view`, 32 create, 30 list, 19 comment, 12 close |
+| Swarm tools | ~230 | Real coordination, plus drain/injection bugs |
+| `checkpoint` | 90 | Useful; also a round |
+| `skill` | 42 | `openagents-cli` 33 times — re-teaching the CLI it already has |
+| `delegate` / `acp` | 18 / 6 | Almost all issue work stayed in-process |
+| `capability` | 2 | The door to the 14 plugins |
+| Plugin tools | **0** | |
+| Shell timeouts | 259 | Dead rounds |
+| Tool outputs > 8 KB | 118 | Re-sent every later round |
+| User turns that are `continue`/`go` | 80 / 261 (31%) | The tab had stopped |
+| User turns that hand an ATIF path | 15 | Resume by dumping the previous tab into the next |
+| Reasoning characters | 5.36M | Thinking Flash, stored |
+| Tool-output characters | 12.2M | Shell dumps, stored |
+
+The landings (TUI fixes, swarm, clipboard, local lane, rc cuts, issue
+litter, edit rematch) did not require 7,867 shells. They required a
+small number of edits plus honest verify. The shells are how Flash
+*found out what to edit* and *whether it worked*, badly.
+
+## 13. Unlocks
+
+Each item is something that, if it had been in place for this window,
+would have cut tool calls, wall clock, or tokens on the sessions that
+actually ran. Grouped. Numbered across groups so it is one list. "Swap
+in" means an in-tree plugin or a harvest target that already has a
+shape; it is not a new product.
+
+### A. Make the harvested plugins actually run
+
+The harvest backlog
+(`openagents.com` `docs/2026-08-25-plugin-harvest-targets.md`) already
+ordered these by Gym delta. They are built. These sessions prove the
+delta is also the live-coding delta — if the model can see them.
+
+1. **Promote `git_facts` to a first-class tool.** Replaces the 258+218+206
+   git log/status/diff orientation calls with one typed `{head, branches,
+   log, status}` packet. Sessions 11–20, 33–37, 51–58 start almost every
+   turn with `git fetch && git status && git log`. One call, bounded
+   output, no packfile dump. This is harvest target 4, already in
+   `plugins/git-facts/`.
+2. **Promote `code_search` to a first-class tool.** Replaces ~1,431
+   `rg`/`grep` shells. Bounded matches, gitignore, honest truncation.
+   Harvest target in the orient suite. `plugins/code-search/`.
+3. **Promote `repo_tree` to a first-class tool.** Replaces ~366 `ls`/`find`
+   and the "guess the path" rounds that follow. Harvest target 2, "best
+   delta-per-effort." `plugins/repo-tree/`.
+4. **Promote `repo_map` to a first-class tool.** Sessions 37, 55, 56, 57
+   spent hours asking "where is X handled" across this repo,
+   `openagents.com`, `grok-build`, `psionic`, `cc`. Symbol outline +
+   definition lookup is one packet, not 40 greps. Harvest target 1.
+   `plugins/repo-map/`.
+5. **Promote `test_report` to a first-class tool, or auto-pipe cargo
+   output into it.** 1,047 `cargo test` calls, 635 of them `| grep`, 498
+   `| tail`. The model is parsing test dumps in the next round. Harvest
+   target 5: "the largest single Gym delta on the fix-the-tests class."
+   `plugins/test-report/`.
+6. **Promote `session_search` + `foreign_sessions` + `read_conversation`.**
+   Session 11 grepped `~/.codex/sessions` with python. Sessions 13, 15,
+   18–20, 24, 25, 34–36, 54, 59 handed ATIF paths because there was no
+   "search what any agent on this machine already learned." Those three
+   plugins exist for Claude/Codex stores; they need a Coder-store source
+   too (see 29). Harvest target 3.
+7. **Promote `patch_check`.** Session 15's entire 625-tool, 7.3 h arc was
+   edit-tool rematch vs Codex. A plugin that says "does this hunk apply"
+   before the write would have cut the retry ladder. `plugins/patch-check/`.
+8. **Promote `git_lost_work`.** Collision sessions (17, 35, 36, 51–54, 61)
+   lost commits to mixed resets and rebases, then recovered by SHA
+   archaeology in the shell. That is this plugin's job.
+9. **Stop hiding them behind `capability`.**
+   `tools.rs` currently: "The standing capability tool. Constant-size: it
+   names no installed plugin." Flash will not search a catalog it cannot
+   see. Either list the twelve catalog lines in the tool description
+   (the harvest document's original rule), auto-load the promoted set
+   at session start, or declare them as host tools. The A/B rows are
+   `not_invoked` for this reason, not because the guests are useless.
+10. **Auto-load on first relevant intent.** "what changed?" → `git_facts`.
+    "where is X?" → `code_search` / `repo_map`. "why did tests fail?" →
+    `test_report`. A tiny router in the host, not a model habit.
+11. **Keep `word-stats` / `file-stats` / `dir-stats` out of the default
+    twelve.** They occupy catalog slots the live sessions never needed.
+    The cap of twelve is why the useful ones have to win the line.
+12. **`knowledge-base` as injected stance, not a tool.** It already is.
+    Load the T1/T2/T3 stances and "do not dump `git log -p`" on every
+    Flash coding turn. These sessions violated T1 constantly; the
+    stance never reached them.
+
+### B. Plugins and host tools that are not built yet, but have a shape
+
+Deterministic guests that would have replaced specific loops in this
+window. Same WASM/PDK contract as the existing fourteen.
+
+13. **`issue_board`.** 448 `openagents` calls, 51 `issue view`, 30 list.
+    One packet: open issues with blockers, mine, recently closed. Inject
+    at session start (see 40) and refresh after create/close. Sessions
+    5, 12, 17, 46, 50, 52 all began by listing issues through the CLI.
+14. **`issue_thread`.** View + comments + deps in one bounded packet.
+    Replaces `issue view 145 | head; issue comment 145 | head`.
+15. **`worktree_host`.** 72 `git worktree` shells plus add/remove/prune
+    around every unit. The Autopilot spec and AGENTS.md already require
+    a fresh worktree per unit. The model should call `worktree.start` /
+    `worktree.finish` and never see `git worktree add --detach`.
+16. **`cargo_test` host tool.** Not a shell. Inputs: package, test name,
+    lib/integration. Output: the `test_report` JSON, plus a path to the
+    full log on disk. 1,047 shells become ~200 typed runs. Default
+    `ulimit -n 10240` so sessions 14, 43, 56 stop spending rounds on fd
+    quota.
+17. **`fmt_check` host tool.** `cargo fmt --all -- --check` was run as a
+    surprise blocker (session 35 filed #241 because the pre-push guard
+    did not run it). One named check, one round.
+18. **`push_main` host tool.** fetch, rebase-if-needed, pre-push gate,
+    push to forge, report WAL seq. Sessions spent 138 `git push` + 129
+    `git fetch` + 35 `git rebase` on the same choreography, often twice
+    because main moved. Session 13 rebased twice mid-push.
+19. **`token_count` (harvest target 7).** Session 18 hit 28.9M. A model
+    that can ask "which of these five files fits" plans instead of
+    truncating. Pure compute, no mounts.
+20. **`compact_notes` (named in the same harvest doc, from
+    `xai-compaction-transcript`).** Reduce the last K tool results to a
+    bounded structured summary. This is the single largest token cut in
+    the window. Without it, items 1–7 still leak because the shells they
+    replace already sit in the transcript.
+21. **`diff_stat`.** Always `--stat` first. Best practice T2 is adopted
+    and still not followed: 206 `git diff`, 140 `git show`, often without
+    `--stat`. A plugin that refuses to return a patch until asked.
+22. **`blame_line`.** Session 38's litter hunt and session 15's edit
+    archaeology wanted "who last touched this test." `git_facts` honestly
+    has no blame. Add it or keep blame in core as one call.
+23. **`image_read`.** Sessions 3, 21, 22, 28, 41, 50 started from a
+    screenshot. The model shelled `sips`, wrote `ocr.swift`, copied files
+    into cwd. A host image tool (the runtime already has an image path
+    on some lanes) removes that whole preamble.
+24. **`release_cut`.** Sessions 24, 28, 43, 51 are the same script:
+    `ops/release-cli.sh --version … --targets macos-aarch64 --publish
+    --allow-partial`. A host tool with those flags, so Flash cannot
+    typo `0.1.1-rc2%` (session 28) or wander into notarization logs.
+25. **`preflight_ulimit`.** 24 `ulimit` shells. Set it in the host
+    before the first tool. Session 56's Harbor run died on
+    `ProcessFdQuotaExceeded` at 256.
+26. **`openagents_cli` skill inlined or deleted.** Loaded 33 times.
+    The `openagents` tool already *is* the CLI. Loading a skill to use
+    it costs a round plus the skill body in context for the rest of the
+    session.
+27. **`gh_auth_status`.** Session 25 and 57 spent turns discovering
+    GitHub scopes. One typed packet: connected, scopes, repo selection.
+28. **Coder-store backend for `session_search`.** Today it mounts
+    `~/.claude` and `~/.codex` only. These 65 sessions are under
+    `~/.openagents/sessions`. The plugin cannot search the conversations
+    this audit is about. That is why ATIF files got passed by hand.
+29. **`history_recall` that actually reads siblings.** Built in session
+    54, filed broken as #301 in session 59. If it had worked, the 15
+    ATIF-handoff turns disappear.
+30. **`check` tool always present with a default `unit` scope.** It is
+    only declared when `.openagents/checks.json` exists. A named verify
+    would have replaced a large fraction of ad-hoc `cargo test -p … |
+    tail`.
+
+### C. Transcript, compaction, reasoning — the token firehose
+
+31. **Drop reasoning from the replayed transcript.** 5.36M characters of
+    thinking, versus 283k of answers. Keep the last reasoning for the
+    in-flight turn; persist a one-line summary. On a 28M-token tab this
+    is plausibly a 2–4× prompt cut by itself.
+32. **Cap and collapse old tool results.** Per-result caps exist
+    (`autoimprove.md` §2.3: "per-result output caps and nothing else").
+    Long tasks still go quadratic. Collapse results older than N rounds
+    to `{tool, command_hash, exit, 200-char tail}`. 12.2M tool-output
+    characters is the other half of F10.
+33. **Do not persist outputs > 8 KB in the prompt.** 118 of them in this
+    window. Write the full log to the session dir (`cmd-N.log` already
+    exists) and put a pointer in the transcript. The model can `read`
+    the tail if it must.
+34. **Compaction turn at a token threshold, not at death.** Compact at
+    200k / 500k / 1M, not at 28M. Oracle already named:
+    `schemelike-metacircular-eval` on `tb2-cross-section`.
+35. **Fresh session per claimed unit.** Autopilot spec, best-practice
+    follow-up 4, AGENTS.md worktree rule. Session 18 (689 tools, 6.4 h,
+    28.9M) did CoderBench research *and* implemented #182. Split that
+    into a research session (throw away) and an implement session
+    (small). Half the tokens is the wrong metric — it would have been
+    closer to 10× on the implement half.
+36. **Do not recover a dead tab by ingesting its ATIF.** 15 user turns,
+    plus the receiving tab spending its first 50–100 tools re-reading
+    the dump (sessions 13, 15, 18, 19, 20, 24, 25, 34, 35, 36, 59).
+    Resume from `summary.last_checkpoint` + the issue number. Session
+    18's own last checkpoint would have been enough.
+37. **Checkpoint as the resume seed, not as extra narration.** 90
+    checkpoints. Make `/resume` inject the last checkpoint as the only
+    history. That is issue #189's original point.
+38. **Strip `cmd-*.log` and ATIF from the live prompt.** They are
+    files. The model `read`s them when asked, they do not ride along.
+
+### D. Tool-surface hygiene (cheap, T1–T3 already adopted, not followed)
+
+39. **One shell name.** 5,449 `bash` + 2,418 `shell`. Same runner. The
+    split doubles the catalog and teaches the model to pick at random.
+    Session 43's concatenation bug (`openagentsopenagents`, `shellshell`)
+    is the same family.
+40. **Inject a session-start snapshot.** git_facts + issue_board +
+    `HEAD` SHA + dirty-or-not, once, as a host note. Removes the first
+    8–15 tools of almost every non-empty session in this window.
+41. **Batch independent commands (T1) as a host behavior, not a
+    prompt hope.** The model emitted median 174-character single
+    commands. The host can accept an array of independent commands in
+    one `bash` call and already does if the model asks. Make the
+    description forbid "one `ls` then stop." Measured +52% tokens when
+    T1 is stripped; these sessions were the stripped case.
+42. **`--stat` before `-p` (T2) enforced.** Refuse `git log -p` /
+    `git show` without `--stat` unless a path is named.
+43. **Lane-aware verbosity (T3).** Flash is metered. These sessions
+    dumped Harbor logs, notarization JSON, `gcloud logging read`, and
+    full `git diff` on Flash. Terse-by-default on `flash`/`pro`; verbose
+    allowed on `local`.
+44. **Default `head`/`tail` bounds in the shell wrapper.** If the
+    command is not already piped, wrap with a 80-line cap and say so.
+    118 huge outputs.
+45. **Timeouts that are useful.** 259 timeouts, many 120s Desktop `ls`
+    (session 3) or Harbor. Fail fast at 15s for orientation commands;
+    120s only for `cargo test` / release. A 120s timeout is a 2-minute
+    stall plus a wasted round.
+46. **Fix tool-name concatenation.** Sessions 43–44. Every concatenated
+    name is a wasted call and a confused model. Regression test.
+47. **Duplicate-command gate by cost, already landed (session 35,
+    `4e1cc01162`).** Keep it. The earlier aggressive form made the
+    model retry with `cd &&` prefixes (736 `cd && search`, 794 `cd &&
+    other`) to look different. That is how a safety net becomes more
+    shells.
+48. **`read` instead of `cat`.** 116 `read` vs 224 `cat`/`head`/`tail`.
+    `read` is bounded and line-addressable. Prefer it in the tool
+    description; consider refusing `cat` of a workspace file.
+49. **Parallel tool calls for independent reads.** Status + issue list
+    + repo_tree can run in one model step if the API supports parallel
+    tools (the runtime already batches on some lanes). Force that for
+    the snapshot in 40.
+50. **Do not offer `acp` and `delegate` as twins.** Session 32 filed
+    #228; session 33 implemented it. Until the catalog is one tool,
+    Flash spends turns asking the difference (sessions 4, 5, 31, 32,
+    33, 49).
+
+### E. Models and lanes
+
+51. **Flash is the bulk worker, not the researcher.** 51 of 54
+    non-empty sessions ended on `glm-5.3-flash`. Session 55 (Claude
+    Code teardown), 56 (Qwen/Ollama audit), 37 (SDK gap) are research;
+    they should have been `pro` or a long-context model for the
+    reading, then Flash for the issue-filing. One model for everything
+    is why research tabs also did 300–400 shells.
+52. **Local lane for dump-heavy work.** Session 56 already has Ollama
+    qwen3.8 in the cycle. Harbor logs, `git log`, ATIF reads, teardown
+    greps: run them local so output tokens are minutes, not dollars
+    (T3). Then paste a *summary* into the Flash tab that implements.
+53. **Non-thinking Flash for orientation.** The 5.36M reasoning
+    characters are a thinking model narrating `git status`. A
+    non-thinking small model (or a host snapshot) for orientation;
+    thinking only once there is a file to change.
+54. **Gemini Flash was one "hi" (session 53).** The lane switch is
+    unused as a cost tool. Wire "this turn is a screenshot / a TUI
+    pixel question" to a vision-strong lane automatically (sessions
+    3, 21, 22, 28, 41).
+55. **Do not run a 28M-token prompt.** Hard-cap context and compact or
+    start a new session. The proxy 413 in session 50
+    (`coder_api_hop` / `upstream_status: 413`) is this limit arriving
+    as a 502. Treat 413 as "compact now," not "fail the turn."
+56. **Route `cargo test` and `git` off the model entirely when the
+    intent is typed.** If the host can run `cargo_test` (16) it does
+    not need a 70B-class model to decide the command line.
+57. **Keep stable-channel cuts off Flash improvisation.** Release
+    sessions 24/28/43/51 belong on a scripted tool (24), not a
+    thinking model with `ops/release-cli.sh` in a 45-tool loop.
+
+### F. Session lifecycle and Autopilot (the actual product)
+
+58. **Autopilot as specified.** The 80 `continue`/`go` turns *are* the
+    missing mode. The owner was the loop. `docs/coder/autopilot.md`
+    §1: when Autopilot is on, the loop keeps steering across turn
+    boundaries. Half the wall clock of this window is waiting for the
+    next "go."
+59. **One unit, one session, one worktree, one push.** Sessions that
+    mixed research + implement + release (18, 23, 28, 51, 56) paid
+    the union of all three contexts. Autopilot's unit of progress is
+    already "work whose verification someone else can reconstruct."
+60. **Stop conditions that are not "ended without a final answer."**
+    28 of 95 failures. The cap-forced-report from #188 (session 20)
+    helped later; still, sessions 12, 34, 44, 61 left no assistant
+    text. A host-side "emit checkpoint and stop" at 80% of the tool
+    budget is cheaper than death-plus-ATIF.
+61. **Raise was 100 → 1,000 (session 51).** Keep 1,000 as a safety
+    net, not a plan. A unit that needs 400 tools is a unit that is
+    missing plugins (A) and compaction (C).
+62. **Empty-session GC.** 11 catalog rows with no events. They pollute
+    `list_sessions` / swarm targeting (#304). Do not catalog until the
+    first user turn.
+63. **Do not idle-wait on swarm with a shell poller.** Session 60 wrote
+    `/tmp/inbox_watch.sh` every 20s because `swarm_wait` was not
+    trusted yet. That is #287's job. Host-side wait, not a bash loop
+    that also has to be drained.
+
+### G. Coordination, so parallel tabs stop doubling the work
+
+64. **Host-owned worktree per session, always.** Shared-cwd collisions
+    (sessions 17, 35, 36, 51–54, 61, 62's review of §4) caused rebase
+    loops, mixed resets, dropped landings, and "I recovered the files
+    from `0e422b00d2`." If every tab starts in an isolated worktree,
+    half of the git choreography in this window never happens.
+65. **Claim ledger the model cannot skip.** Session 54 found every
+    lane taken after it had already implemented. Session 61's first
+    #299 landing was dropped by a sibling reset. Autopilot spec's
+    second review already named this. A `claim` host tool that refuses
+    edit on an owned path is cheaper than two implementations.
+66. **Swarm for status, not for source of truth.** 170 swarm messages.
+    Useful for "I am on #283." Harmful when it is the only way to
+    learn that #282 already landed. The issue tracker is the ledger;
+    swarm is a nudge.
+67. **Fix #301–#304 before the next swarm window.** Drain schema,
+    injection-emptied drains, inbox-defaults-to-newest, recall.
+    Sessions 59–64 spent their time rediscovering these. That time is
+    100% overhead on the job in §11.
+68. **Delegate independent issues instead of one 600-tool tab.**
+    `delegate` ran 18 times; session 23's Devin path actually closed
+    #203. Sessions 12, 17, 18, 37 tried to "do all of them" in-process.
+    Fan-out is the half-time move when the units do not share files.
+
+### H. Verification, so tests stop eating the window
+
+69. **Never `cargo test --workspace` from a Flash tab unless the
+    pre-push hook is the caller.** Only 10 such calls, but they are
+    the long ones (session 33 needed `ulimit -n 10240` for 1,596
+    passed). The completion gate belongs to the hook / `push_main`
+    (18), not to the model.
+70. **Package-and-name the test from the edit.** After editing
+    `coder/tui.rs`, run `cargo test -p openagents-cli tui --lib`, not
+    a fishing `| rg`. `test_report` then names the miss.
+71. **PTY suite only for TUI issues.** Sessions 21, 22, 28, 41 are TUI.
+    Best practice V2. Headless `cargo test` cannot close them; the
+    `coder_interactive_pty` suite can. Point the model at that binary
+    by name in the tool description for TUI files.
+72. **Do not re-run the suite after fmt.** Session 13's original ask
+    was "note how many minutes it's wasting on rerunning the whole
+    test suite." That was the window's first diagnosis. It is still
+    the pattern in 1,047 cargo calls.
+73. **Cache compilation.** Worktrees do not share `target/` unless
+    pointed at a shared cache (`CARGO_TARGET_DIR` / sccache). Each
+    fresh worktree paid a cold compile. Put the cache outside the
+    disposable worktree (AGENTS.md already says this). A host
+    `worktree.start` (15) should set that env.
+
+### I. Inference hop, so failed turns stop wiping an hour
+
+74. **Surface proxy 502 / unreachable / 413 in the TUI immediately.**
+    14 unreachable, 6 provider 502, 3 mid-stream decode, 1 413, 1 HTML
+    502, 1 10s timeout. Sessions 19, 20, 41, 43, 44, 50, 61 lost the
+    in-flight turn. Retry once, then checkpoint-and-stop (60), do not
+    sit in a tool loop against a dead hop.
+75. **Local fallback on hop death.** Session 64 started as Ollama and
+    answered as Flash. Invert that: if the proxy is unreachable, the
+    in-flight turn continues on local, then the next turn tries the
+    hop again.
+76. **413 → compact (55), not fail.**
+
+### J. Prompt and catalog size
+
+77. **Shorter tool descriptions for the default set.** The catalog the
+    model sees every round includes swarm, acp, delegate, skill,
+    capability, checkpoint, two shells. Smoke sessions 4, 31, 32, 48,
+    49, 53 exist because the owner had to ask "what tools do you have"
+    — and the answer kept changing. A small default set (read, edit,
+    write, bash, git_facts, code_search, test / check, openagents,
+    checkpoint) plus `capability` for the rest.
+78. **Do not put the full COMMANDS list in the prompt.** Session 62
+    read `commands.rs` to add `/autopilot`. Slash-command discovery
+    belongs in `/help`, not in every turn.
+79. **Issue bodies stay on the tracker.** Models `cat` entire issue
+    threads into the prompt (51 views). `issue_thread` (14) with a
+    2k-character cap.
+
+### K. The half-calls / half-time picture, tied to this window
+
+If only five of the above had been live, the arithmetic on *this*
+store looks like:
+
+80. **Plugins-as-tools (1–8, 9) + session snapshot (40) + one shell
+    (39).** Orientation shells are the majority of the 7,867. Cutting
+    git + search + ls to one snapshot plus on-demand plugins is a
+    3–5× cut on the first 30 tools of every implement tab (almost all
+    of 11–20, 33–41, 51–58). That alone is "half the tool calls" on
+    those sessions.
+81. **`cargo_test` + `test_report` (5, 16, 70).** 1,047 cargo shells
+    become a few hundred typed runs. Session 15/20/33-style iterate
+    loops go from "run, grep, guess" to "here are the failing names."
+82. **Compaction + drop reasoning (31–35).** The 28.9M tab becomes a
+    1–2M tab. Proxy 413s stop. Every subsequent round is cheaper, so
+    wall clock drops even when tool count does not.
+83. **Autopilot + no ATIF resume (36, 37, 58, 59).** 80 continue turns
+    and 15 export-handoffs go away. The owner's time — the actual
+    wall clock of the window — halves because the loop no longer
+    stops.
+84. **Host worktree + claims (15, 64, 65).** The rebase/reset/collision
+    tax (sessions 17, 51–54, 61) goes away. That tax was hours, not
+    minutes.
+85. **Vision lane + `image_read` (23, 54).** Screenshot sessions 3, 21,
+    22, 28, 41 skip the `sips`/`ocr.swift` preamble and the wrong-file
+    timeouts.
+86. **`push_main` + `release_cut` (18, 24).** Push/rebase and RC cuts
+    become one call each. Sessions 13, 24, 28, 43, 51 shrink by tens
+    of tools and the rc2 `%` class of error.
+87. **Fix swarm defects and recall (29, 67).** Sessions 59–64 were a
+    verification fleet spending time on the tools instead of the
+    issues. That whole afternoon is overhead.
+
+Taken together, the implement tabs in this window (the ones that
+closed issues) look like 150–300 tools over 2–6 hours today, and like
+60–120 tools over 1–2 hours with 80–84 in place. The research tabs
+(55, 56, 37) look like a local-lane dump plus a short Flash
+issue-filing session, not a 400-tool Flash transcript. The smoke tabs
+stay cheap. The empty tabs vanish (62).
+
+That is the same job as §11 — do the issues, AFK, come back to
+receipts — with the cost structure the Gym already measured on
+`fix-git` and the guests already sitting in `plugins/`.
+
+## 14. What this extension did not do
+
+- Did not re-score Gym A/B; the `not_invoked` rows still stand.
+- Did not implement any unlock. Autopilot remains a spec. Plugins
+  remain behind `capability`.
+- Did not claim a billed-token total. Last-snapshot sums are still
+  not spend.
+- Did not add a new issue. Several unlocks already have issues
+  (#188, #228, #241, #256, #301–#307, Autopilot's slice issues).
+
