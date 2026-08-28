@@ -1050,6 +1050,86 @@ mod unix_pty {
         );
     }
 
+    /// Autopilot is a mode, not a lane (spec: `docs/coder/autopilot.md`):
+    /// engaging announces itself, puts `AUTOPILOT` beside the lane in the
+    /// status row, and disengaging takes it away. Meta+A is sent as ESC+a,
+    /// the byte pair a terminal sends for the Alt chord.
+    #[test]
+    fn autopilot_toggles_state_between_the_status_row_and_the_transcript() {
+        let mut tui = Tui::start();
+        let frame = tui.wait_for_composer();
+
+        // Off is the only state a session opens in, and the off state costs
+        // the status row nothing.
+        assert!(
+            !frame.status_bar().contains("AUTOPILOT"),
+            "a fresh session must not render the autopilot cell.\n{}",
+            frame.dump()
+        );
+        assert!(
+            frame.transcript().contains("autopilot off"),
+            "the welcome card should name the mode and its off state.\n{}",
+            frame.dump()
+        );
+
+        // Engage with the chord.
+        tui.send(&[0x1b, b'a']);
+        let engaged = tui.wait_for("autopilot to engage via Meta+A", REDRAW, |frame| {
+            frame.status_bar().contains("AUTOPILOT")
+                && frame.transcript().contains("Autopilot engaged")
+        });
+        assert!(
+            engaged.transcript().contains("hands the wheel back"),
+            "the engage notice should name the way out.\n{}",
+            engaged.dump()
+        );
+
+        // Disengage the same way.
+        tui.send(&[0x1b, b'a']);
+        tui.wait_for("autopilot to disengage via Meta+A", REDRAW, |frame| {
+            !frame.status_bar().contains("AUTOPILOT")
+                && frame.transcript().contains("Autopilot disengaged")
+        });
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit after toggling: {status:?}");
+    }
+
+    /// `/autopilot` and its directive reach the session's own dispatch: the
+    /// slash line engages with the directive carried, `/autopilot off`
+    /// disengages, and the lane walk is untouched throughout.
+    #[test]
+    fn autopilot_slash_line_engages_with_its_directive_and_off_disengages() {
+        let mut tui = Tui::start();
+        let frame = tui.wait_for_composer();
+
+        tui.type_text("/autopilot work the P0 column");
+        tui.send(b"\r");
+        tui.wait_for("the slash line to engage", REDRAW, |frame| {
+            frame.status_bar().contains("AUTOPILOT")
+                && frame.transcript().contains("Autopilot engaged")
+        });
+
+        tui.type_text("/autopilot off");
+        tui.send(b"\r");
+        tui.wait_for("the off line to disengage", REDRAW, |frame| {
+            !frame.status_bar().contains("AUTOPILOT")
+                && frame.transcript().contains("Autopilot disengaged")
+        });
+
+        // The mode never joins the lane walk: the status row still names the
+        // lane, not an autopilot-shaped lane.
+        let last_row = frame.status_bar();
+        assert!(
+            last_row.contains("Coder "),
+            "the status row must keep naming the lane beside the mode.\n{}",
+            last_row
+        );
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
     /// A resize redraws the frame at the new size instead of leaving the old
     /// one behind it.
     #[test]

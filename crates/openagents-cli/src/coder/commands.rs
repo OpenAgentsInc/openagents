@@ -33,6 +33,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("help", "list these commands and the keys"),
     ("goal", "set, inspect, or manage the task goal"),
     (
+        "autopilot",
+        "AFK mode: the loop keeps steering between turns: Meta+A, /autopilot [directive], /autopilot off",
+    ),
+    (
         "info",
         "what this session has spent: tokens, model, lane, thread",
     ),
@@ -104,6 +108,13 @@ pub fn names() -> Vec<&'static str> {
 }
 
 /// Whether `name` is one this module runs.
+///
+/// `/autopilot` is absent on purpose: like `/goal`, it is claimed earlier in
+/// the submit path (`coder/autopilot::parse_command` in
+/// `coder/interactive.rs`), before this dispatch runs — but unlike `/goal`
+/// it is not routed through this module at all, because its state lives in
+/// the frame loop. `every_listed_command_is_handled` accepts the exception
+/// by name, and the parse test in `coder/autopilot.rs` holds the surface.
 pub fn handles(name: &str) -> bool {
     matches!(
         name,

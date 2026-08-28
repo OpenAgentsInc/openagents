@@ -332,6 +332,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // conversation beneath stale selections.
     let mut lane_notice = None;
     let mut turns = TurnState::default();
+    // Session-level autopilot mode (`coder/autopilot.rs`). Session-only by
+    // design: nothing persists it, so a new session opens human-steered.
+    let mut autopilot = crate::coder::autopilot::AutopilotState::default();
     let mut active_turn: Option<ActiveTurn> = None;
     let mut prompt_queue = VecDeque::new();
     let mut login_pending = false;
@@ -369,6 +372,31 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         turns.apply(TurnAction::ObserveTerminal(id));
                         active_turn = None;
                         refresh_credit(&tx);
+                        // Autopilot's minimal loop (spec §13 slice 1): a
+                        // turn ended with the mode engaged, so the next
+                        // iteration starts in this same motion rather than
+                        // waiting on a human. Disengage commands are read at
+                        // the boundary by exactly this check — a mode that
+                        // was switched off mid-turn does not start another
+                        // unit, which is what makes the chord a real off
+                        // switch. Queued human prompts win over the loop:
+                        // they were typed while the turn ran, and the loop
+                        // works for the reader, not instead of them.
+                        if autopilot.engaged && prompt_queue.is_empty() {
+                            let prompt = autopilot.iteration_prompt();
+                            start_prompt(
+                                &mut ui,
+                                prompt,
+                                Vec::new(),
+                                session.as_ref().expect("a turn ran, so a session exists"),
+                                &tx,
+                                &mut turns,
+                                &mut active_turn,
+                            )
+                            .await;
+                            update_activity(&mut ui, &turns, prompt_queue.len());
+                            continue;
+                        }
                         start_next_prompt(
                             &mut ui,
                             &mut prompt_queue,
@@ -588,6 +616,37 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             continue;
         }
 
+        // Meta+A / Alt+A toggles autopilot (spec: `docs/coder/autopilot.md`
+        // §3). It is handled here, beside Ctrl+Y, rather than in the
+        // composer: it is a mode chord, not an edit, and it must reach the
+        // frame even while a turn is running — the reader who wants the wheel
+        // back mid-turn gets it at the next boundary, and a mode that could
+        // not be told to stop until the model stopped talking would not be a
+        // mode a person walks away from.
+        if key.code == KeyCode::Char('a')
+            && key
+                .modifiers
+                .intersects(KeyModifiers::ALT | KeyModifiers::META)
+            && !key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            autopilot.engaged = !autopilot.engaged;
+            if !autopilot.engaged {
+                autopilot.directive = None;
+            }
+            ui.autopilot_engaged = autopilot.engaged;
+            ui.entries.push(Entry::new(
+                Role::Notice,
+                if autopilot.engaged {
+                    "Autopilot engaged: the loop keeps steering between turns. \
+                     Meta+A or /autopilot off hands the wheel back."
+                        .to_string()
+                } else {
+                    "Autopilot disengaged: the session waits for you after each turn.".to_string()
+                },
+            ));
+            continue;
+        }
+
         match ui.composer.handle_key(&key, width) {
             ComposerAction::Submit(text) => {
                 history.record(&text);
@@ -604,6 +663,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             &mut turns,
                             &mut active_turn,
                             &mut prompt_queue,
+                            &mut autopilot,
                         )
                         .await;
                         match outcome {
@@ -1452,6 +1512,7 @@ async fn submit(
     turns: &mut TurnState,
     active_turn: &mut Option<ActiveTurn>,
     prompt_queue: &mut VecDeque<QueuedPrompt>,
+    autopilot: &mut crate::coder::autopilot::AutopilotState,
 ) -> commands::Outcome {
     ui.scroll_override = None;
     ui.show_welcome = false;
@@ -1468,6 +1529,47 @@ async fn submit(
             Err(_) => "The running turn must finish before `/goal` can change.".to_string(),
         };
         ui.entries.push(Entry::new(Role::Output, notice));
+        return commands::Outcome::Done;
+    }
+
+    // `/autopilot` is handled here, beside `/goal`, because the state lives
+    // in the frame loop, not in the command dispatch. Engaging with a
+    // directive starts the first iteration immediately — the mode that makes
+    // the reader type a second prompt to begin is a mode that never starts.
+    if let Some(command) = crate::coder::autopilot::parse_command(&text) {
+        use crate::coder::autopilot::AutopilotCommand;
+        match command {
+            AutopilotCommand::Toggle => {
+                autopilot.engaged = !autopilot.engaged;
+                if !autopilot.engaged {
+                    autopilot.directive = None;
+                }
+            }
+            AutopilotCommand::Off => {
+                autopilot.engaged = false;
+                autopilot.directive = None;
+            }
+            AutopilotCommand::Engage { directive } => {
+                autopilot.engaged = true;
+                autopilot.directive = Some(directive);
+            }
+        }
+        ui.autopilot_engaged = autopilot.engaged;
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            if autopilot.engaged {
+                "Autopilot engaged: the loop keeps steering between turns. Meta+A or \
+                 /autopilot off hands the wheel back."
+                    .to_string()
+            } else {
+                "Autopilot disengaged: the session waits for you after each turn.".to_string()
+            },
+        ));
+        if autopilot.engaged && matches!(turns.phase(), TurnPhase::Idle) {
+            let prompt = autopilot.iteration_prompt();
+            start_prompt(ui, prompt, Vec::new(), session, tx, turns, active_turn).await;
+            update_activity(ui, turns, prompt_queue.len());
+        }
         return commands::Outcome::Done;
     }
 
@@ -1705,6 +1807,17 @@ mod tests {
     #[test]
     fn every_listed_command_is_handled() {
         for (name, _) in crate::coder::commands::COMMANDS {
+            // `/autopilot` is handled, just not here: its state lives in the
+            // frame loop, and `submit` claims it before this dispatch runs
+            // (`coder/autopilot::parse_command`). The named exception, not a
+            // hole — the parse test in `coder/autopilot.rs` holds its surface.
+            if *name == "autopilot" {
+                assert!(
+                    crate::coder::autopilot::parse_command("/autopilot").is_some(),
+                    "`/autopilot` left the dispatch and lost its handler"
+                );
+                continue;
+            }
             assert!(
                 commands::handles(name),
                 "`/{name}` is listed by /help and nothing runs it"

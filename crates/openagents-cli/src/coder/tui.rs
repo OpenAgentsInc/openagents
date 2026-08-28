@@ -415,6 +415,13 @@ pub struct CoderUi {
     /// The lane the session was opened on — what was asked for, where
     /// [`Self::model`] is what answered.
     pub lane: String,
+    /// The session-level autopilot mode (spec: `docs/coder/autopilot.md`).
+    ///
+    /// A mode, not a lane: the status cell renders beside the lane field only
+    /// while engaged, so a reader who never engages sees no new pixels on the
+    /// row. Held here as display state; the command surface owns the state
+    /// itself (`coder/autopilot.rs`) and the frame loop keeps the two in step.
+    pub autopilot_engaged: bool,
     /// The thread this session holds, once the server has opened one.
     pub thread: Option<String>,
     /// The local source-of-truth session and its directory.
@@ -550,6 +557,7 @@ impl CoderUi {
             identity: Identity::Anonymous,
             endpoint: String::new(),
             lane: String::new(),
+            autopilot_engaged: false,
             thread: None,
             local_session_id: None,
             local_session_path: None,
@@ -988,7 +996,7 @@ impl CoderUi {
         let mut balance = self.balance_line();
         let balance_width = (balance.chars().count() as u16).min(status_area.width);
         let gap = u16::from(balance_width > 0);
-        let lane = self.lane_field_within(
+        let mut lane = self.lane_field_within(
             status_area
                 .width
                 .saturating_sub(balance_width.saturating_add(gap)),
@@ -1023,6 +1031,24 @@ impl CoderUi {
             let candidate = format!("{balance}{separator}{field}");
             if fits_left(&candidate) {
                 balance = candidate;
+            }
+        }
+        // The autopilot cell sits beside the lane field, mode after model:
+        // the lane answers which model answers, this answers who steers
+        // between turns (spec §1). Empty while off, so the row costs no
+        // columns for a reader who never engages, and the same `fits_left`
+        // eviction as the goal text applies — the credit and the effective
+        // model still govern, and the mode cell yields before them.
+        if self.autopilot_engaged {
+            let field = crate::coder::autopilot::AutopilotState {
+                engaged: true,
+                directive: None,
+            }
+            .status_cell();
+            let separator = if lane.is_empty() { "" } else { " · " };
+            let cell = format!("{field}{separator}{lane}");
+            if cell.chars().count() as u16 <= status_area.width {
+                lane = cell;
             }
         }
         let balance_area = Rect {
@@ -1167,6 +1193,9 @@ impl CoderUi {
         }
 
         let width = area.width.saturating_sub(4).min(100);
+        // Six content rows, borders, and the padding: the autopilot line
+        // made it seven, and the seventh is within the ceiling this card
+        // guards (`WELCOME_WHAT_IS_NEW` yields before this box does).
         let welcome_height = 8.min(area.height);
         let news_height = (WELCOME_WHAT_IS_NEW.len() as u16).saturating_add(2);
         let gap = 1u16;
@@ -1220,6 +1249,19 @@ impl CoderUi {
             row("Endpoint           ", fit(&self.endpoint)),
             row("ACP agents         ", fit(&agents)),
             Line::default(),
+            // The autopilot line lives inside the card rather than beside the
+            // version, so a reader learns the mode exists before the first
+            // prompt (spec §8). One line, and the card's `8`-line height
+            // already counts it — the news box below is what yields, exactly
+            // as it does for a short terminal.
+            Line::from(Span::styled(
+                crate::coder::autopilot::AutopilotState {
+                    engaged: self.autopilot_engaged,
+                    directive: None,
+                }
+                .card_line(),
+                label_style,
+            )),
             Line::from(Span::styled(
                 "Type /help for commands and keys.",
                 label_style,
