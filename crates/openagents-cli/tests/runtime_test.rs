@@ -16,7 +16,9 @@
 //!   and a sentence about an offline fallback. These assert on `Err` and on
 //!   what it says.
 
-use openagents_cli::runtime::{CoderRuntimeSession, Lane, ModelStreamEvent, TurnUsage};
+use openagents_cli::runtime::{
+    CoderRuntimeSession, Lane, MAX_TOOL_STEPS, ModelStreamEvent, TurnUsage,
+};
 use openagents_cli::tools::HarnessToolRegistry;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1558,26 +1560,31 @@ async fn the_tool_step_limit_never_removes_tools() {
         kinds.contains(&"turn.budget".to_string()),
         "the budget events are missing: {kinds:?}"
     );
-    // five: budget-reached, prompt, report, prompt, report.
+    // reached, finish prompt + spend report crossing 100 and 500, and the
+    // finish prompt at the cap — six. The cap's spend report never rides:
+    // the turn ends in failure, not a report.
     assert_eq!(
         kinds
             .iter()
             .filter(|kind| **kind == "turn.budget".to_string())
             .count(),
-        5,
-        "reached, two finish prompts, two spend reports: {kinds:?}"
+        6,
+        "reached, two finish prompts, two spend reports, the cap prompt: {kinds:?}"
     );
 
-    // The counters are honest: 100 budget calls plus one `true` shell per
+    // The counters are honest: the full budget plus one `true` shell per
     // ignored report request.
-    assert_eq!(events.last().expect("an event")["payload"]["calls"], 102);
+    assert_eq!(
+        events.last().expect("an event")["payload"]["calls"],
+        MAX_TOOL_STEPS + 2
+    );
 
     let completions = stub
         .requests()
         .into_iter()
         .filter(|request| request.starts_with("POST /api/inference/proxy"))
         .collect::<Vec<_>>();
-    assert_eq!(completions.len(), 102);
+    assert_eq!(completions.len(), MAX_TOOL_STEPS + 2);
     // The turn's own 100 rounds keep their tools; exactly the two
     // finish-and-report rounds go out tools-withheld (#188).
     let report_rounds = completions

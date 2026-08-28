@@ -260,8 +260,12 @@ pub const OLLAMA_HOST: &str = "http://127.0.0.1:11434";
 
 /// How many rounds of tool calls one turn may take before it has to answer.
 ///
-/// A backstop against a model that loops, not a budget.
-const MAX_TOOL_STEPS: usize = 100;
+/// A backstop against a model that loops, not a budget. Raised from 100 to
+/// 1000 after long implementation turns kept dying at the cap mid-fix with
+/// the work unreported — a session deep in a multi-file change burns a
+/// hundred calls on reads and edits alone, and the backstop was cutting off
+/// exactly the sessions that were working, not the ones that were looping.
+pub const MAX_TOOL_STEPS: usize = 1000;
 
 /// Tool-call counts at which the countdown notice rides a tool result.
 ///
@@ -269,12 +273,12 @@ const MAX_TOOL_STEPS: usize = 100;
 /// session `1a0434b26a4` burned two full turns to the cap and died mid-fix
 /// with the work unreported (#188). The notice names the number left, so the
 /// model can spend the last calls finishing rather than discovering.
-const BUDGET_NOTICES: [usize; 4] = [50, 20, 5, 1];
+const BUDGET_NOTICES: [usize; 6] = [500, 100, 50, 20, 5, 1];
 
 /// The tool-call counts a finished turn reports, as `turn.budget` in the
 /// transcript. Riding every turn's end keeps the cost of one turn visible
 /// without anyone reconstructing it from per-call records.
-const BUDGET_REPORT_AT: [usize; 3] = [25, 50, MAX_TOOL_STEPS];
+const BUDGET_REPORT_AT: [usize; 4] = [25, 100, 500, MAX_TOOL_STEPS];
 
 /// How many transcript events one append may carry.
 ///
@@ -4824,7 +4828,7 @@ mod tests {
             ThreadOutcome::succeeded("it answered"),
             ThreadOutcome::failed(error_code::PROVIDER_FAILED, "the proxy refused it"),
             ThreadOutcome::failed(error_code::STREAM_BROKEN, "the reply stopped"),
-            ThreadOutcome::failed(error_code::MAX_STEPS, "no answer in 100 steps"),
+            ThreadOutcome::failed(error_code::MAX_STEPS, "no answer in the step budget"),
             ThreadOutcome::failed(error_code::TURN_FAILED, "something else"),
             ThreadOutcome::interrupted("ctrl-c"),
             ThreadOutcome::no_turn(),

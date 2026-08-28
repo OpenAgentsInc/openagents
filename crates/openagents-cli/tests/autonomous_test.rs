@@ -24,7 +24,7 @@
 //! real outputs from separate git worktrees, every lane opens on the model it
 //! names, and reported token counts match what `GET /api/v1/threads` records.
 
-use openagents_cli::runtime::{CoderRuntimeSession, Lane};
+use openagents_cli::runtime::{CoderRuntimeSession, Lane, MAX_TOOL_STEPS};
 use openagents_cli::tools::{
     HarnessToolRegistry, OpenAgentsCliSource, ToolCall, resolve_openagents_cli,
 };
@@ -393,10 +393,10 @@ async fn a_turn_that_uses_every_step_fails_without_disabling_tools() {
         .expect_err("a turn with no answer succeeded");
 
     assert!(failure.to_string().contains("without a final answer"));
-    // 100 budget calls + one ignored report round each, twice.
+    // The full step budget plus one ignored report round each, twice.
     assert_eq!(
         stub.completions().len(),
-        102,
+        MAX_TOOL_STEPS + 2,
         "the report rounds did not run, or the budget moved"
     );
     let completions = stub.completions();
