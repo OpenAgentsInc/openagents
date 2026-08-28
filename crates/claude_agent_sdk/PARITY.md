@@ -61,11 +61,16 @@ still open:
 - **P3 remainder** — remaining control-request subtypes, including
   `background_tasks`, `cancel_async_message`, elicitation, and
   hook callbacks (the handler is still a TODO that always continues).
-- **P4 options and result fidelity** — wire the dead `QueryOptions` fields
-  (`system_prompt`, `mcp_servers`, `agents`, `sandbox`, `plugins`,
-  `output_format`, `fallback_model`) into `build_args()`; add `tools`,
-  `thinking` / `effort`, and permission mode `auto`; carry `terminal_reason`,
-  `api_error_status`, and the later `modelUsage` fields on results.
+- **P4 remainder** — still-dead `QueryOptions` fields (`system_prompt`,
+  `mcp_servers`, `agents`, `sandbox`, `output_format`); `tools` / `thinking`
+  / `effort`; result `terminal_reason`, `api_error_status`, later
+  `modelUsage` fields.
+
+## P4 first slice landed (issue #232)
+
+`PermissionMode::Auto` is on the wire (`auto`). `build_args()` emits
+`--fallback-model` and `--plugin-dir` from the previously ignored
+`fallback_model` and `plugins` fields.
 
 Out of scope for the whole #232 port unless a later packet says otherwise:
 full hook execution, the ~50 TypeScript `Query` methods, and a complete

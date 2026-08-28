@@ -330,6 +330,11 @@ impl QueryOptions {
             args.push(model.clone());
         }
 
+        if let Some(ref model) = self.fallback_model {
+            args.push("--fallback-model".to_string());
+            args.push(model.clone());
+        }
+
         if let Some(ref mode) = self.permission_mode {
             let mode_str = match mode {
                 PermissionMode::Default => "default",
@@ -337,6 +342,7 @@ impl QueryOptions {
                 PermissionMode::BypassPermissions => "bypassPermissions",
                 PermissionMode::Plan => "plan",
                 PermissionMode::DontAsk => "dontAsk",
+                PermissionMode::Auto => "auto",
             };
             args.push("--permission-mode".to_string());
             args.push(mode_str.to_string());
@@ -423,6 +429,15 @@ impl QueryOptions {
         for beta in &self.betas {
             args.push("--beta".to_string());
             args.push(beta.clone());
+        }
+
+        for plugin in &self.plugins {
+            match plugin {
+                PluginConfig::Local { path } => {
+                    args.push("--plugin-dir".to_string());
+                    args.push(path.clone());
+                }
+            }
         }
 
         // Extra args

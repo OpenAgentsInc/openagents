@@ -225,6 +225,9 @@ pub enum PermissionMode {
     BypassPermissions,
     Plan,
     DontAsk,
+    /// Classifier-approved permission prompts (TS `'auto'`). Unrecognized
+    /// modes are rejected server-side since 0.3.214.
+    Auto,
 }
 
 /// Set model request.

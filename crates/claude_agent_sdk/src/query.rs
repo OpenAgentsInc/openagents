@@ -589,6 +589,19 @@ mod tests {
     }
 
     #[test]
+    fn build_args_emits_auto_mode_fallback_model_and_plugin_dir() {
+        let mut options = QueryOptions::new().permission_mode(PermissionMode::Auto);
+        options.fallback_model = Some("sonnet".to_string());
+        options.plugins = vec![crate::options::PluginConfig::Local {
+            path: "/tmp/plug".to_string(),
+        }];
+        let args = options.build_args();
+        assert!(args.windows(2).any(|w| w == ["--permission-mode", "auto"]));
+        assert!(args.windows(2).any(|w| w == ["--fallback-model", "sonnet"]));
+        assert!(args.windows(2).any(|w| w == ["--plugin-dir", "/tmp/plug"]));
+    }
+
+    #[test]
     fn initialize_control_request_serializes_with_the_wire_subtype() {
         let request = SdkControlRequest {
             msg_type: ControlRequestType::ControlRequest,

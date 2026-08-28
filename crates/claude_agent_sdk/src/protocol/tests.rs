@@ -240,6 +240,7 @@ mod tests {
             PermissionMode::BypassPermissions,
             PermissionMode::Plan,
             PermissionMode::DontAsk,
+            PermissionMode::Auto,
         ] {
             let json = serde_json::to_value(&mode).unwrap();
             let parsed: PermissionMode = serde_json::from_value(json).unwrap();
