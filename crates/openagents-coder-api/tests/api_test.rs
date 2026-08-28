@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use axum::routing::get;
+use axum::{Json, Router};
 use http_body_util::BodyExt;
 use openagents_coder_api::{router, App, Config, Store};
 use tempfile::tempdir;
@@ -23,6 +25,8 @@ fn test_app(gateway_key: Option<&str>) -> App {
             openrouter_api_key: None,
             credit_allowance_microusd: 20_000_000,
             require_bearer: false,
+            internal_token: None,
+            identity_origin: None,
         },
         store: Arc::new(store),
     }
@@ -237,6 +241,108 @@ async fn a_grant_refuses_a_mismatched_model() {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["code"], "model_mismatch");
+}
+
+#[tokio::test]
+async fn an_internal_hop_without_an_admitted_model_is_refused() {
+    let mut app = test_app(Some("test-key"));
+    app.config.internal_token = Some("internal-secret".into());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/inference/proxy")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer internal-secret")
+        .body(Body::from(
+            serde_json::json!({"model": "glm-5.3-flash", "messages": [{"role":"user","content":"hey"}]}).to_string(),
+        ))
+        .unwrap();
+    let response = router(app).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn an_internal_hop_with_an_admitted_model_reaches_the_catalog() {
+    let mut app = test_app(None);
+    app.config.internal_token = Some("internal-secret".into());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/inference/proxy")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer internal-secret")
+        .header("x-openagents-admitted-model", "glm-5.3-flash")
+        .body(Body::from(
+            serde_json::json!({"model": "glm-5.3-flash", "messages": [{"role":"user","content":"hey"}]}).to_string(),
+        ))
+        .unwrap();
+    let response = router(app).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["code"], "model_unavailable");
+}
+
+async fn serve_json(path: &'static str, body: serde_json::Value) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = Router::new().route(path, get(move || async move { Json(body.clone()) }));
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.ok();
+    });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+async fn user_forwards_to_phoenix_when_identity_origin_is_set() {
+    let origin = serve_json(
+        "/api/v1/user",
+        serde_json::json!({"id": 7, "login": "atlantispleb", "namespaces": []}),
+    )
+    .await;
+    let mut app = test_app(None);
+    app.config.identity_origin = Some(origin);
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user")
+        .header("authorization", "Bearer production-token")
+        .body(Body::empty())
+        .unwrap();
+    let response = router(app).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["login"], "atlantispleb");
+    assert_eq!(body["id"], 7);
+}
+
+#[tokio::test]
+async fn credit_forwards_to_phoenix_when_identity_origin_is_set() {
+    let origin = serve_json(
+        "/api/v1/credit",
+        serde_json::json!({
+            "credit": {
+                "allowance_microusd": 100_000_000,
+                "spent_microusd": 1_000,
+                "remaining_microusd": 99_999_000,
+                "unpriced_calls": 0,
+                "complete": true
+            }
+        }),
+    )
+    .await;
+    let mut app = test_app(None);
+    app.config.identity_origin = Some(origin);
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/credit")
+        .header("authorization", "Bearer production-token")
+        .body(Body::empty())
+        .unwrap();
+    let response = router(app).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["credit"]["allowance_microusd"], 100_000_000);
+    assert_eq!(body["credit"]["spent_microusd"], 1_000);
 }
 
 #[allow(dead_code)]

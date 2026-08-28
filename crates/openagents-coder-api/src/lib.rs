@@ -1,5 +1,6 @@
 pub mod catalog;
 pub mod config;
+pub mod identity;
 pub mod proxy;
 pub mod routes;
 pub mod store;

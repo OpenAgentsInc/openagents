@@ -76,13 +76,16 @@ async fn health(State(app): State<App>) -> Json<Value> {
     }))
 }
 
-async fn user(headers: HeaderMap) -> Response {
-    if bearer(&headers).is_none() {
+async fn user(State(app): State<App>, headers: HeaderMap) -> Response {
+    let Some(token) = bearer(&headers) else {
         return fail(
             StatusCode::UNAUTHORIZED,
             "unauthorized",
             "bearer token required",
         );
+    };
+    if let Some(origin) = app.config.identity_origin.as_deref() {
+        return forward_phoenix(origin, "/api/v1/user", &token).await;
     }
     Json(json!({
         "id": 0,
@@ -112,11 +115,20 @@ async fn models(State(app): State<App>) -> Json<Value> {
     Json(serde_json::to_value(catalog::project(&app.config)).unwrap_or(json!({})))
 }
 
-async fn credit(State(app): State<App>, headers: HeaderMap) -> Json<CreditEnvelope> {
+async fn credit(State(app): State<App>, headers: HeaderMap) -> Response {
+    if let Some(origin) = app.config.identity_origin.as_deref() {
+        let Some(token) = bearer(&headers) else {
+            return fail(
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+                "bearer token required",
+            );
+        };
+        return forward_phoenix(origin, "/api/v1/credit", &token).await;
+    }
     let owner = principal(&headers);
     let allowance = app.config.credit_allowance_microusd;
-    let (tokens, unpriced, complete) = app.store.credit(&owner, allowance).unwrap_or((0, 0, true));
-    let _ = tokens;
+    let (_tokens, unpriced, complete) = app.store.credit(&owner, allowance).unwrap_or((0, 0, true));
     Json(CreditEnvelope {
         credit: Credit {
             allowance_microusd: allowance,
@@ -126,6 +138,7 @@ async fn credit(State(app): State<App>, headers: HeaderMap) -> Json<CreditEnvelo
             complete,
         },
     })
+    .into_response()
 }
 
 async fn open_thread(
@@ -387,20 +400,13 @@ async fn inference_proxy(
             "grant token required",
         );
     };
-    let grant = match app.store.grant_by_token(&token) {
-        Ok(Some(grant)) if grant.status == "active" => grant,
-        Ok(Some(_)) => return fail(StatusCode::UNAUTHORIZED, GRANT_REVOKED, "grant is revoked"),
-        Ok(None) => return fail(StatusCode::UNAUTHORIZED, GRANT_REVOKED, "unknown grant"),
-        Err(error) => {
-            return fail(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store",
-                &error.to_string(),
-            )
-        }
+
+    let grant_model = match admitted_model(&app, &headers, &token) {
+        Ok(model) => model,
+        Err(response) => return response,
     };
 
-    let Some(model) = catalog::fetch(&app.config, &grant.model) else {
+    let Some(model) = catalog::fetch(&app.config, &grant_model) else {
         return fail(
             StatusCode::UNPROCESSABLE_ENTITY,
             MODEL_UNAVAILABLE,
@@ -427,16 +433,56 @@ async fn inference_proxy(
     // Default Flash grants open on GLM. A greeting still arrives with that
     // grant from packaged CLIs (rc8). Route the call to Gemini when the last
     // user turn is trivial; keep the Explore pin (gemini grants) intact.
-    let model = reroute_simple_flash(&app.config, &grant.model, &body, model);
+    let model = reroute_simple_flash(&app.config, &grant_model, &body, model);
 
     match proxy::stream_completion(&app.config, &model, body, true).await {
-        Ok(response) => {
-            let _ = app.store.record_usage(&grant.token_digest, 0, 0, 0);
-            response
-        }
+        Ok(response) => response,
         Err((status, message)) => {
             fail(status, openagents_coder_contract::PROVIDER_FAILED, &message)
         }
+    }
+}
+
+fn admitted_model(app: &App, headers: &HeaderMap, token: &str) -> Result<String, Response> {
+    if app.config.internal_token_matches(token) {
+        let admitted = headers
+            .get("x-openagents-admitted-model")
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        return admitted.ok_or_else(|| {
+            fail(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                openagents_coder_contract::MODEL_UNAVAILABLE,
+                "internal hop named no admitted model",
+            )
+        });
+    }
+    match app.store.grant_by_token(token) {
+        Ok(Some(grant)) if grant.status == "active" => Ok(grant.model),
+        Ok(Some(_)) => Err(fail(
+            StatusCode::UNAUTHORIZED,
+            GRANT_REVOKED,
+            "grant is revoked",
+        )),
+        Ok(None) => Err(fail(
+            StatusCode::UNAUTHORIZED,
+            GRANT_REVOKED,
+            "unknown grant",
+        )),
+        Err(error) => Err(fail(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store",
+            &error.to_string(),
+        )),
+    }
+}
+
+async fn forward_phoenix(origin: &str, path: &str, token: &str) -> Response {
+    match crate::identity::phoenix_get(origin, path, token).await {
+        Ok((status, value)) => (status, Json(value)).into_response(),
+        Err((status, message)) => fail(status, "upstream", &message),
     }
 }
 
@@ -523,6 +569,8 @@ mod tests {
             openrouter_api_key: None,
             credit_allowance_microusd: 0,
             require_bearer: false,
+            internal_token: None,
+            identity_origin: None,
         }
     }
 

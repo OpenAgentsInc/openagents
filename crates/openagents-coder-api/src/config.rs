@@ -14,6 +14,12 @@ pub struct Config {
     /// When true, `/api/*` requires a Bearer token. `/health` stays open.
     /// Cloud Run sets this so an unsigned public host cannot mint grants.
     pub require_bearer: bool,
+    /// Shared secret Phoenix presents when reverse-proxying an already-admitted
+    /// inference call. Empty means no internal hop is accepted.
+    pub internal_token: Option<String>,
+    /// Phoenix origin used to introspect `chat:account` bearers and to read
+    /// account credit. Empty keeps the local stub principal and $20 envelope.
+    pub identity_origin: Option<String>,
 }
 
 impl Config {
@@ -62,6 +68,9 @@ impl Config {
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(20_000_000),
             require_bearer,
+            internal_token: first_env(&["OPENAGENTS_CODER_API_INTERNAL_TOKEN"]),
+            identity_origin: first_env(&["OPENAGENTS_IDENTITY_ORIGIN"])
+                .or_else(|| on_cloud_run.then(|| "https://openagents.com".to_string())),
         }
     }
 
@@ -75,6 +84,20 @@ impl Config {
         self.openrouter_api_key
             .as_ref()
             .is_some_and(|key| !key.is_empty())
+    }
+
+    pub fn internal_token_matches(&self, presented: &str) -> bool {
+        let Some(expected) = self.internal_token.as_deref() else {
+            return false;
+        };
+        if expected.is_empty() || expected.len() != presented.len() {
+            return false;
+        }
+        expected
+            .bytes()
+            .zip(presented.bytes())
+            .fold(0u8, |acc, (left, right)| acc | (left ^ right))
+            == 0
     }
 }
 
