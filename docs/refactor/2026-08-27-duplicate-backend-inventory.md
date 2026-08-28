@@ -2,10 +2,13 @@
 
 - Date: 2026-08-27
 - Re-inventory: 2026-08-28 08:04–08:12 UTC
+- Remaining drain: 2026-08-28 13:27–13:30 UTC
 - Issue: `OpenAgentsInc/openagents#145`
 - Repository baseline (original): `3b252d82ce3373614cdfeaf9d907ff4c459fcb84`
 - Re-inventory baseline: `dc06fb409de7a552a03bd0f114104fd7bef95725`
   (`openagents/main`)
+- Remaining-drain baseline: `2a60adb26a35c4dd9ac35a903db1a9805a35d8fe`
+  (`openagents/main`; work started on `68e81bd74f`)
 - Google Cloud project: `openagentsgemini`
 - Primary region: `us-central1`
 - Observation principal: `oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`
@@ -14,6 +17,8 @@
   24-hour request-log sample ending at 2026-08-27 06:01 UTC
 - Re-inventory log window: seven-day request logs ending 2026-08-28 08:04 UTC,
   plus a post-observation sample from 2026-08-27 16:05 UTC
+- Remaining-drain log window: seven-day and thirty-day request logs ending
+  2026-08-28 13:27 UTC for `openagents-com-start-stage1`
 - Safety boundary: this inventory reads resource metadata and redacted request
   paths. It does not read secret values. JWKS bodies, tokens, and database
   contents are not retained here.
@@ -109,7 +114,7 @@ traffic:
 `iam.serviceAccounts.actAs` did not block these deletes. The runtime account
 is still `157437760789-compute@developer.gserviceaccount.com`.
 
-Not deleted in this pass:
+Not deleted in that 08:11 pass:
 
 - `openagents-monolith` — still the backend for `auth.openagents.com`. No
   redirect contract exists. Keep.
@@ -117,14 +122,59 @@ Not deleted in this pass:
   but the old URL map still routes `/git*` to it and Terraform plus the 100 GB
   disk remain. Keep at min-instances 0.
 - Cloud SQL `khala-sync-pg` — keep.
-- Both monolith scheduler jobs — remain `PAUSED` (staging job now targets a
-  deleted URL).
+- Both monolith scheduler jobs — remained `PAUSED` until the 13:30 UTC drain.
 
 Terraform `infra/prod` still declares `module.oa_cloud_run_bridge`,
 `module.openagents_monolith`, `module.forge_git`, and `module.openagents_lb`.
 A later OpenTofu apply may recreate the deleted bridge shell. OpenTofu apply
 remains blocked on the Google `invalid_rapt` credential refresh recorded on
 #149.
+
+### 2026-08-28 remaining drain (13:27–13:30 UTC)
+
+Authorized leftovers from the remaining list: prove and delete
+`openagents-com-start-stage1` if unused and not on production DNS; delete the
+paused monolith scheduler jobs (do not enable them). Did not touch
+`auth.openagents.com`, production `openagents-monolith`, `forge-git`, Cloud
+SQL, or Terraform apply.
+
+Proof for `openagents-com-start-stage1` before delete:
+
+- Cloud Run still deployed: revision `openagents-com-start-stage1-00006-jtx`,
+  last ready 2026-07-26 15:44 UTC, image from
+  `cloud-run-source-deploy/openagents-com-start-stage1`. Historical staging
+  TanStack Start `/stage1` shell (EN-1 receipt). Not a Terraform module.
+- Request logs: zero entries for
+  `resource.labels.service_name="openagents-com-start-stage1"` over seven days
+  and over thirty days. The same logging query for `openagents-monolith`
+  returned live `auth.openagents.com` scanner/Googlebot hits, so logging
+  access is not empty by permission.
+- DNS: no A/CNAME for `start.openagents.com`, `stage1.openagents.com`, or
+  `start-stage1.openagents.com`. Apex `openagents.com` and
+  `fleet.openagents.com` remain Phoenix `8.233.170.185`.
+  `auth.openagents.com` remains old LB `136.68.142.56`.
+- URL maps `openagents-url-map`, `sarah-urlmap`, and
+  `effect-native-gallery-url-map` contain no `start-stage1` string. Serverless
+  NEG `openagents-neg` still points at `openagents-monolith`;
+  `openagents-forge-git-neg` still points at `forge-git`.
+- Audit probe 2026-08-28 13:29:41 UTC (`User-Agent oa-145-inventory-probe`):
+  `GET /` 200 `text/html` ttfb 2.14 s; `GET /internal/healthz` 200
+  `{"ok":true,"service":"openagents-com-start"}`; `GET /stage1` 200 HTML.
+  That `*.run.app` URL is not production DNS.
+
+Deleted 2026-08-28 13:30:34–13:30:39 UTC as
+`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`:
+
+- Cloud Run `openagents-com-start-stage1` at 13:30:38 UTC.
+- Cloud Scheduler `openagents-monolith-cron` (PAUSED, target production
+  `/internal/cron`) at 13:30:38 UTC.
+- Cloud Scheduler `openagents-monolith-staging-cron` (PAUSED, target deleted
+  staging `/internal/cron`) at 13:30:39 UTC.
+
+Neither scheduler job is instantiated via `infra/modules/scheduler-job`.
+Post-delete `describe` returns not found for all three. Production
+`openagents-monolith` revision `00426-sic` and `forge-git` revision
+`00046-xl5` remain. Auth hostname DNS is unchanged.
 
 ## Decision
 
@@ -139,7 +189,8 @@ owns those resources. Most observed monolith traffic is Googlebot, scanners,
 or this audit. `auth.openagents.com` still serves JWKS and authorize HTML.
 
 Apply this order (steps 1–5 of the original list are done except the auth
-hostname):
+hostname; the paused schedulers and leftover start-stage1 Cloud Run are
+deleted):
 
 1. Move the remaining `auth.openagents.com` compatibility paths to Phoenix or
    retire them with an explicit redirect contract. **Open.**
@@ -199,9 +250,10 @@ Phoenix deployment boundary.
 
 ## Public-safe disposition table
 
-Re-inventory 2026-08-28 08:04–08:12 UTC. Project `openagentsgemini`, region
-`us-central1`. Request paths have query strings stripped. No secret values,
-JWKS key material, tokens, or user identifiers are recorded.
+Re-inventory 2026-08-28 08:04–08:12 UTC. Remaining drain 2026-08-28
+13:27–13:30 UTC. Project `openagentsgemini`, region `us-central1`. Request
+paths have query strings stripped. No secret values, JWKS key material,
+tokens, or user identifiers are recorded.
 
 | Resource | Caller | Traffic evidence | Data class | Owner | Outcome |
 | --- | --- | --- | --- | --- | --- |
@@ -211,8 +263,8 @@ JWKS key material, tokens, or user identifiers are recorded.
 | Cloud Run `oa-cloud-run-bridge` rev `00011-ncx` | Staging monolith cron `/v1/cloud-vm/readiness` | 7d: 5,000 `GET /v1/cloud-vm/readiness` 200, last 2026-08-27 08:13:10Z. Zero after 16:05Z. Unauthenticated probe 08:05Z: 401 `{"error":"unauthorized"}`. | Control-plane readiness; token in Secret Manager (name only) | `infra/prod` `module.oa_cloud_run_bridge` | **Deleted** 2026-08-28 08:11 UTC. Terraform may recreate on apply. Rust crate stays under the computer-product decision. Distinct from `oa-managed-sandbox-bridge`. |
 | Cloud Run `forge-git` rev `00046-xl5`, min-instances 0, SA `forge-git-runtime@...` | Old LB `/git*` backend. Apex DNS does not point at that LB. | Zero request-log entries in 7d. Unauthenticated `*.run.app` GET returned a Google 404 page. | Git refs on 100 GB disk; Cloud SQL Forge tables; artifacts bucket | `infra/prod` `module.forge_git` + LB backend | **Keep** at min 0 until LB/Terraform/disk transfer. Restore drill closed; no unique product data. |
 | Cloud Run `forum` / `acceptance-runner` | None | No services. | None live | Source deleted in Wave 1 | **Absent.** Do not recreate. |
-| Cloud Scheduler `openagents-monolith-cron` | Would POST production `/internal/cron` | `PAUSED`. Last success 2026-08-27 08:15:16Z. | Retired cron table | Not instantiated via `infra/modules/scheduler-job` | **Keep paused.** Do not enable. |
-| Cloud Scheduler `openagents-monolith-staging-cron` | Would POST deleted staging `/internal/cron` | `PAUSED`. Target URL now missing. | Retired | Same | **Keep paused.** |
+| Cloud Scheduler `openagents-monolith-cron` | Would POST production `/internal/cron` | Was `PAUSED`. Last success 2026-08-27 08:15:16Z. | Retired cron table | Not instantiated via `infra/modules/scheduler-job` | **Deleted** 2026-08-28 13:30 UTC. Do not recreate or enable. |
+| Cloud Scheduler `openagents-monolith-staging-cron` | Would POST deleted staging `/internal/cron` | Was `PAUSED`. Target URL already missing. | Retired | Same | **Deleted** 2026-08-28 13:30 UTC. |
 | Other schedulers (`hydralisk-glm52-reap-watchdog-*` ENABLED, `nexus-health-runner-every-minute` ENABLED, `one-*-observability-reconciliation` ENABLED, `oa-convex-export-prod-twice-daily` PAUSED) | Not TypeScript duplicate-backend callers | Out of this issue | Various | Voice / ONE / Convex | **Leave.** Not authorized here. |
 | Global LB `openagents-url-map` / forwarding `openagents-https` `136.68.142.56` | DNS: `auth.openagents.com`, `sarah.openagents.com` | Auth hostname live (see probes). Apex `openagents.com` DNS is Phoenix, not this IP. | TLS + host routing | `module.openagents_lb` | **Keep** until auth redirect and Forge backend removal. |
 | Serverless NEG `openagents-neg` → backend `openagents-backend` | Auth host + unused apex host rule | Same as production monolith | HTTPS to Cloud Run | Terraform LB module | **Keep** with production monolith. |
@@ -224,7 +276,7 @@ JWKS key material, tokens, or user identifiers are recorded.
 | GCS `openagentsgemini-oa-artifacts` and `-staging` | Historical Forge/app evidence | Names listed; contents not read | Artifacts | `module.oa_artifacts_bucket` / staging | **Keep** until prefix inventory and transfer. |
 | GCS `openagentsgemini-terraform-state` | OpenTofu backend | Live state bucket | Infra state | `module.terraform_state_bucket` | **Keep.** Never destroy an active backend from its own state. |
 | Secret containers (names only): `openagents-monolith-*`, `openagents-forge-git-policy-authority-token`, `oa-cloud-run-bridge-control-token`, `khala-live-hub-*`, `khala-sync-*` | Retired or mixed callers | Values not read | Credentials | Secret Manager; some Terraform containers | **Keep names.** Delete only after no retained caller; never print values. Queue-worker secrets already removed 2026-08-27. |
-| Cloud Run `openagents-com-start-stage1` | Not in the 2026-08-27 table | Still deployed (last deploy 2026-07-26). Not a named drain target in this pass. | Historical start-app shell | Not this issue's authorized delete list | **Recorded leftover.** Do not recreate TypeScript; do not delete without its own traffic proof. |
+| Cloud Run `openagents-com-start-stage1` | None (no production DNS, no URL-map/NEG) | 7d and 30d request logs empty. Last deploy 2026-07-26. Audit probe 13:29Z on `*.run.app` only. | Historical start-app `/stage1` shell | Not in Terraform | **Deleted** 2026-08-28 13:30 UTC. Do not recreate TypeScript. |
 | Cloud Run `openagents-nostr-relay` | `relay.openagents.com` | Retained 2026-08-27 (websocket Upgrade handshakes) | Market relay | Product | **Retain.** |
 | Source trees `apps/openagents.com`, `apps/forum`, `apps/forge-git-service`, `apps/oa-queue-worker`, `apps/acceptance-runner` | None | Deleted on `openagents/main` (Waves 1–4 / #146 / #270) | Source | Git history | **Deleted.** Do not recreate. |
 
@@ -238,6 +290,7 @@ JWKS key material, tokens, or user identifiers are recorded.
 | `oa-queue-worker-staging` | — | — | Absent | Deleted 2026-08-27. |
 | `forge-git` | `forge-git-00046-xl5` | 0 | Still zero request logs in 7d | Keep until LB/disk/Terraform. |
 | `oa-cloud-run-bridge` | — | — | Zero after 2026-08-27 08:13:10Z | Deleted 2026-08-28 08:11 UTC. |
+| `openagents-com-start-stage1` | — | — | Zero 7d and 30d request logs | Deleted 2026-08-28 13:30 UTC. |
 
 All remaining listed revisions receive 100% of their service traffic. The
 production monolith image is unchanged (`00426-sic`, last ready
@@ -245,14 +298,17 @@ production monolith image is unchanged (`00426-sic`, last ready
 
 ## Scheduled work
 
-These Cloud Scheduler jobs remain, both `PAUSED`:
+The two retired TypeScript monolith schedulers are gone:
 
 | Job | Schedule | State | Target |
 | --- | --- | --- | --- |
-| `openagents-monolith-cron` | Every minute | PAUSED | Production monolith `/internal/cron` |
-| `openagents-monolith-staging-cron` | Every minute | PAUSED | Deleted staging URL `/internal/cron` |
+| `openagents-monolith-cron` | Every minute | Deleted 2026-08-28 13:30 UTC | Was production monolith `/internal/cron` |
+| `openagents-monolith-staging-cron` | Every minute | Deleted 2026-08-28 13:30 UTC | Was deleted staging URL `/internal/cron` |
 
-No retired TypeScript scheduler is `ENABLED`. Do not resume these jobs.
+Remaining schedulers in `us-central1` (`oa-convex-export-prod-twice-daily`
+PAUSED; `hydralisk-glm52-reap-watchdog-*`, `nexus-health-runner-every-minute`,
+`one-*-observability-reconciliation` ENABLED) are not TypeScript
+duplicate-backend callers. Do not recreate the deleted monolith jobs.
 
 ## Durable data and shared resources
 
@@ -348,6 +404,86 @@ openagents.com (Phoenix, 8.233.170.185):
   GET /                       -> 200 text/html (Phoenix)
 ```
 
+### 2026-08-28 remaining-drain receipts (redacted)
+
+```text
+observed_at: 2026-08-28T13:27:00Z through 2026-08-28T13:30:50Z
+project: openagentsgemini
+region: us-central1
+principal: oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com
+baseline: 2a60adb26a35c4dd9ac35a903db1a9805a35d8fe
+  (work started on 68e81bd74ff5d736a902955699d005ba29e90db2)
+
+gcloud logging read \
+  'resource.labels.service_name="openagents-com-start-stage1"' \
+  --project openagentsgemini --freshness=7d --limit=5000
+# zero rows
+gcloud logging read \
+  'resource.labels.service_name="openagents-com-start-stage1"' \
+  --project openagentsgemini --freshness=30d --limit=5
+# zero rows
+# control: same query shape for openagents-monolith returned live
+# auth.openagents.com GET 302 / GET 404 scanner hits
+
+dig +short start.openagents.com A
+# empty
+dig +short stage1.openagents.com A
+# empty
+dig +short start-stage1.openagents.com A
+# empty
+dig +short openagents.com A
+# 8.233.170.185
+dig +short auth.openagents.com A
+# 136.68.142.56
+
+gcloud compute url-maps describe openagents-url-map \
+  --project openagentsgemini --global
+# no start-stage1 string
+# NEG openagents-neg -> openagents-monolith
+# NEG openagents-forge-git-neg -> forge-git
+
+audit probe User-Agent oa-145-inventory-probe 2026-08-28T13:29:41Z
+  GET https://openagents-com-start-stage1-ezxz4mgdsq-uc.a.run.app/
+    -> 200 text/html ttfb 2.14s
+  GET .../internal/healthz
+    -> 200 {"ok":true,"service":"openagents-com-start"}
+  GET .../stage1
+    -> 200 text/html
+
+gcloud run services delete openagents-com-start-stage1 \
+  --project openagentsgemini --region us-central1 --quiet
+# 2026-08-28T13:30:38Z Deleted service [openagents-com-start-stage1].
+
+gcloud scheduler jobs delete openagents-monolith-cron \
+  --project openagentsgemini --location us-central1 --quiet
+# 2026-08-28T13:30:38Z Deleted job [openagents-monolith-cron].
+
+gcloud scheduler jobs delete openagents-monolith-staging-cron \
+  --project openagentsgemini --location us-central1 --quiet
+# 2026-08-28T13:30:39Z Deleted job [openagents-monolith-staging-cron].
+
+gcloud run services describe openagents-com-start-stage1 ...
+# Cannot find service [openagents-com-start-stage1]
+gcloud scheduler jobs describe openagents-monolith-cron ...
+# NOT_FOUND: Job not found.
+gcloud scheduler jobs describe openagents-monolith-staging-cron ...
+# NOT_FOUND: Job not found.
+
+kept:
+  openagents-monolith  revision openagents-monolith-00426-sic
+  forge-git            revision forge-git-00046-xl5
+  auth.openagents.com  A 136.68.142.56
+  openagents.com       A 8.233.170.185
+
+remaining us-central1 schedulers (not this drain):
+  oa-convex-export-prod-twice-daily        PAUSED
+  hydralisk-glm52-reap-watchdog-5m         ENABLED
+  hydralisk-glm52-reap-watchdog-second-5m  ENABLED
+  nexus-health-runner-every-minute         ENABLED
+  one-prod-observability-reconciliation    ENABLED
+  one-stg-observability-reconciliation     ENABLED
+```
+
 ## Scheduled-task classification
 
 Every task in the monolith per-minute `scheduled()` table (the
@@ -381,7 +517,7 @@ retained product set — Phoenix backend and the Rust CLI:
 
 No task has a Phoenix or Rust replacement requirement: Phoenix implements its
 own projections and the CLI ships its own release checks. The production
-scheduler stays paused. The Worker source that owned the table is deleted.
+scheduler is deleted. The Worker source that owned the table is deleted.
 
 ## External-consumer verdicts
 
@@ -444,7 +580,8 @@ host and 100 GB disk were still RUNNING/READY on 2026-08-28.
 Resolved by this document: scheduled-task classification, the bounded
 zero-caller observation, the Forge disk restore, integrity, and ref
 comparison, queue-worker deletion, historical cloud-run bridge Cloud Run
-deletion, and staging monolith deletion.
+deletion, staging monolith deletion, leftover `openagents-com-start-stage1`
+deletion, and deletion of both paused monolith scheduler jobs.
 
 Issue #145 stays open. Retired production services still reachable or
 pending transfer:
@@ -458,16 +595,11 @@ pending transfer:
    `forge-git-repositories`, LB `/git*` backend — keep until Terraform
    transfer. Restore drill is done.
 4. **Cloud SQL `khala-sync-pg`** — keep.
-5. **Paused schedulers** `openagents-monolith-cron` and
-   `openagents-monolith-staging-cron` — delete with Terraform/scheduler
-   cleanup; do not enable.
-6. **Terraform `infra/prod`** — still declares the deleted
+5. **Terraform `infra/prod`** — still declares the deleted
    `oa-cloud-run-bridge` shell, the production monolith, Forge, LB, SQL,
    and artifact buckets. OpenTofu apply blocked on Google `invalid_rapt`.
-7. **GCS artifact buckets and mixed secret containers** — prefix inventory
+6. **GCS artifact buckets and mixed secret containers** — prefix inventory
    and caller unbind; no values in this receipt.
-8. **Leftover Cloud Run `openagents-com-start-stage1`** — not drained here;
-   needs its own zero-traffic proof before delete.
 
 Close #145 only when no retired duplicate-backend service remains reachable
 or scheduled and the auth hostname is redirected or cut over.
