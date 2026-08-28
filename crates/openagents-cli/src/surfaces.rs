@@ -73,7 +73,7 @@ pub mod tool_descriptions {
     /// `rust.swarm_send`
     pub const RUST_SWARM_SEND: &str = "Deliver one message to another session on this machine. `to` is a session id, `role:children-of:<id>`, or `all`. `body` is the text. `kind` is question, answer, status, handoff, or broadcast (default status). `reply_expected` asks the recipient to spend a turn answering. Optional `thread` continues a chain. Costs one from this session's hourly send budget (60/hour). Refuses: an empty body, a self-send, an unknown kind, a body over 256 KiB, an unregistered or stale destination, a sender that has spent the hourly budget, and a reply-expected chain deeper than the cap (default 2; the refusal names the cap). A muted neighbor is still deliverable; mute only silences what this session reads.";
     /// `rust.swarm_inbox`
-    pub const RUST_SWARM_INBOX: &str = "Read this session's swarm inbox. `drain` true (the default) stamps the returned messages read, up to eight per call; the rest stay unread for the next turn and are never dropped. `drain` false is a peek. Costs nothing against the send budget. Refuses a gapped inbox (a missing sequence is a lost message). Muted senders are omitted and stay unread. Messages arrive as tool results, never as user speech.";
+    pub const RUST_SWARM_INBOX: &str = "Read this session's swarm inbox. `drain` true (the default) stamps the returned messages read, up to eight per call; the rest stay unread for the next turn and are never dropped. `drain` false is a peek. `mute` names a session id whose mail this session will no longer inject; `unmute` restores it, and the retained back catalog returns on the next drain — nothing is ever deleted. Mute and unmute refuse a session id that is not registered, so a typo cannot look like a mute. Muted senders are omitted from reads and stay unread. Costs nothing against the send budget. Refuses a gapped inbox (a missing sequence is a lost message). Messages arrive as tool results, never as user speech.";
 }
 
 /// Every staged surface and the digest of the artifact this was built from.
@@ -86,7 +86,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:e1a4c2019034fff6ea33f6041a843a385ca0c0f6dfee70fc2cf1cb569077813b",
+        "sha256:9cc23a7b080dbfd0b35f16ea5fa40fb465d9e0e73cbcc203356dd89a6507beff",
     ),
     (
         "catalog-lines",

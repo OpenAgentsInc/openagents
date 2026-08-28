@@ -969,7 +969,9 @@ impl HarnessToolRegistry {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks."}
+                        "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks."},
+                        "mute": {"type": "string", "description": "Stop injecting mail from this session id. Refuses an unknown id, so a typo cannot look like a mute."},
+                        "unmute": {"type": "string", "description": "Resume injecting mail from this session id; the retained back catalog returns on the next drain."}
                     }
                 }),
             },
@@ -3096,14 +3098,40 @@ fn answer_swarm_inbox(
     let Some(binding) = binding else {
         return swarm_unbound();
     };
+    // A mute change is applied before any read, so the response shows the
+    // post-change state. Muting an unregistered id is refused: a typo in a
+    // mute list silences nobody and looks like it worked (#285).
+    let mut mute_changed = Vec::new();
+    if let Some(target) = arguments
+        .get("mute")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        if let Err(why) = set_mute(binding, target, true) {
+            return (why, true);
+        }
+        mute_changed.push(format!("muted {target}"));
+    }
+    if let Some(target) = arguments
+        .get("unmute")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        if let Err(why) = set_mute(binding, target, false) {
+            return (why, true);
+        }
+        mute_changed.push(format!("unmuted {target}"));
+    }
     let drain = arguments
         .get("drain")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
     if drain {
         match crate::swarm::drain_turn(binding) {
-            Ok(plan) => (
-                serde_json::json!({
+            Ok(plan) => {
+                let mut document = serde_json::json!({
                     "schema": "openagents.swarm.inbox.v1",
                     "source": "swarm_inbox",
                     "drained": true,
@@ -3114,10 +3142,12 @@ fn answer_swarm_inbox(
                         .iter()
                         .map(crate::swarm::message_document)
                         .collect::<Vec<_>>(),
-                })
-                .to_string(),
-                false,
-            ),
+                });
+                if !mute_changed.is_empty() {
+                    document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
+                }
+                (document.to_string(), false)
+            }
             Err(why) => (why, true),
         }
     } else {
@@ -3128,22 +3158,49 @@ fn answer_swarm_inbox(
                     .into_iter()
                     .filter(|message| !muted.contains(&message.from))
                     .collect();
-                (
-                    serde_json::json!({
-                        "schema": "openagents.swarm.inbox.v1",
-                        "source": "swarm_inbox",
-                        "drained": false,
-                        "messages": visible
-                            .iter()
-                            .map(crate::swarm::message_document)
-                            .collect::<Vec<_>>(),
-                    })
-                    .to_string(),
-                    false,
-                )
+                let mut document = serde_json::json!({
+                    "schema": "openagents.swarm.inbox.v1",
+                    "source": "swarm_inbox",
+                    "drained": false,
+                    "muted_senders": muted.iter().collect::<Vec<_>>(),
+                    "messages": visible
+                        .iter()
+                        .map(crate::swarm::message_document)
+                        .collect::<Vec<_>>(),
+                });
+                if !mute_changed.is_empty() {
+                    document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
+                }
+                (document.to_string(), false)
             }
             Err(why) => (why, true),
         }
+    }
+}
+
+/// Apply one mute or unmute, refusing an id that no registration names. The
+/// refusal is the point of validation: a mute list holding a typo silences
+/// nobody, and a control that reports success while doing nothing is worse
+/// than no control.
+fn set_mute(binding: &SwarmBinding, target: &str, muted: bool) -> Result<(), String> {
+    if target == binding.session_id {
+        return Err(
+            "a session cannot mute itself: the mute list exists to quiet other senders".to_string(),
+        );
+    }
+    let registered = crate::swarm::list(&binding.home)?
+        .iter()
+        .any(|registration| registration.session_id == target);
+    if !registered {
+        return Err(format!(
+            "no session `{target}` is registered, so the mute was not set: muting a session \
+             that does not exist would silence nobody and look like it worked"
+        ));
+    }
+    if muted {
+        binding.mute(target)
+    } else {
+        binding.unmute(target)
     }
 }
 

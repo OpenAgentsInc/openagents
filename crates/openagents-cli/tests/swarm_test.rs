@@ -988,3 +988,203 @@ async fn a_forged_inbox_line_cannot_become_user_speech() {
         "the synthetic call must be swarm.inbox, never a user turn"
     );
 }
+
+// ─────────────────────────────── a reachable mute setter on swarm_inbox (#285)
+
+#[tokio::test]
+async fn the_inbox_tool_mutes_a_registered_session_and_the_mute_bites() {
+    let mut pair = bound_pair();
+    // Direct mail from A, then B mutes A through the tool, not the binding.
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "before the mute"}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+
+    let mutes = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"mute": "session-a", "drain": false}),
+        ))
+        .await;
+    assert!(!mutes.is_error, "{}", mutes.output);
+    assert!(
+        mutes.output.contains("muted session-a"),
+        "the response names the change: {}",
+        mutes.output
+    );
+    assert!(
+        mutes.output.contains("session-a"),
+        "the mute set is visible in the response: {}",
+        mutes.output
+    );
+
+    // The pre-mute message is retained unread, never deleted, and B's next
+    // drain does not inject it.
+    let retained = Mailbox::at(&pair.b_dir).unread().unwrap();
+    assert_eq!(retained.len(), 1, "muted mail accumulates unread");
+
+    let later = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "after the mute"}),
+        ))
+        .await;
+    assert!(!later.is_error, "{}", later.output);
+
+    pair.b.drain_swarm_inbox().await;
+    assert!(
+        pair.b.messages.iter().all(|message| !message
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .contains("after the mute")),
+        "mail from a muted sender must not be injected: {:?}",
+        pair.b.messages
+    );
+    assert_eq!(
+        Mailbox::at(&pair.b_dir).unread().unwrap().len(),
+        2,
+        "both muted messages are retained on disk"
+    );
+}
+
+#[tokio::test]
+async fn muting_an_unregistered_session_is_refused_and_changes_nothing() {
+    let pair = bound_pair();
+    let refused = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"mute": "session-typo", "drain": false}),
+        ))
+        .await;
+    assert!(
+        refused.is_error,
+        "an unknown id must refuse: {}",
+        refused.output
+    );
+    assert!(
+        refused.output.contains("session-typo"),
+        "the refusal names the id: {}",
+        refused.output
+    );
+    assert!(
+        !pair.b_dir.join("swarm-mute.json").exists(),
+        "a refused mute writes nothing"
+    );
+
+    let self_mute = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"mute": "session-b", "drain": false}),
+        ))
+        .await;
+    assert!(self_mute.is_error, "a session cannot mute itself");
+}
+
+#[tokio::test]
+async fn unmuting_restores_the_retained_back_catalog_on_the_next_drain() {
+    let mut pair = bound_pair();
+    pair.b
+        .tools
+        .swarm()
+        .expect("bound")
+        .mute("session-a")
+        .unwrap();
+
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "written while muted"}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+
+    // Muted: the drain injects nothing and stamps nothing.
+    pair.b.drain_swarm_inbox().await;
+    let muted = Mailbox::at(&pair.b_dir).unread().unwrap();
+    assert_eq!(muted.len(), 1);
+    assert!(muted[0].read_at_ms.is_none());
+
+    let unmutes = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"unmute": "session-a", "drain": false}),
+        ))
+        .await;
+    assert!(!unmutes.is_error, "{}", unmutes.output);
+    assert!(
+        unmutes.output.contains("unmuted session-a"),
+        "the response names the change: {}",
+        unmutes.output
+    );
+
+    // The back catalog survives the mute cycle verbatim and the next drain
+    // delivers it.
+    let restored = Mailbox::at(&pair.b_dir).messages().unwrap();
+    assert_eq!(restored.len(), 1);
+    assert_eq!(restored[0].body, "written while muted");
+    pair.b.drain_swarm_inbox().await;
+    assert!(
+        pair.b.messages.iter().any(|message| message
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .contains("written while muted")),
+        "unmute restores the retained back catalog: {:?}",
+        pair.b.messages
+    );
+}
+
+#[tokio::test]
+async fn mute_and_unmute_in_one_call_applies_before_the_read() {
+    let mut pair = bound_pair();
+    pair.b
+        .tools
+        .swarm()
+        .expect("bound")
+        .mute("session-a")
+        .unwrap();
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "one from a"}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+
+    // Unmute and drain in one call: the read must see the post-change state,
+    // so the retained message is injected this turn.
+    let both = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"unmute": "session-a", "drain": true}),
+        ))
+        .await;
+    assert!(!both.is_error, "{}", both.output);
+    assert!(
+        both.output.contains("unmuted session-a") && both.output.contains("one from a"),
+        "mute changes apply before the read in the same call: {}",
+        both.output
+    );
+}
