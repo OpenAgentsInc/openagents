@@ -24,8 +24,9 @@ consideration… here's the blocker"* — a session that stopped and waited when
 it was told to go.
 
 **Autopilot is a mode, not a lane.** The TUI already tabs between
-`Coder Flash / Pro / Free / Local` (`runtime.rs`, the `LANES` table and
-`Lane::cycle_gated`). That walk answers *which model answers this turn*.
+`Coder Flash / Pro / Free / Local` (`crates/openagents-cli/src/coder/runtime.rs:358`
+— the `LANES` table; the shift+tab lane move is `Lane::cycle_gated`, wired
+in `coder/interactive.rs`). That walk answers *which model answers this turn*.
 Autopilot answers a different question: *who steers between turns.* They are
 orthogonal:
 
@@ -107,8 +108,10 @@ One iteration is one turn plus its follow-through, in this order. This is
 the AFK loop's §1, compressed for one session.
 
 1. **Take stock.** Read the open issue list for the forge in scope
-   (`openagents issue list`), the session's goal store if one is set, and
-   anything injected at the last boundary (§10). Reconcile in-flight work
+   (`openagents issue list`), the session's goal store if one is set
+   (`coder/goal.rs`), and anything that arrived since the last boundary
+   under the dual-path rule (§10: recorded injections, plus the fallback
+   drain). Reconcile in-flight work
    first: anything uncommitted from the previous iteration gets verified,
    committed, or rolled back before anything new starts.
 2. **Pick the next unit.** Highest-priority open issue whose acceptance the
@@ -181,10 +184,18 @@ any of these fires:
 - **Repeated failure.** The same unit failing verification twice is
   recorded and skipped, not retried a third time. Failure loops are the
   AFK failure mode with the worst cost shape.
-- **A stop word from the network.** A swarm message addressed to this
-  session from the owner's session ends the mode at the next boundary
-  (§10). Anyone standing in front of the terminal hits Meta+A; the point of
-  the stop word is that nobody is standing there.
+- **A stop word from the network.** A stop word is a swarm message from the
+  owner's session; it ends the mode at the next boundary (§10). The rule is
+  dual-path by construction: owner mail is recognized on *either* delivery
+  path — injected-and-stamped at the boundary, or returned by the fallback
+  drain — and either sighting ends the mode. The mode never relies on the
+  drain alone to see its own off switch.
+  **Owner identity** is a config-pinned session id (a new
+  `autopilot_owner_session` key, set once by the owner; sessions carry no
+  identity metadata today, so the register cannot be inferred). Unset
+  register: only interactive Meta+A can stop the mode, and the welcome card
+  says so. Anyone standing in front of the terminal hits Meta+A; the point
+  of the stop word is that nobody is standing there.
 
 A stop is a **report**, not a halt: the final turn writes the ledger state
 (what closed, what remains, what is gated on whom) into the transcript and
@@ -229,17 +240,32 @@ session. It does not kill the process; it hands back the wheel.
 
 The swarm inbox has two shapes: injected at turn boundaries, or read
 explicitly. The issue-discussion session's live finding (#303) is that
-boundary injection currently stamps everything read on arrival, so explicit
-drains mid-session return empty — and an AFK session is precisely the
-client that needs deliberate mail handling.
+boundary injection currently stamps everything read on arrival, so an
+explicit drain after the boundary returns empty — the peer session verified
+this first-hand during this spec's review: `swarm_wait` matched, an
+immediate drain returned nothing.
 
-Autopilot's stance: **explicit drain at every iteration boundary, before
-unit selection.** The drain is part of step 1 of §4, not a side effect of
-the model's turn ending. This keeps mail-processing a visible, recorded
-step (owner mail can stop the mode; see §7) instead of an invisible
-injection the transcript never shows. If #303's ownership model changes,
-this section re-reads; the requirement is only that autopilot's mail
-handling be explicit and recorded, whichever mechanism delivers it.
+The prescription is therefore **dual-path, not drain-only**. Delivery is
+whatever mechanism actually carried the mail:
+
+- **Injection is delivery.** Mail stamped read by boundary injection counts
+  as delivered. The announce line of the boundary iteration (§4.3) records
+  what arrived by injection, so the transcript shows it either way.
+- **The explicit boundary drain is a fallback sweep, not the primary.** It
+  runs before unit selection (step 1 of §4) and normally returns empty; it
+  exists for the messages no boundary was reached to inject.
+
+This is a stance about *delivery*, not a bet on the current mechanism. If
+#303's ownership model changes (the `consumed:[ids]` receipt direction),
+the drain becomes verifiable instead of presumed-empty, and the
+prescription collapses gracefully to drain-as-primary. What never changes:
+autopilot's mail handling is explicit, recorded, and able to see every
+message that arrived, whichever path carried it.
+
+The stop word (§7) rides the same surface, which makes it the
+highest-stakes consequence of #303 in this spec: an off switch that
+requires a drain is an off switch the current semantics can silently
+blind. The stop rule in §7 therefore never depends on one path.
 
 ## 11. The observer's return
 
@@ -280,10 +306,31 @@ Smallest honest slices, each shippable alone:
    re-reads the goal or issue list and starts the next iteration. No
    budget checks yet — the toggle and the loop are the slice.
 2. **Iteration discipline.** The §4 order, announce lines, ledger updates,
-   stop-on-repeat-failure.
-3. **Budget and stop conditions** (§7), goal-store accounting (§6).
-4. **Drain policy and stop word** (§10), heartbeats (§5).
+   stop-on-repeat-failure. Include the dual-path mail stance (§10) in its
+   minimal form: record injections in the announce line; run the fallback
+   drain. This much is correct under today's semantics.
+3. **Budget and stop conditions** (§7), goal-store accounting (§6), and
+   the stop word **including** the dual-path recognition and the
+   `autopilot_owner_session` register. The stop word does not wait for
+   #303; waiting would leave the mode with no remote off switch.
+4. **Verifiable mail ownership** (the `consumed:[ids]` receipt direction
+   from #303, upstreamed to that issue or filed as its child): the drain
+   becomes provable, and §10's fallback collapses to drain-as-primary.
+   This slice depends on #303 moving first; until then the dual-path
+   stance in slices 2–3 is the whole of mail handling, honestly.
 
 Tests follow the repo's own law: TUI behavior is verified on a
 pseudo-terminal (`coder_interactive_pty`), loop behavior on stub-runners,
 and nothing in this spec closes on headless narration.
+
+---
+
+## 14. Review record
+
+Reviewed by the swarm session `1a04a2afc3c` (full 289-line read) before the
+implementation issues were filed. Verdict: the load-bearing choices hold
+(mode-vs-lane orthogonality, ledger-first succession, stop-as-report);
+§10 and the §7 stop word were reworked on its finding that the
+prescribed drain is a no-op under current injection semantics, the stop
+word gained the `autopilot_owner_session` register, and the path pins were
+corrected (`runtime.rs` → `coder/runtime.rs`).
