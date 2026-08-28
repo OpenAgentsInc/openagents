@@ -1043,6 +1043,7 @@ impl CoderUi {
             let field = crate::coder::autopilot::AutopilotState {
                 engaged: true,
                 directive: None,
+                discipline: crate::coder::autopilot::IterationDiscipline::default(),
             }
             .status_cell();
             let separator = if lane.is_empty() { "" } else { " · " };
@@ -1258,6 +1259,7 @@ impl CoderUi {
                 crate::coder::autopilot::AutopilotState {
                     engaged: self.autopilot_engaged,
                     directive: None,
+                    discipline: crate::coder::autopilot::IterationDiscipline::default(),
                 }
                 .card_line(),
                 label_style,

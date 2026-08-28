@@ -138,7 +138,9 @@ the AFK loop's §1, compressed for one session.
    per unit per the runbook. Scope discipline: files the issue names, tests
    the issue's acceptance names.
 5. **Verify at the oracle.** Run the acceptance gate the issue (or the
-   completion gate for CLI changes: `pnpm run check`; TUI changes also take
+   completion gate for CLI changes: `cargo fmt --all -- --check` and
+   `cargo test --workspace` — what the pre-push guard enforces (the pnpm
+   toolchain is gone from this repo); TUI changes also take
    the pty suite). No claim of completion without the oracle's output in
    the transcript.
 6. **Land and report.** Commit with the issue number, push, and close the
