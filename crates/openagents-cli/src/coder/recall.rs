@@ -779,6 +779,38 @@ pub fn list_sessions(
         .collect()
 }
 
+/// The refusal text for an empty cross-session listing (#301): the store
+/// state decides what the caller is told — unreadable, holds unparsable
+/// entries, or genuinely empty. A silent "keeps no other session records"
+/// sent every caller grepping raw JSONL by hand.
+fn empty_store_refusal(root: &Path, cwd: &Path, context: &str) -> String {
+    let store_directory = crate::session_store::cwd_session_directory(root, cwd);
+    match store_directory.read_dir() {
+        Err(why) => format!(
+            "{context}: the session store for this working directory ({}) cannot be read: {why}",
+            store_directory.display()
+        ),
+        Ok(entries) => {
+            let names = entries
+                .flatten()
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .take(8)
+                .collect::<Vec<_>>()
+                .join(", ");
+            if names.is_empty() {
+                format!("{context}: this working directory keeps no other session records")
+            } else {
+                format!(
+                    "{context}: the store holds session directories [{names}] but none parses \
+                     as a current-format summary — unparsable or stale-format summaries are \
+                     skipped, so the store and the tool disagree; compare a summary.json \
+                     against this binary's format"
+                )
+            }
+        }
+    }
+}
+
 /// Resolve the optional `session` argument of a recall call to a directory.
 ///
 /// `"last"` means the most recent *other* session of this working directory —
@@ -797,11 +829,12 @@ pub fn resolve_session_target(
     if requested == "last" {
         let listing = list_sessions(root, cwd, current_id);
         let Some(entry) = listing.first() else {
-            return Err(
-                "no other session of this working directory keeps a record — `session: \"last\"` \
-                 has nothing to read"
-                    .to_string(),
-            );
+            return Err(empty_store_refusal(
+                root,
+                cwd,
+                "no other session of this working directory keeps a readable record — \
+                 `session: \"last\"` has nothing to read",
+            ));
         };
         return Ok(directory_for_id(root, cwd, &entry.id));
     }
@@ -829,7 +862,7 @@ pub fn resolve_session_target(
         .collect::<Vec<_>>()
         .join(", ");
     let hint = if known.is_empty() {
-        "this working directory keeps no other session records".to_string()
+        empty_store_refusal(root, cwd, "no session holds a readable record here")
     } else {
         format!("sessions this working directory keeps: {known}")
     };
@@ -1288,6 +1321,59 @@ mod tests {
     }
 
     #[test]
+    fn store_scope_walk_resolves_both_directory_shapes() {
+        // The session-record shape `<root>/sessions/<encoded>/<id>` and the
+        // encoded-cwd shape `<root>/sessions/<encoded>` must both resolve to
+        // the same (root, cwd) — the #301 fix removes the fixed-level
+        // ancestor count that broke the second shape silently.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let cwd = std::path::Path::new("/tmp/oa-scope-test");
+        let encoded = crate::session_store::cwd_session_directory(root, cwd);
+        std::fs::create_dir_all(&encoded).unwrap();
+        let session_dir = encoded.join("1atest000-scopeccheck000000");
+        std::fs::create_dir_all(&session_dir).unwrap();
+
+        let (found_root, found_cwd) =
+            store_scope_from_session_dir(&session_dir).expect("session-record shape resolves");
+        assert_eq!(found_root, root);
+        assert_eq!(found_cwd, cwd);
+
+        let (root2, cwd2) =
+            store_scope_from_session_dir(&encoded).expect("encoded-cwd shape resolves");
+        assert_eq!(root2, root);
+        assert_eq!(cwd2, cwd);
+    }
+
+    #[test]
+    fn empty_listing_refusal_reports_what_the_store_holds() {
+        // #301: a refusal over an empty listing must not claim the store
+        // keeps nothing when it holds directories — the diagnostic names the
+        // entries so the store/tool disagreement is visible in the answer.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let cwd = std::path::Path::new("/tmp/oa-scope-test");
+        let store_directory = crate::session_store::cwd_session_directory(root, cwd);
+        std::fs::create_dir_all(store_directory.join("1aorphan000-notasummary000")).unwrap();
+        let message = resolve_session_target(
+            root,
+            cwd,
+            "last",
+            None,
+            Some(&store_directory.join("1aorphan000-notasummary000")),
+        )
+        .expect_err("last must refuse when no sibling parses");
+        assert!(
+            message.contains("1aorphan000"),
+            "refusal should name the store entries it skipped: {message}"
+        );
+        assert!(
+            message.contains("none parses"),
+            "refusal should explain the skip, not claim an empty store: {message}"
+        );
+    }
+
+    #[test]
     fn recall_from_session_reports_an_unavailable_store() {
         let dir = tempfile::tempdir().unwrap();
         let error = recall_from_session(
@@ -1390,12 +1476,38 @@ mod tests {
 /// RLM-03 re-entry contract, no special surface. Zero model calls; the
 /// answer is a bounded cited candidate, never authority.
 pub fn host_tool(session_dir: PathBuf) -> crate::tools::HostTool {
-    // `<root>/sessions/<encoded-cwd>/<id>`: the root is three ancestors up
-    // from the session's own directory, and the encoded cwd two.
-    host_tool_scoped(
-        session_dir.clone(),
-        session_dir.ancestors().nth(3).map(Path::to_path_buf),
-    )
+    // Resolve the store scope by walking ancestors and decoding each one's
+    // cwd encoding, instead of trusting fixed directory levels (#301): a
+    // caller that passes the encoded-cwd directory rather than the session
+    // directory — or a future layout shift — must degrade to a diagnosable
+    // refusal, never to a silent "no other session records" that lies about
+    // the store.
+    let (root, _cwd) = store_scope_from_session_dir(&session_dir)
+        .unwrap_or_else(|| (session_dir.clone(), session_dir.clone()));
+    host_tool_scoped(session_dir, Some(root))
+}
+
+/// The store root and working directory a session directory belongs to.
+///
+/// Accepts both shapes the store produces: `<root>/sessions/<encoded>/<id>`
+/// (a session's own record directory) and `<root>/sessions/<encoded>` (the
+/// per-cwd store itself). The encoded-cwd directory is the one whose parent
+/// is named `sessions`; decoding its name yields the working directory and
+/// its grandparent the store root. `None` when no ancestor decodes — the
+/// caller falls back to self-only scope rather than guessing.
+pub fn store_scope_from_session_dir(session_dir: &Path) -> Option<(PathBuf, PathBuf)> {
+    for dir in session_dir.ancestors() {
+        let parent = dir.parent()?;
+        if parent.file_name().and_then(|name| name.to_str()) != Some("sessions") {
+            continue;
+        }
+        let name = dir.file_name()?.to_str()?;
+        if let Some(cwd) = crate::session_store::decode_cwd_directory(std::path::Path::new(name)) {
+            let root = parent.parent()?;
+            return Some((root.to_path_buf(), cwd));
+        }
+    }
+    None
 }
 
 /// The `history_recall` host tool with the #289 scope attached.
