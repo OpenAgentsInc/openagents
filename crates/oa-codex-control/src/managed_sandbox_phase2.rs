@@ -835,6 +835,11 @@ fn execute_with_driver_wire(
                 kill_process_tree(&mut child);
                 let _ = child.wait();
                 let _ = reader.join();
+                if let Ok(Ok(bytes)) = receiver.try_recv() {
+                    if bytes.len() as u64 > MAX_DRIVER_RESPONSE_BYTES {
+                        return Err(Phase2Error::unavailable("phase2_driver_response_too_large"));
+                    }
+                }
                 return Err(Phase2Error::unavailable("phase2_driver_timed_out"));
             }
             Err(_) => {
@@ -2792,16 +2797,25 @@ mod tests {
     fn bounds_driver_output_and_redacts_a_failed_driver() {
         let oversized_root = temp_dir("oversized");
         let oversized_driver = oversized_root.join("driver.sh");
+        let payload_path = oversized_root.join("payload.bin");
+        fs::write(
+            &payload_path,
+            vec![0u8; (MAX_DRIVER_RESPONSE_BYTES as usize) + 1],
+        )
+        .unwrap();
         fs::write(
             &oversized_driver,
-            "#!/bin/sh\ncat >/dev/null\ndd if=/dev/zero bs=1048577 count=1 2>/dev/null\n",
+            format!(
+                "#!/bin/sh\ncat >/dev/null\ncat '{}'\n",
+                payload_path.display()
+            ),
         )
         .unwrap();
         fs::set_permissions(&oversized_driver, fs::Permissions::from_mode(0o700)).unwrap();
         let oversized = execute_with_driver(
             &oversized_driver,
             request(ManagedSandboxPhase2Action::VerifyCheckpoint),
-            Duration::from_secs(2),
+            Duration::from_secs(10),
         )
         .unwrap_err();
         assert_eq!(oversized.status, 503);

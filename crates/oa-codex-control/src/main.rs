@@ -6622,6 +6622,7 @@ echo '{"status":"ok"}'
             r#"{"auth_mode":"chatgpt","account":{"email":"test@example.com"}}"#,
         )
         .unwrap();
+        let release_path = config.state_root.join("release-live-runner");
         let fake_workroomd = config.state_root.join("fake-live-workroomd.sh");
         fs::write(
             &fake_workroomd,
@@ -6638,13 +6639,22 @@ case "$*" in
   *"codex run"*)
     mkdir -p "$state_dir"
     echo '{"schema_version":"openagents.runner_event.v1","external_event_id":"runner.codex_run_live.1","sequence":1,"event_type":"shell.command.started","source":"codex","summary":"Live shell command started.","detail_excerpt":"printf live","raw_payload_digest":null,"artifact_refs":[],"receipt_refs":[],"emitted_at_ms":1}' > "$state_dir/openagents-runner-events.jsonl"
-    sleep 1
+    i=0
+    while [ ! -f '__RELEASE_PATH__' ]; do
+      if [ "$i" -ge 400 ]; then
+        echo 'live runner handshake timed out' >&2
+        exit 1
+      fi
+      sleep 0.05
+      i=$((i + 1))
+    done
     echo '{"state":{"status":"completed","events":[{"event_kind":"completed","message":"done"}]},"runner_events":[{"type":"shell.command.started","summary":"Live shell command started.","detail_excerpt":"printf live","artifact_refs":[],"receipt_refs":[]}]}'
     exit 0
     ;;
 esac
 echo '{"status":"ok"}'
-"#,
+"#
+            .replace("__RELEASE_PATH__", &release_path.display().to_string()),
         )
         .unwrap();
         let mut permissions = fs::metadata(&fake_workroomd).unwrap().permissions();
@@ -6654,11 +6664,19 @@ echo '{"status":"ok"}'
         config.workroomd_bin = fake_workroomd;
         let request = test_request("codex_run_live");
 
+        struct ReleaseLiveRunner(PathBuf);
+        impl Drop for ReleaseLiveRunner {
+            fn drop(&mut self) {
+                let _ = fs::write(&self.0, b"release\n");
+            }
+        }
+        let _release_live_runner = ReleaseLiveRunner(release_path.clone());
+
         let response = start_codex_run_async(&config, request.clone()).unwrap();
         assert_eq!(response.status, "queued");
 
         let mut saw_live_event_before_terminal = false;
-        for _ in 0..40 {
+        for _ in 0..200 {
             let events = load_job_events(&config, &request.run_id, 0).unwrap();
             let has_live = events
                 .iter()
@@ -6668,6 +6686,7 @@ echo '{"status":"ok"}'
                 .any(|event| event.type_ == "cloud.run.completed");
             if has_live && !has_terminal {
                 saw_live_event_before_terminal = true;
+                let _ = fs::write(&release_path, b"release\n");
                 break;
             }
             thread::sleep(Duration::from_millis(50));
