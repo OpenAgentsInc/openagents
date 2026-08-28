@@ -2,7 +2,7 @@
 
 - Date: 2026-08-28
 - Class: owner-accepted plan / work-packet ledger
-- Status: admitted
+- Status: complete (Waves 0–4 landed; Wave 5 is this closeout)
 - Baseline: `e8484027d4` (`openagents/main`)
 - Dispatch: this document. Live forge issues under it are execution
   receipts, not a second policy.
@@ -395,3 +395,15 @@ The program is done when all of the following are true on `openagents/main`:
   that cite this document.
 - A short after-count (apps, packages, tracked files, tracked `.ts`) is
   appended to the 2026-08-26 audit.
+
+## After-count (Wave 4 landed)
+
+Commit `a098b3e29f` versus plan baseline `e8484027d4`:
+
+| Measure | Before | After |
+| --- | ---: | ---: |
+| Tracked files | 11,553 | 3,712 |
+| `.ts` / `.tsx` | 5,560 | 0 |
+| `package.json` | 108 | 1 (docs fixture) |
+| TypeScript apps | 8 | 0 |
+| `packages/` manifests | 85 | 0 |

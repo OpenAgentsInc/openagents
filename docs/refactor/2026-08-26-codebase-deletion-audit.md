@@ -613,3 +613,24 @@ The cleanup should optimize for a legible ownership graph, not a target line
 count. A retained service should be obvious from its caller, release path, and
 deployment. Anything that needs a long historical argument to prove it is
 current is not current until production evidence says otherwise.
+
+## TypeScript-lane deletion (2026-08-28)
+
+Owner direction and ledger:
+[`2026-08-28-typescript-lane-deletion-plan.md`](./2026-08-28-typescript-lane-deletion-plan.md).
+Waves 0–4 landed (#265–#269). This repository has no TypeScript product,
+package graph, or Node workspace.
+
+| Measure | Plan baseline `e8484027d4` | After Wave 4 `a098b3e29f` |
+| --- | ---: | ---: |
+| Tracked files | 11,553 | 3,712 |
+| `.ts` / `.tsx` | 5,560 | 0 |
+| `package.json` files | 108 | 1 (Khala fixture) |
+| TypeScript apps in `apps/` | 8 | 0 |
+| Package manifests under `packages/` | 85 | 0 |
+
+The completion gate is `cargo fmt --all -- --check` and
+`cargo test --workspace`. Rust crates under `crates/` and plugins under
+`plugins/` remain. Phoenix in `OpenAgentsInc/openagents.com` is unchanged.
+Live DNS/Terraform residuals stay on #145; Rust computer daemons stay on
+#148.
