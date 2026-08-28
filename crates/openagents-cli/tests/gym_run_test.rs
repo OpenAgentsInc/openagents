@@ -4,10 +4,11 @@
 //! assert exactly what the Rust client puts on the wire.
 
 use openagents_cli::gym::run::{
-    ExecuteArgs, GymClient, RunAction, catalog_model, finalize_job_dir, infer_lane, run,
+    ExecuteArgs, GymClient, HostPlan, RunAction, catalog_model, coder_api_url_for_container,
+    container_docker_args, finalize_job_dir, infer_lane, run,
 };
 use openagents_cli::gym::schemas::{RUN_STATUS_SCHEMA, RunStatus};
-use openagents_cli::gym::suite::{ResolvedSuite, resolve_for_run_in};
+use openagents_cli::gym::suite::{ResolvedSuite, ResolvedTask, resolve_for_run_in};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -385,6 +386,63 @@ async fn dry_run_resolves_suite_and_does_not_contact_api() {
     assert!(
         result.is_ok(),
         "dry-run must succeed without registering or executing"
+    );
+}
+
+#[test]
+fn container_docker_args_mount_jobs_and_pin_the_image() {
+    let plan = HostPlan {
+        suite: ResolvedSuite {
+            id: "tb2-quick".to_string(),
+            tasks: vec![ResolvedTask {
+                id: "regex-log".to_string(),
+                dataset: "terminal-bench@2.0".to_string(),
+            }],
+        },
+        model: "openai/gpt-5.6-luna".to_string(),
+        lane: "proxy".to_string(),
+        n_concurrent: 2,
+        jobs_dir: PathBuf::from("/tmp/gym-jobs-test"),
+        timeout_multiplier: Some(1.5),
+        env_provider: Some("docker".to_string()),
+        run_id: Some("run-1".to_string()),
+        api_base: "http://127.0.0.1:4000/api/v1".to_string(),
+        token: Some("token".to_string()),
+    };
+    let args = container_docker_args(&plan, &plan.jobs_dir);
+    let text = args.join(" ");
+    assert!(text.starts_with("run --rm "), "{text}");
+    assert!(text.contains("/tmp/gym-jobs-test:/jobs"), "{text}");
+    assert!(
+        text.contains("/var/run/docker.sock:/var/run/docker.sock"),
+        "{text}"
+    );
+    assert!(text.contains("harbor-runner:0.1.0"), "{text}");
+    assert!(text.contains("--jobs-dir /jobs"), "{text}");
+    assert!(text.contains("-i regex-log"), "{text}");
+    assert!(text.contains("--n-concurrent 2"), "{text}");
+    assert!(text.contains("--timeout-multiplier 1.5"), "{text}");
+    assert!(text.contains("-e OPENAGENTS_TOKEN"), "{text}");
+    assert!(text.contains("-e OPENAGENTS_GYM_RUN_ID"), "{text}");
+    assert!(
+        !text.contains("/tmp/gym-jobs-test --n-concurrent"),
+        "{text}"
+    );
+}
+
+#[test]
+fn container_api_url_rewrites_loopback() {
+    assert_eq!(
+        coder_api_url_for_container("http://127.0.0.1:4000/api/v1"),
+        "http://host.docker.internal:4000/api/v1"
+    );
+    assert_eq!(
+        coder_api_url_for_container("http://localhost:4000/api/v1"),
+        "http://host.docker.internal:4000/api/v1"
+    );
+    assert_eq!(
+        coder_api_url_for_container("https://openagents.com/api/v1"),
+        "https://openagents.com/api/v1"
     );
 }
 

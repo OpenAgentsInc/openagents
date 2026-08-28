@@ -6,7 +6,10 @@
 
 use crate::computer::now_iso8601;
 use crate::errors::CliError;
-use crate::gym::env::{diagnose, probe_environment};
+use crate::gym::env::{
+    HARBOR_PULL_REMEDY, HARBOR_RUNNER_IMAGE, diagnose, harbor_runner_image_present,
+    probe_environment,
+};
 use crate::gym::schemas::{RUN_STATUS_SCHEMA, RunStatus, RunTrial};
 use crate::gym::suite::{ResolvedSuite, resolve_for_run};
 use crate::tracker::{ApiError, error_fields, error_sentence, header_request_id};
@@ -429,7 +432,7 @@ async fn execute(
         None
     };
 
-    // 6. Execute the suite on the host. Container/Box targets plug in here.
+    // 6. Execute: pinned container first, host-native Harbor as the fallback.
     let jobs_dir = match args.jobs_dir {
         Some(p) => p,
         None => {
@@ -458,7 +461,7 @@ async fn execute(
         token,
     };
 
-    let job_dir = match run_on_host(&host).await {
+    let job_dir = match run_on_target(&host).await {
         Ok(dir) => Some(dir),
         Err(e) => {
             eprintln!("harbor run failed: {e}");
@@ -491,9 +494,9 @@ async fn execute(
     Ok(())
 }
 
-/// A plan for one host-native Harbor run. Other targets use the same shape.
+/// A plan for one Harbor run. Container and host-native targets share it.
 #[derive(Debug, Clone)]
-pub(crate) struct HostPlan {
+pub struct HostPlan {
     pub suite: ResolvedSuite,
     pub model: String,
     pub lane: String,
@@ -506,12 +509,125 @@ pub(crate) struct HostPlan {
     pub token: Option<String>,
 }
 
-/// Run Harbor on the host. Returns the inner job directory that contains
-/// `result.json` and `config.json`.
+const CONTAINER_JOBS_DIR: &str = "/jobs";
+const DOCKER_SOCKET: &str = "/var/run/docker.sock";
+
+/// Prefer the pinned harbor-runner image. Fall back to host-native Harbor
+/// only when the image is not present, and say so.
+async fn run_on_target(plan: &HostPlan) -> Result<PathBuf, CliError> {
+    if harbor_runner_image_present().await {
+        println!("execution target: container ({HARBOR_RUNNER_IMAGE})");
+        return run_on_container(plan).await;
+    }
+    eprintln!("execution target: host-native Harbor (image missing; {HARBOR_PULL_REMEDY})");
+    run_on_host(plan).await
+}
+
+/// Run Harbor inside the digest-pinned harbor-runner image. The job directory
+/// is bind-mounted so scoring reads the same shape the host path writes.
+async fn run_on_container(plan: &HostPlan) -> Result<PathBuf, CliError> {
+    let jobs_host = std::fs::canonicalize(&plan.jobs_dir).unwrap_or_else(|_| plan.jobs_dir.clone());
+    let docker_args = container_docker_args(plan, &jobs_host);
+    let mut cmd = Command::new("docker");
+    apply_container_env(&mut cmd, plan);
+    cmd.args(&docker_args);
+
+    let output = cmd.output().await.map_err(|e| {
+        CliError::Internal(format!(
+            "could not start docker for {HARBOR_RUNNER_IMAGE}: {e}"
+        ))
+    })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CliError::Internal(format!(
+            "{HARBOR_RUNNER_IMAGE} exited with status {}: {stderr}",
+            output.status.code().unwrap_or(-1)
+        )));
+    }
+
+    locate_job_dir(&plan.jobs_dir).await
+}
+
+/// Run Harbor on the host. Documented fallback when the image is absent.
 async fn run_on_host(plan: &HostPlan) -> Result<PathBuf, CliError> {
     let repo_root = std::env::current_dir().map_err(|e| CliError::Configuration(e.to_string()))?;
     let bench_dir = repo_root.join("bench");
+    let harbor_args = harbor_args(plan, &plan.jobs_dir);
 
+    let mut cmd = Command::new("harbor");
+    cmd.env("PYTHONPATH", bench_dir.to_string_lossy().to_string());
+    apply_host_env(&mut cmd, plan);
+    cmd.args(&harbor_args);
+
+    let output = cmd.output().await.map_err(|e| {
+        CliError::Internal(format!(
+            "could not start harbor; is it installed and on PATH? {e} ({HARBOR_PULL_REMEDY} to use the container target)"
+        ))
+    })?;
+    if !output.status.success() {
+        return Err(CliError::Internal(format!(
+            "harbor exited with status {}",
+            output.status.code().unwrap_or(-1)
+        )));
+    }
+
+    locate_job_dir(&plan.jobs_dir).await
+}
+
+fn apply_host_env(cmd: &mut Command, plan: &HostPlan) {
+    if let Some(token) = &plan.token {
+        cmd.env("OPENAGENTS_TOKEN", token);
+    }
+    cmd.env("OPENAGENTS_CODER_API_URL", &plan.api_base);
+    if let Some(run_id) = &plan.run_id {
+        cmd.env("OPENAGENTS_GYM_RUN_ID", run_id);
+        cmd.env("OPENAGENTS_GYM_API_URL", &plan.api_base);
+    }
+}
+
+fn apply_container_env(cmd: &mut Command, plan: &HostPlan) {
+    if let Some(token) = &plan.token {
+        cmd.env("OPENAGENTS_TOKEN", token);
+    }
+    cmd.env(
+        "OPENAGENTS_CODER_API_URL",
+        coder_api_url_for_container(&plan.api_base),
+    );
+    if let Some(run_id) = &plan.run_id {
+        cmd.env("OPENAGENTS_GYM_RUN_ID", run_id);
+        cmd.env(
+            "OPENAGENTS_GYM_API_URL",
+            coder_api_url_for_container(&plan.api_base),
+        );
+    }
+}
+
+/// `docker run` argv (not including `docker` itself) for the container target.
+pub fn container_docker_args(plan: &HostPlan, jobs_host: &Path) -> Vec<String> {
+    let mut args = vec![
+        "run".to_string(),
+        "--rm".to_string(),
+        "-v".to_string(),
+        format!("{}:{CONTAINER_JOBS_DIR}", jobs_host.display()),
+        "-v".to_string(),
+        format!("{DOCKER_SOCKET}:{DOCKER_SOCKET}"),
+        "--add-host".to_string(),
+        "host.docker.internal:host-gateway".to_string(),
+    ];
+    if plan.token.is_some() {
+        args.extend(["-e".to_string(), "OPENAGENTS_TOKEN".to_string()]);
+    }
+    args.extend(["-e".to_string(), "OPENAGENTS_CODER_API_URL".to_string()]);
+    if plan.run_id.is_some() {
+        args.extend(["-e".to_string(), "OPENAGENTS_GYM_RUN_ID".to_string()]);
+        args.extend(["-e".to_string(), "OPENAGENTS_GYM_API_URL".to_string()]);
+    }
+    args.push(HARBOR_RUNNER_IMAGE.to_string());
+    args.extend(harbor_args(plan, Path::new(CONTAINER_JOBS_DIR)));
+    args
+}
+
+fn harbor_args(plan: &HostPlan, jobs_dir: &Path) -> Vec<String> {
     let mut harbor_args = vec![
         "run".to_string(),
         "--dataset".to_string(),
@@ -526,7 +642,7 @@ async fn run_on_host(plan: &HostPlan) -> Result<PathBuf, CliError> {
         harbor_args.push(t.id.clone());
     }
     harbor_args.push("--jobs-dir".to_string());
-    harbor_args.push(plan.jobs_dir.to_string_lossy().to_string());
+    harbor_args.push(jobs_dir.to_string_lossy().into_owned());
     harbor_args.push("--n-concurrent".to_string());
     harbor_args.push(plan.n_concurrent.to_string());
     if let Some(m) = plan.timeout_multiplier {
@@ -537,39 +653,10 @@ async fn run_on_host(plan: &HostPlan) -> Result<PathBuf, CliError> {
         harbor_args.push("--env".to_string());
         harbor_args.push(env.clone());
     }
-
-    let mut cmd = Command::new("harbor");
-    cmd.env("PYTHONPATH", bench_dir.to_string_lossy().to_string());
-    if let Some(token) = &plan.token {
-        cmd.env("OPENAGENTS_TOKEN", token);
-    }
-    cmd.env(
-        "OPENAGENTS_CODER_API_URL",
-        coder_api_url_for_host(&plan.api_base),
-    );
-    if let Some(run_id) = &plan.run_id {
-        cmd.env("OPENAGENTS_GYM_RUN_ID", run_id);
-        cmd.env("OPENAGENTS_GYM_API_URL", &plan.api_base);
-    }
-    cmd.args(&harbor_args);
-
-    let output = cmd.output().await.map_err(|e| {
-        CliError::Internal(format!(
-            "could not start harbor; is it installed and on PATH? {e}"
-        ))
-    })?;
-    if !output.status.success() {
-        return Err(CliError::Internal(format!(
-            "harbor exited with status {}",
-            output.status.code().unwrap_or(-1)
-        )));
-    }
-
-    locate_job_dir(&plan.jobs_dir).await
+    harbor_args
 }
 
-/// The dataset all tasks share. A mixed dataset suite is not supported on the
-/// host path yet.
+/// The dataset all tasks share. A mixed dataset suite is not supported yet.
 fn first_dataset(plan: &HostPlan) -> String {
     plan.suite
         .tasks
@@ -578,9 +665,23 @@ fn first_dataset(plan: &HostPlan) -> String {
         .unwrap_or_else(|| "terminal-bench@2.0".to_string())
 }
 
-fn coder_api_url_for_host(api_base: &str) -> String {
-    // Harbor runs on the host. The adapter posts trials to the host API.
-    api_base.to_string()
+/// Rewrite loopback API URLs so the adapter inside the container can reach
+/// the host, matching `bench/run-suite.sh`.
+pub fn coder_api_url_for_container(api_base: &str) -> String {
+    let mut out = api_base.to_string();
+    for host in ["localhost", "127.0.0.1"] {
+        let http = format!("http://{host}");
+        let https = format!("https://{host}");
+        if let Some(rest) = out.strip_prefix(&http) {
+            out = format!("http://host.docker.internal{rest}");
+            break;
+        }
+        if let Some(rest) = out.strip_prefix(&https) {
+            out = format!("https://host.docker.internal{rest}");
+            break;
+        }
+    }
+    out
 }
 
 async fn locate_job_dir(root: &Path) -> Result<PathBuf, CliError> {
@@ -941,45 +1042,27 @@ fn print_dry_run_plan(
         .jobs_dir
         .clone()
         .unwrap_or_else(|| PathBuf::from("/tmp/gym-jobs-<timestamp>"));
-    let mut harbor_args = vec![
-        "run".to_string(),
-        "--dataset".to_string(),
-        first_dataset_for_dry(suite),
-        "--agent-import-path".to_string(),
-        "adapters.openagents_coder:OpenAgentsCoder".to_string(),
-        "-m".to_string(),
-        model.to_string(),
-    ];
-    for t in &suite.tasks {
-        harbor_args.push("-i".to_string());
-        harbor_args.push(t.id.clone());
-    }
-    harbor_args.push("--jobs-dir".to_string());
-    harbor_args.push(jobs.to_string_lossy().to_string());
-    harbor_args.push("--n-concurrent".to_string());
-    harbor_args.push(args.n_concurrent.to_string());
-    if let Some(m) = args.timeout_multiplier {
-        harbor_args.push("--timeout-multiplier".to_string());
-        harbor_args.push(m.to_string());
-    }
-    if let Some(env) = &args.env {
-        harbor_args.push("--env".to_string());
-        harbor_args.push(env.clone());
-    }
-    println!("[dry-run] harbor {}", harbor_args.join(" "));
+    let plan = HostPlan {
+        suite: suite.clone(),
+        model: model.to_string(),
+        lane: lane.to_string(),
+        n_concurrent: args.n_concurrent,
+        jobs_dir: jobs.clone(),
+        timeout_multiplier: args.timeout_multiplier,
+        env_provider: args.env.clone(),
+        run_id: Some("<run-id>".to_string()),
+        api_base: String::new(),
+        token: None,
+    };
+    let docker_args = container_docker_args(&plan, &jobs);
+    println!("[dry-run] preferred: docker {}", docker_args.join(" "));
+    let host_args = harbor_args(&plan, &jobs);
+    println!("[dry-run] fallback: harbor {}", host_args.join(" "));
     println!("[dry-run] POST /api/v1/gym/runs/<run-id>/trials (once per task)");
     println!("[dry-run] PATCH /api/v1/gym/runs/<run-id>");
     println!(
         "[dry-run]   {{\"status\": \"graded\"}} or {{\"status\": \"abandoned\"}} depending on verifier"
     );
-}
-
-fn first_dataset_for_dry(suite: &ResolvedSuite) -> String {
-    suite
-        .tasks
-        .first()
-        .map(|t| t.dataset.clone())
-        .unwrap_or_else(|| "terminal-bench@2.0".to_string())
 }
 
 fn emit_run_status(status: &RunStatus, json: bool) {

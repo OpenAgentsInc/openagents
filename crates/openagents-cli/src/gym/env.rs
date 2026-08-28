@@ -52,7 +52,8 @@ const HARBOR_TIMEOUT: Duration = Duration::from_secs(10);
 const PULL_TIMEOUT: Duration = Duration::from_secs(600);
 const DISK_MIN_BYTES: u64 = 5u64 * 1024 * 1024 * 1024;
 const HARBOR_RUNNER_VERSION: &str = "0.1.0";
-const HARBOR_RUNNER_IMAGE: &str = "harbor-runner:0.1.0";
+pub const HARBOR_RUNNER_IMAGE: &str = "harbor-runner:0.1.0";
+pub const HARBOR_PULL_REMEDY: &str = "Run `openagents gym env pull`";
 const CANARY_IMAGE: &str = "hello-world";
 
 /// One check with the internal remedy used by `doctor`.
@@ -214,8 +215,8 @@ pub async fn probe_environment() -> Vec<GymCheck> {
         ));
         checks.push(not_yet_built(
             "harbor_runner_image",
-            "B3 harbor-runner image has not landed",
-            "Run `gym env pull` after issue #174 lands",
+            "Docker is not available to inspect the harbor-runner image",
+            HARBOR_PULL_REMEDY,
         ));
     }
 
@@ -378,11 +379,7 @@ fn harbor_runner_image_check(present: bool, detail: &str) -> GymCheck {
     if present {
         ok("harbor_runner_image", detail)
     } else {
-        not_yet_built(
-            "harbor_runner_image",
-            detail,
-            "Run `gym env pull` after issue #174 lands",
-        )
+        not_yet_built("harbor_runner_image", detail, HARBOR_PULL_REMEDY)
     }
 }
 
@@ -564,6 +561,11 @@ fn compute_context_digest(repo_root: &Path) -> Result<String, String> {
     Ok(format!("sha256:{}", hash_bytes_to_hex(&digest)))
 }
 
+/// True when `docker image inspect` finds the pinned harbor-runner tag.
+pub async fn harbor_runner_image_present() -> bool {
+    current_image_id().await.is_some()
+}
+
 async fn current_image_id() -> Option<String> {
     let output = timeout(
         DOCKER_BIN_TIMEOUT,
@@ -743,16 +745,14 @@ mod tests {
                 "harbor_runner_image",
                 CheckState::NotYetBuilt,
                 "B3 not landed",
-                Some("Run `gym env pull` after issue #174 lands"),
+                Some(HARBOR_PULL_REMEDY),
             ),
         ];
         let (lines, exit) = diagnose(&checks);
         assert_eq!(exit, 1);
         let text = lines.join("\n");
-        assert!(
-            text.contains("Run `gym env pull` after issue #174 lands"),
-            "{text}"
-        );
+        assert!(text.contains("Run `openagents gym env pull`"), "{text}");
+        assert!(!text.contains("after issue #174 lands"), "{text}");
     }
 
     #[test]
@@ -802,10 +802,7 @@ mod tests {
 
         let not = harbor_runner_image_check(false, "harbor-runner:0.1.0 is not present");
         assert_eq!(not.state, CheckState::NotYetBuilt);
-        assert_eq!(
-            not.remedy.as_deref(),
-            Some("Run `gym env pull` after issue #174 lands")
-        );
+        assert_eq!(not.remedy.as_deref(), Some(HARBOR_PULL_REMEDY));
     }
 
     #[test]
