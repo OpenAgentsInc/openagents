@@ -4457,6 +4457,9 @@ mod tests {
                 "skill",
                 "checkpoint",
                 "openagents",
+                "swarm_list",
+                "swarm_send",
+                "swarm_inbox",
                 "capability",
                 "acp"
             ]
