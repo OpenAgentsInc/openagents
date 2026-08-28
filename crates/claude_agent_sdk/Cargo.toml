@@ -10,7 +10,7 @@ categories = ["development-tools", "api-bindings"]
 
 [dependencies]
 # Async runtime
-tokio = { version = "1", features = ["process", "io-util", "sync", "rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["process", "io-util", "sync", "rt-multi-thread", "macros", "time"] }
 futures = "0.3"
 
 # Serialization

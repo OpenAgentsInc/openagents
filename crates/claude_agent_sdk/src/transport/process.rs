@@ -34,7 +34,7 @@ impl Default for ExecutableConfig {
 pub struct ProcessTransport {
     child: Child,
     stdin: ChildStdin,
-    stdout_rx: mpsc::Receiver<Result<StdoutMessage>>,
+    stdout_rx: Option<mpsc::Receiver<Result<StdoutMessage>>>,
     /// Handle to the stdout reader task.
     _stdout_task: tokio::task::JoinHandle<()>,
 }
@@ -98,8 +98,17 @@ impl ProcessTransport {
         Ok(Self {
             child,
             stdin,
-            stdout_rx,
+            stdout_rx: Some(stdout_rx),
             _stdout_task: stdout_task,
+        })
+    }
+
+    /// Take the stdout receiver so a reader task can wait without holding
+    /// the stdin lock. A second take returns an empty closed channel.
+    pub fn take_stdout_rx(&mut self) -> mpsc::Receiver<Result<StdoutMessage>> {
+        self.stdout_rx.take().unwrap_or_else(|| {
+            let (_tx, rx) = mpsc::channel(1);
+            rx
         })
     }
 
@@ -221,7 +230,10 @@ impl ProcessTransport {
 
     /// Receive the next message from the CLI.
     pub async fn recv(&mut self) -> Option<Result<StdoutMessage>> {
-        self.stdout_rx.recv().await
+        match self.stdout_rx.as_mut() {
+            Some(rx) => rx.recv().await,
+            None => None,
+        }
     }
 
     /// Check if the process is still running.

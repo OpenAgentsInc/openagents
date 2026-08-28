@@ -31,14 +31,23 @@ Top-level `type` values: `prompt_suggestion`, `rate_limit_event`,
 Already present before P1: `assistant`, `user`, `result`, `system` (`init`,
 `compact_boundary`, `status`), `stream_event`, `tool_progress`, `auth_status`.
 
+## P2 landed (issue #232)
+
+`Query::new` sends `subtype: "initialize"` before the user prompt, stores
+the handshake payload, and exposes it as `Query::initialization_result()`
+(TS `Query.initializationResult()`). Control requests wait at most
+`DEFAULT_CONTROL_TIMEOUT` (60s, overridable via
+`QueryOptions::control_timeout`). A silent CLI returns
+`Error::ControlTimeout` instead of hanging. A CLI `subtype: "error"` on
+initialize is `Error::InitializationFailed`. The stdout reader no longer
+holds the stdin lock across `recv`, so the handshake cannot deadlock.
+
 ## Remaining work (do not expand this packet)
 
-P1 is items 1–2 of issue #232 (message variants + no silent drop). Later
-priorities, still open:
+P1 is items 1–2 of issue #232 (message variants + no silent drop). P2 is
+items 3 and 6 (initialize handshake + control timeouts). Later priorities,
+still open:
 
-- **P2 lifecycle** — send `initialize` first (it is never sent today), expose
-  `initializationResult()`, and make `Error::ControlTimeout` reachable with a
-  real control-request timeout.
 - **P3 control surface** — remaining control-request subtypes (~23), including
   `apply_flag_settings`, `mcp_set_servers`, `stop_task`, `background_tasks`,
   `cancel_async_message`, `get_context_usage`, `list_models`, elicitation, and

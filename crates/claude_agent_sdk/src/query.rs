@@ -5,9 +5,9 @@ use crate::options::QueryOptions;
 use crate::permissions::PermissionHandler;
 use crate::protocol::{
     ControlRequestData, ControlRequestType, ControlResponseData, ControlResponseType,
-    PermissionMode, PermissionResult, SdkControlRequest, SdkControlResponse, SdkMessage,
-    SdkUserMessage, SetMaxThinkingTokensRequest, SetModelRequest, SetPermissionModeRequest,
-    StdinMessage, StdoutMessage, UserMessageType,
+    InitializeRequest, PermissionMode, PermissionResult, SdkControlRequest, SdkControlResponse,
+    SdkMessage, SdkUserMessage, SetMaxThinkingTokensRequest, SetModelRequest,
+    SetPermissionModeRequest, StdinMessage, StdoutMessage, UserMessageType,
 };
 use crate::transport::ProcessTransport;
 use futures::Stream;
@@ -17,6 +17,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
+use std::time::Duration;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::{debug, trace, warn};
 
@@ -34,6 +35,10 @@ pub struct Query {
     message_rx: mpsc::Receiver<Result<SdkMessage>>,
     /// Session ID (available after first message).
     session_id: Option<String>,
+    /// Payload from the `initialize` handshake, if it completed.
+    initialization: Option<Value>,
+    /// How long each control request may wait for a response.
+    control_timeout: Duration,
     /// Whether the query has completed.
     completed: bool,
 }
@@ -50,10 +55,13 @@ impl Query {
 
         let env = options.env.clone().map(|e| e.into_iter().collect());
 
-        let transport =
+        let mut transport =
             ProcessTransport::spawn(options.executable.clone(), args, options.cwd.clone(), env)
                 .await?;
 
+        // The reader task waits on stdout without holding the stdin lock,
+        // otherwise initialize (and every later control write) deadlocks.
+        let stdout_rx = transport.take_stdout_rx();
         let transport = Arc::new(Mutex::new(transport));
         let pending_requests = Arc::new(Mutex::new(HashMap::new()));
 
@@ -66,7 +74,14 @@ impl Query {
         let handler_clone = permission_handler.clone();
 
         tokio::spawn(async move {
-            Self::process_messages(transport_clone, pending_clone, handler_clone, message_tx).await;
+            Self::process_messages(
+                transport_clone,
+                stdout_rx,
+                pending_clone,
+                handler_clone,
+                message_tx,
+            )
+            .await;
         });
 
         let mut query = Self {
@@ -76,10 +91,23 @@ impl Query {
             permission_handler,
             message_rx,
             session_id: None,
+            initialization: None,
+            control_timeout: options.control_timeout_or_default(),
             completed: false,
         };
 
-        // Send initial prompt
+        // Handshake first. The TS Query does the same: initialize, then the
+        // user prompt. Sending the prompt first left session_id() empty and
+        // made initializationResult() impossible.
+        let init = query
+            .send_control_request(ControlRequestData::Initialize(InitializeRequest::default()))
+            .await
+            .map_err(|error| match error {
+                Error::InvalidMessage(message) => Error::InitializationFailed(message),
+                other => other,
+            })?;
+        query.initialization = Some(init);
+
         query.send_prompt(&prompt).await?;
 
         Ok(query)
@@ -110,15 +138,13 @@ impl Query {
     /// Process messages from the transport.
     async fn process_messages(
         transport: Arc<Mutex<ProcessTransport>>,
+        mut stdout_rx: mpsc::Receiver<Result<StdoutMessage>>,
         pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>,
         permission_handler: Option<Arc<dyn PermissionHandler>>,
         message_tx: mpsc::Sender<Result<SdkMessage>>,
     ) {
         loop {
-            let msg = {
-                let mut transport = transport.lock().await;
-                transport.recv().await
-            };
+            let msg = stdout_rx.recv().await;
 
             match msg {
                 Some(Ok(stdout_msg)) => {
@@ -287,8 +313,14 @@ impl Query {
                 .await?;
         }
 
-        // Wait for response
-        rx.await.map_err(|_| Error::ControlTimeout)?
+        match tokio::time::timeout(self.control_timeout, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) | Err(_) => {
+                let mut pending = self.pending_requests.lock().await;
+                pending.remove(&request_id);
+                Err(Error::ControlTimeout)
+            }
+        }
     }
 
     /// Interrupt the current query execution.
@@ -347,6 +379,14 @@ impl Query {
         self.session_id.as_deref()
     }
 
+    /// Full `initialize` handshake payload (`commands`, `models`, `account`, …).
+    ///
+    /// Present after [`Query::new`] returns. Matches TS
+    /// `Query.initializationResult()`.
+    pub fn initialization_result(&self) -> Option<&Value> {
+        self.initialization.as_ref()
+    }
+
     /// Check if the query has completed.
     pub fn is_completed(&self) -> bool {
         self.completed
@@ -391,6 +431,11 @@ impl Stream for Query {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::ExecutableConfig;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_query_options_build_args() {
@@ -409,5 +454,186 @@ mod tests {
         assert!(args.contains(&"10".to_string()));
         assert!(args.contains(&"--max-budget-usd".to_string()));
         assert!(args.contains(&"1".to_string()));
+    }
+
+    #[test]
+    fn initialize_control_request_serializes_with_the_wire_subtype() {
+        let request = SdkControlRequest {
+            msg_type: ControlRequestType::ControlRequest,
+            request_id: "sdk-0".to_string(),
+            request: ControlRequestData::Initialize(InitializeRequest::default()),
+        };
+        let value = serde_json::to_value(&request).unwrap();
+        assert_eq!(value["type"], "control_request");
+        assert_eq!(value["request_id"], "sdk-0");
+        assert_eq!(value["request"]["subtype"], "initialize");
+    }
+
+    fn unique_temp_dir() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("claude-sdk-p2-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_executable(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, body).unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
+
+    fn options_for_fake(path: PathBuf, timeout: Duration) -> QueryOptions {
+        let mut options = QueryOptions::new().control_timeout(timeout);
+        options.executable = ExecutableConfig {
+            path: Some(path),
+            executable: None,
+            executable_args: Vec::new(),
+        };
+        options
+    }
+
+    /// A fake CLI that answers `initialize` and records every stdin line.
+    const FAKE_OK: &str = r#"#!/usr/bin/env node
+const fs = require('fs');
+const readline = require('readline');
+const log = process.env.FAKE_LOG;
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line) return;
+  if (log) fs.appendFileSync(log, line + '\n');
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if (msg.type === 'control_request' && msg.request && msg.request.subtype === 'initialize') {
+    process.stdout.write(JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: msg.request_id,
+        response: {
+          commands: [{ name: 'help', description: 'help' }],
+          agents: [],
+          output_style: 'default',
+          available_output_styles: ['default'],
+          models: [{ value: 'sonnet', displayName: 'Sonnet' }],
+          account: { email: 't@example.com' }
+        }
+      }
+    }) + '\n');
+  }
+});
+"#;
+
+    /// A fake CLI that returns an initialize error.
+    const FAKE_INIT_ERROR: &str = r#"#!/usr/bin/env node
+const readline = require('readline');
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line) return;
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if (msg.type === 'control_request' && msg.request && msg.request.subtype === 'initialize') {
+    process.stdout.write(JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'error',
+        request_id: msg.request_id,
+        error: 'no session'
+      }
+    }) + '\n');
+  }
+});
+"#;
+
+    /// A fake CLI that never writes a control response.
+    const FAKE_HANG: &str = r#"#!/usr/bin/env node
+const readline = require('readline');
+readline.createInterface({ input: process.stdin });
+"#;
+
+    #[tokio::test]
+    async fn query_new_sends_initialize_before_the_user_prompt() {
+        let dir = unique_temp_dir();
+        let fake = write_executable(&dir, "fake-claude", FAKE_OK);
+        let log = dir.join("stdin.jsonl");
+        let mut options = options_for_fake(fake, Duration::from_secs(5));
+        options.env = Some(
+            [("FAKE_LOG".to_string(), log.display().to_string())]
+                .into_iter()
+                .collect(),
+        );
+
+        let query = Query::new("hello", options, None).await.unwrap();
+        let init = query.initialization_result().expect("handshake payload");
+        assert_eq!(init["output_style"], "default");
+        assert_eq!(init["commands"][0]["name"], "help");
+        assert_eq!(init["account"]["email"], "t@example.com");
+
+        // Drop the query so the child exits and flushes the log.
+        drop(query);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let recorded = fs::read_to_string(&log).unwrap();
+        let lines: Vec<&str> = recorded.lines().filter(|line| !line.is_empty()).collect();
+        assert!(
+            lines.len() >= 2,
+            "expected initialize then user prompt, got {recorded}"
+        );
+        let first: Value = serde_json::from_str(lines[0]).unwrap();
+        let second: Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(first["type"], "control_request");
+        assert_eq!(first["request"]["subtype"], "initialize");
+        assert_eq!(second["type"], "user");
+        assert_eq!(second["message"]["content"], "hello");
+    }
+
+    #[tokio::test]
+    async fn a_failed_initialize_is_initialization_failed() {
+        let dir = unique_temp_dir();
+        let fake = write_executable(&dir, "fake-claude", FAKE_INIT_ERROR);
+        let error = match Query::new(
+            "hello",
+            options_for_fake(fake, Duration::from_secs(5)),
+            None,
+        )
+        .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("expected initialize error"),
+        };
+        match error {
+            Error::InitializationFailed(message) => assert_eq!(message, "no session"),
+            other => panic!("expected InitializationFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_silent_control_channel_times_out() {
+        let dir = unique_temp_dir();
+        let fake = write_executable(&dir, "fake-claude", FAKE_HANG);
+        let started = std::time::Instant::now();
+        let error = match Query::new(
+            "hello",
+            options_for_fake(fake, Duration::from_millis(200)),
+            None,
+        )
+        .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("expected hung initialize"),
+        };
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "timeout must not wait the default 60s"
+        );
+        match error {
+            Error::ControlTimeout => {}
+            other => panic!("expected ControlTimeout, got {other:?}"),
+        }
     }
 }

@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
+
+/// Default wait for a control-request response (matches TS `initializeTimeoutMs`).
+pub const DEFAULT_CONTROL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Options for configuring a query.
 #[derive(Debug, Clone, Default)]
@@ -90,6 +94,13 @@ pub struct QueryOptions {
 
     /// Extra CLI arguments.
     pub extra_args: HashMap<String, Option<String>>,
+
+    /// How long to wait for a control-request response.
+    ///
+    /// `None` uses [`DEFAULT_CONTROL_TIMEOUT`] (60 seconds). A hung CLI
+    /// must not park the caller forever; [`crate::Error::ControlTimeout`]
+    /// is the named failure.
+    pub control_timeout: Option<Duration>,
 
     /// Sandbox settings.
     pub sandbox: Option<SandboxSettings>,
@@ -276,6 +287,18 @@ impl QueryOptions {
     pub fn include_partial_messages(mut self, include: bool) -> Self {
         self.include_partial_messages = include;
         self
+    }
+
+    /// Set the control-request timeout. Tests use a short value so a hung
+    /// CLI fails fast; production callers can leave the default.
+    pub fn control_timeout(mut self, timeout: Duration) -> Self {
+        self.control_timeout = Some(timeout);
+        self
+    }
+
+    /// Resolved control-request timeout.
+    pub fn control_timeout_or_default(&self) -> Duration {
+        self.control_timeout.unwrap_or(DEFAULT_CONTROL_TIMEOUT)
     }
 
     /// Continue the most recent session.
