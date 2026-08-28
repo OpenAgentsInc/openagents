@@ -287,9 +287,22 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let mut prompt_queue = VecDeque::new();
     let mut login_pending = false;
     let mut exit_after_cancel = false;
+    // ToolDone from this drain is applied after the next draw. Output+Done
+    // otherwise land in one try_recv burst and the active rail is never
+    // painted (#256).
+    let mut held_tool_done: Vec<Control> = Vec::new();
 
     'frame: loop {
+        let flushed_done = std::mem::take(&mut held_tool_done);
+        let mut rest = Vec::new();
         while let Ok(control) = rx.try_recv() {
+            if control.settles_tool() {
+                held_tool_done.push(control);
+            } else {
+                rest.push(control);
+            }
+        }
+        for control in flushed_done.into_iter().chain(rest) {
             match control {
                 Control::Turn { id, event } => {
                     if !turns.accepts(id) {
@@ -1012,6 +1025,30 @@ fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent
         };
         entry.at = event.at_ms;
         ui.entries.push(entry);
+    }
+}
+
+/// Apply a drained batch the way the live frame loop does.
+///
+/// [`Control::ToolDone`] from this batch is held in `pending_done` and applied
+/// on the next call, so a tool that starts and finishes in one drain still
+/// paints one active rail frame.
+pub fn apply_drained(
+    ui: &mut CoderUi,
+    pending_done: &mut Vec<Control>,
+    incoming: impl IntoIterator<Item = Control>,
+) {
+    let flushed = std::mem::take(pending_done);
+    let mut rest = Vec::new();
+    for control in incoming {
+        if control.settles_tool() {
+            pending_done.push(control);
+        } else {
+            rest.push(control);
+        }
+    }
+    for control in flushed.into_iter().chain(rest) {
+        apply(ui, control);
     }
 }
 

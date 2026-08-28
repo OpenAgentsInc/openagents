@@ -1277,14 +1277,14 @@ fn render_entry(
         }
         Role::Tool => {
             let mut lines = Vec::new();
+            let done = entry.tool.as_ref().is_some_and(|tool| tool.done);
 
             // Render markdown-shaped tool output with the shared engine. Keep
             // ordinary command output line-oriented: CommonMark treats a
             // single newline as a space, which would destroy logs and tables
             // that are plain text rather than markdown.
             let output_width = width.saturating_sub(2).max(1);
-            let live_subagent = !entry.tool.as_ref().is_some_and(|tool| tool.done)
-                && !entry.subagent_lines.is_empty();
+            let live_subagent = !done && !entry.subagent_lines.is_empty();
             let raw_output = entry.output.as_deref().unwrap_or("");
             let output = crate::delegate_result::displayed_delegate_output(raw_output);
             let (mut out_lines, out_links, window_rows) = if live_subagent {
@@ -1322,6 +1322,13 @@ fn render_entry(
             {
                 out_lines.pop();
             }
+            // An in-flight tool with no output yet still needs a rail row.
+            // Without it the wave has nowhere to draw and the box looks idle
+            // until ToolOutput arrives, which for the generic runtime is the
+            // same instant as ToolDone (#256).
+            if !done && out_lines.is_empty() {
+                out_lines.push(Line::from(Span::raw(String::new())));
+            }
             let final_start = out_lines.len().saturating_sub(window_rows);
             let start = if live_subagent || final_start == 0 || !motion_enabled {
                 final_start
@@ -1337,7 +1344,6 @@ fn render_entry(
                 .tool
                 .as_ref()
                 .is_some_and(|tool| crate::swarm::is_swarm_tool(&tool.function_name));
-            let done = entry.tool.as_ref().is_some_and(|tool| tool.done);
             // Swarm traffic uses a distinct marker so it cannot be read as
             // user speech (`>`) or as the model's own words (unmarked amber).
             let marker = if swarm {

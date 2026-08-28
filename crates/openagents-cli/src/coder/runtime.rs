@@ -176,6 +176,20 @@ impl TurnRouter {
     }
 }
 
+impl Control {
+    /// Whether this message settles a tool box.
+    ///
+    /// The live frame holds these until the next drain so a tool that starts
+    /// and finishes in one channel burst still paints an active rail.
+    pub fn settles_tool(&self) -> bool {
+        match self {
+            Control::ToolDone { .. } => true,
+            Control::Turn { event, .. } => event.settles_tool(),
+            _ => false,
+        }
+    }
+}
+
 /// Put a message on the frame's channel, or drop it if the frame is gone.
 pub fn send(sink: &Sink, message: Control) {
     if let Ok(tx) = sink.lock() {

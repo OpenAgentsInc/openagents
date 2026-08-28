@@ -5,7 +5,7 @@
 //! reports a value it received or stays empty, a failure does not become an
 //! answer, and nothing the session prints leaves the palette.
 
-use openagents_cli::coder::interactive::apply;
+use openagents_cli::coder::interactive::{apply, apply_drained};
 use openagents_cli::coder::markdown::theme::{
     DIM_TEXT_COLOR, MODEL_TEXT_COLOR, TEXT_COLOR, USER_TEXT_COLOR,
 };
@@ -366,6 +366,85 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
     let resting = draw(&mut ui);
     assert_eq!(resting.cell((0, 2)).unwrap().fg, DIM_TEXT_COLOR);
     assert!(ui.entries[0].tool.as_ref().unwrap().done);
+}
+
+#[test]
+fn a_tool_that_finishes_in_one_drain_still_paints_an_active_rail() {
+    let mut ui = CoderUi::new();
+    let mut pending = Vec::new();
+    apply_drained(
+        &mut ui,
+        &mut pending,
+        [
+            Control::Tool {
+                call_id: "c1".to_string(),
+                name: "read".to_string(),
+                arguments: r#"{"path":"a.rs"}"#.to_string(),
+            },
+            Control::ToolOutput {
+                call_id: "c1".to_string(),
+                chunk: "fn main() {}\n".to_string(),
+            },
+            Control::ToolDone {
+                call_id: "c1".to_string(),
+                is_error: false,
+                duration_ms: 4,
+            },
+        ],
+    );
+    assert!(
+        !ui.entries[0].tool.as_ref().unwrap().done,
+        "ToolDone must not settle the box in the same drain as the start"
+    );
+
+    let first = draw(&mut ui);
+    let second = draw(&mut ui);
+    let first_rail = first.cell((0, 2)).unwrap();
+    assert_eq!(first_rail.symbol(), "│");
+    assert_ne!(
+        first_rail.fg,
+        second.cell((0, 2)).unwrap().fg,
+        "the active rail did not move"
+    );
+
+    apply_drained(&mut ui, &mut pending, []);
+    assert!(ui.entries[0].tool.as_ref().unwrap().done);
+    let settled = draw(&mut ui);
+    let settled_again = draw(&mut ui);
+    assert_ne!(
+        settled.cell((0, 2)).unwrap().fg,
+        settled_again.cell((0, 2)).unwrap().fg,
+        "the completion settle animation did not advance"
+    );
+}
+
+#[test]
+fn an_in_flight_tool_with_no_output_still_has_a_moving_rail() {
+    let mut ui = CoderUi::new();
+    apply(
+        &mut ui,
+        Control::Tool {
+            call_id: "c1".to_string(),
+            name: "read".to_string(),
+            arguments: r#"{"path":"a.rs"}"#.to_string(),
+        },
+    );
+
+    let first = draw(&mut ui);
+    let second = draw(&mut ui);
+    let first_rail = first.cell((0, 2)).unwrap();
+    assert_eq!(
+        first_rail.symbol(),
+        "│",
+        "an in-flight tool with empty output has no rail: {}",
+        text_of(&first)
+    );
+    assert_ne!(
+        first_rail.fg,
+        second.cell((0, 2)).unwrap().fg,
+        "the empty-output rail did not move"
+    );
+    assert!(!ui.entries[0].tool.as_ref().unwrap().done);
 }
 
 #[test]
