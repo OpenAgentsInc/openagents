@@ -80,6 +80,15 @@ pub const PLUGIN_OUTPUT_LIMIT: usize = 16_000;
 /// Most candidates one catalog search returns; the rest are counted.
 const SEARCH_LIMIT: usize = 5;
 
+/// Guests a default Coder session declares without a `capability` load (#313).
+///
+/// The harvest already shipped these; live Flash never called `capability`
+/// to find them. They are still digest-pinned WASM guests — this list is
+/// only who gets preloaded. The rest of the catalog stays behind
+/// `capability`, whose standing description does not name anyone (#42).
+pub const FIRST_CLASS_PLUGIN_NAMES: [&str; 4] =
+    ["git_facts", "code_search", "repo_tree", "test_report"];
+
 /// Why the host would not do what was asked. Returned, never panicked.
 ///
 /// The code set is the one the guest PDK and the TypeScript host already
@@ -1230,6 +1239,7 @@ pub fn plugin_tool_definition(plugin: &LoadedPlugin) -> crate::tools::ToolDefini
 ///
 /// Constant-size on purpose: the catalog is searched, never enumerated here,
 /// so the standing prompt does not grow as capabilities are installed.
+/// First-class guests (#313) are declared as their own tools, not named here.
 pub fn capability_tool_definition() -> crate::tools::ToolDefinition {
     crate::tools::ToolDefinition {
         name: "capability".to_string(),

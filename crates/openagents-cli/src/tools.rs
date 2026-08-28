@@ -55,8 +55,8 @@ use crate::coder::agents::{self, AgentDefinition, ToolPool};
 use crate::coder::runtime::Control;
 use crate::delegate_result::{DelegateAgentResult, DelegateStatus, WorktreeOutcome, WorktreeRef};
 use crate::plugins::{
-    self, Approval, CatalogEntry, LoadedPlugin, answer_capability, capability_tool_definition,
-    plugin_tool_definition,
+    self, Approval, CatalogEntry, FIRST_CLASS_PLUGIN_NAMES, LoadedPlugin, answer_capability,
+    capability_tool_definition, plugin_tool_definition,
 };
 use crate::runtime::{ModelStreamEvent, ToolEvent};
 use crate::surfaces::tool_descriptions as text;
@@ -537,8 +537,10 @@ pub struct HarnessToolRegistry {
     /// Which capability tiers may load in this session. Pure compute always
     /// may; read-only mounts need an operator and refuse without one.
     pub plugin_approval: Approval,
-    /// Plugins the model loaded through `capability`, in load order. Each one
-    /// declares a further tool under its own manifest name.
+    /// Plugins loaded for this session, in load order: first-class guests
+    /// preloaded by the host (#313), then any the model loaded through
+    /// `capability`. Each one declares a further tool under its own
+    /// manifest name.
     loaded: Mutex<Vec<Arc<LoadedPlugin>>>,
     /// Tools the front-end driving this session answers itself.
     host: Vec<HostTool>,
@@ -623,10 +625,47 @@ impl HarnessToolRegistry {
 
     /// Grant the read-only mount tier, for a caller with an operator behind
     /// it. Without this a plugin that declares mounts refuses to load, which
-    /// is the safe default for an unattended session.
+    /// is the safe default for an unattended session. First-class guests
+    /// that need a mount (#313) preload here so `list_tools` already
+    /// declares them.
     pub fn allowing_plugin_mounts(mut self) -> Self {
         self.plugin_approval.mounts_allowed = true;
+        self.preload_first_class_plugins();
         self
+    }
+
+    /// Digest-verify and instantiate [`FIRST_CLASS_PLUGIN_NAMES`] that the
+    /// current approval tier allows. Pure-compute guests (`test_report`)
+    /// load without an operator; mounted guests need
+    /// [`Self::allowing_plugin_mounts`]. A load failure is skipped so a
+    /// stale pin cannot keep the session from opening.
+    fn preload_first_class_plugins(&self) {
+        for name in FIRST_CLASS_PLUGIN_NAMES {
+            if self
+                .loaded_plugins()
+                .iter()
+                .any(|plugin| plugin.manifest.name == name)
+            {
+                continue;
+            }
+            let Some(entry) = self.catalog.iter().find(|candidate| candidate.name == name) else {
+                continue;
+            };
+            if self.plugin_approval.check(entry).is_err() {
+                continue;
+            }
+            match plugins::load_plugin(&entry.manifest_path, &self.cwd) {
+                Ok(plugin) => {
+                    if let Ok(mut held) = self.loaded.lock() {
+                        held.retain(|existing| existing.manifest.name != plugin.manifest.name);
+                        held.push(Arc::new(plugin));
+                    }
+                }
+                Err(refusal) => {
+                    tracing::warn!("first-class plugin `{name}` did not preload: {refusal}");
+                }
+            }
+        }
     }
 
     /// Keep whole output of long commands under this directory.
@@ -690,6 +729,9 @@ impl HarnessToolRegistry {
             swarm: None,
         };
         registry.load_local_skills();
+        // Pure-compute first-class guests do not need an operator. Mounted
+        // ones wait for [`Self::allowing_plugin_mounts`].
+        registry.preload_first_class_plugins();
         registry
     }
 
@@ -1136,10 +1178,12 @@ impl HarnessToolRegistry {
             tools.push(tool.definition.clone());
         }
 
-        // A plugin the model loaded through `capability` declares a tool of
-        // its own, under its manifest name and over its manifest's input
-        // schema. Nothing appears here that has not been digest-verified,
-        // import-inspected, and instantiated at least once at load.
+        // A loaded plugin declares a tool of its own, under its manifest
+        // name and over its manifest's input schema. First-class guests
+        // (#313) are preloaded by the host; the rest arrive through
+        // `capability`. Nothing appears here that has not been
+        // digest-verified, import-inspected, and instantiated at least
+        // once at load.
         for plugin in self.loaded_plugins() {
             tools.push(plugin_tool_definition(&plugin));
         }
@@ -5178,6 +5222,169 @@ mod tests {
             .await;
         assert!(out.is_error);
         assert!(out.output.contains("does_not_exist"), "{}", out.output);
+    }
+
+    fn shipped_repo() -> Option<PathBuf> {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+        if !repo
+            .join("plugins")
+            .join("git-facts")
+            .join("manifest.json")
+            .is_file()
+        {
+            return None;
+        }
+        Some(repo)
+    }
+
+    fn capability_description(registry: &HarnessToolRegistry) -> String {
+        registry
+            .list_tools()
+            .into_iter()
+            .find(|tool| tool.name == "capability")
+            .expect("capability is standing")
+            .description
+    }
+
+    /// #313: a default Coder session (operator present) declares the four
+    /// coding-loop guests without a prior `capability` load.
+    #[test]
+    fn a_default_coder_session_declares_first_class_plugins_without_capability_load() {
+        let Some(repo) = shipped_repo() else {
+            return;
+        };
+        let registry = HarnessToolRegistry::new(Some(repo)).allowing_plugin_mounts();
+        let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
+        for name in FIRST_CLASS_PLUGIN_NAMES {
+            assert!(
+                names.contains(&name.to_string()),
+                "`{name}` missing from {names:?}"
+            );
+        }
+        assert!(
+            !names.contains(&"word_stats".to_string()),
+            "non-first-class guests stay behind capability"
+        );
+        assert!(
+            !names.contains(&"repo_map".to_string()),
+            "repo_map stays behind capability"
+        );
+    }
+
+    /// #42: first-class declaration must not grow the standing capability
+    /// description, even when those guests are installed and preloaded.
+    #[test]
+    fn capability_description_size_does_not_grow_when_first_class_plugins_are_installed() {
+        let empty = tempfile::tempdir().unwrap();
+        let empty_registry = HarnessToolRegistry::new(Some(empty.path().to_path_buf()));
+        let empty_cap = capability_description(&empty_registry);
+        assert!(
+            !empty_cap.contains("git_facts"),
+            "capability named a plugin with an empty catalog"
+        );
+
+        let Some(repo) = shipped_repo() else {
+            return;
+        };
+        let full = HarnessToolRegistry::new(Some(repo)).allowing_plugin_mounts();
+        let full_cap = capability_description(&full);
+        assert_eq!(
+            empty_cap, full_cap,
+            "capability description grew with the catalog"
+        );
+        for name in FIRST_CLASS_PLUGIN_NAMES {
+            assert!(
+                !full_cap.contains(name),
+                "capability description named `{name}`"
+            );
+        }
+    }
+
+    /// Unattended sessions still refuse the mount tier: `git_facts` is not
+    /// declared, `test_report` (pure compute) is.
+    #[test]
+    fn unattended_sessions_do_not_preload_mounted_first_class_plugins() {
+        let Some(repo) = shipped_repo() else {
+            return;
+        };
+        let unattended = HarnessToolRegistry::new(Some(repo));
+        let names: Vec<String> = unattended
+            .list_tools()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert!(
+            names.contains(&"test_report".to_string()),
+            "pure-compute first-class still preloads: {names:?}"
+        );
+        assert!(
+            !names.contains(&"git_facts".to_string()),
+            "mounted first-class leaked into an unattended session: {names:?}"
+        );
+        assert!(
+            !names.contains(&"code_search".to_string()),
+            "mounted first-class leaked into an unattended session: {names:?}"
+        );
+        assert!(
+            !names.contains(&"repo_tree".to_string()),
+            "mounted first-class leaked into an unattended session: {names:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_class_git_facts_runs_without_a_capability_load() {
+        let Some(repo) = shipped_repo() else {
+            return;
+        };
+        let registry = HarnessToolRegistry::new(Some(repo)).allowing_plugin_mounts();
+        let out = registry
+            .execute_tool(&ToolCall {
+                id: "1".to_string(),
+                name: "git_facts".to_string(),
+                arguments: serde_json::json!({"facts": ["head"]}),
+            })
+            .await;
+        assert!(
+            !out.output.starts_with("Unknown tool:"),
+            "git_facts was not dispatched: {}",
+            out.output
+        );
+        let value: serde_json::Value = serde_json::from_str(&out.output).expect(&out.output);
+        // Linked worktrees store `.git` as a file; the guest reads plumbing
+        // paths and may refuse. Either an `ok.head` or a typed refusal
+        // proves the first-class tool ran without a `capability` load.
+        assert!(
+            value.pointer("/ok/head").is_some()
+                || value.get("head").is_some()
+                || value.pointer("/refusal/code").is_some(),
+            "git_facts did not return a plugin packet: {}",
+            out.output
+        );
+    }
+
+    #[tokio::test]
+    async fn first_class_test_report_parses_a_cargo_failure_without_a_capability_load() {
+        let Some(repo) = shipped_repo() else {
+            return;
+        };
+        let registry = HarnessToolRegistry::new(Some(repo));
+        let out = registry
+            .execute_tool(&ToolCall {
+                id: "1".to_string(),
+                name: "test_report".to_string(),
+                arguments: serde_json::json!({
+                    "text": "test tools::foo ... FAILED\nthread 'tools::foo' panicked at src/tools.rs:1:1:\nassertion failed\n",
+                    "runner": "cargo"
+                }),
+            })
+            .await;
+        assert!(!out.is_error, "{}", out.output);
+        let value: serde_json::Value = serde_json::from_str(&out.output).expect(&out.output);
+        assert!(
+            value.pointer("/ok/failed").is_some() || value.get("ok").is_some(),
+            "test_report did not parse: {}",
+            out.output
+        );
     }
 }
 

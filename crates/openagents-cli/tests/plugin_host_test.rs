@@ -606,3 +606,42 @@ fn the_checked_in_file_stats_artifact_reads_only_its_own_mount() {
     let value: serde_json::Value = serde_json::from_slice(&outside).unwrap();
     assert_eq!(value["refusal"]["code"], "mount_denied", "{value}");
 }
+
+/// #313 + #42: first-class preload does not put guest names into the
+/// standing `capability` description, and a default attended session
+/// declares the four coding-loop guests without a `capability` load.
+#[test]
+fn first_class_plugins_are_declared_without_naming_them_on_capability() {
+    if !shipped_plugins()
+        .join("git-facts")
+        .join("manifest.json")
+        .is_file()
+    {
+        return;
+    }
+    let plugins_dir = shipped_plugins();
+    let repo = plugins_dir.parent().expect("plugins lives in the repo");
+    let attended = HarnessToolRegistry::new(Some(repo.to_path_buf())).allowing_plugin_mounts();
+    let names: Vec<String> = attended.list_tools().into_iter().map(|t| t.name).collect();
+    for name in openagents_cli::plugins::FIRST_CLASS_PLUGIN_NAMES {
+        assert!(
+            names.contains(&name.to_string()),
+            "`{name}` missing from {names:?}"
+        );
+    }
+    let capability = attended
+        .list_tools()
+        .into_iter()
+        .find(|tool| tool.name == "capability")
+        .expect("capability is standing");
+    for name in openagents_cli::plugins::FIRST_CLASS_PLUGIN_NAMES {
+        assert!(
+            !capability.description.contains(name),
+            "capability description named `{name}`"
+        );
+    }
+    assert!(
+        !names.contains(&"word_stats".to_string()),
+        "word_stats is not first-class"
+    );
+}

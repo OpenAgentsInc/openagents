@@ -36,7 +36,17 @@ impl ToolPool {
         match self {
             Self::ReadOnly => matches!(
                 name,
-                "read" | "bash" | "skill" | "grep" | "glob" | "swarm_list" | "swarm_inbox"
+                "read"
+                    | "bash"
+                    | "skill"
+                    | "grep"
+                    | "glob"
+                    | "swarm_list"
+                    | "swarm_inbox"
+                    | "git_facts"
+                    | "code_search"
+                    | "repo_tree"
+                    | "test_report"
             ),
             Self::ReadWrite => matches!(
                 name,
@@ -51,6 +61,10 @@ impl ToolPool {
                     | "swarm_list"
                     | "swarm_send"
                     | "swarm_inbox"
+                    | "git_facts"
+                    | "code_search"
+                    | "repo_tree"
+                    | "test_report"
             ),
             Self::All => true,
         }

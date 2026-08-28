@@ -369,6 +369,8 @@ impl Session {
         dev: bool,
         tx: Sender<Control>,
     ) -> Self {
+        // An interactive Coder session has an operator, so the read-only
+        // mount tier is granted and the first-class guests (#313) preload.
         let mut tools = HarnessToolRegistry::with_delegation(
             None,
             DelegationGate {
@@ -388,7 +390,8 @@ impl Session {
                 acp_agents: agents,
                 acp_spent: Arc::new(AtomicBool::new(false)),
             },
-        );
+        )
+        .allowing_plugin_mounts();
 
         let sink: Sink = Arc::new(Mutex::new(tx));
         let goal = Arc::new(Mutex::new(crate::coder::goal::GoalStore::default()));
