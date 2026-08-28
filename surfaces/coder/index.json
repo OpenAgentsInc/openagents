@@ -11,7 +11,7 @@
             "file": "tool-descriptions.v1.json",
             "schema": "openagents.coder_surface.tool_descriptions.v1",
             "keys": 15,
-            "digest": "sha256:862d16ff5f54e4fad76017f67833052ceaaad023749adff0db466c7a1303f8ce"
+            "digest": "sha256:f0f03d5661430b919f151332bdbeee019be091a691b5e7d32c51468982f74d0c"
           },
       "catalog-lines": {
             "file": "catalog-lines.v1.json",

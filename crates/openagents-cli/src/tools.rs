@@ -956,6 +956,14 @@ impl HarnessToolRegistry {
                     "properties": {
                         "to": {"type": "string", "description": "Destination: a session id, role:children-of:<id>, or all."},
                         "body": {"type": "string", "description": "The message text."},
+                        "data": {
+                            "type": "object",
+                            "description": "Optional structured payload beside the prose body: {\"content_type\": \"application/json\", \"payload\": \"…\"}. Both fields required; body plus payload share the 256 KiB cap.",
+                            "properties": {
+                                "content_type": {"type": "string", "description": "IANA-style content type, e.g. application/json or text/x-diff."},
+                                "payload": {"type": "string", "description": "The payload itself, delivered verbatim."}
+                            }
+                        },
                         "kind": {"type": "string", "description": "question, answer, status, handoff, or broadcast. Defaults to status."},
                         "reply_expected": {"type": "boolean", "description": "Ask the recipient to spend a turn answering."},
                         "thread": {"type": "string", "description": "The message id this one answers or continues."}
@@ -3041,6 +3049,47 @@ fn answer_swarm_send(
     let Some(body) = arguments.get("body").and_then(|v| v.as_str()) else {
         return ("The message body is missing.".to_string(), true);
     };
+    // A structured payload rides beside the prose body (#286): one
+    // content-type tag plus the payload, both counted against the size cap.
+    // Both fields are required together; a bare payload has no content type
+    // and a bare type carries no bytes.
+    let data = match (
+        arguments.get("data").and_then(|v| v.as_object()),
+        arguments.get("data").is_some(),
+    ) {
+        (Some(object), _) => {
+            let Some(content_type) = object
+                .get("content_type")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            else {
+                return (
+                    "A `data` payload needs a non-empty `content_type`, e.g. application/json."
+                        .to_string(),
+                    true,
+                );
+            };
+            let Some(payload) = object.get("payload").and_then(|v| v.as_str()) else {
+                return (
+                    "A `data` payload needs a `payload` string beside its content type."
+                        .to_string(),
+                    true,
+                );
+            };
+            Some(crate::swarm::StructuredPayload {
+                content_type: content_type.to_string(),
+                payload: payload.to_string(),
+            })
+        }
+        (None, true) => {
+            return (
+                "`data` must be an object with `content_type` and `payload` strings.".to_string(),
+                true,
+            );
+        }
+        (None, false) => None,
+    };
     let kind = arguments
         .get("kind")
         .and_then(|v| v.as_str())
@@ -3076,6 +3125,7 @@ fn answer_swarm_send(
         thread,
         reply_expected,
         body,
+        data.as_ref(),
     ) {
         Ok(report) => (
             serde_json::json!({

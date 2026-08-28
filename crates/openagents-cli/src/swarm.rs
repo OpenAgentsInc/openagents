@@ -44,7 +44,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const REGISTRATION_SCHEMA: &str = "openagents.swarm.registration.v1";
-pub const MESSAGE_SCHEMA: &str = "openagents.swarm.message.v1";
+pub const MESSAGE_SCHEMA: &str = "openagents.swarm.message.v2";
 pub const LISTING_SCHEMA: &str = "openagents.swarm.listing.v1";
 pub const MUTE_SCHEMA: &str = "openagents.swarm.mute.v1";
 pub const INBOX_TOOL: &str = "swarm.inbox";
@@ -72,6 +72,9 @@ pub const HOUR_MS: u128 = 60 * 60 * 1000;
 /// meaningful answers rather than transcripts. A body that will not fit is
 /// refused at send time, not truncated in flight — a truncated answer is a
 /// wrong answer wearing a smaller envelope.
+/// The most bytes one message — body plus any structured payload — accepts.
+/// The envelope's total, so a payload cannot smuggle an oversized message in
+/// under a body-only check (#286).
 pub const MAXIMUM_BODY_BYTES: usize = 256 * 1024;
 
 /// How fresh a registration's heartbeat must be, in milliseconds, before the
@@ -80,6 +83,27 @@ pub const MAXIMUM_BODY_BYTES: usize = 256 * 1024;
 /// minutes, and a heartbeat is refreshed on turn boundaries by the frame
 /// loop, not on a timer thread.
 pub const DEFAULT_ALIVE_AFTER_MS: u128 = 30 * 60 * 1000;
+
+/// A structured payload beside the prose `body`: one content-type tag plus
+/// the raw payload (#286). Handoffs carry diffs, file lists, and parameters
+/// as data the recipient reads verbatim, instead of prose it must re-parse.
+/// Transport and trajectory handling are identical to the body: one JSON
+/// line, the same cap, the same receipts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StructuredPayload {
+    /// An IANA-style content type, e.g. `application/json`, `text/x-diff`.
+    pub content_type: String,
+    /// The payload itself, verbatim. Interpreted by the recipient, never by
+    /// the transport.
+    pub payload: String,
+}
+
+impl StructuredPayload {
+    /// Size in bytes on the wire: both fields, counted as sent.
+    pub fn byte_size(&self) -> usize {
+        self.content_type.len() + self.payload.len()
+    }
+}
 
 /// One live (or recently live) session, as discovery reports it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -195,6 +219,11 @@ pub struct SwarmMessage {
     /// not ask for a reply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_depth: Option<u32>,
+    /// A structured payload beside the prose body, when the sender attached
+    /// one (#286). Absent on plain messages; v1 readers that do not know the
+    /// field ignore it and keep the body intact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<StructuredPayload>,
     pub body: String,
     pub created_at_ms: u128,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -280,8 +309,17 @@ pub fn expand_destination(home: &Path, from: &str, to: &str) -> String {
 }
 
 /// The message id for one send: `msg_` + 16 hex of SHA-256 over the fields
-/// that make the message what it is.
-fn message_id(from: &str, to: &str, thread: Option<&str>, body: &str, at_ms: u128) -> String {
+/// that make the message what it is — including any payload (#286), so an
+/// id is still content-derived and a re-send with different data still
+/// dedups apart.
+fn message_id(
+    from: &str,
+    to: &str,
+    thread: Option<&str>,
+    body: &str,
+    data: Option<&StructuredPayload>,
+    at_ms: u128,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(from.as_bytes());
     hasher.update([0]);
@@ -292,6 +330,12 @@ fn message_id(from: &str, to: &str, thread: Option<&str>, body: &str, at_ms: u12
     }
     hasher.update([0]);
     hasher.update(body.as_bytes());
+    hasher.update([0]);
+    if let Some(data) = data {
+        hasher.update(data.content_type.as_bytes());
+        hasher.update([0]);
+        hasher.update(data.payload.as_bytes());
+    }
     hasher.update([0]);
     hasher.update(at_ms.to_string().as_bytes());
     let digest = hasher.finalize();
@@ -720,16 +764,18 @@ pub fn send(
     thread: Option<&str>,
     reply_expected: bool,
     body: &str,
+    data: Option<&StructuredPayload>,
 ) -> Result<SendReport, String> {
     let trimmed = body.trim();
-    if trimmed.is_empty() {
+    let data_bytes = data.map(|payload| payload.byte_size()).unwrap_or(0);
+    if trimmed.is_empty() && data.is_none() {
         return Err("the message body is empty, and an empty message is not a message".to_string());
     }
-    if trimmed.len() > MAXIMUM_BODY_BYTES {
+    if trimmed.len() + data_bytes > MAXIMUM_BODY_BYTES {
         return Err(format!(
-            "the message body is {} bytes and the most one delivery accepts is {MAXIMUM_BODY_BYTES}. \
+            "the message is {} bytes (body plus any payload) and the most one delivery accepts is {MAXIMUM_BODY_BYTES}. \
              Say less, or write the long form to a file and send the path.",
-            trimmed.len()
+            trimmed.len() + data_bytes
         ));
     }
     let known_kinds = ["question", "answer", "status", "handoff", "broadcast"];
@@ -745,7 +791,7 @@ pub fn send(
     }
 
     let at_ms = now_ms();
-    let id = message_id(from, &to, thread, trimmed, at_ms);
+    let id = message_id(from, &to, thread, trimmed, data, at_ms);
     let sender_mailbox = Mailbox::at(from_directory);
     let reply_depth = if reply_expected {
         Some(sender_mailbox.thread_depth(thread).saturating_add(1))
@@ -833,6 +879,7 @@ pub fn send(
             kind: kind.to_string(),
             reply_expected: reply_expected.then_some(true),
             reply_depth,
+            data: data.cloned(),
             body: trimmed.to_string(),
             created_at_ms: at_ms,
             delivered_at_ms: None,
@@ -874,6 +921,7 @@ pub fn send(
         kind: kind.to_string(),
         reply_expected: reply_expected.then_some(true),
         reply_depth,
+        data: data.cloned(),
         body: trimmed.to_string(),
         created_at_ms: at_ms,
         delivered_at_ms: None,
@@ -1174,7 +1222,7 @@ pub fn list_filtered(
 
 /// A public-safe JSON object for one message, used as a tool result.
 pub fn message_document(message: &SwarmMessage) -> serde_json::Value {
-    serde_json::json!({
+    let mut document = serde_json::json!({
         "id": message.id,
         "sequence": message.sequence,
         "from": message.from,
@@ -1186,7 +1234,14 @@ pub fn message_document(message: &SwarmMessage) -> serde_json::Value {
         "body": message.body,
         "delivered_at_ms": message.delivered_at_ms,
         "read_at_ms": message.read_at_ms,
-    })
+    });
+    if let Some(data) = &message.data {
+        document["data"] = serde_json::json!({
+            "content_type": data.content_type,
+            "payload": data.payload,
+        });
+    }
+    document
 }
 
 /// The filters one inbox read may apply before a drain or a peek. `sender`,
@@ -1325,6 +1380,7 @@ mod tests {
             kind: "status".to_string(),
             reply_expected: None,
             reply_depth: None,
+            data: None,
             body: body.to_string(),
             created_at_ms: sequence as u128,
             delivered_at_ms: Some(sequence as u128),
@@ -1363,6 +1419,48 @@ mod tests {
         let plan = plan_drain(&[message, unread("a", 2, "new")], &BTreeSet::new(), 8);
         assert_eq!(plan.inject.len(), 1);
         assert_eq!(plan.inject[0].sequence, Some(2));
+    }
+
+    #[test]
+    fn swarm_a_payload_becomes_part_of_the_content_derived_id() {
+        let base = ("session-a", "session-b", None, "report", now_ms());
+        let plain = message_id(base.0, base.1, base.2, base.3, None, base.4);
+        let with_data = message_id(
+            base.0,
+            base.1,
+            base.2,
+            base.3,
+            Some(&StructuredPayload {
+                content_type: "application/json".to_string(),
+                payload: "{\"a\":1}".to_string(),
+            }),
+            base.4,
+        );
+        assert_ne!(plain, with_data, "payload changes the content id");
+        let again = message_id(
+            base.0,
+            base.1,
+            base.2,
+            base.3,
+            Some(&StructuredPayload {
+                content_type: "application/json".to_string(),
+                payload: "{\"a\":1}".to_string(),
+            }),
+            base.4,
+        );
+        assert_eq!(with_data, again, "same content, same id");
+    }
+
+    #[test]
+    fn swarm_payload_byte_size_counts_both_fields() {
+        let payload = StructuredPayload {
+            content_type: "text/x-diff".to_string(),
+            payload: "+-one line-".to_string(),
+        };
+        assert_eq!(
+            payload.byte_size(),
+            "text/x-diff".len() + "+-one line-".len()
+        );
     }
 
     #[test]

@@ -960,6 +960,7 @@ fn run_swarm_command(ui: &mut CoderUi, arguments: &[String], rest: &str) {
                 None,
                 false,
                 &body,
+                None,
             ) {
                 Ok(report) => {
                     let mut lines = Vec::new();

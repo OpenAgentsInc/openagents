@@ -1119,6 +1119,7 @@ sleep 30
         None,
         true,
         "what does the failing test say?",
+        None,
     )
     .unwrap();
     let parent_inbox = openagents_cli::swarm::Mailbox::at(parent_mail.path())
@@ -1137,6 +1138,7 @@ sleep 30
         None,
         false,
         "assertion failed on line 12",
+        None,
     )
     .unwrap();
 
@@ -1149,6 +1151,7 @@ sleep 30
         None,
         false,
         "wrap up now",
+        None,
     )
     .unwrap();
     assert_eq!(broadcast.deliveries.len(), 2);

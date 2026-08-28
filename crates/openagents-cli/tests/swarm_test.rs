@@ -205,6 +205,7 @@ fn delivery_is_gapless_and_receipted() {
         None,
         true,
         "what does the failing test say?",
+        None,
     )
     .unwrap();
     assert_eq!(
@@ -235,6 +236,7 @@ fn delivery_is_gapless_and_receipted() {
         Some(&report.message_id),
         false,
         "follow-up in the same thread",
+        None,
     )
     .unwrap();
     let messages = inbox.messages().unwrap();
@@ -304,6 +306,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         None,
         false,
         "hello",
+        None,
     )
     .unwrap_err();
     assert!(why.contains("no session `nobody` is registered"), "{why}");
@@ -318,6 +321,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         None,
         false,
         "   ",
+        None,
     )
     .unwrap_err();
     assert!(why.contains("empty"), "{why}");
@@ -333,6 +337,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         None,
         false,
         "talking to myself",
+        None,
     )
     .unwrap_err();
     assert!(why.contains("cannot send a message to itself"), "{why}");
@@ -348,6 +353,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         None,
         false,
         &huge,
+        None,
     )
     .unwrap_err();
     assert!(!why.is_empty(), "refused one way or another");
@@ -362,6 +368,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         None,
         false,
         "hello",
+        None,
     )
     .unwrap_err();
     assert!(why.contains("not a message kind"), "{why}");
@@ -392,6 +399,7 @@ fn broadcast_resolves_to_every_other_live_session() {
         None,
         false,
         "standing up in five",
+        None,
     )
     .unwrap();
     assert_eq!(report.deliveries.len(), 2, "everyone but the sender");
@@ -417,6 +425,7 @@ fn broadcast_resolves_to_every_other_live_session() {
         None,
         false,
         "wrap up",
+        None,
     )
     .unwrap();
     assert_eq!(report.deliveries.len(), 2, "both children of session-1");
@@ -455,6 +464,7 @@ fn a_parent_sends_to_a_child_by_short_id() {
         None,
         false,
         "the test failed on line 12",
+        None,
     )
     .unwrap();
     assert_eq!(report.deliveries.len(), 1);
@@ -500,6 +510,7 @@ fn broadcast_to_children_of_reports_a_killed_child_as_not_reached() {
         None,
         false,
         "wrap up",
+        None,
     )
     .unwrap();
     assert_eq!(report.deliveries.len(), 1, "only the live child");
@@ -516,6 +527,306 @@ fn broadcast_to_children_of_reports_a_killed_child_as_not_reached() {
         Mailbox::at(dead_dir.path()).messages().unwrap().is_empty(),
         "a stale child must not receive the broadcast"
     );
+}
+
+#[test]
+fn a_structured_payload_rides_beside_the_body_and_round_trips() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().to_path_buf();
+    let a_dir = tempfile::tempdir().unwrap();
+    let b_dir = tempfile::tempdir().unwrap();
+    register(
+        &path,
+        &registration(
+            "session-a",
+            std::process::id(),
+            a_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    register(
+        &path,
+        &registration(
+            "session-b",
+            std::process::id(),
+            b_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+
+    let report = send(
+        &path,
+        "session-a",
+        a_dir.path(),
+        "session-b",
+        "handoff",
+        None,
+        false,
+        "the diff and the failing test, as data",
+        Some(&openagents_cli::swarm::StructuredPayload {
+            content_type: "text/x-diff".to_string(),
+            payload: "--- a/src.rs\n+++ b/src.rs\n@@ -1 +1 @@\n-let x = 1;\n+let x = 2;"
+                .to_string(),
+        }),
+    )
+    .unwrap();
+    assert_eq!(report.deliveries.len(), 1);
+
+    let delivered = Mailbox::at(b_dir.path()).messages().unwrap();
+    assert_eq!(delivered.len(), 1);
+    let data = delivered[0].data.as_ref().expect("the payload rode along");
+    assert_eq!(data.content_type, "text/x-diff");
+    assert!(data.payload.starts_with("--- a/src.rs"));
+    assert_eq!(delivered[0].body, "the diff and the failing test, as data");
+
+    // The projection shows the payload verbatim with its content type.
+    let document = openagents_cli::swarm::message_document(&delivered[0]);
+    assert_eq!(document["data"]["content_type"], "text/x-diff");
+    assert!(
+        document["data"]["payload"]
+            .as_str()
+            .unwrap()
+            .contains("let x = 2")
+    );
+
+    // The wire line parses as the v2 envelope.
+    assert_eq!(delivered[0].schema, MESSAGE_SCHEMA);
+}
+
+#[test]
+fn a_plain_message_has_no_data_field_on_the_wire() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().to_path_buf();
+    let a_dir = tempfile::tempdir().unwrap();
+    let b_dir = tempfile::tempdir().unwrap();
+    register(
+        &path,
+        &registration(
+            "session-a",
+            std::process::id(),
+            a_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    register(
+        &path,
+        &registration(
+            "session-b",
+            std::process::id(),
+            b_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    send(
+        &path,
+        "session-a",
+        a_dir.path(),
+        "session-b",
+        "status",
+        None,
+        false,
+        "plain",
+        None,
+    )
+    .unwrap();
+    let delivered = Mailbox::at(b_dir.path()).messages().unwrap();
+    let document = openagents_cli::swarm::message_document(&delivered[0]);
+    assert!(document.get("data").is_none(), "absent stays absent");
+}
+
+#[test]
+fn a_v1_inbox_line_still_parses_and_reads_as_a_plain_message() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let inbox = dir.path().join("inbox.jsonl");
+    let v1_line = r#"{"schema":"openagents.swarm.message.v1","id":"msg_old","sequence":1,"from":"session-a","to":"session-b","kind":"status","body":"written by the old build","created_at_ms":1,"delivered_at_ms":2}"#;
+    std::fs::write(&inbox, format!("{v1_line}\n")).unwrap();
+    let messages = Mailbox::at(dir.path()).messages().unwrap();
+    assert_eq!(messages.len(), 1, "a v1 line is a message, not corruption");
+    assert_eq!(messages[0].body, "written by the old build");
+    assert!(
+        messages[0].data.is_none(),
+        "v1 has no payload; it reads as plain"
+    );
+}
+
+#[test]
+fn body_plus_payload_shares_one_cap_and_an_oversize_is_refused_with_it_named() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().to_path_buf();
+    let a_dir = tempfile::tempdir().unwrap();
+    let b_dir = tempfile::tempdir().unwrap();
+    register(
+        &path,
+        &registration(
+            "session-a",
+            std::process::id(),
+            a_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    register(
+        &path,
+        &registration(
+            "session-b",
+            std::process::id(),
+            b_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+
+    // Body and payload each under the cap, together over it: refused.
+    let half = "x".repeat(MAXIMUM_BODY_BYTES / 2 + 1024);
+    let why = send(
+        &path,
+        "session-a",
+        a_dir.path(),
+        "session-b",
+        "status",
+        None,
+        false,
+        &half,
+        Some(&openagents_cli::swarm::StructuredPayload {
+            content_type: "application/json".to_string(),
+            payload: "y".repeat(MAXIMUM_BODY_BYTES / 2 + 1024),
+        }),
+    )
+    .unwrap_err();
+    assert!(
+        why.contains("256") || why.contains("262144") || why.contains("262656"),
+        "{why}"
+    );
+    assert!(why.contains("payload"), "{why}");
+
+    // A payload alone at the cap is fine.
+    let payload = "y".repeat(MAXIMUM_BODY_BYTES - 64);
+    let report = send(
+        &path,
+        "session-a",
+        a_dir.path(),
+        "session-b",
+        "status",
+        None,
+        false,
+        "data only",
+        Some(&openagents_cli::swarm::StructuredPayload {
+            content_type: "application/json".to_string(),
+            payload,
+        }),
+    )
+    .unwrap();
+    assert_eq!(report.deliveries.len(), 1);
+}
+
+#[test]
+fn an_empty_body_with_a_payload_is_a_message() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().to_path_buf();
+    let a_dir = tempfile::tempdir().unwrap();
+    let b_dir = tempfile::tempdir().unwrap();
+    register(
+        &path,
+        &registration(
+            "session-a",
+            std::process::id(),
+            a_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    register(
+        &path,
+        &registration(
+            "session-b",
+            std::process::id(),
+            b_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    send(
+        &path,
+        "session-a",
+        a_dir.path(),
+        "session-b",
+        "handoff",
+        None,
+        false,
+        "   ",
+        Some(&openagents_cli::swarm::StructuredPayload {
+            content_type: "application/json".to_string(),
+            payload: "{\"issue\":286}".to_string(),
+        }),
+    )
+    .unwrap();
+    let delivered = Mailbox::at(b_dir.path()).messages().unwrap();
+    assert_eq!(
+        delivered[0].data.as_ref().unwrap().payload,
+        "{\"issue\":286}"
+    );
+}
+
+#[tokio::test]
+async fn the_tool_accepts_data_and_the_recipient_sees_it_verbatim() {
+    let mut pair = bound_pair();
+    let payload_json = serde_json::json!({
+        "files": ["crates/openagents-cli/src/swarm.rs"],
+        "note": "286"
+    });
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({
+                "to": "session-b",
+                "body": "handoff with data",
+                "kind": "handoff",
+                "data": {
+                    "content_type": "application/json",
+                    "payload": payload_json.to_string()
+                }
+            }),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+
+    let delivered = Mailbox::at(&pair.b_dir).messages().unwrap();
+    let data = delivered[0].data.as_ref().expect("payload delivered");
+    assert_eq!(data.content_type, "application/json");
+    let round: serde_json::Value = serde_json::from_str(&data.payload).unwrap();
+    assert_eq!(round["note"], "286");
+
+    // The drained tool result shows the payload verbatim with its type.
+    pair.b.drain_swarm_inbox().await;
+    let injected = format!("{:?}", pair.b.messages);
+    assert!(injected.contains("application/json"), "{injected}");
+    assert!(injected.contains("286"), "{injected}");
+}
+
+#[tokio::test]
+async fn the_tool_refuses_a_malformed_data_argument_by_name() {
+    let mut pair = bound_pair();
+    for (arguments, expected) in [
+        (
+            serde_json::json!({"to": "session-b", "body": "x", "data": {"payload": "no type"}}),
+            "content_type",
+        ),
+        (
+            serde_json::json!({"to": "session-b", "body": "x", "data": {"content_type": "application/json"}}),
+            "payload",
+        ),
+        (
+            serde_json::json!({"to": "session-b", "body": "x", "data": "a bare string"}),
+            "object",
+        ),
+    ] {
+        let output = pair
+            .a
+            .tools
+            .execute_tool(&tool_call("swarm_send", arguments))
+            .await;
+        assert!(output.is_error, "must refuse: {}", output.output);
+        assert!(output.output.contains(expected), "{}", output.output);
+    }
 }
 
 #[test]
@@ -544,6 +855,7 @@ fn the_schema_names_travel_on_the_wire() {
         None,
         false,
         "schema check",
+        None,
     )
     .unwrap();
     let messages = Mailbox::at(dir.path()).messages().unwrap();
@@ -681,6 +993,7 @@ async fn swarm_send(
                 .get("thread")
                 .and_then(|v| v.as_str())
                 .map(str::to_string),
+            data: None,
             kind: report
                 .get("kind")
                 .and_then(|v| v.as_str())

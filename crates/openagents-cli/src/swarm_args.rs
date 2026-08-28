@@ -333,6 +333,7 @@ fn send(
         thread,
         reply_expected,
         body,
+        None,
     ) {
         Ok(report) => report,
         Err(why) => crate::cli::fail(&why),
