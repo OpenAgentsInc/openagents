@@ -2916,10 +2916,18 @@ fn answer_edit_batch(
         Ok(path) => path,
         Err(refusal) => return (refusal, true),
     };
+    if edits.is_empty() {
+        return (
+            "Nothing was changed: `edits` must contain at least one `{oldText, newText}`."
+                .to_string(),
+            true,
+        );
+    }
     let mut content = match fs::read_to_string(&path) {
         Ok(content) => content,
         Err(error) => return (format!("Could not read `{raw}` to edit it: {error}."), true),
     };
+    let original = content.clone();
     let mut notes: Vec<String> = Vec::new();
     for (index, one) in edits.iter().enumerate() {
         let one_args = serde_json::json!({
@@ -2948,15 +2956,19 @@ fn answer_edit_batch(
     }
     match write_atomically(&path, &content) {
         Ok(()) => {
-            let mut reply = format!("Applied {} edits to {}.", edits.len(), path.display());
-            if !notes.is_empty() {
-                reply.push_str(" (");
-                reply.push_str(&notes.join("; "));
-                reply.push_str(".)");
-            }
-            (reply, false)
+            let reply = format!("Applied {} edits to {}.", edits.len(), path.display());
+            let note = notes.join("; ");
+            let last_new = edits
+                .last()
+                .and_then(|one| one.get("newText"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            (with_region_echo(reply, &note, &content, last_new), false)
         }
-        Err(error) => (format!("Could not write `{raw}`: {error}."), true),
+        Err(error) => {
+            let _ = write_atomically(&path, &original);
+            (format!("Could not write `{raw}`: {error}."), true)
+        }
     }
 }
 
@@ -4729,6 +4741,79 @@ let dir = tempfile::tempdir().unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
             before
+        );
+    }
+
+    /// A batch is all or nothing: a miss on a later entry leaves the file
+    /// byte-identical to before the call.
+    #[tokio::test]
+    async fn a_batch_miss_refuses_the_whole_batch_and_leaves_the_file_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        let before = "alpha\nbeta\ngamma\n";
+        std::fs::write(dir.path().join("b.txt"), before).unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({
+                    "path": "b.txt",
+                    "edits": [
+                        {"oldText": "alpha", "newText": "ALPHA"},
+                        {"oldText": "missing", "newText": "nope"}
+                    ]
+                }),
+            ))
+            .await;
+
+        assert!(out.is_error, "{}", out.output);
+        assert!(out.output.contains("edit 2 of 2"), "{}", out.output);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("b.txt")).unwrap(),
+            before
+        );
+    }
+
+    /// Two unique replacements land in one call, the echo shows the last
+    /// splice, and a loose-tier match is named per entry.
+    #[tokio::test]
+    async fn a_batch_applies_in_order_echoes_the_last_edit_and_notes_loose_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        std::fs::write(
+            dir.path().join("c.txt"),
+            "value = 42;   \ncount = 7;\nnext\n",
+        )
+        .unwrap();
+
+        let out = registry
+            .execute_tool(&file_call(
+                "edit",
+                serde_json::json!({
+                    "path": "c.txt",
+                    "edits": [
+                        {"oldText": "value = 42;\ncount = 7;", "newText": "value = 43;\ncount = 8;"},
+                        {"oldText": "next", "newText": "LAST"}
+                    ]
+                }),
+            ))
+            .await;
+
+        assert!(!out.is_error, "{}", out.output);
+        assert!(out.output.contains("Applied 2 edits"), "{}", out.output);
+        assert!(
+            out.output.contains("edit 1:") && out.output.contains("trailing whitespace"),
+            "loose-tier notes aggregate per entry: {}",
+            out.output
+        );
+        assert!(
+            out.output.contains("The file now reads, at the edit:") && out.output.contains("LAST"),
+            "the echo covers the final edit: {}",
+            out.output
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("c.txt")).unwrap(),
+            "value = 43;\ncount = 8;\nLAST\n"
         );
     }
 

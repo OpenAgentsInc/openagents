@@ -48,7 +48,7 @@ pub mod tool_descriptions {
     /// `rust.write`
     pub const RUST_WRITE: &str = "Write `content` to `path`, creating parent directories and replacing any file already there. The file is staged beside its destination and renamed into place, so nothing else on this machine can read it half-written. Use this rather than a shell heredoc. To change part of a file use `edit` instead: it does not ask you to reproduce the rest.";
     /// `rust.edit`
-    pub const RUST_EDIT: &str = "Replace one exact run of text in a file. `oldText` must appear exactly once: if it appears more than once the edit is refused and the file is left alone, so add the lines above and below the one you mean until the match is unique, then call again. Match byte for byte first; if nothing matches exactly, the site is still found when the difference is only trailing or leading whitespace, or doubled backslashes before a newline, and whole lines are replaced -- but a miss is cheaper than a misspelled guess, so copy the text rather than retyping it. On a miss the reply shows the file's real lines beside what you sent. `newText` may be empty to delete the run. Use this rather than `sed` for a surgical change.";
+    pub const RUST_EDIT: &str = "Replace one exact run of text in a file. `oldText` must appear exactly once: if it appears more than once the edit is refused and the file is left alone, so add the lines above and below the one you mean until the match is unique, then call again. Several replacements on one file can be sent as `edits: [{oldText, newText}, ...]`; they apply in order, all land or none do, and the call prices as one against the turn budget. `oldText`/`newText` are not used when `edits` is present. Match byte for byte first; if nothing matches exactly, the site is still found when the difference is only trailing or leading whitespace, or doubled backslashes before a newline, and whole lines are replaced -- but a miss is cheaper than a misspelled guess, so copy the text rather than retyping it. On a miss the reply shows the file's real lines beside what you sent. `newText` may be empty to delete the run. Use this rather than `sed` for a surgical change.";
     /// `rust.bash`
     pub const RUST_BASH: &str = "Run a command through `/bin/sh -c` in the session's working directory, {cwd}. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. This is the same runner as `shell`, and either name reaches it.";
     /// `rust.shell`
@@ -79,7 +79,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:cad437e541720552554f77b46b9df298b26bff5fc5feb2f8ebe05295c8c9eb7c",
+        "sha256:b8efc8d851031af6786ac8fdcbdd8b57fd1f7ded9a7d4ab6daff8b40ca5d5182",
     ),
     (
         "catalog-lines",
