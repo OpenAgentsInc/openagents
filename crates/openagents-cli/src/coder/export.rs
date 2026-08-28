@@ -95,6 +95,103 @@ fn now_iso() -> String {
     iso_for_ms(now_ms())
 }
 
+/// Build TUI entries from the runtime message list so a headless turn can
+/// write the same ATIF document `/export` writes from the full-screen session.
+///
+/// Harbor copies the newest file in `~/.openagents/exports` to the trial's
+/// `trajectory.json`. After the adapter switched from piping `/export` into
+/// `--plain` to `coder --headless`, that directory stayed empty and T2
+/// (`--stat` before `-p`) could not be measured from tool argv.
+pub fn entries_from_chat_messages(messages: &[crate::runtime::ChatMessage]) -> Vec<Entry> {
+    let mut entries = Vec::new();
+    let mut pending: Vec<(String, String, Value)> = Vec::new();
+    for message in messages {
+        match message.role.as_str() {
+            "system" => {}
+            "user" => {
+                if let Some(text) = message.content.as_deref() {
+                    if !text.is_empty() {
+                        entries.push(Entry::new(Role::You, text));
+                    }
+                }
+            }
+            "assistant" => {
+                if let Some(calls) = &message.tool_calls {
+                    for call in calls {
+                        pending.push(pending_tool_call(call));
+                    }
+                }
+                if let Some(text) = message.content.as_deref() {
+                    if !text.is_empty() {
+                        entries.push(Entry::new(Role::Assistant, text));
+                    }
+                }
+            }
+            "tool" => {
+                let id = message.tool_call_id.clone().unwrap_or_default();
+                let idx = pending
+                    .iter()
+                    .position(|(call_id, _, _)| !call_id.is_empty() && *call_id == id)
+                    .or_else(|| (!pending.is_empty()).then_some(0));
+                if let Some(idx) = idx {
+                    let (call_id, name, arguments) = pending.remove(idx);
+                    let output = message.content.clone();
+                    let mut entry = Entry::tool_call(&name);
+                    entry.output = output.clone();
+                    entry.tool = Some(ToolCall {
+                        call_id: if call_id.is_empty() {
+                            name.clone()
+                        } else {
+                            call_id
+                        },
+                        function_name: name,
+                        arguments,
+                        output,
+                        error: None,
+                        done: true,
+                        duration_ms: Some(0),
+                    });
+                    entries.push(entry);
+                }
+            }
+            _ => {}
+        }
+    }
+    entries
+}
+
+fn pending_tool_call(call: &Value) -> (String, String, Value) {
+    let id = call
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let function = call.get("function").cloned().unwrap_or_else(|| json!({}));
+    let name = function
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let arguments = match function.get("arguments") {
+        Some(Value::String(raw)) => {
+            serde_json::from_str(raw).unwrap_or_else(|_| json!({ "raw": raw }))
+        }
+        Some(other) => other.clone(),
+        None => json!({}),
+    };
+    (id, name, arguments)
+}
+
+/// Write the runtime transcript to `~/.openagents/exports` as ATIF-v1.7.
+pub fn export_runtime_messages(
+    messages: &[crate::runtime::ChatMessage],
+    model: &str,
+    repo: &str,
+    branch: &str,
+) -> ExportedTrajectory {
+    export_trajectory(&entries_from_chat_messages(messages), model, repo, branch)
+}
+
 pub fn git_info() -> Option<(String, String)> {
     let repo = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -574,6 +671,69 @@ mod tests {
             crate::swarm::INBOX_TOOL
         );
         assert_ne!(step["source"], "user");
+    }
+
+    #[test]
+    fn chat_messages_keep_shell_argv_for_stat_before_p() {
+        let messages = vec![
+            crate::runtime::ChatMessage {
+                role: "user".to_string(),
+                content: Some("find the leak".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                images: Vec::new(),
+            },
+            crate::runtime::ChatMessage {
+                role: "assistant".to_string(),
+                content: None,
+                tool_calls: Some(vec![json!({
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "shell",
+                        "arguments": "{\"command\":\"git log --stat -5 && git log -p -1\"}"
+                    }
+                })]),
+                tool_call_id: None,
+                images: Vec::new(),
+            },
+            crate::runtime::ChatMessage {
+                role: "tool".to_string(),
+                content: Some(" file.rs | 2 +-\n".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call-1".to_string()),
+                images: Vec::new(),
+            },
+            crate::runtime::ChatMessage {
+                role: "assistant".to_string(),
+                content: Some("recovered".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                images: Vec::new(),
+            },
+        ];
+        let entries = entries_from_chat_messages(&messages);
+        let (document, count) = trajectory_document(
+            &entries,
+            "glm-5.3-flash",
+            "/app",
+            "main",
+            "session",
+            "2026-08-28T00:00:00.000Z",
+        );
+        assert_eq!(count, 3);
+        let tool = document["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|step| step.get("tool_calls").is_some())
+            .expect("shell call missing from ATIF");
+        assert_eq!(tool["tool_calls"][0]["function_name"], "shell");
+        assert_eq!(
+            tool["tool_calls"][0]["arguments"]["command"],
+            "git log --stat -5 && git log -p -1"
+        );
+        assert_eq!(document["steps"][2]["message"], "recovered");
     }
 
     #[test]

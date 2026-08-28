@@ -33,9 +33,9 @@ pub mod system_prompt {
     /// `coder.tool_list_closing`
     pub const CODER_TOOL_LIST_CLOSING: &str = "That list is complete: a capability not on it is one you do not have, whatever a model like you usually has. Read a tool's description before assuming what it covers. Where a description says what a child agent can do, that is the child's capability and not yours. Never say you ran something you did not run.";
     /// `coder.lane.local.rust`
-    pub const CODER_LANE_LOCAL_RUST: &str = "You answer from a model running on this machine through Ollama. Nothing in this conversation leaves the machine and nothing is metered, but the context window is a fraction of a hosted model's, so keep large dumps out of the transcript. When inspecting git, survey with `--stat` or `--name-only` before `-p`; a full patch dumped early is re-sent every later round.";
+    pub const CODER_LANE_LOCAL_RUST: &str = "You answer from a model running on this machine through Ollama. Nothing in this conversation leaves the machine and nothing is metered, but the context window is a fraction of a hosted model's, so keep large dumps out of the transcript. Output tokens are minutes, not dollars: prefer fewer, larger, quieter rounds. When inspecting git, survey with `--stat` or `--name-only` before `-p`; a full patch dumped early is re-sent every later round.";
     /// `coder.lane.thread`
-    pub const CODER_LANE_THREAD: &str = "You answer through the OpenAgents inference proxy, on a thread opened for this session. Every round of tool calls re-sends the whole conversation to a metered model, so batch independent commands into one call and keep large dumps out of the transcript. When inspecting git, survey with `--stat` or `--name-only` before `-p`; a full patch dumped early is re-sent every later round.";
+    pub const CODER_LANE_THREAD: &str = "You answer through the OpenAgents inference proxy, on a thread opened for this session. Every round of tool calls re-sends the whole conversation to a metered model, so batch independent commands into one call and keep large dumps out of the transcript. Output tokens are money: stay terse. When inspecting git, survey with `--stat` or `--name-only` before `-p`; a full patch dumped early is re-sent every later round.";
     /// `coder.checkpoints`
     pub const CODER_CHECKPOINTS: &str = "Record your work as you go with the `checkpoint` tool: after an issue lands green, when you hit and work around a blocker, when you switch to different work, and always before the turn's tool budget runs low. A checkpoint says which issue or task you were on, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. The note is what whoever picks this session up reads first -- including a future session of yours after this one ends mid-work.";
     /// `coder.budget`
@@ -82,7 +82,7 @@ pub mod tool_descriptions {
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     (
         "system-prompt",
-        "sha256:fa726224d5deea4b03055bbd70904b72a57eed99384b5bee4b77c306bb8821ab",
+        "sha256:3922e44fb388ee8510195cf35fc68f603bc0a7e6a6532bf4c73957316eeca239",
     ),
     (
         "tool-descriptions",

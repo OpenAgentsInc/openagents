@@ -309,6 +309,16 @@ Two flags matter for the lanes below the live one:
   2: both trials died with the inference proxy unreachable before any
   tool call. Those rows stay in the chain. They are lane degradation, not
   a T2 verdict (`docs/coder/reviews/2026-08-28-t2-stat-before-p.md`).
+- Headless ATIF export: `oa coder --headless` writes ATIF-v1.7 to
+  `~/.openagents/exports` at turn end (Harbor copies it to
+  `trajectory.json`). Restored 2026-08-28 so T1–T3 could be scored from
+  tool argv after the switch off piping `/export` into `--plain`.
+- T1–T3 re-measured 2026-08-28 on `git-leak-recovery`, proxy
+  `glm-5.3-flash` (`docs/coder/reviews/2026-08-28-t1-t2-t3-git-leak.md`).
+  All four trials accepted. T1-off +17522 billed tokens vs with-T1
+  (51485 vs 33963). T2 changed argv (`--stat` first vs `git show` first)
+  without a token win. T3 lane sentences cut completion 2315 → 1365.
+  T4 stays `proposed` (cross-section tasks 2–3 not rerun).
 - Native Coder Flash `tb2-cross-section`, proxy lane, `glm-5.3-flash`: 7 of
   12 accepted, 0.583 success over 12 graded trials, 0 ungraded, 4243.4s,
   gate passed (2026-08-28, #143, Harbor job

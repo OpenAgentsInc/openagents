@@ -5,7 +5,7 @@
             "file": "system-prompt.v1.json",
             "schema": "openagents.coder_surface.system_prompt.v1",
             "keys": 14,
-            "digest": "sha256:fa726224d5deea4b03055bbd70904b72a57eed99384b5bee4b77c306bb8821ab"
+            "digest": "sha256:3922e44fb388ee8510195cf35fc68f603bc0a7e6a6532bf4c73957316eeca239"
           },
       "tool-descriptions": {
             "file": "tool-descriptions.v1.json",

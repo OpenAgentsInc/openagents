@@ -19,9 +19,9 @@ provider prefix is dropped: `openai/gpt-5.6-luna` becomes catalog id
 
 The adapter uploads the native binary built from the working tree by
 `bench/run-suite.sh`, so the run measures the CLI that ships through the
-installer. The trajectory is the coder's own ATIF export: the run pipes
-`/export` after the instruction and copies the newest export to the trial's
-`trajectory.json`.
+installer. The trajectory is the coder's own ATIF export: `--headless` writes
+ATIF-v1.7 to `~/.openagents/exports` at turn end, and this adapter copies
+the newest export to the trial's `trajectory.json`.
 
 When `OPENAGENTS_GYM_RUN_ID` is set (`bench/run-suite.sh` registers the run
 against the Gym lifecycle API, OpenAgentsInc/openagents#38), the adapter

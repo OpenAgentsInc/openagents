@@ -85,6 +85,10 @@ with exit 3.
 Round count drives metered cost: prompt tokens scale with rounds times
 transcript size, not with work done. The same task has been done in 6 model
 calls and in 15; the 15 cost three times the input tokens.
+Measured 2026-08-28 on `git-leak-recovery`, proxy `glm-5.3-flash`: with T1,
+33963 billed tokens and 14 ATIF steps; T1 stripped, 51485 billed tokens
+(+52%) and 16 steps. Flash still batched most shells without the sentence.
+Review: `docs/coder/reviews/2026-08-28-t1-t2-t3-git-leak.md`.
 **Provenance:** fix-git. **Detection:** review reads rounds and prompt
 tokens from the ATIF trajectory; regression shows as rising
 rounds-per-accepted-outcome on an unchanged suite.
@@ -94,20 +98,28 @@ rounds-per-accepted-outcome on an unchanged suite.
 Never dump a full patch into the transcript to find out which file changed.
 Survey with `--stat`, then read the one file in question. A patch dumped
 early is re-sent every round after.
+Measured 2026-08-28 on `git-leak-recovery`, proxy `glm-5.3-flash`: with T2,
+`git show --stat <commit>` then `git show` (`trial` step-6); T2 stripped,
+first inspect is `git show 6b4c75c` with no `--stat`. Both accepted.
+Tokens did not drop with T2 (33963 vs 29654 on n=1). The habit is
+confirmed; a cost win is not. Review:
+`docs/coder/reviews/2026-08-28-t1-t2-t3-git-leak.md`.
 **Provenance:** fix-git (two `git log -p` dumps re-sent ~12 times).
 **Detection:** review flags full-patch dumps followed by further rounds.
 Staged 2026-08-28 on `coder.lane.thread`, `coder.lane.local.rust`,
-`rust.shell`, and `rust.bash`. The first Flash `tb2-quick` after-rows
-(`row:tb2-quick#2026-08-28T03:06:00.236Z`,
-`row:tb2-quick#2026-08-28T03:18:11.677Z`) are 0 of 2 because the
-inference proxy was unreachable; T2 is unmeasured, not refuted. Review:
-`docs/coder/reviews/2026-08-28-t2-stat-before-p.md`.
+`rust.shell`, and `rust.bash`.
 
 ### T3. Verbosity guidance is lane-aware — `adopted`
 
 On metered lanes, output tokens are money; on the local lane they are
 minutes (17k output tokens ≈ 18.5 wall-clock minutes at local generation
 speed). Fewer, larger, quieter rounds on local; terse output everywhere.
+Staged 2026-08-28 as explicit lane sentences (`coder.lane.thread`:
+“Output tokens are money: stay terse.”; `coder.lane.local.rust`:
+“Output tokens are minutes, not dollars…”). Measured on proxy Flash
+`git-leak-recovery`: completion 2315 → 1365 (−41%) after the sentence;
+prompt and total billed tokens rose. Review:
+`docs/coder/reviews/2026-08-28-t1-t2-t3-git-leak.md`.
 **Provenance:** fix-git. **Detection:** review compares output tokens and
 wall clock against lane norms in the results store.
 
@@ -120,7 +132,9 @@ relationship is how a plausible wrong resolution passes local inspection
 and fails the verifier.
 **Provenance:** fix-git. **Detection:** review question on version-control
 tasks. Promote to `adopted` when a cross-section run shows the habit
-correlating with acceptance on tasks 1–3.
+correlating with acceptance on tasks 1–3. The 2026-08-28 packet ran task
+1 only (`git-leak-recovery` accepted in four Flash trials); tasks 2–3
+were not rerun, so this stays `proposed`.
 
 ## Measurement
 

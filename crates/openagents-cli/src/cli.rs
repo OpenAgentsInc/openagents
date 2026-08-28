@@ -4718,6 +4718,20 @@ async fn run_headless_coder(
     // ends by saying which of the two happened. `close()` here instead would
     // file this run as a cancellation however it went (issue #106).
     let revoked = runtime.finish().await;
+    // Harbor copies the newest ~/.openagents/exports/*.json to trajectory.json.
+    // Write it before any `fail`, so a turn that ran tools and then died still
+    // leaves argv for T1/T2 scoring.
+    {
+        let (repo, branch) = crate::coder::export::git_info()
+            .unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
+        let model = runtime.last_model.as_deref().unwrap_or("unknown");
+        let exported =
+            crate::coder::export::export_runtime_messages(&runtime.messages, model, &repo, &branch);
+        println!(
+            "exported {} steps to {} (copied: {})",
+            exported.steps, exported.path, exported.copied
+        );
+    }
     // A turn that could not reach a model is a failure, and says so in the
     // shape every other refusal here uses.
     let result = match result {
