@@ -4,6 +4,7 @@ substitutions:
   _IMAGE: us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-coder-api
   _TAG: latest
 timeout: 1200s
+serviceAccount: projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com
 options:
   machineType: E2_HIGHCPU_8
   logging: CLOUD_LOGGING_ONLY
