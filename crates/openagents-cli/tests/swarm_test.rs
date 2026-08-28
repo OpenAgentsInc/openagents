@@ -10,8 +10,8 @@
 
 use openagents_cli::swarm::{
     DEFAULT_ALIVE_AFTER_MS, MAXIMUM_BODY_BYTES, MESSAGE_SCHEMA, Mailbox, REGISTRATION_SCHEMA,
-    Registration, SwarmMessage, SwarmState, list, load_registration, read_inbox, register, send,
-    set_status, unregister,
+    Registration, SwarmMessage, SwarmState, list, load_registration, read_inbox, register,
+    registration_path, send, set_status, unregister,
 };
 use openagents_cli::tools::status_from_checkpoint;
 use std::path::PathBuf;
@@ -486,7 +486,7 @@ fn a_parent_sends_to_a_child_by_short_id() {
 }
 
 #[test]
-fn broadcast_to_children_of_reports_a_killed_child_as_not_reached() {
+fn broadcast_to_children_of_queues_for_a_killed_child_and_names_it_stale() {
     let home = tempfile::tempdir().unwrap();
     let path = home.path().to_path_buf();
     let live_dir = tempfile::tempdir().unwrap();
@@ -524,19 +524,28 @@ fn broadcast_to_children_of_reports_a_killed_child_as_not_reached() {
         None,
     )
     .unwrap();
-    assert_eq!(report.deliveries.len(), 1, "only the live child");
-    assert_eq!(report.deliveries[0].to, "parent-a-child-1");
-    assert_eq!(report.undeliverable.len(), 1, "the killed child is named");
-    assert_eq!(report.undeliverable[0].to, "parent-a-child-2");
-    assert!(
-        report.undeliverable[0].why.contains("stale"),
-        "killed is stale, not silently skipped: {}",
-        report.undeliverable[0].why
+    assert_eq!(
+        report.deliveries.len(),
+        2,
+        "live and stale children both receive"
     );
-    assert_eq!(Mailbox::at(live_dir.path()).messages().unwrap().len(), 1);
+    assert_eq!(report.deliveries[0].to, "parent-a-child-1");
+    assert_eq!(report.deliveries[0].state, "live");
+    assert_eq!(report.deliveries[1].to, "parent-a-child-2");
+    assert_eq!(
+        report.deliveries[1].state, "stale",
+        "the killed child queues, flagged stale at send"
+    );
     assert!(
-        Mailbox::at(dead_dir.path()).messages().unwrap().is_empty(),
-        "a stale child must not receive the broadcast"
+        report.deliveries[1].stale_at_send,
+        "the flag rides the report"
+    );
+    assert_eq!(report.undeliverable.len(), 0, "nothing is refused");
+    assert_eq!(Mailbox::at(live_dir.path()).messages().unwrap().len(), 1);
+    assert_eq!(
+        Mailbox::at(dead_dir.path()).messages().unwrap().len(),
+        1,
+        "queued mail waits in the stale child's inbox"
     );
 }
 
@@ -1026,6 +1035,7 @@ async fn swarm_send(
             created_at_ms: 0,
             delivered_at_ms: None,
             read_at_ms: None,
+            stale_when_queued: None,
         };
         session
             .note(vec![openagents_cli::runtime::ThreadRecord::swarm_message(
@@ -2154,4 +2164,131 @@ async fn a_depth_refusal_names_the_offending_thread() {
         "the refusal names the offending thread: {}",
         refused.output
     );
+}
+
+// ─────────────────────── queued mail: delivery to stale sessions (#283)
+
+#[tokio::test]
+async fn mail_to_a_stale_session_queues_and_flags_itself() {
+    let mut pair = bound_pair();
+    // Re-register B under a pid that does not exist, so it reads stale while
+    // still registered (the test harness pids are alive by construction).
+    let a_home = pair.a.tools.swarm().unwrap().home.clone();
+    register(
+        std::path::Path::new(&a_home),
+        &registration("session-b", u32::MAX - 11, pair.b_dir.join("inbox.jsonl")),
+    )
+    .unwrap();
+    let b_registration = load_registration(std::path::Path::new(&a_home), "session-b")
+        .unwrap()
+        .expect("b is registered");
+    assert!(
+        b_registration.stale_at(),
+        "the dead pid reads stale: {:?}",
+        b_registration.state()
+    );
+
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "for when you wake"}),
+        ))
+        .await;
+    assert!(
+        !sent.is_error,
+        "a stale but registered recipient queues the mail: {}",
+        sent.output
+    );
+    let report: serde_json::Value = serde_json::from_str(&sent.output).unwrap();
+    assert_eq!(report["deliveries"][0]["state"], "stale");
+    assert_eq!(report["deliveries"][0]["stale_at_send"], true);
+
+    // The queued message waits unread in B's inbox, carrying the flag and
+    // its arrival timestamp.
+    let queued = Mailbox::at(&pair.b_dir).unread().unwrap();
+    assert_eq!(queued.len(), 1, "the message queues, not refuses");
+    assert_eq!(queued[0].stale_when_queued, Some(true));
+    assert!(queued[0].delivered_at_ms.is_some(), "arrival is stamped");
+}
+
+#[tokio::test]
+async fn an_unregistered_destination_still_refuses_distinctly() {
+    let mut pair = bound_pair();
+    let b_home = pair.b.tools.swarm().unwrap().home.clone();
+    // Drop B's registration entirely: neither live nor stale-queued.
+    std::fs::remove_file(registration_path(
+        std::path::Path::new(&b_home),
+        "session-b",
+    ))
+    .unwrap();
+
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "nowhere to land"}),
+        ))
+        .await;
+    assert!(sent.is_error, "an unregistered destination must refuse");
+    assert!(
+        sent.output.contains("no session `session-b` is registered"),
+        "the refusal is the unregistered one, distinct from queued mail: {}",
+        sent.output
+    );
+}
+
+#[tokio::test]
+async fn a_woken_recipient_sees_queued_mail_with_both_timestamps() {
+    let mut pair = bound_pair();
+    let a_home = pair.a.tools.swarm().unwrap().home.clone();
+    let b_registration_path = registration_path(std::path::Path::new(&a_home), "session-b");
+    // B goes stale, A queues mail, then B "wakes": the heartbeat refresh
+    // makes it live again without touching the queued message.
+    std::fs::remove_file(&b_registration_path).unwrap();
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "offline note"}),
+        ))
+        .await;
+    assert!(sent.is_error, "unregistered refuses, so re-register first");
+    register(
+        std::path::Path::new(&a_home),
+        &registration("session-b", u32::MAX - 9, pair.b_dir.join("inbox.jsonl")),
+    )
+    .unwrap();
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "offline note"}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&sent.output).unwrap()["deliveries"][0]["stale_at_send"],
+        true
+    );
+
+    // B wakes: its next drain injects the queued mail, and the projection
+    // names it as queued.
+    register(
+        std::path::Path::new(&a_home),
+        &registration(
+            "session-b",
+            std::process::id(),
+            pair.b_dir.join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    pair.b.drain_swarm_inbox().await;
+    let delivered = Mailbox::at(&pair.b_dir).messages().unwrap();
+    assert_eq!(delivered[0].stale_when_queued, Some(true));
+    assert!(delivered[0].delivered_at_ms.is_some());
 }

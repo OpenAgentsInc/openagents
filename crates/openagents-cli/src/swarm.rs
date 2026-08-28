@@ -168,11 +168,21 @@ impl Registration {
         }
     }
 
-    /// Deliverable: the process is alive. A message to a stale session is
-    /// refused rather than delivered into a file nobody will read —
-    /// fire-and-forget into the void is not a delivery.
+    /// Deliverable: the process is alive, or the session is stale but still
+    /// registered — mail to a stale session queues in its inbox file, which
+    /// survives the process (#283). A session that is slow is not a session
+    /// that is gone, and async work left for an offline agent is the reason
+    /// swarms exist. Only a session with no registration at all is
+    /// undeliverable.
     pub fn deliverable(&self) -> bool {
-        matches!(self.state(), SwarmState::Live)
+        true
+    }
+
+    /// Whether this session was stale at the given moment, so the recipient
+    /// can tell queued-from-offline mail from live conversation and the
+    /// sender's report can carry the same flag.
+    pub fn stale_at(&self) -> bool {
+        self.state() == SwarmState::Stale
     }
 }
 
@@ -230,15 +240,26 @@ pub struct SwarmMessage {
     pub delivered_at_ms: Option<u128>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub read_at_ms: Option<u128>,
+    /// True when this message was delivered while its recipient was stale:
+    /// queued mail (#283). The recipient sees the flag beside the arrival
+    /// timestamp, so waking mail is never mistaken for a live exchange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_when_queued: Option<bool>,
 }
 
 /// Where a delivered message lands and what it cost.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeliveryReport {
     pub to: String,
+    /// `live` for a same-moment delivery, `stale` for queued mail the
+    /// recipient will see on its next live drain (#283).
     pub state: String,
     pub message_id: String,
     pub sequence: u64,
+    /// True when the recipient's process was already gone at send time:
+    /// the message is queued in the recipient's inbox file, not refused.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stale_at_send: bool,
 }
 
 pub fn now_ms() -> u128 {
@@ -875,13 +896,12 @@ pub fn send(
                 continue;
             }
         };
-        if !registration.deliverable() {
-            undeliverable.push(Undeliverable {
-                to: target.clone(),
-                why: format!("session is {}", registration.state().as_str()),
-            });
-            continue;
-        }
+        // A stale but registered session receives queued mail (#283): the
+        // inbox file survives the process, so delivery is an append that
+        // waits for the recipient's next live drain. The report and the
+        // message both flag it, so nobody mistakes queued mail for a live
+        // exchange. Only a missing registration is undeliverable.
+        let stale_at_send = registration.stale_at();
         let mailbox = Mailbox::at(
             Path::new(&registration.inbox)
                 .parent()
@@ -902,13 +922,19 @@ pub fn send(
             created_at_ms: at_ms,
             delivered_at_ms: None,
             read_at_ms: None,
+            stale_when_queued: stale_at_send.then_some(true),
         };
         match mailbox.deliver(message) {
             Ok(sequence) => deliveries.push(DeliveryReport {
                 to: target.clone(),
-                state: SwarmState::Live.as_str().to_string(),
+                state: if stale_at_send {
+                    SwarmState::Stale.as_str().to_string()
+                } else {
+                    SwarmState::Live.as_str().to_string()
+                },
                 message_id: id.clone(),
                 sequence,
+                stale_at_send,
             }),
             Err(why) => undeliverable.push(Undeliverable {
                 to: target.clone(),
@@ -967,6 +993,7 @@ pub fn send(
         created_at_ms: at_ms,
         delivered_at_ms: None,
         read_at_ms: None,
+        stale_when_queued: None,
     });
     Ok(report)
 }
@@ -1305,6 +1332,9 @@ pub fn message_document(message: &SwarmMessage) -> serde_json::Value {
             "payload": data.payload,
         });
     }
+    if let Some(stale) = message.stale_when_queued {
+        document["stale_when_queued"] = serde_json::json!(stale);
+    }
     document
 }
 
@@ -1502,6 +1532,7 @@ mod tests {
             created_at_ms: sequence as u128,
             delivered_at_ms: Some(sequence as u128),
             read_at_ms: None,
+            stale_when_queued: None,
         }
     }
 
