@@ -757,12 +757,13 @@ pub struct CoderArgs {
     )]
     pub plain: bool,
 
-    /// Talk to a development server on this machine.
+    /// Talk to the local Rust coder API on this machine.
     ///
-    /// Shorthand for `--api-url http://localhost:<port>`; the global flag
-    /// still wins when both are given, so this adds a default rather than a
-    /// second mechanism.
-    #[arg(long, help = "Talk to a development server on this machine")]
+    /// Starts `openagents-coder-api` if none is running. Prefers port 4000;
+    /// if Phoenix already owns that port, binds 4010. The global `--api-url`
+    /// still wins when both are given. Production origin is unchanged
+    /// without this flag.
+    #[arg(long, help = "Talk to the local Rust coder API on this machine")]
     pub dev: bool,
 
     #[arg(
@@ -1581,7 +1582,10 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let session_base = if cli.api_url.is_some() || cli.profile.is_some() {
                 api_base.clone()
             } else if coder.dev {
-                format!("http://localhost:{}/api/v1", coder.dev_port)
+                match crate::coder_dev::ensure_running().await {
+                    Ok(api) => api.api_v1(),
+                    Err(error) => fail(&error.to_string()),
+                }
             } else {
                 api_base.clone()
             };

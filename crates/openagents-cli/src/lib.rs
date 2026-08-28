@@ -20,6 +20,7 @@ pub mod box_client;
 pub mod checks;
 pub mod cli;
 pub mod coder;
+pub mod coder_dev;
 pub mod composer;
 pub mod computer;
 pub mod delegate;

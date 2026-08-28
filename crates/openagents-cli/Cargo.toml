@@ -11,6 +11,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+openagents-coder-contract = { path = "../openagents-coder-contract" }
 reqwest = { workspace = true, features = ["stream"] }
 serde.workspace = true
 serde_json.workspace = true

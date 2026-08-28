@@ -1,0 +1,36 @@
+[package]
+name = "openagents-coder-api"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Local Coder inference door: catalog, threads, grants, proxy, credit."
+
+[[bin]]
+name = "openagents-coder-api"
+path = "src/main.rs"
+
+[dependencies]
+openagents-coder-contract = { path = "../openagents-coder-contract" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["json", "macros"] }
+tower-http = { version = "0.6", features = ["trace"] }
+reqwest = { workspace = true, features = ["stream", "json"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+hex = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+bytes = "1"
+http-body-util = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }

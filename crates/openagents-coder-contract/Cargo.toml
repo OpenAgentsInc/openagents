@@ -1,0 +1,11 @@
+[package]
+name = "openagents-coder-contract"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared JSON envelopes for Coder inference: catalog, threads, grants, credit, errors."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

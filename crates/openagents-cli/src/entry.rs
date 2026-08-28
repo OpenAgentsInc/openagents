@@ -16,7 +16,7 @@ use tokio::time::{sleep, timeout};
 
 use crate::coder::interactive::SessionOptions;
 
-const DEV_API_URL: &str = "http://127.0.0.1:4000";
+#[allow(dead_code)]
 const DEV_BASE_URL: &str = "http://127.0.0.1:4000/api/v1";
 
 /// Every flag this binary reads. A flag listed here does what it says or the
@@ -54,10 +54,12 @@ Commands:
 Run `openagents <command> --help` to view command options.
 
 Coder options:
-  --dev              Talk to a server on this machine at http://127.0.0.1:4000
-                     over the OpenResponses streaming surface. Starts one from
-                     ../openagents.com if none is running, and tolerates one
-                     that already is.
+  --dev              Talk to the local Rust coder API (catalog, threads,
+                     grants, proxy). Starts `openagents-coder-api` if none is
+                     running. Prefers port 4000; if Phoenix already owns it,
+                     binds 4010. Production origin is unchanged without --dev.
+                     Provider keys use the same names Phoenix uses:
+                     AI_GATEWAY_API_KEY and OPENROUTER_API_KEY.
   --lane <name>      Which model answers. `flash` and `free` are the two
                      switchable lanes, and shift+tab moves between them; each
                      resolves its model from GET /api/v1/models at open.
@@ -78,8 +80,10 @@ Coder options:
 Environment:
   OPENAGENTS_API_URL    The API origin to use. `--dev` sets it.
   OPENAGENTS_BASE_URL   The /api/v1 base to use. `--dev` sets it.
-  OPENAGENTS_API_KEY    The credential to spend. Optional if signed in.
-  OPENAGENTS_WEB_REPO   Where `--dev` looks for start_server.sh.
+  OPENAGENTS_API_KEY    The credential to spend. Optional for `--dev`.
+  AI_GATEWAY_API_KEY    Vercel AI Gateway key (same name Phoenix reads).
+  OPENROUTER_API_KEY    OpenRouter key (same name Phoenix reads).
+  OPENAGENTS_CODER_API_ENV  Optional dotenv file for those provider keys.
   ACP_REGISTRY          Where the `delegate` tool looks for installed external
                         agents (cursor, devin, opencode, ...).
 
@@ -227,14 +231,33 @@ async fn run_coder(arguments: &[String]) -> Result<(), Box<dyn std::error::Error
     let options = match parse(&arguments) {
         Ok(Parsed::Run(mut options, dev)) => {
             if dev {
-                boot_dev_server().await?;
+                // Capture a production credential before the origin switches
+                // to loopback, so a signed-in account still has a bearer.
+                // `--dev` does not require one: the local API admits a
+                // unsigned principal named `local`.
+                let existing = env::var("OPENAGENTS_API_KEY")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .or_else(|| {
+                        crate::auth::resolve_endpoint(None, None)
+                            .ok()
+                            .and_then(|endpoint| {
+                                crate::auth::CredentialStore::for_origin(&endpoint.origin)
+                                    .get_token()
+                            })
+                    });
+                let api = crate::coder_dev::ensure_running().await?;
                 // SAFETY: edition 2024 marks `set_var` unsafe because another
                 // thread reading the environment concurrently is UB. This runs
                 // before the TUI and its tokio tasks start, so no other thread
                 // exists yet.
                 unsafe {
-                    env::set_var("OPENAGENTS_API_URL", DEV_API_URL);
-                    env::set_var("OPENAGENTS_BASE_URL", DEV_BASE_URL);
+                    env::set_var("OPENAGENTS_API_URL", &api.origin);
+                    env::set_var("OPENAGENTS_BASE_URL", api.api_v1());
+                    if let Some(token) = existing {
+                        env::set_var("OPENAGENTS_API_KEY", token);
+                    }
                 }
             }
             options.dev = dev;
@@ -338,6 +361,7 @@ fn parse(arguments: &[String]) -> Result<Parsed, String> {
     Ok(Parsed::Run(options, dev))
 }
 
+#[allow(dead_code)]
 async fn boot_dev_server() -> Result<(), Box<dyn std::error::Error>> {
     let repo = web_repo()?;
     match probe_dev_server().await {
@@ -516,6 +540,15 @@ mod tests {
             classify_health_response("not an HTTP response"),
             DevServerProbe::Unreachable
         );
+    }
+
+    #[test]
+    fn dev_is_a_coder_flag() {
+        let Parsed::Run(_, dev) = parse(&["--dev".into()]).unwrap() else {
+            panic!("expected Coder options");
+        };
+        assert!(dev);
+        assert!(has_only_coder_options(&["--dev".into()]));
     }
 
     #[test]

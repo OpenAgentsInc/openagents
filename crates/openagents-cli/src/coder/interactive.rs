@@ -68,7 +68,7 @@ pub struct SessionOptions {
     /// `--reasoning`, recorded on the thread at open. `None` leaves the
     /// deployment's own default, which is a different answer from naming one.
     pub reasoning: Option<String>,
-    /// `--dev` routes to the OpenResponses streaming surface.
+    /// `--dev` talks to the local Rust coder API on this machine.
     pub dev: bool,
     /// `Some("")` resumes the most recent local session for this directory;
     /// any other value names a local session id. `None` starts a new session.
@@ -196,7 +196,32 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let mut local_store = Some(loaded.store);
     let mut session: Option<Arc<Mutex<Session>>> = None;
 
-    if let Some(token) = crate::coder::runtime::user_token() {
+    if options.dev {
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            "Local coder API. Provider keys: AI_GATEWAY_API_KEY and OPENROUTER_API_KEY.",
+        ));
+        if let Some(token) = crate::coder::runtime::user_token() {
+            let origin = crate::coder::runtime::api_base();
+            let origin = origin.trim_end_matches("/api/v1").trim_end_matches('/');
+            ui.identity = resolve_identity(origin, &Secret::new(token)).await;
+        }
+        let opened = Session::open(
+            lane.clone(),
+            &lane_name,
+            reasoning.clone(),
+            agents.clone(),
+            false,
+            tx.clone(),
+        );
+        let opened = match local_store.take() {
+            Some(store) => {
+                opened.with_local_session(store, &restored_events, options.cloud_history)
+            }
+            None => opened,
+        };
+        session = Some(Arc::new(Mutex::new(opened)));
+    } else if let Some(token) = crate::coder::runtime::user_token() {
         let endpoint = crate::auth::resolve_endpoint(None, None)?;
         let token = Secret::new(token);
         if validate_token(&endpoint.origin, &token).await.is_ok() {
@@ -209,7 +234,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 &lane_name,
                 reasoning.clone(),
                 agents.clone(),
-                options.dev,
+                false,
                 tx.clone(),
             );
             let opened = match local_store.take() {
@@ -381,7 +406,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 &lane_name,
                                 reasoning.clone(),
                                 agents.clone(),
-                                options.dev,
+                                false,
                                 tx.clone(),
                             );
                             let opened = match local_store.take() {

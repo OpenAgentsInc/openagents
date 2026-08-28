@@ -207,4 +207,15 @@ mod tests {
         let plan = find("plan").unwrap();
         assert_eq!(plan.lane(None, "free").name(), "glm-5.3-flash");
     }
+
+    #[test]
+    fn defaults_match_the_shared_contract() {
+        for agent in BUILTIN_AGENTS {
+            let contract = openagents_coder_contract::BUILTIN_AGENTS
+                .iter()
+                .find(|row| row.id == agent.id)
+                .unwrap();
+            assert_eq!(agent.default_model, contract.default_model);
+        }
+    }
 }

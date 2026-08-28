@@ -470,6 +470,9 @@ impl Session {
                     }
                 }
             }))
+            // OpenResponses is a Phoenix-only streaming surface used by tests
+            // (`dev_session`). CLI `--dev` talks to the local Rust coder API
+            // over the thread/grant/proxy hop and passes `false` here.
             .use_openresponses(dev);
         inner.reasoning = reasoning;
         inner.repository = repository();
