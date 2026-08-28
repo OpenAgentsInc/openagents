@@ -18,6 +18,37 @@ pub enum EnvAction {
     Doctor,
     /// Build or pull the pinned harbor-runner image.
     Pull,
+    /// List execution targets this machine can use.
+    List,
+    /// Provision Box VMs labeled for a Gym run.
+    Box(EnvBoxArgs),
+}
+
+/// `openagents gym env box`.
+#[derive(Args, Debug)]
+pub struct EnvBoxArgs {
+    #[command(subcommand)]
+    pub action: EnvBoxAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum EnvBoxAction {
+    /// Create N boxes labeled `gym:<run-id>`.
+    Create {
+        #[arg(long, default_value_t = 1)]
+        count: usize,
+        #[arg(long)]
+        run_id: Option<String>,
+        #[arg(long)]
+        conversation: Option<String>,
+    },
+    /// Stop boxes and release their slots.
+    Release {
+        #[arg(required = true)]
+        box_ids: Vec<String>,
+        #[arg(long)]
+        conversation: Option<String>,
+    },
 }
 
 /// The tri-state verdict of one check, before the frozen contract's pass/fail.
@@ -127,9 +158,11 @@ pub fn env_report(checks: &[GymCheck]) -> EnvReport {
 }
 
 /// Print the report and exit as the command requires.
-pub async fn run(action: EnvAction, json: bool) {
+pub async fn run(action: EnvAction, api_base: &str, token: Option<String>, json: bool) {
     match action {
         EnvAction::Pull => run_pull(json).await,
+        EnvAction::List => run_list(json).await,
+        EnvAction::Box(args) => run_env_box(args, api_base, token, json).await,
         _ => {
             let checks = probe_environment().await;
             match action {
@@ -174,7 +207,129 @@ pub async fn run(action: EnvAction, json: bool) {
                         std::process::exit(exit);
                     }
                 }
-                EnvAction::Pull => unreachable!(),
+                EnvAction::Pull | EnvAction::List | EnvAction::Box(_) => unreachable!(),
+            }
+        }
+    }
+}
+
+pub fn gym_box_label(run_id: Option<&str>) -> String {
+    match run_id {
+        Some(id) if !id.is_empty() => format!("gym:{id}"),
+        _ => "gym:unregistered".to_string(),
+    }
+}
+
+async fn run_list(json: bool) {
+    let image = harbor_runner_image_present().await;
+    let value = serde_json::json!({
+        "schema": "openagents.gym.env_targets.v1",
+        "targets": [
+            {
+                "id": "container",
+                "kind": "harbor-runner",
+                "available": image,
+                "detail": HARBOR_RUNNER_IMAGE,
+            },
+            {
+                "id": "host",
+                "kind": "host-native-harbor",
+                "available": true,
+                "detail": "documented fallback when the image is absent",
+            },
+            {
+                "id": "box",
+                "kind": "box-vm",
+                "available": true,
+                "detail": "gym env box create --run-id <id>",
+            },
+        ],
+    });
+    if json {
+        println!("{}", serde_json::to_string(&value).unwrap());
+        return;
+    }
+    println!(
+        "container  {}  {}",
+        if image { "ready" } else { "missing" },
+        HARBOR_RUNNER_IMAGE
+    );
+    println!("host       fallback  host-native Harbor");
+    println!("box        on-demand gym env box create");
+}
+
+async fn run_env_box(args: EnvBoxArgs, api_base: &str, token: Option<String>, json: bool) {
+    let client = crate::box_client::BoxClient::new(api_base, token);
+    match args.action {
+        EnvBoxAction::Create {
+            count,
+            run_id,
+            conversation,
+        } => {
+            let conversation = match client.conversation_id(conversation.as_deref()).await {
+                Ok(id) => id,
+                Err(error) => {
+                    eprintln!("openagents gym env box create: {error}");
+                    std::process::exit(1);
+                }
+            };
+            let label = gym_box_label(run_id.as_deref());
+            let n = count.max(1);
+            let mut records = Vec::new();
+            for _ in 0..n {
+                match client.create_box(&conversation, Some(&label)).await {
+                    Ok(record) => records.push(record),
+                    Err(error) => {
+                        eprintln!("openagents gym env box create: {error}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "label": label,
+                        "boxes": records,
+                    }))
+                    .unwrap()
+                );
+            } else {
+                for record in &records {
+                    println!("{}  {}  {}", record.box_id, record.state, label);
+                }
+            }
+        }
+        EnvBoxAction::Release {
+            box_ids,
+            conversation,
+        } => {
+            let conversation = match client.conversation_id(conversation.as_deref()).await {
+                Ok(id) => id,
+                Err(error) => {
+                    eprintln!("openagents gym env box release: {error}");
+                    std::process::exit(1);
+                }
+            };
+            let mut stopped = Vec::new();
+            for box_id in &box_ids {
+                match client.stop_box(&conversation, box_id).await {
+                    Ok(record) => stopped.push(record),
+                    Err(error) => {
+                        eprintln!("openagents gym env box release: {error}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({ "boxes": stopped })).unwrap()
+                );
+            } else {
+                for record in &stopped {
+                    println!("released {} ({})", record.box_id, record.state);
+                }
             }
         }
     }
@@ -714,6 +869,13 @@ mod tests {
         let (lines, exit) = diagnose(&checks);
         assert_eq!(exit, 0);
         assert!(lines.iter().all(|l| !l.contains("Fix:")));
+    }
+
+    #[test]
+    fn gym_box_label_is_run_scoped() {
+        assert_eq!(gym_box_label(Some("run-9")), "gym:run-9");
+        assert_eq!(gym_box_label(None), "gym:unregistered");
+        assert_eq!(gym_box_label(Some("")), "gym:unregistered");
     }
 
     #[test]

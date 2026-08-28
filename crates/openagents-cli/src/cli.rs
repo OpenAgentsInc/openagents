@@ -1429,7 +1429,7 @@ async fn run_gym(
         GymAction::Suite(args) => crate::gym::suite::run_suite(args.action, json),
         GymAction::Run(run) => crate::gym::run::run(run.action, api_base, token, json).await,
         GymAction::Env(env) => {
-            crate::gym::env::run(env.action, json).await;
+            crate::gym::env::run(env.action, api_base, token, json).await;
             Ok(())
         }
         GymAction::Inventory { path, out } => {
