@@ -3249,18 +3249,33 @@ fn finish_edit_in_memory(
     (body, note.to_string())
 }
 
-/// Turn a total miss into something the next call can fix: anchor on the
-/// submitted text's first line, print the file's real lines there beside the
-/// ones sent, control characters shown, count named where they differ.
+/// Turn a total miss into something the next call can fix: print the file's
+/// real lines beside the ones sent, control characters shown, count named
+/// where they differ.
+///
+/// Multi-line `oldText` anchors on its most distinctive line (rarest in the
+/// file, then longest). Early boilerplate (`let dir = ...`, closing braces)
+/// matches the wrong region so often that the side-by-side becomes a trap:
+/// the model retries from a bogus snippet. Single-line misses keep the
+/// historical first-line window so existing diagnostics stay byte-stable.
 fn diagnose_miss(content: &str, old: &str) -> Option<String> {
     let sent_lines: Vec<&str> = old.split('\n').collect();
+    let file_lines: Vec<&str> = content.split('\n').collect();
+    if sent_lines.len() <= 1 {
+        return diagnose_miss_first_line(&file_lines, &sent_lines);
+    }
+    let (sent_index, file_anchor) = distinctive_anchor(&file_lines, &sent_lines)?;
+    format_miss_report(&file_lines, &sent_lines, sent_index, file_anchor)
+}
+
+/// Historical first-line window. Used for a one-line miss, where there is no
+/// later line to prefer.
+fn diagnose_miss_first_line(file_lines: &[&str], sent_lines: &[&str]) -> Option<String> {
     let first_line = *sent_lines.first()?;
     let trimmed_first = first_line.trim();
     if trimmed_first.is_empty() {
         return None;
     }
-
-    let file_lines: Vec<&str> = content.split('\n').collect();
     let wanted = collapse_escaped_backslashes(trimmed_first);
     let mut anchor = None;
     for (index, line) in file_lines.iter().enumerate() {
@@ -3280,17 +3295,13 @@ fn diagnose_miss(content: &str, old: &str) -> Option<String> {
         "Closest region for the first submitted line (file line {}):\n",
         anchor + 1
     );
-    report.push_str(
-        "file shows vs you sent (backslashes doubled so the count is visible):
-",
-    );
+    report.push_str("file shows vs you sent (backslashes doubled so the count is visible):\n");
     for (step, file_index) in (window_start..window_end).enumerate() {
         let file_side = reveal(file_lines[file_index]);
         let sent_side = reveal(sent_lines.get(step).copied().unwrap_or(""));
         let marker = if file_side == sent_side { " " } else { "!" };
         report.push_str(&format!(
-            "{marker} {:>4} | {:<60} | {}
-",
+            "{marker} {:>4} | {:<60} | {}\n",
             file_index + 1,
             cut(&file_side, 60),
             cut(&sent_side, 40)
@@ -3298,8 +3309,7 @@ fn diagnose_miss(content: &str, old: &str) -> Option<String> {
     }
     for line in sent_lines.iter().skip(window_end - window_start) {
         report.push_str(&format!(
-            "      . | {:<60} | {}
-",
+            "      . | {:<60} | {}\n",
             " ".repeat(0),
             cut(&reveal(line), 40)
         ));
@@ -3308,6 +3318,101 @@ fn diagnose_miss(content: &str, old: &str) -> Option<String> {
         "Your line 1 differs from file line {} first at column {}; repair `oldText` from what the file shows.",
         anchor + 1,
         first_diff_column(file_lines[anchor], first_line)
+    ));
+    Some(report)
+}
+
+/// Pick the submitted line that is rarest in the file, then longest, and the
+/// file line it matches. Lines that never appear cannot anchor a region.
+fn distinctive_anchor(file_lines: &[&str], sent_lines: &[&str]) -> Option<(usize, usize)> {
+    let mut best: Option<(u64, usize, usize)> = None;
+    for (sent_index, sent) in sent_lines.iter().enumerate() {
+        let wanted = collapse_escaped_backslashes(sent.trim());
+        if wanted.is_empty() {
+            continue;
+        }
+        // Count only file lines that contain this submitted line. The reverse
+        // (`wanted.contains(candidate)`) makes a long unique line look common
+        // because it contains every short brace and identifier in the file.
+        let matches: Vec<usize> = file_lines
+            .iter()
+            .enumerate()
+            .filter_map(|(index, line)| {
+                let candidate = collapse_escaped_backslashes(line.trim());
+                if candidate.is_empty() {
+                    return None;
+                }
+                if candidate.contains(&wanted) {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if matches.is_empty() {
+            continue;
+        }
+        // Rarity first (unique beats common), then length. The later of two
+        // equal scores wins so a fixture tail beats an equally-rare opener.
+        let rarity = u64::MAX / matches.len() as u64;
+        let score = rarity.saturating_add(wanted.len() as u64);
+        let file_index = matches[0];
+        match best {
+            Some((best_score, _, _)) if score < best_score => {}
+            _ => best = Some((score, sent_index, file_index)),
+        }
+    }
+    best.map(|(_, sent_index, file_index)| (sent_index, file_index))
+}
+
+fn format_miss_report(
+    file_lines: &[&str],
+    sent_lines: &[&str],
+    sent_index: usize,
+    file_anchor: usize,
+) -> Option<String> {
+    let sent_line = *sent_lines.get(sent_index)?;
+    let window_start = file_anchor.saturating_sub(2);
+    let after = sent_lines.len() - sent_index;
+    let window_end = (file_anchor + after.max(3)).min(file_lines.len());
+
+    let mut report = format!(
+        "Closest region for submitted line {} (file line {}):\n",
+        sent_index + 1,
+        file_anchor + 1
+    );
+    report.push_str("file shows vs you sent (backslashes doubled so the count is visible):\n");
+    for file_index in window_start..window_end {
+        let file_side = reveal(file_lines[file_index]);
+        let sent_row = (file_index + sent_index).checked_sub(file_anchor);
+        let sent_side = sent_row
+            .and_then(|index| sent_lines.get(index).copied())
+            .unwrap_or("");
+        let marker = if file_side == reveal(sent_side) {
+            " "
+        } else {
+            "!"
+        };
+        report.push_str(&format!(
+            "{marker} {:>4} | {:<60} | {}\n",
+            file_index + 1,
+            cut(&file_side, 60),
+            cut(&reveal(sent_side), 40)
+        ));
+    }
+    let last_paired_sent = sent_index + (window_end - file_anchor);
+    for line in sent_lines.iter().skip(last_paired_sent) {
+        report.push_str(&format!(
+            "      . | {:<60} | {}\n",
+            " ".repeat(0),
+            cut(&reveal(line), 40)
+        ));
+    }
+    report.push_str(&format!(
+        "Your line {} differs from file line {} first at column {}; repair `oldText` from what the file shows.",
+        sent_index + 1,
+        file_anchor + 1,
+        first_diff_column(file_lines[file_anchor], sent_line)
     ));
     Some(report)
 }
@@ -4552,6 +4657,54 @@ mod defect_tests {
             before,
             "a refused edit wrote to the file"
         );
+    }
+
+    /// Multi-line misses used to key on the first submitted line. Early lines
+    /// are boilerplate (`let dir = ...`) that appear all over the file, so the
+    /// side-by-side landed on a struct doc instead of the fixture the model
+    /// was aiming at. Distinctive-line alignment reports the rare line.
+    #[test]
+    fn a_multiline_miss_aligns_on_the_distinctive_line_not_the_first() {
+        let file = "\
+/// Recalled history.
+pub excerpt: String
+let dir = tempfile::tempdir().unwrap();
+let dir = tempfile::tempdir().unwrap();
+fn the_step_48_49_shape_resolves_by_recall_not_reexecution() {
+    let needle = r#\"cap)}]}\"#;
+}
+";
+        let old = "\
+let dir = tempfile::tempdir().unwrap();
+    let needle = r#\"cap)}]}\"#;
+";
+        let report = diagnose_miss(file, old).expect("a miss has a region");
+        assert!(
+            report.contains("the_step_48_49_shape_resolves_by_recall_not_reexecution")
+                || report.contains("cap)}]}\"#"),
+            "the region must be the fixture, not the struct docs: {report}"
+        );
+        assert!(
+            !report.contains("pub excerpt: String"),
+            "boilerplate first-line alignment leaked the struct docs: {report}"
+        );
+        assert!(
+            report.contains("submitted line 2") || report.contains("Your line 2"),
+            "the distinctive line is the second submitted line: {report}"
+        );
+    }
+
+    /// One-line misses keep the historical first-line window so existing
+    /// diagnostics do not change shape.
+    #[test]
+    fn a_single_line_miss_still_names_line_1() {
+        let file = "alpha\nbeta\ngamma\n";
+        let report = diagnose_miss(file, "bet").expect("substring match");
+        assert!(
+            report.contains("Closest region for the first submitted line"),
+            "{report}"
+        );
+        assert!(report.contains("Your line 1"), "{report}");
     }
 
     /// The other refusal. Text that is not there cannot be replaced, and the
