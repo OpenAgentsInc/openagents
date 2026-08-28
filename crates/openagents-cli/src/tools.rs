@@ -977,7 +977,7 @@ impl HarnessToolRegistry {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks."},
+                        "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks. Also accepts an array of message ids: exactly those messages are stamped read and returned — all or nothing on unknown ids, idempotent on already-read ones — and everything else stays untouched, ignoring the filters and the drain cap."},
                         "mute": {"type": "string", "description": "Stop injecting mail from this session id. Refuses an unknown id, so a typo cannot look like a mute."},
                         "unmute": {"type": "string", "description": "Resume injecting mail from this session id; the retained back catalog returns on the next drain."},
                         "sender": {"type": "string", "description": "Only messages from this session id."},
@@ -3178,10 +3178,48 @@ fn answer_swarm_inbox(
         }
         mute_changed.push(format!("unmuted {target}"));
     }
-    let drain = arguments
-        .get("drain")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    let drain = arguments.get("drain");
+    // `drain` is true, false, or a list of message ids: naming ids drains
+    // exactly those messages — all or nothing on unknown ids, idempotent on
+    // already-read ones — and leaves every other message untouched (#288).
+    // A named-id drain ignores the filters: the ids are the selection.
+    let drain_ids: Option<Vec<String>> = drain.and_then(|value| value.as_array()).map(|ids| {
+        ids.iter()
+            .filter_map(|value| value.as_str().map(str::to_string))
+            .collect()
+    });
+    if let Some(ids) = &drain_ids {
+        if ids.len() != drain.and_then(|value| value.as_array()).map_or(0, Vec::len) {
+            return (
+                "Every entry of `drain` must be a message id string, like the `id` a peek \
+                 returned."
+                    .to_string(),
+                true,
+            );
+        }
+        match crate::swarm::drain_by_ids(binding, ids) {
+            Ok(messages) => {
+                let mut document = serde_json::json!({
+                    "schema": "openagents.swarm.inbox.v1",
+                    "source": "swarm_inbox",
+                    "drained": true,
+                    "by_id": true,
+                    "deferred": 0,
+                    "muted": 0,
+                    "messages": messages
+                        .iter()
+                        .map(crate::swarm::message_document)
+                        .collect::<Vec<_>>(),
+                });
+                if !mute_changed.is_empty() {
+                    document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
+                }
+                return (document.to_string(), false);
+            }
+            Err(why) => return (why, true),
+        }
+    }
+    let drain = drain.and_then(|value| value.as_bool()).unwrap_or(true);
     // The filters narrow what a read sees, independently and composable with
     // mute: a filtered drain stamps only what it returns (#284).
     let filter = crate::swarm::InboxFilter {

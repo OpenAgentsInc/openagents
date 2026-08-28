@@ -1365,6 +1365,59 @@ pub fn drain_turn_filtered(
     Ok(plan)
 }
 
+/// Drain exactly the messages named by id: stamp them read, return them in
+/// file order, leave everything else untouched. The precise instrument next
+/// to the capped drain — a batch holding a `reply_expected` message can take
+/// that one message and leave the rest for turns that can answer them.
+///
+/// All or nothing: one unknown id refuses the whole call before anything is
+/// stamped, because a drain that silently skipped a name would return a
+/// success carrying an unread message the caller believes was read. An
+/// already-read id is an idempotent no-op — the message is returned
+/// unchanged, its first read stamp intact. An id from a muted sender still
+/// drains: the mute quiets a sender's stream, not a message the caller
+/// named by id.
+pub fn drain_by_ids(binding: &SwarmBinding, ids: &[String]) -> Result<Vec<SwarmMessage>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mailbox = Mailbox::at(&binding.session_directory);
+    let messages = mailbox.messages()?;
+    let mut sequences = Vec::with_capacity(ids.len());
+    for id in ids {
+        let message = messages
+            .iter()
+            .find(|message| &message.id == id)
+            .ok_or_else(|| {
+                format!(
+                    "no message `{id}` exists in this inbox, so nothing was drained: stamping \
+                 the rest would pretend a message was read"
+                )
+            })?;
+        sequences.push(
+            message
+                .sequence
+                .expect("a delivered message carries its inbox sequence"),
+        );
+    }
+    // `mark_read_sequences` stamps only unread lines, so an already-read id
+    // keeps its first stamp — the idempotent no-op the contract promises.
+    // The messages are re-read after the stamp so the returned copies carry
+    // the read stamp this drain itself just wrote; the pre-stamp snapshots
+    // would answer "unread" about a drain that happened.
+    mailbox.mark_read_sequences(&sequences)?;
+    let stamped = mailbox.messages()?;
+    Ok(sequences
+        .iter()
+        .filter_map(|sequence| {
+            stamped
+                .iter()
+                .find(|message| message.sequence == Some(*sequence))
+        })
+        .cloned()
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

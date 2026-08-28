@@ -1751,3 +1751,198 @@ async fn a_sender_filter_narrows_independently_of_mute() {
     let document: serde_json::Value = serde_json::from_str(&both.output).unwrap();
     assert_eq!(document["total_matches"], 2);
 }
+
+// ───────────────────────────── selective drain: drain accepts message ids (#288)
+
+#[tokio::test]
+async fn drain_by_ids_stamps_exactly_the_named_messages() {
+    let mut pair = bound_pair();
+    for body in ["one", "two", "three"] {
+        let sent = pair
+            .a
+            .tools
+            .execute_tool(&tool_call(
+                "swarm_send",
+                serde_json::json!({"to": "session-b", "body": body}),
+            ))
+            .await;
+        assert!(!sent.is_error, "{} {}", body, sent.output);
+    }
+    let peek = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": false}),
+        ))
+        .await;
+    assert!(!peek.is_error, "{}", peek.output);
+    let document: serde_json::Value = serde_json::from_str(&peek.output).unwrap();
+    let ids: Vec<String> = document["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|message| message["id"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(ids.len(), 3);
+
+    // Take the middle message only.
+    let taken = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": [ids[1]]}),
+        ))
+        .await;
+    assert!(!taken.is_error, "{}", taken.output);
+    let taken_doc: serde_json::Value = serde_json::from_str(&taken.output).unwrap();
+    let returned = taken_doc["messages"].as_array().unwrap();
+    assert_eq!(
+        returned.len(),
+        1,
+        "only the named message returns: {}",
+        taken.output
+    );
+    assert_eq!(returned[0]["id"], serde_json::json!(ids[1]));
+    assert_eq!(taken_doc["by_id"], serde_json::json!(true));
+
+    // The other two stay unread, in order, untouched.
+    let unread: Vec<String> = Mailbox::at(&pair.b_dir)
+        .unread()
+        .unwrap()
+        .iter()
+        .map(|message| message.body.clone())
+        .collect();
+    assert_eq!(unread, vec!["one".to_string(), "three".to_string()]);
+}
+
+#[tokio::test]
+async fn drain_by_ids_refuses_an_unknown_id_without_stamping_anything() {
+    let mut pair = bound_pair();
+    for body in ["one", "two"] {
+        let sent = pair
+            .a
+            .tools
+            .execute_tool(&tool_call(
+                "swarm_send",
+                serde_json::json!({"to": "session-b", "body": body}),
+            ))
+            .await;
+        assert!(!sent.is_error, "{} {}", body, sent.output);
+    }
+    let peek = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": false}),
+        ))
+        .await;
+    let document: serde_json::Value = serde_json::from_str(&peek.output).unwrap();
+    let real_id = document["messages"][0]["id"].as_str().unwrap().to_string();
+
+    let refused = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": [real_id, "msg_does_not_exist"]}),
+        ))
+        .await;
+    assert!(refused.is_error, "one unknown id refuses the whole call");
+    assert!(
+        refused.output.contains("msg_does_not_exist"),
+        "the refusal names the id: {}",
+        refused.output
+    );
+    assert_eq!(
+        Mailbox::at(&pair.b_dir).unread().unwrap().len(),
+        2,
+        "nothing was stamped by a refused drain"
+    );
+}
+
+#[tokio::test]
+async fn drain_by_ids_is_idempotent_on_an_already_read_message() {
+    let mut pair = bound_pair();
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "once"}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+    let peek = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": false}),
+        ))
+        .await;
+    let document: serde_json::Value = serde_json::from_str(&peek.output).unwrap();
+    let id = document["messages"][0]["id"].as_str().unwrap().to_string();
+
+    let first = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": [id]}),
+        ))
+        .await;
+    assert!(!first.is_error, "{}", first.output);
+    let first_doc: serde_json::Value = serde_json::from_str(&first.output).unwrap();
+    let first_stamp = first_doc["messages"][0]["read_at_ms"].clone();
+    assert!(
+        first_stamp.is_u64(),
+        "the first drain stamps: {}",
+        first.output
+    );
+
+    let again = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": [id]}),
+        ))
+        .await;
+    assert!(!again.is_error, "{}", again.output);
+    let again_doc: serde_json::Value = serde_json::from_str(&again.output).unwrap();
+    assert_eq!(
+        again_doc["messages"][0]["read_at_ms"], first_stamp,
+        "the second drain returns the message with its first stamp: {}",
+        again.output
+    );
+}
+
+#[tokio::test]
+async fn drain_by_an_empty_list_is_a_no_op_peek() {
+    let mut pair = bound_pair();
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "still there"}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+    let empty = pair
+        .b
+        .tools
+        .execute_tool(&tool_call("swarm_inbox", serde_json::json!({"drain": []})))
+        .await;
+    assert!(!empty.is_error, "{}", empty.output);
+    let document: serde_json::Value = serde_json::from_str(&empty.output).unwrap();
+    assert_eq!(document["messages"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        Mailbox::at(&pair.b_dir).unread().unwrap().len(),
+        1,
+        "an empty id list drains nothing and stamps nothing"
+    );
+}

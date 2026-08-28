@@ -73,7 +73,7 @@ pub mod tool_descriptions {
     /// `rust.swarm_send`
     pub const RUST_SWARM_SEND: &str = "Deliver one message to another session on this machine. `to` is a session id, `role:children-of:<id>`, or `all`. `body` is the text. `data` attaches one structured payload beside the prose: {\"content_type\": \"application/json\", \"payload\": \"…\"}, both fields required, delivered verbatim and visible to the recipient with its content type. Body plus payload share the 256 KiB cap, and a payload alone is a message. `kind` is question, answer, status, handoff, or broadcast (default status). `reply_expected` asks the recipient to spend a turn answering. Optional `thread` continues a chain. Costs one from this session's hourly send budget (60/hour). Refuses: an empty body, a self-send, an unknown kind, a body over 256 KiB, an unregistered or stale destination, a sender that has spent the hourly budget, and a reply-expected chain deeper than the cap (default 2; the refusal names the cap). A muted neighbor is still deliverable; mute only silences what this session reads.";
     /// `rust.swarm_inbox`
-    pub const RUST_SWARM_INBOX: &str = "Read this session's swarm inbox. `drain` true (the default) stamps the returned messages read, up to eight per call; the rest stay unread for the next turn and are never dropped. `drain` false is a peek. `mute` names a session id whose mail this session will no longer inject; `unmute` restores it, and the retained back catalog returns on the next drain — nothing is ever deleted. Mute and unmute refuse a session id that is not registered, so a typo cannot look like a mute. Muted senders are omitted from reads and stay unread. Costs nothing against the send budget. Refuses a gapped inbox (a missing sequence is a lost message). Messages arrive as tool results, never as user speech.";
+    pub const RUST_SWARM_INBOX: &str = "Read this session's swarm inbox. `drain` true (the default) stamps the returned messages read, up to eight per call; the rest stay unread for the next turn and are never dropped. `drain` false is a peek and reports `total_matches` even beyond the cap. `drain` also accepts an array of message ids: exactly those messages are stamped read and returned, all or nothing on unknown ids, idempotent on already-read ones, the drain cap and the filters not applying. Filters narrow a read independently: `sender`, `kind`, and `thread` (the whole reply chain closing on that id), `unread_only` defaulting true — a peek with `unread_only: false` reads history, and a drain refuses it because a drain never re-injects read mail. A filtered drain stamps only what it returns. `mute` names a session id whose mail this session will no longer inject; `unmute` restores it, and the retained back catalog returns on the next drain — nothing is ever deleted. Mute and unmute refuse a session id that is not registered, so a typo cannot look like a mute. Muted senders are omitted from reads and stay unread. Costs nothing against the send budget. Refuses a gapped inbox (a missing sequence is a lost message). Messages arrive as tool results, never as user speech.";
 }
 
 /// Every staged surface and the digest of the artifact this was built from.
@@ -86,7 +86,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:f0f03d5661430b919f151332bdbeee019be091a691b5e7d32c51468982f74d0c",
+        "sha256:d205591fc0573aed8c620c0008dfa124c51293e76f520084ade804668001fee1",
     ),
     (
         "catalog-lines",
