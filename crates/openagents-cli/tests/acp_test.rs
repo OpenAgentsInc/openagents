@@ -444,6 +444,65 @@ for line in sys.stdin:
 }
 
 #[tokio::test]
+async fn devin_browser_auth_is_skipped_and_session_still_opens() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+seen = []
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    seen.append(method)
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {
+            "protocolVersion": 1,
+            "authMethods": [{"id": "devin-browser"}]
+        }})
+    elif method == "authenticate":
+        send({"jsonrpc": "2.0", "id": message["id"], "error": {"message": "browser login must not run"}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_devin"}})
+    elif method == "session/prompt":
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": "sess_devin",
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": "methods:" + ",".join(seen)}}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-devin-browser", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "devin".to_string(),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = harness
+        .run("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert!(
+        answer.starts_with("methods:"),
+        "unexpected answer: {answer}"
+    );
+    assert!(
+        !answer.contains("authenticate"),
+        "Devin browser authenticate was sent: {answer}"
+    );
+}
+
+#[tokio::test]
 async fn grok_with_only_interactive_auth_is_refused_before_session_new() {
     let server = r#"#!/usr/bin/env python3
 import json, sys

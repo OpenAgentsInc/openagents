@@ -323,7 +323,25 @@ fn advertised_auth_method_ids(initialized: &serde_json::Value) -> Vec<String> {
 }
 
 fn is_interactive_auth_method(id: &str) -> bool {
-    id == "grok.com" || id == "oidc"
+    let id = id.to_ascii_lowercase();
+    id == "grok.com"
+        || id == "oidc"
+        || id == "devin-browser"
+        || id.contains("browser")
+        || id.contains("pkce")
+}
+
+/// Whether the handshake should send `authenticate` at all.
+///
+/// Grok must authenticate with a non-interactive method. Devin advertises
+/// `devin-browser`, which opens a PKCE login window even when stored CLI
+/// credentials already exist. Discovery still lists the agent; the round-trip
+/// is skipped so `session/new` uses those credentials instead of a browser.
+fn should_send_authenticate(is_grok: bool, methods: &[String]) -> bool {
+    if methods.is_empty() {
+        return is_grok;
+    }
+    is_grok || methods.iter().any(|id| !is_interactive_auth_method(id))
 }
 
 fn select_auth_method_id(
@@ -403,7 +421,9 @@ impl AcpHarness {
     }
 
     /// Grok requires `authenticate` after `initialize`. Agents that advertise
-    /// no methods keep the Devin/Claude path: skip the round-trip.
+    /// no methods, or only a browser PKCE method (Devin), skip the round-trip
+    /// and use stored CLI credentials. Sending `devin-browser` opens a login
+    /// window on every run even when the agent already has credentials.
     async fn authenticate_if_needed<F>(
         &self,
         initialized: &serde_json::Value,
@@ -418,7 +438,7 @@ impl AcpHarness {
         F: FnMut(AcpEvent) + Send,
     {
         let methods = advertised_auth_method_ids(initialized);
-        if methods.is_empty() && !self.is_grok_agent() {
+        if !should_send_authenticate(self.is_grok_agent(), &methods) {
             return Ok(());
         }
         let method_id = select_auth_method_id(initialized, &methods, self.child_has_xai_api_key())?;
@@ -1285,6 +1305,33 @@ mod tests {
             matches!(error, AcpFailure::Refused(ref why) if why.contains("grok login")),
             "{error}"
         );
+    }
+
+    #[test]
+    fn devin_browser_is_interactive_and_does_not_auto_authenticate() {
+        assert!(is_interactive_auth_method("devin-browser"));
+        assert!(is_interactive_auth_method("Devin-Browser"));
+        assert!(!is_interactive_auth_method("cached_token"));
+        assert!(!is_interactive_auth_method("xai.api_key"));
+        assert!(!should_send_authenticate(
+            false,
+            &["devin-browser".to_string()]
+        ));
+        assert!(!should_send_authenticate(false, &[]));
+        assert!(should_send_authenticate(
+            false,
+            &["devin-browser".to_string(), "cached_token".to_string()]
+        ));
+        assert!(should_send_authenticate(
+            true,
+            &["devin-browser".to_string()]
+        ));
+        let initialized = serde_json::json!({
+            "authMethods": [{"id": "devin-browser"}],
+            "_meta": {"defaultAuthMethodId": "devin-browser"}
+        });
+        let methods = advertised_auth_method_ids(&initialized);
+        assert!(select_auth_method_id(&initialized, &methods, false).is_err());
     }
 
     #[test]
