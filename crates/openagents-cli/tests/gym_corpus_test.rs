@@ -4,7 +4,10 @@
 //! property is asserted: two runs over the same fixture tree produce byte-identical
 //! output apart from mtimes, which the inventory does not include.
 
-use openagents_cli::gym::corpus::{INVENTORY_BOUNDS, inventory, qualify};
+use openagents_cli::gym::corpus::{
+    INVENTORY_BOUNDS, corpus_status, inventory, prepare_import, qualify, read_ledger,
+    record_import, refuse_batch_visibility, tripwire_findings, verify_ledger,
+};
 use openagents_cli::trace::DiscoveryBounds;
 use std::fs;
 
@@ -211,4 +214,88 @@ fn qualify_reports_counted_exclusions() {
     assert_eq!(report.excluded_rows, 2);
     assert!(report.by_reason.contains_key("not_redactable"));
     assert!(report.by_reason.contains_key("insufficient_substance"));
+}
+
+#[test]
+fn dark_and_glass_batch_visibility_are_refused() {
+    let dark = refuse_batch_visibility("dark").expect("dark refused");
+    assert!(dark.contains("dark"), "{dark}");
+    let glass = refuse_batch_visibility("glass").expect("glass refused");
+    assert!(glass.contains("glass"), "{glass}");
+    assert!(refuse_batch_visibility("ledger").is_none());
+}
+
+#[test]
+fn tripwire_halts_on_a_leftover_provider_key() {
+    let findings = tripwire_findings("the key is sk-abcdefghijklmnopqrstuvwxyz");
+    assert!(
+        findings.contains(&"provider_key".to_string()),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn import_is_idempotent_and_verify_names_a_missing_digest() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let exports = home.join(".openagents/exports");
+    fs::create_dir_all(&exports).unwrap();
+    fs::write(
+        exports.join("valid.json"),
+        atif_with_steps(12, "github.com/OpenAgentsInc/openagents"),
+    )
+    .unwrap();
+    let inventory_path = tmp.path().join("inventory.json");
+    inventory(&home, &[], &inventory_path, DiscoveryBounds::default()).unwrap();
+    let ledger = tmp.path().join("corpus.jsonl");
+
+    let (prepared, skipped, _) =
+        prepare_import(&inventory_path, "ledger", &ledger, "/Users/test").unwrap();
+    assert_eq!(skipped, 0);
+    assert_eq!(prepared.len(), 1);
+    record_import(
+        &ledger,
+        "ledger",
+        &prepared[0],
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+        prepared[0].digest.clone(),
+    )
+    .unwrap();
+
+    let (again, skipped_again, _) =
+        prepare_import(&inventory_path, "ledger", &ledger, "/Users/test").unwrap();
+    assert!(again.is_empty(), "re-import must skip the same digest");
+    assert_eq!(skipped_again, 1);
+
+    let (imported, pending) = corpus_status(&ledger, Some(&inventory_path)).unwrap();
+    assert_eq!(imported, 1);
+    assert_eq!(pending, 0);
+
+    let rows = read_ledger(&ledger).unwrap();
+    assert_eq!(rows.len(), 1);
+
+    let drifts = verify_ledger(&ledger, &["sha256:deadbeef".to_string()]).unwrap();
+    assert!(
+        drifts.iter().any(|d| d.contains("sha256:deadbeef")),
+        "{drifts:?}"
+    );
+}
+
+#[test]
+fn prepare_import_refuses_dark() {
+    let tmp = tempfile::tempdir().unwrap();
+    let inventory_path = tmp.path().join("inventory.json");
+    fs::write(
+        &inventory_path,
+        r#"{"schema":"openagents.gym.corpus_inventory.v1","stores":[],"rows":[]}"#,
+    )
+    .unwrap();
+    let err = prepare_import(
+        &inventory_path,
+        "dark",
+        &tmp.path().join("ledger.jsonl"),
+        "/Users/test",
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("dark"), "{err}");
 }

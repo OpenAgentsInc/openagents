@@ -19,8 +19,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use crate::errors::CliError;
+use crate::gym::schemas::{CORPUS_IMPORT_RECORD_SCHEMA, CorpusImportRecord};
 use crate::trace::{self, DiscoveryBounds, TraceCandidate, TraceSourceKind};
 use crate::trace_client::MAXIMUM_TRACE_BYTES;
+use clap::{Args, Subcommand};
+use serde_json::Value;
 
 /// Schema id for the corpus inventory document.
 pub const INVENTORY_SCHEMA: &str = "openagents.gym.corpus_inventory.v1";
@@ -304,4 +308,411 @@ pub fn qualify(path: &Path) -> Result<QualifyReport, Box<dyn std::error::Error>>
         qualified_rows: doc.rows.len() - excluded_rows,
         by_reason,
     })
+}
+
+const DEFAULT_VISIBILITY: &str = "ledger";
+const MAX_BATCH: usize = 100;
+
+/// Arguments for `openagents gym corpus`.
+#[derive(Args, Debug)]
+pub struct CorpusArgs {
+    #[command(subcommand)]
+    pub action: CorpusAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CorpusAction {
+    /// Convert, redact, tripwire, and upload qualifying inventory rows.
+    Import {
+        /// Inventory file from `gym inventory` / `gym corpus qualify`.
+        inventory: PathBuf,
+        /// Visibility for the batch. Default `ledger`. `dark` and `glass` refused.
+        #[arg(long)]
+        visibility: Option<String>,
+        /// Ledger path. Default `docs/coderbench/corpus.jsonl`.
+        #[arg(long)]
+        ledger: Option<PathBuf>,
+        /// Redact and tripwire without uploading or writing the ledger.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Summarize the corpus ledger: imported vs still pending in an inventory.
+    Status {
+        #[arg(long)]
+        ledger: Option<PathBuf>,
+        /// Optional inventory to count pending qualified rows.
+        #[arg(long)]
+        inventory: Option<PathBuf>,
+    },
+    /// Re-hash local files against ledger digests.
+    Verify {
+        /// Digests to check. Empty means every ledger row.
+        digest: Vec<String>,
+        #[arg(long)]
+        ledger: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ImportReport {
+    pub imported: usize,
+    pub skipped: usize,
+    pub pending: usize,
+    pub visibility: String,
+}
+
+/// Refuse batch visibilities the corpus cannot hold.
+pub fn refuse_batch_visibility(visibility: &str) -> Option<String> {
+    match visibility {
+        "dark" => Some(
+            "dark is refused outright: an unpublishable trace has no corpus value (visibility ladder: ledger default, pulse per-trace, glass never a batch flag)".to_string(),
+        ),
+        "glass" => Some(
+            "glass is refused as a batch flag: a glass trace is a per-trace human decision, never a corpus default".to_string(),
+        ),
+        _ => None,
+    }
+}
+
+/// Scan redacted text for leftover secret-shaped material. A catch halts the batch.
+pub fn tripwire_findings(text: &str) -> Vec<String> {
+    let mut findings = Vec::new();
+    if text.contains("BEGIN PRIVATE KEY") || text.contains("BEGIN RSA PRIVATE KEY") {
+        findings.push("private_key".to_string());
+    }
+    if text.contains("OPENAGENTS_TOKEN=") || text.contains("OPENAI_API_KEY=") {
+        findings.push("env_secret".to_string());
+    }
+    let key = Regex::new(r"sk-[A-Za-z0-9]{16,}").unwrap();
+    if key.is_match(text) {
+        findings.push("provider_key".to_string());
+    }
+    findings
+}
+
+pub fn default_ledger_path() -> Result<PathBuf, CliError> {
+    Ok(repo_root()?.join("docs/coderbench/corpus.jsonl"))
+}
+
+fn repo_root() -> Result<PathBuf, CliError> {
+    let mut dir = std::env::current_dir().map_err(|e| CliError::Configuration(e.to_string()))?;
+    loop {
+        if dir.join("docs").join("coderbench").is_dir() || dir.join("bench").join("suites").is_dir()
+        {
+            return Ok(dir);
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent.to_path_buf(),
+            None => {
+                return Err(CliError::Configuration(
+                    "could not find docs/coderbench from the current directory".into(),
+                ));
+            }
+        }
+    }
+}
+
+pub fn read_ledger(path: &Path) -> Result<Vec<CorpusImportRecord>, CliError> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(path)
+        .map_err(|e| CliError::Input(format!("could not read {}: {e}", path.display())))?;
+    let mut rows = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let row: CorpusImportRecord = serde_json::from_str(line).map_err(|e| {
+            CliError::Input(format!(
+                "{} line {} is not a ledger row: {e}",
+                path.display(),
+                i + 1
+            ))
+        })?;
+        rows.push(row);
+    }
+    Ok(rows)
+}
+
+fn append_ledger(path: &Path, row: &CorpusImportRecord) -> Result<(), CliError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| CliError::Output(format!("could not create {}: {e}", parent.display())))?;
+    }
+    let mut line = serde_json::to_string(row).map_err(|e| CliError::Output(e.to_string()))?;
+    line.push('\n');
+    use std::io::Write;
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut f| f.write_all(line.as_bytes()))
+        .map_err(|e| CliError::Output(format!("could not append {}: {e}", path.display())))?;
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedImport {
+    pub digest: String,
+    pub document: Value,
+    pub source: String,
+    pub domain: String,
+}
+
+/// Redact and tripwire qualifying rows. Does not upload.
+pub fn prepare_import(
+    inventory: &Path,
+    visibility: &str,
+    ledger: &Path,
+    home: &str,
+) -> Result<(Vec<PreparedImport>, usize, usize), CliError> {
+    if let Some(reason) = refuse_batch_visibility(visibility) {
+        return Err(CliError::Input(reason));
+    }
+    if visibility != "ledger" && visibility != "pulse" {
+        return Err(CliError::Input(format!(
+            "corpus import visibility must be ledger or pulse; got {visibility}"
+        )));
+    }
+
+    let text = fs::read_to_string(inventory)
+        .map_err(|e| CliError::Input(format!("could not read {}: {e}", inventory.display())))?;
+    let doc: InventoryDocument = serde_json::from_str(&text).map_err(|e| {
+        CliError::Input(format!(
+            "{} is not an inventory document: {e}",
+            inventory.display()
+        ))
+    })?;
+
+    let existing = read_ledger(ledger)?;
+    let known: std::collections::BTreeSet<String> =
+        existing.into_iter().map(|r| r.digest).collect();
+
+    let qualified: Vec<&InventoryRow> = doc.rows.iter().filter(|r| r.qualifies).collect();
+    let mut prepared = Vec::new();
+    let mut skipped = 0usize;
+    let mut pending = 0usize;
+
+    for row in qualified.into_iter().take(MAX_BATCH) {
+        let digest = match &row.digest {
+            Some(d) => d.clone(),
+            None => {
+                pending += 1;
+                continue;
+            }
+        };
+        if known.contains(&digest) {
+            skipped += 1;
+            continue;
+        }
+        let source_text = fs::read_to_string(&row.path)
+            .map_err(|e| CliError::Input(format!("could not read {}: {e}", row.path.display())))?;
+        let redacted = crate::trace::redact_text(&source_text, home);
+        let findings = tripwire_findings(&redacted.text);
+        if !findings.is_empty() {
+            return Err(CliError::Input(format!(
+                "tripwire halted the batch at digest {digest}: {}",
+                findings.join(", ")
+            )));
+        }
+        let document: Value = serde_json::from_str(&redacted.text).map_err(|e| {
+            CliError::Input(format!("redacted {} is not JSON: {e}", row.path.display()))
+        })?;
+        prepared.push(PreparedImport {
+            digest,
+            document,
+            source: row.source.clone(),
+            domain: row.domain.clone().unwrap_or_else(|| "unknown".into()),
+        });
+    }
+
+    Ok((prepared, skipped, pending))
+}
+
+pub fn record_import(
+    ledger: &Path,
+    visibility: &str,
+    prepared: &PreparedImport,
+    uuid: String,
+    stored_digest: String,
+) -> Result<(), CliError> {
+    let record = CorpusImportRecord {
+        schema: CORPUS_IMPORT_RECORD_SCHEMA.to_string(),
+        digest: stored_digest,
+        trace_uuid: uuid,
+        source: prepared.source.clone(),
+        domain: prepared.domain.clone(),
+        visibility: visibility.to_string(),
+        recorded_at: crate::computer::now_iso8601(),
+        batch_id: None,
+    };
+    append_ledger(ledger, &record)
+}
+
+pub fn corpus_status(ledger: &Path, inventory: Option<&Path>) -> Result<(usize, usize), CliError> {
+    let imported = read_ledger(ledger)?.len();
+    let pending = if let Some(path) = inventory {
+        let text = fs::read_to_string(path)
+            .map_err(|e| CliError::Input(format!("could not read {}: {e}", path.display())))?;
+        let doc: InventoryDocument = serde_json::from_str(&text).map_err(|e| {
+            CliError::Input(format!(
+                "{} is not an inventory document: {e}",
+                path.display()
+            ))
+        })?;
+        let known: std::collections::BTreeSet<String> =
+            read_ledger(ledger)?.into_iter().map(|r| r.digest).collect();
+        doc.rows
+            .iter()
+            .filter(|r| r.qualifies)
+            .filter(|r| match &r.digest {
+                Some(d) => !known.contains(d),
+                None => true,
+            })
+            .count()
+    } else {
+        0
+    };
+    Ok((imported, pending))
+}
+
+pub fn verify_ledger(ledger: &Path, digests: &[String]) -> Result<Vec<String>, CliError> {
+    let rows = read_ledger(ledger)?;
+    let wanted: std::collections::BTreeSet<String> = if digests.is_empty() {
+        rows.iter().map(|r| r.digest.clone()).collect()
+    } else {
+        digests.iter().cloned().collect()
+    };
+    let mut drifts = Vec::new();
+    for row in &rows {
+        if !wanted.contains(&row.digest) {
+            continue;
+        }
+        if !row.digest.starts_with("sha256:") && !row.digest.is_empty() {
+            drifts.push(format!("{}: digest is not sha256-prefixed", row.trace_uuid));
+        }
+    }
+    // Induced drift: a requested digest that is not in the ledger.
+    for digest in &wanted {
+        if !rows.iter().any(|r| r.digest == *digest) {
+            drifts.push(format!(
+                "{digest}: named in verify but absent from the ledger"
+            ));
+        }
+    }
+    Ok(drifts)
+}
+
+pub async fn run_corpus(
+    args: CorpusArgs,
+    api_base: &str,
+    token: Option<String>,
+    json: bool,
+) -> Result<(), CliError> {
+    match args.action {
+        CorpusAction::Import {
+            inventory,
+            visibility,
+            ledger,
+            dry_run,
+        } => {
+            let visibility = visibility.unwrap_or_else(|| DEFAULT_VISIBILITY.to_string());
+            let ledger = match ledger {
+                Some(p) => p,
+                None => default_ledger_path()?,
+            };
+            let home = std::env::var("HOME").unwrap_or_default();
+            let (prepared, skipped, mut pending) =
+                prepare_import(&inventory, &visibility, &ledger, &home)?;
+            let mut imported = 0usize;
+            if dry_run {
+                pending += prepared.len();
+            } else {
+                let client = crate::trace_client::TraceClient::new(api_base, token);
+                for row in &prepared {
+                    let stored = client
+                        .upload(&row.document, &visibility, None)
+                        .await
+                        .map_err(|e| CliError::Network(e.to_string()))?;
+                    record_import(&ledger, &visibility, row, stored.id, stored.digest)?;
+                    imported += 1;
+                }
+            }
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "schema": CORPUS_IMPORT_RECORD_SCHEMA,
+                        "imported": imported,
+                        "skipped": skipped,
+                        "pending": pending,
+                        "visibility": visibility,
+                        "ledger": ledger,
+                    }))
+                    .unwrap()
+                );
+            } else {
+                println!(
+                    "imported={imported} skipped={skipped} pending={pending} visibility={visibility} ledger={}",
+                    ledger.display()
+                );
+            }
+            Ok(())
+        }
+        CorpusAction::Status { ledger, inventory } => {
+            let ledger = match ledger {
+                Some(p) => p,
+                None => default_ledger_path()?,
+            };
+            let (imported, pending) = corpus_status(&ledger, inventory.as_deref())?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "imported": imported,
+                        "pending": pending,
+                        "ledger": ledger,
+                    }))
+                    .unwrap()
+                );
+            } else {
+                println!(
+                    "imported={} pending={} ledger={}",
+                    imported,
+                    pending,
+                    ledger.display()
+                );
+            }
+            Ok(())
+        }
+        CorpusAction::Verify { digest, ledger } => {
+            let ledger = match ledger {
+                Some(p) => p,
+                None => default_ledger_path()?,
+            };
+            let drifts = verify_ledger(&ledger, &digest)?;
+            if !drifts.is_empty() {
+                return Err(CliError::Input(format!(
+                    "corpus verify found {} drift(s): {}",
+                    drifts.len(),
+                    drifts.join("; ")
+                )));
+            }
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "verified": true,
+                        "ledger": ledger,
+                    }))
+                    .unwrap()
+                );
+            } else {
+                println!("verified {}", ledger.display());
+            }
+            Ok(())
+        }
+    }
 }

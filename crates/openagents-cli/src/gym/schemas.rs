@@ -18,6 +18,9 @@ pub const RUN_STATUS_SCHEMA: &str = "openagents.gym.run_status.v1";
 /// Schema name carried in every `results_trend` document.
 pub const RESULTS_TREND_SCHEMA: &str = "openagents.gym.results_trend.v1";
 
+/// Schema name carried in every corpus import ledger row.
+pub const CORPUS_IMPORT_RECORD_SCHEMA: &str = "openagents.gym.corpus_import_record.v1";
+
 /// `openagents.gym.suite_manifest_view.v1`
 ///
 /// A list/show view over a pinned effectiveness suite. The manifest itself

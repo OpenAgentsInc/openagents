@@ -1395,6 +1395,8 @@ pub enum GymAction {
     Dataset(crate::gym::dataset::DatasetArgs),
     /// Score Harbor jobs and read the chained results store
     Results(crate::gym::results::ResultsArgs),
+    /// Import, status, and verify the CoderBench trace corpus
+    Corpus(crate::gym::corpus::CorpusArgs),
 }
 
 /// The completion script for one shell.
@@ -1497,6 +1499,9 @@ async fn run_gym(
         }
         GymAction::Dataset(args) => crate::gym::dataset::run_dataset(args, json),
         GymAction::Results(args) => crate::gym::results::run_results(args, json),
+        GymAction::Corpus(args) => {
+            crate::gym::corpus::run_corpus(args, api_base, token, json).await
+        }
     }
 }
 
