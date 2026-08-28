@@ -10,7 +10,7 @@ use openagents_cli::coder::markdown::theme::{
     DIM_TEXT_COLOR, MODEL_TEXT_COLOR, TEXT_COLOR, USER_TEXT_COLOR,
 };
 use openagents_cli::coder::runtime::Control;
-use openagents_cli::coder::tui::{CoderUi, Entry, MAX_SUBAGENT_LINES, Role};
+use openagents_cli::coder::tui::{CoderUi, Entry, MAX_SUBAGENT_LINES, Role, now_ms};
 use openagents_cli::coder::turn::{TurnAction, TurnEffect, TurnState};
 use openagents_cli::runtime::TurnUsage;
 use ratatui::Terminal;
@@ -509,6 +509,45 @@ fn reduced_motion_keeps_the_active_tool_state_static() {
         second.cell((0, 2)).unwrap().fg
     );
     assert!(text_of(&second).starts_with(&format!("{}○ > cargo test", " ".repeat(80))));
+}
+
+/// The loading row names what is happening and times it: `⠹ working (9s)`
+/// while the turn runs, with the timer at the 50% dim amber so it can be
+/// found on a glance. A specific waiting message outranks the generic word.
+#[test]
+fn the_loading_row_says_working_and_times_it_at_50_percent_amber() {
+    let mut ui = CoderUi::new();
+    ui.loading = true;
+    ui.turn_started();
+    ui.turn_started_at = Some(now_ms() - 9_000);
+
+    let buffer = draw(&mut ui);
+    let row = (0..buffer.area.width)
+        .map(|x| buffer.cell((x, 0)).unwrap().symbol())
+        .collect::<String>();
+    assert!(
+        row.contains("working (9s)"),
+        "the loading row does not name the work and time it: {row:?}"
+    );
+    let timer_x = row.find("(9s)").expect("the timer is on the loading row") as u16;
+    assert_eq!(
+        buffer.cell((timer_x, 0)).unwrap().fg,
+        DIM_TEXT_COLOR,
+        "the timer is not at 50% amber"
+    );
+
+    // A waiting message is more specific than "working" and outranks it. The
+    // frame's `waiting` field is set by the runtime, so set it the same way
+    // the field's writer does — directly, as `Control::Waiting` would.
+    ui.waiting = Some("Waiting for first token".to_string());
+    let buffer = draw(&mut ui);
+    let row = (0..buffer.area.width)
+        .map(|x| buffer.cell((x, 0)).unwrap().symbol())
+        .collect::<String>();
+    assert!(
+        row.contains("Waiting for first token (9s)") && !row.contains("working"),
+        "the waiting message did not outrank the generic word: {row:?}"
+    );
 }
 
 /// Output for a call the frame never saw start goes nowhere rather than onto

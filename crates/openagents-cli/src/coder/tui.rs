@@ -797,17 +797,26 @@ impl CoderUi {
 
         if self.loading {
             let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
-            let status = self.waiting.as_deref().unwrap_or_default();
             let stopwatch = self.stopwatch_text();
-            // The count is secondary to the spinner and any waiting text, so
-            // it reads at the 25% opacity the model labels use: present, but
-            // never competing with the row it measures (#216).
+            // While nothing more specific is being waited on, the row says
+            // what it is doing: `⠹ working (9s)`. A waiting message — a
+            // cancel, a first-token wait, a retry — outranks it, and the
+            // timer rides beside whichever is showing.
+            //
+            // The count reads at the 50% opacity DIM_TEXT_COLOR gives: the
+            // 25% of the model labels (#216) was too quiet to be found on a
+            // glance at the screen, and a timer nobody can see is a timer
+            // that does not exist.
+            let status = match self.waiting.as_deref() {
+                Some(waiting) if !waiting.is_empty() => waiting,
+                _ => "working",
+            };
             let mut spans = Vec::with_capacity(2);
             spans.push(Span::styled(loading_prefix(spinner, status), style));
             if !stopwatch.is_empty() {
                 spans.push(Span::styled(
-                    format!(" {stopwatch}"),
-                    style.fg(MODEL_TEXT_COLOR),
+                    format!(" ({stopwatch})"),
+                    style.fg(DIM_TEXT_COLOR),
                 ));
             }
             all_lines.push(Line::from(spans));
