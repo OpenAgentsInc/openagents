@@ -58,19 +58,49 @@ P1 is items 1–2 of issue #232 (message variants + no silent drop). P2 is
 items 3 and 6 (initialize handshake + control timeouts). Later priorities,
 still open:
 
-- **P3 remainder** — remaining control-request subtypes, including
-  `background_tasks`, `cancel_async_message`, elicitation, and
-  hook callbacks (the handler is still a TODO that always continues).
-- **P4 remainder** — still-dead `QueryOptions` fields (`system_prompt`,
-  `mcp_servers`, `agents`, `sandbox`, `output_format`); `tools` / `thinking`
-  / `effort`; result `terminal_reason`, `api_error_status`, later
-  `modelUsage` fields.
+- **P3 remainder** — elicitation and hook callbacks (the handler is still a
+  TODO that always continues). `background_tasks` and
+  `cancel_async_message` already landed in the P3 first slice.
+- **P4 remainder** — result `terminal_reason`, `api_error_status`, later
+  `modelUsage` fields. Hook callbacks and elicitation stay open; this
+  packet does not execute hooks.
 
 ## P4 first slice landed (issue #232)
 
 `PermissionMode::Auto` is on the wire (`auto`). `build_args()` emits
 `--fallback-model` and `--plugin-dir` from the previously ignored
 `fallback_model` and `plugins` fields.
+
+## P4 remainder landed (issue #232)
+
+`QueryOptions::build_args()` now emits the previously ignored option
+fields as CLI flags verified against `claude` 2.1.247 and
+`@anthropic-ai/claude-agent-sdk` 0.3.172:
+
+- `system_prompt`: `Custom` → `--system-prompt`; Preset `append` →
+  `--append-system-prompt`. A Preset with no append uses the CLI default.
+- `mcp_servers` → `--mcp-config` with a JSON string
+  `{"mcpServers":{...}}` (same encoding as the TS SDK).
+- `agents` → `--agents` JSON object (`disallowedTools` camelCase).
+- `sandbox` → `--settings` JSON `{"sandbox":{...}}`. The main CLI rejects
+  `--sandbox` (`unknown option`); the TS SDK also writes sandbox settings
+  through `--settings`, not a `--sandbox` flag.
+- `output_format` schema → `--json-schema`. `--output-format stream-json`
+  stays the SDK transport; a response schema is not a second output
+  format and must not replace stream-json.
+
+Added because the CLI/TS SDK have real flags:
+
+- `tools` → `--tools` (`Names` joined by comma, empty list is `--tools ""`,
+  `Default` is `--tools default`).
+- `thinking` → `--thinking adaptive|disabled`, `--thinking-display`, or
+  `--max-thinking-tokens` for `Enabled { budget_tokens }`. Takes
+  precedence over `max_thinking_tokens`.
+- `effort` → `--effort` (`low|medium|high|xhigh|max`).
+
+The fake-claude initialize fixture now builds its handshake payload with
+`JSON.parse` of a JSON string so Node does not see unquoted object-literal
+keys.
 
 Out of scope for the whole #232 port unless a later packet says otherwise:
 full hook execution, the ~50 TypeScript `Query` methods, and a complete

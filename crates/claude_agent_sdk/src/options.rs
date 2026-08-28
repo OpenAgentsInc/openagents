@@ -36,7 +36,16 @@ pub struct QueryOptions {
     pub max_budget_usd: Option<f64>,
 
     /// Maximum thinking tokens.
+    ///
+    /// Deprecated by the CLI in favor of [`thinking`]. Ignored when `thinking`
+    /// is set.
     pub max_thinking_tokens: Option<u32>,
+
+    /// Thinking/reasoning mode (`--thinking`, `--thinking-display`).
+    pub thinking: Option<ThinkingConfig>,
+
+    /// Effort level (`--effort`).
+    pub effort: Option<EffortLevel>,
 
     /// Additional directories Claude can access.
     pub additional_directories: Vec<PathBuf>,
@@ -47,10 +56,16 @@ pub struct QueryOptions {
     /// Disallowed tool names.
     pub disallowed_tools: Option<Vec<String>>,
 
+    /// Base set of built-in tools (`--tools`). Distinct from `allowed_tools`.
+    pub tools: Option<ToolsConfig>,
+
     /// System prompt configuration.
     pub system_prompt: Option<SystemPromptConfig>,
 
     /// Output format for structured responses.
+    ///
+    /// The SDK transport is always `--output-format stream-json`. A JSON
+    /// Schema here is emitted as `--json-schema`, not a second output format.
     pub output_format: Option<OutputFormat>,
 
     /// MCP server configurations.
@@ -160,6 +175,7 @@ pub enum McpServerConfig {
 
 /// Agent definition for custom subagents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentDefinition {
     /// Description of when to use this agent.
     pub description: String,
@@ -174,6 +190,75 @@ pub struct AgentDefinition {
     /// Model to use.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<AgentModel>,
+}
+
+/// Base set of built-in tools (`--tools`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolsConfig {
+    /// Specific built-in tool names. An empty list disables all tools.
+    Names(Vec<String>),
+    /// All default Claude Code tools (`--tools default`).
+    Default,
+}
+
+/// Effort level (`--effort`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EffortLevel {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+impl EffortLevel {
+    fn as_cli_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+}
+
+/// How thinking content appears (`--thinking-display`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThinkingDisplay {
+    Summarized,
+    Omitted,
+}
+
+impl ThinkingDisplay {
+    fn as_cli_str(self) -> &'static str {
+        match self {
+            Self::Summarized => "summarized",
+            Self::Omitted => "omitted",
+        }
+    }
+}
+
+/// Thinking/reasoning behavior (`--thinking`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ThinkingConfig {
+    /// Claude decides when and how much to think.
+    Adaptive {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        display: Option<ThinkingDisplay>,
+    },
+    /// Fixed thinking token budget (older models).
+    Enabled {
+        #[serde(rename = "budgetTokens", skip_serializing_if = "Option::is_none")]
+        budget_tokens: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        display: Option<ThinkingDisplay>,
+    },
+    /// No extended thinking.
+    Disabled,
 }
 
 /// Model selection for agents.
@@ -362,9 +447,45 @@ impl QueryOptions {
             args.push(budget.to_string());
         }
 
-        if let Some(tokens) = self.max_thinking_tokens {
+        if let Some(ref thinking) = self.thinking {
+            match thinking {
+                ThinkingConfig::Adaptive { display } => {
+                    args.push("--thinking".to_string());
+                    args.push("adaptive".to_string());
+                    if let Some(display) = display {
+                        args.push("--thinking-display".to_string());
+                        args.push(display.as_cli_str().to_string());
+                    }
+                }
+                ThinkingConfig::Enabled {
+                    budget_tokens,
+                    display,
+                } => {
+                    if let Some(tokens) = budget_tokens {
+                        args.push("--max-thinking-tokens".to_string());
+                        args.push(tokens.to_string());
+                    } else {
+                        args.push("--thinking".to_string());
+                        args.push("adaptive".to_string());
+                    }
+                    if let Some(display) = display {
+                        args.push("--thinking-display".to_string());
+                        args.push(display.as_cli_str().to_string());
+                    }
+                }
+                ThinkingConfig::Disabled => {
+                    args.push("--thinking".to_string());
+                    args.push("disabled".to_string());
+                }
+            }
+        } else if let Some(tokens) = self.max_thinking_tokens {
             args.push("--max-thinking-tokens".to_string());
             args.push(tokens.to_string());
+        }
+
+        if let Some(effort) = self.effort {
+            args.push("--effort".to_string());
+            args.push(effort.as_cli_str().to_string());
         }
 
         for dir in &self.additional_directories {
@@ -383,6 +504,69 @@ impl QueryOptions {
             for tool in tools {
                 args.push("--disallowed-tools".to_string());
                 args.push(tool.clone());
+            }
+        }
+
+        if let Some(ref tools) = self.tools {
+            match tools {
+                ToolsConfig::Default => {
+                    args.push("--tools".to_string());
+                    args.push("default".to_string());
+                }
+                ToolsConfig::Names(names) => {
+                    args.push("--tools".to_string());
+                    args.push(names.join(","));
+                }
+            }
+        }
+
+        match &self.system_prompt {
+            Some(SystemPromptConfig::Custom(prompt)) => {
+                args.push("--system-prompt".to_string());
+                args.push(prompt.clone());
+            }
+            Some(SystemPromptConfig::Preset {
+                append: Some(append),
+            }) => {
+                args.push("--append-system-prompt".to_string());
+                args.push(append.clone());
+            }
+            Some(SystemPromptConfig::Preset { append: None }) | None => {}
+        }
+
+        if !self.mcp_servers.is_empty() {
+            if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                "mcpServers": self.mcp_servers,
+            })) {
+                args.push("--mcp-config".to_string());
+                args.push(json);
+            }
+        }
+
+        if !self.agents.is_empty() {
+            if let Ok(json) = serde_json::to_string(&self.agents) {
+                args.push("--agents".to_string());
+                args.push(json);
+            }
+        }
+
+        if let Some(ref sandbox) = self.sandbox {
+            // Main `claude` rejects `--sandbox` (`unknown option`). The TS SDK
+            // writes sandbox settings into `--settings` JSON.
+            if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                "sandbox": sandbox,
+            })) {
+                args.push("--settings".to_string());
+                args.push(json);
+            }
+        }
+
+        if let Some(ref format) = self.output_format {
+            if !format.schema.is_null() {
+                if let Ok(schema) = serde_json::to_string(&format.schema) {
+                    args.push("--json-schema".to_string());
+                    args.push(schema);
+                }
             }
         }
 

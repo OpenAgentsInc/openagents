@@ -84,9 +84,9 @@ pub mod transport;
 // Re-export main types at crate root
 pub use error::{Error, Result};
 pub use options::{
-    AgentDefinition, AgentModel, DEFAULT_CONTROL_TIMEOUT, McpServerConfig, OutputFormat,
-    PluginConfig, QueryOptions, SandboxNetworkConfig, SandboxSettings, SettingSource,
-    SystemPromptConfig,
+    AgentDefinition, AgentModel, DEFAULT_CONTROL_TIMEOUT, EffortLevel, McpServerConfig,
+    OutputFormat, PluginConfig, QueryOptions, SandboxNetworkConfig, SandboxSettings, SettingSource,
+    SystemPromptConfig, ThinkingConfig, ThinkingDisplay, ToolsConfig,
 };
 pub use permissions::{
     AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions, PermissionHandler,

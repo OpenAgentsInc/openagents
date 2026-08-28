@@ -563,6 +563,7 @@ impl Stream for Query {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::options::{OutputFormat, SystemPromptConfig};
     use crate::transport::ExecutableConfig;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
@@ -601,6 +602,132 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["--plugin-dir", "/tmp/plug"]));
     }
 
+    fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+        args.windows(2)
+            .find_map(|w| (w[0] == flag).then(|| w[1].as_str()))
+    }
+
+    #[test]
+    fn build_args_emits_remaining_query_options_as_cli_flags() {
+        let mut options = QueryOptions::new();
+        options.system_prompt = Some(SystemPromptConfig::Custom("be terse".into()));
+        options.mcp_servers.insert(
+            "docs".into(),
+            crate::options::McpServerConfig::Stdio {
+                command: "npx".into(),
+                args: Some(vec!["-y".into(), "docs".into()]),
+                env: None,
+            },
+        );
+        options.agents.insert(
+            "reviewer".into(),
+            crate::options::AgentDefinition {
+                description: "Reviews code".into(),
+                prompt: "You are a reviewer".into(),
+                tools: Some(vec!["Read".into()]),
+                disallowed_tools: Some(vec!["Bash".into()]),
+                model: Some(crate::options::AgentModel::Haiku),
+            },
+        );
+        options.sandbox = Some(crate::options::SandboxSettings {
+            enabled: Some(true),
+            auto_allow_bash_if_sandboxed: Some(true),
+            network: Some(crate::options::SandboxNetworkConfig {
+                allow_local_binding: Some(true),
+                allow_unix_sockets: Some(vec!["/tmp/sock".into()]),
+            }),
+        });
+        options.output_format = Some(OutputFormat {
+            format_type: "json_schema".into(),
+            schema: serde_json::json!({
+                "type": "object",
+                "properties": { "ok": { "type": "boolean" } },
+                "required": ["ok"]
+            }),
+        });
+        options.tools = Some(crate::options::ToolsConfig::Names(vec![
+            "Read".into(),
+            "Bash".into(),
+        ]));
+        options.thinking = Some(crate::options::ThinkingConfig::Adaptive {
+            display: Some(crate::options::ThinkingDisplay::Summarized),
+        });
+        options.effort = Some(crate::options::EffortLevel::High);
+        options.max_thinking_tokens = Some(99);
+
+        let args = options.build_args();
+
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["--output-format", "stream-json"]),
+            "structured schema must not replace the stream-json transport: {args:?}"
+        );
+        assert!(!args.iter().any(|a| a == "--sandbox"));
+        assert_eq!(flag_value(&args, "--system-prompt"), Some("be terse"));
+        assert_eq!(flag_value(&args, "--tools"), Some("Read,Bash"));
+        assert_eq!(flag_value(&args, "--thinking"), Some("adaptive"));
+        assert_eq!(flag_value(&args, "--thinking-display"), Some("summarized"));
+        assert_eq!(flag_value(&args, "--effort"), Some("high"));
+        assert!(
+            flag_value(&args, "--max-thinking-tokens").is_none(),
+            "thinking takes precedence over max_thinking_tokens"
+        );
+
+        let mcp: Value =
+            serde_json::from_str(flag_value(&args, "--mcp-config").expect("--mcp-config")).unwrap();
+        assert_eq!(mcp["mcpServers"]["docs"]["type"], "stdio");
+        assert_eq!(mcp["mcpServers"]["docs"]["command"], "npx");
+
+        let agents: Value =
+            serde_json::from_str(flag_value(&args, "--agents").expect("--agents")).unwrap();
+        assert_eq!(agents["reviewer"]["description"], "Reviews code");
+        assert_eq!(agents["reviewer"]["disallowedTools"][0], "Bash");
+        assert_eq!(agents["reviewer"]["model"], "haiku");
+
+        let settings: Value =
+            serde_json::from_str(flag_value(&args, "--settings").expect("--settings")).unwrap();
+        assert_eq!(settings["sandbox"]["enabled"], true);
+        assert_eq!(settings["sandbox"]["autoAllowBashIfSandboxed"], true);
+        assert_eq!(settings["sandbox"]["network"]["allowLocalBinding"], true);
+
+        let schema: Value =
+            serde_json::from_str(flag_value(&args, "--json-schema").expect("--json-schema"))
+                .unwrap();
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["required"][0], "ok");
+    }
+
+    #[test]
+    fn build_args_emits_append_system_prompt_and_tools_default() {
+        let mut options = QueryOptions::new();
+        options.system_prompt = Some(SystemPromptConfig::Preset {
+            append: Some("always cite files".into()),
+        });
+        options.tools = Some(crate::options::ToolsConfig::Default);
+        options.thinking = Some(crate::options::ThinkingConfig::Disabled);
+        let args = options.build_args();
+        assert_eq!(
+            flag_value(&args, "--append-system-prompt"),
+            Some("always cite files")
+        );
+        assert!(flag_value(&args, "--system-prompt").is_none());
+        assert_eq!(flag_value(&args, "--tools"), Some("default"));
+        assert_eq!(flag_value(&args, "--thinking"), Some("disabled"));
+    }
+
+    #[test]
+    fn build_args_emits_enabled_thinking_budget_as_max_thinking_tokens() {
+        let mut options = QueryOptions::new();
+        options.thinking = Some(crate::options::ThinkingConfig::Enabled {
+            budget_tokens: Some(2048),
+            display: Some(crate::options::ThinkingDisplay::Omitted),
+        });
+        let args = options.build_args();
+        assert_eq!(flag_value(&args, "--max-thinking-tokens"), Some("2048"));
+        assert!(flag_value(&args, "--thinking").is_none());
+        assert_eq!(flag_value(&args, "--thinking-display"), Some("omitted"));
+    }
+
     #[test]
     fn initialize_control_request_serializes_with_the_wire_subtype() {
         let request = SdkControlRequest {
@@ -615,11 +742,13 @@ mod tests {
     }
 
     fn unique_temp_dir() -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("claude-sdk-p2-{nanos}"));
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("claude-sdk-p2-{nanos}-{n}"));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -656,15 +785,8 @@ rl.on('line', (line) => {
   try { msg = JSON.parse(line); } catch { return; }
   if (msg.type === 'control_request' && msg.request) {
     const payload = msg.request.subtype === 'initialize'
-      ? {
-          commands: [{ name: 'help', description: 'help' }],
-          agents: [],
-          output_style: 'default',
-          available_output_styles: ['default'],
-          models: [{ value: 'sonnet', displayName: 'Sonnet' }],
-          account: { email: 't@example.com' }
-        }
-      : { echo: msg.request.subtype };
+      ? JSON.parse('{"commands":[{"name":"help","description":"help"}],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[{"value":"sonnet","displayName":"Sonnet"}],"account":{"email":"t@example.com"}}')
+      : { "echo": msg.request.subtype };
     process.stdout.write(JSON.stringify({
       type: 'control_response',
       response: {
