@@ -313,8 +313,8 @@ Outcome: documentation, issues, and inventories match the tree.
   the TypeScript decision.
 - Close forge issues #144, #145 (source side), #146, #147, #149, #150
   against this plan, with residuals named:
-  - live `auth.openagents.com` DNS/LB redirect and Terraform apply
-    (owner-gated infra)
+  - live `auth.openagents.com` DNS/LB redirect (done 2026-08-28, #145)
+    and Terraform apply (`invalid_rapt`, still owner-gated)
   - npm OTP deprecation of remaining `@openagentsinc/*` that this repo
     used to publish
   - Google credential `invalid_rapt` for OpenTofu state (already on #149)

@@ -3,12 +3,15 @@
 - Date: 2026-08-27
 - Re-inventory: 2026-08-28 08:04–08:12 UTC
 - Remaining drain: 2026-08-28 13:27–13:30 UTC
+- Closeout drain: 2026-08-28 18:42–18:50 UTC
 - Issue: `OpenAgentsInc/openagents#145`
 - Repository baseline (original): `3b252d82ce3373614cdfeaf9d907ff4c459fcb84`
 - Re-inventory baseline: `dc06fb409de7a552a03bd0f114104fd7bef95725`
   (`openagents/main`)
 - Remaining-drain baseline: `2a60adb26a35c4dd9ac35a903db1a9805a35d8fe`
   (`openagents/main`; work started on `68e81bd74f`)
+- Closeout baseline: `2dc90a6a4230c230978badd9e3bfac3f2540a86b`
+  (`openagents/main`)
 - Google Cloud project: `openagentsgemini`
 - Primary region: `us-central1`
 - Observation principal: `oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`
@@ -176,24 +179,74 @@ Post-delete `describe` returns not found for all three. Production
 `openagents-monolith` revision `00426-sic` and `forge-git` revision
 `00046-xl5` remain. Auth hostname DNS is unchanged.
 
+### 2026-08-28 closeout drain (18:42–18:50 UTC)
+
+Owner go to finish #145. Principal
+`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`. Did not
+Terraform-apply (`invalid_rapt` / recreate-bridge risk). Phoenix apex,
+`relay.openagents.com`, and `sarah.openagents.com` stayed up.
+
+Database backup before any drain:
+
+- Cloud SQL instance `khala-sync-pg` databases: `postgres`,
+  `khala_sync_prod`, `khala_sync_staging`, `nostr_relay_prod`.
+- On-demand snapshot backup `1787942526566` description
+  `issue-145-pre-drain-2026-08-28`, `SUCCESSFUL` at 2026-08-28 18:42:06Z.
+  Automated backups and PITR (7 days) already enabled.
+- Portable SQL export (names and byte sizes only; contents not read) to
+  `gs://openagentsgemini-oa-artifacts/issue-145-sql-exports/20260828T184429Z/`:
+  `khala_sync_prod.sql.gz` 2518147067 bytes, `khala_sync_staging.sql.gz`
+  206551168 bytes, `nostr_relay_prod.sql.gz` 5078177 bytes,
+  `postgres.sql.gz` 29800 bytes (4 objects, 2729806212 bytes). The
+  instance is **retained**: Phoenix uses `sarah-postgres`, and
+  `nostr_relay_prod` on this instance still serves the live market relay.
+- Named disk snapshot `forge-git-repositories-issue-145-20260828` READY,
+  100 GB, plus the 2026-08-28 automated snapshot
+  `forge-git-repositor-us-central1-a-20260828081102-mu6fd0qe`.
+
+Auth redirect contract, `openagents-url-map` import 18:45Z:
+
+- Host `auth.openagents.com` matcher `auth-to-apex` with
+  `defaultUrlRedirect` host `openagents.com`, HTTPS, 301
+  (`MOVED_PERMANENTLY_DEFAULT`), query preserved.
+- Probe 18:46Z (`User-Agent oa-145-drain-probe`, HTTP/1.1): `/`,
+  `/.well-known/jwks.json`, `/code/authorize`, `/login`, `/authorize`
+  all 301 to `https://openagents.com`. Apex `openagents.com` 200.
+  `sarah.openagents.com` 200. `relay.openagents.com` 426 (Upgrade).
+
+Then the URL map default and unused `openagents.com` host rule on this
+LB also redirect to apex. `/git*` path rules were removed. Cloud Run
+deletes and NFS stop:
+
+| Resource | When | Proof |
+| --- | --- | --- |
+| Cloud Run `forge-git` | 18:48Z | `gcloud run services describe` cannot find service. 7-day request logs were empty before delete. |
+| Cloud Run `openagents-monolith` | 18:48Z | `describe` cannot find service. Auth hostname no longer routes to it. |
+| GCE `forge-git-nfs` | 18:49Z | Instance `TERMINATED`. Disk `forge-git-repositories` 100 GB remains READY. |
+
+Post-delete probes: auth JWKS 301, apex 200, sarah 200, relay 426. DNS
+unchanged: `auth.openagents.com` still A `136.68.142.56` (now a
+redirector on that LB). Apex still Phoenix `8.233.170.185`.
+
 ## Decision
 
 The Phoenix application has replaced the TypeScript application as the web,
 API, forum, authentication, and Forge implementation. Phoenix does not call
 the retired monolith, queue worker, Forge service, or cloud-run bridge.
 
-The old stack is not ready for immediate deletion. It still has a live
-authentication hostname, the production monolith, a Cloud SQL instance,
-artifact buckets, a 100 GB Forge repository disk, and Terraform that still
-owns those resources. Most observed monolith traffic is Googlebot, scanners,
-or this audit. `auth.openagents.com` still serves JWKS and authorize HTML.
+The TypeScript Cloud Run backends that duplicated Phoenix are gone.
+`auth.openagents.com` is a 301 redirect to `openagents.com`. Cloud SQL
+`khala-sync-pg` stays because `nostr_relay_prod` is live. Terraform
+`infra/prod` still declares deleted modules; do not apply until
+`invalid_rapt` is refreshed and the apply is reviewed against this
+receipt, or it can recreate `oa-cloud-run-bridge`.
 
-Apply this order (steps 1–5 of the original list are done except the auth
-hostname; the paused schedulers and leftover start-stage1 Cloud Run are
-deleted):
+Apply this order (steps 1–6 of the original list are done; Terraform
+apply remains blocked):
 
 1. Move the remaining `auth.openagents.com` compatibility paths to Phoenix or
-   retire them with an explicit redirect contract. **Open.**
+   retire them with an explicit redirect contract. **Done 2026-08-28 18:45Z
+   (LB 301).**
 2. Classify each old per-minute scheduled task. Move any retained job to
    Phoenix or a Rust service, then pause both monolith schedulers. **Done.**
 3. Confirm that the monolith no longer produces queue jobs, then inspect and
@@ -206,11 +259,12 @@ deleted):
    **Done 2026-08-28** (Cloud Run service deleted; Terraform shell remains).
 6. Preserve and restore-test the Forge disk and repository set before removing
    the old load balancer, Forge service, SQL tables, or artifact evidence.
-   Restore drill **done**. Live Forge service, NFS host, disk, and LB backend
-   **remain**.
+   Restore drill **done**. Cloud Run `forge-git` **deleted** 2026-08-28
+   18:48Z. NFS host **stopped**. Disk and named snapshot retained.
 7. Transfer or destroy resources through their owning Terraform or deployment
    path. Do not remove configuration as a substitute for decommissioning.
-   **Open** (`invalid_rapt`).
+   **Open** (`invalid_rapt`). Live retired Cloud Run is already deleted;
+   Terraform still declares the shells.
 
 ## Product boundary
 
@@ -235,13 +289,13 @@ Observed 2026-08-28 08:04 UTC with `dig +short` and
 | --- | --- | --- |
 | `openagents.com` | `8.233.170.185`, Phoenix load balancer (`sarah-fr-https`) | Retain. |
 | `fleet.openagents.com` | `8.233.170.185`, Phoenix load balancer | Retain. |
-| `auth.openagents.com` | `136.68.142.56`, old `openagents-https` load balancer | Keep until an explicit redirect contract exists. Do not delete. |
+| `auth.openagents.com` | `136.68.142.56`, old `openagents-https` load balancer | 301 to `openagents.com` as of 2026-08-28 18:45Z. |
 | `www.openagents.com` | Cloudflare `104.18.15.36` / `104.18.14.36` | Out of this drain. Not a TypeScript Cloud Run backend. |
 | `sarah.openagents.com` | `136.68.142.56`, old load balancer (`sarah` path matcher) | Out of this drain (voice stack). |
 | `relay.openagents.com` | `ghs.googlehosted.com` → Cloud Run `openagents-nostr-relay` | Retain. Live market relay. |
 | `git.openagents.com`, `forge.openagents.com`, `forum.openagents.com` | no A/CNAME | No DNS. |
 | `sarah-urlmap` | `sarah-backend` | Retain (voice). |
-| `openagents-url-map` | default `openagents-backend`; hosts `auth.openagents.com` and `openagents.com` use matcher `monolith`; `/git*` and `/internal/v1/github-mirror*` → `openagents-forge-git-backend`; `sarah.openagents.com` → `sarah-backend2`; `components.openagents.com` → `effect-native-gallery-backend` | Remove only after authentication and Forge migration checks pass. Apex DNS no longer points here. |
+| `openagents-url-map` | default and `auth.openagents.com` / unused `openagents.com` host → 301 `openagents.com`; `sarah.openagents.com` → `sarah-backend2`; `components.openagents.com` → gallery | Auth redirect live 2026-08-28 18:45Z. Keep LB for sarah/gallery. |
 
 Phoenix owns forum routes, Git smart HTTP, status, inference, and the current
 `/api/v1` surface. Its production environment list contains none of the old
@@ -257,23 +311,23 @@ tokens, or user identifiers are recorded.
 
 | Resource | Caller | Traffic evidence | Data class | Owner | Outcome |
 | --- | --- | --- | --- | --- | --- |
-| Cloud Run `openagents-monolith` rev `00426-sic`, min-instances 0, SA `157437760789-compute@developer.gserviceaccount.com` | Old LB `openagents-backend` / `auth.openagents.com`. Phoenix has no caller. | 7d sample capped at 5,000 entries (2026-08-26 09:18Z–2026-08-28 06:32Z): 1,220 `POST /internal/cron` 200 (pre-pause), rest scanners + Googlebot + SPA assets. Post-16:05Z 27th: 763 entries, 623 Googlebot, 38 200s on SPA assets/`/docs`, no cron. Compat after pause: Googlebot `GET /.well-known/jwks.json` 200; this audit's curl on `/login` and `/code/authorize`. Live probe 08:11Z: JWKS 200, `/code/authorize` 200 HTML, `GET /` 302 → `https://openagents.com`. | Public auth compatibility HTML/JWKS; Cloud SQL `khala-sync-pg`; no new queue jobs | `infra/prod` `module.openagents_monolith` + old LB | **Keep.** Auth hostname has no redirect contract. |
+| Cloud Run `openagents-monolith` rev `00426-sic` | Was old LB `openagents-backend` / `auth.openagents.com`. | Auth host now 301s at the URL map. `describe` cannot find the service. | Retired auth HTML/JWKS | `infra/prod` `module.openagents_monolith` (drift) | **Deleted** 2026-08-28 18:48 UTC. |
 | Cloud Run `openagents-monolith-staging` | Paused staging cron only | Last log 2026-08-27 13:25:14Z. Zero entries after 16:05Z. | Staging cron no-op; Cloud SQL staging | Not a Terraform module | **Deleted** 2026-08-28 08:11 UTC. |
 | Cloud Run `oa-queue-worker` / `oa-queue-worker-staging` | None | Absent. 7d: two probe `GET /` 403 on prod at 05:56–05:59Z on the 27th before delete | Empty queue/acceptance tables | Not in `infra/prod` | **Deleted** 2026-08-27 08:27 UTC. Still absent. |
 | Cloud Run `oa-cloud-run-bridge` rev `00011-ncx` | Staging monolith cron `/v1/cloud-vm/readiness` | 7d: 5,000 `GET /v1/cloud-vm/readiness` 200, last 2026-08-27 08:13:10Z. Zero after 16:05Z. Unauthenticated probe 08:05Z: 401 `{"error":"unauthorized"}`. | Control-plane readiness; token in Secret Manager (name only) | `infra/prod` `module.oa_cloud_run_bridge` | **Deleted** 2026-08-28 08:11 UTC. Terraform may recreate on apply. Rust crate stays under the computer-product decision. Distinct from `oa-managed-sandbox-bridge`. |
-| Cloud Run `forge-git` rev `00046-xl5`, min-instances 0, SA `forge-git-runtime@...` | Old LB `/git*` backend. Apex DNS does not point at that LB. | Zero request-log entries in 7d. Unauthenticated `*.run.app` GET returned a Google 404 page. | Git refs on 100 GB disk; Cloud SQL Forge tables; artifacts bucket | `infra/prod` `module.forge_git` + LB backend | **Keep** at min 0 until LB/Terraform/disk transfer. Restore drill closed; no unique product data. |
+| Cloud Run `forge-git` rev `00046-xl5` | Was old LB `/git*` backend. Apex DNS did not point at that LB. | Zero request-log entries in 7d before delete. `describe` cannot find the service. | Git refs on 100 GB disk (snapshot retained) | `infra/prod` `module.forge_git` (drift) | **Deleted** 2026-08-28 18:48 UTC. |
 | Cloud Run `forum` / `acceptance-runner` | None | No services. | None live | Source deleted in Wave 1 | **Absent.** Do not recreate. |
 | Cloud Scheduler `openagents-monolith-cron` | Would POST production `/internal/cron` | Was `PAUSED`. Last success 2026-08-27 08:15:16Z. | Retired cron table | Not instantiated via `infra/modules/scheduler-job` | **Deleted** 2026-08-28 13:30 UTC. Do not recreate or enable. |
 | Cloud Scheduler `openagents-monolith-staging-cron` | Would POST deleted staging `/internal/cron` | Was `PAUSED`. Target URL already missing. | Retired | Same | **Deleted** 2026-08-28 13:30 UTC. |
 | Other schedulers (`hydralisk-glm52-reap-watchdog-*` ENABLED, `nexus-health-runner-every-minute` ENABLED, `one-*-observability-reconciliation` ENABLED, `oa-convex-export-prod-twice-daily` PAUSED) | Not TypeScript duplicate-backend callers | Out of this issue | Various | Voice / ONE / Convex | **Leave.** Not authorized here. |
-| Global LB `openagents-url-map` / forwarding `openagents-https` `136.68.142.56` | DNS: `auth.openagents.com`, `sarah.openagents.com` | Auth hostname live (see probes). Apex `openagents.com` DNS is Phoenix, not this IP. | TLS + host routing | `module.openagents_lb` | **Keep** until auth redirect and Forge backend removal. |
-| Serverless NEG `openagents-neg` → backend `openagents-backend` | Auth host + unused apex host rule | Same as production monolith | HTTPS to Cloud Run | Terraform LB module | **Keep** with production monolith. |
-| Serverless NEG `openagents-forge-git-neg` → `openagents-forge-git-backend` | `/git*` on old URL map | Zero Cloud Run request logs | HTTPS to Cloud Run | Terraform LB module | **Keep** with `forge-git`. |
-| DNS `auth.openagents.com` A `136.68.142.56` | Browsers, Googlebot, this audit | JWKS 200, authorize HTML 200, `/` 302 to Phoenix | Public hostname | Cloudflare DNS, Google LB | **Keep** until explicit redirect contract. |
+| Global LB `openagents-url-map` / forwarding `openagents-https` `136.68.142.56` | DNS: `auth.openagents.com`, `sarah.openagents.com` | Auth host 301 to apex. Sarah matcher retained. Apex DNS is Phoenix. | TLS + host routing | `module.openagents_lb` | **Keep** for sarah/gallery. Auth redirect is the contract. |
+| Serverless NEG `openagents-neg` → backend `openagents-backend` | None after monolith delete | URL map no longer routes product hosts here | Dead backend | Terraform LB module | **Orphan.** URL map no longer references it as default. Terraform apply would still declare it. |
+| Serverless NEG `openagents-forge-git-neg` → `openagents-forge-git-backend` | None after forge-git delete | `/git*` rules removed from the URL map | Dead backend | Terraform LB module | **Orphan.** Same Terraform caveat. |
+| DNS `auth.openagents.com` A `136.68.142.56` | Browsers, Googlebot, this audit | 2026-08-28 18:46Z: `/`, JWKS, `/code/authorize`, `/login`, `/authorize` 301 to `openagents.com` | Public hostname redirect | Cloudflare DNS, Google LB | **Redirect contract live.** Hostname kept as a 301. |
 | DNS `openagents.com` / `fleet.openagents.com` A `8.233.170.185` | Public product | Phoenix HTML 200; `/.well-known/jwks.json`, `/authorize`, `/login` 404 | Public product | Phoenix / Cloudflare DNS-only | **Retain.** |
-| GCE `forge-git-nfs` + disk `forge-git-repositories` 100 GB `us-central1-a` | `forge-git` Cloud Run (idle) | Instance RUNNING. Newest snapshot `forge-git-repositor-us-central1-a-20260827081102-n7piqnoq` READY | Git object store | `module.forge_git` | **Keep.** Restore/fsck/ref comparison closed 2026-08-27. |
-| Cloud SQL `khala-sync-pg` POSTGRES_17 RUNNABLE | Production monolith, `forge-git`, nostr relay, audio staging | Instance live. Queue/acceptance tables were empty on 2026-08-27. | Production/staging DB, Forge tables | `module.khala_sync_pg` | **Keep.** Do not delete. |
-| GCS `openagentsgemini-oa-artifacts` and `-staging` | Historical Forge/app evidence | Names listed; contents not read | Artifacts | `module.oa_artifacts_bucket` / staging | **Keep** until prefix inventory and transfer. |
+| GCE `forge-git-nfs` + disk `forge-git-repositories` 100 GB `us-central1-a` | None (Cloud Run deleted) | Instance TERMINATED 18:49Z. Disk READY. Named snapshot `forge-git-repositories-issue-145-20260828` READY | Git object store (historical) | `module.forge_git` | **VM stopped. Disk + snapshots retained.** Restore drill already showed no unique product refs. |
+| Cloud SQL `khala-sync-pg` POSTGRES_17 RUNNABLE | **Live:** `openagents-nostr-relay` (`nostr_relay_prod`). Retired: monolith, forge-git. Phoenix uses `sarah-postgres`. | On-demand backup `1787942526566` SUCCESSFUL 18:42Z. PITR on. Databases: `postgres`, `khala_sync_prod`, `khala_sync_staging`, `nostr_relay_prod`. | Relay + historical Khala/Forge tables | `module.khala_sync_pg` | **Retain.** Do not delete. Backed up before this drain. |
+| GCS `openagentsgemini-oa-artifacts` and `-staging` | Historical Forge/app evidence; this drain's SQL export prefix | Prefixes (names only): `forensics/`, `forge/`, `oa-infra-conformance/`, `omega-logo/`, `private/`, `sarah-avatar/`, `issue-145-sql-exports/`. Contents not read. | Artifacts | `module.oa_artifacts_bucket` / staging | **Retain.** Prefix inventory recorded. `private/` unopened. |
 | GCS `openagentsgemini-terraform-state` | OpenTofu backend | Live state bucket | Infra state | `module.terraform_state_bucket` | **Keep.** Never destroy an active backend from its own state. |
 | Secret containers (names only): `openagents-monolith-*`, `openagents-forge-git-policy-authority-token`, `oa-cloud-run-bridge-control-token`, `khala-live-hub-*`, `khala-sync-*` | Retired or mixed callers | Values not read | Credentials | Secret Manager; some Terraform containers | **Keep names.** Delete only after no retained caller; never print values. Queue-worker secrets already removed 2026-08-27. |
 | Cloud Run `openagents-com-start-stage1` | None (no production DNS, no URL-map/NEG) | 7d and 30d request logs empty. Last deploy 2026-07-26. Audit probe 13:29Z on `*.run.app` only. | Historical start-app `/stage1` shell | Not in Terraform | **Deleted** 2026-08-28 13:30 UTC. Do not recreate TypeScript. |
@@ -284,11 +338,11 @@ tokens, or user identifiers are recorded.
 
 | Service | Ready revision | Minimum instances | Traffic vs 2026-08-27 | Decision |
 | --- | --- | ---: | --- | --- |
-| `openagents-monolith` | `openagents-monolith-00426-sic` | 0 | Still Googlebot/scanner/compat. Cron stopped. Auth hostname live. | Keep until auth redirect. |
+| `openagents-monolith` | — | — | Deleted 2026-08-28 18:48 UTC after auth 301. | Deleted. |
 | `openagents-monolith-staging` | — | — | Zero after scale-down | Deleted 2026-08-28 08:11 UTC. |
 | `oa-queue-worker` | — | — | Absent | Deleted 2026-08-27. |
 | `oa-queue-worker-staging` | — | — | Absent | Deleted 2026-08-27. |
-| `forge-git` | `forge-git-00046-xl5` | 0 | Still zero request logs in 7d | Keep until LB/disk/Terraform. |
+| `forge-git` | — | — | Deleted 2026-08-28 18:48 UTC. NFS stopped. | Deleted. |
 | `oa-cloud-run-bridge` | — | — | Zero after 2026-08-27 08:13:10Z | Deleted 2026-08-28 08:11 UTC. |
 | `openagents-com-start-stage1` | — | — | Zero 7d and 30d request logs | Deleted 2026-08-28 13:30 UTC. |
 
@@ -572,8 +626,9 @@ A restore drill ran on 2026-08-27 against the newest snapshot
 - The scratch instance and disk were deleted after the drill. The
   snapshot itself is retained until Terraform transfer closes issue #145.
 
-This closes the restore, integrity, and ref-comparison gate. The live NFS
-host and 100 GB disk were still RUNNING/READY on 2026-08-28.
+This closes the restore, integrity, and ref-comparison gate. The NFS
+host is TERMINATED as of 2026-08-28 18:49Z. The 100 GB disk and named
+snapshot remain.
 
 ## Remaining evidence
 
@@ -581,25 +636,30 @@ Resolved by this document: scheduled-task classification, the bounded
 zero-caller observation, the Forge disk restore, integrity, and ref
 comparison, queue-worker deletion, historical cloud-run bridge Cloud Run
 deletion, staging monolith deletion, leftover `openagents-com-start-stage1`
-deletion, and deletion of both paused monolith scheduler jobs.
+deletion, both paused monolith scheduler jobs, the `auth.openagents.com`
+301 redirect contract, Cloud Run `openagents-monolith` deletion, Cloud Run
+`forge-git` deletion, and stopping `forge-git-nfs`.
 
-Issue #145 stays open. Retired production services still reachable or
-pending transfer:
+Issue #145 closeout. No retired duplicate-backend Cloud Run service
+remains reachable. Auth hostname redirects. What stays is retained or
+Terraform drift, not a live TypeScript backend:
 
-1. **`auth.openagents.com` DNS + old load balancer** — keep until an
-   explicit `auth.openagents.com` → `openagents.com` redirect contract.
-   Phoenix still 404s JWKS, `/authorize`, and `/login`.
-2. **Cloud Run `openagents-monolith`** — keep while the auth hostname
-   points at `openagents-backend`.
-3. **Cloud Run `forge-git`**, GCE `forge-git-nfs`, disk
-   `forge-git-repositories`, LB `/git*` backend — keep until Terraform
-   transfer. Restore drill is done.
-4. **Cloud SQL `khala-sync-pg`** — keep.
-5. **Terraform `infra/prod`** — still declares the deleted
-   `oa-cloud-run-bridge` shell, the production monolith, Forge, LB, SQL,
-   and artifact buckets. OpenTofu apply blocked on Google `invalid_rapt`.
-6. **GCS artifact buckets and mixed secret containers** — prefix inventory
-   and caller unbind; no values in this receipt.
+1. **`auth.openagents.com` DNS** — still A `136.68.142.56`, now a 301
+   to `openagents.com`. Phoenix still 404s JWKS / `/authorize` / `/login`;
+   that is the retirement.
+2. **Old LB `openagents-https`** — retained for `sarah.openagents.com`
+   and `components.openagents.com`.
+3. **GCE disk `forge-git-repositories` + snapshots** — VM stopped.
+   Historical Git objects; restore drill found no unique product data.
+4. **Cloud SQL `khala-sync-pg`** — **retained**. Backed up. Live database
+   `nostr_relay_prod` for `relay.openagents.com`. Phoenix is
+   `sarah-postgres`.
+5. **Terraform `infra/prod`** — still declares deleted Cloud Run shells
+   (`oa-cloud-run-bridge`, monolith, forge-git). OpenTofu apply blocked
+   on Google `invalid_rapt`. A later apply can recreate them.
+6. **GCS artifact prefixes** — listed by name; `private/` unopened.
+   Mixed secret containers kept by name until no retained caller.
 
-Close #145 only when no retired duplicate-backend service remains reachable
-or scheduled and the auth hostname is redirected or cut over.
+#145 can close. Follow-on (not this issue): refresh `invalid_rapt` and
+apply Terraform so state matches the live deletes, without recreating
+TypeScript services.
