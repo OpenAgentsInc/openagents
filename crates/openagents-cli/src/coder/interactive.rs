@@ -177,6 +177,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         role: "root".to_string(),
         parent: None,
         worktree: None,
+        status: None,
         inbox: loaded
             .store
             .directory()

@@ -98,6 +98,11 @@ pub struct Registration {
     pub parent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
+    /// One line on what this session is doing, for discovery at a glance.
+    /// Written by the session itself from its own checkpoint notes — the
+    /// first sentence, truncated — never by a neighbor (#281).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     /// Where this session's `inbox.jsonl` lives, so a sender never has to
     /// guess the store layout.
     pub inbox: String,
@@ -352,6 +357,18 @@ pub fn heartbeat(home: &Path, session_id: &str) -> Result<(), String> {
 
 /// Remove this session's registration. A missing file is already the goal,
 /// so removing a registration that is not there succeeds.
+/// Publish a status line onto an existing registration. A missing
+/// registration is not created here — same law as [`heartbeat`]: only the
+/// session's own startup registers.
+pub fn set_status(home: &Path, session_id: &str, status: &str) -> Result<(), String> {
+    let Some(mut registration) = load_registration(home, session_id)? else {
+        return Ok(());
+    };
+    registration.status = Some(status.to_string());
+    register(home, &registration)
+}
+
+/// Unregister a session: the file goes, so discovery stops offering it.
 pub fn unregister(home: &Path, session_id: &str) -> Result<(), String> {
     let path = registration_path(home, session_id);
     match std::fs::remove_file(&path) {
@@ -1288,6 +1305,7 @@ mod tests {
             role: "child".to_string(),
             parent: Some("sess-a".to_string()),
             worktree: Some("/work/child".to_string()),
+            status: None,
             inbox: dir.path().join("inbox.jsonl").display().to_string(),
             alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
             started_at_ms: now_ms(),

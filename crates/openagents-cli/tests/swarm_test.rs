@@ -11,8 +11,9 @@
 use openagents_cli::swarm::{
     DEFAULT_ALIVE_AFTER_MS, MAXIMUM_BODY_BYTES, MESSAGE_SCHEMA, Mailbox, REGISTRATION_SCHEMA,
     Registration, SwarmMessage, SwarmState, list, load_registration, read_inbox, register, send,
-    unregister,
+    set_status, unregister,
 };
+use openagents_cli::tools::status_from_checkpoint;
 use std::path::PathBuf;
 
 fn registration(session_id: &str, pid: u32, inbox: PathBuf) -> Registration {
@@ -27,6 +28,7 @@ fn registration(session_id: &str, pid: u32, inbox: PathBuf) -> Registration {
         role: "root".to_string(),
         parent: None,
         worktree: None,
+        status: None,
         inbox: inbox.display().to_string(),
         alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
         started_at_ms: now,
@@ -67,6 +69,79 @@ fn a_dead_pid_is_stale_not_hidden() {
     register(&path, &registration).unwrap();
     let loaded = load_registration(&path, "ghost").unwrap().unwrap();
     assert_eq!(loaded.state(), SwarmState::Stale);
+}
+
+#[test]
+fn a_checkpoint_sentence_over_the_ceiling_is_truncated_with_an_ellipsis() {
+    let long = "Swarm presence work continues across the listing, the registration file, and the checkpoint write path, with tests pinned to every projection site.";
+    let status = openagents_cli::tools::status_from_checkpoint(long)
+        .expect("a long sentence still yields a status");
+    assert!(
+        status.starts_with("Swarm presence work continues"),
+        "{status}"
+    );
+    assert!(status.ends_with('…'), "{status}");
+    assert!(status.chars().count() <= 101, "{status}");
+    // The truncation keeps whole words: the ceiling is a character
+    // ceiling, not a byte ceiling, so multibyte text truncates honestly.
+    let multibyte = "文件写入已完成的检查点记录会被截断展示给邻居会话查看当前状态";
+    let wide = status_from_checkpoint(multibyte).expect("a wide sentence still yields a status");
+    assert!(wide.chars().count() <= 101, "{wide}");
+}
+
+#[test]
+fn a_short_first_sentence_passes_through_without_an_ellipsis() {
+    // 66 characters: under the ceiling, so nothing is cut and no ellipsis
+    // is added. The sentence boundary still drops the rest.
+    assert_eq!(
+        status_from_checkpoint(
+            "Folding the peer review deltas, wiring tests, then pushing to main. Details follow."
+        ),
+        Some("Folding the peer review deltas, wiring tests, then pushing to main".to_string())
+    );
+}
+
+#[test]
+fn a_blank_checkpoint_leaves_no_status() {
+    assert_eq!(openagents_cli::tools::status_from_checkpoint("   "), None);
+    assert_eq!(openagents_cli::tools::status_from_checkpoint(""), None);
+}
+
+#[test]
+fn the_first_sentence_wins_and_the_rest_is_dropped() {
+    assert_eq!(
+        openagents_cli::tools::status_from_checkpoint(
+            "Filed nine issues. Then more work happened today that need not appear."
+        ),
+        Some("Filed nine issues".to_string())
+    );
+}
+
+#[test]
+fn status_publishes_to_the_registration_and_never_creates_one() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().to_path_buf();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registration = registration(
+        "session-status",
+        std::process::id(),
+        dir.path().join("inbox.jsonl"),
+    );
+    registration.status = Some("before".to_string());
+    register(&path, &registration).unwrap();
+
+    set_status(&path, "session-status", "Filed nine issues").unwrap();
+    let loaded = load_registration(&path, "session-status").unwrap().unwrap();
+    assert_eq!(loaded.status.as_deref(), Some("Filed nine issues"));
+
+    // A session with no registration stays that way: only its own
+    // startup registers.
+    set_status(&path, "never-registered", "ghost status").unwrap();
+    assert!(
+        load_registration(&path, "never-registered")
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]

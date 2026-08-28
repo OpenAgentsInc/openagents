@@ -2930,6 +2930,33 @@ fn write_command_log(
 /// The value is durability, not conversation: a session that dies mid-turn —
 /// cap, crash, cancel — leaves its last checkpoint on disk for the next
 /// session, which is exactly the reader the note is for (#189).
+/// One line on what a session is doing, derived from its own checkpoint
+/// notes: the first sentence, truncated, because a discovery row is read at
+/// a glance, not studied (#281). Empty when the session has never
+/// checkpointed — an absent status is honest; a guessed one is not.
+pub fn status_from_checkpoint(text: &str) -> Option<String> {
+    const MAX: usize = 100;
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut line = String::new();
+    for character in trimmed.chars() {
+        if character == '.' || character == '\n' {
+            break;
+        }
+        line.push(character);
+    }
+    let mut line = line.trim().to_string();
+    if line.is_empty() {
+        return None;
+    }
+    if line.chars().count() > MAX {
+        line = line.chars().take(MAX).collect::<String>() + "…";
+    }
+    Some(line)
+}
+
 fn swarm_unbound() -> (String, bool) {
     (
         "This session is not registered with the swarm, so it cannot list, send, or drain."
@@ -2960,7 +2987,11 @@ fn answer_swarm_list(
                         "cwd": registration.cwd,
                         "lane": registration.lane,
                         "model": registration.model,
+                        "worktree": registration.worktree,
                         "self": registration.session_id == binding.session_id,
+                        "started_at_ms": registration.started_at_ms,
+                        "last_seen_at": registration.heartbeat_at_ms,
+                        "status": registration.status,
                     })
                 })
                 .collect();
@@ -6115,5 +6146,53 @@ let dir = tempfile::tempdir().unwrap();
     fn a_plan_upsell_is_not_a_completed_task() {
         assert!(is_refusal("Please upgrade your plan to continue."));
         assert!(!is_refusal("Done. Edited src/main.rs."));
+    }
+
+    // ───────────────────────────────────────── the swarm presence listing (#281)
+
+    /// The tool-side listing projects presence fields (#281): status from
+    /// the registration, `last_seen_at` from the heartbeat. Hermetic: the
+    /// probe session registers under a temporary home, never the real one.
+    #[test]
+    fn the_listing_carries_presence_fields() {
+        let home = tempfile::tempdir().unwrap();
+        let home_path = home.path().to_path_buf();
+        let session_id = "presence-probe".to_string();
+        let registration = crate::swarm::Registration {
+            schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
+            session_id: session_id.clone(),
+            pid: std::process::id(),
+            cwd: "/probe".to_string(),
+            lane: "test".to_string(),
+            model: None,
+            role: "root".to_string(),
+            parent: None,
+            worktree: None,
+            status: Some("Filed nine issues".to_string()),
+            inbox: "/probe/inbox.jsonl".to_string(),
+            alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
+            started_at_ms: crate::swarm::now_ms(),
+            heartbeat_at_ms: crate::swarm::now_ms(),
+        };
+        crate::swarm::register(&home_path, &registration).expect("register the probe session");
+
+        let binding = SwarmBinding::new(
+            home_path.clone(),
+            session_id.clone(),
+            PathBuf::from("/probe"),
+        );
+        let (output, is_error) = answer_swarm_list(Some(&binding), &serde_json::json!({}));
+        assert!(!is_error, "the listing must succeed: {output}");
+
+        let document: serde_json::Value =
+            serde_json::from_str(&output).expect("the listing is a JSON document");
+        let rows = document["sessions"].as_array().expect("a sessions array");
+        let mine = rows
+            .iter()
+            .find(|row| row["session_id"] == session_id)
+            .expect("the probe session appears in its own listing");
+        assert_eq!(mine["status"], serde_json::json!("Filed nine issues"));
+        assert!(mine["last_seen_at"].is_u64(), "last_seen_at is a number");
+        assert_eq!(mine["state"], "live");
     }
 }

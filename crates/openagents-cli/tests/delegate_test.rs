@@ -1044,6 +1044,7 @@ async fn delegate_children_join_the_swarm_and_leave_it() {
         role: "root".to_string(),
         parent: None,
         worktree: None,
+        status: None,
         inbox: parent_mail.path().join("inbox.jsonl").display().to_string(),
         alive_after_ms: openagents_cli::swarm::DEFAULT_ALIVE_AFTER_MS,
         started_at_ms: openagents_cli::swarm::now_ms(),

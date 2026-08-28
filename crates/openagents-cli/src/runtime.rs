@@ -1949,6 +1949,22 @@ impl CoderRuntimeSession {
                         "the checkpoint was not saved to the summary: {error}"
                     ));
                 }
+                // The registration's status line is derived from the same
+                // note (#281): first sentence, truncated — what discovery
+                // shows a neighbor deciding where to send work. A missing
+                // registration is not an error here: only the session's own
+                // startup registers, and an unregistered session has no
+                // status to publish.
+                if event.event_type == "turn.checkpoint"
+                    && let Some(binding) = &self.swarm
+                    && let Some(text) = event.payload.get("text").and_then(|v| v.as_str())
+                    && let Some(status) = crate::tools::status_from_checkpoint(text)
+                    && let Err(error) =
+                        crate::swarm::set_status(&binding.home, &binding.session_id, &status)
+                {
+                    self.record_failures
+                        .push(format!("the swarm status was not published: {error}"));
+                }
             }
         }
         self.note_cloud(&events).await;
