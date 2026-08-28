@@ -57,6 +57,11 @@ the Harbor container could not reach the inference proxy. Cost is
 `unknown` (`glm-5.3-flash` is absent from the rate catalog). That is the
 current native Flash comparison row, not a priced-lane measurement.
 
+`tb2-cross-section.jsonl` now also holds a native Flash row (2026-08-28,
+#143): `glm-5.3-flash` at 7 of 12 over 4243.4s, 0 ungraded, gate passed.
+Harbor job `5ea06a86-b084-4afa-890c-c64784125adb`. Three of the five
+rejects were inference-proxy unreachable from the container.
+
 `coderbench-agent-building-v1.jsonl` holds the first CoderBench smoke-marked
 row from that same Harbor job (`tier: smoke`). Distiller drafts are not in
 that suite. The TypeScript score store still refuses the dedicated liveness

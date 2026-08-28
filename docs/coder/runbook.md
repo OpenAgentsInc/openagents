@@ -291,7 +291,17 @@ Two flags matter for the lanes below the live one:
   could not reach `https://openagents.com/api/inference/proxy` (agent exit
   2). Cost is `unknown` because `glm-5.3-flash` is absent from the rate
   catalog. That Flash row is the current native Coder Flash baseline.
-  `tb2-cross-section` has no Flash row yet.
+- Native Coder Flash `tb2-cross-section`, proxy lane, `glm-5.3-flash`: 7 of
+  12 accepted, 0.583 success over 12 graded trials, 0 ungraded, 4243.4s,
+  gate passed (2026-08-28, #143, Harbor job
+  `5ea06a86-b084-4afa-890c-c64784125adb`). Rejected: `openssl-selfsigned-cert`,
+  `password-recovery`, `regex-log`, `sanitize-git-repo`,
+  `schemelike-metacircular-eval`. Three of those (`regex-log`,
+  `openssl-selfsigned-cert`, `schemelike-metacircular-eval`) ended with
+  `https://openagents.com/api/inference/proxy` unreachable from the
+  container; `password-recovery` and `sanitize-git-repo` ran the model and
+  failed the verifier. Gym PATCH finalize still 422s; the local store
+  row is the evidence.
 - `tb2-cross-section`, proxy lane, `gpt-5.6-luna`: 9 of 12 accepted, 0.75
   success over 12 graded trials, 0 ungraded, 12 of 12 pinned tasks covered,
   3151.4s, 6,006,329 prompt and 88,163 output tokens over 250 tool calls
