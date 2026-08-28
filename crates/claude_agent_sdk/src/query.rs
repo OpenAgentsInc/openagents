@@ -407,6 +407,97 @@ impl Query {
             .await
     }
 
+    /// Background in-flight foreground tasks (TS `backgroundTasks`).
+    pub async fn background_tasks(&self, tool_use_id: Option<&str>) -> Result<Value> {
+        self.send_control_request(ControlRequestData::BackgroundTasks(
+            crate::protocol::BackgroundTasksRequest {
+                tool_use_id: tool_use_id.map(str::to_string),
+            },
+        ))
+        .await
+    }
+
+    /// Drop a queued async user message (TS).
+    pub async fn cancel_async_message(&self, message_uuid: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::CancelAsyncMessage(
+            crate::protocol::CancelAsyncMessageRequest {
+                message_uuid: message_uuid.to_string(),
+            },
+        ))
+        .await
+    }
+
+    /// Session cost totals.
+    pub async fn get_session_cost(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::GetSessionCost)
+            .await
+    }
+
+    /// Structured `/usage` payload.
+    pub async fn get_usage(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::GetUsage)
+            .await
+    }
+
+    /// Remote CLI binary version.
+    pub async fn get_binary_version(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::GetBinaryVersion)
+            .await
+    }
+
+    /// At-mention file autocomplete.
+    pub async fn file_suggestions(&self, query: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::FileSuggestions(
+            crate::protocol::FileSuggestionsRequest {
+                query: query.to_string(),
+            },
+        ))
+        .await
+    }
+
+    /// Reload plugins, commands, and MCP status.
+    pub async fn reload_plugins(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::ReloadPlugins)
+            .await
+    }
+
+    /// Reload skills.
+    pub async fn reload_skills(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::ReloadSkills)
+            .await
+    }
+
+    /// Reconnect one MCP server.
+    pub async fn reconnect_mcp_server(&self, server_name: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::McpReconnect(
+            crate::protocol::McpReconnectRequest {
+                server_name: server_name.to_string(),
+            },
+        ))
+        .await
+    }
+
+    /// Enable or disable one MCP server.
+    pub async fn toggle_mcp_server(&self, server_name: &str, enabled: bool) -> Result<Value> {
+        self.send_control_request(ControlRequestData::McpToggle(
+            crate::protocol::McpToggleRequest {
+                server_name: server_name.to_string(),
+                enabled,
+            },
+        ))
+        .await
+    }
+
+    /// Set the session title.
+    pub async fn rename_session(&self, title: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::RenameSession(
+            crate::protocol::RenameSessionRequest {
+                title: title.to_string(),
+            },
+        ))
+        .await
+    }
+
     /// Get the session ID (available after receiving first message).
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
@@ -704,6 +795,50 @@ readline.createInterface({ input: process.stdin });
                 "stop_task",
             ),
             (ControlRequestData::GetContextUsage, "get_context_usage"),
+            (
+                ControlRequestData::BackgroundTasks(crate::protocol::BackgroundTasksRequest {
+                    tool_use_id: None,
+                }),
+                "background_tasks",
+            ),
+            (
+                ControlRequestData::CancelAsyncMessage(
+                    crate::protocol::CancelAsyncMessageRequest {
+                        message_uuid: "u1".into(),
+                    },
+                ),
+                "cancel_async_message",
+            ),
+            (ControlRequestData::GetSessionCost, "get_session_cost"),
+            (ControlRequestData::GetUsage, "get_usage"),
+            (ControlRequestData::GetBinaryVersion, "get_binary_version"),
+            (
+                ControlRequestData::FileSuggestions(crate::protocol::FileSuggestionsRequest {
+                    query: "src/".into(),
+                }),
+                "file_suggestions",
+            ),
+            (ControlRequestData::ReloadPlugins, "reload_plugins"),
+            (ControlRequestData::ReloadSkills, "reload_skills"),
+            (
+                ControlRequestData::McpReconnect(crate::protocol::McpReconnectRequest {
+                    server_name: "docs".into(),
+                }),
+                "mcp_reconnect",
+            ),
+            (
+                ControlRequestData::McpToggle(crate::protocol::McpToggleRequest {
+                    server_name: "docs".into(),
+                    enabled: false,
+                }),
+                "mcp_toggle",
+            ),
+            (
+                ControlRequestData::RenameSession(crate::protocol::RenameSessionRequest {
+                    title: "t".into(),
+                }),
+                "rename_session",
+            ),
         ];
         for (request, subtype) in cases {
             let value = serde_json::to_value(&request).unwrap();

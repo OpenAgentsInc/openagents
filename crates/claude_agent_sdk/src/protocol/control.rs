@@ -77,6 +77,50 @@ pub enum ControlRequestData {
     /// Context-window usage by category.
     #[serde(rename = "get_context_usage")]
     GetContextUsage,
+
+    /// Background in-flight foreground tasks (optional one tool_use).
+    #[serde(rename = "background_tasks")]
+    BackgroundTasks(BackgroundTasksRequest),
+
+    /// Drop a pending async user message by uuid.
+    #[serde(rename = "cancel_async_message")]
+    CancelAsyncMessage(CancelAsyncMessageRequest),
+
+    /// Session cost totals.
+    #[serde(rename = "get_session_cost")]
+    GetSessionCost,
+
+    /// Structured `/usage` payload.
+    #[serde(rename = "get_usage")]
+    GetUsage,
+
+    /// Remote CLI binary version.
+    #[serde(rename = "get_binary_version")]
+    GetBinaryVersion,
+
+    /// At-mention file autocomplete.
+    #[serde(rename = "file_suggestions")]
+    FileSuggestions(FileSuggestionsRequest),
+
+    /// Reload plugins, commands, and MCP status.
+    #[serde(rename = "reload_plugins")]
+    ReloadPlugins,
+
+    /// Reload skills.
+    #[serde(rename = "reload_skills")]
+    ReloadSkills,
+
+    /// Reconnect one MCP server.
+    #[serde(rename = "mcp_reconnect")]
+    McpReconnect(McpReconnectRequest),
+
+    /// Enable or disable one MCP server.
+    #[serde(rename = "mcp_toggle")]
+    McpToggle(McpToggleRequest),
+
+    /// Set the session title.
+    #[serde(rename = "rename_session")]
+    RenameSession(RenameSessionRequest),
 }
 
 /// Initialize request data.
@@ -233,6 +277,46 @@ pub struct McpSetServersRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StopTaskRequest {
     pub task_id: String,
+}
+
+/// Background in-flight foreground tasks (TS `backgroundTasks`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BackgroundTasksRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_use_id: Option<String>,
+}
+
+/// Drop a queued async user message (TS `cancelAsyncMessage`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CancelAsyncMessageRequest {
+    pub message_uuid: String,
+}
+
+/// At-mention file autocomplete (TS `fileSuggestions` / control subtype).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileSuggestionsRequest {
+    pub query: String,
+}
+
+/// Reconnect one MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpReconnectRequest {
+    #[serde(rename = "serverName")]
+    pub server_name: String,
+}
+
+/// Enable or disable one MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpToggleRequest {
+    #[serde(rename = "serverName")]
+    pub server_name: String,
+    pub enabled: bool,
+}
+
+/// Set the session title.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenameSessionRequest {
+    pub title: String,
 }
 
 /// Control response wrapper.

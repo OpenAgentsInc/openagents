@@ -45,9 +45,12 @@ holds the stdin lock across `recv`, so the handshake cannot deadlock.
 ## P3 first slice landed (issue #232)
 
 Queryable control methods now include `apply_flag_settings`, `set_mcp_servers`,
-`stop_task`, and `get_context_usage`. `supported_models()` reads the
-initialize payload (there is no `list_models` wire subtype). Remaining
-control-request subtypes and hook callbacks are still open.
+`stop_task`, `get_context_usage`, `background_tasks`, `cancel_async_message`,
+`get_session_cost`, `get_usage`, `get_binary_version`, `file_suggestions`,
+`reload_plugins`, `reload_skills`, `reconnect_mcp_server`, `toggle_mcp_server`,
+and `rename_session`. `supported_models()` reads the initialize payload
+(there is no `list_models` wire subtype). Hook callbacks, elicitation, and
+the remaining auth/dialog subtypes are still open.
 
 ## Remaining work (do not expand this packet)
 
