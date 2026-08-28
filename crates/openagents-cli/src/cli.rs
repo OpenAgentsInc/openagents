@@ -165,6 +165,17 @@ pub enum AuthAction {
         )]
         scope: Vec<String>,
     },
+    /// Grant GitHub repository access to the signed-in account through the
+    /// browser, so repository operations on this origin work
+    ConnectGithub {
+        #[arg(
+            long,
+            help = "Print an authorization URL and code without waiting for approval"
+        )]
+        headless: bool,
+        #[arg(long, help = "Complete the pending GitHub connect authorization")]
+        resume: bool,
+    },
     /// Read a token from standard input and store it for the selected API
     TokenStdin,
     /// Show authentication status for the selected API
@@ -1894,6 +1905,9 @@ async fn run_auth(action: AuthAction, endpoint: &Endpoint, store: &CredentialSto
             resume,
             scope,
         } => run_auth_login(endpoint, store, token_stdin, headless, resume, &scope, json).await,
+        AuthAction::ConnectGithub { headless, resume } => {
+            run_auth_connect_github(endpoint, store, headless, resume, json).await
+        }
         AuthAction::TokenStdin => {
             let token = read_token_from_stdin();
             let source = or_fail(store.store(&token));
@@ -2101,6 +2115,150 @@ async fn run_auth_login(
     let token = or_fail(devices.wait(&authorization).await);
     or_fail(store.store(&token));
     announce("device_authorization");
+}
+
+/// Drive the server's GitHub repository-scope connect flow.
+///
+/// The credential this flow produces is never handed to the CLI: it approves
+/// against the signed-in browser account and stays server-side. What the CLI
+/// needs is an existing token — the connect page checks it — so a command
+/// without one is refused before an unapprovable authorization is opened.
+async fn run_auth_connect_github(
+    endpoint: &Endpoint,
+    store: &CredentialStore,
+    headless: bool,
+    resume: bool,
+    json: bool,
+) {
+    if headless && resume {
+        fail("use only one of --headless or --resume");
+    }
+    if or_fail(store.find_token()).is_none() {
+        fail(&format!(
+            "connecting GitHub requires a signed-in CLI: run {} first",
+            crate::auth::login_command_for(endpoint)
+        ));
+    }
+
+    let pending_store = PendingStore::new();
+    let devices = DeviceClient::new(&endpoint.origin);
+
+    if resume {
+        let pending = match or_fail(pending_store.get(&endpoint.origin)) {
+            Some(pending) => pending,
+            None => fail(&format!(
+                "no pending authorization exists for {}. Run {} first",
+                endpoint.origin,
+                crate::auth::connect_github_command_for(endpoint)
+            )),
+        };
+        if pending.kind.as_deref() != Some(crate::auth::GITHUB_CONNECT_PENDING_KIND) {
+            fail(&format!(
+                "the pending authorization for {} is a {}, not a GitHub connect. \
+Run {} instead",
+                endpoint.origin,
+                pending.kind.as_deref().unwrap_or("login"),
+                crate::auth::connect_github_command_for(endpoint)
+            ));
+        }
+        let remaining = (pending.expires_at_ms - crate::auth::now_ms()) / 1_000;
+        if remaining <= 0 {
+            let _ = pending_store.remove(&endpoint.origin);
+            fail(&format!(
+                "the pending authorization expired. Run {} again",
+                crate::auth::connect_github_command_for(endpoint)
+            ));
+        }
+        // The pending record predates the scope field by design: the
+        // authorization the server already opened decides what is granted,
+        // and this path only waits for that one to be approved.
+        let authorization = crate::auth::DeviceAuthorization {
+            device_code: pending.device_code.clone(),
+            user_code: pending.user_code.clone(),
+            verification_uri: pending.verification_uri.clone(),
+            verification_uri_complete: pending.verification_uri_complete.clone(),
+            expires_in: remaining,
+            interval: pending.interval,
+            scope: None,
+        };
+        let login = or_fail(devices.wait_for_connect(&authorization).await);
+        or_fail(pending_store.remove(&endpoint.origin));
+        announce_connected(endpoint, &login, json);
+        return;
+    }
+
+    let authorization = or_fail(devices.start_github_connect().await);
+
+    let interactive = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    if headless || json || !interactive {
+        let resume_command = crate::auth::connect_github_resume_command_for(endpoint);
+        or_fail(pending_store.set(&PendingDeviceAuthorization {
+            origin: endpoint.origin.clone(),
+            device_code: authorization.device_code.clone(),
+            user_code: authorization.user_code.clone(),
+            verification_uri: authorization.verification_uri.clone(),
+            verification_uri_complete: authorization.verification_uri_complete.clone(),
+            expires_at_ms: crate::auth::now_ms() + authorization.expires_in * 1_000,
+            interval: authorization.interval,
+            kind: Some(crate::auth::GITHUB_CONNECT_PENDING_KIND.to_string()),
+        }));
+        if json {
+            print_json(&serde_json::json!({
+                "origin": endpoint.origin,
+                "connected": false,
+                "authorization_pending": true,
+                "verification_url": authorization.verification_uri_complete,
+                "user_code": authorization.user_code,
+                "expires_in": authorization.expires_in,
+                "resume_command": resume_command,
+            }));
+        } else {
+            println!("GitHub connect authorization is ready.");
+            println!("Open this URL: {}", authorization.verification_uri_complete);
+            println!("Authorization code: {}", authorization.user_code);
+            println!(
+                "OpenAgents needs repo, read:org access to your GitHub account \
+to create and import repositories."
+            );
+            println!("After you approve the request, run: {resume_command}");
+        }
+        return;
+    }
+
+    eprintln!(
+        "GitHub connect authorization URL: {}",
+        authorization.verification_uri_complete
+    );
+    eprintln!(
+        "GitHub connect authorization code: {}",
+        authorization.user_code
+    );
+    eprintln!(
+        "OpenAgents needs repo, read:org access to your GitHub account to \
+create and import repositories."
+    );
+    if !crate::auth::open_browser(&authorization.verification_uri_complete) {
+        eprintln!("The browser did not open. Open the authorization URL above.");
+    }
+    eprintln!("Waiting for approval...");
+    let login = or_fail(devices.wait_for_connect(&authorization).await);
+    announce_connected(endpoint, &login, json);
+}
+
+fn announce_connected(endpoint: &Endpoint, github_login: &str, json: bool) {
+    if json {
+        print_json(&serde_json::json!({
+            "origin": endpoint.origin,
+            "connected": true,
+            "github_login": github_login,
+        }));
+    } else {
+        println!("Connected GitHub as {github_login}.");
+        println!(
+            "Repository operations on {} are available.",
+            endpoint.origin
+        );
+    }
 }
 
 async fn run_auth_status(endpoint: &Endpoint, store: &CredentialStore, json: bool) {

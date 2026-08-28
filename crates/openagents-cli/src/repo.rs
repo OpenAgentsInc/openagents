@@ -239,10 +239,20 @@ impl RepoClient {
         let value: serde_json::Value =
             serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
         if !admitted.contains(&status) {
-            return Err(AuthError::new(format!(
-                "could not {operation} ({status}{})",
-                api_error_detail(&value)
-            )));
+            let detail = api_error_detail(&value);
+            let mut message = format!("could not {operation} ({status}{detail})");
+            // The server's own code, not the rendered sentence: the rendered
+            // text is allowed to change, the code is the contract.
+            if value.get("code").and_then(|v| v.as_str()) == Some("github_scope_required")
+                && status == 403
+            {
+                message.push_str(&format!(
+                    "\nGitHub repository access is missing. Run {} to grant it, \
+then retry.",
+                    crate::auth::connect_github_command_for_origin(&self.origin)
+                ));
+            }
+            return Err(AuthError::new(message));
         }
         Ok(value)
     }

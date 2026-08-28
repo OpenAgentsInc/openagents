@@ -260,6 +260,40 @@ pub fn resume_command_for(endpoint: &Endpoint) -> String {
     }
 }
 
+pub fn connect_github_command_for(endpoint: &Endpoint) -> String {
+    match endpoint.profile.as_str() {
+        "production" => "oa auth connect-github".to_string(),
+        "custom" => format!("oa --api-url {} auth connect-github", endpoint.origin),
+        other => format!("oa --profile {other} auth connect-github"),
+    }
+}
+
+pub fn connect_github_resume_command_for(endpoint: &Endpoint) -> String {
+    match endpoint.profile.as_str() {
+        "production" => "oa auth connect-github --resume".to_string(),
+        "custom" => format!(
+            "oa --api-url {} auth connect-github --resume",
+            endpoint.origin
+        ),
+        other => format!("oa --profile {other} auth connect-github --resume"),
+    }
+}
+
+/// The connect command as an origin-only string, for error text raised where
+/// no `Endpoint` is in hand (the repository client, which carries just the
+/// origin). A custom origin needs `--api-url`; anything else is production.
+pub fn connect_github_command_for_origin(origin: &str) -> String {
+    if origin == PRODUCTION_ORIGIN {
+        "oa auth connect-github".to_string()
+    } else {
+        format!("oa --api-url {origin} auth connect-github")
+    }
+}
+
+/// The `kind` recorded for a pending GitHub connect authorization, so
+/// `--resume` can refuse the record a login wrote instead of waiting on it.
+pub const GITHUB_CONNECT_PENDING_KIND: &str = "github_connect";
+
 // ---------------------------------------------------------------------------
 // on-disk paths
 // ---------------------------------------------------------------------------
@@ -796,6 +830,16 @@ pub enum DevicePoll {
     SlowDown,
 }
 
+/// One poll of a GitHub connect authorization.
+#[derive(Debug)]
+pub enum ConnectPoll {
+    /// The server accepted the approval and kept the credential: the answer
+    /// names the GitHub account, and carries no token to store.
+    Connected(String),
+    Pending,
+    SlowDown,
+}
+
 pub struct DeviceClient {
     origin: String,
     http: reqwest::Client,
@@ -841,6 +885,48 @@ impl DeviceClient {
         serde_json::from_value(value).map_err(|error| {
             AuthError::new(format!(
                 "the device authorization response did not match the API contract: {error}"
+            ))
+        })
+    }
+
+    /// Ask the server to open a GitHub connect authorization. Same endpoint
+    /// and contract as [`DeviceClient::start`], with `kind: "github_connect"`
+    /// selecting the server's repository-scope flow: the approval page grants
+    /// `repo, read:org` to the signed-in account, and the credential stays
+    /// server-side.
+    pub async fn start_github_connect(&self) -> Result<DeviceAuthorization, AuthError> {
+        let url = format!("{}/api/v1/device/authorizations", self.origin);
+        let mut body = device_authorization_body(&[], local_device_name());
+        if let serde_json::Value::Object(ref mut map) = body {
+            map.insert(
+                "kind".to_string(),
+                serde_json::Value::String("github_connect".to_string()),
+            );
+        }
+        let response = self
+            .http
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| AuthError::new(format!("could not reach {}: {error}", self.origin)))?;
+        let status = response.status();
+        let value: serde_json::Value = response.json().await.map_err(|error| {
+            AuthError::new(format!(
+                "could not read the authorization response: {error}"
+            ))
+        })?;
+        if status.as_u16() != 201 {
+            return Err(AuthError::new(format!(
+                "{} could not start the GitHub connect authorization ({}{})",
+                self.origin,
+                status.as_u16(),
+                api_error_detail(&value)
+            )));
+        }
+        serde_json::from_value(value).map_err(|error| {
+            AuthError::new(format!(
+                "the GitHub connect authorization response did not match the API contract: {error}"
             ))
         })
     }
@@ -908,6 +994,74 @@ impl DeviceClient {
             if SystemTime::now() >= deadline {
                 return Err(AuthError::new(
                     "CLI authorization expired before it was approved",
+                ));
+            }
+            tokio::time::sleep(Duration::from_secs(interval)).await;
+        }
+    }
+
+    /// One poll of a GitHub connect authorization. The approved answer is
+    /// `200` with `status: "connected"` and a `github_login` — deliberately
+    /// unlike the token poll, so a server bug that handed back an access
+    /// token here cannot be mistaken for a connect answer.
+    pub async fn poll_connect(&self, device_code: &str) -> Result<ConnectPoll, AuthError> {
+        let url = format!("{}/api/v1/device/authorizations/token", self.origin);
+        let response = self
+            .http
+            .post(&url)
+            .json(&serde_json::json!({ "device_code": device_code }))
+            .send()
+            .await
+            .map_err(|error| AuthError::new(format!("could not reach {}: {error}", self.origin)))?;
+        let status = response.status().as_u16();
+        let value: serde_json::Value = response.json().await.map_err(|error| {
+            AuthError::new(format!(
+                "could not read the authorization response: {error}"
+            ))
+        })?;
+        if status == 200 {
+            if value.get("status").and_then(|v| v.as_str()) == Some("connected") {
+                let login = value
+                    .get("github_login")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                return Ok(ConnectPoll::Connected(login));
+            }
+            return Err(AuthError::new(
+                "the GitHub connect response did not match the API contract: \
+                 a 200 without status \"connected\"",
+            ));
+        }
+        let code = value.get("code").and_then(|v| v.as_str()).unwrap_or("");
+        match (status, code) {
+            (428, "authorization_pending") => Ok(ConnectPoll::Pending),
+            (429, "slow_down") => Ok(ConnectPoll::SlowDown),
+            _ => Err(AuthError::new(format!(
+                "the GitHub connect authorization was denied, expired, or already \
+claimed ({status}{})",
+                api_error_detail(&value)
+            ))),
+        }
+    }
+
+    /// Poll until the GitHub connect request is approved, denied, or expires.
+    pub async fn wait_for_connect(
+        &self,
+        authorization: &DeviceAuthorization,
+    ) -> Result<String, AuthError> {
+        let mut interval = authorization.interval.max(1);
+        let deadline =
+            SystemTime::now() + Duration::from_secs(authorization.expires_in.max(1) as u64);
+        loop {
+            match self.poll_connect(&authorization.device_code).await? {
+                ConnectPoll::Connected(login) => return Ok(login),
+                ConnectPoll::Pending => {}
+                ConnectPoll::SlowDown => interval += 5,
+            }
+            if SystemTime::now() >= deadline {
+                return Err(AuthError::new(
+                    "the GitHub connect authorization expired before it was approved",
                 ));
             }
             tokio::time::sleep(Duration::from_secs(interval)).await;
