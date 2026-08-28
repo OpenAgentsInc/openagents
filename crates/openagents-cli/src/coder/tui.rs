@@ -896,9 +896,7 @@ impl CoderUi {
         // selection covers — one pass over the selected rows' columns.
         if let Some(selection) = self.selection.selection().cloned() {
             let rows = self.selection.rows().to_vec();
-            let highlight = Style::default()
-                .fg(BACKGROUND_COLOR)
-                .bg(TEXT_COLOR);
+            let highlight = Style::default().fg(BACKGROUND_COLOR).bg(TEXT_COLOR);
             for selected in selection.selected_rows(&rows) {
                 let Some(row) = rows.get(selected.row_index) else {
                     continue;

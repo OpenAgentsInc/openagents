@@ -92,11 +92,7 @@ pub enum SelectionKind {
 
 impl Selection {
     fn new(anchor: SelectionPoint, head: SelectionPoint, kind: SelectionKind) -> Self {
-        Self {
-            anchor,
-            head,
-            kind,
-        }
+        Self { anchor, head, kind }
     }
 
     /// The selected ranges, ordered from the earliest row.
@@ -352,11 +348,7 @@ impl SelectionState {
             return None;
         }
         let head = self.point_at(column, row)?;
-        self.selection = Some(Selection::new(
-            anchor_point,
-            head,
-            SelectionKind::Drag,
-        ));
+        self.selection = Some(Selection::new(anchor_point, head, SelectionKind::Drag));
         Some(())
     }
 
@@ -420,20 +412,14 @@ impl SelectionState {
         while text.ends_with('\n') {
             text.pop();
         }
-        if text.is_empty() {
-            None
-        } else {
-            Some(text)
-        }
+        if text.is_empty() { None } else { Some(text) }
     }
 }
 
 /// Byte offset to character offset, for a string whose prefixes are ASCII
 /// enough that `char_indices` counts stay stable.
 fn byte_to_char_index(text: &str, byte: usize) -> usize {
-    text.char_indices()
-        .take_while(|(b, _)| *b < byte)
-        .count()
+    text.char_indices().take_while(|(b, _)| *b < byte).count()
 }
 
 #[cfg(test)]
@@ -455,9 +441,11 @@ mod tests {
     }
 
     fn drag(state: &mut SelectionState, from: (u16, u16), to: (u16, u16)) {
-        state.handle_mouse(from.0, from.1, crossterm::event::MouseEventKind::Down(
-            crossterm::event::MouseButton::Left,
-        ));
+        state.handle_mouse(
+            from.0,
+            from.1,
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        );
         state.handle_mouse(
             to.0,
             to.1,
@@ -583,10 +571,7 @@ mod tests {
     fn clicking_past_the_end_selects_to_the_end() {
         let mut state = state(vec![row(0, "short"), row(1, "longer row")]);
         drag(&mut state, (0, 0), (40, 1));
-        assert_eq!(
-            state.copy_text().as_deref(),
-            Some("short\nlonger row")
-        );
+        assert_eq!(state.copy_text().as_deref(), Some("short\nlonger row"));
     }
 
     #[test]

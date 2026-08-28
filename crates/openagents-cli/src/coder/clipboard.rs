@@ -273,8 +273,7 @@ fn write_tmux_buffer(text: &str) -> bool {
         Ok(child) => child,
         Err(_) => return false,
     };
-    backend::wait_with_deadline(&mut child, HELPER_DEADLINE)
-        .is_ok_and(|status| status.success())
+    backend::wait_with_deadline(&mut child, HELPER_DEADLINE).is_ok_and(|status| status.success())
 }
 
 /// Build the OSC 52 clipboard-set sequence. Pure so tests can pin the bytes.
@@ -464,9 +463,7 @@ mod backend {
                 Ok(child) => child,
                 Err(_) => continue,
             };
-            if wait_with_deadline(&mut child, deadline)
-                .is_ok_and(|status| status.success())
-            {
+            if wait_with_deadline(&mut child, deadline).is_ok_and(|status| status.success()) {
                 return true;
             }
         }
@@ -589,11 +586,7 @@ mod tests {
         assert!(!Delivery::Failed.reported_success());
     }
 
-    fn environment(
-        brand: TerminalBrand,
-        remote: bool,
-        container: bool,
-    ) -> Environment {
+    fn environment(brand: TerminalBrand, remote: bool, container: bool) -> Environment {
         Environment {
             route: ClipboardRoute {
                 native: true,
@@ -715,15 +708,21 @@ mod tests {
             "sleep"
         };
         let mut child = std::process::Command::new(sleep)
-            .arg(if cfg!(target_os = "windows") { "5" } else { "30" })
+            .arg(if cfg!(target_os = "windows") {
+                "5"
+            } else {
+                "30"
+            })
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .expect("spawn hung helper");
         let started = Instant::now();
-        let result =
-            backend::wait_with_deadline(&mut child, Duration::from_millis(150));
-        assert!(result.is_err(), "a 30s child must not survive a 150ms deadline");
+        let result = backend::wait_with_deadline(&mut child, Duration::from_millis(150));
+        assert!(
+            result.is_err(),
+            "a 30s child must not survive a 150ms deadline"
+        );
         assert!(started.elapsed() < Duration::from_secs(5));
         // The child was killed and reaped, so try_wait reports its exit.
         assert!(child.try_wait().expect("reaped").is_some());

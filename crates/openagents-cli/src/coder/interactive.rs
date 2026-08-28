@@ -583,10 +583,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         if key.code == KeyCode::Char('y') && key.modifiers.contains(KeyModifiers::CONTROL) {
             if let Some(text) = ui.selection.copy_text() {
                 let outcome = crate::coder::clipboard::copy_text_with_backup(&text);
-                ui.toast = Some((
-                    outcome.toast_message(),
-                    ui.tick + CLIPBOARD_TOAST_TICKS,
-                ));
+                ui.toast = Some((outcome.toast_message(), ui.tick + CLIPBOARD_TOAST_TICKS));
             }
             continue;
         }
