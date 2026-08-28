@@ -10,6 +10,7 @@ use crate::gym::corpus::InventoryDocument;
 use crate::gym::schemas::{DatasetMember, DatasetView};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead as _, Write as _};
@@ -72,6 +73,13 @@ pub enum DatasetAction {
         id: String,
         #[arg(help = "Path to the pinned suite file")]
         suite_file: PathBuf,
+    },
+    /// Distill labeled sessions into candidate task drafts. Never promotes.
+    Distill {
+        #[arg(long, help = "JSONL labels file")]
+        labels: PathBuf,
+        #[arg(long, help = "Directory to write draft task files")]
+        out: Option<PathBuf>,
     },
 }
 
@@ -170,6 +178,7 @@ pub fn run_dataset(args: DatasetArgs, json: bool) -> Result<(), CliError> {
         DatasetAction::Show { id } => show_dataset(&id, json),
         DatasetAction::Pin { id, out } => pin_dataset(&id, out.as_deref(), json),
         DatasetAction::Diff { id, suite_file } => diff_dataset(&id, &suite_file, json),
+        DatasetAction::Distill { labels, out } => distill_labels(&labels, out.as_deref(), json),
     }
 }
 
@@ -955,6 +964,135 @@ fn diff_dataset(id: &str, suite_file: &Path, json: bool) -> Result<(), CliError>
     Ok(())
 }
 
+/// Distill labeled sessions into candidate task drafts.
+///
+/// Drafts are candidates. This command never writes a live task under
+/// `bench/tasks/coderbench/` without a `drafts` directory, and it never sets
+/// a draft to anything but `status: draft`.
+pub fn distill_labels(labels: &Path, out: Option<&Path>, json: bool) -> Result<(), CliError> {
+    let out_dir = match out {
+        Some(p) => p.to_path_buf(),
+        None => repo_root()?.join("bench/tasks/coderbench/drafts"),
+    };
+    fs::create_dir_all(&out_dir)
+        .map_err(|e| CliError::Output(format!("could not create {}: {e}", out_dir.display())))?;
+    let text = fs::read_to_string(labels)
+        .map_err(|e| CliError::Input(format!("could not read {}: {e}", labels.display())))?;
+    let mut written = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let row: Value = serde_json::from_str(line).map_err(|e| {
+            CliError::Input(format!(
+                "{} line {} is not JSON: {e}",
+                labels.display(),
+                i + 1
+            ))
+        })?;
+        let draft = distill_one(&row)?;
+        let id = draft
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("draft")
+            .to_string();
+        let path = out_dir.join(format!("{id}.task.json"));
+        let body =
+            serde_json::to_string_pretty(&draft).map_err(|e| CliError::Output(e.to_string()))?;
+        fs::write(&path, body)
+            .map_err(|e| CliError::Output(format!("could not write {}: {e}", path.display())))?;
+        written.push(path);
+    }
+    let value = serde_json::json!({
+        "schema": "openagents.gym.task_draft_batch.v1",
+        "status": "draft",
+        "count": written.len(),
+        "out": out_dir,
+        "files": written,
+    });
+    let human = vec![format!(
+        "wrote {} draft(s) under {} (candidates, not deployments)",
+        written.len(),
+        out_dir.display()
+    )];
+    crate::cli::emit(json, &value, &human);
+    Ok(())
+}
+
+fn distill_one(row: &Value) -> Result<Value, CliError> {
+    let issues = row
+        .get("issues_closed")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let issue = issues
+        .first()
+        .and_then(Value::as_u64)
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "unspecified".into());
+    let outcome = row
+        .get("outcome_type")
+        .and_then(Value::as_str)
+        .unwrap_or("feature");
+    let oracle = row.get("oracle").cloned().unwrap_or(Value::Null);
+    let command = oracle
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let kind = oracle
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or("gate")
+        .to_string();
+    let commits = row
+        .get("commits_landed")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let start = commits
+        .first()
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let id = format!("issue-{issue}");
+    let instruction = format!(
+        "Close the {outcome} work for issue #{issue} so the oracle exits 0. Rebuild the outcome from the issue and the named gate; do not copy a historical solution from the source session."
+    );
+    Ok(serde_json::json!({
+        "schema": "openagents.gym.task_draft.v1",
+        "status": "draft",
+        "id": id,
+        "instruction": instruction,
+        "start_commit": start,
+        "oracle": { "kind": kind, "command": command },
+        "provenance": {
+            "trace_ref": row.get("trace_ref"),
+            "issues_closed": issues,
+            "commits_landed": commits,
+        },
+        "gradeable": false,
+    }))
+}
+
+fn repo_root() -> Result<PathBuf, CliError> {
+    let mut dir = std::env::current_dir().map_err(|e| CliError::Configuration(e.to_string()))?;
+    loop {
+        if dir.join("bench").join("suites").is_dir() {
+            return Ok(dir);
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent.to_path_buf(),
+            None => {
+                return Err(CliError::Configuration(
+                    "could not find bench/suites from the current directory".into(),
+                ));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1117,6 +1255,41 @@ mod tests {
         assert!(
             msg.contains("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             "nearest suggestion is the real digest"
+        );
+    }
+
+    #[test]
+    fn distill_writes_drafts_and_never_promotes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let labels = tmp.path().join("labels.jsonl");
+        fs::write(
+            &labels,
+            r#"{"trace_ref":"issue:168","domain":"agent-building","issues_closed":[168],"commits_landed":["2229dc907b"],"outcome_type":"feature","oracle":{"kind":"test-suite","command":"cargo test"},"gradeable":false,"holdout_ok":false,"owner_reviewed":true}"#,
+        )
+        .unwrap();
+        let out = tmp.path().join("drafts");
+        run_dataset(
+            DatasetArgs {
+                action: DatasetAction::Distill {
+                    labels,
+                    out: Some(out.clone()),
+                },
+            },
+            false,
+        )
+        .unwrap();
+        let draft_path = out.join("issue-168.task.json");
+        let draft: Value = serde_json::from_str(&fs::read_to_string(&draft_path).unwrap()).unwrap();
+        assert_eq!(draft["status"], "draft");
+        assert_eq!(draft["gradeable"], false);
+        assert_eq!(draft["schema"], "openagents.gym.task_draft.v1");
+        assert!(
+            draft["instruction"]
+                .as_str()
+                .unwrap()
+                .contains("do not copy a historical solution"),
+            "{}",
+            draft["instruction"]
         );
     }
 }
