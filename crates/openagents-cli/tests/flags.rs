@@ -868,6 +868,7 @@ fn oa_env(args: &[&str], env: &[(&str, &str)]) -> Output {
 const CATALOG: &str = r#"{"default":"gemini-3.7-flash","models":[
     {"id":"gemini-3.7-flash","availability":"available","default":true},
     {"id":"glm-5.3-flash","availability":"available","default":false},
+    {"id":"gpt-5.6-sol","availability":"available","default":false},
     {"id":"gpt-5.6-luna","availability":"available","default":false}]}"#;
 
 /// A thread open, a grant that points the proxy back at this same server, and
@@ -1654,6 +1655,56 @@ fn reasoning_is_carried_on_the_thread_and_absent_without_the_flag() {
     );
 }
 
+/// Coder Pro is Sol Medium: `--lane pro` records reasoning `medium` when the
+/// flag is omitted, and `--reasoning` still wins.
+#[test]
+fn coder_pro_defaults_to_sol_medium() {
+    let asked = RouteServer::start(coder_routes);
+    let origin = asked.origin();
+    let run = oa_env(
+        &[
+            "--api-url",
+            &origin,
+            "coder",
+            "--headless",
+            "--lane",
+            "pro",
+            "hello",
+        ],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
+    let body: serde_json::Value = serde_json::from_str(
+        &body_of(&asked.hits(), "POST", "/api/v1/threads").expect("no thread was opened"),
+    )
+    .expect("the open body is JSON");
+    assert_eq!(body["model"], "gpt-5.6-sol");
+    assert_eq!(body["reasoning"], "medium");
+
+    let override_server = RouteServer::start(coder_routes);
+    let origin = override_server.origin();
+    let run = oa_env(
+        &[
+            "--api-url",
+            &origin,
+            "coder",
+            "--headless",
+            "--lane",
+            "pro",
+            "--reasoning",
+            "high",
+            "hello",
+        ],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
+    let body: serde_json::Value = serde_json::from_str(
+        &body_of(&override_server.hits(), "POST", "/api/v1/threads").expect("no thread was opened"),
+    )
+    .expect("the open body is JSON");
+    assert_eq!(body["reasoning"], "high");
+}
+
 /// An effort outside the admitted set is a usage error, not a thread opened at
 /// something the server will refuse.
 #[test]
@@ -2027,10 +2078,28 @@ fn flags_that_name_different_lanes_are_refused_by_name() {
     );
 
     // Two names for the *same* lane is agreement, not a conflict, and is not
-    // refused. `pro` used to be the tier alias that agreed with
-    // `gpt-5.6-luna`; it is not a lane any more, so agreement is now spelled
-    // the only way that cannot go stale — the same id in both flags.
+    // refused. `--lane pro` and a Pro catalog id are Coder Pro written twice
+    // (#298). Two spellings of one id still agree as well.
     let agreeing = oa_env(
+        &[
+            "--api-url",
+            "http://127.0.0.1:1",
+            "coder",
+            "--headless",
+            "--model",
+            "gpt-5.6-sol",
+            "--lane",
+            "pro",
+            "hello",
+        ],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert!(
+        !agreeing.stderr.contains("name different lanes"),
+        "Coder Pro named twice was refused as two: {}",
+        agreeing.stderr
+    );
+    let same_id = oa_env(
         &[
             "--api-url",
             "http://127.0.0.1:1",
@@ -2045,9 +2114,9 @@ fn flags_that_name_different_lanes_are_refused_by_name() {
         &[("OPENAGENTS_TOKEN", "t")],
     );
     assert!(
-        !agreeing.stderr.contains("name different lanes"),
+        !same_id.stderr.contains("name different lanes"),
         "one lane named twice was refused as two: {}",
-        agreeing.stderr
+        same_id.stderr
     );
 
     // The same command with one of them is not that refusal. It fails for

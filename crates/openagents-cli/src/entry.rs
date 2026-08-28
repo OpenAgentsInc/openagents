@@ -59,11 +59,12 @@ Coder options:
                      port 4100; if that is taken, binds 4101. Production
                      origin is unchanged without --dev. Upstream key:
                      PRO_UPSTREAM_KEY. Optional: OPENAGENTS_PRO_BIN.
-  --lane <name>      Which model answers. `flash` and `free` are the two
+  --lane <name>      Which model answers. `flash`, `pro`, and `free` are the
                      switchable lanes, and shift+tab moves between them; each
                      resolves its model from GET /api/v1/models at open.
-                     `local` or `ollama:<model>` answers from this machine; any
-                     other name is read as a catalog id, checked against
+                     `pro` is Coder Pro (Sol Medium: gpt-5.6-sol, reasoning
+                     medium). `local` or `ollama:<model>` answers from this
+                     machine; any other name is a catalog id, checked against
                      GET /api/v1/models, and refused if it is not served.
                      Defaults to `flash`.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to

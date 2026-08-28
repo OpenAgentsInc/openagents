@@ -129,10 +129,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         options.reasoning.clone()
     };
     loaded.store.set_lane(&lane_name)?;
-    loaded.store.set_reasoning(reasoning.as_deref())?;
-    loaded.store.set_cloud_history(options.cloud_history)?;
     // Mutable because shift+tab moves it.
     let mut lane = Lane::from_str(&lane_name);
+    let reasoning = reasoning.or_else(|| lane.default_reasoning().map(str::to_string));
+    loaded.store.set_reasoning(reasoning.as_deref())?;
+    loaded.store.set_cloud_history(options.cloud_history)?;
     ui.lane = lane.label();
     let restored_events = loaded.events;
     ui.local_session_id = Some(loaded.summary.id.clone());
@@ -659,8 +660,8 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             //
             // The walk is gated (`cycle_gated`, #291): `local` is a member
             // only when the open-time probe found an Ollama server with
-            // models on it. A machine without one walks flash, free, flash,
-            // exactly as before the local lane joined the table.
+            // models on it. A machine without one walks flash, pro, free,
+            // flash (#298).
             ComposerAction::Ignored if key.code == KeyCode::BackTab => {
                 lane = lane.cycle_gated(local_lane_model.clone());
                 ui.lane = lane.label();

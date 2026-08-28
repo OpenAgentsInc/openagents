@@ -1149,7 +1149,10 @@ pub async fn run_tui(
 
     let tools = session_tools(&lane_name, &api_base, &token, args.child_options()).await;
     let mut session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
-    session.reasoning = args.reasoning.clone();
+    session.reasoning = args
+        .reasoning
+        .clone()
+        .or_else(|| lane.default_reasoning().map(str::to_string));
     session.ollama_num_ctx = args.num_ctx.or_else(|| {
         std::env::var("OPENAGENTS_OLLAMA_NUM_CTX")
             .ok()
@@ -1272,8 +1275,11 @@ async fn run_without_a_terminal(
     };
 
     let tools = session_tools(&lane_name, &api_base, &token, args.child_options()).await;
-    let mut session = CoderRuntimeSession::new(lane, Some(api_base), token, tools);
-    session.reasoning = args.reasoning.clone();
+    let mut session = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools);
+    session.reasoning = args
+        .reasoning
+        .clone()
+        .or_else(|| lane.default_reasoning().map(str::to_string));
     session.ollama_num_ctx = args.num_ctx.or_else(|| {
         std::env::var("OPENAGENTS_OLLAMA_NUM_CTX")
             .ok()
@@ -1390,6 +1396,7 @@ mod tests {
     #[test]
     fn the_lane_label_carries_the_tier_only_when_there_is_one() {
         assert_eq!(lane_label(&Lane::Flash), "Coder Flash (flash)");
+        assert_eq!(lane_label(&Lane::Pro), "Coder Pro (pro)");
         assert_eq!(lane_label(&Lane::Free), "Coder Free (free)");
         assert_eq!(
             lane_label(&Lane::Local(String::new())),

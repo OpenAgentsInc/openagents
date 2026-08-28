@@ -231,14 +231,10 @@ pub fn system_prompt(tools: &[ToolDefinition]) -> String {
 }
 
 /// Catalog ids served by the Pro door.
-pub const PRO_MODEL_IDS: &[&str] = &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+pub use crate::runtime::{PRO_MODEL_IDS, is_pro_model_id};
 
 /// Production origin for Pro when no `--dev` base is set.
 pub const PRO_PRODUCTION_ORIGIN: &str = "https://pro.openagents.com";
-
-pub fn is_pro_model_id(id: &str) -> bool {
-    PRO_MODEL_IDS.iter().any(|candidate| *candidate == id)
-}
 
 pub fn pro_origin() -> String {
     env::var("OPENAGENTS_PRO_ORIGIN")
@@ -251,10 +247,10 @@ pub fn pro_origin() -> String {
 /// The `/api/v1` base this session talks to.
 ///
 /// `OPENAGENTS_BASE_URL` first, because that is what `--dev` sets and a reader
-/// who pointed the session at a server on this machine meant it. Named Pro
-/// catalog ids then go to the Pro origin. Then the endpoint `oa auth`
-/// selected, so Coder and `oa` agree about where they are without a second
-/// configuration file.
+/// who pointed the session at a server on this machine meant it. Coder Pro
+/// and named Pro catalog ids then go to the Pro origin. Then the endpoint
+/// `oa auth` selected, so Coder and `oa` agree about where they are without
+/// a second configuration file.
 pub fn api_base() -> String {
     api_base_for(&Lane::default())
 }
@@ -268,10 +264,8 @@ pub fn api_base_for(lane: &Lane) -> String {
             }
         }
     }
-    if let Lane::Named(id) = lane {
-        if is_pro_model_id(id) {
-            return format!("{}/api/v1", pro_origin());
-        }
+    if lane.uses_pro_origin() {
+        return format!("{}/api/v1", pro_origin());
     }
     match crate::auth::resolve_endpoint(None, None) {
         Ok(endpoint) => format!("{}/api/v1", endpoint.origin),
@@ -288,7 +282,7 @@ pub fn user_token() -> Option<String> {
 }
 
 pub fn user_token_for(lane: &Lane) -> Option<String> {
-    if matches!(lane, Lane::Named(id) if is_pro_model_id(id))
+    if lane.uses_pro_origin()
         && env::var("OPENAGENTS_BASE_URL").ok().is_none()
         && env::var("OPENAGENTS_API_BASE").ok().is_none()
     {
@@ -521,7 +515,7 @@ impl Session {
             // (`dev_session`). CLI `--dev` talks to the local Rust coder API
             // over the thread/grant/proxy hop and passes `false` here.
             .use_openresponses(dev);
-        inner.reasoning = reasoning;
+        inner.reasoning = reasoning.or_else(|| lane.default_reasoning().map(str::to_string));
         inner.repository = repository();
 
         // Seeded here so the session below leaves it alone: `execute_turn`
@@ -610,7 +604,10 @@ impl Session {
     /// whole life. The next turn opens its own thread on the new lane.
     pub fn set_lane(&mut self, lane: Lane) {
         self.lane = lane.clone();
-        self.inner.set_lane(lane);
+        self.inner.set_lane(lane.clone());
+        self.inner.api_base = api_base_for(&lane);
+        self.inner.user_token = user_token_for(&lane);
+        self.inner.reasoning = lane.default_reasoning().map(str::to_string);
     }
 
     /// Change the first-response watchdog on an existing session.
@@ -1181,6 +1178,10 @@ mod tests {
         );
         assert_eq!(
             api_base_for(&Lane::Named("gpt-5.6-luna".into())),
+            "https://pro.openagents.com/api/v1"
+        );
+        assert_eq!(
+            api_base_for(&Lane::Pro),
             "https://pro.openagents.com/api/v1"
         );
         assert_ne!(

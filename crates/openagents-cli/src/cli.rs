@@ -661,10 +661,7 @@ pub struct CoderArgs {
     )]
     pub child_ask: bool,
 
-    #[arg(
-        long,
-        help = "Target harness lane (e.g. flash, free, devin, claude, codex)"
-    )]
+    #[arg(long, help = "Target harness lane (e.g. flash, pro, free, local)")]
     pub lane: Option<String>,
 
     /// Pick the model a turn runs on by its catalog id.
@@ -793,6 +790,23 @@ pub struct CoderArgs {
 /// `GET /api/v1/models` at open.
 const DEFAULT_LANE: &str = "flash";
 
+/// True when two lane spellings name the same hosted session.
+///
+/// `--lane pro` and `--model gpt-5.6-sol` are Coder Pro written twice.
+/// A model id the Pro door does not serve is a different lane.
+fn lanes_agree(left: &crate::runtime::Lane, right: &crate::runtime::Lane) -> bool {
+    if left == right {
+        return true;
+    }
+    match (left, right) {
+        (crate::runtime::Lane::Pro, crate::runtime::Lane::Named(id))
+        | (crate::runtime::Lane::Named(id), crate::runtime::Lane::Pro) => {
+            crate::runtime::is_pro_model_id(id)
+        }
+        _ => false,
+    }
+}
+
 impl CoderArgs {
     /// The lane this invocation asked for, as a name [`crate::runtime::Lane`]
     /// understands.
@@ -856,10 +870,19 @@ impl CoderArgs {
                         _ => {}
                     }
                 }
-                // Two names for one hosted lane is agreement, not a conflict:
-                // `--lane pro` and `--model gpt-5.6-luna` are the same thing
-                // said twice.
-                if resolved.windows(2).all(|pair| pair[0] == pair[1]) {
+                // Two names for one hosted lane is agreement, not a conflict.
+                // `--lane pro` and `--model gpt-5.6-sol` are Coder Pro said
+                // twice: the lane name wins so shift+tab still walks.
+                if resolved
+                    .windows(2)
+                    .all(|pair| lanes_agree(&pair[0], &pair[1]))
+                {
+                    if resolved
+                        .iter()
+                        .any(|lane| matches!(lane, crate::runtime::Lane::Pro))
+                    {
+                        return Ok("pro".to_string());
+                    }
                     return Ok(asked.remove(0).1);
                 }
                 let names: Vec<String> = asked
@@ -1587,9 +1610,19 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Repo(repo) => run_repo(repo.action, &endpoint, &cred_store, cli.json).await,
         Commands::Coder(coder) => {
+            // Flags that name the same setting differently are refused before
+            // anything runs. Every one of these is a combination where one
+            // flag would have to be ignored, and a flag that is ignored is a
+            // flag that lied.
+            let lane_name = match coder.lane_name() {
+                Ok(name) => name,
+                Err(reason) => fail(&reason),
+            };
+            let lane = crate::runtime::Lane::from_str(&lane_name);
             // The session talks to the selected endpoint like every other
             // command. `--dev` names a server on this machine, and the global
-            // `--api-url`/`--profile` still wins when both are given.
+            // `--api-url`/`--profile` still wins when both are given. Coder
+            // Pro otherwise talks to the Pro door (#298).
             let session_base = if cli.api_url.is_some() || cli.profile.is_some() {
                 api_base.clone()
             } else if coder.dev {
@@ -1598,15 +1631,13 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     Err(error) => fail(&error.to_string()),
                 }
             } else {
-                api_base.clone()
+                crate::coder::runtime::api_base_for(&lane)
             };
-            // Flags that name the same setting differently are refused before
-            // anything runs. Every one of these is a combination where one
-            // flag would have to be ignored, and a flag that is ignored is a
-            // flag that lied.
-            if let Err(reason) = coder.lane_name() {
-                fail(&reason);
-            }
+            let token = if cli.api_url.is_some() || cli.profile.is_some() || coder.dev {
+                token
+            } else {
+                crate::coder::runtime::user_token_for(&lane).or(token)
+            };
             let resuming = coder.resume.is_some();
             if coder.offline && resuming {
                 fail("--resume reads the thread from the server; it cannot combine with --offline");
@@ -4704,9 +4735,16 @@ async fn run_headless_coder(
     )
     .allowing_plugin_mounts();
     let lane = crate::runtime::Lane::from_str(&lane_name);
-    let mut runtime =
-        crate::runtime::CoderRuntimeSession::new(lane, Some(api_base.to_string()), token, tools);
-    runtime.reasoning = coder.reasoning.clone();
+    let mut runtime = crate::runtime::CoderRuntimeSession::new(
+        lane.clone(),
+        Some(api_base.to_string()),
+        token,
+        tools,
+    );
+    runtime.reasoning = coder
+        .reasoning
+        .clone()
+        .or_else(|| lane.default_reasoning().map(str::to_string));
     runtime.repository = repository;
     if let Some(resumption) = &resumed {
         if let Err(reason) = crate::resume::apply(&mut runtime, resumption).await {

@@ -2431,16 +2431,15 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
 The coder never shows a vendor model name. What a reader sees — the status
 line, the fleet rows, the resume picker, switch notices, the `/help` text —
 is "OpenAgents Coder" and its lanes: `Coder Flash` (the Vercel gateway lane,
-and the default), `Coder Free` (the OpenRouter lane), `Coder Local` (a local
-model server answers). A model outside the lane map renders as the bare
-product name `Coder`, never as its id.
+and the default), `Coder Pro` (the Pro door, Sol Medium), `Coder Free` (the
+OpenRouter lane), `Coder Local` (a local model server answers). A model
+outside the lane map renders as the bare product name `Coder`, never as its
+id.
 
-`Coder Auto` and `Coder Pro` were retired (#131). `Auto` named no model and
-let the deployment choose; `Pro` pinned a model that left the catalog. The
-identifiers `auto` and `pro` are left unclaimed rather than aliased onto a
-surviving lane, so that if either returns it can mean what it meant. In the
-Rust CLI they parse as directly-named models and are refused by the catalog
-under their own names.
+`Coder Auto` was retired (#131). `Auto` named no model and let the
+deployment choose; the identifier `auto` stays unclaimed. `Coder Pro`
+returned as a hosted lane (#298): shift-tab and `--lane pro`, defaulting to
+Sol Medium (`gpt-5.6-sol` at reasoning `medium`) on `https://pro.openagents.com`.
 
 - The lane-to-model policy lives in `crates/openagents-cli/src/runtime.rs`.
   Display code holds no compiled vendor default.

@@ -329,6 +329,11 @@ pub struct LaneSpec {
     pub label: &'static str,
     /// Catalog ids in the order this lane would rather have them.
     pub candidates: &'static [&'static str],
+    /// Reasoning effort this lane records when `--reasoning` is omitted.
+    ///
+    /// `None` leaves the deployment's own default, which is a different
+    /// answer from naming one. Pro names `medium` (Sol Medium).
+    pub default_reasoning: Option<&'static str>,
 }
 
 /// The lanes shift+tab walks, in the order it walks them.
@@ -338,10 +343,18 @@ pub struct LaneSpec {
 /// three ended up naming models that had left the selectable list — the exact
 /// failure that resolving against the live catalog prevents.
 ///
+/// Catalog ids the Pro door serves, in the order Coder Pro prefers them.
+/// Sol first (Sol Medium), then Terra, then Luna.
+pub const PRO_MODEL_IDS: &[&str] = &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+
+/// True when `id` is one of [`PRO_MODEL_IDS`].
+pub fn is_pro_model_id(id: &str) -> bool {
+    PRO_MODEL_IDS.iter().any(|candidate| *candidate == id)
+}
+
 /// Nothing outside this table counts the lanes: [`Lane::cycle`] walks it and
-/// [`admitted_lanes`] reads it. Restoring a retired lane — Pro, which the
-/// owner pulled for now — is one entry here, one [`Lane`] variant, and one
-/// [`Lane::from_str`] arm.
+/// [`admitted_lanes`] reads it. A new hosted lane is one entry here, one
+/// [`Lane`] variant, and one [`Lane::from_str`] arm.
 pub const LANES: &[LaneSpec] = &[
     LaneSpec {
         name: "flash",
@@ -358,14 +371,17 @@ pub const LANES: &[LaneSpec] = &[
         // OpenRouter spelling of this model (`z-ai/…`, hyphenated) is
         // deliberately absent — that gateway is Free's, and normalising the
         // two into one "canonical" spelling would be wrong on one of them.
-        candidates: &[
-            "glm-5.3-flash",
-            "zai/glm-5.3-flash",
-            "gemini-3.7-flash",
-            "gpt-5.6-sol",
-            "gpt-5.6-terra",
-            "gpt-5.6-luna",
-        ],
+        candidates: &["glm-5.3-flash", "zai/glm-5.3-flash", "gemini-3.7-flash"],
+        default_reasoning: None,
+    },
+    LaneSpec {
+        name: "pro",
+        label: "Coder Pro",
+        // The Pro door at pro.openagents.com. Sol Medium is the default:
+        // `gpt-5.6-sol` at reasoning `medium`. Terra then Luna if Sol is
+        // not in the catalog this deployment is serving.
+        candidates: PRO_MODEL_IDS,
+        default_reasoning: Some("medium"),
     },
     LaneSpec {
         name: "free",
@@ -373,6 +389,7 @@ pub const LANES: &[LaneSpec] = &[
         // The OpenRouter lane. Inkling first, then whatever the deployment
         // publishes as its free lane.
         candidates: &["thinkingmachines/inkling", "openrouter/free"],
+        default_reasoning: None,
     },
     LaneSpec {
         name: "local",
@@ -385,6 +402,7 @@ pub const LANES: &[LaneSpec] = &[
         // The lane joins the shift+tab walk only when the open-time probe
         // found a server with models on it — see [`Lane::cycle_gated`] (#291).
         candidates: &[],
+        default_reasoning: None,
     },
 ];
 
@@ -417,17 +435,18 @@ pub fn admitted_lanes() -> String {
 /// turn, so `--lane bogus` is refused by name with the list of what this
 /// deployment serves. It used to fall through to `_ => Lane::OxAlpha`, which
 /// ran the default lane while the reader believed they had chosen another.
-/// `Auto`, `OxAlpha`, and `Pro` are gone on purpose, and the names `auto` and
-/// `pro` are left unclaimed rather than aliased onto a surviving lane. `Auto`
-/// meant "name no model and let the deployment decide"; if it returns it
-/// should mean that again, and a convenience alias pointing it at Flash would
-/// spend the identifier on something it does not mean.
+/// `Auto` and `OxAlpha` stay unclaimed. `pro` is a lane again (#298): Coder
+/// Pro, defaulting to Sol Medium. Model ids (`gpt-5.6-sol`, `luna`, …) still
+/// fall through to [`Lane::Named`] so typing an id never silently becomes a
+/// different model.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum Lane {
     /// The Vercel gateway lane, and the lane a session opens on when none was
     /// named. Its ids come from [`LANES`], resolved against the catalog.
     #[default]
     Flash,
+    /// The Pro door. Sol Medium (`gpt-5.6-sol` at reasoning `medium`).
+    Pro,
     /// The OpenRouter lane. Its ids come from [`LANES`] too.
     Free,
     /// A model id named directly, checked against `GET /api/v1/models`.
@@ -448,14 +467,13 @@ impl Lane {
             // through to `Named` below to be refused by the catalog.
             "" => Lane::default(),
             "flash" | "coder-flash" => Lane::Flash,
+            "pro" | "coder-pro" => Lane::Pro,
             "free" | "coder-free" => Lane::Free,
             // `gemini`, `gemini-3.7-flash`, `luna`, `gpt-5.6-luna`, `glm-5.3-flash`
-            // and `pro` are deliberately absent. They used to be tier aliases,
-            // and a reader who types a model id and receives a *different*
-            // model because the tier behind the alias moved is the worst
-            // outcome this enum can produce. They fall through to `Named`,
-            // which pins exactly what was typed and earns a refusal by name
-            // when the deployment does not serve it.
+            // stay unclaimed as tier aliases. A reader who types a model id
+            // and receives a different model because the tier behind the
+            // alias moved is the worst outcome this enum can produce. They
+            // fall through to `Named`, which pins exactly what was typed.
             "local" | "ollama" => Lane::Local(String::new()),
             other if other.starts_with("ollama:") => {
                 Lane::Local(other.trim_start_matches("ollama:").trim().to_string())
@@ -469,6 +487,7 @@ impl Lane {
     pub fn spec(&self) -> Option<&'static LaneSpec> {
         match self {
             Lane::Flash => lane_spec("flash"),
+            Lane::Pro => lane_spec("pro"),
             Lane::Free => lane_spec("free"),
             // The bare local lane is a table member now (#291): it cycles, and
             // its label comes from the table. A local lane *with a named
@@ -500,8 +519,8 @@ impl Lane {
     ///
     /// `local_available` is the probe's answer. `None` skips `local`
     /// entirely — a lane the probe found absent is never landed on and then
-    /// refused. `Some(tag)` walks the full table: flash, free, local, back
-    /// to flash, and the local hop resolves to `Lane::Local(tag)` so the row
+    /// refused. `Some(tag)` walks the full table: flash, pro, free, local,
+    /// back to flash, and the local hop resolves to `Lane::Local(tag)` so the row
     /// names the exact model that will answer (e.g.
     /// `Coder Local (qwen3.8:27b-mtp-q8_0)`) rather than a lane-shaped
     /// promise. A lane already sitting on `local` with the gate closed moves
@@ -625,10 +644,25 @@ impl Lane {
     pub fn name(&self) -> String {
         match self {
             Lane::Flash => "flash".to_string(),
+            Lane::Pro => "pro".to_string(),
             Lane::Free => "free".to_string(),
             Lane::Named(id) => id.clone(),
             Lane::Local(model) if model.is_empty() => "local".to_string(),
             Lane::Local(model) => format!("ollama:{model}"),
+        }
+    }
+
+    /// Reasoning this lane records when `--reasoning` was omitted.
+    pub fn default_reasoning(&self) -> Option<&'static str> {
+        self.spec().and_then(|spec| spec.default_reasoning)
+    }
+
+    /// True when this lane's catalog and grants live on the Pro door.
+    pub fn uses_pro_origin(&self) -> bool {
+        match self {
+            Lane::Pro => true,
+            Lane::Named(id) => is_pro_model_id(id),
+            _ => false,
         }
     }
 }
@@ -1676,6 +1710,7 @@ impl CoderRuntimeSession {
         self.lane = lane;
         self.thread_id = None;
         self.last_model = None;
+        self.last_grant = None;
         if let Some(store) = self.local_session.as_mut() {
             let _ = store.set_lane(&self.lane.name());
         }
@@ -4288,7 +4323,7 @@ mod tests {
     fn a_lane_refuses_rather_than_pin_a_model_the_catalog_does_not_serve() {
         // A catalog that serves real models, none of which any lane prefers.
         let catalog = served(&["gpt-4o", "some-other-model"]);
-        for name in ["flash", "free"] {
+        for name in ["flash", "pro", "free"] {
             let error = Lane::from_str(name)
                 .resolve(&catalog)
                 .expect_err("a lane whose candidates are all gone must refuse");
@@ -4307,18 +4342,22 @@ mod tests {
     }
 
     #[test]
-    fn flash_opens_on_sol_when_that_is_what_the_catalog_serves() {
+    fn pro_opens_on_sol_when_that_is_what_the_catalog_serves() {
         let catalog = served(&["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
         assert_eq!(
-            Lane::from_str("flash").resolve(&catalog).unwrap(),
+            Lane::from_str("pro").resolve(&catalog).unwrap(),
             Some("gpt-5.6-sol".to_string())
         );
+        assert_eq!(Lane::from_str("pro").label(), "Coder Pro");
+        assert_eq!(Lane::from_str("pro").default_reasoning(), Some("medium"));
+        assert!(Lane::from_str("pro").uses_pro_origin());
+        assert!(!Lane::from_str("flash").uses_pro_origin());
     }
 
     /// An empty catalog is a refusal too, not a licence to guess.
     #[test]
     fn a_lane_refuses_against_an_empty_catalog() {
-        for name in ["flash", "free"] {
+        for name in ["flash", "pro", "free"] {
             assert!(Lane::from_str(name).resolve(&[]).is_err());
         }
     }
@@ -4360,16 +4399,18 @@ mod tests {
         assert_eq!(Lane::default().label(), "Coder Flash");
         // A fresh session opens on Flash, and Flash is not `ox-alpha`.
         assert_ne!(Lane::default(), Lane::Named("ox-alpha".to_string()));
-        // `auto`, `pro`, and `ox-alpha` name no lane. They are carried as
+        // `auto` and `ox-alpha` name no lane. They are carried as
         // directly-named models so the catalog refuses them by name, rather
-        // than aliased onto a surviving lane.
-        for retired in ["auto", "pro", "coder-pro", "ox-alpha", "ox", "openagents"] {
+        // than aliased onto a surviving lane. `pro` is Coder Pro (#298).
+        for retired in ["auto", "ox-alpha", "ox", "openagents"] {
             assert_eq!(
                 Lane::from_str(retired),
                 Lane::Named(retired.to_string()),
                 "'{retired}' still resolves to a lane"
             );
         }
+        assert_eq!(Lane::from_str("pro"), Lane::Pro);
+        assert_eq!(Lane::from_str("coder-pro"), Lane::Pro);
     }
 
     /// A model id means that model, whatever a tier is called this month.
@@ -4412,15 +4453,22 @@ mod tests {
         }
         assert_eq!(seen.len(), LANES.len());
         assert_eq!(lane.cycle(), start, "the cycle does not close");
-        assert_eq!(seen, vec!["Coder Flash", "Coder Free", "Coder Local"]);
+        assert_eq!(
+            seen,
+            vec!["Coder Flash", "Coder Pro", "Coder Free", "Coder Local"]
+        );
     }
 
     /// With the gate closed, shift+tab never lands on the local lane (#291).
     #[test]
     fn the_cycle_skips_the_local_lane_when_the_probe_found_nothing() {
         let start = Lane::default();
-        assert_eq!(start.cycle_gated(None), Lane::Free);
-        assert_eq!(start.cycle_gated(None).cycle_gated(None), start);
+        assert_eq!(start.cycle_gated(None), Lane::Pro);
+        assert_eq!(start.cycle_gated(None).cycle_gated(None), Lane::Free);
+        assert_eq!(
+            start.cycle_gated(None).cycle_gated(None).cycle_gated(None),
+            start
+        );
         // A session sitting on local when the gate is closed still moves; a
         // reader asked to change lanes, not to stay put.
         let local = Lane::from_str("local");
@@ -4433,7 +4481,10 @@ mod tests {
     fn the_cycle_includes_the_local_lane_resolved_to_the_probed_tag() {
         let start = Lane::default();
         let tag = Some("qwen3.8:27b-mtp-q8_0".to_string());
-        let local = start.cycle_gated(tag.clone()).cycle_gated(tag.clone());
+        let local = start
+            .cycle_gated(tag.clone())
+            .cycle_gated(tag.clone())
+            .cycle_gated(tag.clone());
         assert_eq!(local, Lane::Local("qwen3.8:27b-mtp-q8_0".to_string()));
         assert_eq!(local.label(), "Coder Local (qwen3.8:27b-mtp-q8_0)");
         assert_eq!(local.name(), "ollama:qwen3.8:27b-mtp-q8_0");
@@ -4574,10 +4625,12 @@ mod tests {
     #[test]
     fn every_lane_has_a_name_and_a_label() {
         assert_eq!(Lane::from_str("flash").tier(), Some("flash"));
+        assert_eq!(Lane::from_str("pro").tier(), Some("pro"));
         assert_eq!(Lane::from_str("free").tier(), Some("free"));
         assert_eq!(Lane::from_str("local").tier(), Some("local"));
         assert_eq!(Lane::from_str("bogus").tier(), None);
         assert_eq!(Lane::from_str("flash").label(), "Coder Flash");
+        assert_eq!(Lane::from_str("pro").label(), "Coder Pro");
         assert_eq!(Lane::from_str("free").label(), "Coder Free");
         assert_eq!(
             Lane::from_str("ollama:qwen3:0.6b").label(),
@@ -4585,6 +4638,7 @@ mod tests {
         );
         for lane in [
             Lane::Flash,
+            Lane::Pro,
             Lane::Free,
             Lane::Named("model/one".to_string()),
             Lane::Local(String::new()),
@@ -4597,7 +4651,7 @@ mod tests {
     #[test]
     fn the_admitted_lane_sentence_names_every_way_in() {
         let sentence = admitted_lanes();
-        for fragment in ["flash", "free", "ollama:<model>"] {
+        for fragment in ["flash", "pro", "free", "ollama:<model>"] {
             assert!(
                 sentence.contains(fragment),
                 "'{fragment}' missing from: {sentence}"
