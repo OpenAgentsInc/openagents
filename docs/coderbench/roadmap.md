@@ -126,13 +126,23 @@ one document each.
 The M6 gate. Ends when a second repository's qualified traces have become a
 recorded suite, proving the method is general in fact, not prose.
 
-- F1 second-domain selection — from the inventory's domain tags, by labeled
-  outcome count and oracle determinism; decision recorded with the funnel
-  numbers
-- F2 second-domain environment family — one parameterized image for its
-  toolchain shape; determinism burn-in (three identical verdicts)
-- F3 second suite recorded — `coderbench-<domain>-v1`, smoke → score by the
-  same ladder as the first domain
+- F1 second-domain selection — recorded 2026-08-28 (#177): **no second
+  domain is admitted**. Funnel table:
+
+  | Candidate | Labeled outcomes | Gradeable | Oracle determinism | Env cost | Disposition |
+  | --- | ---: | ---: | --- | --- | --- |
+  | agent-building (first domain, OpenAgentsInc/openagents) | 10 | 0 | cargo test gates named on drafts | existing (pnpm+cargo; harbor-runner image) | keep as domain 1 |
+  | Effect ecosystem clones | 0 | 0 | test suites exist upstream, none pinned here | would reuse Node; still a new image family | dropped: labeled_outcome_count=0 |
+  | Coldcard firmware/RNG postmortem | 0 | 0 | reproducible builds exist upstream, none pinned here | new firmware toolchain image | dropped: labeled_outcome_count=0 |
+  | Protocol implementations with conformance suites | 0 | 0 | no pinned conformance runner in this corpus | unknown | dropped: labeled_outcome_count=0 |
+
+  The ten reviewed drafts in `docs/coderbench/labels/drafts.jsonl` are all
+  `domain: agent-building`. A second domain with zero labeled outcomes cannot
+  prove generality. The next F1 pass reuses this table and only admits a
+  candidate whose labeled count is greater than zero and whose oracle runs
+  green on a pinned commit in the container target.
+- F2 second-domain environment family — blocked on F1 admitting a domain
+- F3 second suite recorded — blocked on F2
 
 ## Sequencing
 
