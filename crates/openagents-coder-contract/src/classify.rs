@@ -1,8 +1,8 @@
 //! Cheap local classifier for the default Flash lane.
 //!
-//! Short greetings and chit-chat ride Gemini 3.7 Flash. Anything that looks
-//! like coding work stays on GLM 5.3 Flash. Character-trigram cosine against
-//! a handful of greeting prototypes; no network, no extra crate.
+//! Short greetings, chit-chat, and capability FAQs ride Gemini 3.7 Flash.
+//! Anything that looks like coding work stays on GLM 5.3 Flash. Character-trigram
+//! cosine against a handful of greeting prototypes; no network, no extra crate.
 
 use std::collections::HashMap;
 
@@ -52,6 +52,12 @@ const SIMPLE_PROTOTYPES: &[&str] = &[
     "good night",
     "gm",
     "lol",
+    "help",
+    "what tools do you have",
+    "what tools do u have",
+    "what can you do",
+    "what can u do",
+    "what model are you",
 ];
 
 const HEAVY_WORDS: &[&str] = &[
@@ -91,6 +97,9 @@ pub fn classify_prompt(text: &str) -> PromptClass {
     }
     if looks_heavy(&normalized, text) {
         return PromptClass::Thoughtful;
+    }
+    if looks_capability_faq(&normalized) {
+        return PromptClass::Simple;
     }
     if SIMPLE_PROTOTYPES.contains(&normalized.as_str()) {
         return PromptClass::Simple;
@@ -153,6 +162,39 @@ fn message_text(content: Option<&serde_json::Value>) -> Option<String> {
     }
     let parts = parts.trim();
     (!parts.is_empty()).then(|| parts.to_string())
+}
+
+/// Short questions about this agent, not about the repo.
+///
+/// `hey` already rode Gemini. `what tools do u have` is the same class of
+/// turn and was taking 14s on GLM thinking (#278). Coding prompts that
+/// mention tools still fail `looks_heavy` first (`implement`, paths, fences).
+fn looks_capability_faq(normalized: &str) -> bool {
+    const EXACT: &[&str] = &["help", "tools", "commands"];
+    if EXACT.contains(&normalized) {
+        return true;
+    }
+    if normalized.chars().count() > 80 {
+        return false;
+    }
+    const HEADS: &[&str] = &[
+        "what tools",
+        "which tools",
+        "what can you",
+        "what can u",
+        "what commands",
+        "which commands",
+        "what model",
+        "which model",
+        "what are you",
+        "who are you",
+        "list tools",
+        "show tools",
+        "list your tools",
+    ];
+    HEADS
+        .iter()
+        .any(|head| normalized == *head || normalized.starts_with(&format!("{head} ")))
 }
 
 fn looks_heavy(normalized: &str, original: &str) -> bool {
@@ -241,6 +283,24 @@ mod tests {
     }
 
     #[test]
+    fn capability_faqs_are_simple() {
+        for prompt in [
+            "what tools do u have",
+            "What tools do you have?",
+            "what can you do",
+            "help",
+            "what model are you",
+            "list your tools",
+        ] {
+            assert_eq!(classify_prompt(prompt), PromptClass::Simple, "{prompt}");
+        }
+        assert_eq!(
+            maybe_simple_flash(THOUGHTFUL_FLASH, "what tools do u have"),
+            Some(SIMPLE_FLASH)
+        );
+    }
+
+    #[test]
     fn coding_work_stays_thoughtful() {
         assert_eq!(
             classify_prompt("implement a cosine classifier in runtime.rs"),
@@ -252,6 +312,10 @@ mod tests {
         );
         assert_eq!(classify_prompt("write a rust cli"), PromptClass::Thoughtful);
         assert_eq!(classify_prompt("add tests"), PromptClass::Thoughtful);
+        assert_eq!(
+            classify_prompt("what tools should I use to implement the proxy"),
+            PromptClass::Thoughtful
+        );
         assert_eq!(
             maybe_simple_flash(THOUGHTFUL_FLASH, "refactor the proxy"),
             None

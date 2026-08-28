@@ -584,6 +584,15 @@ mod tests {
     }
 
     #[test]
+    fn a_glm_grant_reroutes_a_tools_faq_to_gemini() {
+        let config = cfg(true);
+        let granted = catalog::fetch(&config, "glm-5.3-flash").unwrap();
+        let body = json!({"messages":[{"role":"user","content":"what tools do u have"}]});
+        let out = reroute_simple_flash(&config, "glm-5.3-flash", &body, granted);
+        assert_eq!(out.id, "gemini-3.7-flash");
+    }
+
+    #[test]
     fn a_glm_grant_keeps_coding_work_on_glm() {
         let config = cfg(true);
         let granted = catalog::fetch(&config, "glm-5.3-flash").unwrap();

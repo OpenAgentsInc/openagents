@@ -5,6 +5,18 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Flash capability FAQs ride Gemini (#278)
+
+- issues: #278
+- commits: this change
+- contracts-specs: Flash simple/thoughtful classifier
+- invariants: coding work stays on GLM 5.3 Flash; short capability FAQs hop to Gemini 3.7 Flash
+- evidence: `capability_faqs_are_simple`; `a_glm_grant_reroutes_a_tools_faq_to_gemini`
+- lane: grok simple-faq routing
+
+`what tools do u have` and other short capability questions on the default
+Flash grant now route to Gemini 3.7 Flash instead of GLM thinking.
+
 ## Coder times each tool call (#277)
 
 - issues: #277
