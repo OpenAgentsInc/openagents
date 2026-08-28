@@ -769,13 +769,12 @@ pub struct CoderArgs {
     )]
     pub plain: bool,
 
-    /// Talk to the local Rust coder API on this machine.
+    /// Talk to the local Pro inference door on this machine.
     ///
-    /// Starts `openagents-coder-api` if none is running. Prefers port 4000;
-    /// if Phoenix already owns that port, binds 4010. The global `--api-url`
-    /// still wins when both are given. Production origin is unchanged
-    /// without this flag.
-    #[arg(long, help = "Talk to the local Rust coder API on this machine")]
+    /// Starts `pro` if none is running. Prefers port 4100; if that is taken,
+    /// binds 4101. The global `--api-url` still wins when both are given.
+    /// Production origin is unchanged without this flag.
+    #[arg(long, help = "Talk to the local Pro inference door on this machine")]
     pub dev: bool,
 
     #[arg(
