@@ -978,7 +978,8 @@ impl HarnessToolRegistry {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks. Also accepts an array of message ids: exactly those messages are stamped read and returned — all or nothing on unknown ids, idempotent on already-read ones — and everything else stays untouched, ignoring the filters and the drain cap."},
+                        "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks."},
+                        "drain_ids": {"type": "array", "items": {"type": "string"}, "description": "Drain exactly these message ids: they are stamped read and returned — all or nothing on unknown ids, idempotent on already-read ones — and every other message stays untouched. Ignores the filters and the drain cap. Use this instead of `drain` when you own specific messages (#288, #302)."},
                         "mute": {"type": "string", "description": "Stop injecting mail from this session id. Refuses an unknown id, so a typo cannot look like a mute."},
                         "unmute": {"type": "string", "description": "Resume injecting mail from this session id; the retained back catalog returns on the next drain."},
                         "sender": {"type": "string", "description": "Only messages from this session id."},
@@ -3239,19 +3240,30 @@ fn answer_swarm_inbox(
         mute_changed.push(format!("unmuted {target}"));
     }
     let drain = arguments.get("drain");
-    // `drain` is true, false, or a list of message ids: naming ids drains
-    // exactly those messages — all or nothing on unknown ids, idempotent on
-    // already-read ones — and leaves every other message untouched (#288).
+    // `drain_ids` is the array home for selective ownership (#302): the old
+    // boolean-or-array union on `drain` existed only in description prose —
+    // the declared schema said boolean, and every generated call collapsed
+    // to `true` (six of six live attempts on 2026-08-28). The union is kept
+    // reading it so nothing already sending arrays breaks, but the schema
+    // and this comment now point every caller at the dedicated parameter.
     // A named-id drain ignores the filters: the ids are the selection.
-    let drain_ids: Option<Vec<String>> = drain.and_then(|value| value.as_array()).map(|ids| {
-        ids.iter()
-            .filter_map(|value| value.as_str().map(str::to_string))
-            .collect()
-    });
+    let drain_ids: Option<Vec<String>> = arguments
+        .get("drain_ids")
+        .or_else(|| drain)
+        .and_then(|value| value.as_array())
+        .map(|ids| {
+            ids.iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect()
+        });
     if let Some(ids) = &drain_ids {
-        if ids.len() != drain.and_then(|value| value.as_array()).map_or(0, Vec::len) {
+        let source = arguments
+            .get("drain_ids")
+            .or_else(|| drain)
+            .and_then(|value| value.as_array());
+        if ids.len() != source.map_or(0, Vec::len) {
             return (
-                "Every entry of `drain` must be a message id string, like the `id` a peek \
+                "Every entry of `drain_ids` must be a message id string, like the `id` a peek \
                  returned."
                     .to_string(),
                 true,
@@ -3266,6 +3278,7 @@ fn answer_swarm_inbox(
                     "by_id": true,
                     "deferred": 0,
                     "muted": 0,
+                    "muted_senders": binding.muted().iter().collect::<Vec<_>>(),
                     "messages": messages
                         .iter()
                         .map(crate::swarm::message_document)
@@ -3278,6 +3291,14 @@ fn answer_swarm_inbox(
             }
             Err(why) => return (why, true),
         }
+    }
+    if drain.is_some_and(|value| value.is_array()) {
+        return (
+            "`drain` no longer takes a list; pass the ids as `drain_ids` — the boolean `drain` \
+             and the id list were collapsing to `drain: true` at generation time (#302)."
+                .to_string(),
+            true,
+        );
     }
     let drain = drain.and_then(|value| value.as_bool()).unwrap_or(true);
     // The filters narrow what a read sees, independently and composable with
@@ -3315,6 +3336,7 @@ fn answer_swarm_inbox(
                     "drained": true,
                     "deferred": plan.deferred,
                     "muted": plan.muted.len(),
+                    "muted_senders": binding.muted().iter().collect::<Vec<_>>(),
                     "messages": plan
                         .inject
                         .iter()
@@ -3323,6 +3345,16 @@ fn answer_swarm_inbox(
                 });
                 if !mute_changed.is_empty() {
                     document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
+                }
+                if plan.inject.is_empty() {
+                    // The honest empty (#303): in a live session this is the
+                    // normal case — the boundary injection stamped the mail
+                    // read on the caller's behalf before any drain ran. Say
+                    // so instead of leaving an empty list to misread as
+                    // "no mail exists".
+                    document["note"] = serde_json::json!(
+                        "nothing was unread at drain time; mail injected at the turn boundary is stamped read on your behalf — see `consumed` on the boundary injection (#303)"
+                    );
                 }
                 if let Some(notice) = &plan.quarantine {
                     document["quarantine"] = serde_json::json!({

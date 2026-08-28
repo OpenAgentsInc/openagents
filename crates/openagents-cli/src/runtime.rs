@@ -1338,6 +1338,20 @@ impl CoderRuntimeSession {
             "source": "turn_boundary",
             "deferred": plan.deferred,
             "muted": plan.muted.len(),
+            // The mute set itself, not just the unread-from-muted count — the
+            // count field reads 0 on an otherwise-quiet inbox right after a
+            // successful mute, which read as the mutation failing (#304).
+            "muted_senders": crate::swarm::load_mute_list(&binding.session_directory)
+                .iter()
+                .collect::<Vec<_>>(),
+            // What this injection stamped read on the caller's behalf (#303):
+            // a drain afterwards is always empty in a live session, so the
+            // receipt is the only honest record of what was consumed.
+            "consumed": plan
+                .inject
+                .iter()
+                .map(|message| message.id.clone())
+                .collect::<Vec<_>>(),
             "messages": plan
                 .inject
                 .iter()
