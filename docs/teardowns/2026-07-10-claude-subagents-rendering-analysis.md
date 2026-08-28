@@ -802,19 +802,40 @@ After the history-first analysis above was complete, I inspected the historical
 This addendum translates the implementation into behavioral findings; it does
 not reproduce source, private identifiers, or internal file paths.
 
-### 13.1 Provenance caveat
+### 13.1 Provenance
 
-The snapshot cannot be assigned a trustworthy upstream Claude Code version.
-Its build version is injected outside the checked-in source, and the import
-commit date is not a product-version boundary. It also contains mechanisms
-that resemble the later behaviors observed in the June/July histories,
-including background agent output, forked context, workflows, worktrees, and a
-top-level agent manager. It may therefore be a mixed or later source snapshot
-under older repository metadata.
+A changelog marker bracket run on 2026-08-27 assigns the snapshot to
+**Claude Code 2.1.195 (approximately 2026-06-26)**, using the official
+`anthropics/claude-code` `CHANGELOG.md`. The bracket is [2.1.195, 2.1.196):
+
+- Present (2.1.195 or earlier): `CLAUDE_CODE_DISABLE_MOUSE_CLICKS` (2.1.195),
+  workflow sidechild transcript paths `subagents/workflows/<runId>` (2.1.154),
+  the fork-subagent experiment gate in its pre-default form, explicit
+  `run_in_background` on the Agent input with background not yet default,
+  and `claude auto-mode defaults|config|critique` without `reset` (2.1.212).
+- Absent (2.1.196 and later): stream-watchdog default-on, organization default
+  models, MCP pending-approval security states, readable session names
+  (2.1.196), Sonnet 5 (2.1.197), background-by-default subagents, the
+  `/dataviz` skill, the `anthropicAws` provider, Notification hook payloads for
+  background agents, Explore inheriting the main model (2.1.198),
+  screen-reader mode (2.1.208), `EndConversation` (2.1.214), emoji
+  autocomplete (2.1.217), and any Opus 4.7/4.8/5 model rows — the model table
+  ends at Opus 4.6 / Sonnet 4.6.
+
+The import commit's date (2026-03-31) is workspace metadata, not the code
+date. The earlier caveat — that the snapshot might be mixed or
+unversionable — is superseded: the features that looked ahead of the import
+date (background agents, forked context, workflows, worktrees, the agent
+manager) are all 2.1.154–2.1.195 features, consistent with one coherent
+2.1.195 tree. This agrees with the retained-history chronology: the corpus
+begins at 2.1.170 (2026-06-09) and the Workflows layer appears at 2.1.195
+(2026-06-27), immediately before the 2.1.196 async-default transition that
+the snapshot predates.
 
 The retained `~/.claude` histories remain the authority for the chronology and
-counts in sections 1-8. The source snapshot is useful for explaining mechanics
-behind those records, not for moving a feature earlier in the timeline.
+counts in sections 1-8. The source snapshot explains the mechanics behind
+those records at exactly the 2.1.195 boundary where the history corpus's
+observed version range begins to close.
 
 ### 13.2 Ordinary dispatch is in-process state isolation
 

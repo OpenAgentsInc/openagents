@@ -1,7 +1,9 @@
 # Claude Code Architecture Teardown — 2026-07-10
 
-Read-only architecture audit of a historical Claude Code source snapshot,
-commit `813c06acfa2d705076df6193b405c81eb11a18d1` (imported 2026-03-31),
+Read-only architecture audit of the Claude Code source snapshot at commit
+`813c06acfa2d705076df6193b405c81eb11a18d1` — identified on 2026-08-27 as
+**Claude Code 2.1.195 (approximately 2026-06-26)** by changelog marker
+bracket against the official `anthropics/claude-code` repository (§1) —
 used as a behavioral and structural reference for OpenAgents. This is a
 separate analysis from the installed
 [Claude desktop app teardown](./2026-07-10-claude-desktop-app-teardown.md):
@@ -85,21 +87,46 @@ matrix dominated by feature flags.
 | Field | Value | Evidence |
 | --- | --- | --- |
 | Snapshot commit | `813c06acfa2d705076df6193b405c81eb11a18d1` | [source] |
-| Commit/import date | 2026-03-31 | [source] |
+| Commit/import date | 2026-03-31 (repository metadata only — not the code date, see below) | [source] |
+| Identified upstream version | 2.1.195, released approximately 2026-06-26 | [source] (marker bracket, 2026-08-27 update) |
 | Tracked files | 1,904 | [source] |
 | Approximate lines | 512,000 | [source] |
 | Primary languages | TypeScript and TSX | [source] |
 | Packaging target | Bun-compiled standalone CLI, with Node/npm installation compatibility | [source] |
 | UI model | React terminal application on a custom Ink-style renderer | [source] |
-| Embedded product version | Not available. Injected at build time | [limitation] |
+| Embedded product version | Not available in the extract; recovered as 2.1.195 by marker bracket against the public changelog | [source] |
 | Reproducible build | Not possible from this extract alone | [limitation] |
 | Test evidence | No test suite present in the snapshot | [limitation] |
 
-The commit date is not a reliable Claude Code version date. The source contains
-capabilities that also appear in later local Claude histories, while the
-snapshot itself has only one import commit and no release lineage. It is best
-understood as a historical source-shaped view of an evolving product, not as a
-tagged upstream release. [limitation]
+The import commit's date (2026-03-31) is repository metadata from the
+reference workspace, not the code date. A changelog marker bracket run on
+2026-08-27 assigns the snapshot to **Claude Code 2.1.195 (approximately
+2026-06-26)**. The bracket is [2.1.195, 2.1.196), established from the
+official `anthropics/claude-code` `CHANGELOG.md`:
+
+- Present (landed in 2.1.195 or earlier): the `CLAUDE_CODE_DISABLE_MOUSE_CLICKS`
+  env switch (added 2.1.195), workflow sidechain transcript paths under
+  `subagents/workflows/<runId>` (2.1.154), the fork-subagent experiment gate
+  (pre-default form), the `TaskGet`/`TaskOutput` tools (task-ledger tools
+  documented in the 2.1.199–2.1.200 window, already present here), `run_in_background` still an explicit Agent input with
+  background not yet the default, and the `claude auto-mode` subcommand family
+  (`defaults`, `config`, `critique`) without the `reset` subcommand (2.1.212).
+- Absent (all landed 2.1.196 or later): stream watchdog default-on (2.1.196),
+  organization default models and MCP server pending-approval states (2.1.196),
+  readable default session names (2.1.196), Claude Sonnet 5 (2.1.197), the
+  `/dataviz` skill, `anthropicAws` upstream provider, background-agent
+  Notification hook payloads, and the Explore agent inheriting the main model
+  (2.1.198), background-by-default subagents (2.1.198), `/subtask` (2.1.212),
+  screen-reader mode (2.1.208), the `EndConversation` tool (2.1.214), emoji
+  autocomplete (2.1.217), and any Opus 4.7/4.8/5 model configuration — the
+  model table tops out at Opus 4.6 and Sonnet 4.6.
+
+The earlier working assumption — that the snapshot was a mixed or
+older-metadata extract that could not be versioned — is superseded by this
+bracket. The capabilities that seemed ahead of the import date (background
+agents, forked context, workflows, worktrees, the agent manager) are all
+2.1.154–2.1.195 features, consistent with a single coherent 2.1.195
+snapshot. [source]
 
 Several referenced implementations are absent behind build-time gates,
 including portions of daemon execution, remote environments, jobs, SSH, and
