@@ -855,9 +855,13 @@ where
                 .get("params")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
-            let reply = match &harness.on_request {
-                Some(handler) => handler(method, &params),
-                None => None,
+            let reply = if is_ask_user_question(method) {
+                Some(serde_json::json!({"outcome": "cancelled"}))
+            } else {
+                match &harness.on_request {
+                    Some(handler) => handler(method, &params),
+                    None => None,
+                }
             };
             let answer_line = match reply {
                 Some(result) => serde_json::json!({"jsonrpc": "2.0", "id": id, "result": result}),
@@ -883,7 +887,7 @@ where
         .unwrap_or(serde_json::json!({}));
 
     match update.get("sessionUpdate").and_then(|v| v.as_str()) {
-        Some("tool_call") => {
+        Some("tool_call") | Some("tool_call_update") => {
             on_event(AcpEvent::Tool {
                 kind: update
                     .get("kind")
@@ -893,41 +897,106 @@ where
                 title: update
                     .get("title")
                     .and_then(|v| v.as_str())
+                    .or_else(|| update.get("status").and_then(|v| v.as_str()))
                     .unwrap_or("")
                     .to_string(),
             });
         }
         Some("usage_update") => {
-            let meta = update
-                .get("_meta")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-            let input = meta
-                .get("cognition.ai/inputTokens")
-                .and_then(|v| v.as_u64());
-            let output = meta
-                .get("cognition.ai/outputTokens")
-                .and_then(|v| v.as_u64());
-            if let (Some(input), Some(output)) = (input, output) {
+            if let Some((input, output)) = usage_tokens(&update) {
                 on_event(AcpEvent::Tokens { input, output });
             }
         }
         Some("agent_message_chunk") => {
-            if let Some(piece) = update
-                .get("content")
-                .and_then(|c| c.get("text"))
-                .and_then(|v| v.as_str())
-            {
-                answer.push_str(piece);
-                on_event(AcpEvent::Text {
-                    chunk: piece.to_string(),
+            if let Some(piece) = content_text(&update) {
+                answer.push_str(&piece);
+                on_event(AcpEvent::Text { chunk: piece });
+            }
+        }
+        Some("agent_thought_chunk") => {
+            if let Some(piece) = content_text(&update) {
+                let title: String = piece.chars().take(80).collect();
+                on_event(AcpEvent::Tool {
+                    kind: "thought".to_string(),
+                    title,
                 });
             }
+        }
+        Some("plan") => {
+            on_event(AcpEvent::Tool {
+                kind: "plan".to_string(),
+                title: "plan".to_string(),
+            });
         }
         _ => {}
     }
 
     Ok(())
+}
+
+fn is_ask_user_question(method: &str) -> bool {
+    method == "x.ai/ask_user_question" || method == "_x.ai/ask_user_question"
+}
+
+fn content_text(update: &serde_json::Value) -> Option<String> {
+    update
+        .get("content")
+        .and_then(|content| content.get("text"))
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+}
+
+fn u64_field(value: &serde_json::Value, name: &str) -> Option<u64> {
+    value
+        .get(name)
+        .and_then(|found| found.as_u64().or_else(|| found.as_f64().map(|n| n as u64)))
+}
+
+fn usage_tokens(update: &serde_json::Value) -> Option<(u64, u64)> {
+    let meta = update
+        .get("_meta")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
+    let input = u64_field(&meta, "cognition.ai/inputTokens")
+        .or_else(|| u64_field(&meta, "x.ai/inputTokens"))
+        .or_else(|| u64_field(&meta, "inputTokens"))
+        .or_else(|| u64_field(update, "inputTokens"))
+        .or_else(|| update.get("used").and_then(|used| u64_field(used, "input")));
+    let output = u64_field(&meta, "cognition.ai/outputTokens")
+        .or_else(|| u64_field(&meta, "x.ai/outputTokens"))
+        .or_else(|| u64_field(&meta, "outputTokens"))
+        .or_else(|| u64_field(update, "outputTokens"))
+        .or_else(|| {
+            update
+                .get("used")
+                .and_then(|used| u64_field(used, "output"))
+        });
+    match (input, output) {
+        (Some(input), Some(output)) => Some((input, output)),
+        _ => None,
+    }
+}
+
+/// Environment a delegated Grok child may inherit. OpenAgents tokens stay out.
+pub fn grok_delegate_env() -> Vec<(String, String)> {
+    const KEYS: &[&str] = &[
+        "HOME",
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+        "TMPDIR",
+        "TMP",
+        "GROK_HOME",
+        "XAI_API_KEY",
+    ];
+    KEYS.iter()
+        .filter_map(|key| {
+            std::env::var(key)
+                .ok()
+                .map(|value| ((*key).to_string(), value))
+        })
+        .collect()
 }
 
 async fn write_line(stdin: &mut ChildStdin, value: &serde_json::Value) -> Result<(), AcpFailure> {
@@ -1216,5 +1285,23 @@ mod tests {
             matches!(error, AcpFailure::Refused(ref why) if why.contains("grok login")),
             "{error}"
         );
+    }
+
+    #[test]
+    fn grok_usage_reads_xai_token_fields() {
+        let update = serde_json::json!({
+            "_meta": {"x.ai/inputTokens": 9, "x.ai/outputTokens": 4}
+        });
+        assert_eq!(usage_tokens(&update), Some((9, 4)));
+        let cognition = serde_json::json!({
+            "_meta": {"cognition.ai/inputTokens": 120, "cognition.ai/outputTokens": 34}
+        });
+        assert_eq!(usage_tokens(&cognition), Some((120, 34)));
+    }
+
+    #[test]
+    fn grok_delegate_env_omits_openagents_token() {
+        let env = grok_delegate_env();
+        assert!(env.iter().all(|(key, _)| key != "OPENAGENTS_TOKEN"));
     }
 }

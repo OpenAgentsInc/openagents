@@ -1921,12 +1921,14 @@ impl HarnessToolRegistry {
             .ok()
             .and_then(|sessions| sessions.get(wanted).cloned());
         let started = Instant::now();
+        let grok = wanted == "grok" || wanted == "grok-build";
         let result = AcpHarness {
             command: agent.command,
             args: agent.args,
             agent_id: wanted.to_string(),
             mode,
             resume_session_id,
+            env: grok.then(crate::acp::grok_delegate_env),
             ..AcpHarness::default()
         }
         .run_detailed(

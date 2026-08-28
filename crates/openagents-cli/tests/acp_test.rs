@@ -602,3 +602,103 @@ for line in sys.stdin:
         .expect("the turn failed");
     assert_eq!(answer, "ask");
 }
+
+#[tokio::test]
+async fn grok_turn_maps_thought_tool_updates_plan_and_xai_usage() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {
+            "protocolVersion": 1,
+            "authMethods": [{"id": "cached_token"}]
+        }})
+    elif method == "authenticate":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_turn"}})
+    elif method == "session/prompt":
+        sid = message["params"]["sessionId"]
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "agent_thought_chunk",
+                       "content": {"type": "text", "text": "pondering"}}}})
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "tool_call", "kind": "read", "title": "Read a.rs"}}})
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "tool_call_update", "kind": "read", "status": "completed"}}})
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "plan"}}})
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "usage_update",
+                       "_meta": {"x.ai/inputTokens": 9, "x.ai/outputTokens": 4}}}})
+        send({"jsonrpc": "2.0", "id": 77, "method": "x.ai/ask_user_question",
+              "params": {"sessionId": sid, "questions": [{"header": "go?"}]}})
+        answer = json.loads(sys.stdin.readline())
+        chosen = answer["result"]["outcome"]
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": "done:" + chosen}}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "error": {"code": -32601, "message": method}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-grok-turn", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "grok".to_string(),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<AcpEvent>::new()));
+    let sink = std::sync::Arc::clone(&seen);
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = harness
+        .run(
+            "hello",
+            &std::env::temp_dir(),
+            move |event| sink.lock().unwrap().push(event),
+            &mut cancel,
+        )
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "done:cancelled");
+    let events = seen.lock().unwrap();
+    assert!(
+        events.iter().any(|event| matches!(event, AcpEvent::Tool { kind, title } if kind == "thought" && title == "pondering")),
+        "{events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AcpEvent::Tool { title, .. } if title == "Read a.rs")),
+        "{events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AcpEvent::Tool { kind, .. } if kind == "plan")),
+        "{events:?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AcpEvent::Tokens {
+                input: 9,
+                output: 4
+            }
+        )),
+        "{events:?}"
+    );
+}
