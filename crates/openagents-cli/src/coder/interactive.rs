@@ -449,6 +449,10 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         if let Some(diagnostic) = diagnostic {
                             ui.entries.push(Entry::new(Role::Notice, diagnostic));
                         }
+                        ui.entries.push(Entry::new(
+                            Role::Notice,
+                            commands::CONTINUE_HINT.to_string(),
+                        ));
                         if let Err(error) = write_atif_snapshot(&ui, &atif_directory) {
                             ui.entries.push(Entry::new(
                                 Role::Notice,
@@ -712,6 +716,51 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                         if removed == 1 { "" } else { "s" }
                                     ),
                                 ));
+                            }
+                            commands::Outcome::ContinueFrom { spec } => {
+                                if !matches!(turns.phase(), TurnPhase::Idle) {
+                                    ui.entries.push(Entry::new(
+                                        Role::Notice,
+                                        "The running turn must finish before `/continue` can start a new session.",
+                                    ));
+                                } else {
+                                    match session.try_lock() {
+                                        Ok(mut live) => {
+                                            let root = crate::session_store::default_root();
+                                            match live.continue_from_checkpoint(&root, &cwd, &spec)
+                                            {
+                                                Ok(notice) => {
+                                                    ui.entries.clear();
+                                                    ui.scroll_override = None;
+                                                    ui.show_welcome = false;
+                                                    if let Some(summary) =
+                                                        live.local_session_summary()
+                                                    {
+                                                        ui.local_session_path = Some(
+                                                            crate::session_store::cwd_session_directory(
+                                                                &root, &cwd,
+                                                            )
+                                                            .join(&summary.id)
+                                                            .display()
+                                                            .to_string(),
+                                                        );
+                                                    }
+                                                    ui.entries
+                                                        .push(Entry::new(Role::Notice, notice));
+                                                }
+                                                Err(why) => {
+                                                    ui.entries.push(Entry::new(Role::Notice, why));
+                                                }
+                                            }
+                                        }
+                                        Err(_) => {
+                                            ui.entries.push(Entry::new(
+                                                Role::Notice,
+                                                "The running turn must finish before `/continue` can start a new session.",
+                                            ));
+                                        }
+                                    }
+                                }
                             }
                             commands::Outcome::Done => {}
                         }
@@ -1423,6 +1472,10 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 last.finish_text();
             }
             ui.entries.push(Entry::new(Role::Notice, why));
+            ui.entries.push(Entry::new(
+                Role::Notice,
+                commands::CONTINUE_HINT.to_string(),
+            ));
             ui.loading = false;
             ui.turn_settled();
             ui.waiting = None;
@@ -1609,6 +1662,14 @@ async fn submit(
 
     if crate::composer::is_local_slash_input(&text, commands::COMMANDS) {
         return commands::run(ui, text.trim(), tx, cwd);
+    }
+
+    if commands::looks_like_atif_export(&text) {
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            "That looks like an ATIF export. `/continue` (or `/continue last`) starts a new session from the checkpoint instead of splicing the dump into this one.",
+        ));
+        return commands::Outcome::Done;
     }
 
     if !matches!(turns.phase(), TurnPhase::Idle) {

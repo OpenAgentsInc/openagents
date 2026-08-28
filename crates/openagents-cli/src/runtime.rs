@@ -1433,6 +1433,49 @@ impl CoderRuntimeSession {
         self
     }
 
+    /// Start a new local record without replaying the previous transcript.
+    ///
+    /// Used by `/continue` (#315): the model sees the system prompt plus a
+    /// checkpoint seed, never the old `tool.ran` dumps. The previous
+    /// session's files stay on disk.
+    pub fn replace_local_session(&mut self, store: crate::session_store::LocalSessionStore) {
+        let system = self
+            .messages
+            .first()
+            .filter(|message| message.role == "system")
+            .cloned();
+        self.messages.clear();
+        if let Some(system) = system {
+            self.messages.push(system);
+        }
+        self.local_session = Some(store);
+    }
+
+    /// Put a previous session's checkpoint on the wire as the first user
+    /// message of this session, so the next turn sees it without an ATIF
+    /// ingest. The seed is also the new record's first event, so `--resume`
+    /// of this session still has it.
+    pub fn seed_checkpoint(&mut self, source_id: &str, note: &str) {
+        let content = format!(
+            "Previous session `{source_id}` ended. Checkpoint:\n{note}\n\nContinue from there. Do not read ATIF export files."
+        );
+        self.messages.push(ChatMessage {
+            role: "user".to_string(),
+            content: Some(content.clone()),
+            tool_calls: None,
+            tool_call_id: None,
+            images: Vec::new(),
+        });
+        if let Some(store) = self.local_session.as_mut() {
+            let _ = store.append(&[ThreadRecord::user(&content)]);
+            let _ = store.set_last_checkpoint(note);
+        }
+    }
+
+    pub fn cloud_history_enabled(&self) -> bool {
+        self.cloud_history
+    }
+
     /// Opt in to durable server transcript storage.
     pub fn with_cloud_history(mut self, enabled: bool) -> Self {
         self.cloud_history = enabled;

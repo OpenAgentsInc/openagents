@@ -594,6 +594,63 @@ impl Session {
         self.inner.local_session_summary()
     }
 
+    /// Open a new local record seeded from a previous checkpoint (#315).
+    ///
+    /// The previous transcript stays on disk. The model-facing `messages`
+    /// list is reset to the system prompt plus the checkpoint, so the next
+    /// turn does not ingest tool dumps or an ATIF export.
+    pub fn continue_from_checkpoint(
+        &mut self,
+        root: &std::path::Path,
+        cwd: &std::path::Path,
+        spec: &str,
+    ) -> Result<String, String> {
+        let current_id = self
+            .inner
+            .local_session_summary()
+            .map(|summary| summary.id.clone());
+        let source = crate::session_store::continue_source(root, cwd, current_id.as_deref(), spec)?;
+        let Some(note) = source
+            .last_checkpoint
+            .as_deref()
+            .map(str::trim)
+            .filter(|note| !note.is_empty())
+        else {
+            return Err(format!(
+                "Session `{}` has no checkpoint. `/continue` needs one; `--resume` replays the full transcript.",
+                source.id
+            ));
+        };
+        let note = note.to_string();
+        let source_id = source.id.clone();
+        let lane_name = source.lane.clone();
+        let reasoning = self.inner.reasoning.clone();
+        let cloud = self.inner.cloud_history_enabled();
+        let loaded = crate::session_store::LocalSessionStore::create(
+            root, cwd, &lane_name, reasoning, cloud,
+        )
+        .map_err(|error| error.to_string())?;
+        let new_id = loaded.summary.id.clone();
+        let record_directory = loaded.store.directory().to_path_buf();
+        self.inner
+            .tools
+            .keeping_session_logs_in_place(record_directory.clone());
+        let _ = self
+            .inner
+            .tools
+            .add_host_tool(crate::coder::recall::host_tool(record_directory.clone()));
+        self.inner.replace_local_session(loaded.store);
+        self.inner.seed_checkpoint(&source_id, &note);
+        self.inner.bind_swarm(crate::swarm::SwarmBinding::new(
+            crate::swarm::default_home(),
+            new_id.clone(),
+            record_directory,
+        ));
+        Ok(format!(
+            "New session `{new_id}` seeded from `{source_id}` checkpoint. The previous transcript was not replayed.\n\nLast checkpoint:\n{note}"
+        ))
+    }
+
     /// The lane this session was opened on. What was asked for, not what
     /// answered — [`Control::Model`] carries that.
     pub fn lane(&self) -> &Lane {
@@ -1201,5 +1258,148 @@ mod tests {
         unsafe {
             env::remove_var("OPENAGENTS_BASE_URL");
         }
+    }
+
+    #[test]
+    fn continue_from_checkpoint_seeds_a_new_session_without_the_old_transcript() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = std::path::Path::new("/work/repo");
+        let mut source =
+            crate::session_store::LocalSessionStore::create(root.path(), cwd, "flash", None, false)
+                .unwrap();
+        source
+            .store
+            .append(&[
+                crate::runtime::ThreadRecord::user("do the thing"),
+                crate::runtime::ThreadRecord::tool_ran(
+                    "call-1",
+                    "bash",
+                    r#"{"command":"git status"}"#,
+                    "DUMP_MARKER: the previous tool dump must not be replayed",
+                ),
+            ])
+            .unwrap();
+        source
+            .store
+            .set_last_checkpoint("#315: next is tests")
+            .unwrap();
+        let source_id = source.summary.id.clone();
+        let source_events =
+            crate::session_store::LocalSessionStore::load_id(root.path(), cwd, &source_id)
+                .unwrap()
+                .unwrap()
+                .events;
+
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut session = Session::open_at(
+            Lane::Flash,
+            "flash",
+            None,
+            Vec::new(),
+            "http://127.0.0.1:1/api/v1".to_string(),
+            Some("test-token".to_string()),
+            false,
+            tx,
+        );
+        session = session.with_local_session(source.store, &source_events, false);
+        assert!(
+            session.inner.messages.iter().any(|message| message
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("DUMP_MARKER")),
+            "the fixture must put the tool dump on the wire before /continue"
+        );
+
+        let notice = session
+            .continue_from_checkpoint(root.path(), cwd, "")
+            .unwrap();
+        assert!(notice.contains(&source_id), "{notice}");
+        assert!(notice.contains("#315: next is tests"), "{notice}");
+
+        let new_id = session
+            .inner
+            .local_session_summary()
+            .expect("new session")
+            .id
+            .clone();
+        assert_ne!(new_id, source_id);
+
+        let seed = session
+            .inner
+            .messages
+            .iter()
+            .find(|message| message.role == "user")
+            .and_then(|message| message.content.clone())
+            .unwrap_or_default();
+        assert!(seed.contains(&source_id), "{seed}");
+        assert!(seed.contains("#315: next is tests"), "{seed}");
+        assert!(
+            !seed.contains("DUMP_MARKER"),
+            "the checkpoint seed must not carry the previous dump: {seed}"
+        );
+        assert!(
+            session.inner.messages.iter().all(|message| !message
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("DUMP_MARKER")),
+            "the new session's request must not contain the previous tool dump"
+        );
+
+        let previous =
+            crate::session_store::LocalSessionStore::load_id(root.path(), cwd, &source_id)
+                .unwrap()
+                .unwrap();
+        let previous_text = format!("{:?}", previous.events);
+        assert!(
+            previous_text.contains("DUMP_MARKER"),
+            "the previous transcript stays on disk"
+        );
+
+        let continued = crate::session_store::LocalSessionStore::load_id(root.path(), cwd, &new_id)
+            .unwrap()
+            .unwrap();
+        let continued_text = format!("{:?}", continued.events);
+        assert!(
+            continued_text.contains("#315: next is tests"),
+            "{continued_text}"
+        );
+        assert!(
+            !continued_text.contains("DUMP_MARKER"),
+            "the new record must not replay the dump: {continued_text}"
+        );
+
+        let missing = session
+            .continue_from_checkpoint(root.path(), cwd, "missing-id")
+            .unwrap_err();
+        assert!(missing.contains("No saved Coder session"), "{missing}");
+    }
+
+    #[test]
+    fn continue_from_checkpoint_refuses_a_session_without_a_checkpoint() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = std::path::Path::new("/work/repo");
+        let source =
+            crate::session_store::LocalSessionStore::create(root.path(), cwd, "flash", None, false)
+                .unwrap();
+        let source_id = source.summary.id.clone();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut session = Session::open_at(
+            Lane::Flash,
+            "flash",
+            None,
+            Vec::new(),
+            "http://127.0.0.1:1/api/v1".to_string(),
+            Some("test-token".to_string()),
+            false,
+            tx,
+        );
+        session = session.with_local_session(source.store, &[], false);
+        let error = session
+            .continue_from_checkpoint(root.path(), cwd, "")
+            .unwrap_err();
+        assert!(error.contains(&source_id), "{error}");
+        assert!(error.contains("no checkpoint"), "{error}");
     }
 }

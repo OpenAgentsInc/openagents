@@ -280,6 +280,46 @@ pub fn summaries_for(root: &Path, cwd: &Path) -> Vec<(PathBuf, SessionSummary)> 
     summaries_in(&cwd_directory(root, cwd)).unwrap_or_default()
 }
 
+/// Pick a session to continue from (#315): this one, the most recent
+/// other one (`last`), or a named id. Returns that session's summary so
+/// the caller can read `last_checkpoint` without replaying events.
+pub fn continue_source(
+    root: &Path,
+    cwd: &Path,
+    current_id: Option<&str>,
+    spec: &str,
+) -> Result<SessionSummary, String> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        let Some(id) = current_id.filter(|id| !id.is_empty()) else {
+            return Err("This session has no local record to continue from.".to_string());
+        };
+        return match LocalSessionStore::load_id(root, cwd, id) {
+            Ok(Some(loaded)) => Ok(loaded.summary),
+            Ok(None) => Err(format!("No saved Coder session has id `{id}`.")),
+            Err(error) => Err(error.to_string()),
+        };
+    }
+    if spec.eq_ignore_ascii_case("last") {
+        let mut candidates = summaries_for(root, cwd);
+        candidates.sort_by_key(|(_, summary)| std::cmp::Reverse(summary.updated_at_ms));
+        let other = candidates
+            .into_iter()
+            .map(|(_, summary)| summary)
+            .find(|summary| current_id.is_none_or(|id| summary.id != id));
+        return other
+            .ok_or_else(|| "No other Coder session exists for this directory.".to_string());
+    }
+    if !valid_session_id(spec) {
+        return Err("`/continue` takes `last` or a session id (`/continue last`).".to_string());
+    }
+    match LocalSessionStore::load_id(root, cwd, spec) {
+        Ok(Some(loaded)) => Ok(loaded.summary),
+        Ok(None) => Err(format!("No saved Coder session has id `{spec}`.")),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 /// Whether `id` is a session id this store would load. Shared with the
 /// cross-session recall target check so both refuse the same shapes.
 pub fn id_is_valid(id: &str) -> bool {
@@ -669,5 +709,40 @@ mod summary_tests {
             reloaded.summary.last_checkpoint.as_deref(),
             Some("#152: tiers landed; cmd-log tests red; next: failing runs")
         );
+    }
+
+    #[test]
+    fn continue_source_picks_this_session_last_other_or_a_named_id() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = Path::new("/work/repo");
+        let older = LocalSessionStore::create(root.path(), cwd, "flash", None, false).unwrap();
+        let older_id = older.summary.id.clone();
+        let mut newer = LocalSessionStore::create(root.path(), cwd, "flash", None, false).unwrap();
+        newer
+            .store
+            .set_last_checkpoint("#315: next is tests")
+            .unwrap();
+        let newer_id = newer.summary.id.clone();
+
+        let this = continue_source(root.path(), cwd, Some(&newer_id), "").unwrap();
+        assert_eq!(this.id, newer_id);
+        assert_eq!(this.last_checkpoint.as_deref(), Some("#315: next is tests"));
+
+        let last = continue_source(root.path(), cwd, Some(&newer_id), "last").unwrap();
+        assert_eq!(last.id, older_id);
+
+        let named = continue_source(root.path(), cwd, Some(&newer_id), &older_id).unwrap();
+        assert_eq!(named.id, older_id);
+
+        let missing =
+            continue_source(root.path(), cwd, Some(&newer_id), "not-a-session").unwrap_err();
+        assert!(missing.contains("No saved Coder session"), "{missing}");
+
+        let invalid = continue_source(root.path(), cwd, Some(&newer_id), "../escape").unwrap_err();
+        assert!(invalid.contains("session id"), "{invalid}");
+
+        let empty_root = tempfile::tempdir().unwrap();
+        let error = continue_source(empty_root.path(), cwd, Some("current"), "last").unwrap_err();
+        assert!(error.contains("No other Coder session"), "{error}");
     }
 }

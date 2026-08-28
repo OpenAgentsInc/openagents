@@ -54,6 +54,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "coding-agent sessions other tools left on this machine: /resume, /resume <number>",
     ),
     (
+        "continue",
+        "new session from a checkpoint, no transcript replay: /continue, /continue last, /continue <id>",
+    ),
+    (
         "run",
         "run a command here and show its output: /run cargo test",
     ),
@@ -128,6 +132,7 @@ pub fn handles(name: &str) -> bool {
             | "logout"
             | "queue"
             | "resume"
+            | "continue"
             | "run"
             | "swarm"
             | "gym"
@@ -139,7 +144,7 @@ pub fn handles(name: &str) -> bool {
 /// `/logout` has to end the live thread and drop the credential, and the
 /// session is owned by the frame loop rather than by this module, so the line
 /// is recognised here and carried out there.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// The line ran here. Nothing is left to do.
     Done,
@@ -149,6 +154,25 @@ pub enum Outcome {
     QueueStatus,
     /// Remove prompts waiting behind the active turn.
     ClearQueue,
+    /// Start a new local session from a checkpoint (#315). Empty spec is
+    /// this session; `last` is the most recent other one; otherwise an id.
+    ContinueFrom { spec: String },
+}
+
+/// Hint after a dead turn: pick the work up without replaying the dump.
+pub const CONTINUE_HINT: &str =
+    "To pick this up in a new session without the transcript: `/continue`.";
+
+/// Whether a composer line is an ATIF export path the owner is trying to
+/// splice in. Those dumps belong on disk; `/continue` is the resume path.
+pub fn looks_like_atif_export(text: &str) -> bool {
+    let text = text.trim().trim_matches('`').trim_matches('"');
+    let lower = text.to_ascii_lowercase();
+    if lower.ends_with("-atif.json") {
+        return true;
+    }
+    let in_exports = lower.contains(".openagents/exports/") || lower.contains("/exports/");
+    in_exports && (lower.contains("atif") || lower.ends_with(".json"))
 }
 
 /// Run one `/` line. `line` still carries its leading slash.
@@ -186,6 +210,18 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
         "swarm" => run_swarm_command(ui, &arguments, &rest),
         "gym" => run_gym_command(ui, &arguments),
         "resume" => spawn_resume(ui, &arguments, tx, cwd),
+        "continue" => {
+            if arguments.len() > 1 {
+                output(
+                    ui,
+                    "`/continue` takes at most one argument: `/continue`, `/continue last`, or `/continue <id>`.",
+                );
+                return Outcome::Done;
+            }
+            return Outcome::ContinueFrom {
+                spec: arguments.first().cloned().unwrap_or_default(),
+            };
+        }
         other => output(
             ui,
             &format!("There is no `/{other}`. `/help` lists the commands."),
@@ -833,6 +869,53 @@ mod tests {
         let text = bounded("x".repeat(OUTPUT_LIMIT + 100));
         assert!(text.contains("truncated"), "it was not cut");
         assert!(text.len() < OUTPUT_LIMIT + 200);
+    }
+
+    fn continue_outcome(line: &str) -> Outcome {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut ui = CoderUi::new();
+        run(&mut ui, line, &tx, Path::new("/work/repo"))
+    }
+
+    #[test]
+    fn continue_takes_an_empty_spec_last_or_an_id() {
+        assert_eq!(
+            continue_outcome("/continue"),
+            Outcome::ContinueFrom {
+                spec: String::new()
+            }
+        );
+        assert_eq!(
+            continue_outcome("/continue last"),
+            Outcome::ContinueFrom {
+                spec: "last".into()
+            }
+        );
+        assert_eq!(
+            continue_outcome("/continue abc123"),
+            Outcome::ContinueFrom {
+                spec: "abc123".into()
+            }
+        );
+        assert_eq!(continue_outcome("/continue last extra"), Outcome::Done);
+    }
+
+    #[test]
+    fn an_atif_export_path_is_recognised_and_ordinary_prompts_are_not() {
+        assert!(looks_like_atif_export(
+            "~/.openagents/exports/1a0434b26a4-atif.json"
+        ));
+        assert!(looks_like_atif_export(
+            "`/Users/me/.openagents/exports/session-atif.json`"
+        ));
+        assert!(looks_like_atif_export(
+            "/Users/me/.openagents/exports/dead-tab.json"
+        ));
+        assert!(!looks_like_atif_export("continue from the last checkpoint"));
+        assert!(!looks_like_atif_export(
+            "read crates/openagents-cli/src/runtime.rs"
+        ));
+        assert!(!looks_like_atif_export("/help"));
     }
 }
 

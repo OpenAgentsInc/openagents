@@ -928,8 +928,8 @@ mod unix_pty {
             transcript.contains("Alt+Enter") && transcript.contains("/swarm — the local swarm")
         });
         assert!(
-            frame.transcript().contains("/queue"),
-            "the `/help` output should list the prompt queue control.\n{}",
+            frame.transcript().contains("/continue"),
+            "the `/help` output should list checkpoint continue.\n{}",
             frame.dump()
         );
 
