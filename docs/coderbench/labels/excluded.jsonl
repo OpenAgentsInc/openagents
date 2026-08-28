@@ -1,0 +1,5 @@
+{"trace_ref":"self-session","excluded_because":["agent_self_label"],"notes":"The session that authored these drafts is excluded. The thing being benchmarked must not grade its own history."}
+{"trace_ref":"unconverted-codex","excluded_because":["not_redactable"],"notes":"Codex JSONL rows that do not convert through a packaged converter stay out of the labeled set."}
+{"trace_ref":"too-short","excluded_because":["insufficient_substance"],"notes":"Inventory rows with too few steps are not gradeable outcomes."}
+{"trace_ref":"no-oracle","excluded_because":["oracle_not_deterministic"],"notes":"Sessions whose done-condition is a human memory or an LLM judge are listed here rather than labeled gradeable."}
+{"trace_ref":"needs-secret","excluded_because":["credential_unholdable"],"notes":"Oracles that need a live provider key the corpus cannot hold are excluded."}

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/coderbench/labels.schema.json",
+  "title": "CoderBench session label",
+  "description": "One human-reviewed outcome for a corpus session. An agent never sets gradeable to true.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "trace_ref",
+    "domain",
+    "outcome_type",
+    "oracle",
+    "gradeable",
+    "holdout_ok",
+    "owner_reviewed"
+  ],
+  "properties": {
+    "trace_ref": {
+      "type": "string",
+      "description": "Corpus digest or public /trace/{uuid}. Identifies the session without embedding the transcript."
+    },
+    "domain": {
+      "type": "string",
+      "description": "Declared CoderBench domain this outcome belongs to, reconciled from the inventory repo hint."
+    },
+    "repos_touched": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Repositories the session changed or cited. Used to pick the second domain later."
+    },
+    "issues_closed": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "Forge issue numbers this session closed. Empty when the domain has no forge."
+    },
+    "commits_landed": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+      "description": "Landing SHAs. The start-commit pin is the parent of the first of these."
+    },
+    "outcome_type": {
+      "type": "string",
+      "enum": ["feature", "fix", "refactor", "port", "test", "infra", "audit", "rejection"],
+      "description": "What the session produced, so a suite can sample a mix rather than one shape of work."
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "command"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["gate", "test-suite", "build", "conformance", "forge-closing-ref"],
+          "description": "How the exit code is produced. LLM judges and human memory are not kinds."
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Deterministic command whose exit code separates done from not-done, runnable in a container."
+        }
+      }
+    },
+    "gradeable": {
+      "type": "boolean",
+      "description": "True only after owner review: start commit builds, oracle is deterministic in a container, no corpus-unholdable credential. Agents always write false."
+    },
+    "holdout_ok": {
+      "type": "boolean",
+      "description": "Whether this outcome may sit in a holdout split. Owner sets this; drafts stay false."
+    },
+    "owner_reviewed": {
+      "type": "boolean",
+      "description": "True only after the owner has reviewed this row. Disagreements stay in notes."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Reviewer comments, disagreements, and why gradeable stayed false."
+    },
+    "excluded_because": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "When this session was considered and dropped, the funnel codes. Absent on kept drafts."
+    }
+  }
+}
