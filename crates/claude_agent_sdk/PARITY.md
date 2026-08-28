@@ -49,21 +49,9 @@ Queryable control methods now include `apply_flag_settings`, `set_mcp_servers`,
 `get_session_cost`, `get_usage`, `get_binary_version`, `file_suggestions`,
 `reload_plugins`, `reload_skills`, `reconnect_mcp_server`, `toggle_mcp_server`,
 and `rename_session`. `supported_models()` reads the initialize payload
-(there is no `list_models` wire subtype). Hook callbacks, elicitation, and
-the remaining auth/dialog subtypes are still open.
-
-## Remaining work (do not expand this packet)
-
-P1 is items 1–2 of issue #232 (message variants + no silent drop). P2 is
-items 3 and 6 (initialize handshake + control timeouts). Later priorities,
-still open:
-
-- **P3 remainder** — elicitation and hook callbacks (the handler is still a
-  TODO that always continues). `background_tasks` and
-  `cancel_async_message` already landed in the P3 first slice.
-- **P4 remainder** — result `terminal_reason`, `api_error_status`, later
-  `modelUsage` fields. Hook callbacks and elicitation stay open; this
-  packet does not execute hooks.
+(there is no `list_models` wire subtype). Elicitation and the remaining
+auth/dialog subtypes are still open. `hook_callback` is a typed continue
+stub; it does not run host hooks.
 
 ## P4 first slice landed (issue #232)
 
@@ -102,11 +90,40 @@ The fake-claude initialize fixture now builds its handshake payload with
 `JSON.parse` of a JSON string so Node does not see unquoted object-literal
 keys.
 
-Out of scope for the whole #232 port unless a later packet says otherwise:
-full hook execution, the ~50 TypeScript `Query` methods, and a complete
-options audit.
+## Result fidelity landed (issue #232)
 
-Later upstream types (0.3.247+) such as `conversation_reset`, `informational`,
-`control_request_progress`, `background_tasks_changed`, `worker_shutting_down`,
-and `model_refusal_no_fallback` currently arrive as `SdkMessage::Unknown`.
-That is the P1 contract, not a silent drop.
+`ResultSuccess` models 0.3.172 `api_error_status` and `terminal_reason`.
+`ResultError` models `terminal_reason`. `ModelUsage` includes
+`maxOutputTokens` (optional on the wire so older fixtures still parse).
+The 0.3.172 `TerminalReason` set is `blocking_limit`,
+`rapid_refill_breaker`, `prompt_too_long`, `image_error`, `model_error`,
+`aborted_streaming`, `aborted_tools`, `stop_hook_prevented`,
+`hook_stopped`, `tool_deferred`, `max_turns`, `completed`. A later value
+deserializes as `TerminalReason::Unknown` so the result stays a typed
+`SdkResultMessage` instead of `SdkMessage::Unknown`. 0.3.247+ result
+fields (`canonicalModel`, `queued_turn_count`, extra `modelUsage` keys)
+are not modelled.
+
+## Hook callback stub landed (issue #232)
+
+Inbound `subtype: "hook_callback"` parses as `HookCallbackRequest`. Query
+replies with typed `SyncHookJSONOutput::continue_without_running()`
+(`{"continue": true}`). `HookCallbackStub` records `hook_event_name` and
+`callback_id` so the path is testable; `hook_ran` is always false. This
+is not hook execution: no host callback runs, and the reply has no
+`hookSpecificOutput` or permission decision.
+
+## Remaining work
+
+#232's named first slices (P1–P4 plus this result/hook-stub packet) are
+landed. Residual, out of scope unless a later packet says otherwise:
+
+- **Full hook execution** — host callbacks, PreToolUse permission
+  decisions, matchers, timeouts.
+- **Elicitation and remaining auth/dialog control subtypes.**
+- **The remaining TypeScript `Query` methods** (~50).
+- **Later upstream types (0.3.247+)** such as `conversation_reset`,
+  `informational`, `control_request_progress`,
+  `background_tasks_changed`, `worker_shutting_down`, and
+  `model_refusal_no_fallback` currently arrive as `SdkMessage::Unknown`.
+  That is the P1 contract, not a silent drop.

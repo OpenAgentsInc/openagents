@@ -5,8 +5,8 @@ use crate::options::QueryOptions;
 use crate::permissions::PermissionHandler;
 use crate::protocol::{
     ControlRequestData, ControlRequestType, ControlResponseData, ControlResponseType,
-    InitializeRequest, PermissionMode, PermissionResult, SdkControlRequest, SdkControlResponse,
-    SdkMessage, SdkUserMessage, SetMaxThinkingTokensRequest, SetModelRequest,
+    HookCallbackStub, InitializeRequest, PermissionMode, PermissionResult, SdkControlRequest,
+    SdkControlResponse, SdkMessage, SdkUserMessage, SetMaxThinkingTokensRequest, SetModelRequest,
     SetPermissionModeRequest, StdinMessage, StdoutMessage, UserMessageType,
 };
 use crate::transport::ProcessTransport;
@@ -231,13 +231,21 @@ impl Query {
                     },
                 }
             }
-            ControlRequestData::HookCallback(ref _hook_req) => {
-                // TODO: Implement hook callbacks
+            ControlRequestData::HookCallback(ref hook_req) => {
+                // Typed continue stub. No host hook is invoked.
+                let stub = HookCallbackStub::from_request(hook_req);
+                debug!(
+                    request_id = %request.request_id,
+                    callback_id = %stub.callback_id,
+                    hook_event_name = ?stub.hook_event_name,
+                    hook_ran = stub.hook_ran,
+                    "hook_callback stub continue"
+                );
                 SdkControlResponse {
                     msg_type: ControlResponseType::ControlResponse,
                     response: ControlResponseData::Success {
                         request_id: request.request_id.clone(),
-                        response: Some(serde_json::json!({ "continue": true })),
+                        response: Some(stub.response_value()),
                     },
                 }
             }
@@ -826,6 +834,45 @@ const readline = require('readline');
 readline.createInterface({ input: process.stdin });
 "#;
 
+    /// A fake CLI that answers initialize, then sends a PreToolUse hook_callback.
+    const FAKE_HOOK: &str = r#"#!/usr/bin/env node
+const fs = require('fs');
+const readline = require('readline');
+const log = process.env.FAKE_LOG;
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line) return;
+  if (log) fs.appendFileSync(log, line + '\n');
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if (msg.type === 'control_request' && msg.request && msg.request.subtype === 'initialize') {
+    process.stdout.write(JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: msg.request_id,
+        response: JSON.parse('{"commands":[],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[],"account":{}}')
+      }
+    }) + '\n');
+    process.stdout.write(JSON.stringify({
+      type: 'control_request',
+      request_id: 'cli-hook-1',
+      request: {
+        subtype: 'hook_callback',
+        callback_id: 'cb-pre-1',
+        tool_use_id: 'tu-1',
+        input: {
+          hook_event_name: 'PreToolUse',
+          tool_name: 'Bash',
+          tool_input: { command: 'ls' },
+          tool_use_id: 'tu-1'
+        }
+      }
+    }) + '\n');
+  }
+});
+"#;
+
     #[tokio::test]
     async fn query_new_sends_initialize_before_the_user_prompt() {
         let dir = unique_temp_dir();
@@ -1024,5 +1071,41 @@ readline.createInterface({ input: process.stdin });
             Error::ControlTimeout => {}
             other => panic!("expected ControlTimeout, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn hook_callback_replies_continue_without_running_a_hook() {
+        let dir = unique_temp_dir();
+        let fake = write_executable(&dir, "fake-claude", FAKE_HOOK);
+        let log = dir.join("stdin.jsonl");
+        let mut options = options_for_fake(fake, Duration::from_secs(5));
+        options.env = Some(
+            [("FAKE_LOG".to_string(), log.display().to_string())]
+                .into_iter()
+                .collect(),
+        );
+
+        let query = Query::new("hello", options, None).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        drop(query);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let recorded = fs::read_to_string(&log).unwrap();
+        let hook_reply = recorded
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|value| {
+                value["type"] == "control_response"
+                    && value["response"]["request_id"] == "cli-hook-1"
+            })
+            .expect("expected a control_response for the CLI hook_callback");
+        assert_eq!(hook_reply["response"]["subtype"], "success");
+        assert_eq!(hook_reply["response"]["response"]["continue"], true);
+        assert!(
+            hook_reply["response"]["response"]
+                .get("hookSpecificOutput")
+                .is_none()
+        );
+        assert!(hook_reply["response"]["response"].get("decision").is_none());
     }
 }

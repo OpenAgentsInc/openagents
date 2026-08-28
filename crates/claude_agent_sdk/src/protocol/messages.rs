@@ -275,6 +275,9 @@ pub struct ResultSuccess {
     pub duration_ms: u64,
     pub duration_api_ms: u64,
     pub is_error: bool,
+    /// HTTP status when the turn ended on an API error (TS `api_error_status`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_error_status: Option<i64>,
     pub num_turns: u32,
     pub result: String,
     pub total_cost_usd: f64,
@@ -283,6 +286,9 @@ pub struct ResultSuccess {
     pub model_usage: HashMap<String, ModelUsage>,
     pub permission_denials: Vec<PermissionDenial>,
     pub structured_output: Option<Value>,
+    /// Why the turn ended (TS `terminal_reason`, 0.3.172 set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_reason: Option<TerminalReason>,
     pub uuid: String,
     pub session_id: String,
 }
@@ -300,8 +306,34 @@ pub struct ResultError {
     pub model_usage: HashMap<String, ModelUsage>,
     pub permission_denials: Vec<PermissionDenial>,
     pub errors: Vec<String>,
+    /// Why the turn ended (TS `terminal_reason`, 0.3.172 set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_reason: Option<TerminalReason>,
     pub uuid: String,
     pub session_id: String,
+}
+
+/// Structured turn-end reason on result messages (0.3.172 `TerminalReason`).
+///
+/// Later CLI values deserialize as [`TerminalReason::Unknown`] so the result
+/// stays a typed [`SdkResultMessage`] instead of [`SdkMessage::Unknown`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalReason {
+    BlockingLimit,
+    RapidRefillBreaker,
+    PromptTooLong,
+    ImageError,
+    ModelError,
+    AbortedStreaming,
+    AbortedTools,
+    StopHookPrevented,
+    HookStopped,
+    ToolDeferred,
+    MaxTurns,
+    Completed,
+    #[serde(other)]
+    Unknown,
 }
 
 /// Token usage statistics.
@@ -330,6 +362,14 @@ pub struct ModelUsage {
     pub cost_usd: f64,
     #[serde(rename = "contextWindow")]
     pub context_window: u64,
+    /// Per-model output cap (TS `maxOutputTokens`, required at 0.3.172).
+    /// Optional on the wire so older fixtures without the field still parse.
+    #[serde(
+        rename = "maxOutputTokens",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub max_output_tokens: Option<u64>,
 }
 
 /// Permission denial record.

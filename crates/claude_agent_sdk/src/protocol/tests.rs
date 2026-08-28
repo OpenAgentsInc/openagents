@@ -95,8 +95,112 @@ mod tests {
                 assert_eq!(success.num_turns, 3);
                 assert_eq!(success.result, "Task completed successfully");
                 assert!((success.total_cost_usd - 0.05).abs() < 0.001);
+                assert!(success.api_error_status.is_none());
+                assert!(success.terminal_reason.is_none());
+                assert!(
+                    success.model_usage["claude-sonnet-4-5-20250929"]
+                        .max_output_tokens
+                        .is_none()
+                );
             }
             _ => panic!("Expected result success message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_result_success_fidelity_fields() {
+        let json = json!({
+            "type": "result",
+            "subtype": "success",
+            "duration_ms": 1000,
+            "duration_api_ms": 800,
+            "is_error": true,
+            "api_error_status": 429,
+            "num_turns": 1,
+            "result": "rate limited",
+            "total_cost_usd": 0.01,
+            "usage": { "input_tokens": 10, "output_tokens": 4 },
+            "modelUsage": {
+                "claude-sonnet-4-5-20250929": {
+                    "inputTokens": 10,
+                    "outputTokens": 4,
+                    "cacheReadInputTokens": 0,
+                    "cacheCreationInputTokens": 0,
+                    "webSearchRequests": 0,
+                    "costUSD": 0.01,
+                    "contextWindow": 200000,
+                    "maxOutputTokens": 16384
+                }
+            },
+            "permission_denials": [],
+            "terminal_reason": "completed",
+            "uuid": "12345678-1234-1234-1234-123456789012",
+            "session_id": "session-123"
+        });
+
+        let msg: SdkMessage = serde_json::from_value(json).unwrap();
+        match msg {
+            SdkMessage::Result(SdkResultMessage::Success(success)) => {
+                assert_eq!(success.api_error_status, Some(429));
+                assert_eq!(success.terminal_reason, Some(TerminalReason::Completed));
+                assert_eq!(
+                    success.model_usage["claude-sonnet-4-5-20250929"].max_output_tokens,
+                    Some(16384)
+                );
+            }
+            other => panic!("expected result success, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_unknown_terminal_reason_keeps_typed_result() {
+        let json = json!({
+            "type": "result",
+            "subtype": "success",
+            "duration_ms": 1,
+            "duration_api_ms": 1,
+            "is_error": false,
+            "num_turns": 1,
+            "result": "ok",
+            "total_cost_usd": 0.0,
+            "usage": { "input_tokens": 1, "output_tokens": 1 },
+            "modelUsage": {},
+            "permission_denials": [],
+            "terminal_reason": "api_error",
+            "uuid": "u",
+            "session_id": "s"
+        });
+        match serde_json::from_value::<SdkMessage>(json).unwrap() {
+            SdkMessage::Result(SdkResultMessage::Success(success)) => {
+                assert_eq!(success.terminal_reason, Some(TerminalReason::Unknown));
+            }
+            other => panic!("later terminal_reason must not become SdkMessage::Unknown: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_result_error_terminal_reason() {
+        let json = json!({
+            "type": "result",
+            "subtype": "error_max_budget_usd",
+            "duration_ms": 10,
+            "duration_api_ms": 8,
+            "is_error": true,
+            "num_turns": 2,
+            "total_cost_usd": 1.5,
+            "usage": { "input_tokens": 1, "output_tokens": 1 },
+            "modelUsage": {},
+            "permission_denials": [],
+            "errors": ["budget"],
+            "terminal_reason": "blocking_limit",
+            "uuid": "u",
+            "session_id": "s"
+        });
+        match serde_json::from_value::<SdkMessage>(json).unwrap() {
+            SdkMessage::Result(SdkResultMessage::ErrorMaxBudget(err)) => {
+                assert_eq!(err.terminal_reason, Some(TerminalReason::BlockingLimit));
+            }
+            other => panic!("expected error_max_budget_usd, got {other:?}"),
         }
     }
 
@@ -451,6 +555,50 @@ mod tests {
 
         let keepalive = parse_stdout_line(r#"{"type":"keep_alive"}"#).unwrap();
         assert!(matches!(keepalive, StdoutMessage::KeepAlive(_)));
+    }
+
+    #[test]
+    fn test_hook_callback_stub_continues_without_running() {
+        let json = json!({
+            "type": "control_request",
+            "request_id": "cli-hook-1",
+            "request": {
+                "subtype": "hook_callback",
+                "callback_id": "cb-pre-1",
+                "tool_use_id": "tu-1",
+                "input": {
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": { "command": "ls" },
+                    "tool_use_id": "tu-1"
+                }
+            }
+        });
+
+        let stdout: StdoutMessage = serde_json::from_value(json).unwrap();
+        let request = match stdout {
+            StdoutMessage::ControlRequest(req) => req,
+            other => panic!("expected control_request, got {other:?}"),
+        };
+        let hook_req = match request.request {
+            ControlRequestData::HookCallback(hook_req) => hook_req,
+            other => panic!("expected hook_callback, got {other:?}"),
+        };
+        assert_eq!(hook_req.callback_id, "cb-pre-1");
+        assert_eq!(hook_req.tool_use_id.as_deref(), Some("tu-1"));
+
+        let stub = HookCallbackStub::from_request(&hook_req);
+        assert_eq!(stub.callback_id, "cb-pre-1");
+        assert_eq!(stub.hook_event_name.as_deref(), Some("PreToolUse"));
+        assert_eq!(stub.tool_use_id.as_deref(), Some("tu-1"));
+        assert!(!stub.hook_ran, "stub must not claim a hook ran");
+        assert_eq!(stub.output, SyncHookJSONOutput::continue_without_running());
+
+        let value = stub.response_value();
+        assert_eq!(value, json!({ "continue": true }));
+        assert!(value.get("hookSpecificOutput").is_none());
+        assert!(value.get("decision").is_none());
+        assert!(value.get("permissionDecision").is_none());
     }
 
     #[test]

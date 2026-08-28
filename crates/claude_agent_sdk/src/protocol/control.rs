@@ -251,6 +251,74 @@ pub struct HookCallbackRequest {
     pub tool_use_id: Option<String>,
 }
 
+/// Typed host reply for `hook_callback` (TS `SyncHookJSONOutput`).
+///
+/// Query currently sends [`SyncHookJSONOutput::continue_without_running`].
+/// That is a stub: no user hook runs, and this type must not grow a fake
+/// `hookSpecificOutput` or permission decision.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SyncHookJSONOutput {
+    #[serde(rename = "continue", skip_serializing_if = "Option::is_none")]
+    pub continue_execution: Option<bool>,
+    #[serde(rename = "suppressOutput", skip_serializing_if = "Option::is_none")]
+    pub suppress_output: Option<bool>,
+    #[serde(rename = "stopReason", skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision: Option<String>,
+    #[serde(rename = "systemMessage", skip_serializing_if = "Option::is_none")]
+    pub system_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl SyncHookJSONOutput {
+    /// `{"continue": true}` with no hook-specific payload.
+    pub fn continue_without_running() -> Self {
+        Self {
+            continue_execution: Some(true),
+            ..Self::default()
+        }
+    }
+}
+
+/// Inspectable `hook_callback` stub. `hook_ran` is always false.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HookCallbackStub {
+    pub callback_id: String,
+    pub hook_event_name: Option<String>,
+    pub tool_use_id: Option<String>,
+    pub output: SyncHookJSONOutput,
+    /// Always `false`: this crate does not execute host hook callbacks.
+    pub hook_ran: bool,
+}
+
+impl HookCallbackStub {
+    /// Parse the inbound request and build the continue stub.
+    ///
+    /// Reads `input.hook_event_name` when present so tests can see PreToolUse
+    /// (and every other event) without pretending a callback ran.
+    pub fn from_request(request: &HookCallbackRequest) -> Self {
+        Self {
+            callback_id: request.callback_id.clone(),
+            hook_event_name: request
+                .input
+                .get("hook_event_name")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            tool_use_id: request.tool_use_id.clone(),
+            output: SyncHookJSONOutput::continue_without_running(),
+            hook_ran: false,
+        }
+    }
+
+    /// Wire JSON for the control-response `response` field.
+    pub fn response_value(&self) -> Value {
+        serde_json::to_value(&self.output)
+            .unwrap_or_else(|_| serde_json::json!({ "continue": true }))
+    }
+}
+
 /// MCP message request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpMessageRequest {

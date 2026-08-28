@@ -93,18 +93,19 @@ pub use permissions::{
     PermissionRequest, PermissionRules, RulesPermissionHandler, permission_handler,
 };
 pub use protocol::{
-    AssistantMessageError, KeepAliveMessage, ModelUsage, PermissionBehavior, PermissionDenial,
-    PermissionMode, PermissionResult, PermissionRule, PermissionUpdate, ResultError, ResultSuccess,
-    SdkApiRetryMessage, SdkAssistantMessage, SdkAuthStatusMessage, SdkCommandsChangedMessage,
-    SdkControlRequest, SdkControlResponse, SdkElicitationCompleteMessage, SdkFilesPersistedEvent,
-    SdkHookProgressMessage, SdkHookStartedMessage, SdkLocalCommandOutputMessage,
-    SdkMemoryRecallMessage, SdkMessage, SdkMirrorErrorMessage, SdkModelRefusalFallbackMessage,
-    SdkNotificationMessage, SdkPermissionDeniedMessage, SdkPluginInstallMessage,
-    SdkPromptSuggestionMessage, SdkRateLimitEvent, SdkRateLimitInfo, SdkResultMessage,
-    SdkSessionStateChangedMessage, SdkStreamEvent, SdkSystemMessage, SdkTaskNotificationMessage,
-    SdkTaskProgressMessage, SdkTaskStartedMessage, SdkTaskUpdatedMessage, SdkThinkingTokensMessage,
-    SdkToolProgressMessage, SdkToolUseSummaryMessage, SdkUserMessage, StdinMessage, StdoutMessage,
-    Usage, parse_stdout_line,
+    AssistantMessageError, HookCallbackStub, KeepAliveMessage, ModelUsage, PermissionBehavior,
+    PermissionDenial, PermissionMode, PermissionResult, PermissionRule, PermissionUpdate,
+    ResultError, ResultSuccess, SdkApiRetryMessage, SdkAssistantMessage, SdkAuthStatusMessage,
+    SdkCommandsChangedMessage, SdkControlRequest, SdkControlResponse,
+    SdkElicitationCompleteMessage, SdkFilesPersistedEvent, SdkHookProgressMessage,
+    SdkHookStartedMessage, SdkLocalCommandOutputMessage, SdkMemoryRecallMessage, SdkMessage,
+    SdkMirrorErrorMessage, SdkModelRefusalFallbackMessage, SdkNotificationMessage,
+    SdkPermissionDeniedMessage, SdkPluginInstallMessage, SdkPromptSuggestionMessage,
+    SdkRateLimitEvent, SdkRateLimitInfo, SdkResultMessage, SdkSessionStateChangedMessage,
+    SdkStreamEvent, SdkSystemMessage, SdkTaskNotificationMessage, SdkTaskProgressMessage,
+    SdkTaskStartedMessage, SdkTaskUpdatedMessage, SdkThinkingTokensMessage, SdkToolProgressMessage,
+    SdkToolUseSummaryMessage, SdkUserMessage, StdinMessage, StdoutMessage, SyncHookJSONOutput,
+    TerminalReason, Usage, parse_stdout_line,
 };
 pub use query::Query;
 pub use transport::{ExecutableConfig, ProcessTransport};
