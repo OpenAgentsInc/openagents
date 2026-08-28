@@ -2163,6 +2163,13 @@ impl CoderRuntimeSession {
                         }
                     };
 
+                    // The grant names the Flash lane. The proxy may reroute a
+                    // trivial turn to Gemini; that fact is this header, not
+                    // the grant. rc8 ignored it and ATIF always said GLM.
+                    if let Some(model) = answered_model(resp.headers()) {
+                        self.last_model = Some(model);
+                    }
+
                     let mut stream = resp.bytes_stream().eventsource();
                     let mut step = StepAccumulator::default();
                     // A model can emit prose before it finishes declaring a tool call.
@@ -2472,6 +2479,9 @@ impl CoderRuntimeSession {
                 return Err(self.record_failure(error_code::PROVIDER_FAILED, why).await);
             }
         };
+        if let Some(model) = answered_model(resp.headers()) {
+            self.last_model = Some(model);
+        }
         let mut stream = resp.bytes_stream().eventsource();
         let mut step = StepAccumulator::default();
         loop {
@@ -3739,6 +3749,17 @@ fn parse_tool_call_index(value: Option<&serde_json::Value>) -> Option<usize> {
     }
 }
 
+/// The model that actually answered, from the proxy. The grant may still
+/// name the Flash default while a trivial turn was rerouted to Gemini.
+fn answered_model(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-openagents-model")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 /// Convert the session's messages to the OpenAI chat-completions wire shape.
 ///
 /// Text-only messages keep the compact string form. A user message carrying
@@ -4171,6 +4192,20 @@ mod tests {
                 "the sentence recommends '{guess}', which it has not confirmed is served"
             );
         }
+    }
+
+    #[test]
+    fn the_proxy_header_names_the_model_that_answered() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            reqwest::header::HeaderName::from_static("x-openagents-model"),
+            HeaderValue::from_static("gemini-3.7-flash"),
+        );
+        assert_eq!(
+            answered_model(&headers).as_deref(),
+            Some("gemini-3.7-flash")
+        );
+        assert_eq!(answered_model(&HeaderMap::new()), None);
     }
 
     #[test]
