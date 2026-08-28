@@ -731,7 +731,10 @@ impl Mailbox {
 // Sending
 // ---------------------------------------------------------------------------
 
-/// What one send did: one `DeliveryReport` per resolved recipient.
+/// What one send did: one `DeliveryReport` per resolved recipient, plus the
+/// honest accounting the sender needs to pace itself — what the send cost
+/// against the hourly budget, how deep a reply chain could still go, and
+/// where every recipient actually landed (#282).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendReport {
     pub from: String,
@@ -739,8 +742,22 @@ pub struct SendReport {
     pub kind: String,
     pub thread: Option<String>,
     pub message_id: String,
+    /// What this send leaves of the rolling hourly budget: sends still
+    /// available and when the window rolls open again.
+    pub budget_remaining: BudgetRemaining,
+    /// How many `reply_expected` hops remain on this thread before the cap
+    /// refuses the next one. `None` when the send did not ask for a reply.
+    pub reply_depth_remaining: Option<u32>,
     pub deliveries: Vec<DeliveryReport>,
     pub undeliverable: Vec<Undeliverable>,
+}
+
+/// The hourly send budget as it stands right after one send.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BudgetRemaining {
+    pub sends_left: usize,
+    /// When the rolling hour opens a fresh window, in epoch milliseconds.
+    pub resets_at_ms: u128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -765,6 +782,7 @@ pub fn send(
     reply_expected: bool,
     body: &str,
     data: Option<&StructuredPayload>,
+    sender_policy: Option<&mut SwarmPolicy>,
 ) -> Result<SendReport, String> {
     let trimmed = body.trim();
     let data_bytes = data.map(|payload| payload.byte_size()).unwrap_or(0);
@@ -899,12 +917,35 @@ pub fn send(
         }
     }
 
+    // The honest accounting rides the report when the caller can share its
+    // policy; library callers without one get a zeroed budget rather than a
+    // wrong number. `admit_send` already swept and pushed (or was never
+    // called), so this view is the post-send state.
+    let (budget_remaining, reply_depth_remaining) = {
+        let mut policy = sender_policy;
+        let budget = policy
+            .as_deref_mut()
+            .map(|policy| policy.budget_remaining(at_ms))
+            .unwrap_or(BudgetRemaining {
+                sends_left: 0,
+                resets_at_ms: at_ms,
+            });
+        let depth = match policy.as_deref() {
+            Some(policy) if reply_expected => {
+                Some(policy.reply_depth_remaining(reply_depth.unwrap_or_default()))
+            }
+            _ => None,
+        };
+        (budget, depth)
+    };
     let report = SendReport {
         from: from.to_string(),
         to: to.to_string(),
         kind: kind.to_string(),
         thread: thread.map(str::to_string),
         message_id: id,
+        budget_remaining,
+        reply_depth_remaining,
         deliveries,
         undeliverable,
     };
@@ -1082,6 +1123,29 @@ impl SwarmPolicy {
         }
         self.send_times.push(now);
         Ok(depth)
+    }
+
+    /// The budget as it stands right after `admit_send` recorded this send:
+    /// the sends still open in the rolling window and when the oldest falls
+    /// out of it. Observational only, but it does share the window sweep —
+    /// call it after `admit_send`, never instead of it.
+    pub fn budget_remaining(&mut self, now: u128) -> BudgetRemaining {
+        self.send_times
+            .retain(|sent| now.saturating_sub(*sent) < HOUR_MS);
+        BudgetRemaining {
+            sends_left: self.hourly_budget.saturating_sub(self.send_times.len()),
+            resets_at_ms: self
+                .send_times
+                .first()
+                .map(|oldest| oldest.saturating_add(HOUR_MS))
+                .unwrap_or(now),
+        }
+    }
+
+    /// The depth a `reply_expected` reply on this thread could still reach
+    /// before the cap refuses it.
+    pub fn reply_depth_remaining(&self, thread_depth: u32) -> u32 {
+        self.reply_depth_cap.saturating_sub(thread_depth)
     }
 }
 

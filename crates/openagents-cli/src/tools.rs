@@ -3107,15 +3107,31 @@ fn answer_swarm_send(
         .filter(|v| !v.is_empty());
     let mailbox = crate::swarm::Mailbox::at(&binding.session_directory);
     let parent_depth = mailbox.thread_depth(thread);
-    {
+    let (budget_remaining, reply_depth_remaining) = {
         let mut policy = binding
             .policy
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Err(why) = policy.admit_send(reply_expected, parent_depth, crate::swarm::now_ms()) {
+            // A depth refusal names the thread it would have extended, so
+            // the sender can pick a different thread instead of guessing
+            // which conversation hit the cap (#282).
+            let why = if why.contains("reply-expected chain")
+                && let Some(thread) = thread
+            {
+                format!("{why} The offending thread is `{thread}`.")
+            } else {
+                why
+            };
             return (why, true);
         }
-    }
+        // One view of the post-send state: what the hour still allows, and
+        // how deep a reply on this thread could still go (#282).
+        let budget = policy.budget_remaining(crate::swarm::now_ms());
+        let depth =
+            reply_expected.then(|| policy.reply_depth_remaining(parent_depth.saturating_add(1)));
+        (budget, depth)
+    };
     match crate::swarm::send(
         &binding.home,
         &binding.session_id,
@@ -3126,6 +3142,7 @@ fn answer_swarm_send(
         reply_expected,
         body,
         data.as_ref(),
+        None,
     ) {
         Ok(report) => (
             serde_json::json!({
@@ -3135,6 +3152,8 @@ fn answer_swarm_send(
                 "kind": report.kind,
                 "thread": report.thread,
                 "message_id": report.message_id,
+                "budget_remaining": budget_remaining,
+                "reply_depth_remaining": reply_depth_remaining,
                 "deliveries": report.deliveries,
                 "undeliverable": report.undeliverable,
             })

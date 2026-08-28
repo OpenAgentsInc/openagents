@@ -206,6 +206,7 @@ fn delivery_is_gapless_and_receipted() {
         true,
         "what does the failing test say?",
         None,
+        None,
     )
     .unwrap();
     assert_eq!(
@@ -236,6 +237,7 @@ fn delivery_is_gapless_and_receipted() {
         Some(&report.message_id),
         false,
         "follow-up in the same thread",
+        None,
         None,
     )
     .unwrap();
@@ -307,6 +309,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         false,
         "hello",
         None,
+        None,
     )
     .unwrap_err();
     assert!(why.contains("no session `nobody` is registered"), "{why}");
@@ -321,6 +324,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         None,
         false,
         "   ",
+        None,
         None,
     )
     .unwrap_err();
@@ -338,6 +342,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         false,
         "talking to myself",
         None,
+        None,
     )
     .unwrap_err();
     assert!(why.contains("cannot send a message to itself"), "{why}");
@@ -354,6 +359,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         false,
         &huge,
         None,
+        None,
     )
     .unwrap_err();
     assert!(!why.is_empty(), "refused one way or another");
@@ -368,6 +374,7 @@ fn sends_that_cannot_deliver_are_refused_by_name() {
         None,
         false,
         "hello",
+        None,
         None,
     )
     .unwrap_err();
@@ -400,6 +407,7 @@ fn broadcast_resolves_to_every_other_live_session() {
         false,
         "standing up in five",
         None,
+        None,
     )
     .unwrap();
     assert_eq!(report.deliveries.len(), 2, "everyone but the sender");
@@ -425,6 +433,7 @@ fn broadcast_resolves_to_every_other_live_session() {
         None,
         false,
         "wrap up",
+        None,
         None,
     )
     .unwrap();
@@ -464,6 +473,7 @@ fn a_parent_sends_to_a_child_by_short_id() {
         None,
         false,
         "the test failed on line 12",
+        None,
         None,
     )
     .unwrap();
@@ -510,6 +520,7 @@ fn broadcast_to_children_of_reports_a_killed_child_as_not_reached() {
         None,
         false,
         "wrap up",
+        None,
         None,
     )
     .unwrap();
@@ -568,6 +579,7 @@ fn a_structured_payload_rides_beside_the_body_and_round_trips() {
             payload: "--- a/src.rs\n+++ b/src.rs\n@@ -1 +1 @@\n-let x = 1;\n+let x = 2;"
                 .to_string(),
         }),
+        None,
     )
     .unwrap();
     assert_eq!(report.deliveries.len(), 1);
@@ -626,6 +638,7 @@ fn a_plain_message_has_no_data_field_on_the_wire() {
         None,
         false,
         "plain",
+        None,
         None,
     )
     .unwrap();
@@ -690,6 +703,7 @@ fn body_plus_payload_shares_one_cap_and_an_oversize_is_refused_with_it_named() {
             content_type: "application/json".to_string(),
             payload: "y".repeat(MAXIMUM_BODY_BYTES / 2 + 1024),
         }),
+        None,
     )
     .unwrap_err();
     assert!(
@@ -713,6 +727,7 @@ fn body_plus_payload_shares_one_cap_and_an_oversize_is_refused_with_it_named() {
             content_type: "application/json".to_string(),
             payload,
         }),
+        None,
     )
     .unwrap();
     assert_eq!(report.deliveries.len(), 1);
@@ -755,6 +770,7 @@ fn an_empty_body_with_a_payload_is_a_message() {
             content_type: "application/json".to_string(),
             payload: "{\"issue\":286}".to_string(),
         }),
+        None,
     )
     .unwrap();
     let delivered = Mailbox::at(b_dir.path()).messages().unwrap();
@@ -855,6 +871,7 @@ fn the_schema_names_travel_on_the_wire() {
         None,
         false,
         "schema check",
+        None,
         None,
     )
     .unwrap();
@@ -1944,5 +1961,197 @@ async fn drain_by_an_empty_list_is_a_no_op_peek() {
         Mailbox::at(&pair.b_dir).unread().unwrap().len(),
         1,
         "an empty id list drains nothing and stamps nothing"
+    );
+}
+
+// ──────────────────────── send_report honesty: budget, depth, outcomes (#282)
+
+#[tokio::test]
+async fn every_send_report_carries_budget_and_depth_accounting() {
+    let mut pair = bound_pair();
+    let sent = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "count me", "reply_expected": true}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+    let report: serde_json::Value = serde_json::from_str(&sent.output).unwrap();
+
+    // Budget: the default is 60/hour, one is now spent.
+    let budget = &report["budget_remaining"];
+    assert_eq!(budget["sends_left"], 59, "{}", sent.output);
+    assert!(budget["resets_at_ms"].is_u64(), "{}", sent.output);
+
+    // Depth: this send sits at depth 1 of a 2-deep cap, so one reply remains.
+    assert_eq!(report["reply_depth_remaining"], 1, "{}", sent.output);
+
+    // A plain status send carries the budget but no depth — it asked for
+    // nothing.
+    let plain = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "session-b", "body": "plain"}),
+        ))
+        .await;
+    assert!(!plain.is_error, "{}", plain.output);
+    let report: serde_json::Value = serde_json::from_str(&plain.output).unwrap();
+    assert_eq!(
+        report["budget_remaining"]["sends_left"], 58,
+        "{}",
+        plain.output
+    );
+    assert_eq!(
+        report["reply_depth_remaining"],
+        serde_json::Value::Null,
+        "a non-reply carries no depth: {}",
+        plain.output
+    );
+}
+
+#[tokio::test]
+async fn a_broadcast_report_lines_up_every_recipient() {
+    let home = tempfile::tempdir().unwrap();
+    let mut stores = Vec::new();
+    for name in ["session-b", "session-c", "session-d", "session-e"] {
+        let store = openagents_cli::session_store::LocalSessionStore::create(
+            home.path(),
+            std::path::Path::new(&format!("/work-{name}")),
+            "flash",
+            None,
+            false,
+        )
+        .unwrap();
+        let dir = store.store.directory().to_path_buf();
+        register(
+            home.path(),
+            &registration(name, std::process::id(), dir.join("inbox.jsonl")),
+        )
+        .unwrap();
+        stores.push((name, dir, store));
+    }
+    let a_store = openagents_cli::session_store::LocalSessionStore::create(
+        home.path(),
+        std::path::Path::new("/work-a"),
+        "flash",
+        None,
+        false,
+    )
+    .unwrap();
+    let a_dir = a_store.store.directory().to_path_buf();
+    register(
+        home.path(),
+        &registration("session-a", std::process::id(), a_dir.join("inbox.jsonl")),
+    )
+    .unwrap();
+    let a_binding = openagents_cli::swarm::SwarmBinding::new(
+        home.path().to_path_buf(),
+        "session-a",
+        a_dir.clone(),
+    );
+    let mut a = openagents_cli::runtime::CoderRuntimeSession::new(
+        openagents_cli::runtime::Lane::default(),
+        None,
+        None,
+        openagents_cli::tools::HarnessToolRegistry::new(Some(a_dir.clone()))
+            .with_swarm(a_binding.clone()),
+    )
+    .with_local_session(a_store.store, Vec::new())
+    .with_cloud_history(false)
+    .with_swarm(a_binding);
+
+    let sent = a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({"to": "all", "body": "to every live peer"}),
+        ))
+        .await;
+    assert!(!sent.is_error, "{}", sent.output);
+    let report: serde_json::Value = serde_json::from_str(&sent.output).unwrap();
+    let deliveries = report["deliveries"].as_array().unwrap();
+    assert_eq!(
+        deliveries.len(),
+        4,
+        "four peers, four per-recipient lines: {}",
+        sent.output
+    );
+    let reached: Vec<&str> = deliveries
+        .iter()
+        .filter_map(|delivery| delivery["to"].as_str())
+        .collect();
+    assert_eq!(
+        reached,
+        vec!["session-b", "session-c", "session-d", "session-e"]
+    );
+}
+
+#[tokio::test]
+async fn a_depth_refusal_names_the_offending_thread() {
+    let mut pair = bound_pair();
+    let opened = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({
+                "to": "session-b",
+                "body": "chain start",
+                "kind": "question",
+                "reply_expected": true
+            }),
+        ))
+        .await;
+    assert!(!opened.is_error, "{}", opened.output);
+    let opened_id: String = serde_json::from_str::<serde_json::Value>(&opened.output)
+        .ok()
+        .and_then(|report| report["message_id"].as_str().map(str::to_string))
+        .unwrap_or_default();
+
+    // B answers at depth 2 (the cap), then A asks again on the same thread:
+    // depth 3 is refused, and the refusal names the thread.
+    let answer = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({
+                "to": "session-a",
+                "body": "at the cap",
+                "kind": "answer",
+                "thread": opened_id,
+                "reply_expected": true
+            }),
+        ))
+        .await;
+    assert!(!answer.is_error, "{}", answer.output);
+    let answer_id: String = serde_json::from_str::<serde_json::Value>(&answer.output)
+        .ok()
+        .and_then(|report| report["message_id"].as_str().map(str::to_string))
+        .unwrap_or_default();
+
+    let refused = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({
+                "to": "session-b",
+                "body": "one hop too far",
+                "kind": "answer",
+                "thread": answer_id,
+                "reply_expected": true
+            }),
+        ))
+        .await;
+    assert!(refused.is_error, "depth 3 must refuse: {}", refused.output);
+    assert!(
+        refused.output.contains(&opened_id) || refused.output.contains(&answer_id),
+        "the refusal names the offending thread: {}",
+        refused.output
     );
 }

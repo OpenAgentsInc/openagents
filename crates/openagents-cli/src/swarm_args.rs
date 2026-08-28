@@ -334,6 +334,7 @@ fn send(
         reply_expected,
         body,
         None,
+        None,
     ) {
         Ok(report) => report,
         Err(why) => crate::cli::fail(&why),
@@ -345,6 +346,8 @@ fn send(
         "kind": report.kind,
         "thread": report.thread,
         "message_id": report.message_id,
+        "budget_remaining": report.budget_remaining,
+        "reply_depth_remaining": report.reply_depth_remaining,
         "deliveries": report.deliveries,
         "undeliverable": report.undeliverable,
     });
