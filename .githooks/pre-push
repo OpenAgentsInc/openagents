@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pre-push guard — fast, relevant checks only.
-# Runs: whitespace, fmt:check, vp lint, and targeted cargo for the CLI.
+# Pre-push guard for main.
+# Runs: whitespace, cargo fmt --all -- --check, cargo test --workspace.
 set -uo pipefail
 
 gate=0
@@ -86,7 +86,7 @@ elif [ -n "$main_local_sha" ]; then
   changed_files=$(cd "$root" && git diff-tree --no-commit-id --name-only -r "$main_local_sha")
 fi
 
-echo "[pre-push guard] push to main -> running fast, targeted checks..." >&2
+echo "[pre-push guard] push to main -> cargo fmt and cargo test --workspace..." >&2
 
 # The guard inherits the caller's descriptor ceiling, and non-interactive
 # shells on macOS default to a soft `ulimit -n` of 256 — under it, the CLI
@@ -100,32 +100,17 @@ echo "[pre-push guard] push to main -> running fast, targeted checks..." >&2
 # only.
 ulimit -n 1024 2>/dev/null || true
 
-# Format drift used to walk onto main because this guard never ran fmt:check
-# (#241). The check is sub-second; the named fix is `pnpm run fmt`.
-if ! ( cd "$root" && pnpm run fmt:check ) >&2; then
-  echo "[pre-push guard] BLOCKED: fmt:check failed. Run \`pnpm run fmt\` and commit the result." >&2
+if ! ( cd "$root" && cargo fmt --all -- --check ) >&2; then
+  echo "[pre-push guard] BLOCKED: cargo fmt --all -- --check failed. Run \`cargo fmt --all\` and commit the result." >&2
   exit 1
 fi
 
-if ! ( cd "$root" && pnpm exec vp lint --quiet ) >&2; then
-  echo "[pre-push guard] BLOCKED: vp lint failed." >&2
-  exit 1
+if [ "$(ulimit -Sn)" -lt 512 ]; then
+  echo "[pre-push guard] soft fd limit $(ulimit -Sn) is tight -> running the suite serially (#179)..." >&2
+  ( cd "$root" && cargo test --workspace -- --test-threads=1 ) || { echo "[pre-push guard] BLOCKED: cargo test --workspace failed." >&2; exit 1; }
+else
+  ( cd "$root" && cargo test --workspace ) || { echo "[pre-push guard] BLOCKED: cargo test --workspace failed." >&2; exit 1; }
 fi
 
-# Targeted checks for the Rust CLI. The Phoenix backend lives in the separate
-# OpenAgentsInc/openagents.com repository.
-cli_changed=$(echo "$changed_files" | grep -E '^crates/openagents-cli/' | sed -n '1p')
-
-if [ -n "$cli_changed" ]; then
-  echo "[pre-push guard] Rust CLI changes -> running cargo checks..." >&2
-  ( cd "$root" && cargo check -p openagents-cli ) || { echo "[pre-push guard] BLOCKED: cargo check -p openagents-cli failed." >&2; exit 1; }
-  if [ "$(ulimit -Sn)" -lt 512 ]; then
-    echo "[pre-push guard] soft fd limit $(ulimit -Sn) is tight -> running the suite serially (#179)..." >&2
-    ( cd "$root" && cargo test -p openagents-cli -- --test-threads=1 ) || { echo "[pre-push guard] BLOCKED: cargo test -p openagents-cli failed." >&2; exit 1; }
-  else
-    ( cd "$root" && cargo test -p openagents-cli ) || { echo "[pre-push guard] BLOCKED: cargo test -p openagents-cli failed." >&2; exit 1; }
-  fi
-fi
-
-echo "[pre-push guard] fast main guard green — push allowed." >&2
+echo "[pre-push guard] cargo completion gate green — push allowed." >&2
 exit 0

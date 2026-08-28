@@ -10,6 +10,10 @@ repository.workspace = true
 name = "openagents"
 path = "src/main.rs"
 
+[[bin]]
+name = "coder-surfaces"
+path = "src/bin/coder_surfaces.rs"
+
 [dependencies]
 openagents-coder-contract = { path = "../openagents-coder-contract" }
 reqwest = { workspace = true, features = ["stream"] }

@@ -6,9 +6,11 @@ This repository owns the OpenAgents Rust CLI and retained supporting services,
 contracts, and tools. The separate `OpenAgentsInc/openagents.com` repository
 owns the sole current web application and backend, implemented in Phoenix.
 The `apps/openagents.com` tree here is historical and must not receive current
-web, API, or deployment work.
+web, API, or deployment work. It is deleted by the TypeScript-lane ledger
+(`docs/refactor/2026-08-28-typescript-lane-deletion-plan.md`).
 
-Retained TypeScript paths use Node 24, pnpm, and Vite Plus.
+This repository is Rust-only. Do not add TypeScript. Phoenix and Elixir live
+in `OpenAgentsInc/openagents.com`.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
@@ -29,8 +31,12 @@ previous repository shape.
 - Do not apply the agent compact profile to public human-facing text.
 - Do not copy the ASD dictionary into the repository. Use an authorized local
   dictionary for strict lexical checks.
+- The completion gate does not run STE. Publication roots currently listed
+  in `docs/ste/checker-config.v1.json` live under `apps/openagents.com` and
+  leave with that tree. Phoenix owns live public docs.
 - Run the STE check only when a changed file is in the configured public
-  scope. Do not add a structural defect to a governed file in migration.
+  scope and you are still in a wave that contains that tree. Do not add a
+  structural defect to a governed file in migration.
 - Do not use an automatic text change for normative requirements, commands,
   identifiers, evidence values, or quoted source data.
 - Keep the technical meaning during a conversion. Record a semantic comparison
@@ -348,461 +354,12 @@ not waive these controls:
 - Strict bug form:
   <https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml>
 
-## Help a user connect their Codex fleet through Pylon
-
-Use this when an outside/community user wants to connect their own Codex
-account(s) so a per-user Artanis can burn down a backlog across their fleet.
-Pylon is the supported terminal front door, the retired Khala CLI no longer is.
-
-Walk the user through exactly this:
-
-```sh
-npm install -g @openagentsinc/pylon
-pylon auth codex                         # isolated, paste-free device login
-pylon accounts list --json              # inspect connected accounts
-```
-
-What the user will see: `pylon auth codex` drives the standard
-`codex login --device-auth` flow — it opens the browser to the device URL and
-shows a SHORT code to enter (no long auth string to copy). It then confirms with
-the linked account email. The `codex` CLI must be installed
-(`npm install -g @openai/codex`), if it is missing, Pylon prints
-a friendly install hint.
-
-- **More accounts = more throughput.** Each `pylon auth codex` auto-assigns
-  the next ref (`codex`, then `codex-2`, `codex-3`, …), pass `--account <ref>`
-  to name one. Distinct ChatGPT accounts have distinct rate budgets, so each new
-  _distinct_ account is real added concurrency.
-- **`pylon accounts list`** prints connected account metadata and readiness,
-  use `pylon codex accounts list --json` for the public-safe Codex alias.
-- **Automatic dispatch uses the connected-account pool.** When Pylon has ready
-  isolated Codex accounts in its registry, local Codex control sessions and
-  fleet work start from those accounts instead of the display/default
-  `~/.codex` home. If a selected account reports quota exhaustion, rate limit,
-  or revoked credentials, Pylon records typed account health/quota state,
-  surfaces `account_exhausted` / `account_rate_limited` instead of a generic
-  session failure, and retries the next ready connected Codex account.
-- **Safety (always true):** each account uses an ISOLATED home under
-  `<pylon home>/accounts/codex/<ref>`, the flow NEVER touches the default
-  `~/.codex` home (that would wipe a live session), credentials stay on the
-  user's machine and tokens are never printed. Accounts are registered into the
-  user's Pylon config (`<pylon home>/config.json`), so a local Pylon, the codex
-  supervisor, and the server dispatch gate all see the fleet.
-
-This is the onboarding front door, the request/proof contract for routing actual
-coding work through the connected fleet is the runbook below.
-
-## Khala -> Pylon -> Codex Coding Delegation Runbook
-
-Use this when a user wants coding work routed through Khala to the user's own
-local Pylon, with Pylon executing the assignment through the local Codex-capable
-session. The deeper smoke doc is
-`docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`, the invariant
-ledger is `apps/openagents.com/INVARIANTS.md` under "Khala Coding Delegation
-Through Pylons". For running this engine 24/7 at scale (standing pylon, codex
-supervisor, identity/token footguns, and stall diagnosis), see the operations
-runbook `docs/ops/2026-06-27-khala-codex-own-capacity-burn-runbook.md`.
-
-> **DO NOT clobber the owner's live Codex session.** NEVER run `codex login` /
-> `codex login --device-auth` (or `pylon auth codex`) against the **default
-> `~/.codex` home**. `codex login` CLEARS `~/.codex/auth.json` at flow-start, so
-> running it (or killing it mid-flow) against the default home **wipes the
-> owner's live `codex` session** and breaks their active work with
-> "access token could not be refreshed ... sign in again". When testing or
-> debugging Pylon auth / the codex device-login, ALWAYS isolate it to a throwaway
-> `CODEX_HOME` (e.g. `CODEX_HOME=$(mktemp -d) codex login --device-auth`). The
-> real `pylon auth codex` flow already uses isolated per-account homes
-> (`<pylon home>/accounts/codex/<ref>`) and must never write to `~/.codex`.
-> To inspect connected accounts, use `pylon accounts list` (human view: email +
-> last linked) or `pylon codex accounts list --json` (public-safe alias for
-> `pylon accounts list --json`) — never re-run a login to "check".
-
-Prerequisites:
-
-- The caller has a valid `OPENAGENTS_AGENT_TOKEN` in the environment. Never
-  print it, paste it into issue comments, or commit it.
-- The local Codex login exists, normally `~/.codex/auth.json`. Treat it as
-  private local credential material.
-- The Pylon command may be either installed `pylon` or, from this repo,
-  `node --import tsx apps/pylon/src/index.ts`. Examples below use `$PYLON` for either form:
-
-```sh
-export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
-export PYLON="node --import tsx apps/pylon/src/index.ts"
-```
-
-Run `$PYLON` from a clean worktree at current `origin/main`. If the normal
-`/Users/christopherdavid/work/openagents` checkout is dirty or behind, create or
-reuse a clean detached worktree and set `PYLON` from that directory instead of
-the dirty checkout. For one-shot proof runs, set `PYLON_DISABLE_DAEMON_ROUTING=1`
-so a stale loopback `pylon node` cannot answer with old source code. If a node is
-already listening from a stale checkout, stop or restart it from the clean
-current worktree before using it as evidence for Pylon/Codex delegation.
-
-0. Confirm the linked Codex account inventory:
-
-```sh
-$PYLON codex accounts list --json
-```
-
-Expected output lists each configured Codex account with
-`readiness.state: "ready"` and `capability.pylon.local_codex` before you route
-work to it. Use this before parallel delegation and after every new
-`pylon auth codex` login. The older `$PYLON accounts list --json` path remains
-equivalent, prefer the Codex namespaced alias in Pylon/Codex runbooks so the
-operator intent is unambiguous. For a specific account proof, run the refresh
-path explicitly:
-
-```sh
-$PYLON accounts usage --account "<codex account ref>" --refresh --json
-```
-
-That refresh consumes a minimal provider call and should return a
-`truth.localSession.usage` record for the selected account. It proves the local
-Codex login works, but it is not the Khala counter proof, still perform the
-delegation and `token_usage_events` checks below.
-
-If a run fails because the selected ChatGPT/Codex account is exhausted, the
-operator-facing failure class must say so (`account_exhausted`,
-`account_rate_limited`, or a specific auth-health class). Do not mask provider
-capacity failures as bad session IDs or generic execution errors. A Pylon with
-other ready connected accounts should automatically retry on the next account,
-if no retry happens, inspect the account health/quota ledger before dispatching
-more work.
-
-1. Bring the owner Pylon online and publish fresh capacity:
-
-```sh
-$PYLON provider go-online
-$PYLON presence heartbeat
-```
-
-`provider online` is accepted as an alias for `provider go-online`. The
-heartbeat should return a `pylonRef`, `registered: true`, a fresh
-`lastHeartbeatAt`, and no blocker refs. The public Pylon projection should show
-Codex refs such as `capacity.coding.codex.available=1`,
-`capacity.coding.codex.ready=1`, `load.coding.codex.busy=0`, and
-`load.coding.codex.queued=0`. Counted capacity refs with `=N` are valid and must
-not be stripped. To exercise same-account parallel work, set and publish a
-capacity greater than one, for example:
-
-```sh
-OPENAGENTS_PYLON_CODEX_CONCURRENCY=2 \
-OPENAGENTS_PYLON_CODEX_BUSY=0 \
-OPENAGENTS_PYLON_CODEX_QUEUED=0 \
-$PYLON presence heartbeat
-```
-
-The dispatch gate admits at most the heartbeat-advertised available Codex slots
-for that caller-owned Pylon. If a second fresh request is refused while fewer
-than that many assignments are active, inspect the Pylon assignment rows and the
-projected `capacity.coding.codex.available=N` refs before proceeding.
-
-2. Capture the public counter baseline:
-
-```sh
-curl -fsS https://openagents.com/api/public/khala-tokens-served
-```
-
-The homepage counter with `data-counter="khala-tokens-served"` is backed by
-this endpoint and the matching public sync feed.
-
-3. Issue a typed Khala coding request against the caller-owned Pylon:
-
-```sh
-$PYLON khala request \
-  --prompt "Run the public-safe fixture task through my linked local Codex Pylon." \
-  --workflow codex_agent_task \
-  --pylon-ref "<owner pylon ref>" \
-  --fixture \
-  --json
-```
-
-Expected output includes `ok: true`, `assignmentRef`,
-`durableRequestId`, `durableStreamUrl`, `workflow: "codex_agent_task"`, and a
-delegation frame naming the targeted Pylon. The CLI immediately follows a
-returned assignment ref by running the matching local no-spend assignment and
-adds `autoRun` plus `assignmentRun` to the JSON output, use `--no-run` only for
-diagnostics when you intentionally want to create a lease without executing it.
-If the request falls through to a model/provider path instead of returning a
-delegation frame, stop and debug the delegation preconditions before running
-spendful or unrelated work.
-
-For real repository work, pin the public checkout and verification command so
-the Pylon materializes a fresh bounded Git workspace instead of the fixture:
-
-```sh
-$PYLON khala request \
-  --prompt "Implement public issue #NNNN and run the named verification." \
-  --workflow codex_agent_task \
-  --pylon-ref "<owner pylon ref>" \
-  --repo OpenAgentsInc/openagents \
-  --branch main \
-  --commit "<current origin/main sha>" \
-  --verify "pnpm --dir apps/openagents.com/workers/api test -- src/path.test.ts" \
-  --json
-```
-
-`khala request --prompt` is the public-safe objective summary and must be
-3-1000 characters after trimming. Put a longer full specification in a public
-issue comment, then use a short prompt that references that comment and the
-named verification, for example: `Implement Lane RE-C from issue #8712 comment
-issuecomment-4950243136 and run the pinned verification.`
-
-Keep this prompt public-safe and bounded: cite public issue numbers, public file
-paths, and public verification commands only. Do not include raw private prompts,
-secrets, local paths, provider payloads, wallet material, or private repo
-content. The Pylon runner receives the public objective summary plus the pinned
-checkout refs, raw Codex events and local workspace paths stay on the device.
-For caller-owned Khala -> Pylon -> Codex assignments, the local Codex runner uses
-the SDK equivalent of `--dangerously-bypass-approvals-and-sandbox`: sandbox mode
-`danger-full-access`, approval policy `never`, and network enabled. That full
-access is an owner-local executor invariant so Codex can do real Git/GitHub work,
-do not add it as a public wire field or use it for untrusted labor/provider
-work.
-
-4. Verify the local no-spend execution:
-
-For the CLI path above, execution already happened in the same command. Expected
-`assignmentRun` output: the lease is accepted, progress reaches `proof-ready`,
-and the closeout status is `accepted` with
-`settlementState: "not_applicable"` and `payoutClaimAllowed: false`. For the
-public fixture, a successful run includes
-`result.public.pylon.codex_agent_task.fixture_repair_passed`.
-
-Then read the owner-scoped closeout proof:
-
-```sh
-$PYLON khala closeout "<assignmentRef>" --json
-```
-
-Expected `closeoutChecklist.ok: true` means the assignment trace-status and
-proof projections agree on assignment, Pylon, and owner refs, final owner-only
-trace and raw-event summaries exist, exact own-capacity token rows are
-recorded, the worker closeout event proves `paymentMode: "no-spend"`,
-`settlementState: "not_applicable"`, and `payoutClaimAllowed: false`, and the
-lifecycle is closed out without rejection refs. Use
-`$PYLON khala status --assignment-ref "<assignmentRef>" --json` and
-`$PYLON khala proof "<assignmentRef>" --json` only when inspecting the two
-underlying projections separately.
-
-For MCP, bare-agent, or explicit `--no-run` diagnostic paths, execute the
-assignment locally with no spend:
-
-```sh
-$PYLON assignment run-no-spend --json
-```
-
-For parallel delegation, run each assignment with an explicit assignment ref and
-publish capacity first:
-
-```sh
-OPENAGENTS_PYLON_CODEX_CONCURRENCY=2 \
-OPENAGENTS_PYLON_CODEX_BUSY=0 \
-OPENAGENTS_PYLON_CODEX_QUEUED=0 \
-$PYLON presence heartbeat --json
-
-$PYLON assignment run-no-spend --assignment-ref "<assignmentRefA>" --json
-$PYLON assignment run-no-spend --assignment-ref "<assignmentRefB>" --json
-```
-
-Current Pylon stores owner-local process and heartbeat evidence for accepted
-no-spend leases. If a previous local run was interrupted, a fresh runner should
-submit a public-safe stale closeout (`blocker.assignment.local_run_interrupted`)
-before claiming new work, so abandoned accepted rows do not poison the
-advertised Codex capacity until server lease expiry. If fresh dispatch is still
-refused, inspect the Pylon assignment rows for non-expired active leases and
-verify whether their local owner process is still alive before creating more
-requests.
-
-5. Verify durable resume:
-
-```sh
-$PYLON khala resume "<durableRequestId>" --offset 0 --json
-```
-
-Expected output includes the original delegation frame, `[DONE]`,
-`streamClosed: true`, and `streamUpToDate: true`.
-
-6. Confirm exact downstream Codex token rows and private traces.
-
-The source of truth for this flow is no longer the chat/MCP handoff. The chat
-route creates the Pylon assignment, then local Pylon posts each completed Codex
-SDK turn to `POST /api/pylon/codex/turns`. That registered-agent ingest route is
-the only place the downstream Codex tokens should be counted, and it stores the
-matching redacted owner-only ATIF trace. Verify exact rows first:
-
-```sql
-SELECT id, idempotency_key, account_ref, actor_user_id, session_ref, task_ref,
-       provider, model, input_tokens, output_tokens, reasoning_tokens,
-       cache_read_tokens, total_tokens, usage_truth,
-       demand_kind, demand_source
-  FROM token_usage_events
- WHERE provider = 'pylon-codex-own-capacity'
-   AND model = 'openagents/pylon-codex'
-   AND usage_truth = 'exact'
-   AND demand_kind = 'own_capacity'
-   AND demand_source = 'khala_coding_delegation'
-   AND task_ref = '<assignmentRef>'
- ORDER BY observed_at DESC;
-```
-
-Expected: one row per completed Codex SDK turn. The row must be owned by the
-linked OpenAuth/user account (`actor_user_id`) while `account_ref` remains the
-local Pylon agent account, and `total_tokens` must reflect the exact SDK usage
-for that turn. For Codex rows, reasoning output tokens are counted into the
-public served-token total while also preserved in `reasoning_tokens`.
-
-Then verify the redacted owner-private trace:
-
-```sql
-SELECT trace_uuid, owner_user_id, agent_ref, session_id, trajectory_id,
-       visibility, schema_version, step_count, demand_kind, demand_source
-  FROM agent_traces
- WHERE demand_kind = 'own_capacity'
-   AND demand_source = 'khala_coding_delegation'
-   AND trajectory_id LIKE 'pylon_codex:<assignmentRef>:%'
- ORDER BY created_at DESC;
-```
-
-Expected: `visibility='owner_only'`, `schema_version='ATIF-v1.7'`, owner equals
-the linked OpenAuth/user account, and the stored trajectory has been scrubbed
-before tripwire. The trace projection may contain bounded agent messages,
-reasoning summaries, tool labels, file-change counts, and command output byte
-counts, it must not contain raw prompts, raw shell output, API keys, provider
-credentials, local auth paths, wallet material, or private repo data.
-
-Trace ingest failures are fail-soft: the local Codex task and exact token row
-should still complete, with only a public-safe diagnostic returned by the ingest
-route. Token-ingest failures are not acceptable proof, rerun or debug them until
-the exact `token_usage_events` row exists.
-
-The redacted ATIF trace is only the public-safe summary. While the Codex SDK
-turn is still running, local Pylon streams raw SDK event chunks to
-`POST /api/pylon/codex/event-chunks`, the Cloud Run API stores those chunks in private
-owner-scoped Cloud Storage under the Pylon/Codex raw-event-chunk prefix, with Cloud SQL
-metadata rows in `pylon_codex_raw_event_chunks` keyed by
-assignment/session/owner/turn/chunk. Verify that chunk rows exist before
-treating a long-running delegation as observable:
-
-```sql
-SELECT chunk_ref, assignment_ref, session_ref, turn_index, chunk_index,
-       event_count, byte_length, demand_kind, demand_source, observed_at
-  FROM pylon_codex_raw_event_chunks
- WHERE assignment_ref = '<assignmentRef>'
- ORDER BY turn_index ASC, chunk_index ASC;
-```
-
-At final turn closeout, Pylon also posts the complete ordered Codex SDK event
-stream to `POST /api/pylon/codex/turns` as `rawEvents`, the Cloud Run API stores that
-canonical whole-turn archive in `pylon_codex_raw_events` for audit and
-idempotent replay checks. Raw chunks and final archives may contain prompts,
-command/tool args, local paths, file-change details, and shell output, they
-must never be copied into public traces, counters, issue comments, Forum posts,
-product-promise output, or public closeout refs. Raw-event persistence is
-fail-soft for the local coding task and should return only private-safe refs or
-diagnostics. Token accounting remains exact-only: do not synthesize public
-counter deltas from chunks, reconcile the counter against the exact
-`token_usage_events` rows posted from `turn.completed.usage`.
-
-7. Confirm the public counter projected those exact rows:
-
-```sh
-curl -fsS https://openagents.com/api/public/khala-tokens-served
-```
-
-The new `tokensServed` value must increase by at least the sum of the newly
-inserted exact downstream Pylon/Codex rows. Counter movement by itself is never
-proof, because other agents may be running. Treat the homepage and `/khala`
-counters as public projections of `token_usage_events`, then reconcile the
-projection back to the exact rows above.
-
-When supervising parallel work, also verify the `pylon_api_assignments` rows
-for each assignment reached `closeout_submitted` and `pylon_api_events` contains
-one acceptance, progress, artifact/proof, and worker closeout event per
-assignment.
-
-Common failure signatures:
-
-- `target_pylon_not_authorized` or "requested Pylon is not linked" means the
-  token does not own or link to that Pylon, or caller-aware delegation regressed.
-- `target_pylon_unavailable` means the Pylon is not active, heartbeat-fresh,
-  Codex-capable, wallet-ready where required, or capacity-available.
-- A provider error about extra `openagents` inputs means delegation did not
-  happen and the request fell through to normal provider routing. Recheck
-  `--workflow codex_agent_task`, target Pylon freshness, and caller ownership.
-- A heartbeat validation error on `capacity.coding.*=N` means the counted
-  capacity-ref schema regressed.
-
-Known public-safe steering gaps to keep visible:
-
-- The runbook proves caller-owned Pylon targeting through an explicit
-  `--pylon-ref`. Do not treat it as proof of broad automatic steering from any
-  Khala request to any linked capacity until the caller-scoped capacity resolver
-  and router branch are verified in the same deployment.
-- The authorization boundary is the token-resolved owner scope. A remote issuer
-  must only read and target Pylons linked to that same owner scope, never widen a
-  routing test to pooled, third-party, marketplace, or settlement-bearing
-  capacity while validating this own-capacity path.
-- The typed coding request path must remain explicit. If `--workflow
-codex_agent_task` or the equivalent typed MCP/tool field is missing, assume the
-  request may fall back to normal model routing and stop before running spendful
-  work.
-- Counted capacity refs are part of steering correctness, not display-only
-  telemetry. Before testing parallel dispatch, confirm the heartbeat projection
-  carries `capacity.coding.codex.available=N`, busy, queued, and ready refs for
-  the targeted Pylon, then verify active assignment rows do not exceed that
-  advertised availability.
-- The OpenAuth account to many-keys/many-Pylons aggregation is separate from the
-  single owner-scoped execution invariant. Aggregation may make linked capacity
-  easier to discover, but it must not allow one owner scope to execute against
-  another owner's Pylon.
-- Counter movement alone is never completion evidence for Pylon/Codex work. The
-  workflow needs a first-class command that resolves `assignmentRef` to the
-  exact `token_usage_events` rows and `agent_traces` rows, including provider,
-  model, `usage_truth`, `demand_kind`, `demand_source`, visibility, and token
-  totals, so agents do not have to query Cloud SQL directly.
-- `assignment run-no-spend --json` should expose live progress while Codex is
-  running: elapsed time, last progress event, current phase, and the assignment
-  ref being worked. A long silent run is hard to supervise and hard to
-  distinguish from a stuck executor.
-- Assignment closeout should include the local workspace path or a safe local
-  lookup command. Today the public-safe `previewRefs` are correct for reports
-  but force the supervising agent to infer the cache path before inspecting the
-  patch.
-- Parallel delegation from one account is valid and should have an explicit
-  runner command that accepts several assignment refs, leases up to advertised
-  capacity, and reports per-assignment closeouts. Manual background shells are
-  too easy to misattribute.
-- The Khala request safety guard should support an explain/dry-run mode for
-  public issue work. During this run, ordinary safety words in an issue-summary
-  prompt were rejected without naming the offending field, and an unsupported
-  verifier shape returned a server 500 instead of a typed client error.
-
-Report evidence with the deployment commit, Cloud Run revision, live `/` and exact
-asset smoke, `pylonRef`, `assignmentRef`, `durableRequestId`, closeout refs, and
-before/after counter values. Keep raw tokens, private prompts, wallet material,
-and local Codex auth out of reports.
-
-### Harness MCP pilot (FEED-1 #8783, opt-in)
-
-Supervised Codex sessions can be handed a READ-ONLY OpenAgents toolkit over
-MCP. Off by default, enable per session by setting
-`OPENAGENTS_PYLON_CODEX_HARNESS_MCP_PILOT=1` in the codex_agent_task
-environment (the same env the readiness probe sees). When enabled, the
-executor starts a loopback-only (`127.0.0.1`) MCP HTTP server for that session
-(`apps/pylon/src/harness-mcp-server.ts`), mints a per-session scoped bearer
-credential (scopes `operator_read`/`workspace_read` from
-`@openagentsinc/environment-auth`, DPoP upgrade tracked against ENV-2 #8780),
-and injects the server URL plus credential env var into the Codex thread's MCP
-config via SDK `--config` overrides (`mcp_servers.openagents`). Toolkit:
-`pylon.assignment.context` (assignmentRef, public-safe objective, pinned
-verify command), `pylon.fleet.status`, and `pylon.receipt.lookup` — no
-mutating tools. Every tool output passes the shared
-`@openagentsinc/mcp-contract` unsafe-material rules plus khala-tools public
-text redaction, secret-shaped fields are omitted, and the session token never
-appears in closeouts, receipts, or public projections. The server lives and
-dies with its Codex thread. With the flag unset there is zero behavior change.
+## Pylon and Khala coding delegation (historical)
+
+Pylon TypeScript (`apps/pylon`, `@openagentsinc/pylon`) is removed by the
+TypeScript-lane ledger. Recover the onboarding and Khala→Pylon→Codex runbook
+from Git history of this file before Wave 0. The supported installed path is
+the Rust OpenAgents CLI. Coding work is delegated through `openagents coder`.
 
 ## Deploying & Releasing
 
@@ -851,26 +408,11 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 
 ## Effect Development Guidance
 
-Before writing or reviewing Effect TypeScript, use both repository guides, they
-are complementary, not alternatives:
-
-1. Read `.agents/skills/effect/SKILL.md` completely, then read every reference
-   selected by its Branch Chooser for the task. Codex discovers this project
-   skill directly, and `.claude/skills/effect` exposes the same files to Claude.
-   Agents without project-skill discovery must read the files manually.
-2. Run `effect-solutions list`, then
-   `effect-solutions show <relevant-topic>...` for the overlapping baseline
-   guidance on Effect structure, services, data, errors, config, and tests.
-3. Check the nearest `AGENTS.md`, the repository-pinned `effect` package version
-   and source, and established local conventions before choosing an API or
-   pattern. Those project authorities take precedence. If the guides disagree
-   or an API is uncertain, verify it against the installed dependency or current
-   upstream source instead of guessing.
-
-The repository skill is the required additional guide for schema boundaries,
-scoped layers and background work, schedules, caches, streams, HTTP clients,
-and deterministic Effect tests. Do not skip it merely because
-`effect-solutions` was consulted.
+Effect TypeScript is not this repository's implementation host. Current
+product Effect code, if any remains during the TypeScript-lane deletion,
+is historical and is deleted with `packages/`. New work in this repository
+is Rust. Phoenix Effect-or-Elixir questions belong in
+`OpenAgentsInc/openagents.com`.
 
 ## Working Rules
 
@@ -920,7 +462,7 @@ and deterministic Effect tests. Do not skip it merely because
   inspection only when the change touches a configured public documentation
   path. Internal strategy and working documents do not require STE.
   `--no-verify` is for docs-only changes (and for pushing a worktree commit that
-  already ran `pnpm run check` green, where the hook would only re-run the same
+  already ran the Cargo completion gate green, where the hook would only re-run the same
   gate) — it is NEVER a shortcut to land unverified code.
 - **The owner dev launcher was deleted with the Electron app (2026-08-04,
   #9325).** `oa-dev-launch`, `oa-dev --restart`, and the managed `.oa-launch`
@@ -929,38 +471,26 @@ and deterministic Effect tests. Do not skip it merely because
   future owner launcher needs a new decision and its own rules.
 - Read `INVARIANTS.md` before changing authority, routing, payment,
   projection, or public-claim surfaces.
-- **One completion gate:** `pnpm run check` is the repository definition of
-  green for humans, agents, and owned CI. Run it before considering a task
-  complete. It is exactly, in order,
-  `fmt:check` → `lint` → `check:fast` → `typecheck` → `test:rust` → `test`, so
-  "check green" means the TypeScript and Rust workspaces format, lint, pass
-  every repository policy guard, type-check, and pass their tests. The Rust
-  component runs `cargo test --workspace`; it omits no workspace crate.
-  Measured on an owner machine, the Cargo component takes about 2 minutes warm,
-  which raises the warm completion gate from about 5 minutes to about 7
-  minutes. The previous cold measurement was about 17 minutes before Cargo
-  coverage joined the gate; the expanded cold gate has not been remeasured.
-  Format, lint, and every policy guard together account for about 25 seconds of
-  the non-Cargo work. Do not
-  substitute a faster command and call the result green. Root `fmt:check`, `lint`, `check:fast`, `typecheck`, and `test` are its
-  components; `test:rust` is the Cargo component. They are fine to run alone while iterating. When you run one alone,
-  name the component you ran and never describe it as the completion gate. `check` is a
-  strict superset of the `check:fast` profile the pre-push hook invokes, so a
-  green `check` is also a pushable tree, and the hook does not maintain a
-  separate policy list.
-  Corrected 2026-07-25 after `check` was found to run only `fmt:check` and
-  `lint`: an agent could truthfully report "the documented completion gate is
-  green" having proven neither that the code compiled nor that a single test
-  passed, which is how a red mobile typecheck reached `main` in `c873e6b9d3`.
-  If you ever shrink this gate, change this sentence in the same commit —
-  a gate that covers less than its contract says is the defect, not the cost.
-- For work under `apps/openagents.com/`, also read
-  `apps/openagents.com/AGENTS.md` and `apps/openagents.com/INVARIANTS.md`.
+- **One completion gate:** `cargo fmt --all -- --check` then
+  `cargo test --workspace` is the repository definition of green for humans,
+  agents, and owned CI. Run both before considering a task complete. The
+  workspace test omits no workspace crate. Do not substitute a faster command
+  and call the result green. Either command is fine to run alone while
+  iterating; name the component you ran and never describe it as the
+  completion gate. The pre-push hook on `main` runs the same pair plus
+  whitespace `git diff --check`. Changed 2026-08-28 (#265, TypeScript-lane
+  Wave 0): the previous gate was `pnpm run check` and existed to keep a
+  TypeScript graph green. If you ever shrink this gate, change this sentence
+  in the same commit — a gate that covers less than its contract says is the
+  defect, not the cost.
+- Web, API, forum, and forge application work belongs in
+  `OpenAgentsInc/openagents.com`. Do not add it under `apps/openagents.com/`
+  in this repository.
 - **Leave it cleaner than you found it — clean up as you go, every phase.** When you
   touch an area and find pre-existing breakage (failing tests, lint, type errors,
-  doc-coverage/OpenAPI/AGENTS.md drift, stale refs, dead code), **fix it even if you did
+  stale refs, dead code), **fix it even if you did
   not cause it** rather than stepping around it or deferring. Nothing accumulates: every
-  phase, branch, and PR lands with `pnpm run check` green — not "green except
+  phase, branch, and PR lands with the Cargo completion gate green — not "green except
   the pre-existing reds." If a pre-existing failure is genuinely
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
@@ -1012,67 +542,20 @@ and deterministic Effect tests. Do not skip it merely because
   authority's neutral canonical path is `/api/fleet-runs`,
   `/api/sarah/fleet-runs` remains a served compatibility alias for shipped
   desktop/mobile binaries (do not 410 it).
-- Keep new TypeScript implementation work on Effect and Effect Schema, and
-  target Node for retained server, CLI, test, and repository-tooling code. Do
-  not add runtime-specific APIs or surfaces outside the Node 24 host contract.
-  The `docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`
-  conversion is complete, use pnpm and Vite Plus for supported commands.
-  **UI layer (owner decision, 2026-08-05 — supersedes and WITHDRAWS the
-  2026-07-08 "the entire repo converts to Effect Native, ASAP" mandate):
-  there is no single component framework. Each surface uses the stack that
-  fits it.**
-  - **Services and logic, everywhere: plain Effect** (`effect` v4 + Effect
-    Schema). This is the one thing that did not change, and it is not the
-    thing that was removed — it is the substrate under the Worker, Pylon,
-    the Cloud contracts, and every web surface.
-  - **Historical web documents: TanStack Start + plain React** in
-    `apps/openagents.com/apps/start`. This retired tree is not the public web
-    application. The separate Phoenix repository owns current web surfaces.
-  - **Omega-adjacent documents and panels: GPUI** — omega-pinned Rust crates
-    built to wasm and served as static documents behind an explicit gate.
-    Today that is `/demo` (`OPENAGENTS_MARKET_DEMO_ENABLED`, on in
-    production as a labeled demo) and `/dh`
-    (`OPENAGENTS_DIAMOND_HANDS_ENABLED`, stood down per
-    `docs/hardening/2026-08-04-gpui-on-web-addendum.md` §13), plus omega's
-    own panels in the omega repo.
-  - Tokens are shared across surfaces through
-    `@openagentsinc/design-tokens`; shared React components through
-    `packages/ui`.
-
-  Effect Native — the typed component set with swappable renderers — was
-  removed from this repo on 2026-08-05 (#9325). The seven vendored
-  `@effect-native/*` packages, the vendor pin, its drift guard, and the
-  freshness script are deleted, and no surface imports the framework. Do not
-  reintroduce an `@effect-native/*` import, do not re-vendor it, and do not
-  read `docs/effect-native/` as current policy — those documents are design
-  history, and say so in their own headers. The public framework repo
-  `OpenAgentsInc/effect-native` is an owner disposition question, not a code
-  one. The Electron desktop target (#8574) ended with that app's deletion on
-  2026-08-04, as did the earlier React+Tailwind and Electrobun destination
-  shells; the Foldkit `apps/openagents.com/apps/web` app was deleted in
-  `67adbe523c` (2026-07-14), with the read-only `/trace/{uuid}` ATIF
-  evidence viewer restored into `apps/start` by owner direction 2026-07-18.
-  Component gaps are now solved in `packages/ui` or in the app that needs
-  them — there is no upstream GAPS register to file against, and the
-  EN-2 (#8572) demand loop is closed.
-
+- Do not add TypeScript, Node workspace packages, or a pnpm/Vite Plus host
+  to this repository. The TypeScript-lane ledger
+  (`docs/refactor/2026-08-28-typescript-lane-deletion-plan.md`) deletes the
+  remaining TypeScript tree. New installed software belongs in Rust.
+  Phoenix owns current web surfaces.
+  Effect Native remains deleted (2026-08-05, #9325). Do not reintroduce an
+  `@effect-native/*` import.
   **OPEN — an owner decision that has NOT been made. Do not resolve it by
   drift, and do not write specs or docs that assume it was answered.**
   Whether GPUI may be used for **ungated public** web surfaces, or for
-  **money-moving** product surfaces. Today it is not: every GPUI web surface
-  in this repo is gated and labeled a demo, and the SWAP web product is DOM
-  (plain React on TanStack Start). The question is open rather than settled
-  for a concrete, measured reason — `omega/crates/gpui_web` implements
-  neither `a11y_init` nor `a11y_tree_update`, so **it ships no accessibility
-  adapter at all**: the page is an opaque `<canvas>`, and the accessibility
-  tree GPUI rebuilds every frame is discarded. No web AccessKit adapter
-  exists anywhere to fix it, in this repo or upstream. The evidence is
-  measured in `docs/architecture/2026-08-04-effect-native-removal-audit.md`
-  §5.2 and §6, alongside the other unfixed gaps (no text selection or
-  Ctrl-F, no indexing, ~70% browser reach behind a WebGPU requirement,
-  US-only keyboard mapping, broken CJK IME positioning, no touch support,
-  4-5 MB gzipped first load). Until the owner records a decision, do not
-  ship an ungated public or money-moving surface as a GPUI canvas.
+  **money-moving** product surfaces. Today it is not. `omega/crates/gpui_web`
+  ships no accessibility adapter: the page is an opaque `<canvas>`. Until
+  the owner records a decision, do not ship an ungated public or
+  money-moving surface as a GPUI canvas.
 - Never stash, reset, checkout, restore, or otherwise move another agent's
   uncommitted work out of the way. If a checkout is dirty with concurrent work
   and you need a clean tree for tests, commits, or pushes, create a fresh
@@ -1089,11 +572,10 @@ and deterministic Effect tests. Do not skip it merely because
   or Worker logic. The Effect Native conversion mandate that this clause once
   had to carve them out of was withdrawn on 2026-08-05 (#9325), so the
   carve-out is now moot — the crates stay Rust because they are systems
-  infrastructure, not because a UI mandate spared them. TypeScript callers
-  never link the crates directly; they use documented contracts. Rust is the
+  infrastructure, not because a UI mandate spared them. Rust is the
   default for CLI, local runtime, and standalone service work. Phoenix and
-  Elixir remain the web and backend authority. Retained TypeScript must name a
-  current consumer and retirement plan.
+  Elixir remain the web and backend authority. This repository does not
+  retain a TypeScript implementation lane.
 - **Mobile policy (owner decision, amended 2026-08-27):** the OpenAgents mobile
   application, push worker, scheduler, and OTA service are retired. No installed
   users or store listing require a compatibility path. Preserve database rows
@@ -1106,16 +588,12 @@ and deterministic Effect tests. Do not skip it merely because
   in the owning surface's behavior-contract registry in the same change —
   statement verbatim, source recorded, oracle test written (or an explicit
   `pending` entry with blocker refs). Never leave a stated expectation only
-  in conversation. Until the greenfield app roots exist, new cross-app
-  expectations belong in a pending shared registry under
-  `packages/behavior-contracts`, once scaffolded, each new app owns its registry.
-  Historical client registries in Git and the human doc
-  at `docs/khala-code/khala-code-ux-contract.md`, are parity/migration inputs
-  only, not destination authority. The shared schema and coverage checker live
-  in `packages/behavior-contracts`
-  (`@openagentsinc/behavior-contracts`). Enforced contracts must run in the
-  normal test sweep, do not weaken an oracle to make a change pass — that is
-  a contract change and needs the owner's sign-off.
+  in conversation. New cross-app expectations land in the owning Rust crate's
+  tests until a Rust registry exists. Historical client registries in Git and
+  `docs/khala-code/khala-code-ux-contract.md` are parity/migration inputs
+  only. Do not add TypeScript behavior-contract packages. Do not weaken an
+  oracle to make a change pass — that is a contract change and needs the
+  owner's sign-off.
 - Keep Claim Your Agent public identity flows tweet-first where possible:
   use the shared owner-claim/X verification routes, the friendly
   `Verifying my agent ... Code: ...` copy, and public tweet-author binding

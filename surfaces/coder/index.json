@@ -1,23 +1,23 @@
 {
   "schema": "openagents.coder_surface_index.v1",
   "surfaces": {
-    "system-prompt": {
-      "file": "system-prompt.v1.json",
-      "schema": "openagents.coder_surface.system_prompt.v1",
-      "keys": 14,
-      "digest": "sha256:fa726224d5deea4b03055bbd70904b72a57eed99384b5bee4b77c306bb8821ab"
-    },
-    "tool-descriptions": {
-      "file": "tool-descriptions.v1.json",
-      "schema": "openagents.coder_surface.tool_descriptions.v1",
-      "keys": 15,
-      "digest": "sha256:e1a4c2019034fff6ea33f6041a843a385ca0c0f6dfee70fc2cf1cb569077813b"
-    },
-    "catalog-lines": {
-      "file": "catalog-lines.v1.json",
-      "schema": "openagents.coder_surface.catalog_lines.v1",
-      "keys": 13,
-      "digest": "sha256:98a96bcf6acfd5847bc1bddcc575761af71be7ea144f3584b3594b24b2f80911"
+      "system-prompt": {
+            "file": "system-prompt.v1.json",
+            "schema": "openagents.coder_surface.system_prompt.v1",
+            "keys": 14,
+            "digest": "sha256:fa726224d5deea4b03055bbd70904b72a57eed99384b5bee4b77c306bb8821ab"
+          },
+      "tool-descriptions": {
+            "file": "tool-descriptions.v1.json",
+            "schema": "openagents.coder_surface.tool_descriptions.v1",
+            "keys": 15,
+            "digest": "sha256:e1a4c2019034fff6ea33f6041a843a385ca0c0f6dfee70fc2cf1cb569077813b"
+          },
+      "catalog-lines": {
+            "file": "catalog-lines.v1.json",
+            "schema": "openagents.coder_surface.catalog_lines.v1",
+            "keys": 13,
+            "digest": "sha256:1a47fa62ed2618aae4e5c578023b06f5399a22edb672c69fddb6a98226277842"
+          }
     }
-  }
 }

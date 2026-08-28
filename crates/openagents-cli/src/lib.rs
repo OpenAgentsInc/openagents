@@ -45,6 +45,7 @@ pub mod runtime;
 pub mod session_store;
 pub mod signals;
 pub mod surfaces;
+pub mod surfaces_build;
 pub mod swarm;
 pub mod swarm_args;
 pub mod tools;

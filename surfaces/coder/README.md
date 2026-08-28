@@ -28,7 +28,7 @@ A key with no consumer segment is shared data that native Coder also reads.
 ## Rebuilding
 
 ```sh
-pnpm run build:coder-surfaces
+cargo run -p openagents-cli --bin coder-surfaces -- --write
 ```
 
 That re-pins `index.json` and regenerates the module the native CLI compiles:
@@ -38,17 +38,14 @@ That re-pins `index.json` and regenerates the module the native CLI compiles:
 Do not edit the generated module by hand. It is build output.
 
 ```sh
-pnpm run check:coder-surfaces
+cargo run -p openagents-cli --bin coder-surfaces
+cargo test -p openagents-cli --test coder_surfaces_embed
 ```
 
-refuses a tree where an artifact and its build disagree, and runs inside
-`check:fast`. A surface edited without the rebuild is the knowledge base's
-failure mode — the edit ships nothing and says nothing while it does — so it is
-a named check here rather than a silence.
-
-`node scripts/coder-surfaces-literal-search.mjs` is the stronger, slower proof:
-it searches the whole tree for a distinctive fragment of every staged string and
-reports any copy living outside the artifact and its build output.
+refuses a tree where an artifact and its build disagree. The embed test is
+part of `cargo test --workspace`. A surface edited without the rebuild is the
+knowledge base's failure mode — the edit ships nothing and says nothing while
+it does — so it is a named check here rather than a silence.
 
 ## The catalog lines are a mirror, not a move
 
