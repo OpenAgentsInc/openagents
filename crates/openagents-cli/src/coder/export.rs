@@ -199,6 +199,82 @@ fn file_name(repository: &str, at_iso: &str) -> String {
 /// refuses on, so the two can never disagree about identity), and any head
 /// executed more than once reports how much of the total wall time the
 /// repetitions beyond the first spent.
+/// Child transcripts keyed by the parent tool call id.
+///
+/// Live Grok streams used to land one notice per thought-token. The
+/// export now keeps one coalesced transcript per delegated call.
+fn subagent_section(entries: &[Entry]) -> Value {
+    let mut map = serde_json::Map::new();
+    for entry in entries {
+        if entry.role != Role::Tool || entry.subagent_lines.is_empty() {
+            continue;
+        }
+        let call_id = entry
+            .tool
+            .as_ref()
+            .map(|tool| tool.call_id.as_str())
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("entry-{}", entry.at));
+        let tool = entry
+            .tool
+            .as_ref()
+            .map(|tool| tool.function_name.as_str())
+            .unwrap_or("delegate");
+        map.insert(
+            call_id,
+            json!({
+                "tool": tool,
+                "transcript": coalesce_subagent_transcript(&entry.subagent_lines),
+            }),
+        );
+    }
+    Value::Object(map)
+}
+
+fn coalesce_subagent_transcript(lines: &[String]) -> String {
+    let mut out = String::new();
+    let mut words: Vec<String> = Vec::new();
+    for line in lines {
+        let text = line.trim().trim_start_matches('·').trim();
+        if text.is_empty() {
+            continue;
+        }
+        if is_thought_fragment(text) {
+            words.push(text.to_string());
+            continue;
+        }
+        flush_coalesced_words(&mut out, &mut words);
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(text);
+    }
+    flush_coalesced_words(&mut out, &mut words);
+    out
+}
+
+fn flush_coalesced_words(out: &mut String, words: &mut Vec<String>) {
+    if words.is_empty() {
+        return;
+    }
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&words.join(" "));
+    words.clear();
+}
+
+fn is_thought_fragment(text: &str) -> bool {
+    if text.contains(char::is_whitespace) || text.contains('/') || text.contains('\\') {
+        return false;
+    }
+    if text.contains('_') {
+        return false;
+    }
+    text.len() <= 48
+}
+
 fn swarm_section(entries: &[Entry]) -> Vec<Value> {
     entries
         .iter()
@@ -217,6 +293,15 @@ fn swarm_section(entries: &[Entry]) -> Vec<Value> {
         .collect()
 }
 
+/// Repeat-execution waste, measured at export.
+///
+/// A session that runs the same suite twice pays the second run to learn
+/// something the first already taught it. The exporter is where that cost
+/// becomes visible without anyone hand-parsing the trajectory: every shell
+/// line is reduced to its command heads (the same normalizer the #153 gate
+/// refuses on, so the two can never disagree about identity), and any head
+/// executed more than once reports how much of the total wall time the
+/// repetitions beyond the first spent.
 fn waste_section(entries: &[Entry]) -> Vec<Value> {
     use std::collections::BTreeMap;
 
@@ -299,14 +384,6 @@ fn trajectory_document(
         } {
             notices.push(notice);
         }
-        if entry.role == Role::Tool {
-            for line in &entry.subagent_lines {
-                notices.push(json!({
-                    "timestamp": iso_for_ms(entry.at),
-                    "text": format!("  {line}"),
-                }));
-            }
-        }
         if entry.role == Role::Notice && entry.text == "Turn canceled." {
             turn_outcomes.push(json!({
                 "timestamp": iso_for_ms(entry.at),
@@ -368,6 +445,7 @@ fn trajectory_document(
                 "repository": repo,
                 "branch": branch,
                 "notices": notices,
+                "subagent": subagent_section(entries),
                 "turn_outcomes": turn_outcomes,
                 "waste": {
                     "repeated_command_heads": waste_section(entries),
@@ -543,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    fn subagent_lines_export_as_indented_notices_under_the_tool() {
+    fn subagent_lines_export_as_a_coalesced_transcript_under_the_call() {
         let mut entry = Entry::tool_call("delegate read it");
         entry.tool = Some(ToolCall {
             call_id: "d1".to_string(),
@@ -554,8 +632,12 @@ mod tests {
             done: true,
             duration_ms: Some(1000),
         });
+        entry.push_subagent_line("· started on grok");
+        entry.push_subagent_line("the");
+        entry.push_subagent_line("crate");
+        entry.push_subagent_line("name");
+        entry.push_subagent_line("read_file");
         entry.push_subagent_line("· read Cargo.toml");
-        entry.push_subagent_line("the crate name is openagents-cli");
         let (document, count) = trajectory_document(
             &[entry],
             "model",
@@ -566,16 +648,15 @@ mod tests {
         );
         assert_eq!(count, 1);
         let notices = document["extra"]["notices"].as_array().unwrap();
-        let texts: Vec<&str> = notices
-            .iter()
-            .filter_map(|notice| notice["text"].as_str())
-            .collect();
+        assert!(
+            notices.is_empty(),
+            "child stream must not land as one notice per token: {notices:?}"
+        );
+        let record = &document["extra"]["subagent"]["d1"];
+        assert_eq!(record["tool"], "delegate");
         assert_eq!(
-            texts,
-            vec![
-                "  · read Cargo.toml",
-                "  · the crate name is openagents-cli"
-            ]
+            record["transcript"].as_str().unwrap(),
+            "started on grok\nthe crate name\nread_file\nread Cargo.toml"
         );
     }
 }

@@ -196,6 +196,10 @@ pub struct AcpHarness {
     /// right for a child the reader started and wrong for a delegated one —
     /// that would hand a server-requested agent this process's credentials.
     pub env: Option<Vec<(String, String)>>,
+    /// How long `session/prompt` may sit idle without a protocol line.
+    /// Inbound `session/update` traffic resets this. `None` uses
+    /// [`REQUEST_TIMEOUT`].
+    pub request_timeout: Option<Duration>,
 }
 
 impl std::fmt::Debug for AcpHarness {
@@ -212,6 +216,7 @@ impl std::fmt::Debug for AcpHarness {
             .field("reverse_handler", &self.on_request.is_some())
             .field("resume_session_id", &self.resume_session_id)
             .field("environment_scrubbed", &self.env.is_some())
+            .field("request_timeout", &self.request_timeout)
             .finish()
     }
 }
@@ -227,7 +232,14 @@ impl Default for AcpHarness {
             on_request: None,
             resume_session_id: None,
             env: None,
+            request_timeout: None,
         }
+    }
+}
+
+impl AcpHarness {
+    fn request_limit(&self) -> Duration {
+        self.request_timeout.unwrap_or(REQUEST_TIMEOUT)
     }
 }
 
@@ -242,12 +254,16 @@ pub struct AcpOutcome {
     /// The agent's own `stopReason` from `session/prompt` — `end_turn`,
     /// `cancelled`, `refusal`, and so on. Empty when the agent sent none.
     pub stop_reason: String,
+    /// ACP `tool_call` / `tool_call_update` events observed during the turn.
+    /// Thought and plan updates are not tools.
+    pub tool_uses: u64,
 }
 
 /// How long the client waits for the agent to answer one request.
 ///
-/// `session/prompt` is the whole turn, so this is the child's own ceiling
-/// rather than a network timeout.
+/// How long `session/prompt` may sit idle without a protocol line.
+/// Inbound JSON-RPC (including `session/update`) resets the wait. A child
+/// that is still streaming is not treated as hung.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(900);
 
 /// How long the client waits for the agent's first protocol line.
@@ -581,6 +597,15 @@ impl AcpHarness {
     {
         let mut seq: u64 = 0;
         let mut answer = String::new();
+        let mut tool_uses = 0u64;
+        let mut on_event = |event: AcpEvent| {
+            if let AcpEvent::Tool { kind, .. } = &event {
+                if kind != "thought" && kind != "plan" {
+                    tool_uses += 1;
+                }
+            }
+            on_event(event);
+        };
 
         let initialized = request(
             stdin,
@@ -593,7 +618,7 @@ impl AcpHarness {
             }),
             HANDSHAKE_TIMEOUT,
             &mut answer,
-            on_event,
+            &mut on_event,
             cancel,
             self,
         )
@@ -605,7 +630,7 @@ impl AcpHarness {
             lines,
             &mut seq,
             &mut answer,
-            on_event,
+            &mut on_event,
             cancel,
         )
         .await?;
@@ -637,9 +662,9 @@ impl AcpHarness {
                         "cwd": cwd.to_string_lossy(),
                         "mcpServers": [],
                     }),
-                    REQUEST_TIMEOUT,
+                    self.request_limit(),
                     &mut answer,
-                    on_event,
+                    &mut on_event,
                     cancel,
                     self,
                 )
@@ -653,9 +678,9 @@ impl AcpHarness {
                     &mut seq,
                     "session/new",
                     self.session_new_params(cwd),
-                    REQUEST_TIMEOUT,
+                    self.request_limit(),
                     &mut answer,
-                    on_event,
+                    &mut on_event,
                     cancel,
                     self,
                 )
@@ -685,9 +710,9 @@ impl AcpHarness {
                     &mut seq,
                     "session/set_mode",
                     serde_json::json!({"sessionId": session_id, "modeId": mode.mode_id(self.mode_agent_id())}),
-                    REQUEST_TIMEOUT,
+                    self.request_limit(),
                     &mut answer,
-                    on_event,
+                    &mut on_event,
                     cancel,
                     self,
                 )
@@ -704,9 +729,9 @@ impl AcpHarness {
                 "sessionId": session_id,
                 "prompt": [{"type": "text", "text": prompt}]
             }),
-            REQUEST_TIMEOUT,
+            self.request_limit(),
             &mut answer,
-            on_event,
+            &mut on_event,
             cancel,
             self,
         )
@@ -720,6 +745,7 @@ impl AcpHarness {
                 .and_then(|value| value.as_str())
                 .unwrap_or_default()
                 .to_string(),
+            tool_uses,
         })
     }
 }
@@ -751,7 +777,7 @@ where
     let line = serde_json::json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
     write_line(stdin, &line).await?;
 
-    let deadline = tokio::time::Instant::now() + limit;
+    let mut deadline = tokio::time::Instant::now() + limit;
 
     loop {
         let next = tokio::select! {
@@ -760,7 +786,8 @@ where
             read = lines.next_line() => read,
             _ = tokio::time::sleep_until(deadline) => {
                 return Err(AcpFailure::Refused(format!(
-                    "the agent did not answer `{method}` within {}s", limit.as_secs()
+                    "the agent went silent on `{method}` for {}s",
+                    limit.as_secs()
                 )));
             }
         };
@@ -787,6 +814,9 @@ where
         let Ok(message) = serde_json::from_str::<serde_json::Value>(trimmed) else {
             continue;
         };
+        // The child is still speaking. A working Grok that streams
+        // `session/update` for fifteen minutes is not hung; only silence is.
+        deadline = tokio::time::Instant::now() + limit;
 
         // A reply to something asked for.
         let is_reply =

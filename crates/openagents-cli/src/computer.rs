@@ -3705,6 +3705,7 @@ fn handle_agent(
         on_request,
         resume_session_id: resume.clone(),
         env: Some(agent_environment(&entry)),
+        request_timeout: None,
     };
 
     let sender = sender.clone();

@@ -41,7 +41,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
@@ -418,6 +418,33 @@ fn agent_worktree_slug(call_id: &str) -> String {
     format!("agent-{compact}-{ordinal:08x}")
 }
 
+fn nonempty_session(id: String) -> Option<String> {
+    let id = id.trim();
+    if id.is_empty() {
+        None
+    } else {
+        Some(id.to_string())
+    }
+}
+
+fn session_suffix(session: Option<&str>) -> String {
+    match session {
+        Some(id) => format!(" (session {id})"),
+        None => String::new(),
+    }
+}
+
+fn acp_run_failure_report(wanted: &str, tools: u64, session: Option<&str>, why: &str) -> String {
+    if tools > 0 || session.is_some() {
+        format!(
+            "`{wanted}` ran {tools} tool uses{} then failed: {why}",
+            session_suffix(session)
+        )
+    } else {
+        format!("`{wanted}` did not finish the task: {why}")
+    }
+}
+
 /// The `· ` prefix the TUI draws on a delegated agent's activity line.
 fn prefix_subagent_line(line: &str) -> String {
     let line = line.trim_end();
@@ -451,6 +478,21 @@ impl LineBuffer {
                 emit(line);
             }
         }
+    }
+
+    /// Join word-sized thought chunks into a line, emitting on newline.
+    fn push_words(&mut self, chunk: &str, emit: impl FnMut(String)) {
+        let piece = chunk.trim();
+        if piece.is_empty() {
+            return;
+        }
+        if !self.pending.is_empty()
+            && !self.pending.ends_with(char::is_whitespace)
+            && !piece.starts_with(char::is_whitespace)
+        {
+            self.pending.push(' ');
+        }
+        self.push_lines(piece, emit);
     }
 
     fn flush(&mut self, mut emit: impl FnMut(String)) {
@@ -1916,6 +1958,12 @@ impl HarnessToolRegistry {
             .and_then(|sessions| sessions.get(wanted).cloned());
         let started = Instant::now();
         let grok = wanted == "grok" || wanted == "grok-build";
+        let streamed_tools = Arc::new(AtomicU64::new(0));
+        let streamed_session = Arc::new(Mutex::new(None::<String>));
+        let thought_buf = Arc::new(Mutex::new(LineBuffer::new()));
+        let counted_tools = Arc::clone(&streamed_tools);
+        let counted_session = Arc::clone(&streamed_session);
+        let stream_thought = Arc::clone(&thought_buf);
         let result = AcpHarness {
             command: agent.command,
             args: agent.args,
@@ -1929,6 +1977,17 @@ impl HarnessToolRegistry {
             &prompt,
             &self.cwd,
             move |event| {
+                match &event {
+                    AcpEvent::Session { id } => {
+                        if let Ok(mut slot) = counted_session.lock() {
+                            *slot = Some(id.clone());
+                        }
+                    }
+                    AcpEvent::Tool { kind, .. } if kind != "thought" && kind != "plan" => {
+                        counted_tools.fetch_add(1, Ordering::SeqCst);
+                    }
+                    _ => {}
+                }
                 let Some(sink) = &event_sink else {
                     return;
                 };
@@ -1942,15 +2001,29 @@ impl HarnessToolRegistry {
                         line,
                     });
                 };
+                let flush_thought = |emit: &mut dyn FnMut(String)| {
+                    if let Ok(mut buf) = stream_thought.lock() {
+                        buf.flush(|line| emit(line));
+                    }
+                };
                 match event {
                     AcpEvent::Text { chunk } => {
+                        let mut emit = emit_line;
+                        flush_thought(&mut emit);
                         if let Ok(mut buf) = stream_buf.lock() {
-                            buf.push_lines(&chunk, emit_line);
+                            buf.push_lines(&chunk, emit);
+                        }
+                    }
+                    AcpEvent::Tool { kind, title } if kind == "thought" => {
+                        if let Ok(mut buf) = stream_thought.lock() {
+                            buf.push_words(&title, emit_line);
                         }
                     }
                     other => {
+                        let mut emit = emit_line;
+                        flush_thought(&mut emit);
                         if let Some(line) = acp_event_subagent_line(&other) {
-                            emit_line(line);
+                            emit(line);
                         }
                     }
                 }
@@ -1960,6 +2033,18 @@ impl HarnessToolRegistry {
         .await;
         if let Some(sink) = &self.event_sink {
             let parent_call = call.id.clone();
+            let emit = |line: String| {
+                let line = prefix_subagent_line(&line);
+                if !line.is_empty() {
+                    sink(Control::SubagentOutput {
+                        call_id: parent_call.clone(),
+                        line,
+                    });
+                }
+            };
+            if let Ok(mut buf) = thought_buf.lock() {
+                buf.flush(emit);
+            }
             if let Ok(mut buf) = text_buf.lock() {
                 buf.flush(|line| {
                     let line = prefix_subagent_line(&line);
@@ -1974,46 +2059,77 @@ impl HarnessToolRegistry {
         }
 
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        let (status, report, is_error, session_id) = match result {
-            Ok(outcome) if is_refusal(&outcome.answer) => (
-                DelegateStatus::Failed,
-                format!(
-                    "`{wanted}` refused the task rather than doing it: {}",
-                    outcome.answer
-                ),
-                true,
-                Some(outcome.session_id).filter(|id| !id.is_empty()),
-            ),
-            Ok(outcome) if outcome.answer.trim().is_empty() => (
-                DelegateStatus::Done,
-                format!("`{wanted}` finished and said nothing."),
-                false,
-                Some(outcome.session_id).filter(|id| !id.is_empty()),
-            ),
-            Ok(outcome) => (
-                DelegateStatus::Done,
-                outcome.answer,
-                false,
-                Some(outcome.session_id).filter(|id| !id.is_empty()),
-            ),
+        let streamed_count = streamed_tools.load(Ordering::SeqCst);
+        let captured_session = streamed_session
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .and_then(nonempty_session);
+        let (status, report, is_error, session_id, tool_uses) = match result {
+            Ok(outcome) if is_refusal(&outcome.answer) => {
+                let session = nonempty_session(outcome.session_id).or(captured_session);
+                (
+                    DelegateStatus::Failed,
+                    format!(
+                        "`{wanted}` refused the task rather than doing it: {}",
+                        outcome.answer
+                    ),
+                    true,
+                    session,
+                    outcome.tool_uses.max(streamed_count),
+                )
+            }
+            Ok(outcome) if outcome.answer.trim().is_empty() => {
+                let session = nonempty_session(outcome.session_id).or(captured_session);
+                (
+                    DelegateStatus::Done,
+                    format!("`{wanted}` finished and said nothing."),
+                    false,
+                    session,
+                    outcome.tool_uses.max(streamed_count),
+                )
+            }
+            Ok(outcome) => {
+                let session = nonempty_session(outcome.session_id).or(captured_session);
+                (
+                    DelegateStatus::Done,
+                    outcome.answer,
+                    false,
+                    session,
+                    outcome.tool_uses.max(streamed_count),
+                )
+            }
             Err(AcpFailure::Unstartable(why)) => (
                 DelegateStatus::Failed,
                 format!("`{wanted}` could not be started: {why}"),
                 true,
                 None,
+                0,
             ),
-            Err(AcpFailure::Refused(why)) => (
-                DelegateStatus::Failed,
-                format!("`{wanted}` did not finish the task: {why}"),
-                true,
-                None,
-            ),
-            Err(AcpFailure::Cancelled) => (
-                DelegateStatus::Cancelled,
-                format!("`{wanted}` was stopped before it finished."),
-                true,
-                None,
-            ),
+            Err(AcpFailure::Refused(why)) => {
+                let session = captured_session;
+                let tools = streamed_count;
+                (
+                    DelegateStatus::Failed,
+                    acp_run_failure_report(wanted, tools, session.as_deref(), &why),
+                    true,
+                    session,
+                    tools,
+                )
+            }
+            Err(AcpFailure::Cancelled) => {
+                let session = captured_session;
+                let tools = streamed_count;
+                let report = if tools > 0 || session.is_some() {
+                    format!(
+                        "`{wanted}` was stopped after {tools} tool uses{}.",
+                        session_suffix(session.as_deref())
+                    )
+                } else {
+                    format!("`{wanted}` was stopped before it finished.")
+                };
+                (DelegateStatus::Cancelled, report, true, session, tools)
+            }
         };
         if let Some(session_id) = &session_id {
             if let Ok(mut sessions) = self.acp_sessions.lock() {
@@ -2023,7 +2139,7 @@ impl HarnessToolRegistry {
         let record = DelegateAgentResult {
             status,
             agent: wanted.to_string(),
-            total_tool_uses: 0,
+            total_tool_uses: tool_uses,
             duration_ms,
             total_tokens: 0,
             model: None,

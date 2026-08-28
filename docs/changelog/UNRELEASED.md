@@ -5,6 +5,23 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Delegated Grok streams stay in ATIF (#276)
+
+- issues: #276
+- commits: this change
+- contracts-specs: ATIF-v1.7 extra.subagent; ACP session/prompt idle wait
+- invariants: a child that opened a session and streamed is recorded as having run; timeout after work names the session and tool count
+- evidence: `crates/openagents-cli/tests/acp_test.rs` idle-reset tests; export coalescing test
+- lane: grok ATIF/timeout fix
+
+A delegated Grok child that streams for minutes is no longer killed at a
+900-second wall clock and reported as never started. `session/prompt` now
+idles out only after silence; inbound `session/update` traffic resets the
+wait. The parent `delegate` result counts ACP tool calls, keeps the session
+id on timeout, and says the child ran then failed. ATIF export stores the
+child transcript in `extra.subagent` keyed by the parent call id instead of
+one notice per thought token.
+
 ## Coder keeps sign-in links visible
 
 - issues: none (direct owner request)

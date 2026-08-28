@@ -723,8 +723,8 @@ for line in sys.stdin:
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<AcpEvent>::new()));
     let sink = std::sync::Arc::clone(&seen);
     let (_stop, mut cancel) = watch::channel(false);
-    let answer = harness
-        .run(
+    let outcome = harness
+        .run_detailed(
             "hello",
             &std::env::temp_dir(),
             move |event| sink.lock().unwrap().push(event),
@@ -732,7 +732,12 @@ for line in sys.stdin:
         )
         .await
         .expect("the turn failed");
-    assert_eq!(answer, "done:cancelled");
+    assert_eq!(outcome.answer, "done:cancelled");
+    assert_eq!(
+        outcome.tool_uses, 2,
+        "thought and plan are not tools; tool_call and tool_call_update are"
+    );
+    assert_eq!(outcome.session_id, "sess_turn");
     let events = seen.lock().unwrap();
     assert!(
         events.iter().any(|event| matches!(event, AcpEvent::Tool { kind, title } if kind == "thought" && title == "pondering")),
@@ -759,5 +764,106 @@ for line in sys.stdin:
             }
         )),
         "{events:?}"
+    );
+}
+
+/// Inbound `session/update` traffic resets the idle wait. A child that
+/// streams for longer than the limit is not treated as hung.
+#[tokio::test]
+async fn session_updates_reset_the_prompt_idle_wait() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys, time
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": 1}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_idle"}})
+    elif method == "session/prompt":
+        sid = message["params"]["sessionId"]
+        for i in range(6):
+            send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+                "update": {"sessionUpdate": "tool_call", "kind": "execute",
+                           "title": "tick %d" % i}}})
+            time.sleep(0.2)
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": "kept going"}}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-idle-reset", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        request_timeout: Some(Duration::from_millis(500)),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let outcome = harness
+        .run_detailed("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("a streaming child was treated as hung");
+    assert_eq!(outcome.answer, "kept going");
+    assert_eq!(outcome.tool_uses, 6);
+    assert_eq!(outcome.session_id, "sess_idle");
+}
+
+/// Silence after the last protocol line is still a timeout.
+#[tokio::test]
+async fn silence_on_session_prompt_is_an_idle_timeout() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys, time
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": 1}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_quiet"}})
+    elif method == "session/prompt":
+        sid = message["params"]["sessionId"]
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid,
+            "update": {"sessionUpdate": "tool_call", "kind": "execute", "title": "one tick"}}})
+        time.sleep(1.2)
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-idle-silent", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        request_timeout: Some(Duration::from_millis(400)),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let failure = harness
+        .run_detailed("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect_err("silence was treated as a finished turn");
+    assert!(
+        matches!(&failure, AcpFailure::Refused(why) if why.contains("went silent") && why.contains("session/prompt")),
+        "{failure}"
     );
 }
