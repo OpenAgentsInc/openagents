@@ -1984,6 +1984,17 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// Patience for drivers a test expects to finish normally. These drivers
+    /// are one `/bin/sh` each, but under full-suite parallelism (and a loaded
+    /// box) fork/exec of the shell chain has been observed to outrun 2s,
+    /// turning completion-asserting tests into flaky failures (#312) — and
+    /// the pre-push guard runs the whole workspace, so a flake here blocks
+    /// every pusher. 15s is far above any honest scheduling delay and still
+    /// kills a genuinely hung driver before CI feels it. The genuine timeout
+    /// path keeps its own short deadline in
+    /// `kills_a_driver_that_exceeds_the_fixed_deadline`.
+    const TEST_DRIVER_COMPLETION_TIMEOUT: Duration = Duration::from_secs(15);
+
     fn digest(character: char) -> String {
         format!("sha256:{}", character.to_string().repeat(64))
     }
@@ -2444,7 +2455,7 @@ mod tests {
         fs::set_permissions(&driver, fs::Permissions::from_mode(0o700)).unwrap();
 
         let received =
-            execute_with_driver(&driver, request.clone(), Duration::from_secs(2)).unwrap();
+            execute_with_driver(&driver, request.clone(), TEST_DRIVER_COMPLETION_TIMEOUT).unwrap();
         assert_eq!(received, response);
         let captured: ManagedSandboxPhase2Request =
             serde_json::from_slice(&fs::read(&capture).unwrap()).unwrap();
@@ -2476,7 +2487,7 @@ mod tests {
         let archived = execute_archive_with_checkpoint_and_stop(
             &driver,
             request(ManagedSandboxPhase2Action::ArchiveWithCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
             |owner, tenant, sandbox, generation, stop_ref| {
                 assert_eq!(owner, "owner.sbx10.control");
                 assert_eq!(tenant, "tenant.sbx10.control");
@@ -2536,7 +2547,7 @@ mod tests {
         let failed = execute_archive_with_checkpoint_and_stop(
             &driver,
             archive_request,
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
             |_, _, _, _, _| Err(()),
         )
         .unwrap();
@@ -2567,7 +2578,7 @@ mod tests {
         let cleanup_failed = execute_archive_with_checkpoint_and_stop(
             &driver,
             request(ManagedSandboxPhase2Action::ArchiveWithCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
             |_, _, _, _, _| Err(()),
         )
         .unwrap_err();
@@ -2600,7 +2611,7 @@ mod tests {
         let forked = execute_fork_from_checkpoint_with(
             &driver,
             request(ManagedSandboxPhase2Action::ForkFromCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
             |owner, tenant, source, generation, command_ref, checkpoint_ref, source_grants| {
                 assert_eq!(owner, "owner.sbx10.control");
                 assert_eq!(tenant, "tenant.sbx10.control");
@@ -2654,7 +2665,7 @@ mod tests {
         let failure = execute_fork_from_checkpoint_with(
             &driver,
             request(ManagedSandboxPhase2Action::ForkFromCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
             |owner, tenant, source, generation, _, _, _| {
                 Ok(managed_sandbox_runtime::CheckpointForkContext {
                     schema: "openagents.managed_sandbox_phase2_fork_context.v1",
@@ -2704,7 +2715,7 @@ mod tests {
         let restored = execute_restore_checkpoint_with(
             &driver,
             request(ManagedSandboxPhase2Action::RestoreCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
             |owner, tenant, sandbox, command_ref, checkpoint_ref, generation, source| {
                 assert_eq!(owner, "owner.sbx10.control");
                 assert_eq!(tenant, "tenant.sbx10.control");
@@ -2752,7 +2763,7 @@ mod tests {
         let failure = execute_restore_checkpoint_with(
             &driver,
             request(ManagedSandboxPhase2Action::RestoreCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
             |owner, tenant, sandbox, _, _, _, _| {
                 Ok(managed_sandbox_runtime::CheckpointRestoreContext {
                     schema: "openagents.managed_sandbox_phase2_restore_context.v1",
@@ -2815,7 +2826,7 @@ mod tests {
         let oversized = execute_with_driver(
             &oversized_driver,
             request(ManagedSandboxPhase2Action::VerifyCheckpoint),
-            Duration::from_secs(10),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
         )
         .unwrap_err();
         assert_eq!(oversized.status, 503);
@@ -2833,7 +2844,7 @@ mod tests {
         let refused = execute_with_driver(
             &refused_driver,
             request(ManagedSandboxPhase2Action::VerifyCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
         )
         .unwrap_err();
         assert_eq!(refused.status, 503);
@@ -2854,7 +2865,7 @@ mod tests {
         let classified = execute_with_driver(
             &classified_driver,
             request(ManagedSandboxPhase2Action::VerifyCheckpoint),
-            Duration::from_secs(2),
+            TEST_DRIVER_COMPLETION_TIMEOUT,
         )
         .unwrap_err();
         assert_eq!(
