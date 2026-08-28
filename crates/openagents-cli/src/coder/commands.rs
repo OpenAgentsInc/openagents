@@ -78,13 +78,20 @@ const KEYS: &[(&str, &str)] = &[
         "PageUp / PageDown",
         "scroll a page (Fn+Up / Fn+Down on a Mac)",
     ),
-    ("Shift+drag", "select and copy text with your terminal"),
+    (
+        "Drag / double-click / triple-click",
+        "select transcript text; Shift+drag uses your terminal's own copy",
+    ),
+    ("Ctrl+Y", "copy the selection (falls back to a saved file)"),
     ("Tab", "complete a command or a path"),
     (
         "Ctrl+A / Ctrl+E / Ctrl+W / Ctrl+K / Ctrl+U / Alt+B / Alt+F",
         "edit the line",
     ),
-    ("Esc", "cancel the active turn and keep queued prompts"),
+    (
+        "Esc",
+        "clear the selection, then cancel the active turn and keep queued prompts",
+    ),
     (
         "Ctrl+C / Ctrl+D / Ctrl+Q",
         "leave Coder; an active turn is canceled first",

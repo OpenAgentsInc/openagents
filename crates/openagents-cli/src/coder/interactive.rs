@@ -58,6 +58,12 @@ struct QueuedPrompt {
 /// the model wants.
 const REVOCATION_GRACE: Duration = Duration::from_secs(10);
 
+/// How long a clipboard toast stays up, in render ticks. The frame advances
+/// only when something redraws, so a quiet session holds the message until
+/// the next event — which is the behavior wanted: a "Copied!" that vanishes
+/// before it is read is a message that was never shown.
+const CLIPBOARD_TOAST_TICKS: u64 = 60;
+
 /// What `--lane` and `--reasoning` settled on before the screen was entered.
 #[derive(Debug, Clone, Default)]
 pub struct SessionOptions {
@@ -493,9 +499,31 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             Event::Key(key) => key,
             Event::Mouse(mouse) => {
                 match mouse.kind {
-                    MouseEventKind::ScrollUp => ui.scroll_by(-3),
-                    MouseEventKind::ScrollDown => ui.scroll_by(3),
-                    _ => {}
+                    MouseEventKind::ScrollUp => {
+                        ui.selection.clear();
+                        ui.scroll_by(-3);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        ui.selection.clear();
+                        ui.scroll_by(3);
+                    }
+                    _ => {
+                        // The selection owns press/drag/release inside the
+                        // transcript area; elsewhere mouse events are inert.
+                        let in_transcript = ui
+                            .selection
+                            .rows()
+                            .iter()
+                            .any(|row| row.screen_y == mouse.row)
+                            || matches!(
+                                mouse.kind,
+                                MouseEventKind::Drag(_) | MouseEventKind::Up(_)
+                            );
+                        if in_transcript {
+                            ui.selection
+                                .handle_mouse(mouse.column, mouse.row, mouse.kind);
+                        }
+                    }
                 }
                 continue;
             }
@@ -508,8 +536,14 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         let width = composer_width(terminal.size()?.width);
 
         // Escape requests turn cancellation. It never exits Coder, and the
-        // reducer makes a repeated request idempotent.
+        // reducer makes a repeated request idempotent. A visible selection
+        // steals Esc first, matching grok-build: dismissing what is on
+        // screen outranks canceling what is running in the background.
         if key.code == KeyCode::Esc {
+            if ui.selection.selection().is_some() {
+                ui.selection.clear();
+                continue;
+            }
             request_cancel(
                 &mut ui,
                 &mut turns,
@@ -539,6 +573,21 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 &tx,
                 prompt_queue.len(),
             );
+            continue;
+        }
+
+        // Ctrl+Y copies the selection, grok-build's `y`-copies-the-focused-
+        // block idea moved onto the modifier plane this TUI already uses for
+        // its non-editing chords. Esc below clears the selection instead of
+        // canceling a turn when a selection is what Esc would dismiss.
+        if key.code == KeyCode::Char('y') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            if let Some(text) = ui.selection.copy_text() {
+                let outcome = crate::coder::clipboard::copy_text_with_backup(&text);
+                ui.toast = Some((
+                    outcome.toast_message(),
+                    ui.tick + CLIPBOARD_TOAST_TICKS,
+                ));
+            }
             continue;
         }
 

@@ -454,6 +454,13 @@ pub struct CoderUi {
     /// The caller must put the cursor back here after the OSC 8 pass parks it
     /// at the last link (#187). `None` when the frame hid the cursor.
     pub cursor: Option<Position>,
+    /// In-app text selection over the transcript, driven by the mouse and
+    /// copied with Ctrl+Y. See [`crate::coder::selection`].
+    pub selection: crate::coder::selection::SelectionState,
+    /// A transient toast: its text and the tick it disappears on. Clipboard
+    /// feedback lives here rather than in the transcript — a copy is an
+    /// action's result, not something anyone said.
+    pub toast: Option<(String, u64)>,
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -555,6 +562,8 @@ impl CoderUi {
             agents: Vec::new(),
             links: Vec::new(),
             cursor: None,
+            selection: crate::coder::selection::SelectionState::default(),
+            toast: None,
         }
     }
 
@@ -739,6 +748,13 @@ impl CoderUi {
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         self.tick = self.tick.wrapping_add(1);
+        if self
+            .toast
+            .as_ref()
+            .is_some_and(|(_, until)| self.tick >= *until)
+        {
+            self.toast = None;
+        }
         let style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
 
         // Fill the entire terminal with the background color first.
@@ -840,10 +856,80 @@ impl CoderUi {
 
         self.links = crate::coder::osc8::place(&links, transcript_area, start as usize);
 
+        // Record what each visible row says, in screen coordinates, so the
+        // next mouse event can hit-test a selection and this frame can paint
+        // its highlight. Row `start + i` renders at `area.y + i` — the same
+        // arithmetic the Paragraph scroll applies, and the links above use.
+        {
+            let mut visible_rows = Vec::new();
+            for index in 0..transcript_area.height {
+                let Some(line) = all_lines.get(start as usize + index as usize) else {
+                    break;
+                };
+                let plain: String = line
+                    .spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect();
+                // Trailing blanks are layout, not content: they must not
+                // extend a row selection or answer a hit test.
+                let trimmed = plain.trim_end();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                visible_rows.push(crate::coder::selection::ScreenRow {
+                    screen_y: transcript_area.y + index,
+                    screen_x: transcript_area.x,
+                    plain: trimmed.to_string(),
+                });
+            }
+            self.selection.observe_rows(visible_rows);
+        }
+
         let transcript = Paragraph::new(Text::from(all_lines))
             .scroll((start, 0))
             .style(style);
         frame.render_widget(transcript, transcript_area);
+
+        // Paint the selection over the rendered cells. The transcript is
+        // already laid out, so this is a restyle of exactly the cells the
+        // selection covers — one pass over the selected rows' columns.
+        if let Some(selection) = self.selection.selection().cloned() {
+            let rows = self.selection.rows().to_vec();
+            let highlight = Style::default()
+                .fg(BACKGROUND_COLOR)
+                .bg(TEXT_COLOR);
+            for selected in selection.selected_rows(&rows) {
+                let Some(row) = rows.get(selected.row_index) else {
+                    continue;
+                };
+                let char_count = row.plain.chars().count();
+                if selected.char_start >= selected.char_end {
+                    continue;
+                }
+                let mut column = row.screen_x;
+                let mut start_column = None;
+                let mut end_column = row.screen_x;
+                for (char_index, ch) in row.plain.char_indices() {
+                    if char_index == selected.char_start {
+                        start_column = Some(column);
+                    }
+                    if char_index == selected.char_end {
+                        break;
+                    }
+                    column += UnicodeWidthStr::width(ch.to_string().as_str()) as u16;
+                }
+                if selected.char_end >= char_count {
+                    end_column = column;
+                }
+                let Some(start_column) = start_column else {
+                    continue;
+                };
+                for x in start_column..end_column.max(start_column + 1) {
+                    frame.buffer_mut()[(x, row.screen_y)].set_style(highlight);
+                }
+            }
+        }
 
         let conversation_started = self.entries.iter().any(|entry| {
             matches!(
@@ -964,6 +1050,23 @@ impl CoderUi {
         let buf = frame.buffer_mut();
         if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
             cell.modifier.insert(Modifier::REVERSED);
+        }
+
+        // The toast, when one is showing, rides over the status row's left
+        // edge — the one place every eye already checks for live state, and
+        // the one place a transient message can sit without pushing the
+        // transcript. Clipboard feedback is the only thing that posts one.
+        if let Some((message, _)) = self.toast.clone() {
+            let width = message.chars().count() as u16 + 2;
+            let toast_area = Rect {
+                width: width.min(status_area.width),
+                ..status_area
+            };
+            let toast_style = Style::default()
+                .fg(BACKGROUND_COLOR)
+                .bg(TEXT_COLOR)
+                .add_modifier(Modifier::BOLD);
+            frame.render_widget(Paragraph::new(message).style(toast_style), toast_area);
         }
     }
 

@@ -8,6 +8,7 @@
 pub mod acp;
 pub mod acp_harness;
 pub mod agents;
+pub mod clipboard;
 pub mod commands;
 pub mod credit;
 pub mod export;
@@ -18,6 +19,7 @@ pub mod markdown;
 pub mod osc8;
 pub mod recall;
 pub mod runtime;
+pub mod selection;
 pub mod transcript;
 pub mod tui;
 pub mod turn;
