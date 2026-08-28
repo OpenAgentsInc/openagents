@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod classify;
+
 /// Built-in `delegate` agents and the catalog ids they open on when the
 /// parent names no `model` (#257).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

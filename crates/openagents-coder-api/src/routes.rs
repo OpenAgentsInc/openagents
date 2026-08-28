@@ -424,6 +424,11 @@ async fn inference_proxy(
         }
     }
 
+    // Default Flash grants open on GLM. A greeting still arrives with that
+    // grant from packaged CLIs (rc8). Route the call to Gemini when the last
+    // user turn is trivial; keep the Explore pin (gemini grants) intact.
+    let model = reroute_simple_flash(&app.config, &grant.model, &body, model);
+
     match proxy::stream_completion(&app.config, &model, body, true).await {
         Ok(response) => {
             let _ = app.store.record_usage(&grant.token_digest, 0, 0, 0);
@@ -433,6 +438,27 @@ async fn inference_proxy(
             fail(status, openagents_coder_contract::PROVIDER_FAILED, &message)
         }
     }
+}
+
+fn reroute_simple_flash(
+    config: &Config,
+    grant_model: &str,
+    body: &Value,
+    granted: crate::catalog::Model,
+) -> crate::catalog::Model {
+    let Some(text) = openagents_coder_contract::classify::last_user_text(
+        body.get("messages").unwrap_or(&Value::Null),
+    ) else {
+        return granted;
+    };
+    let Some(simple_id) =
+        openagents_coder_contract::classify::maybe_simple_flash(grant_model, &text)
+    else {
+        return granted;
+    };
+    catalog::fetch(config, simple_id)
+        .filter(|candidate| catalog::available(config, candidate))
+        .unwrap_or(granted)
 }
 
 fn thread_view(thread: &ThreadRow) -> Value {
@@ -479,4 +505,53 @@ fn fail(status: StatusCode, code: &str, message: &str) -> Response {
         }),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog;
+    use crate::config::Config;
+    use std::path::PathBuf;
+
+    fn cfg(gateway: bool) -> Config {
+        Config {
+            bind: "127.0.0.1:0".into(),
+            db_path: PathBuf::from("/tmp/unused.sqlite"),
+            public_origin: "http://127.0.0.1".into(),
+            ai_gateway_api_key: gateway.then(|| "k".into()),
+            openrouter_api_key: None,
+            credit_allowance_microusd: 0,
+            require_bearer: false,
+        }
+    }
+
+    #[test]
+    fn a_glm_grant_reroutes_hey_to_gemini() {
+        let config = cfg(true);
+        let granted = catalog::fetch(&config, "glm-5.3-flash").unwrap();
+        let body = json!({"messages":[{"role":"user","content":"hey"}]});
+        let out = reroute_simple_flash(&config, "glm-5.3-flash", &body, granted);
+        assert_eq!(out.id, "gemini-3.7-flash");
+    }
+
+    #[test]
+    fn a_glm_grant_keeps_coding_work_on_glm() {
+        let config = cfg(true);
+        let granted = catalog::fetch(&config, "glm-5.3-flash").unwrap();
+        let body = json!({
+            "messages":[{"role":"user","content":"implement the proxy classifier"}]
+        });
+        let out = reroute_simple_flash(&config, "glm-5.3-flash", &body, granted);
+        assert_eq!(out.id, "glm-5.3-flash");
+    }
+
+    #[test]
+    fn a_gemini_grant_is_not_rewritten() {
+        let config = cfg(true);
+        let granted = catalog::fetch(&config, "gemini-3.7-flash").unwrap();
+        let body = json!({"messages":[{"role":"user","content":"hey"}]});
+        let out = reroute_simple_flash(&config, "gemini-3.7-flash", &body, granted);
+        assert_eq!(out.id, "gemini-3.7-flash");
+    }
 }
