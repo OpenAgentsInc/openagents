@@ -126,6 +126,8 @@ class GymAdapter:
             trial_job = job
             if self.live:
                 trial_job = self._run_live([task])
+            if trial_job is not None:
+                self.job = trial_job
             trial = trial_job.trial_for(task.task_id) if trial_job is not None else None
             if trial is None:
                 outputs.append({"task": task.task_id, "error": "trial missing from job"})
