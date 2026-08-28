@@ -79,7 +79,7 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(text.contains("Grok is a first-class delegate"), "{text}");
     assert!(text.contains("Timing on each message"), "{text}");
     assert!(
-        text.contains("ATIF export keeps the child stream"),
+        text.contains("ATIF export keeps subagent streams"),
         "{text}"
     );
 
@@ -87,6 +87,22 @@ fn startup_facts_are_centered_outside_the_transcript() {
         (0..buffer.area.width)
             .map(|x| buffer.cell((x, y)).unwrap().symbol())
             .collect::<String>()
+    };
+    let box_span = |y: u16| {
+        let mut first = None;
+        let mut last = None;
+        for x in 0..buffer.area.width {
+            let symbol = buffer.cell((x, y)).unwrap().symbol();
+            if !symbol.chars().all(|c| c.is_whitespace()) {
+                if first.is_none() {
+                    first = Some(x);
+                }
+                last = Some(x);
+            }
+        }
+        let left = first.expect("box left edge");
+        let right = last.expect("box right edge");
+        (left, right)
     };
     let title_row = (0..buffer.area.height)
         .find(|y| row_at(*y).contains("Coder v"))
@@ -105,6 +121,46 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(
         facts.contains("│ Working directory") || facts.contains(" Working directory"),
         "the startup box needs one column of inner padding: {facts:?}"
+    );
+
+    let news_title = row_at(news_row);
+    let (news_left, news_right) = box_span(news_row);
+    let news_box_width = (news_right - news_left + 1) as usize;
+    let facts_title = row_at(title_row);
+    let (_facts_left, _facts_right) = box_span(title_row);
+    let facts_box_width = (_facts_right - _facts_left + 1) as usize;
+    assert!(
+        news_box_width < facts_box_width,
+        "changelog box should wrap its lines, not match the facts box: news={news_box_width} facts={facts_box_width}\n{news_title:?}\n{facts_title:?}"
+    );
+
+    let longest = "ATIF export keeps subagent streams";
+    assert_eq!(
+        news_box_width,
+        longest.len() + 4,
+        "changelog box should be the longest line plus borders and one pad column each side: {news_title:?}"
+    );
+    let left_margin = news_left as usize;
+    let right_margin = (buffer.area.width - news_right - 1) as usize;
+    assert!(
+        left_margin.abs_diff(right_margin) <= 1,
+        "changelog box should be centered: left={left_margin} right={right_margin} row={news_title:?}"
+    );
+
+    let content_row = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains(longest))
+        .expect("longest changelog line");
+    let content = row_at(content_row);
+    let start = content.find(longest).expect("longest line");
+    let after = &content[start + longest.len()..];
+    assert!(
+        after.starts_with(" │") || after.starts_with(" |"),
+        "longest changelog line should have one pad column then the right border: {content:?}"
+    );
+    let remainder = after.chars().skip(2).collect::<String>();
+    assert!(
+        remainder.chars().all(|c| c.is_whitespace()),
+        "changelog box should not keep extra inner columns after the longest line: {content:?}"
     );
 }
 

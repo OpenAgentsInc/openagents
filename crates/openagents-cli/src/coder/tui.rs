@@ -37,7 +37,7 @@ const WELCOME_WHAT_IS_NEW: &[&str] = &[
     "Added streaming to thinking",
     "Grok is a first-class delegate",
     "Timing on each message",
-    "ATIF export keeps the child stream",
+    "ATIF export keeps subagent streams",
 ];
 
 /// Who this session is signed in as.
@@ -1132,13 +1132,22 @@ impl CoderUi {
         frame.render_widget(Paragraph::new(content).block(block), welcome_area);
 
         if show_news {
+            // Wrap the longest line: one pad column and one border on each side.
+            let news_width = {
+                let content = WELCOME_WHAT_IS_NEW
+                    .iter()
+                    .map(|line| UnicodeWidthStr::width(*line))
+                    .max()
+                    .unwrap_or(0);
+                (content as u16).saturating_add(4).min(area.width).max(3)
+            };
             let news_area = Rect {
-                x: welcome_area.x,
+                x: area.x + area.width.saturating_sub(news_width) / 2,
                 y: welcome_area
                     .y
                     .saturating_add(welcome_height)
                     .saturating_add(gap),
-                width,
+                width: news_width,
                 height: news_height,
             };
             let news = Text::from(

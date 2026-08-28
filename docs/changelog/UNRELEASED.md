@@ -5,6 +5,19 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder idle changelog card wraps its lines
+
+- issues: none (direct owner request)
+- commits: this change
+- contracts-specs: Coder idle welcome chrome
+- invariants: the changelog card is centered and only as wide as its longest line plus borders and one pad column on each side
+- evidence: `crates/openagents-cli/tests/coder_frame.rs` startup-facts frame test
+- lane: grok welcome-rc12
+
+The idle "New in v0.1.1" card now says ATIF export keeps subagent streams,
+sits centered under the startup facts box, and shrinks to wrap its lines
+instead of matching the facts box width.
+
 ## Flash capability FAQs ride Gemini (#278)
 
 - issues: #278
