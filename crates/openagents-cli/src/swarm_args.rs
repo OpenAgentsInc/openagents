@@ -20,9 +20,12 @@ pub enum SwarmAction {
     List,
     /// Show the parent/child tree of registered sessions
     Tree,
-    /// Read a session's inbox (defaults to the most recently active)
+    /// Read a session's inbox (single-session machines may omit the id; on a
+    /// multi-session machine the id is required)
     Inbox {
-        #[arg(help = "Session id; omit to read the newest session's inbox")]
+        #[arg(
+            help = "Session id; omit only on a single-session machine — with several registered, the no-arg default reads the newest session's inbox, which is rarely what you mean (#305)"
+        )]
         session: Option<String>,
         #[arg(long, help = "Also stamp the messages read")]
         drain: bool,
@@ -64,7 +67,7 @@ pub enum SwarmAction {
         session: String,
         #[arg(
             long,
-            help = "The inbox that holds the mute list; omit for the newest session"
+            help = "The inbox that holds the mute list; omit only on a single-session machine (#305)"
         )]
         inbox: Option<String>,
     },
@@ -74,13 +77,13 @@ pub enum SwarmAction {
         session: String,
         #[arg(
             long,
-            help = "The inbox that holds the mute list; omit for the newest session"
+            help = "The inbox that holds the mute list; omit only on a single-session machine (#305)"
         )]
         inbox: Option<String>,
     },
     /// Repair a gapped inbox: keep the readable prefix, preserve the tail
     Repair {
-        #[arg(help = "Session id; omit to repair the newest session's inbox")]
+        #[arg(help = "Session id; omit only on a single-session machine (#305)")]
         session: Option<String>,
         #[arg(
             long,
@@ -244,9 +247,12 @@ fn inbox(session: Option<&str>, drain: bool, json: bool) {
     let home = crate::auth::home_directory();
     let session_id = match session {
         Some(id) => id.to_string(),
-        None => match newest_session_id(&home) {
-            Some(id) => id,
-            None => crate::cli::fail("No sessions are registered, so there is no inbox to read."),
+        None => match default_inbox_owner(&home) {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                crate::cli::fail("No sessions are registered, so there is no inbox to read.")
+            }
+            Err(why) => crate::cli::fail(&why),
         },
     };
     let registration = match crate::swarm::load_registration(&home, &session_id) {
@@ -275,7 +281,12 @@ fn inbox(session: Option<&str>, drain: bool, json: bool) {
         "drained": drain,
         "messages": messages.iter().map(message_document).collect::<Vec<_>>(),
     });
-    let human: Vec<String> = if messages.is_empty() {
+    // Name the inbox actually read in the first line (#305): the no-arg
+    // default resolves "newest" on a single-session machine, and a reader
+    // that assumed "this shell's session" must be able to tell whose mail
+    // this is at a glance.
+    let mut human = vec![format!("inbox of {session_id}:")];
+    human.extend(if messages.is_empty() {
         vec![format!("The inbox of {session_id} is empty.")]
     } else {
         messages
@@ -298,8 +309,8 @@ fn inbox(session: Option<&str>, drain: bool, json: bool) {
             })
             .chain(std::iter::once(String::new()))
             .chain(messages.iter().map(|message| message.body.clone()))
-            .collect()
-    };
+            .collect::<Vec<_>>()
+    });
     crate::cli::emit(json, &document, &human);
 }
 
@@ -385,9 +396,12 @@ fn repair(session: Option<&str>, yes: bool, json: bool) {
     let home = crate::auth::home_directory();
     let session_id = match session {
         Some(id) => id.to_string(),
-        None => match newest_session_id(&home) {
-            Some(id) => id,
-            None => crate::cli::fail("No sessions are registered, so there is no inbox to repair."),
+        None => match default_inbox_owner(&home) {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                crate::cli::fail("No sessions are registered, so there is no inbox to repair.")
+            }
+            Err(why) => crate::cli::fail(&why),
         },
     };
     let registration = match crate::swarm::load_registration(&home, &session_id) {
@@ -450,11 +464,12 @@ fn mute(session: &str, inbox: Option<&str>, silencing: bool, json: bool) {
     let home = crate::auth::home_directory();
     let owner = match inbox {
         Some(id) => id.to_string(),
-        None => match newest_session_id(&home) {
-            Some(id) => id,
-            None => {
+        None => match default_inbox_owner(&home) {
+            Ok(Some(id)) => id,
+            Ok(None) => {
                 crate::cli::fail("No sessions are registered, so there is no mute list to write.")
             }
+            Err(why) => crate::cli::fail(&why),
         },
     };
     let registration = match crate::swarm::load_registration(&home, &owner) {
@@ -513,4 +528,116 @@ fn newest_session_id(home: &std::path::Path) -> Option<String> {
         .into_iter()
         .max_by_key(|registration| registration.heartbeat_at_ms)
         .map(|registration| registration.session_id)
+}
+
+/// How many sessions are registered. The no-arg inbox/mute/repair default
+/// means "newest" — safe on a single-session machine, a silent cross-session
+/// read on a shared one (#305): the count is what decides which contract
+/// applies.
+fn registered_session_count(home: &std::path::Path) -> usize {
+    crate::swarm::list(home)
+        .map(|registrations| registrations.len())
+        .unwrap_or(0)
+}
+
+/// Resolve the inbox owner a no-id call defaults to, refusing on a
+/// multi-session machine (#305). `Ok(None)` — nothing registered; the
+/// caller reports that in its own words. The error names the session the
+/// default would have read, so the near-miss is visible.
+fn default_inbox_owner(home: &std::path::Path) -> Result<Option<String>, String> {
+    let Some(newest) = newest_session_id(home) else {
+        return Ok(None);
+    };
+    if registered_session_count(home) > 1 {
+        return Err(format!(
+            "More than one session is registered; omitting the id would read {newest}'s inbox, \
+             which is rarely what a multi-session machine means. Pass the SESSION id \
+             (see `openagents swarm list`)."
+        ));
+    }
+    Ok(Some(newest))
+}
+
+#[cfg(test)]
+mod no_arg_default_tests {
+    use super::*;
+
+    fn registration(
+        session_id: &str,
+        heartbeat_at_ms: u128,
+        inbox: std::path::PathBuf,
+    ) -> crate::swarm::Registration {
+        crate::swarm::Registration {
+            schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
+            session_id: session_id.to_string(),
+            pid: std::process::id(),
+            cwd: "/tmp".to_string(),
+            lane: "flash".to_string(),
+            model: None,
+            role: "root".to_string(),
+            parent: None,
+            worktree: None,
+            status: None,
+            inbox: inbox.display().to_string(),
+            alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
+            started_at_ms: heartbeat_at_ms,
+            heartbeat_at_ms,
+        }
+    }
+
+    #[test]
+    fn no_arg_default_refuses_when_several_sessions_are_registered() {
+        let home = tempfile::tempdir().unwrap();
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        crate::swarm::register(
+            home.path(),
+            &registration(
+                "1ainboxa0000000test000000",
+                1_000,
+                a.path().join("inbox.jsonl"),
+            ),
+        )
+        .unwrap();
+        crate::swarm::register(
+            home.path(),
+            &registration(
+                "1ainboxb0000000test000000",
+                2_000,
+                b.path().join("inbox.jsonl"),
+            ),
+        )
+        .unwrap();
+        let refused = default_inbox_owner(home.path()).expect_err("multi-session must refuse");
+        assert!(refused.contains("More than one session"), "{refused}");
+        // The refusal names the session the default would have read, so the
+        // near-miss is visible instead of silent (#305).
+        assert!(refused.contains("1ainboxb"), "{refused}");
+        assert!(refused.contains("Pass the SESSION id"), "{refused}");
+    }
+
+    #[test]
+    fn no_arg_default_still_resolves_on_a_single_session_machine() {
+        let home = tempfile::tempdir().unwrap();
+        let a = tempfile::tempdir().unwrap();
+        crate::swarm::register(
+            home.path(),
+            &registration(
+                "1ainboxa0000000test000000",
+                1_000,
+                a.path().join("inbox.jsonl"),
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            default_inbox_owner(home.path()).unwrap(),
+            Some("1ainboxa0000000test000000".to_string())
+        );
+    }
+
+    #[test]
+    fn no_arg_default_reports_nothing_registered_as_none() {
+        let home = tempfile::tempdir().unwrap();
+        assert_eq!(default_inbox_owner(home.path()).unwrap(), None);
+    }
 }
