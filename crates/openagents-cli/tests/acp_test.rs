@@ -487,3 +487,118 @@ for line in sys.stdin:
         "{failure}"
     );
 }
+
+#[tokio::test]
+async fn grok_dangerous_opens_a_session_with_yolo_mode_and_no_bypass() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+seen = []
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    seen.append(method)
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {
+            "protocolVersion": 1,
+            "authMethods": [{"id": "cached_token"}]
+        }})
+    elif method == "authenticate":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "session/new":
+        yolo = ((message.get("params") or {}).get("_meta") or {}).get("yoloMode")
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_yolo"}})
+        opened = "yolo" if yolo is True else "no-yolo"
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": "sess_yolo",
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": opened}}}})
+    elif method == "session/set_mode":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": "sess_yolo",
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": "set-mode:" + message["params"]["modeId"]}}}})
+    elif method == "session/prompt":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-grok-yolo", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "grok".to_string(),
+        mode: Some(PermissionMode::Dangerous),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = harness
+        .run("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "yolo");
+    assert!(!answer.contains("bypass"));
+}
+
+#[tokio::test]
+async fn grok_prompt_mode_sets_ask() {
+    let server = r#"#!/usr/bin/env python3
+import json, sys
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+mode = ""
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {
+            "protocolVersion": 1,
+            "authMethods": [{"id": "cached_token"}]
+        }})
+    elif method == "authenticate":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"sessionId": "sess_ask"}})
+    elif method == "session/set_mode":
+        mode = message["params"]["modeId"]
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"modeId": mode}})
+    elif method == "session/prompt":
+        send({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": "sess_ask",
+            "update": {"sessionUpdate": "agent_message_chunk",
+                       "content": {"type": "text", "text": mode}}}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"stopReason": "end_turn"}})
+    else:
+        send({"jsonrpc": "2.0", "id": message.get("id", 0), "result": {}})
+"#;
+    let harness = AcpHarness {
+        command: stand_in("acp-grok-ask", server)
+            .to_string_lossy()
+            .to_string(),
+        args: Vec::new(),
+        agent_id: "grok".to_string(),
+        mode: Some(PermissionMode::Prompt),
+        ..AcpHarness::default()
+    };
+    let (_stop, mut cancel) = watch::channel(false);
+    let answer = harness
+        .run("hello", &std::env::temp_dir(), |_| {}, &mut cancel)
+        .await
+        .expect("the turn failed");
+    assert_eq!(answer, "ask");
+}

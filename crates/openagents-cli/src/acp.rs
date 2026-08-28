@@ -74,13 +74,18 @@ impl PermissionMode {
     ///
     /// The names are this CLI's; the wire carries the agent's own. Devin,
     /// OpenCode, and Gemini use `bypass` / `default` / `read-only`. The Claude
-    /// adapter uses `bypassPermissions` / `default` / `plan`.
+    /// adapter uses `bypassPermissions` / `default` / `plan`. Grok uses
+    /// `default` / `ask` / `plan`; unattended Grok is `yoloMode`, not `bypass`.
     pub fn mode_id(&self, agent_id: &str) -> &'static str {
         match agent_id {
             "claude" => match self {
                 PermissionMode::Dangerous => "bypassPermissions",
                 PermissionMode::Prompt => "default",
                 PermissionMode::ReadOnly => "plan",
+            },
+            "grok" | "grok-build" => match self {
+                PermissionMode::Dangerous => "default",
+                PermissionMode::Prompt | PermissionMode::ReadOnly => "ask",
             },
             _ => match self {
                 PermissionMode::Dangerous => "bypass",
@@ -373,6 +378,19 @@ impl AcpHarness {
         matches!(self.mode_agent_id(), "grok" | "grok-build")
     }
 
+    fn session_new_params(&self, cwd: &Path) -> serde_json::Value {
+        let mut params = serde_json::json!({
+            "cwd": cwd.to_string_lossy(),
+            "mcpServers": []
+        });
+        let yolo =
+            self.is_grok_agent() && matches!(self.mode, None | Some(PermissionMode::Dangerous));
+        if yolo {
+            params["_meta"] = serde_json::json!({ "yoloMode": true });
+        }
+        params
+    }
+
     fn child_has_xai_api_key(&self) -> bool {
         if let Some(environment) = &self.env {
             return environment
@@ -614,7 +632,7 @@ impl AcpHarness {
                     lines,
                     &mut seq,
                     "session/new",
-                    serde_json::json!({"cwd": cwd.to_string_lossy(), "mcpServers": []}),
+                    self.session_new_params(cwd),
                     REQUEST_TIMEOUT,
                     &mut answer,
                     on_event,
@@ -635,21 +653,26 @@ impl AcpHarness {
         });
 
         if let Some(mode) = &self.mode {
-            // Best effort: a build of the agent without this mode should not
-            // cost the child over the name of a permission setting.
-            let _ = request(
-                stdin,
-                lines,
-                &mut seq,
-                "session/set_mode",
-                serde_json::json!({"sessionId": session_id, "modeId": mode.mode_id(self.mode_agent_id())}),
-                REQUEST_TIMEOUT,
-                &mut answer,
-                on_event,
-                cancel,
-                self,
-            )
-            .await;
+            // Grok unattended is yoloMode on session/new. Sending Devin's
+            // `bypass` is a silent no-op and leaves the session in ask mode.
+            let skip_grok_yolo = self.is_grok_agent() && matches!(mode, PermissionMode::Dangerous);
+            if !skip_grok_yolo {
+                // Best effort: a build of the agent without this mode should not
+                // cost the child over the name of a permission setting.
+                let _ = request(
+                    stdin,
+                    lines,
+                    &mut seq,
+                    "session/set_mode",
+                    serde_json::json!({"sessionId": session_id, "modeId": mode.mode_id(self.mode_agent_id())}),
+                    REQUEST_TIMEOUT,
+                    &mut answer,
+                    on_event,
+                    cancel,
+                    self,
+                )
+                .await;
+            }
         }
 
         let finished = request(
@@ -1041,6 +1064,13 @@ mod tests {
         );
         assert_eq!(PermissionMode::Prompt.mode_id("claude"), "default");
         assert_eq!(PermissionMode::ReadOnly.mode_id("claude"), "plan");
+        assert_ne!(PermissionMode::Dangerous.mode_id("grok"), "bypass");
+        assert_eq!(PermissionMode::Dangerous.mode_id("grok"), "default");
+        assert_eq!(PermissionMode::Prompt.mode_id("grok"), "ask");
+        assert_eq!(PermissionMode::ReadOnly.mode_id("grok"), "ask");
+        assert_eq!(PermissionMode::ReadOnly.mode_id("grok-build"), "ask");
+        assert_ne!(PermissionMode::ReadOnly.mode_id("grok"), "plan");
+        assert_ne!(PermissionMode::ReadOnly.mode_id("grok"), "read-only");
     }
 
     #[test]
