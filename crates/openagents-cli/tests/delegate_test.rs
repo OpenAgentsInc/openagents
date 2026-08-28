@@ -865,6 +865,7 @@ async fn the_delegate_tool_carries_the_sessions_child_options() {
         None,
         options,
         Some(cwd.path().to_path_buf()),
+        Isolation::Directory,
     )
     .await;
 
@@ -899,6 +900,7 @@ async fn the_delegate_tool_resolves_an_inference_tier_to_the_default_child_lane(
         Some("oat_test".to_string()),
         openagents_cli::delegate::ChildOptions::default(),
         Some(std::env::temp_dir()),
+        Isolation::None,
     )
     .await;
 
@@ -922,14 +924,101 @@ async fn the_delegate_tool_resolves_an_inference_tier_to_the_default_child_lane(
     assert_eq!(parsed.results.len(), 1);
 }
 
+/// An explicit `lane` on the tool is a child lane, not an inference tier:
+/// `devin` from a `flash` session starts Devin children, and the report
+/// names that lane.
+#[tokio::test]
+async fn a_per_call_lane_overrides_the_session_lane() {
+    let _exclusive = exclusive();
+    let harness = reporting_stand_in("per-call-lane-claude");
+    let mut options = openagents_cli::delegate::ChildOptions::default();
+    options.command = Some(harness.display().to_string());
+    let cwd = tempfile::tempdir().unwrap();
+    let report = openagents_cli::delegate::fanout_for_tool(
+        "do the thing",
+        1,
+        "claude",
+        None,
+        options,
+        Some(cwd.path().to_path_buf()),
+        Isolation::None,
+    )
+    .await;
+    let parsed = openagents_cli::delegate_result::DelegateFanoutResult::parse(&report)
+        .unwrap_or_else(|| panic!("expected fan-out JSON: {report}"));
+    assert!(
+        parsed.header.contains("claude"),
+        "the report must name the per-call lane: {}",
+        parsed.header
+    );
+    assert!(report.contains("MARK"), "{report}");
+}
+
+/// `worktree: isolated` gives every child its own directory, named in the
+/// report. `none` shares the session directory.
+#[tokio::test]
+async fn a_per_call_worktree_policy_isolates_or_shares() {
+    let _exclusive = exclusive();
+    let harness = reporting_stand_in("per-call-worktree-claude");
+    let mut options = openagents_cli::delegate::ChildOptions::default();
+    options.command = Some(harness.display().to_string());
+    let cwd = tempfile::tempdir().unwrap();
+
+    let isolated = openagents_cli::delegate::fanout_for_tool(
+        "do the thing",
+        2,
+        "claude",
+        None,
+        options.clone(),
+        Some(cwd.path().to_path_buf()),
+        Isolation::Directory,
+    )
+    .await;
+    let parsed = openagents_cli::delegate_result::DelegateFanoutResult::parse(&isolated)
+        .unwrap_or_else(|| panic!("expected fan-out JSON: {isolated}"));
+    assert_eq!(parsed.results.len(), 2);
+    let paths: Vec<String> = parsed
+        .results
+        .iter()
+        .filter_map(|result| match &result.worktree {
+            openagents_cli::delegate_result::WorktreeOutcome::Kept(kept) => Some(kept.path.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(paths.len(), 2, "{isolated}");
+    assert_ne!(paths[0], paths[1], "isolated children shared a directory");
+
+    let shared = openagents_cli::delegate::fanout_for_tool(
+        "do the thing",
+        2,
+        "claude",
+        None,
+        options,
+        Some(cwd.path().to_path_buf()),
+        Isolation::None,
+    )
+    .await;
+    let parsed = openagents_cli::delegate_result::DelegateFanoutResult::parse(&shared)
+        .unwrap_or_else(|| panic!("expected fan-out JSON: {shared}"));
+    assert_eq!(parsed.results.len(), 2);
+}
+
 /// A `--child-*` flag the session's lane cannot honour is said, not dropped.
 #[tokio::test]
 async fn the_delegate_tool_refuses_a_flag_its_lane_cannot_honour() {
     let options = child_options_from(&["oa", "coder", "--child-model", "gpt-5"]);
     // OpenAgents children run on the grant the server issues, which pins the
     // model. There is no honoring `--child-model` there.
-    let report =
-        openagents_cli::delegate::fanout_for_tool("go", 1, "openagents", None, options, None).await;
+    let report = openagents_cli::delegate::fanout_for_tool(
+        "go",
+        1,
+        "openagents",
+        None,
+        options,
+        None,
+        Isolation::None,
+    )
+    .await;
     assert!(
         report.starts_with("No children were started:"),
         "the tool ran a fan-out without the model it was given: {report}"

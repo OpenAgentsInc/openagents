@@ -60,6 +60,7 @@ use crate::plugins::{
 use crate::runtime::{Lane, ModelStreamEvent, ToolEvent};
 use crate::surfaces::tool_descriptions as text;
 use crate::workspace;
+use crate::workspace::Isolation;
 
 /// The `check` tool's description, with `{scopes}` filled from the repo's
 /// declared `.openagents/checks.json`. Absent when the repository declares
@@ -956,12 +957,33 @@ impl HarnessToolRegistry {
                         },
                         "model": {
                             "type": "string",
-                            "description": "Optional catalog id for Coder Mini only, resolved the same way as `--model`. ACP agents and fan-out ignore it. An id this deployment does not serve is refused before any child starts."
+                            "description": "With `agent` set to Coder Mini: a catalog id resolved like `--model`. On a fan-out (no `agent`): this call's `--child-model`, applied only to these children."
                         },
                         "isolation": {
                             "type": "string",
                             "enum": ["worktree"],
                             "description": "On Coder Mini with a read-write tool pool, `worktree` runs the agent in a temporary git worktree of this checkout on an `agent-*` branch. Unchanged worktrees are removed; changed ones are kept and named in the result. Read-only runs ignore this. Mutually exclusive with a cwd override, which is not accepted yet."
+                        },
+                        "lane": {
+                            "type": "string",
+                            "description": "Child harness for this fan-out: `openagents`, `gemini`, `opencode/<model>`, `devin`, `claude`, or `codex`. Omit to keep the session's resolved child lane. Ignored when `agent` is set."
+                        },
+                        "worktree": {
+                            "type": "string",
+                            "enum": ["none", "isolated"],
+                            "description": "Fan-out only. `none` (default) shares this session's directory; `isolated` gives every child its own git worktree of the session's HEAD. Ignored when `agent` is set."
+                        },
+                        "command": {
+                            "type": "string",
+                            "description": "Fan-out only. This call's `--child-command`. Ignored when `agent` is set."
+                        },
+                        "config": {
+                            "type": "string",
+                            "description": "Fan-out only. This call's `--child-config` (a harness config path). Never echoed into a child's prompt."
+                        },
+                        "ask": {
+                            "type": "boolean",
+                            "description": "Fan-out only. This call's `--child-ask`. Ignored when `agent` is set."
                         },
                         "mode": {
                             "type": "string",
@@ -1263,13 +1285,26 @@ impl HarnessToolRegistry {
                     .unwrap_or(1)
                     .clamp(1, gate.max_count as u64) as usize;
 
+                let (lane, child, isolation) = match fanout_call_overrides(&call.arguments, gate) {
+                    Ok(resolved) => resolved,
+                    Err(why) => {
+                        return ToolOutput {
+                            call_id: call.id.clone(),
+                            output: format!("No children were started: {why}"),
+                            is_error: true,
+                            duration_ms: 0,
+                        };
+                    }
+                };
+
                 let report = crate::delegate::fanout_for_tool_cancellable(
                     &prompt,
                     count,
-                    &gate.lane,
+                    &lane,
                     gate.user_token.clone(),
-                    gate.child.clone(),
+                    child,
                     Some(self.cwd.clone()),
+                    isolation,
                     cancel,
                 )
                 .await;
@@ -2767,6 +2802,66 @@ fn resolve_path(cwd: &Path, raw: &str) -> Result<PathBuf, String> {
 /// machine — a compiler, a test run, a second agent — sees a half-written file
 /// (#114). `rename` within a directory is atomic, so no reader sees anything
 /// but the old file or the new one. The staging name carries the process id
+/// Per-call fan-out overrides on `delegate`. Invalid `lane` or `worktree`
+/// is a refusal with zero children started.
+fn fanout_call_overrides(
+    arguments: &serde_json::Value,
+    gate: &DelegationGate,
+) -> Result<(String, crate::delegate::ChildOptions, Isolation), String> {
+    let lane = match arguments
+        .get("lane")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+    {
+        Some(name) if !name.is_empty() => crate::delegate::ChildLane::parse(name)?.name(),
+        _ => gate.lane.clone(),
+    };
+    let isolation = match arguments
+        .get("worktree")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+    {
+        None | Some("") | Some("none") => Isolation::None,
+        Some("isolated") => Isolation::Worktree,
+        Some(other) => {
+            return Err(format!(
+                "`{other}` is not a worktree policy. Use `none` or `isolated`."
+            ));
+        }
+    };
+    let mut child = gate.child.clone();
+    if let Some(model) = arguments
+        .get("model")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        child.model = Some(model.to_string());
+    }
+    if let Some(command) = arguments
+        .get("command")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        child.command = Some(command.to_string());
+    }
+    if let Some(config) = arguments
+        .get("config")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        child.config = Some(config.to_string());
+    }
+    if let Some(ask) = arguments.get("ask").and_then(|v| v.as_bool()) {
+        child.ask = ask;
+    }
+    Ok((lane, child, isolation))
+}
+
+/// Write `content` to `path` by staging beside it and renaming. A unique
+/// staging name is the destination's filename plus this process's pid
 /// and a counter so two writers cannot collide on it, and a failed rename
 /// takes the staged file with it rather than leaving litter behind.
 fn write_atomically(path: &Path, content: &str) -> std::io::Result<()> {
@@ -5383,7 +5478,20 @@ let dir = tempfile::tempdir().unwrap();
         let properties = tool.parameters["properties"]
             .as_object()
             .expect("delegate properties");
-        for parameter in ["prompt", "count", "agent", "description", "tools", "mode"] {
+        for parameter in [
+            "prompt",
+            "count",
+            "agent",
+            "description",
+            "tools",
+            "mode",
+            "lane",
+            "worktree",
+            "command",
+            "config",
+            "ask",
+            "model",
+        ] {
             assert!(properties.contains_key(parameter), "missing `{parameter}`");
         }
 
@@ -5421,6 +5529,66 @@ let dir = tempfile::tempdir().unwrap();
             !spent.load(Ordering::SeqCst),
             "an unknown name consumed the ACP allowance"
         );
+    }
+
+    #[tokio::test]
+    async fn an_invalid_fanout_lane_is_refused_with_the_lane_list() {
+        let (registry, spent) = gate_with(Vec::new());
+        let (output, is_error) = run_delegate(
+            &registry,
+            serde_json::json!({"prompt": "go", "lane": "not-a-lane"}),
+        )
+        .await;
+        assert!(is_error, "{output}");
+        assert!(output.starts_with("No children were started:"), "{output}");
+        assert!(output.contains("there is no `not-a-lane` lane"), "{output}");
+        assert!(output.contains("openagents"), "{output}");
+        assert!(output.contains("devin"), "{output}");
+        assert!(!spent.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn fanout_overrides_merge_onto_the_session_defaults() {
+        let gate = DelegationGate {
+            lane: "flash".to_string(),
+            user_token: None,
+            api_base: None,
+            max_count: 2,
+            child: crate::delegate::ChildOptions {
+                model: Some("session-model".to_string()),
+                command: Some("session-command".to_string()),
+                config: None,
+                ask: false,
+            },
+            acp_agents: Vec::new(),
+            acp_spent: Arc::new(AtomicBool::new(false)),
+        };
+        let (lane, child, isolation) = fanout_call_overrides(
+            &serde_json::json!({
+                "lane": "devin",
+                "worktree": "isolated",
+                "model": "call-model",
+                "command": "call-command",
+                "config": "/tmp/cfg.json",
+                "ask": true
+            }),
+            &gate,
+        )
+        .expect("valid overrides");
+        assert_eq!(lane, "devin");
+        assert_eq!(isolation, Isolation::Worktree);
+        assert_eq!(child.model.as_deref(), Some("call-model"));
+        assert_eq!(child.command.as_deref(), Some("call-command"));
+        assert_eq!(child.config.as_deref(), Some("/tmp/cfg.json"));
+        assert!(child.ask);
+
+        let (lane, child, isolation) =
+            fanout_call_overrides(&serde_json::json!({}), &gate).expect("defaults");
+        assert_eq!(lane, "flash");
+        assert_eq!(isolation, Isolation::None);
+        assert_eq!(child.model.as_deref(), Some("session-model"));
+        assert_eq!(child.command.as_deref(), Some("session-command"));
+        assert!(!child.ask);
     }
 
     #[tokio::test]

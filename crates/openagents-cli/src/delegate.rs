@@ -1750,10 +1750,12 @@ pub fn fanout_for_tool(
     user_token: Option<String>,
     child: ChildOptions,
     directory: Option<PathBuf>,
+    isolation: Isolation,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
     let (keep_open, cancel) = watch::channel(false);
-    let future =
-        fanout_for_tool_cancellable(prompt, count, lane, user_token, child, directory, cancel);
+    let future = fanout_for_tool_cancellable(
+        prompt, count, lane, user_token, child, directory, isolation, cancel,
+    );
     Box::pin(async move {
         let _keep_open = keep_open;
         future.await
@@ -1768,6 +1770,7 @@ pub fn fanout_for_tool_cancellable(
     user_token: Option<String>,
     child: ChildOptions,
     directory: Option<PathBuf>,
+    isolation: Isolation,
     cancel: watch::Receiver<bool>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
     let prompt = prompt.to_string();
@@ -1792,6 +1795,8 @@ pub fn fanout_for_tool_cancellable(
         let resolved_name = resolved_lane.name();
         let supervisor = DelegationSupervisor::new(count, &resolved_name, user_token)
             .with_child_options(child)
+            .with_isolation(isolation)
+            .keeping_workspaces(isolation == Isolation::Worktree)
             .in_directory(directory);
         let (events, mut drain) = mpsc::unbounded_channel();
         let sink = tokio::spawn(async move { while drain.recv().await.is_some() {} });
