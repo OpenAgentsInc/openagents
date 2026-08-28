@@ -156,3 +156,20 @@ cycles to receive two messages — the measured pain behind item 6.
   daemon.
 - **Nostr transport** — belongs to the remote widening (plan §3 Option C),
   a separate issue with its own consent review.
+
+## 3. Issues filed from this list
+
+| Section | Issue | Improvement |
+| --- | --- | --- |
+| §1.1 | [#281](https://openagents.com/OpenAgentsInc/openagents/issues/281) | Presence: `last_seen_at` + status line |
+| §1.2 | [#282](https://openagents.com/OpenAgentsInc/openagents/issues/282) | `send_report` honesty fields |
+| §1.3 | [#285](https://openagents.com/OpenAgentsInc/openagents/issues/285) | Reachable mute setter |
+| §1.4 | [#288](https://openagents.com/OpenAgentsInc/openagents/issues/288) | Selective drain by message id |
+| §1.5 | [#283](https://openagents.com/OpenAgentsInc/openagents/issues/283) | Queued mail to stale sessions |
+| §1.6 | [#287](https://openagents.com/OpenAgentsInc/openagents/issues/287) | `swarm_wait` |
+| §1.7 | [#280](https://openagents.com/OpenAgentsInc/openagents/issues/280) | Gap quarantine + repair path |
+| §1.8 | [#284](https://openagents.com/OpenAgentsInc/openagents/issues/284) | Inbox filters |
+| §1.9 | [#286](https://openagents.com/OpenAgentsInc/openagents/issues/286) | Structured payloads |
+
+§1.10 (group channels) is deliberately unfiled, per its own
+do-not-file-until-observed gate.
