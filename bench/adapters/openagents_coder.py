@@ -187,18 +187,25 @@ class OpenAgentsCoder(BaseInstalledAgent):
         # `oa coder --plain` with no argument prints "needs a terminal" and
         # exits 0, which Harbor grades as a completed-but-empty agent. `--`
         # keeps a prompt that starts with `-` from becoming a flag.
-        command = (
-            "set -uo pipefail; "
+        log = shlex.quote(str(self.environment_logs_dir))
+        traj = shlex.quote(str(Path(self.environment_logs_dir) / "trajectory.json"))
+        run_coder = (
             "openagents coder --headless --plain "
             f"--api-url {shlex.quote(self._api_url)} "
             f"{model_flag}"
-            f"-- {shlex.quote(instruction)} "
-            f"2>&1 | tee {shlex.quote(str(self.environment_logs_dir))}/coder.txt; "
+            f"-- {shlex.quote(instruction)}"
+        )
+        command = (
+            "set -uo pipefail; "
+            f"{run_coder} > {log}/coder.txt 2>&1; "
             "status=$?; "
-            f"latest=$(ls -t {_EXPORT_DIR}/*.json 2>/dev/null | head -1 || true); "
-            'if [ -n "$latest" ]; then '
-            f'cp "$latest" {shlex.quote(str(self.environment_logs_dir))}/trajectory.json; '
+            f"if grep -q 'could not be reached' {log}/coder.txt; then "
+            "sleep 8; "
+            f"{run_coder} > {log}/coder.txt 2>&1; "
+            "status=$?; "
             "fi; "
+            f"latest=$(ls -t {_EXPORT_DIR}/*.json 2>/dev/null | head -1 || true); "
+            f'if [ -n "$latest" ]; then cp "$latest" {traj}; fi; '
             "exit $status"
         )
 

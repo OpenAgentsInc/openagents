@@ -51,6 +51,9 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+_MODEL_LINE = re.compile(r"^Model:\s+(\S+)\s*$", re.MULTILINE)
+
+
 def request_json(url: str, token: str, payload: dict, method: str) -> tuple[int, dict]:
     request = urllib.request.Request(
         url,
@@ -61,8 +64,38 @@ def request_json(url: str, token: str, payload: dict, method: str) -> tuple[int,
         },
         method=method,
     )
-    with urllib.request.urlopen(request) as response:
-        return response.status, json.loads(response.read() or b"{}")
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.status, json.loads(response.read() or b"{}")
+    except urllib.error.HTTPError as error:
+        raw = error.read()
+        try:
+            body = json.loads(raw.decode() or "{}")
+        except json.JSONDecodeError:
+            body = {"message": raw[:500].decode(errors="replace")}
+        print(
+            f"{method} {url} -> {error.code}: {json.dumps(body)[:1000]}",
+            file=sys.stderr,
+        )
+        raise
+
+
+def catalog_model_from_config(config: dict) -> str | None:
+    """Harbor stores the model on each agent as provider/name."""
+    for agent in config.get("agents") or []:
+        if not isinstance(agent, dict):
+            continue
+        spelled = (agent.get("model_name") or "").strip()
+        if not spelled:
+            continue
+        provider, sep, name = spelled.partition("/")
+        return name if sep else provider
+    return None
+
+
+def model_from_coder_log(text: str) -> str | None:
+    match = _MODEL_LINE.search(text)
+    return match.group(1) if match else None
 
 
 def thread_id_of(trial_dir: Path) -> str | None:
@@ -130,6 +163,17 @@ def main() -> int:
             agent = trajectory.get("agent") or {}
             agent_version = agent.get("version") or agent_version
             model = agent.get("model_name") or model
+    if not model:
+        model = catalog_model_from_config(config)
+    if not model:
+        for _trial, trial_dir in trial_entries:
+            try:
+                log_text = (trial_dir / "agent" / "coder.txt").read_text(errors="replace")
+            except OSError:
+                continue
+            model = model_from_coder_log(log_text)
+            if model:
+                break
 
     def verifier_ran(trial: dict) -> bool:
         return trial.get("verifier_result") is not None
@@ -223,7 +267,9 @@ def main() -> int:
                 # the digest.
                 print(f"409: run {arguments.run_id} replayed an existing digest")
                 return 0
-            raise
+            # A graded PATCH that the server refuses is not a crashed grader.
+            # Leave the registered row for an operator; do not abandon it.
+            return 1
         run = body.get("run") or {}
         print(
             f"{status}: run {run.get('id') or arguments.run_id} "

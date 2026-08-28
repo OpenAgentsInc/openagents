@@ -483,8 +483,8 @@ fi
 
 log "Posting result to $API_URL..."
 if ! python3 "$BENCH_DIR/post_gym_run.py" "$JOB_DIR" --api-url "$API_URL" --lane "$LANE" --suite "$SUITE_NAME" ${RUN_ID_ARGS[@]+"${RUN_ID_ARGS[@]}"}; then
-  log "Result post failed."
-  abandon_gym_run
+  log "Result post failed. Harbor grades still stand in $JOB_DIR."
+  log "Not abandoning a run whose verifier already ran."
   exit 1
 fi
 
