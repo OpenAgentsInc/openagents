@@ -1,6 +1,0 @@
-{
-  "schemaRef": "probe.resource_usage_ref_summary.v1",
-  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
-  "costRef": "cost.expected.public.probe_gepa.unpaid_smoke.no_spend",
-  "resourceUsageRef": "resource_usage.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.unpaid_smoke.no_spend"
-}

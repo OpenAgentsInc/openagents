@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-if ! command -v zig >/dev/null 2>&1; then
-  echo "diamond_hands_web requires Zig to index wasm archives" >&2
-  exit 1
-fi
-
-exec zig ranlib "$@"

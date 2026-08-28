@@ -1,17 +1,8 @@
 packages:
-  - apps/openagents.com
-  - apps/openagents.com/apps/*
-  - apps/openagents.com/packages/*
-  - apps/openagents.com/services/*
-  - apps/openagents.com/workers/*
-  - apps/forum
-  - apps/forge-git-service
   - apps/sarah-livekit-agent
   - apps/sarah-nostr-signer
   - apps/openagents-audio
   - apps/openagents-audio-edge
-  - apps/pylon
-  - apps/pylon/packages/*
   - packages/*
   - packages/probe
   - packages/probe/packages/*

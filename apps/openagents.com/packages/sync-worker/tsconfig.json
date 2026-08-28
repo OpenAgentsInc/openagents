@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "lib": ["ES2022", "WebWorker"],
-    "noEmit": true,
-    "types": ["openagents-platform"]
-  },
-  "include": ["src/**/*"]
-}

@@ -1,6 +1,0 @@
-*
-!Dockerfile
-!cloudrun/
-!cloudrun/**
-!dist/
-!dist/**
