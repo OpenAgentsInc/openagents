@@ -1,0 +1,122 @@
+{
+  "manifest_version": 1,
+  "name": "test_report",
+  "version": "0.1.0",
+  "author": "OpenAgents",
+  "description": "Parse captured test-runner output into typed failures: file, test name, assertion, and a bounded traceback. Use it after pytest, cargo test, jest, vitest, or go test so the next round reads the failing names instead of re-reading the dump. Pure computation with no file, network, or environment access \u2014 the text arrives as input. Honest truncation on input size and failure count.",
+  "artifact": {
+    "path": "test_report.wasm",
+    "digest": "sha256:a952fb060baff5146f75be0191a46abdf334897695790fbfa75c8da6bd8a714d"
+  },
+  "abi": {
+    "kind": "packet-v0",
+    "entry": "handle_packet",
+    "alloc": "packet_alloc"
+  },
+  "interface": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Captured stdout/stderr from a test run. Required."
+        },
+        "runner": {
+          "type": "string",
+          "description": "auto (default), pytest, cargo, jest, vitest, or go."
+        },
+        "max_failures": {
+          "type": "integer",
+          "description": "Most failures to return. Default 50, capped at 200."
+        },
+        "max_traceback_lines": {
+          "type": "integer",
+          "description": "Most traceback lines per failure. Default 12, capped at 40."
+        },
+        "max_text_chars": {
+          "type": "integer",
+          "description": "Input byte ceiling. Default 200000, capped at 1000000. Longer input is truncated with truncated=true."
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "object",
+          "properties": {
+            "runner": {
+              "type": "string"
+            },
+            "detected": {
+              "type": "boolean"
+            },
+            "passed": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "failed": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "errors": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "ignored": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "failures": {
+              "type": "array"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "refusal": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "reason"
+          ]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "mounts": [],
+    "hosts": [],
+    "timeout_ms": 2000,
+    "memory_max_mib": 64
+  },
+  "price_msats": null,
+  "license": "Apache-2.0"
+}

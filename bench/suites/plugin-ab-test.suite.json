@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "plugin-ab-test",
+  "tier": "score",
+  "description": "test_report harvest oracle. Same pin as tb2-cross-section build-cython-ext. Run twice on the same recipe: plugins absent, then plugins present. Issue OpenAgentsInc/openagents#120.",
+  "tasks": [
+    {
+      "id": "build-cython-ext",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "build-cython-ext"
+      },
+      "environmentAvailable": true,
+      "rationale": "Compile-fix loop produces runner and compiler output. test_report's claim is turning that dump into typed failures instead of re-reading it every round."
+    }
+  ]
+}

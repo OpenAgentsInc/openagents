@@ -48,6 +48,14 @@ from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_templat
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
+from adapters.plugin_catalog import (
+    REMOTE_PLUGINS_DIR,
+    REMOTE_PLUGINS_TAR,
+    pack_plugin_catalog,
+    plugins_enabled,
+    plugins_src_dir,
+)
+
 def _native_binary() -> Path:
     """Return the working-tree native binary selected by the suite runner."""
     configured = os.environ.get("OPENAGENTS_CODER_BINARY", "").strip()
@@ -170,6 +178,28 @@ class OpenAgentsCoder(BaseInstalledAgent):
                 "openagents --version"
             ),
         )
+        if plugins_enabled():
+            import tempfile
+
+            src = plugins_src_dir()
+            with tempfile.TemporaryDirectory() as tmp:
+                tar_path = Path(tmp) / "oa-plugins.tar"
+                count = pack_plugin_catalog(src, tar_path)
+                await environment.upload_file(tar_path, REMOTE_PLUGINS_TAR)
+            await self.exec_as_root(
+                environment,
+                command=(
+                    f"mkdir -p {shlex.quote(REMOTE_PLUGINS_DIR)} && "
+                    f"tar -xf {shlex.quote(REMOTE_PLUGINS_TAR)} "
+                    f"-C {shlex.quote(REMOTE_PLUGINS_DIR)} && "
+                    f"rm -f {shlex.quote(REMOTE_PLUGINS_TAR)} && "
+                    f"ls {shlex.quote(REMOTE_PLUGINS_DIR)}"
+                ),
+            )
+            print(
+                f"installed {count} plugins under {REMOTE_PLUGINS_DIR}",
+                file=sys.stderr,
+            )
 
     @override
     @with_prompt_template

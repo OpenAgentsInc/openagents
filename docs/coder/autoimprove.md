@@ -66,10 +66,12 @@ budget — all cheap to change, all measurable on the same suite.
 
 ### 2.2 Plugins: capabilities with attributable deltas
 
-Twelve plugins are in-tree with digest-pinned artifacts (`plugins/`):
+Fourteen plugins are in-tree with digest-pinned artifacts (`plugins/`):
 `word-stats`, `file-stats`, `dir-stats`, `foreign-sessions`,
 `read-conversation`, `knowledge-base`, `code-search`, `git-facts`,
-`git-lost-work`, `patch-check`, `repo-map`, `repo-tree`, `session-search`.
+`git-lost-work`, `patch-check`, `repo-map`, `repo-tree`, `session-search`,
+`test-report`. Retroactive A/B evidence lives in
+`docs/coder/plugin-ab-disposition.json` (OpenAgentsInc/openagents#120).
 The harvest backlog, ordered by expected Gym delta per unit of work, is the
 openagents.com repo's `docs/2026-08-25-plugin-harvest-targets.md`.
 

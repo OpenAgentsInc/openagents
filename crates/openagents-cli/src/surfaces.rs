@@ -92,6 +92,6 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "catalog-lines",
-        "sha256:1a47fa62ed2618aae4e5c578023b06f5399a22edb672c69fddb6a98226277842",
+        "sha256:0c31bd2bc07dce9119aca554fd04c0f78e4561fdecbbf34aa729e1fa78f5ac0f",
     ),
 ];

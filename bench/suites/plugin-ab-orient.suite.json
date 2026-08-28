@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "plugin-ab-orient",
+  "tier": "score",
+  "description": "Orientation plugin A/B oracles. Same pins as tb2-cross-section. Run twice on the same recipe: plugins absent, then plugins present. Issue OpenAgentsInc/openagents#120.",
+  "tasks": [
+    {
+      "id": "fix-code-vulnerability",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-code-vulnerability"
+      },
+      "environmentAvailable": true,
+      "rationale": "Find a CWE in a pinned bottle.py checkout. repo_map, repo_tree, and code_search collapse the opening ls/grep loop."
+    },
+    {
+      "id": "nginx-request-logging",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "nginx-request-logging"
+      },
+      "environmentAvailable": true,
+      "rationale": "Configure nginx from an unfamiliar layout. Orientation plugins should cut path-guessing rounds."
+    }
+  ]
+}

@@ -190,14 +190,19 @@ measuring suite, the lever is not ready for a cycle.
    `artifact.digest` (`plugins/README.md` has the exact loop). The host
    refuses a stale digest — that refusal is the supply chain, keep it.
 4. **A/B on the oracle tasks.** Same suite, same recipe, plugin absent then
-   present. The cross-section's designated oracles: tasks 1–2
+   present. Harbor does not see `plugins/` unless the runner passes
+   `--plugins` (sets `OPENAGENTS_CODER_PLUGINS=1` and installs the
+   digest-pinned catalog at `/plugins`). Omit the flag for the absent
+   row. Suites: `plugin-ab-git`, `plugin-ab-orient`, `plugin-ab-test`.
+   The cross-section's designated oracles: tasks 1–2
    (`git-leak-recovery`, `sanitize-git-repo`) for git forensics, task 9
    (`password-recovery`) for file forensics; for a new capability class,
    name the oracle tasks in the landing change. Confirm in the ATIF that
    the with-plugin run actually invoked it (`tool.ran` steps carry the
    digest); a plugin installed but never called on its own oracle tasks is
    a catalog-description problem (best practice P3) before it is a
-   capability problem.
+   capability problem. Record the pair in
+   `docs/coder/plugin-ab-disposition.json`.
 5. **Land with the delta** (best practice P1): both rows recorded, the
    attribution stated in the change. No delta and no convincing rationale:
    the plugin waits.
@@ -292,6 +297,17 @@ Two flags matter for the lanes below the live one:
   the next non-blocked lever; the loop does not idle.
 
 ## 9. Current state (update as it changes)
+
+- Plugin A/B (#120), 2026-08-28, native Flash proxy `glm-5.3-flash`.
+  `plugin-ab-git` absent 2 of 2 (Gym `174456dc-…`) then present 0 of 2
+  (Gym `ee42867d-…`); ATIF shows no plugin `tool.ran` on either WITH
+  trial. `plugin-ab-orient` 2 of 2 both sides (Gym `4434f6f6-…` /
+  `5def7c7a-…`), also never invoked. `plugin-ab-test` (`test_report`
+  harvest on `build-cython-ext`) 1 of 1 both sides (Gym `f4c0a9b2-…` /
+  `27143dee-…`), 55 shell calls, never invoked. Disposition:
+  `docs/coder/plugin-ab-disposition.json`. Review:
+  `docs/coder/reviews/2026-08-28-plugin-ab.md`. Harbor `--plugins`
+  installs the catalog at `/plugins`.
 
 - Baselines on record: `tb2-quick`, local lane, `qwen3.8:27b-mtp-q8_0` at
   0.5 success (two runs), plus the deliberate `qwen3:0.6b` regression row;

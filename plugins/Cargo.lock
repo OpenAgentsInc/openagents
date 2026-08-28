@@ -219,6 +219,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-report"
+version = "0.1.0"
+dependencies = [
+ "openagents-pdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"

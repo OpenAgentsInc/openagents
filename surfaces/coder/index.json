@@ -16,8 +16,8 @@
       "catalog-lines": {
             "file": "catalog-lines.v1.json",
             "schema": "openagents.coder_surface.catalog_lines.v1",
-            "keys": 13,
-            "digest": "sha256:1a47fa62ed2618aae4e5c578023b06f5399a22edb672c69fddb6a98226277842"
+            "keys": 14,
+            "digest": "sha256:0c31bd2bc07dce9119aca554fd04c0f78e4561fdecbbf34aa729e1fa78f5ac0f"
           }
     }
 }

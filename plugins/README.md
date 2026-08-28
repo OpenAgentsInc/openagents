@@ -49,7 +49,7 @@ From this directory:
 
 ```sh
 cargo build --release --target wasm32-unknown-unknown
-for name in word_stats file_stats dir_stats foreign_sessions; do
+for name in word_stats file_stats dir_stats foreign_sessions git_lost_work git_facts repo_map repo_tree code_search patch_check session_search read_conversation knowledge_base test_report; do
   crate=$(printf '%s' "$name" | tr _ -)
   cp "target/wasm32-unknown-unknown/release/$name.wasm" "$crate/$name.wasm"
 done

@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.effectiveness_suite.v1",
+  "id": "plugin-ab-git",
+  "tier": "score",
+  "description": "Git-forensics plugin A/B oracles from tb2-cross-section tasks 1–2. Same pins as the cross-section. Run twice on the same recipe: plugins absent, then plugins present. Issue OpenAgentsInc/openagents#120.",
+  "tasks": [
+    {
+      "id": "git-leak-recovery",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "git-leak-recovery"
+      },
+      "environmentAvailable": true,
+      "rationale": "Direct oracle for git_lost_work and git_facts: recover a secret purged by history rewrite."
+    },
+    {
+      "id": "sanitize-git-repo",
+      "pin": {
+        "kind": "harbor-registry",
+        "dataset": "terminal-bench@2.0",
+        "gitUrl": "https://github.com/laude-institute/terminal-bench-2.git",
+        "commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "sanitize-git-repo"
+      },
+      "environmentAvailable": true,
+      "rationale": "Second git-forensics oracle: find and replace secrets across history. Also the patch_check candidate when the agent emits diffs."
+    }
+  ]
+}

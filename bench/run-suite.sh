@@ -42,6 +42,10 @@ Optional options:
                           timestamped directory under /tmp/gym-jobs-YYYYMMDD-HHMMSS.
   --n-concurrent <N>      Number of concurrent trials. Defaults to 1.
   --timeout-multiplier <X> Passed through to harbor run if provided.
+  --plugins               Install the working-tree digest-pinned plugin
+                          catalog at /plugins inside each Harbor container
+                          (OPENAGENTS_CODER_PLUGINS=1). Omit for the A/B
+                          absent row. Issue OpenAgentsInc/openagents#120.
   --dry-run               Print the commands that would run without executing.
   -h, --help              Show this help and exit.
 
@@ -149,6 +153,7 @@ JOBS_DIR=""
 N_CONCURRENT="1"
 TIMEOUT_MULTIPLIER=""
 DRY_RUN=0
+PLUGINS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -180,6 +185,10 @@ while [ $# -gt 0 ]; do
     --timeout-multiplier)
       TIMEOUT_MULTIPLIER="$2"
       shift 2
+      ;;
+    --plugins)
+      PLUGINS=1
+      shift
       ;;
     --dry-run)
       DRY_RUN=1
@@ -349,6 +358,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     GYM_ENV_ARGS=("OPENAGENTS_GYM_RUN_ID=<run-id>" "OPENAGENTS_GYM_API_URL=$API_URL")
     RUN_ID_SUFFIX=" --run-id '<run-id>'"
   fi
+  if [ "$PLUGINS" -eq 1 ]; then
+    GYM_ENV_ARGS+=("OPENAGENTS_CODER_PLUGINS=1")
+  fi
   echo
   echo "[dry-run] Harbor command:"
   echo -n "[dry-run]   "
@@ -421,6 +433,10 @@ if ! (
     # not the container-rewritten OPENAGENTS_CODER_API_URL.
     export OPENAGENTS_GYM_RUN_ID="$GYM_RUN_ID"
     export OPENAGENTS_GYM_API_URL="$API_URL"
+  fi
+  if [ "$PLUGINS" -eq 1 ]; then
+    export OPENAGENTS_CODER_PLUGINS=1
+    export OPENAGENTS_CODER_PLUGINS_DIR="${OPENAGENTS_CODER_PLUGINS_DIR:-$REPO_ROOT/plugins}"
   fi
   harbor run "${HARBOR_ARGS[@]}"
 ); then
@@ -497,11 +513,7 @@ log "Suite run complete: $SUITE_NAME"
 case "$SUITE_FILE" in
   *.suite.json)
     log "To score and record this run:"
-    log "  pnpm run effectiveness:report -- $(printf '%q' "$JOB_DIR") \\"
-    log "    --suite $(printf '%q' "$SUITE_NAME") --lane $(printf '%q' "$LANE") \\"
-    log "    --suite-manifest $(printf '%q' "$SUITE_FILE") \\"
-    log "    --thresholds packages/coder-effectiveness/thresholds/${SUITE_NAME}.json \\"
-    log "    --append bench-results/${SUITE_NAME}.jsonl"
+    log "  openagents gym results score --suite $(printf '%q' "$SUITE_NAME") --lane $(printf '%q' "$LANE") --append $(printf '%q' "$JOB_DIR")"
     ;;
   *)
     log "This run used a plain task list, so it carries no suite pin and cannot"

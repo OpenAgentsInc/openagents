@@ -28,6 +28,7 @@ members = [
   "code-search",
   "patch-check",
   "knowledge-base",
+  "test-report",
 ]
 
 [workspace.package]
