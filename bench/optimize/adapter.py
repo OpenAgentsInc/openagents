@@ -244,6 +244,11 @@ class GymAdapter:
             "--jobs-dir",
             str(jobs_dir),
         ]
+        api_url = os.environ.get("OPENAGENTS_GYM_API_URL") or os.environ.get(
+            "OPENAGENTS_API_URL"
+        )
+        if api_url:
+            command.extend(["--api-url", api_url])
         env = os.environ.copy()
         subprocess.run(command, check=True, cwd=str(root), env=env)
         return load_job(_find_job_dir(jobs_dir))
