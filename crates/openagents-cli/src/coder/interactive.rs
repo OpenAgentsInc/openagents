@@ -662,7 +662,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             // models on it. A machine without one walks flash, free, flash,
             // exactly as before the local lane joined the table.
             ComposerAction::Ignored if key.code == KeyCode::BackTab => {
-                lane = lane.cycle_gated(local_lane_model.is_some());
+                lane = lane.cycle_gated(local_lane_model.clone());
                 ui.lane = lane.label();
                 // Nothing has answered on the new lane yet. Carrying the old
                 // model across would leave the row naming a model this lane

@@ -456,13 +456,19 @@ fn cycling_the_lane_changes_both_the_lane_and_the_row() {
     assert!(after.contains("Coder Free"), "{after}");
 
     // And it closes, back to where it started. Three table members now
-    // (#291), so the full walk is flash, free, local, flash — walked here
-    // with the gate open, because this frame has no probe of its own.
-    let back = second.cycle();
-    assert!(back.is_local(), "the walk reaches the local lane");
-    let after_local = back.cycle_gated(true);
+    // (#291, #292), so the full walk is flash, free, local (resolved to the
+    // probed tag), flash. This frame has no probe, so the walk carries the
+    // tag a probe would have found.
+    let tag = Some("qwen3.8:27b-mtp-q8_0".to_string());
+    let back = second.cycle_gated(tag.clone());
     assert_eq!(
-        after_local, first,
+        back,
+        Lane::Local("qwen3.8:27b-mtp-q8_0".to_string()),
+        "the walk reaches the local lane, resolved to the probed tag"
+    );
+    assert_eq!(
+        back.cycle_gated(tag),
+        first,
         "the cycle does not return to the first lane"
     );
 }

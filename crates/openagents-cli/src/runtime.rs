@@ -446,25 +446,55 @@ impl Lane {
     /// left where it is: the reader pinned that on purpose and a keystroke
     /// should not throw it away.
     ///
-    /// Gate-free. The interactive TUI walks with [`Self::cycle_gated`], which
-    /// skips `local` unless the open-time probe found a server (#291).
+    /// Gate-free, gate-open walk: every [`LANES`] member, with the local hop
+    /// landing on the bare lane. The interactive TUI walks with
+    /// [`Self::cycle_gated`] instead, where the open-time probe decides both
+    /// whether `local` is offered and which tag it resolves to (#291, #292).
     pub fn cycle(&self) -> Lane {
-        self.cycle_gated(true)
+        self.cycle_gated(Some(String::new()))
     }
 
     /// [`Self::cycle`] with the local lane gated on what the open-time probe
-    /// found (issue #291).
+    /// found (issue #291, resolution refined by #292).
     ///
-    /// `local_available: false` skips `local` entirely — a lane the probe
-    /// found absent is never landed on and then refused. `true` walks the
-    /// full table: flash, free, local, back to flash. A lane already sitting
-    /// on `local` with the gate closed moves to the hosted lanes; the reader
-    /// asked to move, and cycling in place would land on a lane nothing
-    /// serves. `Named` keeps its no-op: a directly pinned model is not a walk
-    /// member.
-    pub fn cycle_gated(&self, local_available: bool) -> Lane {
-        let Some(spec) = self.spec() else {
-            return self.clone();
+    /// `local_available` is the probe's answer. `None` skips `local`
+    /// entirely — a lane the probe found absent is never landed on and then
+    /// refused. `Some(tag)` walks the full table: flash, free, local, back
+    /// to flash, and the local hop resolves to `Lane::Local(tag)` so the row
+    /// names the exact model that will answer (e.g.
+    /// `Coder Local (qwen3.8:27b-mtp-q8_0)`) rather than a lane-shaped
+    /// promise. A lane already sitting on `local` with the gate closed moves
+    /// to the hosted lanes; the reader asked to move, and cycling in place
+    /// would land on a lane nothing serves. `Named` keeps its no-op: a
+    /// directly pinned model is not a walk member.
+    pub fn cycle_gated(&self, local_available: Option<String>) -> Lane {
+        // Which table position this lane sits at. `Named` and a local lane
+        // pinned to some other tag are not walk members: the reader named an
+        // exact model, and a keystroke does not throw that away. The local
+        // member is the bare lane or the lane carrying the probed tag — the
+        // two states cycling itself produces, which are indistinguishable
+        // from an explicit pin of the same tag and are allowed to move.
+        let spec = match self {
+            Lane::Named(_) => return self.clone(),
+            Lane::Local(model) => {
+                let is_member = match &local_available {
+                    Some(tag) => model.is_empty() || model == tag,
+                    None => model.is_empty(),
+                };
+                if !is_member {
+                    return self.clone();
+                }
+                match lane_spec("local") {
+                    Some(spec) => spec,
+                    // Unreachable while the table has a `local` entry; a
+                    // non-member return is the honest fallback.
+                    None => return self.clone(),
+                }
+            }
+            other => match other.spec() {
+                Some(spec) => spec,
+                None => return other.clone(),
+            },
         };
         let mut at = LANES
             .iter()
@@ -473,10 +503,11 @@ impl Lane {
         for _ in 0..LANES.len() {
             at = (at + 1) % LANES.len();
             let name = LANES[at].name;
-            if name == "local" && !local_available {
-                continue;
+            match (name, &local_available) {
+                ("local", None) => continue,
+                ("local", Some(tag)) => return Lane::Local(tag.clone()),
+                (_, _) => return Lane::from_str(name),
             }
-            return Lane::from_str(name);
         }
         // Unreachable while `flash` and `free` are never skipped; the default
         // is the honest answer if the table ever changes shape.
@@ -3206,6 +3237,16 @@ impl CoderRuntimeSession {
         Self::probe_local_lane_at(&OLLAMA_HOST).await
     }
 
+    /// The model family the cycle gate requires (issue #292).
+    ///
+    /// The owner's gate, verbatim: the local lane joins the shift+tab walk
+    /// only when Ollama is installed **and** a Qwen 3.8 model is loaded.
+    /// Family, not substring: `qwen3.8` and `qwen3` are different families,
+    /// and Rust's `starts_with` would happily say `"qwen3.8:x".starts_with(
+    /// "qwen3")` — so the tag's family segment (before the first `:`) is
+    /// compared whole against `qwen3.8`.
+    pub const CYCLE_GATE_FAMILY: &str = "qwen3.8";
+
     /// [`Self::probe_local_lane`] against a named host, for tests.
     async fn probe_local_lane_at(host: &str) -> Option<String> {
         let url = format!("{}/api/tags", host.trim_end_matches('/'));
@@ -3235,6 +3276,14 @@ impl CoderRuntimeSession {
                     .collect()
             })
             .unwrap_or_default();
+        // The walk gate (#292): only a model of the gated family lights the
+        // lane up. Everything else is invisible to the cycle — it keeps every
+        // explicit path it has, it just does not join the walk.
+        models.retain(|(name, _)| {
+            name.split(':')
+                .next()
+                .is_some_and(|family| family.eq_ignore_ascii_case(Self::CYCLE_GATE_FAMILY))
+        });
         if models.is_empty() {
             return None;
         }
@@ -4242,22 +4291,38 @@ mod tests {
     #[test]
     fn the_cycle_skips_the_local_lane_when_the_probe_found_nothing() {
         let start = Lane::default();
-        assert_eq!(start.cycle_gated(false), Lane::Free);
-        assert_eq!(start.cycle_gated(false).cycle_gated(false), start);
+        assert_eq!(start.cycle_gated(None), Lane::Free);
+        assert_eq!(start.cycle_gated(None).cycle_gated(None), start);
         // A session sitting on local when the gate is closed still moves; a
         // reader asked to change lanes, not to stay put.
         let local = Lane::from_str("local");
-        assert_eq!(local.cycle_gated(false), Lane::Flash);
+        assert_eq!(local.cycle_gated(None), Lane::Flash);
     }
 
-    /// With the gate open the local lane is a full walk member (#291).
+    /// With the gate open the local lane is a full walk member, resolved to
+    /// the exact tag the probe found — not a lane-shaped promise (#292).
     #[test]
-    fn the_cycle_includes_the_local_lane_when_the_probe_found_a_server() {
+    fn the_cycle_includes_the_local_lane_resolved_to_the_probed_tag() {
         let start = Lane::default();
-        let local = start.cycle_gated(true).cycle_gated(true);
-        assert!(local.is_local());
-        assert_eq!(local.label(), "Coder Local");
-        assert_eq!(local.cycle_gated(true), start, "the cycle does not close");
+        let tag = Some("qwen3.8:27b-mtp-q8_0".to_string());
+        let local = start.cycle_gated(tag.clone()).cycle_gated(tag.clone());
+        assert_eq!(local, Lane::Local("qwen3.8:27b-mtp-q8_0".to_string()));
+        assert_eq!(local.label(), "Coder Local (qwen3.8:27b-mtp-q8_0)");
+        assert_eq!(local.name(), "ollama:qwen3.8:27b-mtp-q8_0");
+        assert_eq!(local.cycle_gated(tag), start, "the cycle does not close");
+    }
+
+    /// The gate compares the family segment whole, not by substring: `qwen3`
+    /// does not satisfy a `qwen3.8` gate, though Rust's `starts_with` would
+    /// happily claim otherwise — which is why the probe splits the segment.
+    #[test]
+    fn the_gate_is_family_not_substring() {
+        assert_ne!(
+            Some(CoderRuntimeSession::CYCLE_GATE_FAMILY),
+            "qwen3:0.6b".split(':').next()
+        );
+        // The trap itself, pinned: `"qwen3.8".starts_with("qwen3")` is true.
+        assert!(CoderRuntimeSession::CYCLE_GATE_FAMILY.starts_with("qwen3"));
     }
 
     /// The local lane's spec resolves against `/api/tags`, never the catalog:
@@ -4305,13 +4370,31 @@ mod tests {
         let two = serve(
             r#"{"models":[
                 {"name":"older:1b","modified_at":"2026-01-01T00:00:00Z"},
-                {"name":"qwen3:0.6b","modified_at":"2026-08-25T15:08:15Z"}]}"#,
+                {"name":"qwen3:0.6b","modified_at":"2026-08-25T15:08:15Z"},
+                {"name":"qwen3.8:27b-mtp-q8_0","modified_at":"2026-08-24T02:05:03Z"}]}"#,
         )
         .await;
         let found = CoderRuntimeSession::probe_local_lane_at(&two)
             .await
-            .expect("a live server with models is found");
-        assert_eq!(found, "qwen3:0.6b", "the most recently modified wins");
+            .expect("a live server with a gated model is found");
+        assert_eq!(
+            found, "qwen3.8:27b-mtp-q8_0",
+            "the gated family is resolved to its exact tag, newer modified_at wins"
+        );
+
+        // A library without the gated family is absence for the walk's
+        // purposes (#292) — the same None an empty library gives.
+        let other_family = serve(
+            r#"{"models":[
+                {"name":"qwen3:0.6b","modified_at":"2026-08-25T15:08:15Z"},
+                {"name":"llama9:7b","modified_at":"2026-08-26T10:00:00Z"}]}"#,
+        )
+        .await;
+        assert_eq!(
+            CoderRuntimeSession::probe_local_lane_at(&other_family).await,
+            None,
+            "a loaded model of another family does not light the lane"
+        );
 
         let empty = serve(r#"{"models":[]}"#).await;
         assert_eq!(
