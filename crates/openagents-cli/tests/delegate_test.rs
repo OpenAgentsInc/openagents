@@ -1025,3 +1025,173 @@ async fn the_delegate_tool_refuses_a_flag_its_lane_cannot_honour() {
     );
     assert!(report.contains("--child-model"), "{report}");
 }
+
+/// A fan-out's children join the swarm under the parent for the run, take
+/// mail mid-run, show the exchange in the report, and vanish when the
+/// fan-out is stopped.
+#[tokio::test]
+async fn delegate_children_join_the_swarm_and_leave_it() {
+    let home = tempfile::tempdir().unwrap();
+    let parent_mail = tempfile::tempdir().unwrap();
+    let parent_id = "parent-session";
+    let parent = openagents_cli::swarm::Registration {
+        schema: openagents_cli::swarm::REGISTRATION_SCHEMA.to_string(),
+        session_id: parent_id.to_string(),
+        pid: std::process::id(),
+        cwd: "/work".to_string(),
+        lane: "flash".to_string(),
+        model: None,
+        role: "root".to_string(),
+        parent: None,
+        worktree: None,
+        inbox: parent_mail.path().join("inbox.jsonl").display().to_string(),
+        alive_after_ms: openagents_cli::swarm::DEFAULT_ALIVE_AFTER_MS,
+        started_at_ms: openagents_cli::swarm::now_ms(),
+        heartbeat_at_ms: openagents_cli::swarm::now_ms(),
+    };
+    openagents_cli::swarm::register(home.path(), &parent).unwrap();
+
+    let harness = stand_in(
+        "swarm-claude",
+        r#"#!/bin/sh
+sleep 30
+"#,
+    );
+    let _exclusive = exclusive();
+    unsafe {
+        std::env::set_var("OA_CHILD_CLAUDE", &harness);
+    }
+
+    let supervisor = DelegationSupervisor::new(2, "claude", None)
+        .with_isolation(Isolation::Directory)
+        .with_swarm(home.path().to_path_buf(), parent_id);
+
+    let (events, mut incoming) = mpsc::unbounded_channel();
+    let drain = tokio::spawn(async move { while incoming.recv().await.is_some() {} });
+    let (stop, cancel) = watch::channel(false);
+    let dispatch = tokio::spawn(async move {
+        supervisor
+            .dispatch_streaming("ignored", events, cancel)
+            .await
+    });
+
+    let mut children = Vec::new();
+    for _ in 0..80 {
+        children = openagents_cli::swarm::list(home.path())
+            .unwrap()
+            .into_iter()
+            .filter(|registration| registration.parent.as_deref() == Some(parent_id))
+            .collect();
+        if children.len() == 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        children.len(),
+        2,
+        "both children must appear in the swarm under the parent"
+    );
+    assert!(
+        children
+            .iter()
+            .all(|registration| registration.role == "child"
+                && registration.worktree.is_some()
+                && registration.state() == openagents_cli::swarm::SwarmState::Live)
+    );
+    let tree = openagents_cli::swarm::list_filtered(home.path(), None, Some(parent_id)).unwrap();
+    assert_eq!(tree.len(), 3, "parent plus two children");
+
+    let child_one = openagents_cli::swarm::child_session_id(parent_id, 1);
+    let child_two = openagents_cli::swarm::child_session_id(parent_id, 2);
+    assert!(children.iter().any(|c| c.session_id == child_one));
+    assert!(children.iter().any(|c| c.session_id == child_two));
+
+    // The child messages the parent mid-run; the parent's inbox is the next
+    // turn's drain.
+    openagents_cli::swarm::send(
+        home.path(),
+        &child_one,
+        &openagents_cli::swarm::mail_directory(home.path(), &child_one),
+        parent_id,
+        "question",
+        None,
+        true,
+        "what does the failing test say?",
+    )
+    .unwrap();
+    let parent_inbox = openagents_cli::swarm::Mailbox::at(parent_mail.path())
+        .messages()
+        .unwrap();
+    assert_eq!(parent_inbox.len(), 1);
+    assert_eq!(parent_inbox[0].kind, "question");
+
+    // The parent answers by child id, not the full session id.
+    openagents_cli::swarm::send(
+        home.path(),
+        parent_id,
+        parent_mail.path(),
+        "child-1",
+        "answer",
+        None,
+        false,
+        "assertion failed on line 12",
+    )
+    .unwrap();
+
+    let broadcast = openagents_cli::swarm::send(
+        home.path(),
+        parent_id,
+        parent_mail.path(),
+        &format!("role:children-of:{parent_id}"),
+        "broadcast",
+        None,
+        false,
+        "wrap up now",
+    )
+    .unwrap();
+    assert_eq!(broadcast.deliveries.len(), 2);
+    assert!(broadcast.undeliverable.is_empty());
+
+    let _ = stop.send(true);
+    let results = dispatch.await.unwrap().expect("the fan-out started");
+    let _ = drain.await;
+    unsafe {
+        std::env::remove_var("OA_CHILD_CLAUDE");
+    }
+
+    assert_eq!(results.len(), 2);
+    let one = results.iter().find(|result| result.id == 1).unwrap();
+    assert_eq!(one.swarm_id.as_deref(), Some(child_one.as_str()));
+    assert!(
+        one.swarm_messages
+            .iter()
+            .any(|(from, kind, body)| from == parent_id
+                && kind == "answer"
+                && body.contains("assertion failed on line 12")),
+        "the fan-out report must carry the mid-run answer: {:?}",
+        one.swarm_messages
+    );
+    assert!(
+        one.swarm_messages
+            .iter()
+            .any(|(_, kind, body)| kind == "question" && body.contains("failing test")),
+        "the child's own question belongs in the exchange: {:?}",
+        one.swarm_messages
+    );
+    let section =
+        openagents_cli::delegate::render_messages_exchanged(&results).expect("section present");
+    assert!(section.contains("child 1"), "{section}");
+    assert!(section.contains("question"), "{section}");
+    assert!(section.contains("child 2"), "{section}");
+
+    let leftover = openagents_cli::swarm::list(home.path())
+        .unwrap()
+        .into_iter()
+        .filter(|registration| registration.role == "child")
+        .count();
+    assert_eq!(
+        leftover, 0,
+        "stopping the fan-out must unregister every child"
+    );
+}

@@ -1395,6 +1395,7 @@ impl HarnessToolRegistry {
                     Some(self.cwd.clone()),
                     isolation,
                     cancel,
+                    self.swarm.clone(),
                 )
                 .await;
 

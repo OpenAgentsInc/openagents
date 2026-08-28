@@ -46,6 +46,18 @@ pub enum SwarmAction {
         #[arg(long, help = "Send as this registered session instead of `human`")]
         from: Option<String>,
     },
+    /// Deliver one broadcast to every live session, or to one parent's children
+    Broadcast {
+        #[arg(help = "The message body")]
+        body: String,
+        #[arg(
+            long,
+            help = "Limit the fan-out: children-of:<parent-id>. Omit to reach every other live session."
+        )]
+        role: Option<String>,
+        #[arg(long, help = "Send as this registered session instead of `human`")]
+        from: Option<String>,
+    },
     /// Stop injecting messages from one session; they stay unread
     Mute {
         #[arg(help = "Session id to silence")]
@@ -91,6 +103,18 @@ pub async fn run_swarm(action: SwarmAction, json: bool) {
                 from.as_deref(),
                 json,
             );
+        }
+        SwarmAction::Broadcast { body, role, from } => {
+            let to = match role
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                Some(role) if role.starts_with("role:") => role.to_string(),
+                Some(role) => format!("role:{role}"),
+                None => "all".to_string(),
+            };
+            send(&to, &body, "broadcast", None, false, from.as_deref(), json);
         }
         SwarmAction::Mute { session, inbox } => mute(&session, inbox.as_deref(), true, json),
         SwarmAction::Unmute { session, inbox } => mute(&session, inbox.as_deref(), false, json),

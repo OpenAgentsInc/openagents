@@ -348,6 +348,102 @@ fn broadcast_resolves_to_every_other_live_session() {
 }
 
 #[test]
+fn a_parent_sends_to_a_child_by_short_id() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().to_path_buf();
+    let parent_dir = tempfile::tempdir().unwrap();
+    let child_dir = tempfile::tempdir().unwrap();
+    register(
+        &path,
+        &registration(
+            "parent-a",
+            std::process::id(),
+            parent_dir.path().join("inbox.jsonl"),
+        ),
+    )
+    .unwrap();
+    let mut child = registration(
+        &openagents_cli::swarm::child_session_id("parent-a", 1),
+        std::process::id(),
+        child_dir.path().join("inbox.jsonl"),
+    );
+    child.role = "child".to_string();
+    child.parent = Some("parent-a".to_string());
+    register(&path, &child).unwrap();
+
+    let report = send(
+        &path,
+        "parent-a",
+        parent_dir.path(),
+        "child-1",
+        "answer",
+        None,
+        false,
+        "the test failed on line 12",
+    )
+    .unwrap();
+    assert_eq!(report.deliveries.len(), 1);
+    assert_eq!(report.deliveries[0].to, child.session_id);
+    let inbox = Mailbox::at(child_dir.path()).messages().unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].kind, "answer");
+    assert_eq!(inbox[0].body, "the test failed on line 12");
+}
+
+#[test]
+fn broadcast_to_children_of_reports_a_killed_child_as_not_reached() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().to_path_buf();
+    let live_dir = tempfile::tempdir().unwrap();
+    let dead_dir = tempfile::tempdir().unwrap();
+    let sender_dir = tempfile::tempdir().unwrap();
+
+    let mut live = registration(
+        "parent-a-child-1",
+        std::process::id(),
+        live_dir.path().join("inbox.jsonl"),
+    );
+    live.role = "child".to_string();
+    live.parent = Some("parent-a".to_string());
+    register(&path, &live).unwrap();
+
+    let mut dead = registration(
+        "parent-a-child-2",
+        u32::MAX - 7,
+        dead_dir.path().join("inbox.jsonl"),
+    );
+    dead.role = "child".to_string();
+    dead.parent = Some("parent-a".to_string());
+    register(&path, &dead).unwrap();
+
+    let report = send(
+        &path,
+        "human",
+        sender_dir.path(),
+        "role:children-of:parent-a",
+        "broadcast",
+        None,
+        false,
+        "wrap up",
+    )
+    .unwrap();
+    assert_eq!(report.deliveries.len(), 1, "only the live child");
+    assert_eq!(report.deliveries[0].to, "parent-a-child-1");
+    assert_eq!(report.undeliverable.len(), 1, "the killed child is named");
+    assert_eq!(report.undeliverable[0].to, "parent-a-child-2");
+    assert!(
+        report.undeliverable[0].why.contains("stale"),
+        "killed is stale, not silently skipped: {}",
+        report.undeliverable[0].why
+    );
+    assert_eq!(Mailbox::at(live_dir.path()).messages().unwrap().len(), 1);
+    assert!(
+        Mailbox::at(dead_dir.path()).messages().unwrap().is_empty(),
+        "a stale child must not receive the broadcast"
+    );
+}
+
+#[test]
 fn the_schema_names_travel_on_the_wire() {
     let home = tempfile::tempdir().unwrap();
     let path = home.path().to_path_buf();

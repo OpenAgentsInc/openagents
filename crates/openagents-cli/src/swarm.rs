@@ -224,6 +224,56 @@ pub fn registration_path(home: &Path, session_id: &str) -> PathBuf {
     swarm_root(home).join(format!("{session_id}.json"))
 }
 
+/// The swarm session id a `delegate` child registers under. The parent
+/// addresses it as this id, or as the short handle `child-{n}`.
+pub fn child_session_id(parent: &str, child_id: usize) -> String {
+    format!("{parent}-child-{child_id}")
+}
+
+/// Where a session that is not a Coder store keeps its inbox and outbox:
+/// `~/.openagents/swarm/mail/<session-id>/`. Delegate children live here so
+/// their mail outlives the worktree and is not mixed with the code they
+/// write.
+pub fn mail_directory(home: &Path, session_id: &str) -> PathBuf {
+    swarm_root(home).join("mail").join(session_id)
+}
+
+/// Rewrite a registration's pid. A delegate child is registered with the
+/// parent's pid so it appears in the tree the moment it is spawned, then
+/// this updates it to the child's own pid once that process exists, so a
+/// killed child is stale rather than still looking like the parent.
+pub fn set_pid(home: &Path, session_id: &str, pid: u32) -> Result<(), String> {
+    let mut registration = match load_registration(home, session_id)? {
+        Some(registration) => registration,
+        None => return Err(format!("no session `{session_id}` is registered")),
+    };
+    registration.pid = pid;
+    register(home, &registration)
+}
+
+/// Expand a parent-relative child handle (`child-1`, or `1`) into the
+/// child's registered session id. Anything else is returned unchanged, so
+/// `all` and `role:children-of:` keep their existing meaning.
+pub fn expand_destination(home: &Path, from: &str, to: &str) -> String {
+    let number = to
+        .strip_prefix("child-")
+        .or_else(|| {
+            if !to.is_empty() && to.bytes().all(|byte| byte.is_ascii_digit()) {
+                Some(to)
+            } else {
+                None
+            }
+        })
+        .and_then(|digits| digits.parse::<usize>().ok());
+    if let Some(number) = number {
+        let candidate = child_session_id(from, number);
+        if load_registration(home, &candidate).ok().flatten().is_some() {
+            return candidate;
+        }
+    }
+    to.to_string()
+}
+
 /// The message id for one send: `msg_` + 16 hex of SHA-256 over the fields
 /// that make the message what it is.
 fn message_id(from: &str, to: &str, thread: Option<&str>, body: &str, at_ms: u128) -> String {
@@ -573,6 +623,12 @@ impl Mailbox {
             .collect())
     }
 
+    /// What this session sent, in file order. Used by the fan-out report so
+    /// an exchange is not only the mail the child received.
+    pub fn sent(&self) -> Result<Vec<SwarmMessage>, String> {
+        Self::read(&self.outbox)
+    }
+
     /// Replace the inbox's contents, staged-then-renamed. Used only by the
     /// read-stamp path; delivery itself never rewrites.
     fn rewrite(&self, messages: &[SwarmMessage]) -> Result<(), String> {
@@ -666,12 +722,13 @@ pub fn send(
             known_kinds.join(", ")
         ));
     }
+    let to = expand_destination(home, from, to);
     if from == to {
         return Err("a session cannot send a message to itself".to_string());
     }
 
     let at_ms = now_ms();
-    let id = message_id(from, to, thread, trimmed, at_ms);
+    let id = message_id(from, &to, thread, trimmed, at_ms);
     let sender_mailbox = Mailbox::at(from_directory);
     let reply_depth = if reply_expected {
         Some(sender_mailbox.thread_depth(thread).saturating_add(1))
@@ -701,7 +758,7 @@ pub fn send(
         vec![to.to_string()]
     };
     if targets.is_empty() {
-        return Err(match to {
+        return Err(match to.as_str() {
             "all" => {
                 "no other session is registered, so there is nobody to broadcast to".to_string()
             }
@@ -1213,5 +1270,40 @@ mod tests {
         assert!(why.contains("per-session budget"), "{why}");
         // A send after the window rolls is admitted.
         policy.admit_send(false, 0, 1_000 + HOUR_MS).unwrap();
+    }
+
+    #[test]
+    fn a_parent_addresses_a_child_by_short_handle() {
+        assert_eq!(child_session_id("sess-a", 2), "sess-a-child-2");
+        let home = tempfile::tempdir().unwrap();
+        let path = home.path().to_path_buf();
+        let dir = tempfile::tempdir().unwrap();
+        let child = Registration {
+            schema: REGISTRATION_SCHEMA.to_string(),
+            session_id: child_session_id("sess-a", 1),
+            pid: std::process::id(),
+            cwd: "/work".to_string(),
+            lane: "flash".to_string(),
+            model: None,
+            role: "child".to_string(),
+            parent: Some("sess-a".to_string()),
+            worktree: Some("/work/child".to_string()),
+            inbox: dir.path().join("inbox.jsonl").display().to_string(),
+            alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
+            started_at_ms: now_ms(),
+            heartbeat_at_ms: now_ms(),
+        };
+        register(&path, &child).unwrap();
+        assert_eq!(
+            expand_destination(&path, "sess-a", "child-1"),
+            child.session_id
+        );
+        assert_eq!(expand_destination(&path, "sess-a", "1"), child.session_id);
+        assert_eq!(
+            expand_destination(&path, "sess-a", "role:children-of:sess-a"),
+            "role:children-of:sess-a"
+        );
+        // An unknown handle stays itself so send can refuse by name.
+        assert_eq!(expand_destination(&path, "sess-a", "child-9"), "child-9");
     }
 }

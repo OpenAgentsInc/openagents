@@ -28,7 +28,7 @@
 //! `codex`, and `gemini`/`opencode/*` run the corresponding CLI on this
 //! machine; `devin` runs the Devin CLI as an ACP server ([`crate::acp`]).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
@@ -342,6 +342,14 @@ impl ChildOptions {
     }
 }
 
+/// How this fan-out joins the local swarm: the home the registrations live
+/// under, and the parent session the children name.
+#[derive(Debug, Clone)]
+pub struct SwarmJoin {
+    pub home: PathBuf,
+    pub parent_id: String,
+}
+
 pub struct DelegationSupervisor {
     pub count: usize,
     pub lane: String,
@@ -357,6 +365,9 @@ pub struct DelegationSupervisor {
     pub directory: Option<PathBuf>,
     /// How each child is configured.
     pub child: ChildOptions,
+    /// When set, every child registers as `role:child` under this parent for
+    /// the fan-out's duration. Absent in tests that do not exercise the swarm.
+    pub swarm: Option<SwarmJoin>,
 }
 
 impl DelegationSupervisor {
@@ -371,6 +382,7 @@ impl DelegationSupervisor {
             keep_workspaces: false,
             directory: None,
             child: ChildOptions::default(),
+            swarm: None,
         }
     }
 
@@ -397,6 +409,15 @@ impl DelegationSupervisor {
 
     pub fn with_child_options(mut self, child: ChildOptions) -> Self {
         self.child = child;
+        self
+    }
+
+    /// Register every child as `role:child` of `parent_id` under `home`.
+    pub fn with_swarm(mut self, home: PathBuf, parent_id: impl Into<String>) -> Self {
+        self.swarm = Some(SwarmJoin {
+            home,
+            parent_id: parent_id.into(),
+        });
         self
     }
 
@@ -479,6 +500,10 @@ impl DelegationSupervisor {
 
         let gate = Arc::new(Semaphore::new(self.max_parallel.max(1)));
         let mut handles = Vec::with_capacity(self.count);
+        // Child ids the supervisor still has to unregister if a task panics
+        // or is aborted before its own Drop runs. The per-child guard is the
+        // normal path; this is the stop-tree / panic agreement.
+        let live_ids = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
 
         for workspace in workspaces.clone() {
             let task = ChildWorkerTask {
@@ -493,6 +518,8 @@ impl DelegationSupervisor {
             let cancel = cancel.clone();
             let gate = Arc::clone(&gate);
             let child_options = self.child.clone();
+            let swarm = self.swarm.clone();
+            let live_ids = Arc::clone(&live_ids);
 
             handles.push(tokio::spawn(async move {
                 // The cap is here rather than around the spawn so a child that
@@ -506,6 +533,8 @@ impl DelegationSupervisor {
                     &child_options,
                     &events,
                     cancel,
+                    swarm,
+                    live_ids,
                 )
                 .await;
                 let _ = events.send(ChildEvent::Finished(Box::new(result.clone())));
@@ -532,6 +561,16 @@ impl DelegationSupervisor {
             }
         }
         results.sort_by_key(|result| result.id);
+
+        if let Some(swarm) = &self.swarm {
+            let leftover = live_ids
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone();
+            for session_id in leftover {
+                let _ = crate::swarm::unregister(&swarm.home, &session_id);
+            }
+        }
 
         if !self.keep_workspaces {
             for workspace in &workspaces {
@@ -561,6 +600,196 @@ pub fn identify(prompt: &str, index: usize, count: usize) -> String {
     format!("You are child {index} of {count}.\n\n{prompt}")
 }
 
+/// A child's live swarm registration. Drop unregisters it, so a killed,
+/// panicked, or cleanly finished child leaves the same absence.
+struct ChildSwarm {
+    home: PathBuf,
+    session_id: String,
+    directory: PathBuf,
+    live_ids: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl ChildSwarm {
+    fn join(
+        join: &SwarmJoin,
+        id: usize,
+        workspace: &ChildWorkspace,
+        lane: &str,
+        live_ids: Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> Self {
+        let session_id = crate::swarm::child_session_id(&join.parent_id, id);
+        let directory = crate::swarm::mail_directory(&join.home, &session_id);
+        let _ = std::fs::create_dir_all(&directory);
+        let now = crate::swarm::now_ms();
+        let registration = crate::swarm::Registration {
+            schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
+            session_id: session_id.clone(),
+            pid: std::process::id(),
+            cwd: workspace.path.display().to_string(),
+            lane: lane.to_string(),
+            model: None,
+            role: "child".to_string(),
+            parent: Some(join.parent_id.clone()),
+            worktree: Some(workspace.path.display().to_string()),
+            inbox: directory.join("inbox.jsonl").display().to_string(),
+            alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
+            started_at_ms: now,
+            heartbeat_at_ms: now,
+        };
+        let _ = crate::swarm::register(&join.home, &registration);
+        live_ids
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(session_id.clone());
+        Self {
+            home: join.home.clone(),
+            session_id,
+            directory,
+            live_ids,
+        }
+    }
+
+    fn binding(&self) -> crate::swarm::SwarmBinding {
+        crate::swarm::SwarmBinding::new(
+            self.home.clone(),
+            self.session_id.clone(),
+            self.directory.clone(),
+        )
+    }
+
+    fn set_pid(&self, pid: u32) {
+        let _ = crate::swarm::set_pid(&self.home, &self.session_id, pid);
+    }
+}
+
+impl Drop for ChildSwarm {
+    fn drop(&mut self) {
+        let _ = crate::swarm::unregister(&self.home, &self.session_id);
+        self.live_ids
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|id| id != &self.session_id);
+    }
+}
+
+/// The CLI `delegate` command's own swarm identity for the fan-out. Drop
+/// unregisters it, including the `fail()` path which drops before exit.
+struct ParentGuard {
+    home: PathBuf,
+    session_id: String,
+}
+
+impl ParentGuard {
+    fn fail(self, why: &str) -> ! {
+        drop(self);
+        fail(why)
+    }
+}
+
+impl Drop for ParentGuard {
+    fn drop(&mut self) {
+        let _ = crate::swarm::unregister(&self.home, &self.session_id);
+    }
+}
+
+fn register_cli_parent(home: &Path, session_id: &str, lane: &str) -> ParentGuard {
+    let directory = crate::swarm::mail_directory(home, session_id);
+    let _ = std::fs::create_dir_all(&directory);
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let now = crate::swarm::now_ms();
+    let registration = crate::swarm::Registration {
+        schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
+        session_id: session_id.to_string(),
+        pid: std::process::id(),
+        cwd: cwd.display().to_string(),
+        lane: lane.to_string(),
+        model: None,
+        role: "root".to_string(),
+        parent: None,
+        worktree: None,
+        inbox: directory.join("inbox.jsonl").display().to_string(),
+        alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
+        started_at_ms: now,
+        heartbeat_at_ms: now,
+    };
+    let _ = crate::swarm::register(home, &registration);
+    ParentGuard {
+        home: home.to_path_buf(),
+        session_id: session_id.to_string(),
+    }
+}
+
+fn collect_exchange(directory: &Path) -> Vec<(String, String, String)> {
+    let mailbox = crate::swarm::Mailbox::at(directory);
+    let mut messages = mailbox.messages().unwrap_or_default();
+    messages.extend(mailbox.sent().unwrap_or_default());
+    messages.sort_by_key(|message| message.created_at_ms);
+    let mut used = 0usize;
+    let mut out = Vec::new();
+    for message in messages {
+        if used >= CHILD_RESULT_LIMIT {
+            break;
+        }
+        let remaining = CHILD_RESULT_LIMIT.saturating_sub(used);
+        let body = if message.body.len() > remaining {
+            let mut at = remaining;
+            while at > 0 && !message.body.is_char_boundary(at) {
+                at -= 1;
+            }
+            format!("{}…", &message.body[..at])
+        } else {
+            message.body
+        };
+        used = used
+            .saturating_add(message.from.len())
+            .saturating_add(message.kind.len())
+            .saturating_add(body.len());
+        out.push((message.from, message.kind, body));
+    }
+    out
+}
+
+/// The "messages exchanged" section of a fan-out report: a count per child,
+/// then any `question` / `handoff` bodies, all within [`CHILD_RESULT_LIMIT`].
+pub fn render_messages_exchanged(results: &[ChildWorkerResult]) -> Option<String> {
+    if results.iter().all(|result| result.swarm_id.is_none()) {
+        return None;
+    }
+    let mut lines = vec!["Messages exchanged:".to_string()];
+    let mut used = lines[0].len();
+    for result in results {
+        let Some(swarm_id) = &result.swarm_id else {
+            continue;
+        };
+        let count = result.swarm_messages.len();
+        let header = format!(
+            "  child {} ({swarm_id}): {count} {}",
+            result.id,
+            if count == 1 { "message" } else { "messages" }
+        );
+        if used.saturating_add(header.len()) > CHILD_RESULT_LIMIT {
+            lines.push("  …".to_string());
+            break;
+        }
+        used += header.len();
+        lines.push(header);
+        for (from, kind, body) in &result.swarm_messages {
+            if kind != "question" && kind != "handoff" {
+                continue;
+            }
+            let line = format!("    {kind} from {from}: {body}");
+            if used.saturating_add(line.len()) > CHILD_RESULT_LIMIT {
+                lines.push("    …".to_string());
+                return Some(lines.join("\n"));
+            }
+            used += line.len();
+            lines.push(line);
+        }
+    }
+    Some(lines.join("\n"))
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_child(
     task: ChildWorkerTask,
     lane: ChildLane,
@@ -569,6 +798,8 @@ async fn run_child(
     options: &ChildOptions,
     events: &mpsc::UnboundedSender<ChildEvent>,
     cancel: watch::Receiver<bool>,
+    swarm: Option<SwarmJoin>,
+    live_ids: Arc<std::sync::Mutex<Vec<String>>>,
 ) -> ChildWorkerResult {
     let start = Instant::now();
     let id = task.id;
@@ -576,31 +807,15 @@ async fn run_child(
     // The child joins the local swarm for the fan-out's duration, so the
     // parent (and any other tab) can address it while it works, and `swarm
     // tree` shows the fan-out as what it is. The registration is best-effort:
-    // a swarm that cannot see one child is degraded, not broken.
-    let swarm_home = crate::swarm::default_home();
-    let swarm_id = format!(
-        "delegate-{id}-{}",
-        workspace.path.to_string_lossy().replace('/', "_")
-    );
-    let swarm_registration = crate::swarm::Registration {
-        schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
-        session_id: swarm_id.clone(),
-        pid: std::process::id(),
-        cwd: workspace.path.display().to_string(),
-        lane: lane.label().to_string(),
-        model: None,
-        role: "child".to_string(),
-        parent: None,
-        worktree: Some(workspace.path.display().to_string()),
-        inbox: workspace.path.join("inbox.jsonl").display().to_string(),
-        alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
-        started_at_ms: crate::swarm::now_ms(),
-        heartbeat_at_ms: crate::swarm::now_ms(),
-    };
-    if let Err(why) = crate::swarm::register(&swarm_home, &swarm_registration) {
+    // a swarm that cannot see one child is degraded, not broken. Drop of
+    // `ChildSwarm` is the unregister, including the stop-tree path.
+    let child_swarm = swarm
+        .as_ref()
+        .map(|join| ChildSwarm::join(join, id, &workspace, &lane.label(), live_ids));
+    if let Some(child) = &child_swarm {
         let _ = events.send(ChildEvent::Activity {
             id,
-            text: format!("swarm registration failed: {why}"),
+            text: format!("swarm {}", child.session_id),
         });
     }
 
@@ -612,34 +827,43 @@ async fn run_child(
                 workspace: workspace.describe(),
                 pid: None,
             });
-            run_proxy_child(&task, &workspace, user_token, events, cancel).await
+            run_proxy_child(
+                &task,
+                &workspace,
+                user_token,
+                events,
+                cancel,
+                child_swarm.as_ref(),
+            )
+            .await
         }
         ChildLane::Devin => {
             run_devin_child(&task, &lane, &workspace, options, events, cancel).await
         }
         ChildLane::Claude | ChildLane::Codex | ChildLane::Opencode { .. } => {
-            run_cli_child(&task, &lane, &workspace, options, events, cancel).await
+            run_cli_child(
+                &task,
+                &lane,
+                &workspace,
+                options,
+                events,
+                cancel,
+                child_swarm.as_ref(),
+            )
+            .await
         }
     };
 
     let duration_ms = start.elapsed().as_millis();
 
-    // The child's registration is removed by its own exit, so read the mail
-    // it received *now*, before the workspace (and its inbox) can go away.
-    // This is the swarm exchange the report will show: what reached the
-    // child while it worked, which is otherwise invisible.
-    let swarm_id = format!(
-        "delegate-{id}-{}",
-        workspace.path.to_string_lossy().replace('/', "_")
-    );
-    let child_directory = workspace.path.clone();
-    let swarm_messages = crate::swarm::Mailbox::at(&child_directory)
-        .messages()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|message| (message.from, message.kind, message.body))
-        .collect::<Vec<_>>();
-    let _ = crate::swarm::unregister(&swarm_home, &swarm_id);
+    // Read the mail now, before Drop unregisters (the files stay) and before
+    // the workspace goes away. The report needs the exchange that travelled
+    // while the child worked.
+    let swarm_id = child_swarm.as_ref().map(|child| child.session_id.clone());
+    let swarm_messages = child_swarm
+        .as_ref()
+        .map(|child| collect_exchange(&child.directory))
+        .unwrap_or_default();
 
     match outcome {
         Ok(ChildAnswer { text, pid }) => ChildWorkerResult {
@@ -650,7 +874,7 @@ async fn run_child(
             pid,
             workspace: Some(workspace.path.clone()),
             failure: None,
-            swarm_id: Some(swarm_id),
+            swarm_id,
             swarm_messages,
         },
         Err(ChildFailure { why, pid }) => ChildWorkerResult {
@@ -661,7 +885,7 @@ async fn run_child(
             pid,
             workspace: Some(workspace.path.clone()),
             failure: Some(why),
-            swarm_id: Some(swarm_id),
+            swarm_id,
             swarm_messages,
         },
     }
@@ -688,6 +912,7 @@ async fn run_proxy_child(
     user_token: Option<String>,
     events: &mpsc::UnboundedSender<ChildEvent>,
     mut cancel: watch::Receiver<bool>,
+    child_swarm: Option<&ChildSwarm>,
 ) -> Result<ChildAnswer, ChildFailure> {
     let tools = HarnessToolRegistry::child(Some(workspace.path.clone()));
     // The default lane, which resolves its model from the catalog. This used
@@ -697,6 +922,9 @@ async fn run_proxy_child(
     // child to one model's continued existence. The OpenAgents harness now
     // asks the deployment for its default model instead of assuming one.
     let mut runtime = CoderRuntimeSession::new(Lane::default(), None, user_token, tools);
+    if let Some(child) = child_swarm {
+        runtime.bind_swarm(child.binding());
+    }
 
     let id = task.id;
     let sink = events.clone();
@@ -830,6 +1058,7 @@ async fn run_cli_child(
     options: &ChildOptions,
     events: &mpsc::UnboundedSender<ChildEvent>,
     mut cancel: watch::Receiver<bool>,
+    child_swarm: Option<&ChildSwarm>,
 ) -> Result<ChildAnswer, ChildFailure> {
     let id = task.id;
     let (command, args) = harness_command(lane, &task.prompt, &workspace.path, options);
@@ -869,6 +1098,9 @@ async fn run_cli_child(
     };
 
     let pid = child.id();
+    if let (Some(swarm), Some(pid)) = (child_swarm, pid) {
+        swarm.set_pid(pid);
+    }
     let _ = events.send(ChildEvent::Started {
         id,
         lane: lane.label(),
@@ -1524,12 +1756,16 @@ pub async fn run_delegation(
 
     let description = describe(args.description.as_deref(), &prompt);
 
+    let swarm_home = crate::swarm::default_home();
+    let parent_id = format!("delegate-{}", std::process::id());
+    let parent_guard = register_cli_parent(&swarm_home, &parent_id, &lane_name);
     let supervisor = DelegationSupervisor::new(requested, &lane_name, user_token)
         .with_isolation(asked_isolation)
         .with_max_parallel(args.max_parallel.unwrap_or(requested))
         .keeping_workspaces(args.keep_workspaces)
         .in_directory(args.directory.as_deref().map(PathBuf::from))
-        .with_child_options(child);
+        .with_child_options(child)
+        .with_swarm(swarm_home.clone(), parent_id.clone());
 
     // Resolved before the header, and the header reports the resolution.
     // `worktree` outside a git checkout is a plain empty directory per child;
@@ -1538,7 +1774,7 @@ pub async fn run_delegation(
     // then handed to the dispatch, so what was reported is what runs.
     let plan = match supervisor.plan().await {
         Ok(plan) => plan,
-        Err(error) => fail(&format!("no children were started: {error}")),
+        Err(error) => parent_guard.fail(&format!("no children were started: {error}")),
     };
     let isolation = plan.isolation();
     if isolation != asked_isolation {
@@ -1621,7 +1857,7 @@ pub async fn run_delegation(
     {
         Ok(results) => results,
         // No child ran at all, so there is nothing to report but the reason.
-        Err(error) => fail(&format!("no children were started: {error}")),
+        Err(error) => parent_guard.fail(&format!("no children were started: {error}")),
     };
     let _ = printing.await;
     interrupt.abort();
@@ -1702,18 +1938,9 @@ pub async fn run_delegation(
             },
             lane.label()
         );
-        let exchanged: Vec<_> = results
-            .iter()
-            .filter(|result| !result.swarm_messages.is_empty())
-            .collect();
-        if !exchanged.is_empty() {
+        if let Some(section) = render_messages_exchanged(&results) {
             println!();
-            println!("Messages exchanged while the fan-out ran:");
-            for result in exchanged {
-                for (from, kind, body) in &result.swarm_messages {
-                    println!("  [child {}] {} from {}: {body}", result.id, kind, from);
-                }
-            }
+            println!("{section}");
         }
     }
 
@@ -1754,7 +1981,7 @@ pub fn fanout_for_tool(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
     let (keep_open, cancel) = watch::channel(false);
     let future = fanout_for_tool_cancellable(
-        prompt, count, lane, user_token, child, directory, isolation, cancel,
+        prompt, count, lane, user_token, child, directory, isolation, cancel, None,
     );
     Box::pin(async move {
         let _keep_open = keep_open;
@@ -1772,6 +1999,7 @@ pub fn fanout_for_tool_cancellable(
     directory: Option<PathBuf>,
     isolation: Isolation,
     cancel: watch::Receiver<bool>,
+    swarm: Option<crate::swarm::SwarmBinding>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send>> {
     let prompt = prompt.to_string();
     let lane = lane.to_string();
@@ -1793,11 +2021,14 @@ pub fn fanout_for_tool_cancellable(
         // whatever the process's own directory happened to be, which is the same
         // thing only until something changes it.
         let resolved_name = resolved_lane.name();
-        let supervisor = DelegationSupervisor::new(count, &resolved_name, user_token)
+        let mut supervisor = DelegationSupervisor::new(count, &resolved_name, user_token)
             .with_child_options(child)
             .with_isolation(isolation)
             .keeping_workspaces(isolation == Isolation::Worktree)
             .in_directory(directory);
+        if let Some(binding) = swarm {
+            supervisor = supervisor.with_swarm(binding.home, binding.session_id);
+        }
         let (events, mut drain) = mpsc::unbounded_channel();
         let sink = tokio::spawn(async move { while drain.recv().await.is_some() {} });
         let results = supervisor
@@ -1807,7 +2038,7 @@ pub fn fanout_for_tool_cancellable(
         let _ = sink.await;
 
         let succeeded = results.iter().filter(|result| result.success).count();
-        let header = format!(
+        let mut header = format!(
             "{succeeded} of {} {} completed on {}.",
             results.len(),
             if results.len() == 1 {
@@ -1817,34 +2048,58 @@ pub fn fanout_for_tool_cancellable(
             },
             resolved_lane.label()
         );
+        if let Some(section) = render_messages_exchanged(&results) {
+            header.push('\n');
+            header.push_str(&section);
+        }
         let records = results
             .into_iter()
-            .map(|result| crate::delegate_result::DelegateAgentResult {
-                status: if result.success {
-                    crate::delegate_result::DelegateStatus::Done
-                } else {
-                    crate::delegate_result::DelegateStatus::Failed
-                },
-                agent: resolved_lane.name(),
-                total_tool_uses: 0,
-                duration_ms: u64::try_from(result.duration_ms).unwrap_or(u64::MAX),
-                total_tokens: 0,
-                model: None,
-                session_id: None,
-                report: if result.output.trim().is_empty() {
+            .map(|result| {
+                let mut report = if result.output.trim().is_empty() {
                     format!("child {} completed with no output", result.id)
                 } else {
                     result.output
-                },
-                worktree: match result.workspace {
-                    Some(path) => crate::delegate_result::WorktreeOutcome::Kept(
-                        crate::delegate_result::WorktreeRef {
-                            path: path.display().to_string(),
-                            branch: None,
-                        },
-                    ),
-                    None => crate::delegate_result::WorktreeOutcome::Unused,
-                },
+                };
+                if !result.swarm_messages.is_empty() {
+                    report.push_str("\n\n");
+                    report.push_str(&format!(
+                        "swarm: {} {}",
+                        result.swarm_messages.len(),
+                        if result.swarm_messages.len() == 1 {
+                            "message"
+                        } else {
+                            "messages"
+                        }
+                    ));
+                    for (from, kind, body) in &result.swarm_messages {
+                        if kind == "question" || kind == "handoff" {
+                            report.push_str(&format!("\n{kind} from {from}: {body}"));
+                        }
+                    }
+                }
+                crate::delegate_result::DelegateAgentResult {
+                    status: if result.success {
+                        crate::delegate_result::DelegateStatus::Done
+                    } else {
+                        crate::delegate_result::DelegateStatus::Failed
+                    },
+                    agent: resolved_lane.name(),
+                    total_tool_uses: 0,
+                    duration_ms: u64::try_from(result.duration_ms).unwrap_or(u64::MAX),
+                    total_tokens: 0,
+                    model: None,
+                    session_id: result.swarm_id,
+                    report,
+                    worktree: match result.workspace {
+                        Some(path) => crate::delegate_result::WorktreeOutcome::Kept(
+                            crate::delegate_result::WorktreeRef {
+                                path: path.display().to_string(),
+                                branch: None,
+                            },
+                        ),
+                        None => crate::delegate_result::WorktreeOutcome::Unused,
+                    },
+                }
             })
             .collect();
         crate::delegate_result::DelegateFanoutResult {
@@ -1905,6 +2160,62 @@ mod child_option_tests {
                 swarm_messages: Vec::new(),
             }))),
             None
+        );
+    }
+
+    #[test]
+    fn messages_exchanged_lists_count_and_question_bodies() {
+        let results = vec![
+            ChildWorkerResult {
+                id: 1,
+                success: true,
+                output: "done".to_string(),
+                duration_ms: 1,
+                pid: None,
+                workspace: None,
+                failure: None,
+                swarm_id: Some("parent-child-1".to_string()),
+                swarm_messages: vec![
+                    (
+                        "parent".to_string(),
+                        "question".to_string(),
+                        "what failed?".to_string(),
+                    ),
+                    (
+                        "parent".to_string(),
+                        "status".to_string(),
+                        "keep going".to_string(),
+                    ),
+                ],
+            },
+            ChildWorkerResult {
+                id: 2,
+                success: true,
+                output: "done".to_string(),
+                duration_ms: 1,
+                pid: None,
+                workspace: None,
+                failure: None,
+                swarm_id: Some("parent-child-2".to_string()),
+                swarm_messages: Vec::new(),
+            },
+        ];
+        let section = render_messages_exchanged(&results).unwrap();
+        assert!(
+            section.contains("child 1 (parent-child-1): 2 messages"),
+            "{section}"
+        );
+        assert!(
+            section.contains("question from parent: what failed?"),
+            "{section}"
+        );
+        assert!(
+            !section.contains("keep going"),
+            "status bodies stay out of the highlight: {section}"
+        );
+        assert!(
+            section.contains("child 2 (parent-child-2): 0 messages"),
+            "{section}"
         );
     }
 
