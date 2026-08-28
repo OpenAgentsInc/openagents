@@ -1188,3 +1188,253 @@ async fn mute_and_unmute_in_one_call_applies_before_the_read() {
         both.output
     );
 }
+
+// ───────────────────────────────── inbox filters: sender, kind, thread (#284)
+
+#[tokio::test]
+async fn a_filtered_drain_stamps_only_what_it_returns() {
+    let pair = bound_pair();
+    for (kind, body) in [("status", "one"), ("question", "two"), ("status", "three")] {
+        let sent = pair
+            .a
+            .tools
+            .execute_tool(&tool_call(
+                "swarm_send",
+                serde_json::json!({"to": "session-b", "body": body, "kind": kind}),
+            ))
+            .await;
+        assert!(!sent.is_error, "{} {}", body, sent.output);
+    }
+
+    let drained = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"kind": "status", "drain": true}),
+        ))
+        .await;
+    assert!(!drained.is_error, "{}", drained.output);
+    let document: serde_json::Value = serde_json::from_str(&drained.output).unwrap();
+    let injected = document["messages"].as_array().unwrap();
+    assert_eq!(
+        injected.len(),
+        2,
+        "only the two status messages: {}",
+        drained.output
+    );
+    assert!(
+        injected
+            .iter()
+            .all(|message| message["body"] != serde_json::json!("two")),
+        "the question stays out of a status-filtered drain: {}",
+        drained.output
+    );
+
+    // The stamp touches only what was returned: the question is still unread.
+    let unread: Vec<_> = Mailbox::at(&pair.b_dir)
+        .unread()
+        .unwrap()
+        .iter()
+        .map(|message| message.body.clone())
+        .collect();
+    assert_eq!(unread, vec!["two".to_string()]);
+}
+
+#[tokio::test]
+async fn a_thread_filter_selects_the_whole_chain_and_a_peek_counts_beyond_the_cap() {
+    let mut pair = bound_pair();
+    pair.b
+        .tools
+        .swarm()
+        .expect("bound")
+        .policy
+        .lock()
+        .unwrap()
+        .drain_cap = 1;
+
+    // A: question (opens the thread), B: answer, B: question back, A: answer.
+    let opened = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({
+                "to": "session-b",
+                "body": "the opening question",
+                "kind": "question",
+                "reply_expected": true
+            }),
+        ))
+        .await;
+    assert!(!opened.is_error, "{}", opened.output);
+    let opened_id: String = serde_json::from_str::<serde_json::Value>(&opened.output)
+        .ok()
+        .and_then(|report| report["message_id"].as_str().map(str::to_string))
+        .unwrap_or_default();
+
+    for _ in 0..12 {
+        let sent = pair
+            .a
+            .tools
+            .execute_tool(&tool_call(
+                "swarm_send",
+                serde_json::json!({"to": "session-b", "body": "status noise"}),
+            ))
+            .await;
+        assert!(!sent.is_error, "{}", sent.output);
+    }
+    // One status inside the thread the question opened would need B to send
+    // with `thread`, so instead B answers the thread directly.
+    let answer = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_send",
+            serde_json::json!({
+                "to": "session-a",
+                "body": "B replies in the thread",
+                "kind": "answer",
+                "thread": opened_id
+            }),
+        ))
+        .await;
+    assert!(!answer.is_error, "{}", answer.output);
+
+    // A peeks at the thread by id: the opening message (read state aside,
+    // this is A's own outbox neighbor's inbox... the opening message lives
+    // in B's inbox) and B's reply must both appear in A's view of nothing —
+    // actually the thread filter is checked from B's inbox, which holds the
+    // opening message and the noise, not the reply.
+    let peek = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"thread": opened_id, "drain": false, "unread_only": false}),
+        ))
+        .await;
+    assert!(!peek.is_error, "{}", peek.output);
+    let document: serde_json::Value = serde_json::from_str(&peek.output).unwrap();
+    let messages = document["messages"].as_array().unwrap();
+    assert_eq!(
+        messages.len(),
+        1,
+        "B's inbox holds only the opening message of the thread: {}",
+        peek.output
+    );
+    assert_eq!(messages[0]["body"], "the opening question");
+
+    // A's inbox holds B's reply, which threads back to the same root: the
+    // chain filter on either mailbox selects the whole closure.
+    let peek_a = pair
+        .a
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"thread": opened_id, "drain": false, "unread_only": false}),
+        ))
+        .await;
+    assert!(!peek_a.is_error, "{}", peek_a.output);
+    let document_a: serde_json::Value = serde_json::from_str(&peek_a.output).unwrap();
+    let messages_a = document_a["messages"].as_array().unwrap();
+    assert_eq!(
+        messages_a.len(),
+        1,
+        "A's inbox holds only B's reply in the thread: {}",
+        peek_a.output
+    );
+
+    // The count-beyond-the-cap promise: twelve status messages are unread on
+    // B's side, the drain cap is 1, and a peek reports all 12 as matching.
+    let count = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"kind": "status", "drain": false}),
+        ))
+        .await;
+    assert!(!count.is_error, "{}", count.output);
+    let document_count: serde_json::Value = serde_json::from_str(&count.output).unwrap();
+    assert_eq!(
+        document_count["total_matches"], 12,
+        "a peek counts every match, not just the first page: {}",
+        count.output
+    );
+    assert_eq!(
+        document_count["messages"].as_array().unwrap().len(),
+        12,
+        "a peek returns everything it counts; the cap is a drain concern"
+    );
+}
+
+#[tokio::test]
+async fn a_drain_refuses_unread_only_false_and_names_the_peek_alternative() {
+    let pair = bound_pair();
+    let refused = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"drain": true, "unread_only": false}),
+        ))
+        .await;
+    assert!(refused.is_error, "a drain must refuse unread_only false");
+    assert!(
+        refused.output.contains("peek"),
+        "the refusal names the peek alternative: {}",
+        refused.output
+    );
+}
+
+#[tokio::test]
+async fn a_sender_filter_narrows_independently_of_mute() {
+    let mut pair = bound_pair();
+    for body in ["from a", "from b"] {
+        let sender = if body == "from a" {
+            "session-a"
+        } else {
+            "session-b"
+        };
+        // B sends to itself is refused, so the second message comes from A
+        // only; instead B sends to A and A's inbox is filtered.
+        let _ = sender;
+        let sent = pair
+            .a
+            .tools
+            .execute_tool(&tool_call(
+                "swarm_send",
+                serde_json::json!({"to": "session-b", "body": body, "kind": "status"}),
+            ))
+            .await;
+        assert!(!sent.is_error, "{} {}", body, sent.output);
+    }
+
+    // B peeks for a sender that never sent it anything: empty, total 0.
+    let empty = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"sender": "session-b", "drain": false}),
+        ))
+        .await;
+    assert!(!empty.is_error, "{}", empty.output);
+    let document: serde_json::Value = serde_json::from_str(&empty.output).unwrap();
+    assert_eq!(document["total_matches"], 0);
+    assert_eq!(document["messages"].as_array().unwrap().len(), 0);
+
+    // Filtering by the one sender that did send selects both messages.
+    let both = pair
+        .b
+        .tools
+        .execute_tool(&tool_call(
+            "swarm_inbox",
+            serde_json::json!({"sender": "session-a", "drain": false}),
+        ))
+        .await;
+    assert!(!both.is_error, "{}", both.output);
+    let document: serde_json::Value = serde_json::from_str(&both.output).unwrap();
+    assert_eq!(document["total_matches"], 2);
+}

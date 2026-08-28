@@ -971,7 +971,11 @@ impl HarnessToolRegistry {
                     "properties": {
                         "drain": {"type": "boolean", "description": "Stamp returned messages read. Defaults to true. False peeks."},
                         "mute": {"type": "string", "description": "Stop injecting mail from this session id. Refuses an unknown id, so a typo cannot look like a mute."},
-                        "unmute": {"type": "string", "description": "Resume injecting mail from this session id; the retained back catalog returns on the next drain."}
+                        "unmute": {"type": "string", "description": "Resume injecting mail from this session id; the retained back catalog returns on the next drain."},
+                        "sender": {"type": "string", "description": "Only messages from this session id."},
+                        "kind": {"type": "string", "description": "Only messages of this kind: question, answer, status, handoff, or broadcast."},
+                        "thread": {"type": "string", "description": "Only the message with this id and every reply whose thread links close on it — the whole chain, whatever its depth."},
+                        "unread_only": {"type": "boolean", "description": "Defaults to true. False widens a peek to the whole inbox, read and unread; a drain always refuses it, because a drain never re-injects read mail."}
                     }
                 }),
             },
@@ -3128,8 +3132,34 @@ fn answer_swarm_inbox(
         .get("drain")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    // The filters narrow what a read sees, independently and composable with
+    // mute: a filtered drain stamps only what it returns (#284).
+    let filter = crate::swarm::InboxFilter {
+        sender: arguments
+            .get("sender")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string),
+        kind: arguments
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string),
+        thread: arguments
+            .get("thread")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string),
+        unread_only: arguments
+            .get("unread_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+    };
     if drain {
-        match crate::swarm::drain_turn(binding) {
+        match crate::swarm::drain_turn_filtered(binding, &filter) {
             Ok(plan) => {
                 let mut document = serde_json::json!({
                     "schema": "openagents.swarm.inbox.v1",
@@ -3151,21 +3181,28 @@ fn answer_swarm_inbox(
             Err(why) => (why, true),
         }
     } else {
-        match crate::swarm::Mailbox::at(&binding.session_directory).unread() {
+        // A peek reports the total match even beyond the drain cap, so the
+        // caller paging through 30 matches never mistakes page one for the
+        // whole set.
+        let mailbox = crate::swarm::Mailbox::at(&binding.session_directory);
+        match mailbox.messages() {
             Ok(messages) => {
                 let muted = binding.muted();
-                let visible: Vec<_> = messages
+                let selected = filter.select(&messages);
+                let visible: Vec<_> = selected
                     .into_iter()
                     .filter(|message| !muted.contains(&message.from))
+                    .filter(|message| !filter.unread_only || message.read_at_ms.is_none())
                     .collect();
                 let mut document = serde_json::json!({
                     "schema": "openagents.swarm.inbox.v1",
                     "source": "swarm_inbox",
                     "drained": false,
+                    "total_matches": visible.len(),
                     "muted_senders": muted.iter().collect::<Vec<_>>(),
                     "messages": visible
                         .iter()
-                        .map(crate::swarm::message_document)
+                        .map(|message| crate::swarm::message_document(message))
                         .collect::<Vec<_>>(),
                 });
                 if !mute_changed.is_empty() {

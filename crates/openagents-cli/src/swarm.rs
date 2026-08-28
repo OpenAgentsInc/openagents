@@ -1189,15 +1189,118 @@ pub fn message_document(message: &SwarmMessage) -> serde_json::Value {
     })
 }
 
+/// The filters one inbox read may apply before a drain or a peek. `sender`,
+/// `kind`, and `thread` narrow independently; `unread_only` widens a peek to
+/// the whole inbox when false, so thread reconstruction can read history
+/// without walking the session record. A drain never re-injects read mail,
+/// so a drain refuses `unread_only: false` instead of pretending to honor it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxFilter {
+    pub sender: Option<String>,
+    pub kind: Option<String>,
+    pub thread: Option<String>,
+    pub unread_only: bool,
+}
+
+impl InboxFilter {
+    /// The unfiltered read: everything unread, which is what every inbox
+    /// read meant before filters existed.
+    pub fn unread() -> Self {
+        Self {
+            sender: None,
+            kind: None,
+            thread: None,
+            unread_only: true,
+        }
+    }
+
+    /// Whether one message passes the sender and kind filters. Thread
+    /// selection needs the whole message list (a reply names its immediate
+    /// parent, not the root, so a chain is a closure over `thread` links);
+    /// it lives in [`Self::select`]. `unread_only` is also not applied here:
+    /// the drain path reads only unread mail to begin with, and the peek
+    /// path applies it when widening or not.
+    fn matches(&self, message: &SwarmMessage) -> bool {
+        if let Some(sender) = &self.sender
+            && &message.from != sender
+        {
+            return false;
+        }
+        if let Some(kind) = &self.kind
+            && &message.kind != kind
+        {
+            return false;
+        }
+        true
+    }
+
+    /// The messages passing every filter, in file order. When a `thread`
+    /// filter is set, the selection is the named message and every message
+    /// whose `thread` links close on it — the whole chain, whatever its
+    /// depth — because thread reconstruction is the reason the filter
+    /// exists. The named message itself is included: a thread filter that
+    /// omits the opening message answers a question nobody asked.
+    pub fn select<'a>(&self, messages: &'a [SwarmMessage]) -> Vec<&'a SwarmMessage> {
+        let thread_set: Option<BTreeSet<String>> = self.thread.as_ref().map(|root| {
+            let mut set: BTreeSet<String> = BTreeSet::new();
+            set.insert(root.clone());
+            let mut grew = true;
+            while grew {
+                grew = false;
+                for message in messages {
+                    if let Some(thread) = &message.thread
+                        && set.contains(thread)
+                        && set.insert(message.id.clone())
+                    {
+                        grew = true;
+                    }
+                }
+            }
+            set
+        });
+        messages
+            .iter()
+            .filter(|message| {
+                if let Some(set) = &thread_set
+                    && !set.contains(&message.id)
+                {
+                    return false;
+                }
+                self.matches(message)
+            })
+            .collect()
+    }
+}
+
 /// Drain this session's inbox for one turn: inject up to the cap, skip muted
 /// senders (leaving them unread), defer the rest. The caller is responsible
 /// for putting `plan.inject` on the tool stream — never as user speech.
 pub fn drain_turn(binding: &SwarmBinding) -> Result<DrainPlan, String> {
+    drain_turn_filtered(binding, &InboxFilter::unread())
+}
+
+/// The drain over a filtered inbox: the filter narrows the unread candidates
+/// before the cap, so a filtered drain stamps only what it returns and the
+/// deferred count is the honest size of the rest of the match. A drain never
+/// re-injects read mail, so `unread_only: false` is refused here — a peek
+/// with the same filter is the way to read history.
+pub fn drain_turn_filtered(
+    binding: &SwarmBinding,
+    filter: &InboxFilter,
+) -> Result<DrainPlan, String> {
+    if !filter.unread_only {
+        return Err(
+            "a drain only ever injects unread mail, so `unread_only: false` has no effect \
+             there: use a peek with the same filter to read history"
+                .to_string(),
+        );
+    }
     let mailbox = Mailbox::at(&binding.session_directory);
     let muted = binding.muted();
     let cap = binding.policy().drain_cap;
     let unread = mailbox.unread()?;
-    let plan = plan_drain(&unread, &muted, cap);
+    let selected: Vec<SwarmMessage> = filter.select(&unread).into_iter().cloned().collect();
+    let plan = plan_drain(&selected, &muted, cap);
     let sequences: Vec<u64> = plan
         .inject
         .iter()
