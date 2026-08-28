@@ -1,8 +1,4 @@
 packages:
-  - apps/sarah-livekit-agent
-  - apps/sarah-nostr-signer
-  - apps/openagents-audio
-  - apps/openagents-audio-edge
   - packages/*
   - packages/probe
   - packages/probe/packages/*

@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: livekit-system
-  labels:
-    app.kubernetes.io/part-of: openagents-livekit
-    openagents.com/raw-media-boundary: "true"

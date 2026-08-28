@@ -1,8 +1,0 @@
-apiVersion: networking.gke.io/v1
-kind: ManagedCertificate
-metadata:
-  name: livekit-signal
-  namespace: livekit-system
-spec:
-  domains:
-    - livekit.openagents.com
