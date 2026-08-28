@@ -94,9 +94,16 @@ pub use permissions::{
 pub use protocol::{
     AssistantMessageError, KeepAliveMessage, ModelUsage, PermissionBehavior, PermissionDenial,
     PermissionMode, PermissionResult, PermissionRule, PermissionUpdate, ResultError, ResultSuccess,
-    SdkAssistantMessage, SdkAuthStatusMessage, SdkControlRequest, SdkControlResponse, SdkMessage,
-    SdkResultMessage, SdkStreamEvent, SdkSystemMessage, SdkToolProgressMessage, SdkUserMessage,
-    StdinMessage, StdoutMessage, Usage,
+    SdkApiRetryMessage, SdkAssistantMessage, SdkAuthStatusMessage, SdkCommandsChangedMessage,
+    SdkControlRequest, SdkControlResponse, SdkElicitationCompleteMessage, SdkFilesPersistedEvent,
+    SdkHookProgressMessage, SdkHookStartedMessage, SdkLocalCommandOutputMessage,
+    SdkMemoryRecallMessage, SdkMessage, SdkMirrorErrorMessage, SdkModelRefusalFallbackMessage,
+    SdkNotificationMessage, SdkPermissionDeniedMessage, SdkPluginInstallMessage,
+    SdkPromptSuggestionMessage, SdkRateLimitEvent, SdkRateLimitInfo, SdkResultMessage,
+    SdkSessionStateChangedMessage, SdkStreamEvent, SdkSystemMessage, SdkTaskNotificationMessage,
+    SdkTaskProgressMessage, SdkTaskStartedMessage, SdkTaskUpdatedMessage, SdkThinkingTokensMessage,
+    SdkToolProgressMessage, SdkToolUseSummaryMessage, SdkUserMessage, StdinMessage, StdoutMessage,
+    Usage, parse_stdout_line,
 };
 pub use query::Query;
 pub use transport::{ExecutableConfig, ProcessTransport};

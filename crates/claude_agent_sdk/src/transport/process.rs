@@ -170,7 +170,7 @@ impl ProcessTransport {
 
                     trace!(line = %line, "Received line from CLI");
 
-                    match serde_json::from_str::<StdoutMessage>(&line) {
+                    match crate::protocol::parse_stdout_line(&line) {
                         Ok(msg) => {
                             if tx.send(Ok(msg)).await.is_err() {
                                 // Receiver dropped, exit
@@ -178,8 +178,12 @@ impl ProcessTransport {
                             }
                         }
                         Err(e) => {
-                            warn!(error = %e, line = %line, "Failed to parse JSONL message");
-                            // Continue reading, don't fail on parse errors
+                            warn!(error = %e, line = %line, "Unrecognized JSONL message");
+                            // Surface the defect; keep reading so one bad line
+                            // cannot kill the stream.
+                            if tx.send(Err(e)).await.is_err() {
+                                break;
+                            }
                         }
                     }
                 }

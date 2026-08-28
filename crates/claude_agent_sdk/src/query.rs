@@ -143,8 +143,13 @@ impl Query {
                     }
                 }
                 Some(Err(e)) => {
-                    let _ = message_tx.send(Err(e)).await;
-                    break;
+                    let fatal = !matches!(e, Error::UnrecognizedMessage { .. });
+                    if message_tx.send(Err(e)).await.is_err() {
+                        break;
+                    }
+                    if fatal {
+                        break;
+                    }
                 }
                 None => {
                     // Transport closed

@@ -37,6 +37,17 @@ pub enum Error {
     #[error("invalid protocol message: {0}")]
     InvalidMessage(String),
 
+    /// A stdout JSONL line could not be parsed, or carried a type the
+    /// transport could not classify. The reader keeps going; this is not a
+    /// fatal stream error.
+    #[error("unrecognized protocol message type={type_name:?}: {raw}")]
+    UnrecognizedMessage {
+        /// Wire `type` when the line was JSON and had one; `None` for invalid JSON.
+        type_name: Option<String>,
+        /// Original JSONL line (or a JSON object serialized as text).
+        raw: String,
+    },
+
     /// Control request timed out.
     #[error("control request timed out")]
     ControlTimeout,
