@@ -138,6 +138,22 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     ui.local_session_id = Some(loaded.summary.id.clone());
     ui.local_session_path = Some(loaded.store.directory().display().to_string());
     ui.cloud_history = options.cloud_history;
+    // The local lane's walk membership is decided once, here, from one
+    // bounded probe (issue #291). `Some` names the model the lane resolves
+    // to; `None` covers no server, a refusal, a timeout, and an empty
+    // library, and none of those is an error the reader sees. A probe that
+    // found nothing leaves shift+tab walking exactly the hosted lanes.
+    //
+    // The probe is skipped when the reader named the lane explicitly: someone
+    // who pinned `--lane local` or `--model ollama:qwen3.8:…` has already made
+    // the choice the probe would make for them. A resume still probes — its
+    // stored lane is restored either way, and the walk should know whether
+    // `local` is real on this machine before offering it.
+    let local_lane_model = if options.lane_explicit {
+        None
+    } else {
+        crate::runtime::CoderRuntimeSession::probe_local_lane().await
+    };
     if resumed {
         restore_entries(&mut ui, &restored_events);
         ui.model = loaded.summary.last_model.unwrap_or_default();
@@ -640,8 +656,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             // Shift+Tab moves between the switchable lanes. It is handled here
             // rather than in `handle_session_key` because it has to reach the
             // session, and the session is behind an async lock.
+            //
+            // The walk is gated (`cycle_gated`, #291): `local` is a member
+            // only when the open-time probe found an Ollama server with
+            // models on it. A machine without one walks flash, free, flash,
+            // exactly as before the local lane joined the table.
             ComposerAction::Ignored if key.code == KeyCode::BackTab => {
-                lane = lane.cycle();
+                lane = lane.cycle_gated(local_lane_model.is_some());
                 ui.lane = lane.label();
                 // Nothing has answered on the new lane yet. Carrying the old
                 // model across would leave the row naming a model this lane

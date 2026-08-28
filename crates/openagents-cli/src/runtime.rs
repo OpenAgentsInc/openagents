@@ -333,6 +333,18 @@ pub const LANES: &[LaneSpec] = &[
         // publishes as its free lane.
         candidates: &["thinkingmachines/inkling", "openrouter/free"],
     },
+    LaneSpec {
+        name: "local",
+        label: "Coder Local",
+        // Ollama on this machine. `candidates` stays empty on purpose: the
+        // local lane resolves against `GET /api/tags`, never the catalog, and
+        // `Lane::resolve` already answers `Ok(None)` for it, so a catalog id
+        // here would be a lie the resolution path never reads.
+        //
+        // The lane joins the shift+tab walk only when the open-time probe
+        // found a server with models on it — see [`Lane::cycle_gated`] (#291).
+        candidates: &[],
+    },
 ];
 
 /// The spec for a lane name, or `None` if nothing admits that name.
@@ -417,6 +429,11 @@ impl Lane {
         match self {
             Lane::Flash => lane_spec("flash"),
             Lane::Free => lane_spec("free"),
+            // The bare local lane is a table member now (#291): it cycles, and
+            // its label comes from the table. A local lane *with a named
+            // model* is a pin, like `Named` — the reader asked for that exact
+            // tag, and a keystroke does not throw the pin away.
+            Lane::Local(model) if model.is_empty() => lane_spec("local"),
             Lane::Named(_) | Lane::Local(_) => None,
         }
     }
@@ -425,19 +442,45 @@ impl Lane {
     ///
     /// Walks [`LANES`] rather than toggling between two known variants, so a
     /// lane added back to that table joins the cycle without another edit
-    /// here. A lane that is not in the table — a directly-named model, or
-    /// Ollama — is left where it is: the reader pinned that on purpose and a
-    /// keystroke should not throw it away.
+    /// here. A lane that is not in the table — a directly-named model — is
+    /// left where it is: the reader pinned that on purpose and a keystroke
+    /// should not throw it away.
+    ///
+    /// Gate-free. The interactive TUI walks with [`Self::cycle_gated`], which
+    /// skips `local` unless the open-time probe found a server (#291).
     pub fn cycle(&self) -> Lane {
+        self.cycle_gated(true)
+    }
+
+    /// [`Self::cycle`] with the local lane gated on what the open-time probe
+    /// found (issue #291).
+    ///
+    /// `local_available: false` skips `local` entirely — a lane the probe
+    /// found absent is never landed on and then refused. `true` walks the
+    /// full table: flash, free, local, back to flash. A lane already sitting
+    /// on `local` with the gate closed moves to the hosted lanes; the reader
+    /// asked to move, and cycling in place would land on a lane nothing
+    /// serves. `Named` keeps its no-op: a directly pinned model is not a walk
+    /// member.
+    pub fn cycle_gated(&self, local_available: bool) -> Lane {
         let Some(spec) = self.spec() else {
             return self.clone();
         };
-        let at = LANES
+        let mut at = LANES
             .iter()
             .position(|lane| lane.name == spec.name)
             .unwrap_or(0);
-        let next = LANES[(at + 1) % LANES.len()].name;
-        Lane::from_str(next)
+        for _ in 0..LANES.len() {
+            at = (at + 1) % LANES.len();
+            let name = LANES[at].name;
+            if name == "local" && !local_available {
+                continue;
+            }
+            return Lane::from_str(name);
+        }
+        // Unreachable while `flash` and `free` are never skipped; the default
+        // is the honest answer if the table ever changes shape.
+        Lane::default()
     }
 
     /// The catalog id to send at thread open, given what the deployment serves.
@@ -3143,6 +3186,62 @@ impl CoderRuntimeSession {
 
     // ────────────────────────────────────────────────────── the local lane
 
+    /// Whether an Ollama server on this machine can answer, from one bounded
+    /// probe (issue #291).
+    ///
+    /// `Some(model)` names the model the local lane would resolve to — the
+    /// most recently modified installed one, the same choice the bare local
+    /// lane makes in [`Self::resolve_local_model`]. `None` covers every kind
+    /// of absence: no server, a refusal, a timeout, an empty library. The
+    /// caller treats them all as "the local lane is not on offer" and never
+    /// surfaces this probe's failure, because a machine without Ollama is a
+    /// normal machine, not a broken one.
+    ///
+    /// This is a walk-membership probe, not a turn: it opens no thread,
+    /// mints nothing, and is paid once per interactive session at open, not
+    /// per keystroke. A turn still goes through [`Self::resolve_local_model`],
+    /// which re-resolves against the live server and fails honestly if the
+    /// model vanished between the probe and the prompt.
+    pub async fn probe_local_lane() -> Option<String> {
+        Self::probe_local_lane_at(&OLLAMA_HOST).await
+    }
+
+    /// [`Self::probe_local_lane`] against a named host, for tests.
+    async fn probe_local_lane_at(host: &str) -> Option<String> {
+        let url = format!("{}/api/tags", host.trim_end_matches('/'));
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_millis(300))
+            .build()
+            .unwrap_or_default();
+        let resp = client.get(&url).send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let body: serde_json::Value = resp.json().await.ok()?;
+        let mut models: Vec<(String, String)> = body
+            .get("models")
+            .and_then(|v| v.as_array())
+            .map(|models| {
+                models
+                    .iter()
+                    .filter_map(|m| {
+                        let name = m.get("name").and_then(|v| v.as_str())?;
+                        let modified = m
+                            .get("modified_at")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default();
+                        Some((name.to_string(), modified.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if models.is_empty() {
+            return None;
+        }
+        models.sort_by(|left, right| right.1.cmp(&left.1));
+        Some(models.remove(0).0)
+    }
+
     /// The Ollama models installed here, most recently modified first.
     pub async fn installed_local_models(&self) -> Result<Vec<String>, Failure> {
         let url = format!("{}/api/tags", self.ollama_host.trim_end_matches('/'));
@@ -4058,10 +4157,14 @@ mod tests {
         assert!(Lane::from_str("flash").resolve(&catalog).is_err());
     }
 
-    /// No lane holds a compiled id any more.
+    /// No hosted lane holds a compiled id any more.
+    ///
+    /// The local lane is exempt on purpose: `resolve` answers `Ok(None)` for
+    /// it because it names no server model at all — it resolves against
+    /// `/api/tags` and mints no grant. `Ok(None)` is not a compiled pin.
     #[test]
     fn no_lane_pins_a_model_without_asking_the_catalog() {
-        for lane in LANES {
+        for lane in LANES.iter().filter(|lane| lane.name != "local") {
             let resolved = Lane::from_str(lane.name).resolve(&[]);
             assert!(
                 resolved.is_err(),
@@ -4132,10 +4235,103 @@ mod tests {
         }
         assert_eq!(seen.len(), LANES.len());
         assert_eq!(lane.cycle(), start, "the cycle does not close");
-        assert_eq!(seen, vec!["Coder Flash", "Coder Free"]);
+        assert_eq!(seen, vec!["Coder Flash", "Coder Free", "Coder Local"]);
+    }
+
+    /// With the gate closed, shift+tab never lands on the local lane (#291).
+    #[test]
+    fn the_cycle_skips_the_local_lane_when_the_probe_found_nothing() {
+        let start = Lane::default();
+        assert_eq!(start.cycle_gated(false), Lane::Free);
+        assert_eq!(start.cycle_gated(false).cycle_gated(false), start);
+        // A session sitting on local when the gate is closed still moves; a
+        // reader asked to change lanes, not to stay put.
+        let local = Lane::from_str("local");
+        assert_eq!(local.cycle_gated(false), Lane::Flash);
+    }
+
+    /// With the gate open the local lane is a full walk member (#291).
+    #[test]
+    fn the_cycle_includes_the_local_lane_when_the_probe_found_a_server() {
+        let start = Lane::default();
+        let local = start.cycle_gated(true).cycle_gated(true);
+        assert!(local.is_local());
+        assert_eq!(local.label(), "Coder Local");
+        assert_eq!(local.cycle_gated(true), start, "the cycle does not close");
+    }
+
+    /// The local lane's spec resolves against `/api/tags`, never the catalog:
+    /// a `resolve` of `Ok(None)` is what keeps a grant from being minted.
+    #[test]
+    fn the_local_lane_spec_carries_no_catalog_candidates() {
+        let spec = Lane::from_str("local")
+            .spec()
+            .expect("local is a table member");
+        assert_eq!(spec.name, "local");
+        assert_eq!(spec.label, "Coder Local");
+        assert!(spec.candidates.is_empty());
+        assert_eq!(Lane::from_str("local").resolve(&[]).unwrap(), None);
+    }
+
+    /// The probe answers the model a bare local lane would resolve to, or
+    /// `None` for every kind of absence — server down, empty library, and a
+    /// refusal all read the same way (#291).
+    ///
+    /// Real sockets, the way the integration tests prove the wire: one
+    /// tokio listener per case, no mocking between the probe and the bytes.
+    #[tokio::test]
+    async fn the_local_lane_probe_names_the_most_recent_model_or_nothing() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        async fn serve(body: &'static str) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            tokio::spawn(async move {
+                if let Ok((mut socket, _)) = listener.accept().await {
+                    let mut buf = [0u8; 4096];
+                    let _ = socket.read(&mut buf).await;
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                         content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                }
+            });
+            format!("http://127.0.0.1:{port}")
+        }
+
+        let two = serve(
+            r#"{"models":[
+                {"name":"older:1b","modified_at":"2026-01-01T00:00:00Z"},
+                {"name":"qwen3:0.6b","modified_at":"2026-08-25T15:08:15Z"}]}"#,
+        )
+        .await;
+        let found = CoderRuntimeSession::probe_local_lane_at(&two)
+            .await
+            .expect("a live server with models is found");
+        assert_eq!(found, "qwen3:0.6b", "the most recently modified wins");
+
+        let empty = serve(r#"{"models":[]}"#).await;
+        assert_eq!(
+            CoderRuntimeSession::probe_local_lane_at(&empty).await,
+            None,
+            "an empty library is absence, not an error"
+        );
+
+        // No server at all: the same `None`, with no error to surface.
+        assert_eq!(
+            CoderRuntimeSession::probe_local_lane_at("http://127.0.0.1:1").await,
+            None
+        );
     }
 
     /// A lane the reader pinned by hand is not thrown away by a keystroke.
+    ///
+    /// A local *model* (`ollama:qwen3`) is such a pin — a named tag, not a
+    /// walk member — so a keystroke leaves it alone. Bare `local` is the
+    /// walk member, and follows the cycle (#291).
     #[test]
     fn the_cycle_leaves_a_directly_named_lane_alone() {
         let named = Lane::from_str("some-model");

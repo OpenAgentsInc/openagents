@@ -455,9 +455,16 @@ fn cycling_the_lane_changes_both_the_lane_and_the_row() {
     assert!(before.contains("Coder Flash"), "{before}");
     assert!(after.contains("Coder Free"), "{after}");
 
-    // And it closes, back to where it started.
+    // And it closes, back to where it started. Three table members now
+    // (#291), so the full walk is flash, free, local, flash — walked here
+    // with the gate open, because this frame has no probe of its own.
     let back = second.cycle();
-    assert_eq!(back, first, "the cycle does not return to the first lane");
+    assert!(back.is_local(), "the walk reaches the local lane");
+    let after_local = back.cycle_gated(true);
+    assert_eq!(
+        after_local, first,
+        "the cycle does not return to the first lane"
+    );
 }
 
 /// The active lane/model occupies the final footer columns without a gutter.
