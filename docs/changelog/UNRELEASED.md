@@ -5,6 +5,21 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Gym views render frozen schemas in the terminal and TUI (#165)
+
+- issues: #165
+- commits: this change
+- contracts-specs: `openagents.gym.*` v1; `docs/coderbench/gym-cli-spec.md` §4
+- invariants: unknown optional measurements print as `unknown`, never a fabricated zero
+- evidence: `crates/openagents-cli/src/gym/views.rs`; `tests/fixtures/gym/*.plain.txt`; `tests/gym_views_test.rs`
+- lane: grok session, issue #165
+
+`openagents gym` suite/run/results/env/corpus/dataset commands now print from
+one renderer over the frozen v1 documents. The coder `/gym` pane draws
+`results_trend` and `run_status` from that same renderer. Missing costs and
+rates stay `unknown`. Web corpus/dataset tabs remain a Phoenix
+`openagents.com` follow-on.
+
 ## Delegated Grok streams stay in ATIF (#276)
 
 - issues: #276

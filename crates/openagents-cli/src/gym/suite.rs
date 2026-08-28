@@ -275,10 +275,7 @@ fn list_suites(json: bool) -> Result<(), CliError> {
         return Ok(());
     }
     for v in views {
-        println!(
-            "{}  {}  {}  {}",
-            v.suite_id, v.tier, v.task_count, v.suite_digest
-        );
+        println!("{}", crate::gym::views::render_suite_list_line(&v));
     }
     Ok(())
 }
@@ -299,39 +296,7 @@ fn show_suite(id: &str, json: bool) -> Result<(), CliError> {
         });
         return print_json(&document);
     }
-    println!(
-        "{}  {}  {}  {} task{}",
-        view.suite_id,
-        view.tier,
-        view.suite_digest,
-        view.task_count,
-        if view.task_count == 1 { "" } else { "s" }
-    );
-    for task in &view.tasks {
-        match &task.pin {
-            SuiteTaskPin::HarborRegistry {
-                dataset,
-                git_url,
-                commit,
-                path,
-            } => {
-                println!(
-                    "{}  {}  {}  {}  {}",
-                    task.id, dataset, git_url, commit, path
-                );
-            }
-            SuiteTaskPin::TrackerClosedIssue {
-                repo,
-                issue,
-                accepted_commit,
-            } => {
-                println!(
-                    "{}  tracker-closed-issue  {}  #{}  {}",
-                    task.id, repo, issue, accepted_commit
-                );
-            }
-        }
-    }
+    crate::gym::views::emit_lines(&crate::gym::views::render_suite_manifest_view(&view));
     Ok(())
 }
 

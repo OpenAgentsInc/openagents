@@ -356,16 +356,15 @@ not fork it.
 **Schemas are the visualization contract.** The versioned JSON each command
 emits is what every surface renders:
 
-- **The terminal** — the plain-text rendering the command itself prints.
-- **The coder TUI** — a `gym` pane in the ratatui interface reads the same
-  documents (run status, results trend) and draws rows and bars from them.
-  The TUI adds no parsing of its own beyond the schema, so a schema change
-  is a one-place migration.
+- **The terminal** — `crates/openagents-cli/src/gym/views.rs` prints each
+  frozen v1 document. Optional measurements print as `unknown`.
+- **The coder TUI** — the `/gym` pane renders `run_status` and
+  `results_trend` through that same module. It does not parse human text.
 - **The web** — the Phoenix LiveView scoreboards (`/gym`, `/gym/runs/:id`
   in the openagents.com repo) already render the run/trial records live over
-  PubSub; anything new the Gym CLI produces (corpus inventory, dataset
-  views, comparison reports) reaches a web surface by the API serving the
-  same versioned document, not by a second definition of the shape.
+  PubSub; corpus inventory, dataset views, and comparison reports still
+  need Phoenix tabs that consume the same documents. That work is not in
+  this repository.
 
 The rule for adding an interface: write one renderer over an existing
 `openagents.gym.*` schema. If a renderer needs a field the schema lacks, the

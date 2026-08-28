@@ -112,14 +112,19 @@ Read-only surfaces over the same schemas. Ends when a run's progress and a
 suite's trend are each visible in three places — terminal, TUI, web — from
 one document each.
 
-- E1 `openagents.gym.*` schema freeze v1 — the documents above, reviewed as
-  the rendering contract; version-bump policy written down
-- E2 coder TUI gym pane — ratatui pane over `run_status` + `results trend`
-  documents; no parsing beyond the schema
-- E3 web corpus/dataset views — Phoenix routes serve the same documents the
-  CLI emits (openagents.com repo); `/gym` gains corpus and dataset tabs
-- E4 comparison report rendering — `gym results compare` output as a shareable
-  artifact (terminal text now, TUI + web from E2/E3's renderers)
+- E1 `openagents.gym.*` schema freeze v1 — closed in #176. Terminal plain
+  renderers for every frozen v1 document live in
+  `crates/openagents-cli/src/gym/views.rs` (unknown optional measurements
+  print as `unknown`, never a fabricated zero).
+- E2 coder TUI gym pane — `/gym` and `/gym <suite>` render
+  `results_trend`; `/gym run <run_status.json>` renders `run_status`. Both
+  go through the same `views.rs` renderer as the CLI.
+- E3 web corpus/dataset views — **Phoenix residual** in
+  `OpenAgentsInc/openagents.com`: LiveView `/gym` still has to serve the
+  same frozen documents as corpus and dataset tabs. Not this repository.
+- E4 comparison report rendering — `gym results compare` prints the
+  `results_trend` renderer (two documents, separated, when two suites are
+  named). TUI uses that renderer. Web compare belongs with E3.
 
 ### Epic F — second domain: generality proven
 

@@ -753,25 +753,7 @@ fn show_dataset(id: &str, json: bool) -> Result<(), CliError> {
     let view = build_view(&meta, &log);
     let value = serde_json::to_value(&view)
         .map_err(|e| CliError::Output(format!("could not render dataset view: {e}")))?;
-    let mut human = vec![format!(
-        "{}  v{}  updated {}",
-        view.dataset_id, view.version, view.updated_at
-    )];
-    if let Some(desc) = &view.description {
-        human.push(format!("  {}", desc));
-    }
-    human.push(format!("  {} member(s)", view.members.len()));
-    for member in &view.members {
-        let tags = if member.tags.is_empty() {
-            String::new()
-        } else {
-            format!("  tags=[{}]", member.tags.join(","))
-        };
-        human.push(format!(
-            "  {:<24} {:<8} {}  {}  {}{}",
-            member.reference, member.kind, member.added_by, member.added_at, member.reason, tags
-        ));
-    }
+    let mut human = crate::gym::views::render_dataset_view(&view);
     human.push("Log:".to_string());
     for row in &log {
         let tags = match &row.tags {

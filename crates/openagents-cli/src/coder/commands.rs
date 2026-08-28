@@ -59,7 +59,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "gym",
-        "show or hide the gym results pane: /gym, /gym <suite>, /gym close",
+        "show or hide the gym pane: /gym, /gym <suite>, /gym run <id-or-json>, /gym close",
     ),
 ];
 
@@ -187,11 +187,35 @@ fn run_gym_command(ui: &mut CoderUi, arguments: &[String]) {
         output(ui, "Closed the gym pane.");
         return;
     }
+    if arguments.first().map(String::as_str) == Some("run") {
+        let Some(source) = arguments.get(1).map(String::as_str) else {
+            output(
+                ui,
+                "Use `/gym run <run-id>` or `/gym run <run_status.json>`. `/gym close` hides the pane.",
+            );
+            return;
+        };
+        match load_gym_run_panel(source) {
+            Ok(status) => {
+                let run_id = status.run_id.clone();
+                let state = status.state.clone();
+                ui.gym_panel = Some(crate::gym::views::GymPanel::Run(status));
+                output(
+                    ui,
+                    &format!(
+                        "Opened the gym pane for run `{run_id}` (state={state}). `/gym close` hides it."
+                    ),
+                );
+            }
+            Err(error) => output(ui, &format!("Could not load gym run `{source}`: {error}")),
+        }
+        return;
+    }
     let suite = arguments.first().map(String::as_str).unwrap_or("tb2-quick");
     match crate::gym::results::load_suite_trend(suite) {
         Ok(trend) => {
             let verified = trend.verified;
-            ui.gym_panel = Some(trend);
+            ui.gym_panel = Some(crate::gym::views::GymPanel::Trend(trend));
             output(
                 ui,
                 &format!(
@@ -205,6 +229,17 @@ fn run_gym_command(ui: &mut CoderUi, arguments: &[String]) {
             &format!("Could not load gym results for `{suite}`: {error}"),
         ),
     }
+}
+
+fn load_gym_run_panel(source: &str) -> Result<crate::gym::schemas::RunStatus, String> {
+    let path = Path::new(source);
+    if path.is_file() {
+        let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        return serde_json::from_str(&text).map_err(|e| e.to_string());
+    }
+    Err(format!(
+        "pass a run_status JSON path, or write one with `openagents gym run status {source} --json`"
+    ))
 }
 
 fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {

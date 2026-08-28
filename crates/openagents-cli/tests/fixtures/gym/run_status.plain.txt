@@ -1,0 +1,5 @@
+run-2026-001  tb2-quick  graded  1 accepted, 0 rejected, 1 ungraded; 1 of 2 tasks graded
+  lane=proxy  model=openai/gpt-5.6-luna  started_at=2026-08-27T10:00:00Z  updated_at=2026-08-27T10:05:12Z
+  tasks_total=2  accepted=1  rejected=0  ungraded=1  graded=1
+  regex-log  accepted  outcome=accepted  cost=$0.0042  started_at=2026-08-27T10:00:01Z  finished_at=2026-08-27T10:02:30Z  transcript=/trace/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+  openssl-selfsigned-cert  ungraded  outcome=unknown  cost=unknown  started_at=2026-08-27T10:00:01Z  finished_at=2026-08-27T10:05:12Z  transcript=/trace/bbbbbbbb-cccc-dddd-eeee-ffffffffffff

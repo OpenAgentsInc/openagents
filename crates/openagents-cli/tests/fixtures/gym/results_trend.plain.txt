@@ -1,0 +1,9 @@
+tb2-quick  suite:abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123  chain=verified  isolated_groups=0
+  lanes vs proxy  tasks=[regex-log,openssl-selfsigned-cert]
+    proxy  rate=1.0000  cost=$0.7500  recorded_at=2026-08-26T12:00:00Z
+    local  rate=0.5000  cost=unknown  recorded_at=2026-08-27T12:00:00Z
+      cost_delta=unpriced  from=0.7500  to=unknown  reason=no cost delta: the local lane reports cost_unknown
+      success_rate_delta=worse  from=1.0000  to=0.5000  reason=success rate fell
+    confounder: model also varies (openai/gpt-5.6-luna, local/gpt-5.6-luna)
+  trend proxy
+    2026-08-25T12:00:00Z → 2026-08-26T12:00:00Z  success better  cost better

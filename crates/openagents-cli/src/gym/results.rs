@@ -354,22 +354,7 @@ fn trend_suite(suite_id: &str, json: bool) -> Result<(), CliError> {
         println!("{}", serde_json::to_string(&trend).unwrap());
         return Ok(());
     }
-    if trend.trends.is_empty() {
-        println!("{suite_id}: no trend yet (need at least two rows on one lane)");
-        return Ok(());
-    }
-    for lane_trend in &trend.trends {
-        println!("{}  {}", suite_id, lane_trend.lane);
-        for step in &lane_trend.steps {
-            println!(
-                "  {} → {}  success {}  cost {}",
-                step.from_recorded_at,
-                step.to_recorded_at,
-                step.success_rate_delta.direction,
-                step.cost_delta.direction
-            );
-        }
-    }
+    crate::gym::views::emit_lines(&crate::gym::views::render_results_trend(&trend));
     Ok(())
 }
 
@@ -388,59 +373,17 @@ fn compare_suites(suite_id: &str, other: Option<&str>, json: bool) -> Result<(),
             );
             return Ok(());
         }
-        println!("{}", compare_headline(&trend));
-        println!("{}", compare_headline(&other_trend));
+        crate::gym::views::emit_lines(&crate::gym::views::render_results_trend(&trend));
+        println!("---");
+        crate::gym::views::emit_lines(&crate::gym::views::render_results_trend(&other_trend));
         return Ok(());
     }
     if json {
         println!("{}", serde_json::to_string(&trend).unwrap());
         return Ok(());
     }
-    if trend.lane_comparisons.is_empty() {
-        println!("{suite_id}: no lane comparison yet (need two lanes sharing a suite key)");
-        return Ok(());
-    }
-    for cmp in &trend.lane_comparisons {
-        println!("{}  baseline={}", cmp.suite_id, cmp.baseline_lane);
-        for lane in &cmp.lanes {
-            let rate = lane
-                .success_rate
-                .map(|v| format!("{v:.4}"))
-                .unwrap_or_else(|| "unknown".into());
-            let cost = lane
-                .cost_per_accepted_outcome_usd
-                .map(|v| format!("${v:.4}"))
-                .unwrap_or_else(|| "unknown".into());
-            println!("  {}  success_rate={rate}  cost={cost}", lane.lane);
-        }
-        for c in &cmp.confounders {
-            println!("  confounder: {c}");
-        }
-    }
+    crate::gym::views::emit_lines(&crate::gym::views::render_results_trend(&trend));
     Ok(())
-}
-
-fn compare_headline(trend: &ResultsTrend) -> String {
-    let latest = trend.lane_comparisons.first().and_then(|c| c.lanes.first());
-    match latest {
-        Some(lane) => {
-            let rate = lane
-                .success_rate
-                .map(|v| format!("{v:.4}"))
-                .unwrap_or_else(|| "unknown".into());
-            let cost = lane
-                .cost_per_accepted_outcome_usd
-                .map(|v| format!("${v:.4}"))
-                .unwrap_or_else(|| "unknown".into());
-            format!(
-                "{}  {}  success_rate={rate}  cost={cost}",
-                trend.suite_id, lane.lane
-            )
-        }
-        None => {
-            format!("{}  (no comparable rows)", trend.suite_id)
-        }
-    }
 }
 
 /// Load a verified trend document for the TUI gym pane.

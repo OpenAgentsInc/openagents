@@ -7,3 +7,4 @@ pub mod results;
 pub mod run;
 pub mod schemas;
 pub mod suite;
+pub mod views;

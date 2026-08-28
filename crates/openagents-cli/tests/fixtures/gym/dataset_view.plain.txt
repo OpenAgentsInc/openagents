@@ -1,0 +1,5 @@
+coderbench-agent-building-v1  v1  created 2026-08-20T12:00:00Z  updated 2026-08-27T09:30:00Z
+  Agent-building domain traces and pinned tasks
+  2 member(s)
+  sha256:1111111111111111111111111111111111111111111111111111111111111111  trace  oa_agent  2026-08-21T10:00:00Z  qualifying trace for agent-building  tags=[agent-building]
+  bench/tasks/coderbench/regex-log  task  oa_agent  2026-08-22T11:00:00Z  pinned task from tb2-quick  tags=[smoke]

@@ -179,13 +179,13 @@ pub async fn run(action: EnvAction, api_base: &str, token: Option<String>, json:
                             }
                         }
                     } else {
-                        for check in &checks {
-                            println!("{}: {} — {}", check.name, check.state, check.detail);
-                        }
+                        crate::gym::views::emit_lines(&crate::gym::views::render_env_report(
+                            &env_report(&checks),
+                        ));
                     }
                 }
                 EnvAction::Doctor => {
-                    let (lines, exit) = diagnose(&checks);
+                    let (_lines, exit) = diagnose(&checks);
                     if json {
                         let report = env_report(&checks);
                         match serde_json::to_string(&report) {
@@ -198,9 +198,9 @@ pub async fn run(action: EnvAction, api_base: &str, token: Option<String>, json:
                             }
                         }
                     } else {
-                        for line in &lines {
-                            println!("{line}");
-                        }
+                        crate::gym::views::emit_lines(&crate::gym::views::render_env_report(
+                            &env_report(&checks),
+                        ));
                     }
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                     if exit != 0 {

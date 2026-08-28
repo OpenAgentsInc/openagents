@@ -349,16 +349,7 @@ pub async fn run(
                 );
             } else {
                 for run in &runs {
-                    println!(
-                        "{}  {}  {}  {}/{}/{}/{}",
-                        run.run_id,
-                        run.suite_id,
-                        run.state,
-                        run.accepted,
-                        run.rejected,
-                        run.ungraded,
-                        run.tasks_total
-                    );
+                    println!("{}", crate::gym::views::render_run_list_line(run));
                 }
             }
             Ok(())
@@ -1152,10 +1143,7 @@ fn emit_run_status(status: &RunStatus, json: bool) {
             Err(e) => eprintln!("could not encode run status: {e}"),
         }
     } else {
-        println!(
-            "{}  {}  {}  {}",
-            status.run_id, status.suite_id, status.state, status.summary
-        );
+        crate::gym::views::emit_lines(&crate::gym::views::render_run_status(status));
     }
 }
 

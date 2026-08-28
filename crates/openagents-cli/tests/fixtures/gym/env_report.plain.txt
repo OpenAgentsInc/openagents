@@ -1,0 +1,4 @@
+target=local  sufficient_for_scored_run=false  generated_at=2026-08-27T09:45:00Z
+  docker_daemon  passed  required  observed=Docker Desktop 4.40
+  amd64_emulation  failed  required  observed=qemu-user-static not installed; amd64 canary segfaulted
+    remedy: enable Rosetta in Docker Desktop settings and re-run gym env probe

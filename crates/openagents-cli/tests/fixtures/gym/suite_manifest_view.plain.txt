@@ -1,0 +1,5 @@
+tb2-quick  score  2 tasks  suite-manifest:0c0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f
+  Two quick Terminal-Bench 2.0 tasks
+  bench/suites/tb2-quick.suite.json
+  regex-log  task:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1  env=yes  rationale=near-zero tool surface  harbor-registry  terminal-bench@2.0  https://github.com/laude-institute/terminal-bench-2.git  69671fbaac6d67a7ef0dfec016cc38a64ef7a77c  regex-log
+  openssl-selfsigned-cert  task:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2  env=yes  rationale=fully specified checklist  harbor-registry  terminal-bench@2.0  https://github.com/laude-institute/terminal-bench-2.git  69671fbaac6d67a7ef0dfec016cc38a64ef7a77c  openssl-selfsigned-cert

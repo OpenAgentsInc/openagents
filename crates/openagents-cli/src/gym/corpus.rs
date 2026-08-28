@@ -537,7 +537,7 @@ pub fn record_import(
     prepared: &PreparedImport,
     uuid: String,
     stored_digest: String,
-) -> Result<(), CliError> {
+) -> Result<CorpusImportRecord, CliError> {
     let record = CorpusImportRecord {
         schema: CORPUS_IMPORT_RECORD_SCHEMA.to_string(),
         digest: stored_digest,
@@ -548,7 +548,8 @@ pub fn record_import(
         recorded_at: crate::computer::now_iso8601(),
         batch_id: None,
     };
-    append_ledger(ledger, &record)
+    append_ledger(ledger, &record)?;
+    Ok(record)
 }
 
 pub fn corpus_status(ledger: &Path, inventory: Option<&Path>) -> Result<(usize, usize), CliError> {
@@ -636,7 +637,13 @@ pub async fn run_corpus(
                         .upload(&row.document, &visibility, None)
                         .await
                         .map_err(|e| CliError::Network(e.to_string()))?;
-                    record_import(&ledger, &visibility, row, stored.id, stored.digest)?;
+                    let record =
+                        record_import(&ledger, &visibility, row, stored.id, stored.digest)?;
+                    if !json {
+                        crate::gym::views::emit_lines(
+                            &crate::gym::views::render_corpus_import_record(&record),
+                        );
+                    }
                     imported += 1;
                 }
             }
