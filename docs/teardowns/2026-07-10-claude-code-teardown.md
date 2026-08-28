@@ -128,6 +128,11 @@ agents, forked context, workflows, worktrees, the agent manager) are all
 2.1.154–2.1.195 features, consistent with a single coherent 2.1.195
 snapshot. [source]
 
+For why those capabilities accreted, which defaults were still gated at
+2.1.195, and what the public changelog plus Agent SDK changelog imply
+about the code after this snapshot, see
+[Claude Code conceptual evolution](./2026-08-28-claude-code-evolution-themes.md).
+
 Several referenced implementations are absent behind build-time gates,
 including portions of daemon execution, remote environments, jobs, SSH, and
 workflow execution. The visible interfaces and call sites still reveal how
@@ -1542,6 +1547,9 @@ mobile sync without inheriting the ambiguity of a rapidly accreted CLI.
   addendum
 - [OpenAgents product adaptation analysis](./2026-07-10-openagents-product-adaptation-analysis.md),
   for cross-product synthesis
+- [Claude Code conceptual evolution](./2026-08-28-claude-code-evolution-themes.md),
+  for themes, design intent at 2.1.195, and changelog-grounded speculation
+  about 2.1.196–2.1.250
 
 No claims in this document depend on credentials, private conversation content,
 or live control of the Claude application. No external source code was copied.

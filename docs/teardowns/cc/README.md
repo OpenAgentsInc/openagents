@@ -39,3 +39,11 @@ Where a gap is deliberate rather than missing, these reports do not always
 say so. The absence of telemetry egress is a design position, not a
 backlog item; the thin permission engine is bounded by the Computer
 policy tier it inherits. Read a gap as a question, not a verdict.
+
+Related: the 2.1.195 snapshot identity, and a themes/evolution reading
+that splits observed-at-snapshot from changelog speculation through
+2.1.250, live in
+[`../2026-07-10-claude-code-teardown.md`](../2026-07-10-claude-code-teardown.md)
+and
+[`../2026-08-28-claude-code-evolution-themes.md`](../2026-08-28-claude-code-evolution-themes.md).
+Those documents are not OpenAgents gap reports.

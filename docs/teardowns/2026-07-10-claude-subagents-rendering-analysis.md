@@ -837,6 +837,13 @@ counts in sections 1-8. The source snapshot explains the mechanics behind
 those records at exactly the 2.1.195 boundary where the history corpus's
 observed version range begins to close.
 
+The later write-up
+[Claude Code conceptual evolution](./2026-08-28-claude-code-evolution-themes.md)
+takes that 2.1.195 boundary as the split: observed architecture and
+mid-rollout gates in the snapshot, then changelog- and SDK-grounded
+speculation about the code after 2.1.195 (background-default, fork-default,
+`/fork` versus `/subtask`, watchdog default-on, `terminal_reason` honesty).
+
 ### 13.2 Ordinary dispatch is in-process state isolation
 
 The ordinary `Agent` path runs another query loop inside the existing process.
