@@ -168,6 +168,32 @@ async fn credit_is_an_envelope() {
 }
 
 #[tokio::test]
+async fn an_image_sized_proxy_body_is_not_payload_too_large() {
+    let content = "a".repeat(2_500_000);
+    let payload = serde_json::json!({
+        "model": "glm-5.3-flash",
+        "messages": [{"role": "user", "content": content}]
+    })
+    .to_string();
+    assert!(
+        payload.len() > 2 * 1024 * 1024,
+        "the fixture must exceed Axum's 2 MiB default"
+    );
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/inference/proxy")
+        .header("content-type", "application/json")
+        .body(Body::from(payload))
+        .unwrap();
+    let response = router(test_app(None)).oneshot(request).await.unwrap();
+    assert_ne!(
+        response.status(),
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "a 2.5 MiB hop body must fit under the 10 MiB cap"
+    );
+}
+
+#[tokio::test]
 async fn proxy_without_a_grant_is_revoked() {
     let (status, body) = json(
         test_app(Some("test-key")),

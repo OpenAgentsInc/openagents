@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, Request, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Json, Response};
@@ -24,6 +24,10 @@ pub struct App {
     pub store: Arc<Store>,
 }
 
+/// Max JSON body Phoenix may hop. Axum's default is 2 MiB; a Coder image
+/// turn 413'd the hop (`coder_api_hop`, upstream 413).
+pub const INFERENCE_BODY_LIMIT: usize = 10 * 1024 * 1024;
+
 pub fn router(app: App) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -42,6 +46,7 @@ pub fn router(app: App) -> Router {
         .route("/api/v1/threads/{thread_id}/report", post(report_thread))
         .route("/api/v1/threads/{thread_id}/grants", post(remint))
         .route("/api/inference/proxy", post(inference_proxy))
+        .layer(DefaultBodyLimit::max(INFERENCE_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(app.clone(), require_bearer))
         .with_state(app)
 }

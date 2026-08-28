@@ -5,6 +5,18 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder-api accepts 10 MiB inference hops (#279)
+
+- issues: #279
+- commits: this change
+- contracts-specs: coder-api inference body limit
+- invariants: Phoenix hops with screenshot data URLs are not 413 at 2 MiB
+- evidence: `an_image_sized_proxy_body_is_not_payload_too_large`
+- lane: grok body-cap 10MiB
+
+The rust coder-api hop now accepts JSON bodies up to 10 MiB so a Coder
+turn with an attached screenshot is not refused as `coder_api_hop` 413.
+
 ## Coder idle card names swarm inbox and Flash routing
 
 - issues: none (direct owner request)
