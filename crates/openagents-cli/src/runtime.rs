@@ -324,7 +324,14 @@ pub const LANES: &[LaneSpec] = &[
         // OpenRouter spelling of this model (`z-ai/…`, hyphenated) is
         // deliberately absent — that gateway is Free's, and normalising the
         // two into one "canonical" spelling would be wrong on one of them.
-        candidates: &["glm-5.3-flash", "zai/glm-5.3-flash", "gemini-3.7-flash"],
+        candidates: &[
+            "glm-5.3-flash",
+            "zai/glm-5.3-flash",
+            "gemini-3.7-flash",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+        ],
     },
     LaneSpec {
         name: "free",
@@ -4168,7 +4175,7 @@ mod tests {
     #[test]
     fn a_lane_refuses_rather_than_pin_a_model_the_catalog_does_not_serve() {
         // A catalog that serves real models, none of which any lane prefers.
-        let catalog = served(&["gpt-5.6-luna", "some-other-model"]);
+        let catalog = served(&["gpt-4o", "some-other-model"]);
         for name in ["flash", "free"] {
             let error = Lane::from_str(name)
                 .resolve(&catalog)
@@ -4181,10 +4188,19 @@ mod tests {
                 );
             }
             assert!(
-                text.contains("gpt-5.6-luna") && text.contains("some-other-model"),
+                text.contains("gpt-4o") && text.contains("some-other-model"),
                 "the refusal does not name what is served: {text}"
             );
         }
+    }
+
+    #[test]
+    fn flash_opens_on_sol_when_that_is_what_the_catalog_serves() {
+        let catalog = served(&["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
+        assert_eq!(
+            Lane::from_str("flash").resolve(&catalog).unwrap(),
+            Some("gpt-5.6-sol".to_string())
+        );
     }
 
     /// An empty catalog is a refusal too, not a licence to guess.

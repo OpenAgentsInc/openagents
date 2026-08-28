@@ -230,19 +230,47 @@ pub fn system_prompt(tools: &[ToolDefinition]) -> String {
     lines.join("\n")
 }
 
+/// Catalog ids served by the Pro door.
+pub const PRO_MODEL_IDS: &[&str] = &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+
+/// Production origin for Pro when no `--dev` base is set.
+pub const PRO_PRODUCTION_ORIGIN: &str = "https://pro.openagents.com";
+
+pub fn is_pro_model_id(id: &str) -> bool {
+    PRO_MODEL_IDS.iter().any(|candidate| *candidate == id)
+}
+
+pub fn pro_origin() -> String {
+    env::var("OPENAGENTS_PRO_ORIGIN")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| PRO_PRODUCTION_ORIGIN.to_string())
+}
+
 /// The `/api/v1` base this session talks to.
 ///
 /// `OPENAGENTS_BASE_URL` first, because that is what `--dev` sets and a reader
-/// who pointed the session at a server on this machine meant it. Then the
-/// endpoint `oa auth` selected, so Coder and `oa` agree about where they
-/// are without a second configuration file.
+/// who pointed the session at a server on this machine meant it. Named Pro
+/// catalog ids then go to the Pro origin. Then the endpoint `oa auth`
+/// selected, so Coder and `oa` agree about where they are without a second
+/// configuration file.
 pub fn api_base() -> String {
+    api_base_for(&Lane::default())
+}
+
+pub fn api_base_for(lane: &Lane) -> String {
     for name in ["OPENAGENTS_BASE_URL", "OPENAGENTS_API_BASE"] {
         if let Ok(value) = env::var(name) {
             let value = value.trim().to_string();
             if !value.is_empty() {
                 return value;
             }
+        }
+    }
+    if let Lane::Named(id) = lane {
+        if is_pro_model_id(id) {
+            return format!("{}/api/v1", pro_origin());
         }
     }
     match crate::auth::resolve_endpoint(None, None) {
@@ -256,6 +284,25 @@ pub fn api_base() -> String {
 /// `None` is carried rather than papered over: a thread request without one is
 /// refused by the server, and that refusal is what the reader should see.
 pub fn user_token() -> Option<String> {
+    user_token_for(&Lane::default())
+}
+
+pub fn user_token_for(lane: &Lane) -> Option<String> {
+    if matches!(lane, Lane::Named(id) if is_pro_model_id(id))
+        && env::var("OPENAGENTS_BASE_URL").ok().is_none()
+        && env::var("OPENAGENTS_API_BASE").ok().is_none()
+    {
+        if let Ok(value) = env::var("OPENAGENTS_PRO_API_KEY") {
+            let value = value.trim().to_string();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+        let store = crate::auth::CredentialStore::for_origin(&pro_origin());
+        if let Some(token) = store.get_token() {
+            return Some(token);
+        }
+    }
     if let Ok(value) = env::var("OPENAGENTS_API_KEY") {
         let value = value.trim().to_string();
         if !value.is_empty() {
@@ -299,16 +346,9 @@ impl Session {
         dev: bool,
         tx: Sender<Control>,
     ) -> Self {
-        Self::open_at(
-            lane,
-            lane_name,
-            reasoning,
-            agents,
-            api_base(),
-            user_token(),
-            dev,
-            tx,
-        )
+        let api_base = api_base_for(&lane);
+        let token = user_token_for(&lane);
+        Self::open_at(lane, lane_name, reasoning, agents, api_base, token, dev, tx)
     }
 
     /// [`Self::open`] against a named server with a named credential.
@@ -1115,5 +1155,40 @@ mod tests {
         assert_eq!(router.cancel(id), 2);
         assert!(*cancel.borrow());
         assert_eq!(router.cancel(id), 2, "a repeated cancel is idempotent");
+    }
+
+    #[test]
+    fn named_sol_uses_the_pro_origin_unless_a_dev_base_is_set() {
+        unsafe {
+            env::remove_var("OPENAGENTS_BASE_URL");
+            env::remove_var("OPENAGENTS_API_BASE");
+            env::remove_var("OPENAGENTS_PRO_ORIGIN");
+        }
+        assert_eq!(
+            api_base_for(&Lane::Named("gpt-5.6-sol".into())),
+            "https://pro.openagents.com/api/v1"
+        );
+        assert_eq!(
+            api_base_for(&Lane::Named("gpt-5.6-terra".into())),
+            "https://pro.openagents.com/api/v1"
+        );
+        assert_eq!(
+            api_base_for(&Lane::Named("gpt-5.6-luna".into())),
+            "https://pro.openagents.com/api/v1"
+        );
+        assert_ne!(
+            api_base_for(&Lane::Flash),
+            "https://pro.openagents.com/api/v1"
+        );
+        unsafe {
+            env::set_var("OPENAGENTS_BASE_URL", "http://127.0.0.1:4100/api/v1");
+        }
+        assert_eq!(
+            api_base_for(&Lane::Named("gpt-5.6-sol".into())),
+            "http://127.0.0.1:4100/api/v1"
+        );
+        unsafe {
+            env::remove_var("OPENAGENTS_BASE_URL");
+        }
     }
 }

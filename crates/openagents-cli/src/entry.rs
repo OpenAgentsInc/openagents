@@ -54,12 +54,11 @@ Commands:
 Run `openagents <command> --help` to view command options.
 
 Coder options:
-  --dev              Talk to the local Rust coder API (catalog, threads,
-                     grants, proxy). Starts `openagents-coder-api` if none is
-                     running. Prefers port 4000; if Phoenix already owns it,
-                     binds 4010. Production origin is unchanged without --dev.
-                     Provider keys use the same names Phoenix uses:
-                     AI_GATEWAY_API_KEY and OPENROUTER_API_KEY.
+  --dev              Talk to the local Pro inference door (catalog, threads,
+                     grants, proxy). Starts `pro` if none is running. Prefers
+                     port 4100; if that is taken, binds 4101. Production
+                     origin is unchanged without --dev. Upstream key:
+                     PRO_UPSTREAM_KEY. Optional: OPENAGENTS_PRO_BIN.
   --lane <name>      Which model answers. `flash` and `free` are the two
                      switchable lanes, and shift+tab moves between them; each
                      resolves its model from GET /api/v1/models at open.
@@ -81,9 +80,10 @@ Environment:
   OPENAGENTS_API_URL    The API origin to use. `--dev` sets it.
   OPENAGENTS_BASE_URL   The /api/v1 base to use. `--dev` sets it.
   OPENAGENTS_API_KEY    The credential to spend. Optional for `--dev`.
-  AI_GATEWAY_API_KEY    Vercel AI Gateway key (same name Phoenix reads).
-  OPENROUTER_API_KEY    OpenRouter key (same name Phoenix reads).
-  OPENAGENTS_CODER_API_ENV  Optional dotenv file for those provider keys.
+  OPENAGENTS_PRO_ORIGIN Production Pro origin. Default https://pro.openagents.com.
+  OPENAGENTS_PRO_API_KEY  Bearer for the Pro door in production.
+  OPENAGENTS_PRO_BIN    Path to the local `pro` binary for `--dev`.
+  PRO_UPSTREAM_KEY      Upstream credential the local Pro process reads.
   ACP_REGISTRY          Where the `delegate` tool looks for installed external
                         agents (cursor, devin, opencode, ...).
 
