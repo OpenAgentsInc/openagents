@@ -1171,7 +1171,7 @@ fn swarm_load(home: &std::path::Path, id: &str) -> Result<crate::swarm::Registra
 
 /// This session's own swarm identity, when it has one: the registration whose
 /// pid is this process and whose store directory is beside this transcript.
-fn own_inbox_directory() -> Option<(std::path::PathBuf, String)> {
+pub(crate) fn own_inbox_directory() -> Option<(std::path::PathBuf, String)> {
     let root = crate::swarm::default_home();
     let registrations = crate::swarm::list(&root).ok()?;
     let pid = std::process::id();

@@ -335,6 +335,15 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // Session-level autopilot mode (`coder/autopilot.rs`). Session-only by
     // design: nothing persists it, so a new session opens human-steered.
     let mut autopilot = crate::coder::autopilot::AutopilotState::default();
+    // The boundary record the heartbeat and `/autopilot status` render: what
+    // this loop has closed, what it picked, and the last heartbeat body.
+    let autopilot_closed: Vec<String> = Vec::new();
+    let mut autopilot_last_picked: Option<String> = None;
+    let mut autopilot_last_heartbeat: Option<String> = None;
+    // The claim refresh wires in when the picker starts announcing claims;
+    // until then this is always None, read-only at the heartbeat.
+    #[allow(unused_mut)]
+    let autopilot_pending_claim: Option<String> = None;
     let mut active_turn: Option<ActiveTurn> = None;
     let mut prompt_queue = VecDeque::new();
     let mut login_pending = false;
@@ -408,6 +417,21 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                     ui.entries.push(Entry::new(Role::Notice, reason.line()));
                                 }
                                 None => {
+                                    // The boundary heartbeat (spec §5):
+                                    // what closed here, what is about to be
+                                    // picked. A failed send is counted, not
+                                    // swallowed; enough failures stop the
+                                    // mode at the next boundary.
+                                    send_heartbeat(
+                                        &mut ui,
+                                        crate::coder::autopilot::Heartbeat {
+                                            closed: autopilot_closed.last().cloned(),
+                                            picked: autopilot_last_picked.clone(),
+                                            claim: autopilot_pending_claim.clone(),
+                                        },
+                                        &mut autopilot.stops,
+                                        &mut autopilot_last_heartbeat,
+                                    );
                                     let prompt = autopilot.iteration_prompt();
                                     start_prompt(
                                         &mut ui,
@@ -695,6 +719,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             &mut active_turn,
                             &mut prompt_queue,
                             &mut autopilot,
+                            &autopilot_closed,
+                            &mut autopilot_last_picked,
+                            &mut autopilot_last_heartbeat,
                         )
                         .await;
                         match outcome {
@@ -1583,6 +1610,63 @@ fn handle_session_key(
 ///
 /// Returns what the caller still has to do, which for everything but
 /// `/logout` is nothing.
+/// The boundary heartbeat: one swarm status to `all`, naming what the loop
+/// closed and what it picked (spec §5). Returns whether the send was
+/// delivered anywhere — the result feeds
+/// [`crate::coder::autopilot::StopConditions::record_heartbeat`], because a
+/// visibility mechanism that fails silently is the #306 shape.
+fn send_heartbeat(
+    ui: &mut CoderUi,
+    heartbeat: crate::coder::autopilot::Heartbeat,
+    stops: &mut crate::coder::autopilot::StopConditions,
+    last_heartbeat: &mut Option<String>,
+) {
+    let body = heartbeat.body();
+    let delivered = match commands::own_inbox_directory() {
+        Some((directory, from_id)) => crate::swarm::send(
+            &crate::swarm::default_home(),
+            &from_id,
+            &directory,
+            "all",
+            "status",
+            None,
+            false,
+            &body,
+            None,
+            None,
+        )
+        .map(|report| !report.deliveries.is_empty())
+        .unwrap_or(false),
+        None => false,
+    };
+    stops.record_heartbeat(delivered);
+    if delivered {
+        *last_heartbeat = Some(body.clone());
+    } else if last_heartbeat.is_none() {
+        // A session that never registered with the swarm records the intent
+        // rather than failing loudly every boundary: the status screen still
+        // shows the failure counter climbing, which is the honest state.
+        *last_heartbeat = Some(format!("{body} (not delivered)"));
+    }
+    let _ = ui; // heartbeat failures render via the status screen, not a toast
+}
+
+/// The observer's status screen (spec §8): `/autopilot status` output,
+/// assembled from the loop's boundary record.
+fn autopilot_status_screen(
+    autopilot: &crate::coder::autopilot::AutopilotState,
+    closed: &[String],
+    last_picked: Option<&str>,
+    last_heartbeat: Option<&str>,
+) -> String {
+    let mut report = autopilot.status_report(last_heartbeat.map(str::to_string));
+    report.closed = closed.to_vec();
+    if let Some(picked) = last_picked {
+        report.closed.push(format!("picked: {picked} (in flight)"));
+    }
+    report.render()
+}
+
 async fn submit(
     ui: &mut CoderUi,
     text: String,
@@ -1593,6 +1677,9 @@ async fn submit(
     active_turn: &mut Option<ActiveTurn>,
     prompt_queue: &mut VecDeque<QueuedPrompt>,
     autopilot: &mut crate::coder::autopilot::AutopilotState,
+    autopilot_closed: &[String],
+    autopilot_last_picked: &mut Option<String>,
+    autopilot_last_heartbeat: &mut Option<String>,
 ) -> commands::Outcome {
     ui.scroll_override = None;
     ui.show_welcome = false;
@@ -1618,6 +1705,24 @@ async fn submit(
     // the reader type a second prompt to begin is a mode that never starts.
     if let Some(command) = crate::coder::autopilot::parse_command(&text) {
         use crate::coder::autopilot::AutopilotCommand;
+        // `/autopilot status` renders the observer screen (spec §8) without
+        // changing the mode, whether engaged or not — and it must be
+        // recognised before the engage match, or the word "status" would be
+        // consumed as a pick filter and the screen would render the mode
+        // that engage just armed.
+        if text.trim().eq_ignore_ascii_case("/autopilot status") {
+            ui.entries.push(Entry::new(
+                Role::Output,
+                autopilot_status_screen(
+                    autopilot,
+                    &autopilot_closed,
+                    autopilot_last_picked.as_deref(),
+                    autopilot_last_heartbeat.as_deref(),
+                ),
+            ));
+            ui.scroll_override = None;
+            return commands::Outcome::Done;
+        }
         match command {
             AutopilotCommand::Toggle => {
                 autopilot.engaged = !autopilot.engaged;

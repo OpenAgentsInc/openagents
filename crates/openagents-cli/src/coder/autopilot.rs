@@ -161,6 +161,23 @@ impl AutopilotState {
         }
     }
 
+    /// The observer's status report (spec §8), assembled from the state the
+    /// loop has been keeping. `last_heartbeat` is carried by the frame loop
+    /// and passed in, because the heartbeat lives at the boundary, not in
+    /// this state.
+    pub fn status_report(&self, last_heartbeat: Option<String>) -> StatusReport {
+        StatusReport {
+            engaged: self.engaged,
+            closed: Vec::new(),
+            skipped: self.discipline.skipped.clone(),
+            elapsed_seconds: self.stops.elapsed_seconds,
+            budget_seconds: self.stops.wall_clock_seconds,
+            directive: self.directive.clone(),
+            last_heartbeat,
+            heartbeat_failures: self.stops.heartbeat_failures,
+        }
+    }
+
     /// The status-row cell for the current state. Empty while off — the row
     /// renders exactly what it rendered before this mode existed, and the
     /// reader who never engages sees no new pixels.
@@ -382,6 +399,116 @@ impl StopWord {
     /// sights the token.
     pub fn sighted_in(&self, mail: &str) -> bool {
         self.armed() && mail.contains(&self.token)
+    }
+}
+
+/// One heartbeat: the boundary status message the engaged loop sends to the
+/// swarm (spec §5, series slice #311).
+///
+/// The heartbeat names the unit just closed and the unit just picked, and
+/// refreshes any open claim (§4.2). It is the cheapest possible "still
+/// alive, still productive" signal, and the thing that makes a stuck
+/// autopilot visible from outside its own process. A send failure counts
+/// against [`StopConditions::record_heartbeat`]: the visibility mechanism
+/// must not fail silently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Heartbeat {
+    /// The unit closed at this boundary, when one was.
+    pub closed: Option<String>,
+    /// The unit about to be worked, when one was picked.
+    pub picked: Option<String>,
+    /// The claim this heartbeat refreshes, when the session holds one.
+    pub claim: Option<String>,
+}
+
+impl Heartbeat {
+    /// The message body. One line — the swarm carries it at machine speed,
+    /// and siblings parse it by eye.
+    pub fn body(&self) -> String {
+        let closed = self.closed.as_deref().unwrap_or("none");
+        let picked = self.picked.as_deref().unwrap_or("none");
+        let mut line = format!("[autopilot] boundary: closed {closed}; picked {picked}");
+        if let Some(claim) = &self.claim {
+            line.push_str("; claim on ");
+            line.push_str(claim);
+            line.push_str(" (live)");
+        }
+        line
+    }
+}
+
+/// The state `/autopilot status` renders (spec §8, §11): the observer's
+/// return surface. One screen, in-terminal — what the reader's eyes land on
+/// first when they walk back in.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StatusReport {
+    /// Whether the mode is engaged right now.
+    pub engaged: bool,
+    /// Units closed this session, most recent last, as "unit (commit)".
+    pub closed: Vec<String>,
+    /// Units skipped after repeated verification failure.
+    pub skipped: Vec<String>,
+    /// Wall-clock seconds burned against the budget.
+    pub elapsed_seconds: u64,
+    /// The wall-clock budget the burn is measured against.
+    pub budget_seconds: u64,
+    /// The standing pick filter, when one was engaged with.
+    pub directive: Option<String>,
+    /// The last heartbeat body, when one was sent.
+    pub last_heartbeat: Option<String>,
+    /// Consecutive heartbeat failures, when any.
+    pub heartbeat_failures: u32,
+}
+
+impl StatusReport {
+    /// The rendered screen. One block of lines; no decorative progress
+    /// bars — the transcript is the progress bar, this is the summary.
+    pub fn render(&self) -> String {
+        let mut lines = vec![format!(
+            "Autopilot: {}",
+            if self.engaged { "ENGAGED" } else { "off" }
+        )];
+        let burned = if self.budget_seconds > 0 {
+            format!(
+                " ({}m of {}m budget)",
+                self.elapsed_seconds / 60,
+                self.budget_seconds / 60
+            )
+        } else {
+            String::new()
+        };
+        lines.push(format!("Budget burned: {}s{burned}", self.elapsed_seconds));
+        match (&self.directive, self.closed.last()) {
+            (Some(directive), _) => {
+                lines.push(format!("Next unit filter: {directive}"));
+            }
+            (None, Some(last)) => {
+                lines.push(format!("Last unit closed: {last}"));
+            }
+            (None, None) => {
+                lines.push("Next unit: none picked yet".to_string());
+            }
+        }
+        if !self.closed.is_empty() {
+            lines.push(format!("Units closed: {}", self.closed.len()));
+        }
+        if !self.skipped.is_empty() {
+            lines.push(format!(
+                "Skipped (repeat-fail): {}",
+                self.skipped.join(", ")
+            ));
+        }
+        match &self.last_heartbeat {
+            Some(body) => lines.push(format!("Last heartbeat: {body}")),
+            None => lines.push("Last heartbeat: none sent".to_string()),
+        }
+        if self.heartbeat_failures > 0 {
+            lines.push(format!(
+                "Heartbeat failures: {} consecutive",
+                self.heartbeat_failures
+            ));
+        }
+        lines.join("\n")
     }
 }
 
@@ -858,5 +985,73 @@ mod tests {
         );
         // A bare `--stop-word` with no token does not arm half a mechanism.
         assert_eq!(split_stop_word("--stop-word"), (None, "--stop-word"));
+    }
+
+    #[test]
+    fn heartbeat_lines_carry_closed_picked_and_claim() {
+        let bare = Heartbeat {
+            closed: Some("#308".to_string()),
+            picked: Some("#310".to_string()),
+            claim: None,
+        };
+        assert_eq!(
+            bare.body(),
+            "[autopilot] boundary: closed #308; picked #310"
+        );
+
+        let claiming = Heartbeat {
+            closed: None,
+            picked: Some("#311".to_string()),
+            claim: Some("#311".to_string()),
+        };
+        assert_eq!(
+            claiming.body(),
+            "[autopilot] boundary: closed none; picked #311; claim on #311 (live)"
+        );
+    }
+
+    #[test]
+    fn the_status_report_renders_the_observer_screen() {
+        let mut report = StatusReport {
+            engaged: true,
+            closed: vec!["#307 (3d5837bbe0)".to_string()],
+            skipped: vec!["#309".to_string()],
+            elapsed_seconds: 1_500,
+            budget_seconds: 3_600,
+            directive: Some("work the P0 column".to_string()),
+            last_heartbeat: Some("[autopilot] boundary: closed #308; picked #310".to_string()),
+            heartbeat_failures: 1,
+        };
+        let screen = report.render();
+        assert!(screen.contains("Autopilot: ENGAGED"), "{screen}");
+        assert!(screen.contains("1500s (25m of 60m budget)"), "{screen}");
+        assert!(
+            screen.contains("Next unit filter: work the P0 column"),
+            "{screen}"
+        );
+        assert!(screen.contains("Units closed: 1"), "{screen}");
+        assert!(screen.contains("Skipped (repeat-fail): #309"), "{screen}");
+        assert!(
+            screen.contains("Last heartbeat: [autopilot] boundary"),
+            "{screen}"
+        );
+        assert!(
+            screen.contains("Heartbeat failures: 1 consecutive"),
+            "{screen}"
+        );
+
+        // A fresh, disengaged session renders the same screen honestly.
+        report.engaged = false;
+        report.closed.clear();
+        report.skipped.clear();
+        report.elapsed_seconds = 0;
+        report.directive = None;
+        report.last_heartbeat = None;
+        report.heartbeat_failures = 0;
+        let bare = report.render();
+        assert!(bare.contains("Autopilot: off"), "{bare}");
+        assert!(bare.contains("Next unit: none picked yet"), "{bare}");
+        assert!(bare.contains("Last heartbeat: none sent"), "{bare}");
+        assert!(!bare.contains("consecutive"), "{bare}");
     }
 }

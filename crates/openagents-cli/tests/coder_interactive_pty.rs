@@ -1130,6 +1130,57 @@ mod unix_pty {
         assert!(status.success(), "clean exit: {status:?}");
     }
 
+    /// `/autopilot status` renders the observer screen (spec §8): mode
+    /// state, budget burn, next-unit line, heartbeat line — without
+    /// changing the mode, engaged or not.
+    #[test]
+    fn autopilot_status_renders_the_observer_screen_without_changing_mode() {
+        let mut tui = Tui::start();
+        let frame = tui.wait_for_composer();
+        assert!(!frame.status_bar().contains("AUTOPILOT"));
+
+        // The status query is a subcommand of the engage line, so the
+        // dispatch renders it without touching the mode. Assert on the
+        // screen's shape, not on transient ordering — the transcript wraps.
+        tui.type_text("/autopilot status");
+        tui.send(b"\r");
+        let idle = tui.wait_for("the status screen to render", REDRAW, |frame| {
+            let transcript = frame.transcript();
+            transcript.contains("Autopilot: off")
+                && transcript.contains("Last heartbeat: none sent")
+        });
+        assert!(
+            idle.transcript().contains("Next unit: none picked yet"),
+            "an idle session's status screen says nothing has been picked.\n{}",
+            idle.dump()
+        );
+        // The status query changed nothing: the mode cell is still absent.
+        assert!(!idle.status_bar().contains("AUTOPILOT"));
+
+        // Disengage-style word as a status argument must not have toggled
+        // anything; now engage and re-check: the same screen says ENGAGED
+        // and carries the budget line.
+        tui.send(&[0x1b, b'a']);
+        tui.wait_for("autopilot to engage", REDRAW, |frame| {
+            frame.status_bar().contains("AUTOPILOT")
+        });
+        tui.type_text("/autopilot status");
+        tui.send(b"\r");
+        let engaged = tui.wait_for("the engaged status screen", REDRAW, |frame| {
+            let transcript = frame.transcript();
+            transcript.contains("Autopilot: ENGAGED")
+                && transcript.contains("Last heartbeat: none sent")
+        });
+        assert!(
+            engaged.transcript().contains("budget"),
+            "the engaged screen carries the budget line.\n{}",
+            engaged.dump()
+        );
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
     /// A resize redraws the frame at the new size instead of leaving the old
     /// one behind it.
     #[test]
