@@ -1,12 +1,25 @@
 # Cursorize: what Coder should take from the Cursor agent
 
-Date: 2026-08-29. Evidence: one full Cursor agent session on this repository
-(`~/.cursor/projects/Users-christopherdavid-work-openagents/agent-transcripts/7822942d-0768-4da1-8944-c1e44d9f0fec/`,
-685 lines, 1.1 MB, 45 user turns, 10:44–15:14) beside one full Coder ATIF
-export from the same day (Autopilot smoke test, 13 steps, ~7 min). The Cursor
-session is the same person, the same repo, the same week — the Psionic →
-qwen35 → Ollama-parity arc that produced `docs/psionic/*` and issues
-#345/#346/#347 — so the behavioral deltas are apples to apples.
+Date: 2026-08-29. Evidence: the full PSIONIC Cursor conversation
+(`7822942d-0768-4da1-8944-c1e44d9f0fec`), reconstructed from the canonical
+store — `globalStorage/state.vscdb` → `cursorDiskKV`, 2,981 in-order bubbles
+(43 user, 2,938 assistant; 2,049 tool calls) across 2.28 hours — beside one
+full Coder ATIF export from the same day (Autopilot smoke test, 13 steps,
+~7 min). The agent-transcripts JSONL (685 lines, 1.1 MB) is an agent-facing
+export that carries tool **requests** but zero tool **results**; the
+`cursorDiskKV` bubbles carry both (`toolFormerData.result` on 1,653 of 2,049
+calls, the rest pruned into `toolCallBinary`), plus per-call status (2,019
+completed, 29 error), timestamps, and todo state. All Cursor numbers below
+are computed from the ordered bubbles, not the JSONL.
+
+The two sessions are the same person, the same repo, the same week — the
+Psionic → qwen35 → Ollama-parity arc that produced `docs/psionic/*`, the
+crates under `crates/psionic-gguf/`, and issues #345/#346/#347/#358 — so the
+behavioral deltas are apples to apples. The conversation ends with a fully
+autonomous final turn: after the last user message, 175 more tool calls
+(70 edits, 24 shells, including `git push github/openagents` and an
+`openagents issue comment 358` claim-status post) with only 9 short text
+bubbles. That is the behavior to reproduce.
 
 Every recommendation below names the file it would touch and the metric that
 would falsify it. Adoption goes through the runbook loop: one change, the
@@ -15,23 +28,30 @@ are `proposed` until measured.
 
 ## What the numbers say
 
-| Behavior | Cursor | Coder |
+| Behavior | Cursor (PSIONIC, from `cursorDiskKV`) | Coder (ATIF export) |
 |---|---|---|
-| Tool calls per assistant round | ~2.6 avg, max 11; 643 of 684 turns carry tool_use | ~1; the smoke session issued 9 calls in 13 steps, two of them pure sleeps |
-| Inter-round narration | median ~150 chars ("Run 1 failed. Starting runs 2 and 3.") | multi-paragraph reasoning then report |
-| Long waits | `Shell` takes `block_until_ms`; separate `AwaitShell` polls later with no model round | `bash` blocks up to `timeout_seconds`; the ATIF `waste` block attributes ~470 s to `echo`/`ps`/`tail` sleep-polls around one background process |
-| Subagents | 34 `Task` transcripts, each with `UpdateCurrentStep` progress and its own tool pool | `delegate` with fan-out to 32, but the export's `extra.subagent` was empty `{}` — child work is invisible in the parent record |
-| Plan tracking | `TodoWrite` 11× | `goal` tool exists, unused in the sampled session |
-| Web | built-in `WebSearch`/`WebFetch` | none in the tool list |
-| Transcript fidelity | tool results absent; only 3 `turn_ended` lines; cancellations invisible | ATIF records observations, reasoning, outcomes, and a `waste` audit |
+| Tool calls | 2,049 over 2.28 h: read 742, edit 510, rg 372, shell 270, glob 72, task 34, todo_write 11, await 11 | the smoke session issued 9 calls in 13 steps, two of them pure sleeps |
+| Parallel batching | 237 batches of 2–8 calls issued in the same instant (110×2, 72×3, 26×4, 13×5, 11×6, 3×7, 2×8, plus five larger flush groups up to 36); single-call rounds still the mode at ~1,341 | ~1 call per round; the smoke session batched nothing |
+| Round anatomy | tool-heavy turns run long and quiet: tools per user-turn median 17, mean 47, max 350; narration median 150 chars, 86 of 120 text bubbles ≤ 200 chars | multi-paragraph reasoning then report |
+| Long waits | `await` tool takes `blockUntilMs` (sample: `{taskId, blockUntilMs: 600000}`) and parks with no model round | `bash` blocks up to `timeout_seconds`; the ATIF `waste` block attributes ~470 s to `echo`/`ps`/`tail` sleep-polls around one background process |
+| Reads | 742 `read_file_v2`, **0 with a line range** — whole files, relying on the harness's cheap re-read | same habit in ours; `Read` returns whole files by design |
+| Self-correction | 29 tool errors (10 shell, 10 edit, 5 read), absorbed inline and retried | similar; ATIF records the retry cost |
+| Subagents | 34 `task_v2` calls, each returning `{agentId}` mapped to a `subagents/*.jsonl` thread with `UpdateCurrentStep` progress | `delegate` with fan-out to 32, but the export's `extra.subagent` was empty `{}` — child work is invisible in the parent record |
+| Plan tracking | `todo_write` 11× with dependencies and status transitions (`TODO_STATUS_IN_PROGRESS` → …) | `goal` tool exists, unused in the sampled session |
+| Token accounting | none in the bubbles (`tokenCount` all zero) — Cursor does not surface its own metering | ATIF carries per-step tokens; the store rows carry billed totals |
+| Transcript fidelity | full results in the DB (the JSONL is the lossy export); status `completed`; turn timestamps | ATIF records observations, reasoning, outcomes, and a `waste` audit — parity with the DB, not the JSONL |
 
 ## R1. One round, many calls — `proposed`
 
 T1 in `best-practices.md` already says batch independent commands into one
-*shell call* with `&&`. The harness already accepts multiple tool calls in
-one assistant round (this document's research used it). What is missing is
-the model-level instruction: our prompt surfaces only ever mention shell
-concatenation, so the sampled Coder behavior is one call per round.
+*shell call* with `&&`. The DB reconstruction sharpens the target: Cursor's
+batching is not shell concatenation but multiple tool calls fired in the
+same model call — 237 same-instant batches of 2–8 (and flush groups to 36),
+concentrated exactly in the recon phases: bursts of `read_file_v2` +
+`ripgrep_raw_search` + `glob_file_search` together. Median tools per
+user-turn is 17; the mode of *rounds* is still single-call. So the pattern
+is "single call when one suffices, wide bursts at phase boundaries" — not
+uniform parallelism.
 
 - **Change:** extend `CODER_CONCISION` and `RUST_BASH` in
   `crates/openagents-cli/src/surfaces.rs` with one sentence: independent
@@ -46,8 +66,12 @@ concatenation, so the sampled Coder behavior is one call per round.
 
 The largest measured waste in the Coder session was scaffolding, not work:
 `nohup … &`, then five rounds of `sleep N; ps; tail` to watch one Autopilot
-process. Cursor avoids this with a shell that can start work and return
-immediately plus a dedicated await tool.
+process. Cursor avoids this with a dedicated `await` tool: raw args
+`{"taskId": "437530", "blockUntilMs": 600000}` — the model parks a whole
+user-turn (the heaviest turn ran 24 minutes wall) with **zero model calls**
+until the task completes or the block expires. It called it 11 times. Note
+this complements R1: batching cuts model rounds when calls are independent;
+`await` cuts them when the next step needs one long-running thing to finish.
 
 - **Change:** give the `bash` tool a background mode that returns
   `{job_id, log_path}` immediately, and a companion `bash_wait` tool that
@@ -80,10 +104,13 @@ bash and `bash_wait`, or read the log you already have."
 
 ## R4. Terse inter-round narration — `proposed`
 
-Cursor narrates between tool rounds in one short line naming the expected
-observation, and puts paragraphs only in the final user-facing report. Our
-concision instruction governs the report well but says nothing about the
-inter-round text that also costs output tokens every round.
+The DB confirms the JSONL picture with better coverage: 120 assistant
+text-only bubbles, median 150 chars, 86 of them ≤ 200 chars, mean 389 —
+and the heaviest autonomous turn (175 tool calls, 70 edits) carried only 9
+text bubbles. Cursor narrates between tool rounds in one short line naming
+the expected observation, and puts paragraphs only in the final user-facing
+report. Our concision instruction governs the report well but says nothing
+about the inter-round text that also costs output tokens every round.
 
 - **Change:** one sentence in `CODER_CONCISION`: between tool rounds, at
   most one line saying what the next batch should establish; the report at
@@ -126,12 +153,14 @@ already: digest-pinned WASM capabilities.
   attributable per the autoimprove contract; adoption gated on a suite where
   tasks require reading upstream documentation.
 
-## R7. Promote the goal tool where Cursor used TodoWrite — `proposed`
+## R7. Promote the goal tool where Cursor used todo_write — `proposed`
 
-Cursor wrote an 11-item plan with `TodoWrite` and updated it as flake re-runs
-progressed. Our `goal` tool carries objective, status, and budget with every
-turn, which is strictly more useful — but the sampled session never called
-it, and nothing in the prompts suggests it at task start.
+The DB shows `todo_write` 11× with a structured schema: id, content, status
+(`TODO_STATUS_IN_PROGRESS`/`…_PENDING`/done), createdAt/updatedAt, and
+dependencies between todos — a real DAG, updated as work progressed across
+a 2.3-hour session. Our `goal` tool carries objective, status, and budget
+with every turn, which is strictly more useful — but the sampled session
+never called it, and nothing in the prompts suggests it at task start.
 
 - **Change:** one sentence in `CODER_BUDGET` or the goal tool description:
   on a prompt spanning more than one unit of work, register the units as a
@@ -142,12 +171,15 @@ it, and nothing in the prompts suggests it at task start.
 
 ## R8. What not to adopt
 
-- **Cursor's transcript thinness.** Its export drops every tool result, has
-  no model or token attribution, and shows only three `turn_ended` lines for
-  4.5 hours — cancellations and failures are unrecoverable. ATIF's
+- **Cursor's export thinness.** The agent-facing JSONL drops every tool
+  result, has no model or token attribution, and shows only three
+  `turn_ended` lines for a 2.3-hour session — cancellations and failures are
+  unrecoverable from it. (Cursor's own canonical store, `cursorDiskKV`, does
+  keep results and statuses — 1,653 result payloads, 29 errors — but none of
+  it reaches the export, and `tokenCount` is zeroed even in the DB.) ATIF's
   observations, reasoning, turn outcomes, and waste audit are the reason the
-  autoimprove loop can run at all. Keep the fidelity; the numbers above came
-  from it.
+  autoimprove loop can run at all. Keep the fidelity; the numbers in this
+  document came from reconstructing the DB for exactly this reason.
 - **`GetDynamicTools`/MCP namespacing.** Our capability loader covers the
   same ground with digest pinning. Revisit only if a concrete MCP-only
   integration is needed.
@@ -245,6 +277,29 @@ Each R-item gets its oracle and its expected axis stated **before** the run
 | R5 subagent telemetry | no behavior change claimed | `extra.subagent` populated in exports | — | telemetry only; not measurable on suites |
 | R6 web capabilities | no honest tb2 oracle today (`allow_internet = true` makes web available to every trial) | needs a designated offline→online task pair first | — | per `plugin-ab-disposition.json`: `no_oracle_yet` until an oracle is named |
 | R7 goal registration | cross-section task 12 (`schemelike-metacircular-eval`, long horizon) | fewer abandoned/timeout-shaped failures | overhead tokens with no completion change | requires the task to run at all under Rosetta; budget the 2400 s verifier |
+
+### Where the evidence lives (Cursor side)
+
+The PSIONIC conversation's canonical store is not the JSONL. To re-derive any
+number in this document:
+
+```sh
+DB="/Users/christopherdavid/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+# conversation index: bubble order, title, status
+sqlite3 "file:$DB?mode=ro" "SELECT value FROM cursorDiskKV \
+  WHERE key='composerData:7822942d-0768-4da1-8944-c1e44d9f0fec';"
+# each bubble: text, toolFormerData {name, params, rawArgs, result, status}, createdAt
+sqlite3 "file:$DB?mode=ro" "SELECT value FROM cursorDiskKV \
+  WHERE key LIKE 'bubbleId:7822942d-0768-4da1-8944-c1e44d9f0fec:%';"
+```
+
+Walk `fullConversationHeadersOnly` for order; ~4,100 of 7,068 bubble rows are
+orphaned retries not in the header list — count only headered bubbles.
+Results can be pruned into `toolCallBinary` (base64 protobuf,
+`additionalData.isPruned`), so a naive `result`-only read undercounts
+(1,653 of 2,049 here). The Coder-side equivalent is one ATIF export plus
+`openagents trace show` — no reconstruction needed. The asymmetry is itself
+a finding: our agent-facing transcript is the better archival format.
 
 ### Threats to validity, from the runbook's stop rules
 
