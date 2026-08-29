@@ -1171,11 +1171,12 @@ pub fn match_capabilities<'a>(
     scored
 }
 
-/// One Notice naming the top catalog matches for the standing intents (#322).
+/// Wire-only seed naming the top catalog matches for the standing intents (#322).
 ///
 /// Search only: nothing is loaded. Mount-tier guests that the session has
 /// not approved are listed with `needs --allow-mounts` rather than omitted.
-/// Empty catalog, or no matches, yields `None` so the TUI stays quiet.
+/// Empty catalog, or no matches, yields `None`. The TUI does not paint this
+/// as a Notice (0.2.0-rc4 did; same class of leak as the #316 snapshot).
 pub fn session_start_capability_notice(
     catalog: &[CatalogEntry],
     approval: Approval,

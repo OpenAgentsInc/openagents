@@ -1230,6 +1230,29 @@ mod unix_pty {
         assert!(status.success(), "clean exit: {status:?}");
     }
 
+    /// A fresh session must not paint the host capability catalog into the
+    /// transcript (#322 was the wire copy; 0.2.0-rc4 also showed it as a
+    /// Notice and opened on "Installed capabilities (host search, not
+    /// loaded)").
+    #[test]
+    fn a_fresh_session_does_not_show_installed_capabilities_in_the_transcript() {
+        let mut tui = Tui::start();
+        let frame = tui.wait_for_composer();
+        let transcript = frame.transcript();
+        assert!(
+            !transcript.contains("Installed capabilities"),
+            "the capability catalog leaked into the TUI.\n{}",
+            frame.dump()
+        );
+        assert!(
+            !transcript.contains("host search, not loaded"),
+            "the capability-search Notice leaked into the TUI.\n{}",
+            frame.dump()
+        );
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
     /// Autopilot is a mode, not a lane (spec: `docs/coder/autopilot.md`):
     /// engaging announces itself, puts `AUTOPILOT` beside the lane in the
     /// status row, and disengaging takes it away. Meta+A is sent as ESC+a,

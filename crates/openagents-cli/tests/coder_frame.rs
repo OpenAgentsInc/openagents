@@ -73,17 +73,14 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(text.contains("/Users/example/work/openagents"));
     assert!(text.contains("https://openagents.com/api/v1"));
     assert!(text.contains("Type /help for commands and keys."));
-    assert!(text.contains("New in v0.2.0-rc4"), "{text}");
+    assert!(text.contains("New in v0.2.0-rc5"), "{text}");
+    assert!(text.contains("/model picks Pro and Local models"), "{text}");
     assert!(
         text.contains("Coder Local answers from Ollama on this machine"),
         "{text}"
     );
     assert!(
         text.contains("Shift+Tab reaches Local when Qwen 3.8 is loaded"),
-        "{text}"
-    );
-    assert!(
-        text.contains("Local lane honors --num-ctx and --reasoning"),
         "{text}"
     );
     assert!(text.contains("Grok is a first-class delegate"), "{text}");
@@ -122,7 +119,7 @@ fn startup_facts_are_centered_outside_the_transcript() {
         .find(|y| row_at(*y).contains("Coder v"))
         .expect("startup box title");
     let news_row = (0..buffer.area.height)
-        .find(|y| row_at(*y).contains("New in v0.2.0-rc4"))
+        .find(|y| row_at(*y).contains("New in v0.2.0-rc5"))
         .expect("changelog box title");
     assert!(
         news_row > title_row,
@@ -244,6 +241,49 @@ fn the_startup_box_leaves_when_the_conversation_starts() {
     let text = text_of(&draw(&mut ui));
     assert!(!text.contains("Working directory"));
     assert!(text.contains("> hello"));
+}
+
+/// A `>` prompt sits one blank row below the previous entry so a user
+/// turn is not flush against a notice or an answer.
+#[test]
+fn a_user_message_has_one_blank_line_above_it() {
+    let mut ui = CoderUi::new();
+    ui.show_welcome = false;
+    ui.entries.push(Entry::new(Role::Notice, "host facts"));
+    ui.entries.push(Entry::new(Role::You, "hello"));
+    ui.entries.push(Entry::new(Role::Assistant, "answer"));
+    ui.entries.push(Entry::new(Role::You, "again"));
+
+    let buffer = draw(&mut ui);
+    let row_at = |y: u16| {
+        (0..buffer.area.width)
+            .map(|x| buffer.cell((x, y)).unwrap().symbol())
+            .collect::<String>()
+    };
+    let notice = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains("host facts"))
+        .expect("notice");
+    let first = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains("> hello"))
+        .expect("first user");
+    let answer = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains("answer"))
+        .expect("assistant");
+    let second = (0..buffer.area.height)
+        .find(|y| row_at(*y).contains("> again"))
+        .expect("second user");
+    assert_eq!(first, notice + 2, "one blank row above the first user turn");
+    assert_eq!(second, answer + 2, "one blank row above the next user turn");
+    assert!(
+        row_at(first - 1).trim().is_empty(),
+        "the row above the first user turn must be blank: {:?}",
+        row_at(first - 1)
+    );
+    assert!(
+        row_at(second - 1).trim().is_empty(),
+        "the row above the second user turn must be blank: {:?}",
+        row_at(second - 1)
+    );
 }
 
 /// The model field holds what answered, and nothing until something has.

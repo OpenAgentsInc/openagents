@@ -5,6 +5,50 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc5
+
+- issues: none (owner request: ship current main as rc5)
+- commits: this change
+- contracts-specs: CLI crate version; Coder idle welcome chrome
+- invariants: non-release builds still report `0.0.0-dev`
+- evidence: `crates/openagents-cli/tests/coder_frame.rs` startup-facts frame test; `a_non_release_build_reports_a_development_version`
+- lane: grok 0.2.0-rc5 bump
+
+The `openagents-cli` crate is `0.2.0-rc5`. The idle card is "New in v0.2.0-rc5". This candidate includes `/model` for Pro and Local (#323, #324, #327), keeps the capability catalog off the transcript, and puts a blank line above each user turn.
+
+## Coder keeps the capability catalog off the transcript (#322)
+
+- issues: #322
+- commits: this change
+- contracts-specs: Coder TUI first frame; capability catalog is wire-only
+- invariants: `session_start_capability_notice` still seeds the first model request; it is not a Notice
+- evidence: `a_fresh_session_does_not_show_installed_capabilities_in_the_transcript`; `a_capability_notice_is_on_the_wire_and_is_not_a_tool_result`
+- lane: grok 0.2.0-rc5 tui
+
+0.2.0-rc4 painted "Installed capabilities (host search, not loaded)" as the first transcript Notice. The catalog still seeds the first model request. It does not paint.
+
+## Coder puts a blank line above each user turn
+
+- issues: none (owner request)
+- commits: this change
+- contracts-specs: Coder TUI transcript layout
+- invariants: user turns open with one blank row, matching tool boxes
+- evidence: `a_user_message_has_one_blank_line_above_it`
+- lane: grok 0.2.0-rc5 tui
+
+Each `>` prompt sits one blank row below the previous entry so a user turn is not flush against a notice or an answer.
+
+## Coder `/model` picks Pro and Local models (#323, #324, #327)
+
+- issues: #323, #324, #327
+- commits: f8321436d4
+- contracts-specs: Coder TUI `/model` picker
+- invariants: only Pro and Local offer a per-model choice; unavailable Pro ids are skipped; Local lists Ollama tags
+- evidence: `model_picker_lists_served_pro_models_and_flash_refuses`; `local_model_picker_lists_tags_unsigned`; `local_model_picker_unsigned_without_ollama_shows_install_sign`
+- lane: grok model-picker
+
+`/model` opens a picker. Pro lists the deployment catalog. Local lists Ollama models.
+
 ## CLI source version is 0.2.0-rc4
 
 - issues: none (owner request: ship current main as rc4)

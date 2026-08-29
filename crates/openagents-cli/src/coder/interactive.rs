@@ -214,15 +214,16 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let checkpoint = loaded.summary.last_checkpoint.clone();
     let snapshot_text =
         crate::coder::snapshot::workspace_snapshot(&cwd, checkpoint.as_deref()).await;
+    // Same as the workspace snapshot (#316): this text seeds the first
+    // model request. It is not a transcript Notice. 0.2.0-rc4 painted
+    // "Installed capabilities (host search, not loaded)" as the first
+    // system message (#322).
     let capability_notice = crate::plugins::session_start_capability_notice(
         &crate::plugins::discover_catalog(&cwd),
         crate::plugins::Approval {
             mounts_allowed: true,
         },
     );
-    if let Some(notice) = &capability_notice {
-        ui.entries.push(Entry::new(Role::Notice, notice.clone()));
-    }
     let atif_directory = loaded.store.directory().to_path_buf();
     // This session joins the local swarm: other tabs and, later, delegate
     // children discover it through this registration. Failing to register is

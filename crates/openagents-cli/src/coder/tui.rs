@@ -30,12 +30,12 @@ const TOOL_SETTLE_FRAMES: u64 = 10;
 /// into one `+N earlier` counter, counted rather than stored as text.
 pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
-/// Idle "New in v0.2.0-rc4" card. Seven lines is the ceiling so the pair of
+/// Idle "New in v0.2.0-rc5" card. Seven lines is the ceiling so the pair of
 /// boxes still fits an ordinary terminal.
 const WELCOME_WHAT_IS_NEW: &[&str] = &[
+    "/model picks Pro and Local models",
     "Coder Local answers from Ollama on this machine",
     "Shift+Tab reaches Local when Qwen 3.8 is loaded",
-    "Local lane honors --num-ctx and --reasoning",
     "ATIF export keeps subagent streams",
     "ATIF export keeps the swarm inbox",
     "Grok is a first-class delegate",
@@ -827,7 +827,9 @@ impl CoderUi {
         let mut links = Vec::new();
         for index in 0..self.entries.len() {
             let entry = &mut self.entries[index];
-            if entry.role == Role::Tool {
+            // Tool boxes and user turns open with one blank row so they
+            // do not sit flush against the previous entry.
+            if matches!(entry.role, Role::Tool | Role::You) {
                 all_lines.push(Line::default());
             }
             let offset = all_lines.len();
@@ -1411,7 +1413,7 @@ impl CoderUi {
                     .collect::<Vec<_>>(),
             );
             let news_block = Block::default()
-                .title(" New in v0.2.0-rc4 ")
+                .title(" New in v0.2.0-rc5 ")
                 .title_alignment(Alignment::Center)
                 .borders(Borders::ALL)
                 .border_style(value_style)
