@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The CLI embeds wasmtime and JIT-compiles wasm plugins (Cranelift)
+	     at every capability invoke: `oa plugin run`, the coder session-start
+	     capability search, and the /resume foreign-session scanner. Hardened
+	     runtime kills self-mapped executable pages unless the process holds
+	     these two entitlements; without them the kernel terminates the
+	     process on first wasm execution with SIGKILL "Code Signature Invalid"
+	     (termination namespace CODESIGNING, "Invalid Page"). These are the
+	     same entitlements notarized JIT apps (Electron, Firefox) ship. -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

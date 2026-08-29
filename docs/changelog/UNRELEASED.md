@@ -5,6 +5,23 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## macOS release binaries keep the wasm JIT entitlements (#330)
+
+- issues: #330
+- commits: this change
+- contracts-specs: `ops/release-cli.sh` macOS signing; `ops/macos-entitlements.plist`
+- invariants: macOS artifacts are signed with hardened runtime AND the JIT entitlements; a release that kills the process on first wasm invoke must not publish
+- evidence: rc6 repro `coder plugin run patch_check …` 3/3 `Killed: 9`; the same binary re-signed with the entitlements runs 5/5 clean under hardened runtime
+- lane: coder crash diagnosis session, Aug 29
+
+0.2.0-rc release binaries died with `SIGKILL (Code Signature Invalid)` on the
+first wasm capability invoke — `/resume`'s foreign-session scanner, the
+session-start capability search, or `oa plugin run`. Signing used hardened
+runtime with no entitlements, so the kernel killed every Cranelift JIT page.
+The release script now signs with `ops/macos-entitlements.plist`
+(`allow-jit`, `allow-unsigned-executable-memory`). The published channel
+binaries still need a republish.
+
 ## CLI source version is 0.2.0-rc6
 
 - issues: none (owner request: ship current main as rc6)

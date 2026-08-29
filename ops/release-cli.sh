@@ -161,7 +161,19 @@ sign_and_notarize() {
     die "OA_DEVELOPER_ID_APPLICATION is not set in $notary_env"
 
   echo "  signing $platform as $signing_identifier"
+  # Hardened runtime (`--options runtime`) is required by notarization, and the
+  # CLI embeds a wasm JIT: wasmtime mmaps executable pages for Cranelift at
+  # every plugin invoke (`oa plugin run`, the coder capability search, the
+  # /resume foreign-session scanner). Under hardened runtime without the JIT
+  # entitlements, the kernel kills those pages on first execute with
+  # `EXC_BAD_ACCESS / SIGKILL (Code Signature Invalid)` — termination
+  # CODESIGNING "Invalid Page" — which took down every 0.2.0-rc binary the
+  # moment a capability ran (issues #329, #330). These entitlements are what
+  # notarized JIT apps ship (Electron, Firefox, wasmtime's own release docs).
+  entitlements="$repo_root/ops/macos-entitlements.plist"
+  [ -f "$entitlements" ] || die "missing $entitlements; hardened runtime needs the JIT entitlements"
   codesign --force --timestamp --options runtime \
+    --entitlements "$entitlements" \
     --identifier "$signing_identifier" \
     --sign "$OA_DEVELOPER_ID_APPLICATION" \
     "$artifact" >/dev/null 2>&1 ||
