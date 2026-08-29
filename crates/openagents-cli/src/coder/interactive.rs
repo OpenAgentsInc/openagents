@@ -92,6 +92,30 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         return Ok(());
     }
 
+    // Take the terminal before any await. 0.2.0-rc1 ran git + issue list
+    // first (#316); during that window keys still belonged to the invoking
+    // shell, and after keyboard enhancement they arrived as CSI-u on the
+    // prompt (`7441;1:3u`).
+    enable_raw_mode()?;
+    let mut stdout = stdout();
+    if let Err(error) = stdout.execute(EnterAlternateScreen) {
+        let _ = disable_raw_mode();
+        return Err(error.into());
+    }
+    let _terminal_cleanup = TerminalCleanup;
+    let _ = stdout.execute(EnableMouseCapture);
+    let flags = event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        | event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+        | event::KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
+    let _ = crossterm::execute!(
+        stderr(),
+        PushKeyboardEnhancementFlags(flags),
+        EnableBracketedPaste
+    );
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.show_cursor()?;
+
     let (tx, rx) = mpsc::channel::<Control>();
     let mut ui = CoderUi::new();
     let mut history = History::load(History::default_path());
@@ -190,8 +214,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let checkpoint = loaded.summary.last_checkpoint.clone();
     let snapshot_text =
         crate::coder::snapshot::workspace_snapshot(&cwd, checkpoint.as_deref()).await;
-    ui.entries
-        .push(Entry::new(Role::Notice, snapshot_text.clone()));
     let atif_directory = loaded.store.directory().to_path_buf();
     // This session joins the local swarm: other tabs and, later, delegate
     // children discover it through this registration. Failing to register is
@@ -288,40 +310,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         &snapshot_text,
     );
     let mut session: Option<Arc<Mutex<Session>>> = Some(Arc::new(Mutex::new(opened)));
-
-    enable_raw_mode()?;
-    let mut stdout = stdout();
-    if let Err(error) = stdout.execute(EnterAlternateScreen) {
-        let _ = disable_raw_mode();
-        return Err(error.into());
-    }
-    // This guard owns every terminal mode after the alternate screen opens.
-    // A failed event reader must not strand mouse reporting or raw mode in the
-    // invoking shell.
-    let _terminal_cleanup = TerminalCleanup;
-    // Match grok-build: capture ordinary mouse gestures for in-app trackpad
-    // scrolling, while Shift-drag remains native terminal selection and copy.
-    // Terminal emulators bypass application mouse reporting for that modified
-    // gesture, so both interactions remain available at the same time.
-    let _ = stdout.execute(EnableMouseCapture);
-
-    let mut stderr = stderr();
-    let flags = event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        | event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-        | event::KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
-    // Ask the terminal to wrap clipboard input in paste markers. Without
-    // this, a newline in a pasted list arrives as an Enter key and submits
-    // the first line before the rest reaches the composer. grok-build uses
-    // the same terminal protocol for its text inputs.
-    let _ = crossterm::execute!(
-        stderr,
-        PushKeyboardEnhancementFlags(flags),
-        EnableBracketedPaste
-    );
-
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-    terminal.show_cursor()?;
 
     // What the account holds before this session has spent anything, so the
     // bottom row carries a balance from the first frame rather than only after
@@ -452,7 +440,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                     );
                                     let live =
                                         session.as_ref().expect("a turn ran, so a session exists");
-                                    refresh_workspace_snapshot(&mut ui, live, &cwd).await;
+                                    refresh_workspace_snapshot(live, &cwd).await;
                                     let prompt = autopilot.iteration_prompt();
                                     start_prompt(
                                         &mut ui,
@@ -1827,7 +1815,7 @@ async fn submit(
             },
         ));
         if autopilot.engaged && matches!(turns.phase(), TurnPhase::Idle) {
-            refresh_workspace_snapshot(ui, session, cwd).await;
+            refresh_workspace_snapshot(session, cwd).await;
             let prompt = autopilot.iteration_prompt();
             start_prompt(ui, prompt, Vec::new(), session, tx, turns, active_turn, dev).await;
             update_activity(ui, turns, prompt_queue.len());
@@ -1858,18 +1846,13 @@ async fn submit(
     commands::Outcome::Done
 }
 
-async fn refresh_workspace_snapshot(
-    ui: &mut CoderUi,
-    session: &Arc<Mutex<Session>>,
-    cwd: &std::path::Path,
-) {
+async fn refresh_workspace_snapshot(session: &Arc<Mutex<Session>>, cwd: &std::path::Path) {
     let checkpoint = session
         .lock()
         .await
         .local_session_summary()
         .and_then(|summary| summary.last_checkpoint.clone());
     let text = crate::coder::snapshot::workspace_snapshot(cwd, checkpoint.as_deref()).await;
-    ui.entries.push(Entry::new(Role::Notice, text.clone()));
     session.lock().await.seed_workspace_snapshot(&text);
 }
 

@@ -1,9 +1,10 @@
 //! Bounded workspace snapshot for session start (#316).
 //!
 //! Host-known git and issue-board facts, capped so a dirty tree cannot dump
-//! hundreds of paths onto the first request. The TUI shows this as a Notice;
-//! the same text is placed on the wire as a user message the model must not
-//! treat as a prompt.
+//! hundreds of paths onto the first request. The text is placed on the wire
+//! as a user message the model must not treat as a prompt. It is not a TUI
+//! Notice: painting it into the transcript is how 0.2.0-rc1 opened with a
+//! wall of `git log` and issue titles.
 
 use std::path::Path;
 use std::process::Command;

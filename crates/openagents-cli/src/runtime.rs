@@ -1548,10 +1548,10 @@ impl CoderRuntimeSession {
         }
     }
 
-    /// Put the host workspace snapshot on the wire (#316). The TUI shows the
-    /// same text as a Notice; this is the first-request copy. Not persisted as
-    /// a user event, so a later `--resume` injects a fresh snapshot instead of
-    /// stacking stale ones.
+    /// Put the host workspace snapshot on the wire (#316). This is the
+    /// first-request copy, not a TUI Notice. Not persisted as a user event, so
+    /// a later `--resume` injects a fresh snapshot instead of stacking stale
+    /// ones.
     pub fn seed_workspace_snapshot(&mut self, text: &str) {
         self.messages.push(ChatMessage {
             role: "user".to_string(),

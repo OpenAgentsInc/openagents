@@ -1136,24 +1136,22 @@ mod unix_pty {
         );
     }
 
-    /// A fresh session shows the host workspace snapshot as a Notice, not a
-    /// tool box (#316). The PTY workdir is not a git checkout, so the notice
-    /// says so rather than shelling `git status`.
+    /// A fresh session must not paint the host workspace snapshot into the
+    /// transcript (#316 was the wire copy; 0.2.0-rc1 also showed it as a
+    /// Notice and opened on a wall of `git log` / issue titles).
     #[test]
-    fn a_fresh_session_shows_the_workspace_snapshot_notice() {
+    fn a_fresh_session_does_not_show_the_workspace_snapshot_in_the_transcript() {
         let mut tui = Tui::start();
-        let frame = tui.wait_for("the workspace snapshot notice", FIRST_FRAME, |frame| {
-            frame.transcript().contains("Workspace snapshot")
-                || frame.transcript().contains("not a repository")
-        });
+        let frame = tui.wait_for_composer();
+        let transcript = frame.transcript();
         assert!(
-            frame.transcript().contains("cwd:"),
-            "the snapshot must name the working directory.\n{}",
+            !transcript.contains("Workspace snapshot"),
+            "the snapshot leaked into the TUI.\n{}",
             frame.dump()
         );
         assert!(
-            !frame.transcript().contains("shell git status"),
-            "the snapshot must not be a tool box.\n{}",
+            !transcript.contains("open issues"),
+            "issue-board rows leaked into the TUI.\n{}",
             frame.dump()
         );
         let status = tui.quit();

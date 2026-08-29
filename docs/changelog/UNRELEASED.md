@@ -5,6 +5,17 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder 0.2.0-rc2: no workspace dump on first frame, take the terminal first
+
+- issues: none (owner: 0.2.0-rc1 painted the #316 snapshot into the transcript and leaked CSI-u on first open)
+- commits: this change
+- contracts-specs: Coder TUI first frame; workspace snapshot is wire-only
+- invariants: the host snapshot is not a Notice; raw mode and the alternate screen start before any git/issue await
+- evidence: `a_fresh_session_does_not_show_the_workspace_snapshot_in_the_transcript`; `startup_facts_are_centered_outside_the_transcript`
+- lane: grok 0.2.0-rc2 tui
+
+0.2.0-rc1 showed `git log` and open issues as the first transcript Notice, and it waited on that snapshot before taking the terminal, so keys typed during first-open arrived as CSI-u (`7441;1:3u`) on the invoking shell. The snapshot still seeds the first model request. It does not paint.
+
 ## Coder first-open works without OpenAgents sign-in (#325, #326)
 
 - issues: #325, #326

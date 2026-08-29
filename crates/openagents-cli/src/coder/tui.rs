@@ -30,7 +30,7 @@ const TOOL_SETTLE_FRAMES: u64 = 10;
 /// into one `+N earlier` counter, counted rather than stored as text.
 pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
-/// Idle "New in v0.2.0-rc1" card. Seven lines is the ceiling so the pair of
+/// Idle "New in v0.2.0-rc2" card. Seven lines is the ceiling so the pair of
 /// boxes still fits an ordinary terminal.
 const WELCOME_WHAT_IS_NEW: &[&str] = &[
     "Coder Local answers from Ollama on this machine",
@@ -1308,7 +1308,7 @@ impl CoderUi {
                     .collect::<Vec<_>>(),
             );
             let news_block = Block::default()
-                .title(" New in v0.2.0-rc1 ")
+                .title(" New in v0.2.0-rc2 ")
                 .title_alignment(Alignment::Center)
                 .borders(Borders::ALL)
                 .border_style(value_style)
