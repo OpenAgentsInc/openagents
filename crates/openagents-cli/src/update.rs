@@ -53,6 +53,8 @@ pub enum UpdateError {
     },
     /// The binary could not be replaced.
     ReplaceFailed { path: PathBuf, detail: String },
+    /// The named version is older than the one already installed.
+    WouldDowngrade { current: String, requested: String },
 }
 
 impl std::fmt::Display for UpdateError {
@@ -97,6 +99,10 @@ impl std::fmt::Display for UpdateError {
             Self::ReplaceFailed { path, detail } => {
                 write!(formatter, "could not replace {}: {detail}", path.display())
             }
+            Self::WouldDowngrade { current, requested } => write!(
+                formatter,
+                "{requested} is older than the installed {current}. Pass --force to install it anyway"
+            ),
         }
     }
 }
@@ -139,6 +145,69 @@ pub fn platform() -> Option<String> {
 
 /// The grammar `ops/release-cli.sh` and the installer both apply. A version
 /// one of them accepts and another rejects is a release nobody can ask for.
+/// Compare two versions the release grammar admits.
+///
+/// Core `X.Y.Z` numbers are compared first. A release without a suffix sorts
+/// ahead of the same core with a suffix (`0.2.0` is newer than `0.2.0-rc.13`).
+/// Suffix identifiers split on `.`; a numeric identifier compares as a number,
+/// otherwise as bytes. `None` means a side is not a version.
+pub fn cmp_release_versions(left: &str, right: &str) -> Option<std::cmp::Ordering> {
+    let left = parse_release_version(left)?;
+    let right = parse_release_version(right)?;
+    Some(compare_parsed(left, right))
+}
+
+fn compare_parsed(
+    left: (u64, u64, u64, Option<Vec<PrereleaseIdent>>),
+    right: (u64, u64, u64, Option<Vec<PrereleaseIdent>>),
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    match (left.0, left.1, left.2).cmp(&(right.0, right.1, right.2)) {
+        Ordering::Equal => match (&left.3, &right.3) {
+            (None, None) => Ordering::Equal,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(_), None) => Ordering::Less,
+            (Some(left_pre), Some(right_pre)) => left_pre.cmp(right_pre),
+        },
+        other => other,
+    }
+}
+
+fn parse_release_version(value: &str) -> Option<(u64, u64, u64, Option<Vec<PrereleaseIdent>>)> {
+    if !valid_version(value) {
+        return None;
+    }
+
+    let (core, suffix) = match value.split_once('-') {
+        Some((core, suffix)) => (core, Some(suffix)),
+        None => (value, None),
+    };
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    let prerelease = suffix.map(|suffix| {
+        suffix
+            .split('.')
+            .map(|part| {
+                if !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()) {
+                    PrereleaseIdent::Numeric(part.parse().unwrap_or(0))
+                } else {
+                    PrereleaseIdent::Text(part.to_string())
+                }
+            })
+            .collect()
+    });
+    Some((major, minor, patch, prerelease))
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum PrereleaseIdent {
+    Numeric(u64),
+    Text(String),
+}
+
 pub fn valid_version(value: &str) -> bool {
     let (core, suffix) = match value.split_once('-') {
         Some((core, suffix)) => (core, Some(suffix)),
@@ -235,6 +304,11 @@ pub enum Outcome {
         to: String,
         path: PathBuf,
     },
+    /// The channel or requested version is older than what is installed.
+    Older {
+        version: String,
+        installed: String,
+    },
 }
 
 impl Outcome {
@@ -259,6 +333,12 @@ impl Outcome {
                 "from": from,
                 "to": to,
                 "path": path.to_string_lossy(),
+            }),
+            Self::Older { version, installed } => serde_json::json!({
+                "schema": "openagents.cli_update.v1",
+                "outcome": "older",
+                "version": version,
+                "installed": installed,
             }),
         }
     }
@@ -548,8 +628,34 @@ pub async fn run(
         });
     }
 
+    let target_is_older = cmp_release_versions(&version, current) == Some(std::cmp::Ordering::Less);
+
+    if target_is_older && !force {
+        say(format!(
+            "{version} is older than the installed {current}. Pass --force to install it anyway."
+        ));
+
+        if check {
+            return Ok(Outcome::Older {
+                version,
+                installed: current.to_string(),
+            });
+        }
+
+        return Err(Box::new(UpdateError::WouldDowngrade {
+            current: current.to_string(),
+            requested: version,
+        }));
+    }
+
     if check {
-        say(format!("Update available: {current} -> {version}"));
+        if target_is_older {
+            say(format!(
+                "Would install older {version} over {current} (--force)."
+            ));
+        } else {
+            say(format!("Update available: {current} -> {version}"));
+        }
 
         return Ok(Outcome::Available { version });
     }

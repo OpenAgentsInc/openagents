@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use openagents_cli::update::{
-    Outcome, UpdateError, Updater, artifact_name, digest_for, hex_digest, platform, replace_binary,
-    run, sums_entry_name, valid_version,
+    Outcome, UpdateError, Updater, artifact_name, cmp_release_versions, digest_for, hex_digest,
+    platform, replace_binary, run, sums_entry_name, valid_version,
 };
 
 /// A release server that serves exactly what it is given and 404s the rest.
@@ -117,6 +117,61 @@ async fn a_non_release_build_can_update_to_the_first_published_release() {
         outcome,
         Outcome::Available {
             version: "0.0.1".to_string()
+        }
+    );
+}
+
+#[test]
+fn a_newer_installed_release_sorts_ahead_of_an_older_channel() {
+    use std::cmp::Ordering;
+
+    assert_eq!(
+        cmp_release_versions("0.2.0-rc.13", "0.1.1"),
+        Some(Ordering::Greater)
+    );
+    assert_eq!(
+        cmp_release_versions("0.2.0-rc.13", "0.2.0"),
+        Some(Ordering::Less)
+    );
+    assert_eq!(
+        cmp_release_versions("0.2.0-rc.12", "0.2.0-rc.13"),
+        Some(Ordering::Less)
+    );
+    assert_eq!(
+        cmp_release_versions("0.0.0-dev", "0.0.1"),
+        Some(Ordering::Less)
+    );
+    assert_eq!(
+        cmp_release_versions("0.2.0", "0.2.0"),
+        Some(Ordering::Equal)
+    );
+}
+
+#[tokio::test]
+async fn an_older_requested_version_is_a_downgrade_not_an_update() {
+    let outcome = run(None, Some("0.0.0-alpha".to_string()), true, false, true)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        outcome,
+        Outcome::Older {
+            version: "0.0.0-alpha".to_string(),
+            installed: "0.0.0-dev".to_string(),
+        }
+    );
+}
+
+#[tokio::test]
+async fn an_older_requested_version_installs_only_when_forced() {
+    let outcome = run(None, Some("0.0.0-alpha".to_string()), true, true, true)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        outcome,
+        Outcome::Available {
+            version: "0.0.0-alpha".to_string()
         }
     );
 }
