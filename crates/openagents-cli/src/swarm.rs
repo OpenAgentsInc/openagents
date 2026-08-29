@@ -144,8 +144,11 @@ impl Registration {
         #[cfg(unix)]
         {
             // Signal 0 delivers nowhere; it answers whether the pid exists
-            // and belongs to someone this process may signal.
-            unsafe { libc::kill(self.pid as i32, 0) == 0 }
+            // and belongs to someone this process may signal. Pid 0 is
+            // excluded first: POSIX reads it as "every process in the
+            // caller's group", so a zero pid would otherwise answer alive
+            // forever by asking about unrelated processes.
+            self.pid > 0 && unsafe { libc::kill(self.pid as i32, 0) == 0 }
         }
         #[cfg(not(unix))]
         {
@@ -160,8 +163,25 @@ impl Registration {
     }
 
     /// What discovery says about this session right now.
+    ///
+    /// Two signals, and the module doc has always promised both: the pid
+    /// must exist, and the heartbeat must be inside the alive window. Either
+    /// alone lies. A pid alone lies twice — the process may have exited and
+    /// the pid been recycled to something that is not this session (a macOS
+    /// launchd daemon was found standing in for a dead Coder session), and a
+    /// session wedged before its first turn never proves itself by existing.
+    /// A heartbeat alone lies the other way: an open session sitting idle
+    /// between turns stops beating but is not gone. Requiring both means a
+    /// recycled pid reads stale once its heartbeat ages out, which is the
+    /// drift this check exists to catch (#339).
+    ///
+    /// Historical note for readers of old registration files: sessions that
+    /// predate the per-turn heartbeat in `drain_swarm_inbox` hold
+    /// `heartbeat_at_ms` from their registration moment only. They read
+    /// stale — correctly, because nothing has been able to confirm them
+    /// alive since.
     pub fn state(&self) -> SwarmState {
-        if self.process_alive() {
+        if self.process_alive() && self.heartbeat_fresh() {
             SwarmState::Live
         } else {
             SwarmState::Stale
@@ -839,7 +859,13 @@ pub fn send(
     };
 
     // `all` and `role:children-of:` resolve against the live registrations.
-    let registrations = list(home)?;
+    // Fan-out means sessions that can answer: a broadcast that queues into
+    // forty stale inboxes wakes nobody and buries the next live drain under
+    // stale-queue flags (#339).
+    let registrations: Vec<_> = list(home)?
+        .into_iter()
+        .filter(|registration| registration.state() == SwarmState::Live)
+        .collect();
     let targets: Vec<String> = if to == "all" {
         registrations
             .iter()
@@ -900,7 +926,10 @@ pub fn send(
         // inbox file survives the process, so delivery is an append that
         // waits for the recipient's next live drain. The report and the
         // message both flag it, so nobody mistakes queued mail for a live
-        // exchange. Only a missing registration is undeliverable.
+        // exchange. Only a missing registration is undeliverable. With the
+        // live-only fan-out above (#339) this flag is now only reachable on
+        // direct sends to a session that went stale between listing and
+        // delivery — exactly the race the flag was built for.
         let stale_at_send = registration.stale_at();
         let mailbox = Mailbox::at(
             Path::new(&registration.inbox)
@@ -1762,6 +1791,48 @@ pub struct WaitOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A registration whose pid answers and whose heartbeat is current —
+    /// the every-signal-good shape.
+    fn live_registration() -> Registration {
+        Registration {
+            schema: REGISTRATION_SCHEMA.to_string(),
+            session_id: "1astatetest0000000000".to_string(),
+            pid: std::process::id(),
+            cwd: "/tmp".to_string(),
+            lane: "flash".to_string(),
+            model: None,
+            role: "root".to_string(),
+            parent: None,
+            worktree: None,
+            status: None,
+            inbox: "/tmp/inbox.jsonl".to_string(),
+            alive_after_ms: DEFAULT_ALIVE_AFTER_MS,
+            started_at_ms: now_ms(),
+            heartbeat_at_ms: now_ms(),
+        }
+    }
+
+    /// Liveness needs both signals (#339). A live pid with a fresh heartbeat
+    /// is the only Live shape; each signal failing alone must read stale.
+    #[test]
+    fn state_requires_both_pid_and_heartbeat() {
+        let mut registration = live_registration();
+        assert_eq!(registration.state(), SwarmState::Live);
+
+        // Heartbeat aged out while the pid still answers: the pid was
+        // recycled or the registration was copied, and neither is alive.
+        registration.heartbeat_at_ms = registration.heartbeat_at_ms.saturating_sub(
+            registration.alive_after_ms + 1,
+        );
+        assert_eq!(registration.state(), SwarmState::Stale);
+
+        // Fresh heartbeat from a dead pid: nothing is home.
+        let mut dead = live_registration();
+        dead.pid = 0;
+        assert!(!dead.process_alive(), "pid 0 must not answer signal 0");
+        assert_eq!(dead.state(), SwarmState::Stale);
+    }
 
     fn unread(from: &str, sequence: u64, body: &str) -> SwarmMessage {
         SwarmMessage {

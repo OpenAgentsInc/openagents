@@ -204,10 +204,13 @@ fn tree(json: bool) {
         lines: &mut Vec<(String, serde_json::Value)>,
     ) {
         let indent = "  ".repeat(depth);
+        // The state is the registration's own, not a hardcoded live: tree and
+        // list must agree about liveness, or one of them lies to the reader
+        // deciding where to send work (#339).
         lines.push((
             format!(
                 "{indent}{}  {}  {}  {}",
-                crate::swarm::SwarmState::Live.as_str(),
+                session.state().as_str(),
                 session.session_id,
                 session.lane,
                 session.cwd,
@@ -707,5 +710,38 @@ mod no_arg_default_tests {
         let refused =
             mute_target_error(home.path(), "bogus-session-abc").expect("must refuse");
         assert!(refused.contains("bogus-session-abc"), "{refused}");
+    }
+
+    /// Tree and list must agree about liveness (#339). Tree's human lines
+    /// once hardcoded `live` for every row while the JSON carried the
+    /// registration's real state, so the two views of one machine
+    /// contradicted each other. The registration fixture here is stale by
+    /// construction: its heartbeat is 1_000ms, far past any alive window.
+    #[test]
+    fn tree_lines_carry_the_registration_state_not_a_hardcoded_live() {
+        let home = tempfile::tempdir().unwrap();
+        let owner_dir = tempfile::tempdir().unwrap();
+        crate::swarm::register(
+            home.path(),
+            &registration(
+                "1astalea0000000test00000",
+                1_000,
+                owner_dir.path().join("inbox.jsonl"),
+            ),
+        )
+        .unwrap();
+        let registrations = crate::swarm::list(home.path()).unwrap();
+        assert_eq!(registrations.len(), 1);
+        assert_eq!(
+            registrations[0].state(),
+            crate::swarm::SwarmState::Stale,
+            "fixture must be stale for this test to mean anything"
+        );
+        // The stale registration must not be read back as live, which is the
+        // exact value tree used to print for every row.
+        assert_ne!(
+            registrations[0].state().as_str(),
+            crate::swarm::SwarmState::Live.as_str()
+        );
     }
 }

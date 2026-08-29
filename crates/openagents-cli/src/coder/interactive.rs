@@ -356,6 +356,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     };
     let mut active_turn: Option<ActiveTurn> = None;
     let mut prompt_queue = VecDeque::new();
+    // The frame-loop half of the swarm heartbeat (#339); the turn loop holds
+    // the other half.
+    let mut last_swarm_beat = std::time::Instant::now();
     let prompt = options.prompt;
     let one_shot = prompt.is_some();
     if let Some(text) = prompt {
@@ -597,6 +600,16 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             let size = f.area();
             ui.render(f, size);
         })?;
+
+        // Keep this session's swarm registration believable between turns.
+        // The other beat is per-turn (in `drain_swarm_inbox`), so an open but
+        // idle session would otherwise age out of its alive window and read
+        // stale while sitting right there on screen (#339). Once a minute is
+        // far inside the 30-minute window and costs one file rewrite.
+        if last_swarm_beat.elapsed() >= std::time::Duration::from_secs(60) {
+            let _ = crate::swarm::heartbeat(&swarm_home, &swarm_session_id);
+            last_swarm_beat = std::time::Instant::now();
+        }
 
         // ratatui has no hyperlink concept, so repaint the link runs as OSC 8
         // sequences over the frame it just flushed. `emit` re-reads the text
