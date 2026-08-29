@@ -348,6 +348,96 @@ fn ollama_host_from_env() -> String {
     )
 }
 
+/// One installed Ollama model, reduced to what the model picker shows
+/// (issue #324): the tag, its size, and its quantization level.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalModelDetails {
+    pub tag: String,
+    pub size_bytes: Option<u64>,
+    pub quantization: Option<String>,
+}
+
+/// What Ollama has installed, most recently modified first, with the detail
+/// fields the picker's description row shows. The same `GET /api/tags` the
+/// cycle gate probes — this is that probe with the fields it drops.
+///
+/// Free-standing rather than a session method: the picker runs from the
+/// frame loop, which holds no session of its own, and constructing a whole
+/// harness to read one endpoint is the kind of weight a probe must not
+/// carry.
+pub async fn installed_local_model_details() -> Result<Vec<LocalModelDetails>, String> {
+    let host = ollama_host_from_env();
+    let url = format!("{}/api/tags", host.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|error| format!("could not build an HTTP client: {error}"))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|_| OLLAMA_INSTALL_SIGN.to_string())?;
+    if !resp.status().is_success() {
+        return Err(OLLAMA_INSTALL_SIGN.to_string());
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|error| format!("{url} sent a body that was not JSON: {error}"))?;
+    let mut models: Vec<(String, String)> = body
+        .get("models")
+        .and_then(|v| v.as_array())
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|m| {
+                    let name = m.get("name").and_then(|v| v.as_str())?;
+                    let modified = m
+                        .get("modified_at")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    Some((name.to_string(), modified.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    models.sort_by(|left, right| right.1.cmp(&left.1));
+    let details: Vec<LocalModelDetails> = body
+        .get("models")
+        .and_then(|v| v.as_array())
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|m| {
+                    let tag = m.get("name").and_then(|v| v.as_str())?.to_string();
+                    let size_bytes = m.get("size").and_then(|v| v.as_u64());
+                    let quantization = m
+                        .get("details")
+                        .and_then(|d| d.get("quantization_level"))
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
+                    Some(LocalModelDetails {
+                        tag,
+                        size_bytes,
+                        quantization,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let order: std::collections::HashMap<&str, usize> = models
+        .iter()
+        .enumerate()
+        .map(|(index, (name, _))| (name.as_str(), index))
+        .collect();
+    let mut details = details;
+    details.sort_by_key(|model| order.get(model.tag.as_str()).copied().unwrap_or(usize::MAX));
+    if details.is_empty() {
+        return Err(OLLAMA_INSTALL_SIGN.to_string());
+    }
+    Ok(details)
+}
+
 /// How many rounds of tool calls one turn may take before it has to answer.
 ///
 /// A backstop against a model that loops, not a budget. Raised from 100 to

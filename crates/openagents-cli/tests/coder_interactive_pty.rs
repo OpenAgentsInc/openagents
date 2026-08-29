@@ -128,14 +128,20 @@ mod unix_pty {
                     }
                     let head = String::from_utf8_lossy(&request).to_string();
                     let served = if head.starts_with("GET ") && head.contains("/api/v1/models") {
-                        // The shape `served_models` reads, with one available
-                        // model so the Flash lane resolves and the turn gets
-                        // as far as the thread call this stub refuses. An
-                        // empty list would refuse at the lane instead, and the
-                        // test below would stop proving the turn reaches the
-                        // deployment at all.
+                        // The shape `served_models` reads. `glm-5.3-flash`
+                        // is the Flash lane's candidate, so the default lane
+                        // resolves and the turn gets as far as the thread
+                        // call this stub refuses. The Pro ids ride along so
+                        // the model picker (#323) has a Pro catalog to list:
+                        // `terra` is listed but not available, the honest
+                        // "credential missing" state the picker must skip.
                         Some(
-                            r#"{"models":[{"id":"glm-5.3-flash","availability":"available","default":true}]}"#,
+                            r#"{"models":[
+                                {"id":"glm-5.3-flash","availability":"available","default":true},
+                                {"id":"gpt-5.6-sol","availability":"available","default":false},
+                                {"id":"gpt-5.6-terra","availability":"unavailable","default":false},
+                                {"id":"gpt-5.6-luna","availability":"available","default":false}
+                            ]}"#,
                         )
                     } else if head.starts_with("GET ") && head.contains("/api/v1/credit") {
                         Some(credit)
@@ -157,6 +163,50 @@ mod unix_pty {
                             body.len()
                         )
                     };
+                    let _ = stream.write_all(response.as_bytes());
+                    let _ = stream.flush();
+                }
+            });
+            Self {
+                origin: format!("http://127.0.0.1:{port}"),
+            }
+        }
+    }
+
+    /// A loopback Ollama `/api/tags` for the Local picker (#324).
+    struct OllamaTags {
+        origin: String,
+    }
+
+    impl OllamaTags {
+        fn start() -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind ollama stub");
+            let port = listener.local_addr().expect("ollama address").port();
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { continue };
+                    let mut request = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while !request.ends_with(b"\r\n\r\n") {
+                        match stream.read(&mut byte) {
+                            Ok(0) | Err(_) => break,
+                            Ok(_) => request.push(byte[0]),
+                        }
+                    }
+                    let body = concat!(
+                        r#"{"models":["#,
+                        r#"{"name":"qwen3.8:27b-mtp-q8_0","size":30000000000,"#,
+                        r#""modified_at":"2026-08-29T00:00:00Z","#,
+                        r#""details":{"quantization_level":"Q8_0"}},"#,
+                        r#"{"name":"qwen3:8b","size":5000000000,"#,
+                        r#""modified_at":"2026-08-28T00:00:00Z"}"#,
+                        r#"]}"#
+                    );
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
                     let _ = stream.write_all(response.as_bytes());
                     let _ = stream.flush();
                 }
@@ -372,6 +422,20 @@ mod unix_pty {
                 &[],
                 false,
                 Some("http://127.0.0.1:1"),
+            )
+        }
+
+        fn start_local(ollama_host: &str, with_token: bool) -> Self {
+            Self::start_full_in(
+                ROWS,
+                COLS,
+                STUB_CREDIT,
+                false,
+                Duration::ZERO,
+                scratch_dir(),
+                &["--lane", "local"],
+                with_token,
+                Some(ollama_host),
             )
         }
 
@@ -1013,9 +1077,17 @@ mod unix_pty {
             // the assertion holds at any window height.
             transcript.contains("Alt+Enter") && transcript.contains("/swarm — the local swarm")
         });
+        // The command table is long enough that its oldest rows fall off the
+        // top on a 30-row terminal; the newest entry and the keys section are
+        // the span that must survive any window height.
         assert!(
-            frame.transcript().contains("/continue"),
-            "the `/help` output should list checkpoint continue.\n{}",
+            frame
+                .transcript()
+                .contains("/gym — show or hide the gym pane")
+                && frame
+                    .transcript()
+                    .contains("Ctrl+P — open the model picker"),
+            "the `/help` output should list the command table's span.\n{}",
             frame.dump()
         );
 
@@ -1285,6 +1357,229 @@ mod unix_pty {
             engaged.transcript().contains("budget"),
             "the engaged screen carries the budget line.\n{}",
             engaged.dump()
+        );
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
+    /// The model picker (issue #323): Ctrl+P on the Pro lane lists the Pro
+    /// models the deployment serves — in `PRO_MODEL_IDS` order, skipping the
+    /// listed-but-unavailable `terra` — with the picker rows visible.
+    /// Ctrl+M is Enter in this terminal (0x0D), so the chord is Ctrl+P.
+    #[test]
+    fn model_picker_lists_served_pro_models_and_flash_refuses() {
+        let mut tui = Tui::start_from_home(scratch_dir(), &["--lane", "pro"]);
+        tui.wait_for_composer();
+
+        // Ctrl+P opens the picker loading; the stub answers, and the rows
+        // render with the served Pro models in table order.
+        tui.send(&[0x10]); // Ctrl+P: 0x10 is the raw ctrl-byte crossterm maps to Char(p)+CONTROL
+        tui.wait_for("the model picker to open", REDRAW, |frame| {
+            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
+            frame.rows[..composer_top]
+                .iter()
+                .any(|row| row.contains("gpt-5.6-sol"))
+                && frame.rows[..composer_top]
+                    .iter()
+                    .any(|row| row.contains("gpt-5.6-luna"))
+        });
+        let open = tui.frame();
+        let composer_top = open.composer().expect("composer still up").top;
+        let picker_rows = open.rows[..composer_top].to_vec();
+        let joined = picker_rows.join(" ");
+        assert!(
+            joined.contains("Models"),
+            "the picker carries a title.\n{}",
+            open.dump()
+        );
+        assert!(
+            joined.contains("reasoning medium"),
+            "Pro rows name the reasoning the lane would use.\n{}",
+            open.dump()
+        );
+        // `terra` is in the stub's catalog but unavailable: the picker must
+        // not offer a row the turn would refuse.
+        assert!(
+            !joined.contains("gpt-5.6-terra"),
+            "an unavailable model is not a choice.\n{}",
+            open.dump()
+        );
+
+        // Esc dismisses; the rows go away.
+        tui.send(&[0x1b]);
+        tui.wait_for("the picker to close", REDRAW, |frame| {
+            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
+            !frame.rows[..composer_top]
+                .iter()
+                .any(|row| row.contains("Models"))
+        });
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
+    /// Flash has no per-model list: `/model` refuses by name rather than
+    /// offering the gateway tier as if it were a choice.
+    #[test]
+    fn model_on_flash_refuses_by_name() {
+        let mut tui = Tui::start();
+        tui.wait_for_composer();
+
+        tui.type_text("/model");
+        tui.send(b"\r");
+        tui.wait_for("Flash `/model` to refuse", REDRAW, |frame| {
+            frame.transcript().contains("has no model list")
+        });
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
+    /// Local `/model` lists installed Ollama tags (#324). Unsigned (#327):
+    /// no login, no catalog refusal, the current tag marked, commit re-pins
+    /// without opening a server thread.
+    #[test]
+    fn local_model_picker_lists_tags_unsigned() {
+        let ollama = OllamaTags::start();
+        let mut tui = Tui::start_local(&ollama.origin, false);
+        tui.wait_for_composer();
+
+        tui.type_text("/model");
+        tui.send(b"\r");
+        tui.wait_for("the Local picker to list installed tags", REDRAW, |frame| {
+            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
+            frame.rows[..composer_top]
+                .iter()
+                .any(|row| row.contains("qwen3.8:27b-mtp-q8_0"))
+                && frame.rows[..composer_top]
+                    .iter()
+                    .any(|row| row.contains("qwen3:8b"))
+        });
+        let open = tui.frame();
+        let joined = open.rows.join(" ");
+        assert!(
+            joined.contains("(current)"),
+            "the active local tag is marked current.\n{}",
+            open.dump()
+        );
+        assert!(
+            !open.transcript().contains("Starting OpenAgents sign-in")
+                && !open.transcript().contains("Sign in with /login"),
+            "Local /model must not start hosted auth.\n{}",
+            open.dump()
+        );
+
+        tui.send(&[0x1b]);
+        tui.wait_for("the Local picker to close", REDRAW, |frame| {
+            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
+            !frame.rows[..composer_top]
+                .iter()
+                .any(|row| row.contains("Models"))
+        });
+        tui.type_text("/model qwen3:8b");
+        tui.send(b"\r");
+        let committed = tui.wait_for("the Local pin to land", REDRAW, |frame| {
+            frame.transcript().contains("Model set to qwen3:8b")
+                && frame.transcript().contains("talks to Ollama")
+        });
+        assert!(
+            committed.status_bar().contains("qwen3:8b"),
+            "the status row names the local tag.\n{}",
+            committed.dump()
+        );
+        assert!(
+            !committed.transcript().contains("opens its own thread"),
+            "Local commit must not re-open a server thread.\n{}",
+            committed.dump()
+        );
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
+    /// Unsigned Local with no Ollama: `/model` shows the #326 install sign,
+    /// not a login prompt and not an empty dropdown (#327).
+    #[test]
+    fn local_model_picker_unsigned_without_ollama_shows_install_sign() {
+        let mut tui = Tui::start_local("http://127.0.0.1:1", false);
+        tui.wait_for_composer();
+
+        tui.type_text("/model");
+        tui.send(b"\r");
+        let frame = tui.wait_for("the install sign instead of a picker", REDRAW, |frame| {
+            frame.transcript().contains("For local, install Ollama")
+        });
+        assert!(
+            frame.transcript().contains("https://ollama.com/download"),
+            "the picker empty-state is the #326 install sign.\n{}",
+            frame.dump()
+        );
+        assert!(
+            !frame.transcript().contains("Starting OpenAgents sign-in")
+                && !frame.transcript().contains("Sign in with /login"),
+            "a missing Ollama must not become a login prompt.\n{}",
+            frame.dump()
+        );
+        let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
+        assert!(
+            !frame.rows[..composer_top]
+                .iter()
+                .any(|row| row.contains("Models")),
+            "an empty dropdown is not the empty state.\n{}",
+            frame.dump()
+        );
+
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
+    /// `/model <id>` commits directly: on the Pro lane, a served Pro id
+    /// re-pins the session (the status row names the committed model's
+    /// lane), and an unknown id refuses by name — never a silent fallback.
+    #[test]
+    fn model_direct_commit_pins_the_lane_and_unknown_ids_refuse_by_name() {
+        let mut tui = Tui::start_from_home(scratch_dir(), &["--lane", "pro"]);
+        tui.wait_for_composer();
+
+        tui.type_text("/model gpt-5.6-luna");
+        tui.send(b"\r");
+        let committed = tui.wait_for("the direct commit to land", REDRAW, |frame| {
+            frame.transcript().contains("Model set to gpt-5.6-luna")
+        });
+        // The committed pin is `Named(gpt-5.6-luna)`, whose label names the
+        // model — the row shows what will answer, not what was asked for.
+        assert!(
+            committed.status_bar().contains("gpt-5.6-luna"),
+            "the status row should name the committed model.\n{}",
+            committed.dump()
+        );
+
+        tui.type_text("/model gpt-5.6-nope");
+        tui.send(b"\r");
+        tui.wait_for("the unknown id to refuse", REDRAW, |frame| {
+            frame.transcript().contains("Unknown model: gpt-5.6-nope")
+        });
+
+        // A pin already on the Pro door is still a Pro picker: luna then
+        // sol must not refuse because the lane is now Named.
+        tui.type_text("/model gpt-5.6-sol");
+        tui.send(b"\r");
+        tui.wait_for("the second pin to land on Named", REDRAW, |frame| {
+            frame.transcript().contains("Model set to gpt-5.6-sol")
+        });
+
+        tui.type_text("/info");
+        tui.send(b"\r");
+        let info = tui.wait_for("`/info` to name the committed pin", REDRAW, |frame| {
+            frame.transcript().contains("This session")
+                && frame.transcript().contains("gpt-5.6-sol")
+        });
+        assert!(
+            info.transcript().contains("Lane — Coder (gpt-5.6-sol)")
+                && info.transcript().contains("Thread — none open"),
+            "the pin is session-scoped and drops the old thread.\n{}",
+            info.dump()
         );
 
         let status = tui.quit();

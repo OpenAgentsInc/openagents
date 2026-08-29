@@ -18,6 +18,7 @@ pub mod goal;
 pub mod image;
 pub mod interactive;
 pub mod markdown;
+pub mod model_picker;
 pub mod osc8;
 pub mod recall;
 pub mod runtime;

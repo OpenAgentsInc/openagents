@@ -124,6 +124,11 @@ pub enum Control {
     Done,
     /// The current goal after a command, tool call, or usage update.
     Goal(Option<crate::coder::goal::Goal>),
+    /// The model picker's items arrived, or the per-lane source refused
+    /// (issues #323/#324). Opened off the frame loop by `/model` / the
+    /// picker chord; `Err` is a refusal shown as a notice, `Ok` fills the
+    /// picker that was opened loading.
+    ModelPicker(Result<crate::coder::model_picker::PickerState, String>),
 }
 
 /// A `Sender` an observer can hold: `Fn` observers are shared, and the frame
@@ -231,7 +236,7 @@ pub fn system_prompt(tools: &[ToolDefinition]) -> String {
 }
 
 /// Catalog ids served by the Pro door.
-pub use crate::runtime::{PRO_MODEL_IDS, is_pro_model_id};
+pub use crate::runtime::{PRO_MODEL_IDS, ServedModel, is_pro_model_id};
 
 /// Production origin for Pro when no `--dev` base is set.
 pub const PRO_PRODUCTION_ORIGIN: &str = "https://pro.openagents.com";

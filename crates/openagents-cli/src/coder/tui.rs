@@ -422,6 +422,14 @@ pub struct CoderUi {
     /// row. Held here as display state; the command surface owns the state
     /// itself (`coder/autopilot.rs`) and the frame loop keeps the two in step.
     pub autopilot_engaged: bool,
+    /// The open model picker (issues #323/#324), when one is open.
+    ///
+    /// Held as display state by the frame, exactly like the lane: the items
+    /// come from the per-lane sources in `coder/model_picker.rs`, the filter
+    /// text and cursor live here, and the commit path is a lane pin the
+    /// frame loop applies through the session. `None` renders nothing — a
+    /// reader who never opens `/model` sees no new pixels.
+    pub model_picker: Option<crate::coder::model_picker::PickerState>,
     /// The thread this session holds, once the server has opened one.
     pub thread: Option<String>,
     /// The local source-of-truth session and its directory.
@@ -558,6 +566,7 @@ impl CoderUi {
             endpoint: String::new(),
             lane: String::new(),
             autopilot_engaged: false,
+            model_picker: None,
             thread: None,
             local_session_id: None,
             local_session_path: None,
@@ -949,6 +958,10 @@ impl CoderUi {
         }
 
         self.render_slash_suggestions(frame, transcript_area);
+        // The model picker draws over the same overlay band, above the
+        // slash suggestions, because it is the deeper surface: `/model`
+        // opened it deliberately, and its rows are the thing on screen.
+        self.render_model_picker(frame, transcript_area);
 
         let input_area = main[1];
 
@@ -1181,6 +1194,96 @@ impl CoderUi {
         } else {
             " Commands ".to_string()
         };
+        let block = Block::default()
+            .title(Span::styled(title, description_style))
+            .borders(Borders::ALL)
+            .border_style(description_style)
+            .style(name_style);
+        frame.render_widget(Paragraph::new(Text::from(rows)).block(block), dropdown);
+    }
+
+    /// Draw the open model picker (issues #323/#324), above the composer in
+    /// the same overlay band the slash suggestions use.
+    ///
+    /// The surface follows grok-build's `ArgPicker`: a bordered dropdown of
+    /// `ModelItem` rows — id (amber, `(current)` marker included) with the
+    /// description dimmed beside it — the selected row inverted, and a title
+    /// that names the filter. A loading picker (the Local probe is async)
+    /// renders its loading line instead of rows, so the surface exists from
+    /// the first frame rather than popping in when the network answers.
+    fn render_model_picker(&self, frame: &mut Frame, area: Rect) {
+        let Some(picker) = &self.model_picker else {
+            return;
+        };
+        if area.width < 24 || area.height < 4 {
+            return;
+        }
+
+        if picker.loading {
+            let dropdown = Rect {
+                x: area.x,
+                y: area.bottom().saturating_sub(3),
+                width: area.width,
+                height: 3,
+            };
+            let block = Block::default()
+                .title(Span::styled(
+                    " Models ",
+                    Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR));
+            let probing = Paragraph::new(Text::from(Line::from(Span::styled(
+                format!(" {}", picker.loading_label),
+                Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR),
+            ))))
+            .block(block);
+            frame.render_widget(probing, dropdown);
+            return;
+        }
+
+        let visible = picker.visible();
+        if visible.is_empty() {
+            return;
+        }
+        let start = picker
+            .selected
+            .saturating_sub(MAX_VISIBLE_COMMAND_SUGGESTIONS.saturating_sub(1));
+        let shown = visible
+            .iter()
+            .skip(start)
+            .take(MAX_VISIBLE_COMMAND_SUGGESTIONS)
+            .collect::<Vec<_>>();
+        let height = (shown.len() as u16 + 2).min(area.height);
+        let dropdown = Rect {
+            x: area.x,
+            y: area.bottom().saturating_sub(height),
+            width: area.width,
+            height,
+        };
+        let name_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
+        let description_style = Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR);
+        let selected_style = Style::default().fg(BACKGROUND_COLOR).bg(TEXT_COLOR);
+        let title = if picker.query.is_empty() {
+            " Models ".to_string()
+        } else {
+            format!(" Models · {} ", picker.query)
+        };
+        let rows = shown
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let (name_style, description_style) = if start + index == picker.selected {
+                    (selected_style, selected_style)
+                } else {
+                    (name_style, description_style)
+                };
+                Line::from(vec![
+                    Span::styled(format!(" {}  ", item.display), name_style),
+                    Span::styled(item.description.clone(), description_style),
+                ])
+            })
+            .collect::<Vec<_>>();
         let block = Block::default()
             .title(Span::styled(title, description_style))
             .borders(Borders::ALL)

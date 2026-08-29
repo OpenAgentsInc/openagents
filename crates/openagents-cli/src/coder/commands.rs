@@ -33,6 +33,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("help", "list these commands and the keys"),
     ("goal", "set, inspect, or manage the task goal"),
     (
+        "model",
+        "pick the model on Pro or Local: /model opens the picker, /model <id> commits",
+    ),
+    (
         "autopilot",
         "AFK mode: the loop keeps steering between turns: Meta+A, /autopilot [directive], /autopilot off",
     ),
@@ -104,6 +108,7 @@ const KEYS: &[(&str, &str)] = &[
         "Ctrl+C / Ctrl+D / Ctrl+Q",
         "leave Coder; an active turn is canceled first",
     ),
+    ("Ctrl+P", "open the model picker (Pro and Local)"),
 ];
 
 /// The command names, for Tab completion.

@@ -335,16 +335,12 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let mut turns = TurnState::default();
     // Session-level autopilot mode (`coder/autopilot.rs`). Session-only by
     // design: nothing persists it, so a new session opens human-steered.
-    let mut autopilot = crate::coder::autopilot::AutopilotState::default();
-    // The boundary record the heartbeat and `/autopilot status` render: what
-    // this loop has closed, what it picked, and the last heartbeat body.
-    let autopilot_closed: Vec<String> = Vec::new();
-    let mut autopilot_last_picked: Option<String> = None;
-    let mut autopilot_last_heartbeat: Option<String> = None;
-    // The claim refresh wires in when the picker starts announcing claims;
-    // until then this is always None, read-only at the heartbeat.
-    #[allow(unused_mut)]
-    let autopilot_pending_claim: Option<String> = None;
+    let mut autopilot_frame = AutopilotFrame {
+        state: crate::coder::autopilot::AutopilotState::default(),
+        closed: Vec::new(),
+        last_picked: None,
+        last_heartbeat: None,
+    };
     let mut active_turn: Option<ActiveTurn> = None;
     let mut prompt_queue = VecDeque::new();
     let mut login_pending = false;
@@ -392,7 +388,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         // switch. Queued human prompts win over the loop:
                         // they were typed while the turn ran, and the loop
                         // works for the reader, not instead of them.
-                        if autopilot.engaged && prompt_queue.is_empty() {
+                        if autopilot_frame.state.engaged && prompt_queue.is_empty() {
                             // The budget and stop conditions are checked
                             // before next-unit selection, never mid-unit
                             // (spec §7). The goal ledger is the primary
@@ -411,7 +407,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             }
                             let mail_stop = mail
                                 .as_ref()
-                                .and_then(|receipt| autopilot.observe_mail(receipt));
+                                .and_then(|receipt| autopilot_frame.state.observe_mail(receipt));
                             let goal_budget_exhausted = session
                                 .as_ref()
                                 .and_then(|s| s.try_lock().ok())
@@ -419,16 +415,19 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 .is_some_and(|goal| {
                                     goal.status == crate::coder::goal::GoalStatus::BudgetLimited
                                 });
-                            match mail_stop
-                                .or_else(|| autopilot.stops.should_stop(goal_budget_exhausted))
-                            {
+                            match mail_stop.or_else(|| {
+                                autopilot_frame
+                                    .state
+                                    .stops
+                                    .should_stop(goal_budget_exhausted)
+                            }) {
                                 Some(reason) => {
                                     // A stop is a report, not a halt: the
                                     // ledger state above is current, the
                                     // mode hands the wheel back, and the
                                     // session waits like a normal one.
-                                    autopilot.engaged = false;
-                                    autopilot.directive = None;
+                                    autopilot_frame.state.engaged = false;
+                                    autopilot_frame.state.directive = None;
                                     ui.autopilot_engaged = false;
                                     ui.entries.push(Entry::new(Role::Notice, reason.line()));
                                 }
@@ -441,17 +440,17 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                     send_heartbeat(
                                         &mut ui,
                                         crate::coder::autopilot::Heartbeat {
-                                            closed: autopilot_closed.last().cloned(),
-                                            picked: autopilot_last_picked.clone(),
-                                            claim: autopilot_pending_claim.clone(),
+                                            closed: autopilot_frame.closed.last().cloned(),
+                                            picked: autopilot_frame.last_picked.clone(),
+                                            claim: None,
                                         },
-                                        &mut autopilot.stops,
-                                        &mut autopilot_last_heartbeat,
+                                        &mut autopilot_frame.state.stops,
+                                        &mut autopilot_frame.last_heartbeat,
                                     );
                                     let live =
                                         session.as_ref().expect("a turn ran, so a session exists");
                                     refresh_workspace_snapshot(live, &cwd).await;
-                                    let prompt = autopilot.iteration_prompt();
+                                    let prompt = autopilot_frame.state.iteration_prompt();
                                     start_prompt(
                                         &mut ui,
                                         prompt,
@@ -640,6 +639,36 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
 
         let width = composer_width(terminal.size()?.width);
 
+        // The model picker owns the keyboard while it is open (issues
+        // #323/#324): type-to-filter, arrows to move, Enter to commit, Esc
+        // to dismiss. It runs before every other chord because a modal that
+        // leaks keystrokes to what is underneath is a modal that edits a
+        // draft the reader cannot see.
+        if ui.model_picker.is_some() {
+            let Some(picker) = ui.model_picker.as_mut() else {
+                unreachable!("just checked");
+            };
+            match key.code {
+                KeyCode::Esc => {
+                    ui.model_picker = None;
+                }
+                KeyCode::Enter => {
+                    let selected = picker.selected_item().map(|item| item.id.clone());
+                    if let Some(id) = selected {
+                        commit_model_picker(&session, &mut ui, &mut lane, &id);
+                    }
+                }
+                KeyCode::Up => picker.move_selection(-1),
+                KeyCode::Down => picker.move_selection(1),
+                KeyCode::Backspace => picker.pop_char(),
+                KeyCode::Char(character) => {
+                    picker.push_char(character);
+                }
+                _ => {}
+            }
+            continue;
+        }
+
         // Escape requests turn cancellation. It never exits Coder, and the
         // reducer makes a repeated request idempotent. A visible selection
         // steals Esc first, matching grok-build: dismissing what is on
@@ -706,14 +735,14 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 .intersects(KeyModifiers::ALT | KeyModifiers::META)
             && !key.modifiers.contains(KeyModifiers::CONTROL)
         {
-            autopilot.engaged = !autopilot.engaged;
-            if !autopilot.engaged {
-                autopilot.directive = None;
+            autopilot_frame.state.engaged = !autopilot_frame.state.engaged;
+            if !autopilot_frame.state.engaged {
+                autopilot_frame.state.directive = None;
             }
-            ui.autopilot_engaged = autopilot.engaged;
+            ui.autopilot_engaged = autopilot_frame.state.engaged;
             ui.entries.push(Entry::new(
                 Role::Notice,
-                if autopilot.engaged {
+                if autopilot_frame.state.engaged {
                     "Autopilot engaged: the loop keeps steering between turns. \
                      Meta+A or /autopilot off hands the wheel back."
                         .to_string()
@@ -721,6 +750,21 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                     "Autopilot disengaged: the session waits for you after each turn.".to_string()
                 },
             ));
+            continue;
+        }
+
+        // Ctrl+P opens the model picker (issues #323/#324), grok-build's
+        // second entry into the same surface. Two departures from grok,
+        // both forced: our composer is always the focused widget, so grok's
+        // "multiline when focused, picker otherwise" split has no second
+        // half; and Ctrl+M is unusable — crossterm maps the raw Ctrl+M byte
+        // (0x0D) to Enter before the app ever sees it, so a Ctrl+M binding
+        // would be dead code in every terminal. Ctrl+P is unbound in the
+        // composer and the frame, and the /help table carries it.
+        if key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            let resolved = (!ui.model.is_empty()).then(|| ui.model.clone());
+            open_model_picker(&lane, resolved.as_deref(), local_lane_model.as_deref(), &tx);
+            ui.model_picker = Some(seed_model_picker(&lane, local_lane_model.as_deref()));
             continue;
         }
 
@@ -734,17 +778,16 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         let outcome = submit(
                             &mut ui,
                             text,
+                            &mut lane,
                             session,
                             &tx,
                             &cwd,
                             &mut turns,
                             &mut active_turn,
                             &mut prompt_queue,
-                            &mut autopilot,
-                            &autopilot_closed,
-                            &mut autopilot_last_picked,
-                            &mut autopilot_last_heartbeat,
+                            &mut autopilot_frame,
                             options.dev,
+                            local_lane_model.as_deref(),
                         )
                         .await;
                         match outcome {
@@ -1034,6 +1077,236 @@ fn attach_session(
         opened.seed_capability_notice(notice);
     }
     opened
+}
+
+/// Open the model picker for the session's lane (issues #323/#324).
+///
+/// The surface follows grok-build's `/model`: one picker per lane, rows from
+/// a per-lane source, opened input-focused. Only Pro and Local have a
+/// per-model choice today; any other lane refuses by name rather than
+/// offering a gateway tier as if it were a choice. The item source is
+/// fetched off the frame loop — a slow catalog or Ollama probe must not
+/// hold a frame — so the picker opens `loading` and fills in, or reports
+/// the refusal as a notice like every other Control.
+fn open_model_picker(
+    lane: &Lane,
+    resolved_model: Option<&str>,
+    cached_local: Option<&str>,
+    tx: &Sender<Control>,
+) {
+    let tx = tx.clone();
+    let lane = lane.clone();
+    let resolved_model = resolved_model.map(str::to_string);
+    let cached_local = cached_local.map(str::to_string);
+    tokio::spawn(async move {
+        let outcome =
+            model_picker_items(&lane, resolved_model.as_deref(), cached_local.as_deref()).await;
+        let _ = tx.send(Control::ModelPicker(outcome));
+    });
+}
+
+/// The per-lane item fetch behind [`open_model_picker`]. Errors are
+/// refusals the picker shows as a notice, not panics — a deployment that is
+/// briefly unreachable must not take the session down for asking.
+async fn model_picker_items(
+    lane: &Lane,
+    resolved_model: Option<&str>,
+    cached_local: Option<&str>,
+) -> Result<crate::coder::model_picker::PickerState, String> {
+    use crate::coder::model_picker::{LocalModel, PickerState};
+    match lane {
+        Lane::Local(_) => {
+            let details = crate::runtime::installed_local_model_details().await;
+            let resolved = match lane {
+                Lane::Local(tag) if !tag.is_empty() => Some(tag.as_str()),
+                _ => cached_local,
+            };
+            match details {
+                Ok(details) => Ok(PickerState::new(crate::coder::model_picker::local_items(
+                    &details
+                        .into_iter()
+                        .map(|detail| LocalModel {
+                            tag: detail.tag,
+                            size_bytes: detail.size_bytes,
+                            quantization: detail.quantization,
+                        })
+                        .collect::<Vec<_>>(),
+                    resolved,
+                ))
+                .local()),
+                Err(why) => Err(why),
+            }
+        }
+        lane if lane.uses_pro_origin() => {
+            let served = probe_served_models_for_picker().await?;
+            Ok(PickerState::new(crate::coder::model_picker::pro_items(
+                &served,
+                resolved_model,
+            )))
+        }
+        _ => Err(format!(
+            "The {} lane has no model list to pick from — models are chosen \
+             per lane. /model works on Pro and Local.",
+            lane.label()
+        )),
+    }
+}
+
+fn model_picker_loading(lane: &Lane) -> crate::coder::model_picker::PickerState {
+    let label = if lane.is_local() {
+        "probing Ollama…"
+    } else {
+        "loading models…"
+    };
+    let picker = crate::coder::model_picker::PickerState::loading(label);
+    if lane.is_local() {
+        picker.local()
+    } else {
+        picker
+    }
+}
+
+fn seed_model_picker(
+    lane: &Lane,
+    cached_local: Option<&str>,
+) -> crate::coder::model_picker::PickerState {
+    use crate::coder::model_picker::LocalModel;
+    if lane.is_local() {
+        if let Some(tag) = cached_local {
+            let resolved = match lane {
+                Lane::Local(pinned) if !pinned.is_empty() => Some(pinned.as_str()),
+                _ => Some(tag),
+            };
+            return crate::coder::model_picker::PickerState::new(
+                crate::coder::model_picker::local_items(
+                    &[LocalModel {
+                        tag: tag.to_string(),
+                        size_bytes: None,
+                        quantization: None,
+                    }],
+                    resolved,
+                ),
+            )
+            .local();
+        }
+    }
+    model_picker_loading(lane)
+}
+
+/// The served-models read behind the Pro picker, run against the origin the
+/// lane itself uses. Free-standing: the frame holds no session of its own,
+/// and a credential-less session gets the catalog's honest refusal here
+/// rather than an empty picker.
+async fn probe_served_models_for_picker() -> Result<Vec<crate::coder::runtime::ServedModel>, String>
+{
+    let base = crate::coder::runtime::api_base();
+    let token = crate::coder::runtime::user_token();
+    let url = format!("{base}/models");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|error| format!("could not build an HTTP client: {error}"))?;
+    let mut request = client.get(&url);
+    if let Some(token) = token {
+        request = request.bearer_auth(&token);
+    }
+    let resp = request
+        .send()
+        .await
+        .map_err(|error| format!("{url} could not be reached: {error}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "{url} refused the model list: {}. Run /login if the credential expired.",
+            resp.status()
+        ));
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|error| format!("{url} sent a body that was not JSON: {error}"))?;
+    parse_served_models(&body)
+}
+
+/// Parse `GET /api/v1/models`' body into the picker's rows source. Split
+/// from the fetch so a fixture test can hold the shape without a wire.
+fn parse_served_models(
+    body: &serde_json::Value,
+) -> Result<Vec<crate::coder::runtime::ServedModel>, String> {
+    let models = body
+        .get("models")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("{}/models sent no model list", "GET"))?;
+    Ok(models
+        .iter()
+        .filter_map(|m| {
+            Some(crate::coder::runtime::ServedModel {
+                id: m.get("id").and_then(|v| v.as_str())?.to_string(),
+                available: m
+                    .get("availability")
+                    .and_then(|v| v.as_str())
+                    .map(|availability| availability == "available")
+                    .unwrap_or(false),
+                default: m.get("default").and_then(|v| v.as_bool()).unwrap_or(false),
+            })
+        })
+        .collect())
+}
+
+/// Commit a picker row: re-pin the session's lane and drop the picker.
+///
+/// The commit is `set_lane` with the committed pin — the same path shift+tab
+/// uses — so the thread is dropped for exactly the reason the shift+tab path
+/// documents: the old thread's grant pinned the old model for its whole
+/// life, and a model switch that carried the grant over would be a label
+/// claiming a model the wire is not talking to.
+fn commit_model_picker(
+    session: &Option<Arc<Mutex<Session>>>,
+    ui: &mut CoderUi,
+    lane: &mut Lane,
+    id: &str,
+) {
+    match crate::coder::model_picker::commit_lane(lane, id) {
+        Ok(committed) => {
+            let Some(session) = session else {
+                ui.entries.push(Entry::new(
+                    Role::Notice,
+                    "No session is open, so the model cannot be pinned.",
+                ));
+                ui.model_picker = None;
+                ui.scroll_override = None;
+                return;
+            };
+            match session.try_lock() {
+                Ok(mut session) => {
+                    session.set_lane(committed.clone());
+                    *lane = committed.clone();
+                    ui.lane = committed.label();
+                    // Nothing has answered on the committed model yet — the
+                    // row must not name a model this lane never asked for.
+                    ui.model.clear();
+                    ui.entries.push(Entry::new(
+                        Role::Notice,
+                        model_commit_notice(&committed, id),
+                    ));
+                }
+                Err(_) => ui.entries.push(Entry::new(
+                    Role::Notice,
+                    "The running turn must finish before the model can change.".to_string(),
+                )),
+            }
+        }
+        Err(error) => ui.entries.push(Entry::new(Role::Notice, error.to_string())),
+    }
+    ui.model_picker = None;
+    ui.scroll_override = None;
+}
+
+fn model_commit_notice(committed: &Lane, id: &str) -> String {
+    if matches!(committed, Lane::Local(_)) {
+        format!("Model set to {id}. The next turn talks to Ollama on this machine.")
+    } else {
+        format!("Model set to {id}. The next turn opens its own thread on it.")
+    }
 }
 
 /// Start device sign-in without holding the frame loop while the server waits
@@ -1536,6 +1809,30 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         // The thread the server opened, so `/info` can name it without asking
         // the session for it behind a lock the turn is holding.
         Control::Thread(thread) => ui.thread = Some(thread),
+        // The model picker's items arrived (issues #323/#324). An `Err` is
+        // the per-lane source's refusal — no Ollama server, a catalog the
+        // credential cannot read — shown as a notice, with the picker
+        // closed: an empty picker that stays open is a lie with a border.
+        Control::ModelPicker(outcome) => match outcome {
+            Ok(picker) if !picker.items.is_empty() => ui.model_picker = Some(picker),
+            Ok(picker) => {
+                ui.model_picker = None;
+                ui.entries.push(Entry::new(
+                    Role::Notice,
+                    if picker.local {
+                        crate::runtime::OLLAMA_INSTALL_SIGN.to_string()
+                    } else {
+                        "No models to pick from: the deployment serves none this lane \
+                         can use."
+                            .to_string()
+                    },
+                ));
+            }
+            Err(why) => {
+                ui.model_picker = None;
+                ui.entries.push(Entry::new(Role::Notice, why));
+            }
+        },
         // What the server billed. Only ever a figure it sent.
         Control::Billed(billed) => ui.billed = Some(billed),
         Control::Usage(usage) => {
@@ -1738,20 +2035,29 @@ fn autopilot_status_screen(
     report.render()
 }
 
+/// The autopilot boundary record the loop reads and updates: the mode state
+/// plus what it has closed, picked, and last reported. One parameter instead
+/// of four — the frame owns this bundle, `submit` and the boundary mutate it.
+struct AutopilotFrame {
+    state: crate::coder::autopilot::AutopilotState,
+    closed: Vec<String>,
+    last_picked: Option<String>,
+    last_heartbeat: Option<String>,
+}
+
 async fn submit(
     ui: &mut CoderUi,
     text: String,
+    lane: &mut Lane,
     session: &Arc<Mutex<Session>>,
     tx: &Sender<Control>,
     cwd: &std::path::Path,
     turns: &mut TurnState,
     active_turn: &mut Option<ActiveTurn>,
     prompt_queue: &mut VecDeque<QueuedPrompt>,
-    autopilot: &mut crate::coder::autopilot::AutopilotState,
-    autopilot_closed: &[String],
-    autopilot_last_picked: &mut Option<String>,
-    autopilot_last_heartbeat: &mut Option<String>,
+    autopilot: &mut AutopilotFrame,
     dev: bool,
+    cached_local: Option<&str>,
 ) -> commands::Outcome {
     ui.scroll_override = None;
     ui.show_welcome = false;
@@ -1786,10 +2092,10 @@ async fn submit(
             ui.entries.push(Entry::new(
                 Role::Output,
                 autopilot_status_screen(
-                    autopilot,
-                    &autopilot_closed,
-                    autopilot_last_picked.as_deref(),
-                    autopilot_last_heartbeat.as_deref(),
+                    &autopilot.state,
+                    &autopilot.closed,
+                    autopilot.last_picked.as_deref(),
+                    autopilot.last_heartbeat.as_deref(),
                 ),
             ));
             ui.scroll_override = None;
@@ -1797,31 +2103,31 @@ async fn submit(
         }
         match command {
             AutopilotCommand::Toggle => {
-                autopilot.engaged = !autopilot.engaged;
-                if !autopilot.engaged {
-                    autopilot.directive = None;
+                autopilot.state.engaged = !autopilot.state.engaged;
+                if !autopilot.state.engaged {
+                    autopilot.state.directive = None;
                 }
             }
             AutopilotCommand::Off => {
-                autopilot.engaged = false;
-                autopilot.directive = None;
+                autopilot.state.engaged = false;
+                autopilot.state.directive = None;
             }
             AutopilotCommand::Engage { directive } => {
-                autopilot.engaged = true;
+                autopilot.state.engaged = true;
                 // A `--stop-word <token>` prefix arms the remote off switch
                 // at engage time (spec §7); the rest is the pick filter.
                 let (token, remaining) = crate::coder::autopilot::split_stop_word(&directive);
-                autopilot.stop_word = token.map(crate::coder::autopilot::StopWord::new);
-                autopilot.directive = (!remaining.is_empty()).then(|| remaining.to_string());
+                autopilot.state.stop_word = token.map(crate::coder::autopilot::StopWord::new);
+                autopilot.state.directive = (!remaining.is_empty()).then(|| remaining.to_string());
                 // Engaging re-arms the condition set: the budget the reader
                 // asked for starts now, not from some previous engage.
-                autopilot.stops = crate::coder::autopilot::StopConditions::default();
+                autopilot.state.stops = crate::coder::autopilot::StopConditions::default();
             }
         }
-        ui.autopilot_engaged = autopilot.engaged;
+        ui.autopilot_engaged = autopilot.state.engaged;
         ui.entries.push(Entry::new(
             Role::Notice,
-            if autopilot.engaged {
+            if autopilot.state.engaged {
                 "Autopilot engaged: the loop keeps steering between turns. Meta+A or \
                  /autopilot off hands the wheel back."
                     .to_string()
@@ -1829,11 +2135,50 @@ async fn submit(
                 "Autopilot disengaged: the session waits for you after each turn.".to_string()
             },
         ));
-        if autopilot.engaged && matches!(turns.phase(), TurnPhase::Idle) {
+        if autopilot.state.engaged && matches!(turns.phase(), TurnPhase::Idle) {
             refresh_workspace_snapshot(session, cwd).await;
-            let prompt = autopilot.iteration_prompt();
+            let prompt = autopilot.state.iteration_prompt();
             start_prompt(ui, prompt, Vec::new(), session, tx, turns, active_turn, dev).await;
             update_activity(ui, turns, prompt_queue.len());
+        }
+        return commands::Outcome::Done;
+    }
+
+    // `/model` opens the model picker (issues #323/#324); `/model <id>`
+    // commits directly, refusing unknown ids by name — grok's resolve rule,
+    // and the honesty rule `unresolved_lane` set for the CLI: an id the
+    // deployment does not serve is refused, never quietly substituted.
+    if let Some(argument) = text
+        .trim()
+        .strip_prefix("/model")
+        .filter(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+    {
+        let argument = argument.trim();
+        if argument.is_empty() {
+            let resolved = (!ui.model.is_empty()).then(|| ui.model.clone());
+            open_model_picker(lane, resolved.as_deref(), cached_local, tx);
+            ui.model_picker = Some(seed_model_picker(lane, cached_local));
+            return commands::Outcome::Done;
+        }
+        match crate::coder::model_picker::commit_lane(lane, argument) {
+            Ok(committed) => {
+                if let Ok(mut session) = session.try_lock() {
+                    session.set_lane(committed.clone());
+                    *lane = committed.clone();
+                    ui.lane = committed.label();
+                    ui.model.clear();
+                    ui.entries.push(Entry::new(
+                        Role::Notice,
+                        model_commit_notice(&committed, argument),
+                    ));
+                } else {
+                    ui.entries.push(Entry::new(
+                        Role::Notice,
+                        "The running turn must finish before the model can change.".to_string(),
+                    ));
+                }
+            }
+            Err(error) => ui.entries.push(Entry::new(Role::Notice, error.to_string())),
         }
         return commands::Outcome::Done;
     }
@@ -2103,14 +2448,27 @@ mod tests {
     #[test]
     fn every_listed_command_is_handled() {
         for (name, _) in crate::coder::commands::COMMANDS {
-            // `/autopilot` is handled, just not here: its state lives in the
-            // frame loop, and `submit` claims it before this dispatch runs
-            // (`coder/autopilot::parse_command`). The named exception, not a
-            // hole — the parse test in `coder/autopilot.rs` holds its surface.
+            // `/autopilot` and `/model` are handled, just not here: their
+            // state lives in the frame loop, and `submit` claims both before
+            // this dispatch runs (`coder/autopilot::parse_command` and the
+            // `/model` arm; `coder/model_picker.rs` holds the picker's
+            // surface). The named exceptions, not holes — the parse tests in
+            // those modules hold their surfaces.
             if *name == "autopilot" {
                 assert!(
                     crate::coder::autopilot::parse_command("/autopilot").is_some(),
                     "`/autopilot` left the dispatch and lost its handler"
+                );
+                continue;
+            }
+            if *name == "model" {
+                assert!(
+                    crate::coder::model_picker::commit_lane(
+                        &crate::runtime::Lane::Pro,
+                        "gpt-5.6-sol"
+                    )
+                    .is_ok(),
+                    "`/model` left the dispatch and lost its commit path"
                 );
                 continue;
             }

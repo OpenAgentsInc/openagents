@@ -185,7 +185,7 @@ fn typing_a_slash_opens_an_amber_command_helper() {
 
     let buffer = draw(&mut ui);
     let text = text_of(&buffer);
-    assert!(text.contains("Commands · 15 matches"), "{text}");
+    assert!(text.contains("Commands · 16 matches"), "{text}");
     assert!(text.contains("/clear"), "{text}");
     assert!(text.contains("clear the transcript"), "{text}");
 
