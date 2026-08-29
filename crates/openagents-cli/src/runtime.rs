@@ -1854,6 +1854,37 @@ impl CoderRuntimeSession {
         lines.join("\n")
     }
 
+    /// Re-read the live tool list and rebuild the standing system message.
+    ///
+    /// A `capability` load mid-turn pushes the plugin into the registry but
+    /// used to leave this turn's frozen snapshot and the "You have N tools,
+    /// and no others" sentence pointing at the old set. Each model round
+    /// calls this so the next proxy body and the prompt both name the new
+    /// tool (#337).
+    fn refresh_tool_declarations(&mut self) -> Vec<ToolDefinition> {
+        let tool_defs = self.tools.list_tools();
+        let lite = crate::surfaces::system_prompt::CODER_LITE_INSTRUCTIONS;
+        let use_lite = self
+            .messages
+            .first()
+            .filter(|message| message.role == "system")
+            .and_then(|message| message.content.as_deref())
+            .is_some_and(|text| text.starts_with(lite));
+        let content = if use_lite {
+            crate::coder::runtime::system_prompt(&tool_defs)
+        } else {
+            self.build_system_prompt(&tool_defs)
+        };
+        if let Some(message) = self
+            .messages
+            .first_mut()
+            .filter(|message| message.role == "system")
+        {
+            message.content = Some(content);
+        }
+        tool_defs
+    }
+
     // ───────────────────────────────────────────────────────── the catalog
 
     /// What this deployment serves, read from the server rather than assumed.
@@ -2454,8 +2485,8 @@ impl CoderRuntimeSession {
     where
         F: FnMut(&str) + Send + 'static,
     {
-        let tool_defs = self.tools.list_tools();
         if self.messages.is_empty() {
+            let tool_defs = self.tools.list_tools();
             let sys = self.build_system_prompt(&tool_defs);
             self.messages.push(ChatMessage {
                 role: "system".to_string(),
@@ -2493,12 +2524,11 @@ impl CoderRuntimeSession {
         ));
 
         let answered = if self.use_openresponses {
-            self.run_responses_turn(&tool_defs, chunk_callback).await
+            self.run_responses_turn(chunk_callback).await
         } else if self.lane.is_local() {
-            self.run_local_turn(&tool_defs, chunk_callback).await
+            self.run_local_turn(chunk_callback).await
         } else {
-            self.run_thread_turn(prompt, &tool_defs, chunk_callback)
-                .await
+            self.run_thread_turn(prompt, chunk_callback).await
         };
         if let Err(error) = &answered
             && self.pending_failure.is_none()
@@ -2533,7 +2563,6 @@ impl CoderRuntimeSession {
     async fn run_thread_turn<F>(
         &mut self,
         prompt: &str,
-        tool_defs: &[ToolDefinition],
         chunk_callback: F,
     ) -> Result<String, Failure>
     where
@@ -2568,9 +2597,10 @@ impl CoderRuntimeSession {
 
         for _ in 0..MAX_TOOL_STEPS {
             self.drain_swarm_inbox().await;
+            let tool_defs = self.refresh_tool_declarations();
             let mut compact_used = false;
             let (step, deferred_text) = 'got_step: loop {
-                let req_body = thread_proxy_body(&grant.model, &self.messages, tool_defs);
+                let req_body = thread_proxy_body(&grant.model, &self.messages, &tool_defs);
                 let retry = FIRST_RESPONSE_RETRIES;
                 for attempt in 0..=retry {
                     let mut headers = HeaderMap::new();
@@ -2626,10 +2656,7 @@ impl CoderRuntimeSession {
                                 snippet(&body)
                             );
                             match self
-                                .finish_turn_on_local(
-                                    tool_defs,
-                                    chunk_callback.take().expect("turn callback"),
-                                )
+                                .finish_turn_on_local(chunk_callback.take().expect("turn callback"))
                                 .await?
                             {
                                 Some(answer) => return Ok(answer),
@@ -2657,10 +2684,7 @@ impl CoderRuntimeSession {
                             self.tell_progress(TurnProgress::Hop(HopClass::Unreachable));
                             let why = format!("{} could not be reached: {error}", grant.proxy_url);
                             match self
-                                .finish_turn_on_local(
-                                    tool_defs,
-                                    chunk_callback.take().expect("turn callback"),
-                                )
+                                .finish_turn_on_local(chunk_callback.take().expect("turn callback"))
                                 .await?
                             {
                                 Some(answer) => return Ok(answer),
@@ -2839,7 +2863,7 @@ impl CoderRuntimeSession {
                 // (#188's two dead turns) -- ask the model once to stop and
                 // report, tools withheld so the request is answerable, and
                 // treat the words it returns as the turn's final answer.
-                final_answer = self.finalize_turn_with_a_report(tool_defs).await?;
+                final_answer = self.finalize_turn_with_a_report(&tool_defs).await?;
                 self.tell_stream(ModelStreamEvent::ContentCommitted);
                 self.messages.push(ChatMessage {
                     role: "assistant".to_string(),
@@ -3096,11 +3120,7 @@ impl CoderRuntimeSession {
         Ok(step)
     }
 
-    async fn run_responses_turn<F>(
-        &mut self,
-        tool_defs: &[ToolDefinition],
-        chunk_callback: F,
-    ) -> Result<String, Failure>
+    async fn run_responses_turn<F>(&mut self, chunk_callback: F) -> Result<String, Failure>
     where
         F: FnMut(&str) + Send + 'static,
     {
@@ -3114,6 +3134,7 @@ impl CoderRuntimeSession {
 
         for _ in 0..MAX_TOOL_STEPS {
             self.drain_swarm_inbox().await;
+            let tool_defs = self.refresh_tool_declarations();
             let url = format!("{}/responses", self.api_base);
             let mut headers = HeaderMap::new();
             headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -3183,10 +3204,7 @@ impl CoderRuntimeSession {
                                 snippet(&response_body)
                             );
                             match self
-                                .finish_turn_on_local(
-                                    tool_defs,
-                                    chunk_callback.take().expect("turn callback"),
-                                )
+                                .finish_turn_on_local(chunk_callback.take().expect("turn callback"))
                                 .await?
                             {
                                 Some(answer) => return Ok(answer),
@@ -3211,10 +3229,7 @@ impl CoderRuntimeSession {
                             self.tell_progress(TurnProgress::Hop(HopClass::Unreachable));
                             let why = format!("{url} could not be reached: {error}");
                             match self
-                                .finish_turn_on_local(
-                                    tool_defs,
-                                    chunk_callback.take().expect("turn callback"),
-                                )
+                                .finish_turn_on_local(chunk_callback.take().expect("turn callback"))
                                 .await?
                             {
                                 Some(answer) => return Ok(answer),
@@ -3718,7 +3733,6 @@ impl CoderRuntimeSession {
     /// should stand.
     async fn finish_turn_on_local<F>(
         &mut self,
-        tool_defs: &[ToolDefinition],
         chunk_callback: F,
     ) -> Result<Option<String>, Failure>
     where
@@ -3734,7 +3748,7 @@ impl CoderRuntimeSession {
         self.note(vec![ThreadRecord::notice(&notice)]).await;
         self.fell_back_to_local = true;
         self.local_model_override = Some(model);
-        let result = self.run_local_turn(tool_defs, chunk_callback).await;
+        let result = self.run_local_turn(chunk_callback).await;
         self.local_model_override = None;
         match result {
             Ok(answer) => Ok(Some(answer)),
@@ -3898,11 +3912,7 @@ impl CoderRuntimeSession {
         .into())
     }
 
-    async fn run_local_turn<F>(
-        &mut self,
-        tool_defs: &[ToolDefinition],
-        mut chunk_callback: F,
-    ) -> Result<String, Failure>
+    async fn run_local_turn<F>(&mut self, mut chunk_callback: F) -> Result<String, Failure>
     where
         F: FnMut(&str) + Send + 'static,
     {
@@ -3924,6 +3934,7 @@ impl CoderRuntimeSession {
 
         for _ in 0..MAX_TOOL_STEPS {
             self.drain_swarm_inbox().await;
+            let tool_defs = self.refresh_tool_declarations();
             let mut req_body = serde_json::json!({
                 "model": model,
                 "messages": self.messages.iter().map(ollama_message).collect::<Vec<_>>(),
@@ -5597,6 +5608,110 @@ mod tests {
         assert!(
             prompt.contains("wait for its result before giving the reader a final answer"),
             "the system prompt did not require a post-tool synthesis: {prompt}"
+        );
+    }
+
+    fn proxy_declares(body: &serde_json::Value, name: &str) -> bool {
+        body["tools"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|tool| tool["function"]["name"] == name)
+    }
+
+    /// A non-first-class plugin loaded through `capability` must appear in
+    /// the next round's tool list, system prompt, and proxy body (#337).
+    /// The frozen snapshot at turn start used to hide it until the next turn.
+    #[tokio::test]
+    async fn a_capability_load_refreshes_the_standing_declarations_for_the_next_round() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        if !repo
+            .join("plugins")
+            .join("word-stats")
+            .join("manifest.json")
+            .is_file()
+        {
+            return;
+        }
+        assert!(
+            !crate::plugins::FIRST_CLASS_PLUGIN_NAMES.contains(&"word_stats"),
+            "this regression is for a plugin that is not preloaded"
+        );
+
+        let mut session = CoderRuntimeSession::new(
+            Lane::default(),
+            None,
+            None,
+            HarnessToolRegistry::new(Some(repo)),
+        );
+        let initial = session.tools.list_tools();
+        assert!(
+            initial.iter().all(|t| t.name != "word_stats"),
+            "word_stats must not be declared before capability load"
+        );
+        session.messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: Some(crate::coder::runtime::system_prompt(&initial)),
+            tool_calls: None,
+            tool_call_id: None,
+            images: Vec::new(),
+        });
+        let prompt_before = session.messages[0].content.clone().unwrap();
+        assert!(
+            !prompt_before.contains("`word_stats`"),
+            "the frozen prompt must not name the unloaded plugin: {prompt_before}"
+        );
+        let body_before = thread_proxy_body("flash", &session.messages, &initial);
+        assert!(
+            !proxy_declares(&body_before, "word_stats"),
+            "the frozen proxy body must not declare the unloaded plugin"
+        );
+
+        let load = session
+            .tools
+            .execute_tool(&ToolCall {
+                id: "cap-1".to_string(),
+                name: "capability".to_string(),
+                arguments: serde_json::json!({"name": "word_stats"}),
+            })
+            .await;
+        assert!(
+            load.output.contains("available now"),
+            "capability success text must still tell the model the tool is available now: {}",
+            load.output
+        );
+        assert!(
+            session
+                .tools
+                .list_tools()
+                .iter()
+                .any(|t| t.name == "word_stats"),
+            "list_tools must include the loaded plugin"
+        );
+
+        let refreshed = session.refresh_tool_declarations();
+        assert!(
+            refreshed.iter().any(|t| t.name == "word_stats"),
+            "the next-round snapshot must include the loaded plugin"
+        );
+        let prompt_after = session.messages[0].content.clone().unwrap();
+        assert!(
+            prompt_after.contains("`word_stats`"),
+            "the refreshed system prompt must name the loaded plugin: {prompt_after}"
+        );
+        assert!(
+            prompt_after.contains(&format!(
+                "You have {} tools, and no others",
+                refreshed.len()
+            )),
+            "the refreshed prompt must name the new tool count: {prompt_after}"
+        );
+        let body_after = thread_proxy_body("flash", &session.messages, &refreshed);
+        assert!(
+            proxy_declares(&body_after, "word_stats"),
+            "the next proxy body must declare the loaded plugin"
         );
     }
 }

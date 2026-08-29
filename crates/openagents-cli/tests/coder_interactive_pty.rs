@@ -78,6 +78,13 @@ mod unix_pty {
     const REDRAW: Duration = Duration::from_secs(15);
     static PTY_GATE: Mutex<()> = Mutex::new(());
 
+    /// The binary under observation. Defaults to the crate's debug `openagents`.
+    /// `OPENAGENTS_PTY_BIN` points the same harness at a published artifact.
+    fn coder_binary() -> String {
+        std::env::var("OPENAGENTS_PTY_BIN")
+            .unwrap_or_else(|_| env!("CARGO_BIN_EXE_openagents").to_string())
+    }
+
     // ─────────────────────────────────────────────────── the stub deployment
 
     /// A loopback HTTP server that answers exactly two routes.
@@ -468,7 +475,7 @@ mod unix_pty {
                 })
                 .expect("open a pseudo-terminal");
 
-            let executable = env!("CARGO_BIN_EXE_openagents");
+            let executable = coder_binary();
             let mut command = if piped_stdin {
                 let escaped = executable.replace('\'', "'\\''");
                 let mut command = CommandBuilder::new("/bin/sh");
@@ -729,12 +736,19 @@ mod unix_pty {
             frame.dump()
         );
         assert!(
-            frame
-                .transcript()
-                .contains(&format!("Coder v{}", openagents_cli::VERSION)),
-            "the session heading should label the current Coder version.\n{}",
+            frame.transcript().contains("Coder v"),
+            "the session heading should label a Coder version.\n{}",
             frame.dump()
         );
+        if std::env::var_os("OPENAGENTS_PTY_BIN").is_none() {
+            assert!(
+                frame
+                    .transcript()
+                    .contains(&format!("Coder v{}", openagents_cli::VERSION)),
+                "the session heading should label the current Coder version.\n{}",
+                frame.dump()
+            );
+        }
         assert!(
             frame.transcript().contains("Working directory"),
             "the startup summary should name the working directory.\n{}",

@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## A capability loaded mid-turn is declared on the next model round (#337)
+
+- issues: #337
+- commits: this change
+- contracts-specs: `CoderRuntimeSession` re-reads `list_tools()` each model round and rewrites the standing system prompt
+- invariants: a plugin that answers "available now" is in that turn's next tool list; the TUI lite prompt is not swapped for the rust builder
+- evidence: `a_capability_load_refreshes_the_standing_declarations_for_the_next_round`
+- lane: cursor session abb3a3ed
+
+`capability` loaded a plugin and told the model to call it in the same turn.
+The turn loop had frozen `list_tools()` at start, so the next round still
+omitted the tool and the prompt still said the old count. Each round now
+refreshes declarations. The TUI's lite system prompt stays lite.
+
 ## CLI restores TUI typing after the 0.2.0-rc.10 hang fix (#334)
 
 - issues: #334
