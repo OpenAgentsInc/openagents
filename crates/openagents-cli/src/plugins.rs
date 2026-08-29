@@ -80,6 +80,19 @@ pub const PLUGIN_OUTPUT_LIMIT: usize = 16_000;
 /// Most candidates one catalog search returns; the rest are counted.
 const SEARCH_LIMIT: usize = 5;
 
+/// Intents the host searches at session start so Flash sees plugin names
+/// without stalling on a `capability` call (#322).
+const SESSION_START_QUERIES: [&str; 5] = [
+    "git status log",
+    "search code",
+    "list files",
+    "parse test output",
+    "search past sessions",
+];
+
+/// Cap on the session-start Notice, across all intents.
+const SESSION_START_NOTICE_LIMIT: usize = 8;
+
 /// Guests a default Coder session declares without a `capability` load (#313).
 ///
 /// The harvest already shipped these; live Flash never called `capability`
@@ -1158,6 +1171,52 @@ pub fn match_capabilities<'a>(
     scored
 }
 
+/// One Notice naming the top catalog matches for the standing intents (#322).
+///
+/// Search only: nothing is loaded. Mount-tier guests that the session has
+/// not approved are listed with `needs --allow-mounts` rather than omitted.
+/// Empty catalog, or no matches, yields `None` so the TUI stays quiet.
+pub fn session_start_capability_notice(
+    catalog: &[CatalogEntry],
+    approval: Approval,
+) -> Option<String> {
+    if catalog.is_empty() {
+        return None;
+    }
+    let mut seen = BTreeSet::new();
+    let mut rows = Vec::new();
+    for query in SESSION_START_QUERIES {
+        for (entry, _) in match_capabilities(catalog, query) {
+            if !seen.insert(entry.name.clone()) {
+                continue;
+            }
+            let mount_note = match entry.tier() {
+                Tier::Mounts if !approval.mounts_allowed => " (needs --allow-mounts)",
+                _ => "",
+            };
+            rows.push(format!(
+                "- `{}` — {}{mount_note}",
+                entry.name,
+                first_sentence(&entry.description)
+            ));
+            if rows.len() >= SESSION_START_NOTICE_LIMIT {
+                break;
+            }
+        }
+        if rows.len() >= SESSION_START_NOTICE_LIMIT {
+            break;
+        }
+    }
+    if rows.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Installed capabilities (host search, not loaded):\n{}\nCall `capability` with `name` to \
+         load one that is not already a tool.",
+        rows.join("\n")
+    ))
+}
+
 /// A description's first sentence, for a one-line candidate row.
 fn first_sentence(text: &str) -> &str {
     match text.find(". ") {
@@ -1655,6 +1714,63 @@ mod tests {
             "interface": {"input": {"type": "object"}, "output": {"type": "object"}},
             "capabilities": {"mounts": mounts, "hosts": hosts, "timeout_ms": 2000}
         })
+    }
+
+    fn shipped_repo() -> Option<PathBuf> {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        if !repo
+            .join("plugins")
+            .join("git-facts")
+            .join("manifest.json")
+            .is_file()
+        {
+            return None;
+        }
+        Some(repo)
+    }
+
+    #[test]
+    fn session_start_notice_names_first_class_guests_without_loading() {
+        let Some(repo) = shipped_repo() else {
+            return;
+        };
+        let catalog = discover_catalog(&repo);
+        let notice = session_start_capability_notice(
+            &catalog,
+            Approval {
+                mounts_allowed: true,
+            },
+        )
+        .expect("shipped catalog should match standing intents");
+        assert!(
+            notice.contains("`git_facts`"),
+            "git_facts missing from {notice}"
+        );
+        assert!(
+            notice.contains("`code_search`"),
+            "code_search missing from {notice}"
+        );
+        assert!(
+            notice.contains("host search, not loaded"),
+            "notice must say it did not load: {notice}"
+        );
+        assert!(
+            !notice.contains("needs --allow-mounts"),
+            "operator session should not ask for --allow-mounts: {notice}"
+        );
+        let unattended =
+            session_start_capability_notice(&catalog, Approval::default()).expect("unattended");
+        assert!(
+            unattended.contains("needs --allow-mounts"),
+            "mount-tier guests must be named, not loaded, without an operator: {unattended}"
+        );
+    }
+
+    #[test]
+    fn an_empty_catalog_produces_no_session_start_notice() {
+        assert!(session_start_capability_notice(&[], Approval::default()).is_none());
     }
 
     #[test]

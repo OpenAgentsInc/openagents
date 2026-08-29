@@ -214,6 +214,15 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let checkpoint = loaded.summary.last_checkpoint.clone();
     let snapshot_text =
         crate::coder::snapshot::workspace_snapshot(&cwd, checkpoint.as_deref()).await;
+    let capability_notice = crate::plugins::session_start_capability_notice(
+        &crate::plugins::discover_catalog(&cwd),
+        crate::plugins::Approval {
+            mounts_allowed: true,
+        },
+    );
+    if let Some(notice) = &capability_notice {
+        ui.entries.push(Entry::new(Role::Notice, notice.clone()));
+    }
     let atif_directory = loaded.store.directory().to_path_buf();
     // This session joins the local swarm: other tabs and, later, delegate
     // children discover it through this registration. Failing to register is
@@ -308,6 +317,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         &restored_events,
         cloud_history,
         &snapshot_text,
+        capability_notice.as_deref(),
     );
     let mut session: Option<Arc<Mutex<Session>>> = Some(Arc::new(Mutex::new(opened)));
 
@@ -533,6 +543,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                     &restored_events,
                                     cloud_history,
                                     &snapshot_text,
+                                    capability_notice.as_deref(),
                                 );
                                 session = Some(Arc::new(Mutex::new(opened)));
                             }
@@ -1004,6 +1015,7 @@ fn attach_session(
     restored_events: &[crate::session_store::StoredEvent],
     cloud_history: bool,
     snapshot_text: &str,
+    capability_notice: Option<&str>,
 ) -> Session {
     let mut opened = Session::open(
         lane.clone(),
@@ -1018,6 +1030,9 @@ fn attach_session(
         None => opened,
     };
     opened.seed_workspace_snapshot(snapshot_text);
+    if let Some(notice) = capability_notice {
+        opened.seed_capability_notice(notice);
+    }
     opened
 }
 

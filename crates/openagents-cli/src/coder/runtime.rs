@@ -597,6 +597,11 @@ impl Session {
         self.inner.seed_workspace_snapshot(text);
     }
 
+    /// Place the host capability-search Notice on the next request (#322).
+    pub fn seed_capability_notice(&mut self, text: &str) {
+        self.inner.seed_capability_notice(text);
+    }
+
     /// Open a new local record seeded from a previous checkpoint (#315).
     ///
     /// The previous transcript stays on disk. The model-facing `messages`
@@ -1480,6 +1485,51 @@ mod tests {
                 .messages
                 .iter()
                 .all(|message| message.tool_calls.is_none())
+        );
+    }
+
+    #[test]
+    fn a_capability_notice_is_on_the_wire_and_is_not_a_tool_result() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let catalog = crate::plugins::discover_catalog(&repo);
+        let Some(text) = crate::plugins::session_start_capability_notice(
+            &catalog,
+            crate::plugins::Approval {
+                mounts_allowed: true,
+            },
+        ) else {
+            return;
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut session = Session::open_at(
+            Lane::Flash,
+            "flash",
+            None,
+            Vec::new(),
+            "http://127.0.0.1:1/api/v1".to_string(),
+            Some("test-token".to_string()),
+            false,
+            tx,
+        );
+        session.seed_capability_notice(&text);
+        let joined: String = session
+            .inner
+            .messages
+            .iter()
+            .filter_map(|message| message.content.clone())
+            .collect();
+        assert!(joined.contains("git_facts"), "git_facts missing: {joined}");
+        assert!(
+            joined.contains("code_search"),
+            "code_search missing: {joined}"
+        );
+        assert!(
+            session
+                .inner
+                .messages
+                .iter()
+                .all(|message| message.tool_calls.is_none()),
+            "capability notice must not look like a tool call"
         );
     }
 }

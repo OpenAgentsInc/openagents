@@ -1562,6 +1562,24 @@ impl CoderRuntimeSession {
         });
     }
 
+    /// Put the host capability-search Notice on the wire and in the ATIF
+    /// (#322). Search only: this is not a `tool.ran`.
+    pub fn seed_capability_notice(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        self.messages.push(ChatMessage {
+            role: "user".to_string(),
+            content: Some(text.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            images: Vec::new(),
+        });
+        if let Some(store) = self.local_session.as_mut() {
+            let _ = store.append(&[ThreadRecord::notice(text)]);
+        }
+    }
+
     pub fn cloud_history_enabled(&self) -> bool {
         self.cloud_history
     }
