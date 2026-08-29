@@ -1302,9 +1302,13 @@ impl CoderRuntimeSession {
     /// Drain new inbox messages into the tool stream. Called before every
     /// model call. Injected entries are `role: tool` with name `swarm.inbox`;
     /// they are never user speech, even when a neighbor's body looks like it.
-    pub async fn drain_swarm_inbox(&mut self) {
+    ///
+    /// This drain *is* delivery (#310): `consumed` on the tool result names
+    /// the ids stamped read. A later explicit `swarm_inbox` drain in the
+    /// same session is empty because ownership already transferred.
+    pub async fn drain_swarm_inbox(&mut self) -> crate::swarm::DrainPlan {
         let Some(binding) = self.swarm.clone() else {
-            return;
+            return crate::swarm::DrainPlan::default();
         };
         let _ = crate::swarm::heartbeat(&binding.home, &binding.session_id);
         let plan = match crate::swarm::drain_turn(&binding) {
@@ -1312,11 +1316,11 @@ impl CoderRuntimeSession {
             Err(why) => {
                 self.record_failures
                     .push(format!("swarm inbox could not be drained: {why}"));
-                return;
+                return crate::swarm::DrainPlan::default();
             }
         };
         if plan.inject.is_empty() {
-            return;
+            return plan;
         }
         let call_id = format!(
             "swarm-inbox-{}",
@@ -1344,14 +1348,9 @@ impl CoderRuntimeSession {
             "muted_senders": crate::swarm::load_mute_list(&binding.session_directory)
                 .iter()
                 .collect::<Vec<_>>(),
-            // What this injection stamped read on the caller's behalf (#303):
-            // a drain afterwards is always empty in a live session, so the
-            // receipt is the only honest record of what was consumed.
-            "consumed": plan
-                .inject
-                .iter()
-                .map(|message| message.id.clone())
-                .collect::<Vec<_>>(),
+            // Ids this drain stamped read (#303/#310). The receipt is how
+            // Autopilot proves it saw every message that arrived.
+            "consumed": plan.consumed_ids(),
             "messages": plan
                 .inject
                 .iter()
@@ -1403,6 +1402,7 @@ impl CoderRuntimeSession {
             records.push(ThreadRecord::swarm_message("received", message));
         }
         self.note(records).await;
+        plan
     }
 
     /// Report every tool this session runs to `observer`.

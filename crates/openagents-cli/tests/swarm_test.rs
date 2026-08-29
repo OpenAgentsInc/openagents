@@ -1372,6 +1372,78 @@ async fn swarm_send(
 }
 
 #[tokio::test]
+async fn a_boundary_drain_returns_exactly_the_injected_set_and_records_consumed_ids() {
+    let mut pair = bound_pair();
+    for body in ["first inbound", "second inbound"] {
+        let sent = swarm_send(
+            &mut pair.a,
+            serde_json::json!({
+                "to": "session-b",
+                "body": body,
+                "kind": "status",
+            }),
+        )
+        .await;
+        assert!(!sent.is_error, "{}", sent.output);
+    }
+
+    let unread: Vec<String> = Mailbox::at(&pair.b_dir)
+        .messages()
+        .unwrap()
+        .into_iter()
+        .filter(|message| message.read_at_ms.is_none())
+        .map(|message| message.id)
+        .collect();
+    assert_eq!(unread.len(), 2, "both messages unread before the drain");
+
+    let plan = pair.b.drain_swarm_inbox().await;
+    assert_eq!(
+        plan.consumed_ids(),
+        unread,
+        "the drain injects exactly the unread set, in file order"
+    );
+
+    let tool = pair
+        .b
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "tool")
+        .and_then(|message| message.content.as_deref())
+        .expect("boundary drain writes a tool result");
+    let receipt: serde_json::Value = serde_json::from_str(tool).unwrap();
+    assert_eq!(receipt["schema"], "openagents.swarm.inbox.v1");
+    assert_eq!(receipt["source"], "turn_boundary");
+    let consumed: Vec<String> = receipt["consumed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(consumed, unread);
+    let message_ids: Vec<String> = receipt["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|message| message["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(message_ids, unread);
+
+    let after = Mailbox::at(&pair.b_dir).messages().unwrap();
+    assert!(
+        after.iter().all(|message| message.read_at_ms.is_some()),
+        "every injected id is stamped read"
+    );
+
+    let second = pair.b.drain_swarm_inbox().await;
+    assert!(
+        second.inject.is_empty(),
+        "a second drain is empty because ownership already transferred"
+    );
+    assert!(second.consumed_ids().is_empty());
+}
+
+#[tokio::test]
 async fn two_sessions_exchange_without_the_human_speaking() {
     let mut pair = bound_pair();
     let sent = swarm_send(

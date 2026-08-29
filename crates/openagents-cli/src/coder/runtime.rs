@@ -326,6 +326,12 @@ pub struct Session {
 }
 
 impl Session {
+    /// The most recent turn-boundary inbox receipt in this session's
+    /// replay. Autopilot reads this instead of draining a second time.
+    pub fn latest_boundary_mail(&self) -> Option<crate::coder::autopilot::MailReceipt> {
+        crate::coder::autopilot::MailReceipt::from_tool_messages(&self.inner.messages)
+    }
+
     /// Open a session on `lane`, reporting everything it does to `tx`.
     ///
     /// The tools are the full set — `read`, `write`, `edit`, `bash`,

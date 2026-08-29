@@ -1221,6 +1221,17 @@ pub struct DrainPlan {
     pub quarantine: Option<QuarantineNotice>,
 }
 
+impl DrainPlan {
+    /// Ids this drain stamped read, in inject order. Autopilot's primary
+    /// mail receipt (#310): the set is exactly what the boundary injected.
+    pub fn consumed_ids(&self) -> Vec<String> {
+        self.inject
+            .iter()
+            .map(|message| message.id.clone())
+            .collect()
+    }
+}
+
 /// Decide what this turn injects. `messages` is the inbox in file order;
 /// already-read lines are ignored. Muted senders do not consume the cap.
 pub fn plan_drain(messages: &[SwarmMessage], muted: &BTreeSet<String>, cap: usize) -> DrainPlan {

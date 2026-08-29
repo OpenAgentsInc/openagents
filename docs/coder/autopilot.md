@@ -110,9 +110,10 @@ the AFK loop's §1, compressed for one session.
 1. **Take stock.** Read the open issue list for the forge in scope
    (`openagents issue list`), the session's goal store if one is set
    (`coder/goal.rs`), and anything that arrived since the last boundary
-   under the dual-path rule (§10: recorded injections, plus the fallback
-   drain). Reconcile in-flight work first, and only this session's own
-   work: anything uncommitted from the previous iteration gets verified,
+   under the drain-as-primary rule (§10: the turn-boundary drain receipt
+   names `consumed` ids). Reconcile in-flight work first, and only this
+   session's own work: anything uncommitted from the previous iteration gets
+   verified,
    committed, or rolled back before anything new starts. Orphaned
    worktrees from a dead predecessor (staleness confirmed via the swarm
    session list) are reconciled the same way — explicitly, named in the
@@ -222,12 +223,9 @@ any of these fires:
   honest; both beat an owner-identity register that sessions cannot back
   today (ids are opaque, no identity metadata exists). Detection is
   announced in the transcript.
-  The rule is
-  dual-path by construction: the stop word is recognized on *either*
-  delivery
-  path — injected-and-stamped at the boundary, or returned by the fallback
-  drain — and either sighting ends the mode. The mode never relies on the
-  drain alone to see its own off switch.
+  The rule is drain-as-primary (§10): the stop word is recognized on the
+  turn-boundary drain receipt (`consumed` ids plus message bodies). An
+  explicit later drain is the wake-catch-up edge case, not the off switch.
   Unset mechanism: only interactive Meta+A can stop the mode, and the
   welcome card
   says so. Anyone standing in front of the terminal hits Meta+A; the point
@@ -279,34 +277,28 @@ session. It does not kill the process; it hands back the wheel.
 
 ## 10. Boundary mail and the drain policy
 
-The swarm inbox has two shapes: injected at turn boundaries, or read
-explicitly. The issue-discussion session's live finding (#303) is that
-boundary injection currently stamps everything read on arrival, so an
-explicit drain after the boundary returns empty — the peer session verified
-this first-hand during this spec's review: `swarm_wait` matched, an
-immediate drain returned nothing.
+The swarm inbox has two shapes: drained at turn boundaries, or read
+explicitly. #303 closed with a `consumed:[ids]` receipt on the boundary
+path: the runtime's `drain_swarm_inbox` *is* a drain — it stamps unread
+mail read and writes those ids on the synthetic `swarm.inbox` tool result.
+A later explicit `swarm_inbox` drain in the same live session returns
+empty because ownership already transferred.
 
-The prescription is therefore **dual-path, not drain-only**. Delivery is
-whatever mechanism actually carried the mail:
+The prescription is therefore **drain-as-primary** (#310):
 
-- **Injection is delivery.** Mail stamped read by boundary injection counts
-  as delivered. The announce line of the boundary iteration (§4.3) records
-  what arrived by injection, so the transcript shows it either way.
-- **The explicit boundary drain is a fallback sweep, not the primary.** It
-  runs before unit selection (step 1 of §4) and normally returns empty; it
-  exists for the messages no boundary was reached to inject.
+- **The turn-boundary drain is delivery.** `consumed` names exactly the
+  ids stamped read, in inject order. The announce line of the boundary
+  iteration (§4.3) records those ids, so the transcript proves the mode
+  saw every message that arrived.
+- **An explicit drain is the wake-catch-up edge case**, not the loop's
+  mail path. It exists for messages that landed with no boundary (a
+  session that slept, then drained on wake). Autopilot does not call it
+  at the iteration boundary: a second drain would be empty by
+  construction and would not be a second sighting of the stop word.
 
-This is a stance about *delivery*, not a bet on the current mechanism. If
-#303's ownership model changes (the `consumed:[ids]` receipt direction),
-the drain becomes verifiable instead of presumed-empty, and the
-prescription collapses gracefully to drain-as-primary. What never changes:
-autopilot's mail handling is explicit, recorded, and able to see every
-message that arrived, whichever path carried it.
-
-The stop word (§7) rides the same surface, which makes it the
-highest-stakes consequence of #303 in this spec: an off switch that
-requires a drain is an off switch the current semantics can silently
-blind. The stop rule in §7 therefore never depends on one path.
+What never changes: autopilot's mail handling is explicit, recorded, and
+able to name every message it processed. The stop word (§7) sights on
+the same receipt.
 
 ## 11. The observer's return
 
@@ -347,18 +339,16 @@ Smallest honest slices, each shippable alone:
    re-reads the goal or issue list and starts the next iteration. No
    budget checks yet — the toggle and the loop are the slice.
 2. **Iteration discipline.** The §4 order, announce lines, ledger updates,
-   stop-on-repeat-failure. Include the dual-path mail stance (§10) in its
-   minimal form: record injections in the announce line; run the fallback
-   drain. This much is correct under today's semantics.
+   stop-on-repeat-failure. Landed with the then-correct dual-path mail
+   stance; slice 4 collapsed that to drain-as-primary.
 3. **Budget and stop conditions** (§7), goal-store accounting (§6), and
-   the stop word **including** the dual-path recognition and the
-   `autopilot_owner_session` register. The stop word does not wait for
-   #303; waiting would leave the mode with no remote off switch.
-4. **Verifiable mail ownership** (the `consumed:[ids]` receipt direction
-   from #303, upstreamed to that issue or filed as its child): the drain
-   becomes provable, and §10's fallback collapses to drain-as-primary.
-   This slice depends on #303 moving first; until then the dual-path
-   stance in slices 2–3 is the whole of mail handling, honestly.
+   the stop word. Landed; the stop word now sights on the drain receipt
+   (slice 4) rather than on either of two paths.
+4. **Verifiable mail ownership** (#310, gated on closed #303): the
+   boundary drain returns `consumed:[ids]`, Autopilot announces those
+   ids and sights the stop word on that receipt, and this section's
+   dual-path fallback is retired. A stub test proves a boundary drain
+   returns exactly the injected set with processed ids recorded.
 
 Tests follow the repo's own law: TUI behavior is verified on a
 pseudo-terminal (`coder_interactive_pty`), loop behavior on stub-runners,

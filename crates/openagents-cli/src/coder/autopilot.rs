@@ -188,6 +188,16 @@ impl AutopilotState {
             String::new()
         }
     }
+
+    /// Apply one boundary-drain receipt. Returns a stop reason when the
+    /// armed stop word is in the consumed mail; otherwise the loop continues.
+    /// The mode does not drain again — that would be empty by construction.
+    pub fn observe_mail(&self, receipt: &MailReceipt) -> Option<StopReason> {
+        self.stop_word
+            .as_ref()
+            .filter(|word| word.sighted_in_receipt(receipt))
+            .map(|_| StopReason::StopWord)
+    }
 }
 
 /// The budget and stop conditions for one engaged autopilot run (spec §7,
@@ -248,8 +258,7 @@ pub enum StopReason {
     /// The forge ledger failed this many times consecutively — landings
     /// cannot be evidenced, so the mode stopped.
     ForgeUnreachable,
-    /// The configured stop word was sighted in inbound swarm mail, on either
-    /// delivery path (injected-at-boundary or returned-by-drain).
+    /// The configured stop word was sighted on the boundary drain receipt.
     StopWord,
     /// The reader pressed Meta+A or ran `/autopilot off`. Listed for the
     /// stop report's completeness; an interactive disengage is the reader
@@ -371,10 +380,9 @@ impl StopConditions {
 /// The mechanism is a token carried by a swarm message, not a sender
 /// register — sessions carry no identity metadata, so "a message from the
 /// owner's session" is not checkable today; "a message carrying this token"
-/// is. Sighting the token on **either** delivery path ends the mode: the
-/// injected-and-stamped mail at the boundary, or the fallback drain's
-/// return. The mode never relies on one path alone to see its own off
-/// switch.
+/// is. The boundary drain is the primary delivery path (#310): sighting
+/// the token on that receipt ends the mode. An explicit later drain is
+/// an edge case for mail that arrived with no boundary (wake catch-up).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopWord {
     pub token: String,
@@ -399,6 +407,92 @@ impl StopWord {
     /// sights the token.
     pub fn sighted_in(&self, mail: &str) -> bool {
         self.armed() && mail.contains(&self.token)
+    }
+
+    /// Whether the boundary-drain receipt carries the token in any body.
+    pub fn sighted_in_receipt(&self, receipt: &MailReceipt) -> bool {
+        receipt.bodies.iter().any(|body| self.sighted_in(body))
+    }
+}
+
+/// Mail the boundary drain just processed. After #303 the drain *is*
+/// delivery: `consumed` names the ids stamped read, in inject order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MailReceipt {
+    pub consumed: Vec<String>,
+    pub bodies: Vec<String>,
+}
+
+impl MailReceipt {
+    /// Parse an `openagents.swarm.inbox.v1` tool result. Requires a
+    /// `consumed` array so an empty or unrelated tool dump is not a receipt.
+    pub fn from_inbox_tool_output(output: &str) -> Option<Self> {
+        let value: serde_json::Value = serde_json::from_str(output).ok()?;
+        if value.get("schema").and_then(|schema| schema.as_str())
+            != Some("openagents.swarm.inbox.v1")
+        {
+            return None;
+        }
+        let consumed = value
+            .get("consumed")?
+            .as_array()?
+            .iter()
+            .filter_map(|id| id.as_str().map(str::to_string))
+            .collect::<Vec<_>>();
+        let bodies = value
+            .get("messages")
+            .and_then(|messages| messages.as_array())
+            .map(|messages| {
+                messages
+                    .iter()
+                    .filter_map(|message| {
+                        message
+                            .get("body")
+                            .and_then(|body| body.as_str().map(str::to_string))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self { consumed, bodies })
+    }
+
+    /// The most recent turn-boundary inbox receipt in the replayed
+    /// messages, walking newest-first. Explicit `swarm_inbox` dumps are
+    /// skipped: Autopilot's primary path is the drain the runtime already
+    /// ran at the hop.
+    pub fn from_tool_messages<'a>(
+        messages: impl IntoIterator<Item = &'a crate::runtime::ChatMessage>,
+    ) -> Option<Self> {
+        for message in messages.into_iter().collect::<Vec<_>>().into_iter().rev() {
+            if message.role != "tool" {
+                continue;
+            }
+            let Some(content) = message.content.as_deref() else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+                continue;
+            };
+            if value.get("source").and_then(|source| source.as_str()) != Some("turn_boundary") {
+                continue;
+            }
+            return Self::from_inbox_tool_output(content);
+        }
+        None
+    }
+
+    /// The announce line spec §4.3 / §11 skims. Empty `consumed` is still
+    /// a receipt — the observer should see that the drain ran and saw
+    /// nothing, only when the caller asks for the line.
+    pub fn announce_line(&self) -> String {
+        if self.consumed.is_empty() {
+            "[autopilot] mail: drain consumed []".to_string()
+        } else {
+            format!(
+                "[autopilot] mail: drain consumed [{}]",
+                self.consumed.join(", ")
+            )
+        }
     }
 }
 
@@ -929,20 +1023,58 @@ mod tests {
     }
 
     #[test]
-    fn the_stop_word_sights_on_either_path_and_disarms_cleanly() {
+    fn the_stop_word_sights_on_the_drain_receipt_and_disarms_cleanly() {
         let word = StopWord::new("flywheel-home");
         assert!(word.armed());
-        // Injected-and-stamped mail and a drained batch are the same check:
-        // the token either appears or it does not.
-        assert!(word.sighted_in("status from a sibling: flywheel-home please"));
-        assert!(word.sighted_in("batch: flywheel-home"));
-        assert!(!word.sighted_in("nothing here"));
+        let hit = MailReceipt {
+            consumed: vec!["msg_1".to_string()],
+            bodies: vec!["status from a sibling: flywheel-home please".to_string()],
+        };
+        let miss = MailReceipt {
+            consumed: vec!["msg_2".to_string()],
+            bodies: vec!["nothing here".to_string()],
+        };
+        assert!(word.sighted_in_receipt(&hit));
+        assert!(!word.sighted_in_receipt(&miss));
 
-        // An empty token disarms the mechanism: only Meta+A stops the mode,
-        // and the welcome card says so.
+        let engaged = AutopilotState {
+            engaged: true,
+            directive: None,
+            discipline: IterationDiscipline::default(),
+            stops: StopConditions::default(),
+            stop_word: Some(word.clone()),
+        };
+        assert_eq!(engaged.observe_mail(&hit), Some(StopReason::StopWord));
+        assert!(engaged.observe_mail(&miss).is_none());
+
         let disarmed = StopWord::new("   ");
         assert!(!disarmed.armed());
-        assert!(!disarmed.sighted_in("flywheel-home"));
+        assert!(!disarmed.sighted_in_receipt(&hit));
+    }
+
+    #[test]
+    fn a_mail_receipt_names_consumed_ids_and_parses_the_boundary_json() {
+        let output = serde_json::json!({
+            "schema": "openagents.swarm.inbox.v1",
+            "source": "turn_boundary",
+            "consumed": ["msg_a", "msg_b"],
+            "messages": [
+                {"id": "msg_a", "body": "first"},
+                {"id": "msg_b", "body": "second"}
+            ]
+        })
+        .to_string();
+        let receipt = MailReceipt::from_inbox_tool_output(&output).expect("receipt");
+        assert_eq!(
+            receipt.consumed,
+            vec!["msg_a".to_string(), "msg_b".to_string()]
+        );
+        assert_eq!(
+            receipt.announce_line(),
+            "[autopilot] mail: drain consumed [msg_a, msg_b]"
+        );
+        assert!(MailReceipt::from_inbox_tool_output("not json").is_none());
+        assert!(MailReceipt::from_inbox_tool_output(r#"{"schema":"other"}"#).is_none());
     }
 
     #[test]

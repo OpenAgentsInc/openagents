@@ -405,6 +405,19 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             // budget signal: `goal_budget_exhausted` is the
                             // store's own BudgetLimited state, which the
                             // turn just updated with its usage.
+                            let mail = session
+                                .as_ref()
+                                .and_then(|s| s.try_lock().ok())
+                                .and_then(|s| s.latest_boundary_mail());
+                            if let Some(receipt) = mail.as_ref() {
+                                if !receipt.consumed.is_empty() {
+                                    ui.entries
+                                        .push(Entry::new(Role::Notice, receipt.announce_line()));
+                                }
+                            }
+                            let mail_stop = mail
+                                .as_ref()
+                                .and_then(|receipt| autopilot.observe_mail(receipt));
                             let goal_budget_exhausted = session
                                 .as_ref()
                                 .and_then(|s| s.try_lock().ok())
@@ -412,7 +425,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 .is_some_and(|goal| {
                                     goal.status == crate::coder::goal::GoalStatus::BudgetLimited
                                 });
-                            match autopilot.stops.should_stop(goal_budget_exhausted) {
+                            match mail_stop
+                                .or_else(|| autopilot.stops.should_stop(goal_budget_exhausted))
+                            {
                                 Some(reason) => {
                                     // A stop is a report, not a halt: the
                                     // ledger state above is current, the

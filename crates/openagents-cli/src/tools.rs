@@ -3512,6 +3512,10 @@ fn answer_swarm_inbox(
                     "deferred": 0,
                     "muted": 0,
                     "muted_senders": binding.muted().iter().collect::<Vec<_>>(),
+                    "consumed": messages
+                        .iter()
+                        .map(|message| message.id.clone())
+                        .collect::<Vec<_>>(),
                     "messages": messages
                         .iter()
                         .map(crate::swarm::message_document)
@@ -3570,6 +3574,7 @@ fn answer_swarm_inbox(
                     "deferred": plan.deferred,
                     "muted": plan.muted.len(),
                     "muted_senders": binding.muted().iter().collect::<Vec<_>>(),
+                    "consumed": plan.consumed_ids(),
                     "messages": plan
                         .inject
                         .iter()
@@ -3580,13 +3585,13 @@ fn answer_swarm_inbox(
                     document["mute_changed"] = serde_json::json!(mute_changed.join("; "));
                 }
                 if plan.inject.is_empty() {
-                    // The honest empty (#303): in a live session this is the
-                    // normal case — the boundary injection stamped the mail
-                    // read on the caller's behalf before any drain ran. Say
-                    // so instead of leaving an empty list to misread as
-                    // "no mail exists".
+                    // The honest empty: the boundary drain is the primary
+                    // (#310), so a later explicit drain in a live session
+                    // finds nothing unread. The ids are on `consumed` of
+                    // the turn-boundary receipt.
                     document["note"] = serde_json::json!(
-                        "nothing was unread at drain time; mail injected at the turn boundary is stamped read on your behalf — see `consumed` on the boundary injection (#303)"
+                        "nothing was unread at drain time; the turn-boundary drain already \
+                         consumed inbound mail — see `consumed` on that receipt (#310)"
                     );
                 }
                 if let Some(notice) = &plan.quarantine {
