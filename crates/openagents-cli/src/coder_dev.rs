@@ -1,7 +1,8 @@
-//! Start the local Pro inference door for `--dev`.
+//! Start the local Coder inference door for `--dev`.
 //!
-//! Phoenix stays production. `--dev` talks to `pro` on this machine
-//! (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`).
+//! Phoenix stays production. `--dev` talks to `openagents-coder-api` on this
+//! machine, which serves the `flash` and `free` lanes (catalog, threads,
+//! grants, proxy, credit).
 
 use std::env;
 use std::fs::OpenOptions;
@@ -14,7 +15,8 @@ use tokio::net::TcpStream;
 use tokio::process::Command;
 use tokio::time::sleep;
 
-/// Preferred bind. Phoenix and coder-api already fight over 4000/4010.
+/// Preferred bind. Phoenix already uses 4000 and the old `pro` listener
+/// sometimes occupies 4100/4101, so we prefer 4100 and fall back to 4101.
 const PREFERRED: u16 = 4100;
 const FALLBACK: u16 = 4101;
 
@@ -28,18 +30,18 @@ impl DevApi {
     }
 }
 
-/// Ensure a local Pro door is listening. Starts one if needed.
+/// Ensure a local Coder inference door is listening. Starts one if needed.
 pub async fn ensure_running() -> Result<DevApi, Box<dyn std::error::Error>> {
     if let Some(origin) = already_ours(PREFERRED).await {
-        eprintln!("pro already running at {origin}");
+        eprintln!("coder-api already running at {origin}");
         return Ok(DevApi { origin });
     }
     let port = if port_occupied(PREFERRED).await {
         if let Some(origin) = already_ours(FALLBACK).await {
-            eprintln!("pro already running at {origin}");
+            eprintln!("coder-api already running at {origin}");
             return Ok(DevApi { origin });
         }
-        eprintln!("port {PREFERRED} is in use; binding pro to {FALLBACK}");
+        eprintln!("port {PREFERRED} is in use; binding coder-api to {FALLBACK}");
         FALLBACK
     } else {
         PREFERRED
@@ -55,7 +57,7 @@ async fn start(port: u16) -> Result<DevApi, Box<dyn std::error::Error>> {
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    eprintln!("starting pro from {}", bin.display());
+    eprintln!("starting coder-api from {}", bin.display());
     eprintln!("waiting for {origin}/health");
     eprintln!("server log: {}", log_path.display());
     let log = OpenOptions::new()
@@ -75,46 +77,50 @@ async fn start(port: u16) -> Result<DevApi, Box<dyn std::error::Error>> {
     let _child = command.spawn()?;
     for attempt in 1..=80 {
         if already_ours(port).await.is_some() {
-            eprintln!("pro ready at {origin}");
+            eprintln!("coder-api ready at {origin}");
             return Ok(DevApi { origin });
         }
         if attempt % 10 == 0 {
-            eprintln!("still waiting for pro ({} seconds)", attempt / 2);
+            eprintln!("still waiting for coder-api ({} seconds)", attempt / 2);
         }
         sleep(Duration::from_millis(250)).await;
     }
     Err(format!(
-        "pro did not become ready at {origin}/health. \
-         Build it with `cargo build -p pro-gateway` in the Pro repository, or set \
-         OPENAGENTS_PRO_BIN. Upstream key: PRO_UPSTREAM_KEY."
+        "coder-api did not become ready at {origin}/health. \
+         Build it with `cargo build -p openagents-coder-api`, or set \
+         OPENAGENTS_CODER_API_BIN."
     )
     .into())
 }
 
 fn api_bin() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if let Ok(path) = env::var("OPENAGENTS_PRO_BIN") {
+    if let Ok(path) = env::var("OPENAGENTS_CODER_API_BIN") {
         let path = PathBuf::from(path);
         if path.is_file() {
             return Ok(path);
         }
-        return Err(format!("OPENAGENTS_PRO_BIN is not a file: {}", path.display()).into());
+        return Err(format!(
+            "OPENAGENTS_CODER_API_BIN is not a file: {}",
+            path.display()
+        )
+        .into());
     }
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let sibling = dir.join("pro");
+            let sibling = dir.join("openagents-coder-api");
             if sibling.is_file() {
                 return Ok(sibling);
             }
         }
     }
-    if let Ok(path) = which("pro") {
+    if let Ok(path) = which("openagents-coder-api") {
         return Ok(path);
     }
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     for rel in [
-        ".openagents/bin/pro",
-        "work/pro/target/debug/pro",
-        "work/pro/target/release/pro",
+        ".openagents/bin/openagents-coder-api",
+        "work/openagents/target/debug/openagents-coder-api",
+        "work/openagents/target/release/openagents-coder-api",
     ] {
         let candidate = PathBuf::from(&home).join(rel);
         if candidate.is_file() {
@@ -122,8 +128,8 @@ fn api_bin() -> Result<PathBuf, Box<dyn std::error::Error>> {
         }
     }
     Err(
-        "pro is not built. Run `cargo build -p pro-gateway` in the Pro repository, \
-         or set OPENAGENTS_PRO_BIN."
+        "openagents-coder-api is not built. Run `cargo build -p openagents-coder-api`, \
+         or set OPENAGENTS_CODER_API_BIN."
             .into(),
     )
 }
@@ -143,7 +149,7 @@ fn log_path() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home)
         .join(".openagents")
-        .join("pro")
+        .join("coder-api")
         .join("dev.log")
 }
 
@@ -167,7 +173,11 @@ enum Probe {
 }
 
 pub fn health_is_ours(head: &str) -> bool {
-    head.contains("\"service\":\"pro\"") || head.contains("\"service\": \"pro\"")
+    head.contains("\"service\":\"openagents-coder-api\"")
+        || head.contains("\"service\": \"openagents-coder-api\"")
+        // Also accept the older `pro` service name for backwards compatibility.
+        || head.contains("\"service\":\"pro\"")
+        || head.contains("\"service\": \"pro\"")
 }
 
 async fn probe(port: u16) -> Probe {
@@ -200,10 +210,16 @@ mod tests {
     #[test]
     fn health_json_is_recognised() {
         assert!(health_is_ours(
-            "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"pro\",\"upstream\":true}"
+            "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"openagents-coder-api\",\"upstream\":true}"
+        ));
+        assert!(health_is_ours(
+            "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\": \"openagents-coder-api\"}"
+        ));
+        assert!(health_is_ours(
+            "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"pro\"}"
         ));
         assert!(!health_is_ours(
-            "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"openagents-coder-api\"}"
+            "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"phoenix\"}"
         ));
     }
 }

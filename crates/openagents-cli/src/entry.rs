@@ -54,11 +54,11 @@ Commands:
 Run `openagents <command> --help` to view command options.
 
 Coder options:
-  --dev              Talk to the local Pro inference door (catalog, threads,
-                     grants, proxy). Starts `pro` if none is running. Prefers
-                     port 4100; if that is taken, binds 4101. Production
-                     origin is unchanged without --dev. Upstream key:
-                     PRO_UPSTREAM_KEY. Optional: OPENAGENTS_PRO_BIN.
+  --dev              Talk to the local Coder inference door (catalog,
+                     threads, grants, proxy). Starts `openagents-coder-api`
+                     if none is running. Prefers port 4100; if that is
+                     taken, binds 4101. Production origin is unchanged
+                     without --dev. Optional: OPENAGENTS_CODER_API_BIN.
   --lane <name>      Which model answers. `flash`, `pro`, and `free` are the
                      switchable lanes, and shift+tab moves between them; each
                      resolves its model from GET /api/v1/models at open.
@@ -69,6 +69,7 @@ Coder options:
                      Defaults to `flash`.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to
                      leave the deployment's own default.
+  --prompt <text>    Send one prompt and exit. For headless tests and scripts.
   --continue         Resume the most recent local session for this directory.
   --resume [id]      Resume a local session. Without an id, use this directory's
                      most recent session.
@@ -87,8 +88,8 @@ Environment:
   OPENAGENTS_API_KEY    The credential to spend. Optional for `--dev`.
   OPENAGENTS_PRO_ORIGIN Production Pro origin. Default https://pro.openagents.com.
   OPENAGENTS_PRO_API_KEY  Bearer for the Pro door in production.
-  OPENAGENTS_PRO_BIN    Path to the local `pro` binary for `--dev`.
-  PRO_UPSTREAM_KEY      Upstream credential the local Pro process reads.
+  OPENAGENTS_CODER_API_BIN
+                      Path to the local `openagents-coder-api` binary for `--dev`.
   ACP_REGISTRY          Where the `delegate` tool looks for installed external
                         agents (cursor, devin, opencode, ...).
 
@@ -117,7 +118,7 @@ fn names_a_cli_command(arguments: &[String]) -> bool {
 
         // These flags belong to Coder, so values such as `trace` or `forge`
         // must not be mistaken for a command name.
-        if matches!(argument.as_str(), "--lane" | "--reasoning") {
+        if matches!(argument.as_str(), "--lane" | "--reasoning" | "--prompt") {
             index += 2;
             continue;
         }
@@ -157,6 +158,15 @@ fn has_only_coder_options(arguments: &[String]) -> bool {
         match argument.as_str() {
             "--dev" | "--continue" | "--cloud-history" | "-h" | "--help" | "-V" | "--version" => {
                 index += 1
+            }
+            "--prompt" => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return false;
+                };
+                if value.starts_with('-') {
+                    return false;
+                }
+                index += 2;
             }
             "--resume" => {
                 index += 1;
@@ -307,6 +317,7 @@ fn parse(arguments: &[String]) -> Result<Parsed, String> {
         dev: false,
         resume: None,
         cloud_history: false,
+        prompt: None,
     };
     let mut dev = false;
     let mut index = 0;
@@ -362,6 +373,10 @@ fn parse(arguments: &[String]) -> Result<Parsed, String> {
             }
             "--reasoning" => {
                 options.reasoning = Some(value("--reasoning")?);
+                index += 1;
+            }
+            "--prompt" => {
+                options.prompt = Some(value("--prompt")?);
                 index += 1;
             }
             other => {

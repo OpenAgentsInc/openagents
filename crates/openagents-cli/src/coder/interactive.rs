@@ -91,6 +91,8 @@ pub struct SessionOptions {
     pub resume: Option<String>,
     /// Upload transcript events and outcome text. Local-only is the default.
     pub cloud_history: bool,
+    /// Send one prompt and exit. Used for headless tests.
+    pub prompt: Option<String>,
 }
 
 pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -354,6 +356,26 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     };
     let mut active_turn: Option<ActiveTurn> = None;
     let mut prompt_queue = VecDeque::new();
+    let prompt = options.prompt;
+    let one_shot = prompt.is_some();
+    if let Some(text) = prompt {
+        prompt_queue.push_back(QueuedPrompt {
+            text,
+            images: Vec::new(),
+        });
+    }
+    if !prompt_queue.is_empty() {
+        start_next_prompt(
+            &mut ui,
+            &mut prompt_queue,
+            session.as_ref(),
+            &tx,
+            &mut turns,
+            &mut active_turn,
+            options.dev,
+        )
+        .await;
+    }
     let mut login_pending = false;
     let mut exit_after_cancel = false;
     // ToolDone from this drain is applied after the next draw. Output+Done
@@ -388,6 +410,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         }
                         turns.apply(TurnAction::ObserveTerminal(id));
                         active_turn = None;
+                        if one_shot {
+                            break 'frame;
+                        }
                         refresh_credit(&tx);
                         // Autopilot's minimal loop (spec §13 slice 1): a
                         // turn ended with the mode engaged, so the next
