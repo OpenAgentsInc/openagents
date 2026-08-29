@@ -73,11 +73,20 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(text.contains("/Users/example/work/openagents"));
     assert!(text.contains("https://openagents.com/api/v1"));
     assert!(text.contains("Type /help for commands and keys."));
-    assert!(text.contains("New in v0.1.1"), "{text}");
-    assert!(text.contains("Improved subagent delegation"), "{text}");
-    assert!(text.contains("Added streaming to thinking"), "{text}");
+    assert!(text.contains("New in v0.2.0-rc1"), "{text}");
+    assert!(
+        text.contains("Coder Local answers from Ollama on this machine"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Shift+Tab reaches Local when Qwen 3.8 is loaded"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Local lane honors --num-ctx and --reasoning"),
+        "{text}"
+    );
     assert!(text.contains("Grok is a first-class delegate"), "{text}");
-    assert!(text.contains("Timing on each message"), "{text}");
     assert!(
         text.contains("ATIF export keeps subagent streams"),
         "{text}"
@@ -113,7 +122,7 @@ fn startup_facts_are_centered_outside_the_transcript() {
         .find(|y| row_at(*y).contains("Coder v"))
         .expect("startup box title");
     let news_row = (0..buffer.area.height)
-        .find(|y| row_at(*y).contains("New in v0.1.1"))
+        .find(|y| row_at(*y).contains("New in v0.2.0-rc1"))
         .expect("changelog box title");
     assert!(
         news_row > title_row,

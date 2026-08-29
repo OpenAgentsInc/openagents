@@ -30,15 +30,15 @@ const TOOL_SETTLE_FRAMES: u64 = 10;
 /// into one `+N earlier` counter, counted rather than stored as text.
 pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
-/// Idle "New in v0.1.1" card. Seven lines is the ceiling so the pair of
+/// Idle "New in v0.2.0-rc1" card. Seven lines is the ceiling so the pair of
 /// boxes still fits an ordinary terminal.
 const WELCOME_WHAT_IS_NEW: &[&str] = &[
-    "Improved subagent delegation",
-    "Added streaming to thinking",
-    "Grok is a first-class delegate",
-    "Timing on each message",
+    "Coder Local answers from Ollama on this machine",
+    "Shift+Tab reaches Local when Qwen 3.8 is loaded",
+    "Local lane honors --num-ctx and --reasoning",
     "ATIF export keeps subagent streams",
     "ATIF export keeps the swarm inbox",
+    "Grok is a first-class delegate",
     "Flash routes simple requests to Gemini 3.7 Flash",
 ];
 
@@ -1308,7 +1308,7 @@ impl CoderUi {
                     .collect::<Vec<_>>(),
             );
             let news_block = Block::default()
-                .title(" New in v0.1.1 ")
+                .title(" New in v0.2.0-rc1 ")
                 .title_alignment(Alignment::Center)
                 .borders(Borders::ALL)
                 .border_style(value_style)
