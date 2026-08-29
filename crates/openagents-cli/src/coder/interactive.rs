@@ -28,11 +28,12 @@ use crossterm::{
     cursor::SetCursorStyle,
     event::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
+        Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
         PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use futures::StreamExt;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::collections::VecDeque;
@@ -402,6 +403,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // otherwise land in one try_recv burst and the active rail is never
     // painted (#256).
     let mut held_tool_done: Vec<Control> = Vec::new();
+    // Read keys through EventStream, not poll(0)+read. poll(0) on macOS
+    // with use-dev-tty never reports a pending key, so the composer paints
+    // and typing never reaches it (0.2.0-rc.10, install.sh exec). A
+    // blocking poll(50ms) did see keys, and it also parked the tokio
+    // runtime so spawned HTTP (#334 served_models, --dev SSE) could not
+    // run. EventStream waits for input without blocking the runtime.
+    let mut events = EventStream::new();
 
     'frame: loop {
         let flushed_done = std::mem::take(&mut held_tool_done);
@@ -650,20 +658,29 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
         }
 
-        if !event::poll(Duration::from_millis(0))? {
-            if let Some(active) = active_turn.as_mut() {
-                tokio::select! {
-                    _ = &mut active.task => {
-                        active_turn = None;
+        let event = tokio::select! {
+            event = events.next() => match event {
+                Some(Ok(ev)) => ev,
+                Some(Err(error)) => return Err(error.into()),
+                None => break 'frame,
+            },
+            _ = async {
+                if let Some(active) = active_turn.as_mut() {
+                    tokio::select! {
+                        _ = &mut active.task => {}
+                        _ = tokio::time::sleep(Duration::from_millis(20)) => {}
                     }
-                    _ = tokio::time::sleep(Duration::from_millis(20)) => {}
+                } else {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
                 }
-            } else {
-                tokio::time::sleep(Duration::from_millis(20)).await;
+            } => {
+                if active_turn.as_ref().is_some_and(|active| active.task.is_finished()) {
+                    active_turn = None;
+                }
+                continue;
             }
-            continue;
-        }
-        let key = match event::read()? {
+        };
+        let key = match event {
             Event::Paste(text) => {
                 // Paste is one editing operation, even when it contains
                 // newlines. In particular, do not pass its newlines through

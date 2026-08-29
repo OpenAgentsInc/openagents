@@ -5,6 +5,34 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI restores TUI typing after the 0.2.0-rc.10 hang fix (#334)
+
+- issues: #334
+- commits: this change
+- contracts-specs: Coder event loop reads `crossterm::event::EventStream`
+- invariants: a published `<version, platform>` object stays immutable; rc.10 stays as shipped
+- evidence: `coder_interactive_pty` `typed_characters_echo_into_the_composer_and_backspace_removes_them` and `an_installer_pipe_still_accepts_terminal_input` failed on rc.10 (`poll(0)` never reported keys) and pass after this change; `model_picker_lists_served_pro_models_and_flash_refuses` still passes
+- lane: cursor session abb3a3ed
+
+`0.2.0-rc.10` painted the composer and dropped every key. The #334 hang
+fix replaced blocking `event::poll(50ms)` with `poll(0)` plus a tokio
+sleep so spawned HTTP could run. On macOS with `use-dev-tty`, `poll(0)`
+never reports a pending key, so `read` never ran. The loop now waits on
+`EventStream`, which sees keys without parking the runtime. The crate
+is `0.2.0-rc.11` because rc.10 is already published.
+
+## CLI source version is 0.2.0-rc.11
+
+- issues: #334
+- commits: this change
+- contracts-specs: CLI crate version; producer name `X.Y.Z-rc.N`
+- invariants: non-release builds still report `0.0.0-dev`; published `<version, platform>` objects stay immutable
+- evidence: live bucket already holds `0.2.0-rc8`, `0.2.0-rc.8`, `0.2.0-rc9`, and `0.2.0-rc.10`
+- lane: cursor session abb3a3ed
+
+The `openagents-cli` crate is `0.2.0-rc.11`. rc.10 is published and
+immutable. This line is the EventStream input fix.
+
 ## CLI source version is 0.2.0-rc.10
 
 - issues: #330

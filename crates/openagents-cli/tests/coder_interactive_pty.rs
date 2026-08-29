@@ -802,6 +802,10 @@ mod unix_pty {
     /// The installer itself runs from a pipe, then starts Coder from the same
     /// process. The binary must read keys from the controlling terminal rather
     /// than trying to register that exhausted pipe as its input source.
+    ///
+    /// 0.2.0-rc.10 painted this composer and then dropped every key:
+    /// `event::poll(0)` on macOS never reported input. This test is the
+    /// install.sh `exec` path; it must fail if typing does not echo.
     #[test]
     fn an_installer_pipe_still_accepts_terminal_input() {
         let mut tui = Tui::start_with_piped_stdin();
@@ -850,7 +854,8 @@ mod unix_pty {
     }
 
     /// Typing reaches the composer, the caret follows it, and backspace
-    /// removes what was typed.
+    /// removes what was typed. A TUI that only paints an empty box is the
+    /// failure this names — rc.10's poll(0) loop did exactly that.
     #[test]
     fn typed_characters_echo_into_the_composer_and_backspace_removes_them() {
         let mut tui = Tui::start();
