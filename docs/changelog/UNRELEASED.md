@@ -5,6 +5,19 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Scrolled-up transcript stays put while tokens stream (#351)
+
+- issues: #351
+- commits: this change
+- contracts-specs: `scroll_override` is follow-mode, matching grok-build; live `apply()` events do not clear a pin
+- invariants: none changed
+- evidence: `streaming_does_not_steal_a_scrolled_up_pin`; `scrolling_to_the_bottom_resumes_follow`
+- lane: cursor session abb3a3ed
+
+If the transcript is scrolled up, streaming tokens and tool output no
+longer jump the viewport to the bottom. Follow resumes when the reader
+scrolls to the bottom or starts a new prompt.
+
 ## CLI source version is 0.2.0-rc.16
 
 - issues: #350

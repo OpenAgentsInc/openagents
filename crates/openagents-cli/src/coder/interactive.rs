@@ -1917,6 +1917,11 @@ pub fn apply_drained(
 /// Apply one message from the runtime to the frame.
 ///
 /// Split out of the loop so a test can drive it without a terminal.
+///
+/// Follow is `scroll_override.is_none()`, the same rule as grok-build's
+/// `follow_mode`. Live deltas (tokens, tool output, status) must not clear
+/// a pin. The reader resumes follow by scrolling to the bottom or by
+/// starting a new prompt.
 pub fn apply(ui: &mut CoderUi, control: Control) {
     match control {
         Control::Turn { .. } | Control::CancelComplete { .. } | Control::Login(_) => {}
@@ -1935,7 +1940,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 } else {
                     ui.entries.push(Entry::new(Role::Assistant, chunk));
                 }
-                ui.scroll_override = None;
             }
         }
         Control::Reasoning(chunk) => {
@@ -1949,7 +1953,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 } else {
                     ui.entries.push(Entry::new(Role::Reasoning, chunk));
                 }
-                ui.scroll_override = None;
             }
         }
         Control::DiscardReply => {
@@ -1960,7 +1963,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             {
                 ui.entries.pop();
             }
-            ui.scroll_override = None;
         }
         Control::CommitReply => {
             if let Some(last) = ui
@@ -2005,7 +2007,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 });
                 ui.entries.push(entry);
             }
-            ui.scroll_override = None;
         }
         Control::SubagentOutput { call_id, line } => {
             if let Some(entry) = tool_entry(ui, &call_id) {
@@ -2013,7 +2014,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                     entry.push_subagent_line(line);
                 }
             }
-            ui.scroll_override = None;
         }
         Control::ToolOutput { call_id, chunk } => {
             if let Some(entry) = tool_entry(ui, &call_id) {
@@ -2026,7 +2026,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                     tool.output = seen;
                 }
             }
-            ui.scroll_override = None;
         }
         Control::ToolDone {
             call_id,
@@ -2053,7 +2052,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                     }
                 }
             }
-            ui.scroll_override = None;
         }
         // What answered, from the grant. Recorded on the frame's own field,
         // which stays empty until something has actually answered.
@@ -2108,12 +2106,10 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         Control::Notice(text) => {
             if !text.trim().is_empty() {
                 ui.entries.push(Entry::new(Role::Notice, text));
-                ui.scroll_override = None;
             }
         }
         Control::Waiting(message) => {
             ui.waiting = message;
-            ui.scroll_override = None;
         }
         Control::LoadStatus { message, fail } => {
             ui.load_line = Some(message.clone());
@@ -2123,7 +2119,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
                 ui.memory_line = None;
                 ui.entries.push(Entry::new(Role::Notice, message));
             }
-            ui.scroll_override = None;
         }
         Control::MemoryLine(line) => {
             ui.memory_line = line;
@@ -2131,7 +2126,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         Control::Output(text) => {
             if !text.trim().is_empty() {
                 ui.entries.push(Entry::new(Role::Output, text));
-                ui.scroll_override = None;
             }
         }
         Control::Failed(why) => {
@@ -2148,7 +2142,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             ui.loading = false;
             ui.turn_settled();
             ui.waiting = None;
-            ui.scroll_override = None;
         }
         Control::Done => {
             if let Some(last) = ui
@@ -2982,6 +2975,66 @@ mod tests {
             std::path::Path::new("."),
         );
         assert_eq!(ui.composer.text(), "remembered");
+        assert_eq!(ui.scroll_override, None);
+    }
+
+    /// #351: grok-build leaves the viewport alone while `follow_mode` is
+    /// off. Coder's pin is `scroll_override`; streaming used to clear it.
+    #[test]
+    fn streaming_does_not_steal_a_scrolled_up_pin() {
+        let mut ui = scrollable_ui();
+        apply_mouse(&mut ui, wheel(MouseEventKind::ScrollUp));
+        assert_eq!(ui.scroll_override, Some(17));
+
+        apply(&mut ui, Control::Chunk("token".into()));
+        apply(&mut ui, Control::Reasoning("think".into()));
+        apply(
+            &mut ui,
+            Control::Tool {
+                call_id: "c1".into(),
+                name: "bash".into(),
+                arguments: "{}".into(),
+            },
+        );
+        apply(
+            &mut ui,
+            Control::ToolOutput {
+                call_id: "c1".into(),
+                chunk: "out".into(),
+            },
+        );
+        apply(
+            &mut ui,
+            Control::ToolDone {
+                call_id: "c1".into(),
+                is_error: false,
+                duration_ms: 1,
+            },
+        );
+        apply(&mut ui, Control::Waiting(Some("working".into())));
+        apply(&mut ui, Control::Notice("note".into()));
+        apply(&mut ui, Control::Failed("nope".into()));
+        assert_eq!(
+            ui.scroll_override,
+            Some(17),
+            "live deltas must not clear a pin"
+        );
+    }
+
+    #[test]
+    fn following_the_bottom_still_follows_after_a_chunk() {
+        let mut ui = scrollable_ui();
+        assert_eq!(ui.scroll_override, None);
+        apply(&mut ui, Control::Chunk("token".into()));
+        assert_eq!(ui.scroll_override, None);
+    }
+
+    #[test]
+    fn scrolling_to_the_bottom_resumes_follow() {
+        let mut ui = scrollable_ui();
+        apply_mouse(&mut ui, wheel(MouseEventKind::ScrollUp));
+        assert_eq!(ui.scroll_override, Some(17));
+        ui.scroll_by(3);
         assert_eq!(ui.scroll_override, None);
     }
 

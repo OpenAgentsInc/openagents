@@ -1438,9 +1438,9 @@ impl CoderUi {
     /// Calculate the scroll offset that keeps the viewport at the bottom
     /// unless the user has manually overridden it.
     ///
-    /// Mirrors grok-build's `effective_scroll` pattern: a `None` override
-    /// follows the content, while an explicit offset is clamped to the valid
-    /// range and left in place.
+    /// `None` is grok-build `follow_mode`: each frame pins the tail. `Some`
+    /// is a pin; streaming must leave it alone. The offset is clamped to the
+    /// valid range so a shorter transcript cannot overscroll.
     fn effective_scroll(&self, area_height: u16, total: u16) -> u16 {
         let max_scroll = total.saturating_sub(area_height);
         match self.scroll_override {
