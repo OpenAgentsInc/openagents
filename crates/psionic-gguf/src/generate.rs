@@ -92,6 +92,15 @@ fn decode_q8_row(src: &[u8], row: usize, width: usize) -> Option<Vec<f32>> {
     Some(out)
 }
 
+pub(crate) fn matvec_many(
+    mapped: &MappedWeights,
+    names: &[&str],
+    x: &[f32],
+) -> Option<Vec<Vec<f32>>> {
+    crate::metal_gemm::try_q8_matvec_many(mapped, names, x)
+        .or_else(|| names.iter().map(|n| matvec(mapped, n, x)).collect())
+}
+
 pub(crate) fn matvec(mapped: &MappedWeights, name: &str, x: &[f32]) -> Option<Vec<f32>> {
     let view = mapped.tensors.get(name)?;
     let src = unsafe { std::slice::from_raw_parts(view.data, view.len) };

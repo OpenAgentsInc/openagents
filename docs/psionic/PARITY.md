@@ -2,8 +2,9 @@
 
 - Class: owner-accepted compare contract
 - Status: accepted 2026-08-29; bench landed (#361). Hybrid quality
-  holdout landed (#357). Metal Q8 matvec landed; tiled GEMM still
-  needed to beat warm Ollama (#358). Tokenizer leftovers (#359).
+  holdout landed (#357). Metal Q8 batches and fused FFN landed
+  (~6.5 tok/s). Tiled GEMM + GPU GDN still needed to beat warm
+  Ollama (#358). Tokenizer leftovers (#359).
 - Ledger: [INTENT.md](./INTENT.md), [PLAN.md](./PLAN.md), [CLI.md](./CLI.md)
 - Ollama reference: [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md)
 - Decoder math: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md)
@@ -77,7 +78,7 @@ Stdout is one JSON object. Teach lines stay on stderr.
 | Issue | Unlocks |
 | --- | --- |
 | [#357](https://openagents.com/OpenAgentsInc/openagents/issues/357) | Hybrid graph (quality). **Holdout recorded.** |
-| [#358](https://openagents.com/OpenAgentsInc/openagents/issues/358) | Metal GEMM (speed). Row matvec landed; tiled kernel remains. |
+| [#358](https://openagents.com/OpenAgentsInc/openagents/issues/358) | Metal GEMM (speed). Batched Q8 + fused FFN ~6.5 tok/s; tiled kernel remains. |
 | [#359](https://openagents.com/OpenAgentsInc/openagents/issues/359) | Chat template / tokenize parity |
 | [#360](https://openagents.com/OpenAgentsInc/openagents/issues/360) | Explicit sampling |
 | [#361](https://openagents.com/OpenAgentsInc/openagents/issues/361) | `inference bench` + Ollama compare |

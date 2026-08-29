@@ -1,10 +1,10 @@
-//! CPU hybrid Qwen 3.8 graph: Gated DeltaNet + gated full attention + FFN.
+//! Hybrid Qwen 3.8 graph: Gated DeltaNet + gated full attention + FFN.
 //!
 //! Ported as a leaf from the sibling Psionic CPU path. Does not import
-//! `psionic-serve`. Metal GEMM is a later issue.
+//! `psionic-serve`. Q8 GEMMs use Metal when the session binds a shared buffer.
 
 use crate::format::GgufMeta;
-use crate::generate::{decode_row, lookup, matvec};
+use crate::generate::{decode_row, lookup, matvec, matvec_many};
 use crate::mmap::MappedWeights;
 use crate::tokenizer::TokenizerTables;
 
@@ -243,30 +243,38 @@ fn forward_hybrid(
     let p = format!("blk.{index}");
     let attn_norm = vec_f32(mapped, &format!("{p}.attn_norm.weight"))?;
     let hidden_norm = rms_norm_eps(input.as_slice(), attn_norm.as_slice(), s.epsilon);
-    let qkv = matvec(
+    let qkv_n = format!("{p}.attn_qkv.weight");
+    let z_n = format!("{p}.attn_gate.weight");
+    let alpha_n = format!("{p}.ssm_alpha.weight");
+    let beta_n = format!("{p}.ssm_beta.weight");
+    let bundled = matvec_many(
         mapped,
-        &format!("{p}.attn_qkv.weight"),
+        &[
+            qkv_n.as_str(),
+            z_n.as_str(),
+            alpha_n.as_str(),
+            beta_n.as_str(),
+        ],
         hidden_norm.as_slice(),
     )
-    .ok_or_else(|| format!("{p}.attn_qkv"))?;
-    let z = matvec(
-        mapped,
-        &format!("{p}.attn_gate.weight"),
-        hidden_norm.as_slice(),
-    )
-    .ok_or_else(|| format!("{p}.attn_gate"))?;
-    let alpha = matvec(
-        mapped,
-        &format!("{p}.ssm_alpha.weight"),
-        hidden_norm.as_slice(),
-    )
-    .ok_or_else(|| format!("{p}.ssm_alpha"))?;
-    let beta = matvec(
-        mapped,
-        &format!("{p}.ssm_beta.weight"),
-        hidden_norm.as_slice(),
-    )
-    .ok_or_else(|| format!("{p}.ssm_beta"))?;
+    .filter(|v| v.len() == 4);
+    let (qkv, z, alpha, beta) = if let Some(mut v) = bundled {
+        let beta = v.pop().unwrap();
+        let alpha = v.pop().unwrap();
+        let z = v.pop().unwrap();
+        let qkv = v.pop().unwrap();
+        (qkv, z, alpha, beta)
+    } else {
+        (
+            matvec(mapped, &qkv_n, hidden_norm.as_slice())
+                .ok_or_else(|| format!("{p}.attn_qkv"))?,
+            matvec(mapped, &z_n, hidden_norm.as_slice()).ok_or_else(|| format!("{p}.attn_gate"))?,
+            matvec(mapped, &alpha_n, hidden_norm.as_slice())
+                .ok_or_else(|| format!("{p}.ssm_alpha"))?,
+            matvec(mapped, &beta_n, hidden_norm.as_slice())
+                .ok_or_else(|| format!("{p}.ssm_beta"))?,
+        )
+    };
     let conv_w = vec_f32(mapped, &format!("{p}.ssm_conv1d.weight"))?;
     let ssm_a = vec_f32(mapped, &format!("{p}.ssm_a"))
         .or_else(|_| vec_f32(mapped, &format!("{p}.ssm_a.weight")))?;
@@ -377,24 +385,27 @@ fn forward_full(
     let attn_norm = vec_f32(mapped, &format!("{p}.attn_norm.weight"))?;
     let hidden_norm = rms_norm_eps(input.as_slice(), attn_norm.as_slice(), s.epsilon);
     let query_width = s.head_count.saturating_mul(s.head_dim);
-    let qg = matvec(
+    let q_n = format!("{p}.attn_q.weight");
+    let k_n = format!("{p}.attn_k.weight");
+    let v_n = format!("{p}.attn_v.weight");
+    let bundled = matvec_many(
         mapped,
-        &format!("{p}.attn_q.weight"),
+        &[q_n.as_str(), k_n.as_str(), v_n.as_str()],
         hidden_norm.as_slice(),
     )
-    .ok_or_else(|| format!("{p}.attn_q"))?;
-    let mut key = matvec(
-        mapped,
-        &format!("{p}.attn_k.weight"),
-        hidden_norm.as_slice(),
-    )
-    .ok_or_else(|| format!("{p}.attn_k"))?;
-    let value = matvec(
-        mapped,
-        &format!("{p}.attn_v.weight"),
-        hidden_norm.as_slice(),
-    )
-    .ok_or_else(|| format!("{p}.attn_v"))?;
+    .filter(|v| v.len() == 3);
+    let (qg, mut key, value) = if let Some(mut v) = bundled {
+        let value = v.pop().unwrap();
+        let key = v.pop().unwrap();
+        let qg = v.pop().unwrap();
+        (qg, key, value)
+    } else {
+        (
+            matvec(mapped, &q_n, hidden_norm.as_slice()).ok_or_else(|| format!("{p}.attn_q"))?,
+            matvec(mapped, &k_n, hidden_norm.as_slice()).ok_or_else(|| format!("{p}.attn_k"))?,
+            matvec(mapped, &v_n, hidden_norm.as_slice()).ok_or_else(|| format!("{p}.attn_v"))?,
+        )
+    };
     if qg.len() != query_width.saturating_mul(2) {
         return Err(format!(
             "{p} query/gate width {} expected {}",
@@ -476,25 +487,24 @@ fn ffn_residual(
 ) -> Result<Vec<f32>, String> {
     let post = vec_f32(mapped, &format!("{prefix}.post_attention_norm.weight"))?;
     let normed = rms_norm_eps(residual.as_slice(), post.as_slice(), s.epsilon);
-    let gate = matvec(
-        mapped,
-        &format!("{prefix}.ffn_gate.weight"),
-        normed.as_slice(),
-    )
-    .ok_or_else(|| format!("{prefix}.ffn_gate"))?;
-    let up = matvec(
-        mapped,
-        &format!("{prefix}.ffn_up.weight"),
-        normed.as_slice(),
-    )
-    .ok_or_else(|| format!("{prefix}.ffn_up"))?;
+    let gate_n = format!("{prefix}.ffn_gate.weight");
+    let up_n = format!("{prefix}.ffn_up.weight");
+    let down_n = format!("{prefix}.ffn_down.weight");
+    if let Some(down) =
+        crate::metal_gemm::try_q8_ffn(mapped, &gate_n, &up_n, &down_n, normed.as_slice())
+    {
+        return add(&residual, &down);
+    }
+    let gate =
+        matvec(mapped, &gate_n, normed.as_slice()).ok_or_else(|| format!("{prefix}.ffn_gate"))?;
+    let up = matvec(mapped, &up_n, normed.as_slice()).ok_or_else(|| format!("{prefix}.ffn_up"))?;
     let hid: Vec<f32> = gate
         .iter()
         .zip(up.iter())
         .map(|(g, u)| silu(*g) * *u)
         .collect();
-    let down = matvec(mapped, &format!("{prefix}.ffn_down.weight"), hid.as_slice())
-        .ok_or_else(|| format!("{prefix}.ffn_down"))?;
+    let down =
+        matvec(mapped, &down_n, hid.as_slice()).ok_or_else(|| format!("{prefix}.ffn_down"))?;
     add(&residual, &down)
 }
 

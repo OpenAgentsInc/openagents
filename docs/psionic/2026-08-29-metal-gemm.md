@@ -34,18 +34,23 @@ including a non-zero byte offset.
 
 | Engine | tok/s | gen_ms | notes |
 | --- | ---: | ---: | --- |
-| OpenAgents Metal Q8 matvec | 5.05 | 6341 | one command buffer per matvec |
-| Ollama `qwen3.8:27b-mtp-q8_0` | 28.29 | 1131 | warm llama.cpp Metal |
+| OpenAgents CPU hybrid (rc.20) | 0.31 | 412131 / 128 tok | Metal wrap only; Q8 on CPU |
+| OpenAgents Metal, one wait/matvec | 5.05 | 6341 | first Metal land |
+| OpenAgents Metal, batched + fused FFN | 6.52 | 4911 | this landing |
+| Ollama `qwen3.8:27b-mtp-q8_0` (cold) | 4.95 | 6462 | first compare in this session |
+| Ollama `qwen3.8:27b-mtp-q8_0` (warm) | 29.36 | 1090 | second compare, same process |
 
-OpenAgents is faster than the CPU hybrid (~0.3 tok/s on this host) and
-slower than warm Ollama.
+OpenAgents is faster than the CPU hybrid and slower than warm Ollama.
+
+A published `0.2.0-rc.20` binary prints `Selected backend is metal` and
+never emits `gemm.metal`. That run is the 0.31 tok/s line.
 
 ## Remaining kernel
 
-Need a tiled Metal `mul_mat_q8_0` (SIMD-group GEMM, reused encodings,
-fused FFN pair) in the style of llama.cpp `mul_mm_q8_0`. The current
-kernel is one threadgroup per output row, 32 threads reducing Q8
-blocks, plus a CPU round-trip after every matvec. That is the gap
-named by #358.
+Need a tiled Metal `mul_mat_q8_0` (SIMD-group GEMM) and GDN/attention
+on GPU so one command buffer can cover a layer. This landing batches
+same-X Q8 GEMMs and fuses FFN (`gate`, `up`, `silu_mul`, `down`) into
+one wait. Hybrid layers still wait for GDN on CPU between those
+batches. That is the remaining #358 gap.
 
 `--local` was not flipped.

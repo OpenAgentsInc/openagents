@@ -5,6 +5,19 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Metal Q8 batches and fused FFN (#358)
+
+- issues: #358
+- commits: this change
+- contracts-specs: `docs/psionic/PARITY.md`
+- invariants: `--backend cpu` stays correct; no `--local` flip
+- evidence: `docs/psionic/2026-08-29-metal-gemm.md`;
+  `metal_q8_ffn_matches_cpu_when_available`
+- lane: cursor session 7822942d
+
+Same-X Q8 GEMMs share one command buffer. FFN is `gate` + `up` +
+`silu_mul` + `down` in one wait. Warm 27B decode is ~6.5 tok/s.
+
 ## CLI source version is 0.2.0-rc.22
 
 - issues: #358

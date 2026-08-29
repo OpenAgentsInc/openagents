@@ -69,6 +69,84 @@ pub fn try_q8_matvec(mapped: &MappedWeights, name: &str, x: &[f32]) -> Option<Ve
     q8_matvec(metal, offset, rows, width, x)
 }
 
+pub fn try_q8_matvec_many(
+    mapped: &MappedWeights,
+    names: &[&str],
+    x: &[f32],
+) -> Option<Vec<Vec<f32>>> {
+    if names.is_empty() {
+        return Some(Vec::new());
+    }
+    let metal = unsafe { &*active_metal()? };
+    let jobs: Vec<Q8Job> = names
+        .iter()
+        .map(|name| resolve_q8(mapped, metal, name, x.len()))
+        .collect::<Option<_>>()?;
+    q8_matvec_many(metal, &jobs, x)
+}
+
+pub fn try_q8_ffn(
+    mapped: &MappedWeights,
+    gate: &str,
+    up: &str,
+    down: &str,
+    x: &[f32],
+) -> Option<Vec<f32>> {
+    let metal = unsafe { &*active_metal()? };
+    let gate_j = resolve_q8(mapped, metal, gate, x.len())?;
+    let up_j = resolve_q8(mapped, metal, up, x.len())?;
+    if gate_j.rows != up_j.rows {
+        return None;
+    }
+    let down_j = resolve_q8(mapped, metal, down, gate_j.rows)?;
+    q8_ffn(metal, &gate_j, &up_j, &down_j, x)
+}
+
+fn active_metal() -> Option<*const MetalShared> {
+    ACTIVE.with(|slot| {
+        let ptr = slot.get();
+        if ptr.is_null() {
+            None
+        } else {
+            Some(ptr)
+        }
+    })
+}
+
+struct Q8Job {
+    offset: usize,
+    rows: usize,
+    width: usize,
+}
+
+fn resolve_q8(
+    mapped: &MappedWeights,
+    metal: &MetalShared,
+    name: &str,
+    width: usize,
+) -> Option<Q8Job> {
+    let view = mapped.tensors.get(name)?;
+    if view.info.ggml_type != 8 || width == 0 {
+        return None;
+    }
+    let blocks = width.div_ceil(Q8_K);
+    let row_bytes = blocks * Q8_BLOCK;
+    if row_bytes == 0 || view.len < row_bytes {
+        return None;
+    }
+    let rows = view.len / row_bytes;
+    let base = mapped.mmap.as_ptr() as usize;
+    let offset = (view.data as usize).checked_sub(base)?;
+    if offset.saturating_add(view.len) > metal.length as usize {
+        return None;
+    }
+    Some(Q8Job {
+        offset,
+        rows,
+        width,
+    })
+}
+
 #[cfg(target_os = "macos")]
 fn q8_matvec(
     metal: &MetalShared,
@@ -78,6 +156,38 @@ fn q8_matvec(
     x: &[f32],
 ) -> Option<Vec<f32>> {
     macos::q8_matvec(metal, offset, rows, width, x)
+}
+
+#[cfg(target_os = "macos")]
+fn q8_matvec_many(metal: &MetalShared, jobs: &[Q8Job], x: &[f32]) -> Option<Vec<Vec<f32>>> {
+    macos::q8_matvec_many(metal, jobs, x)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn q8_matvec_many(_metal: &MetalShared, _jobs: &[Q8Job], _x: &[f32]) -> Option<Vec<Vec<f32>>> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn q8_ffn(
+    metal: &MetalShared,
+    gate: &Q8Job,
+    up: &Q8Job,
+    down: &Q8Job,
+    x: &[f32],
+) -> Option<Vec<f32>> {
+    macos::q8_ffn(metal, gate, up, down, x)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn q8_ffn(
+    _metal: &MetalShared,
+    _gate: &Q8Job,
+    _up: &Q8Job,
+    _down: &Q8Job,
+    _x: &[f32],
+) -> Option<Vec<f32>> {
+    None
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -151,6 +261,22 @@ kernel void q8_matvec(
     if (tid == 0u) {
         y[gid] = partial[0];
     }
+}
+
+kernel void silu_mul(
+    device const float *g [[buffer(0)]],
+    device const float *u [[buffer(1)]],
+    device float *h [[buffer(2)]],
+    constant uint &n [[buffer(3)]],
+    uint tid [[thread_index_in_threadgroup]],
+    uint gid [[threadgroup_position_in_grid]])
+{
+    uint i = gid * 256u + tid;
+    if (i >= n) {
+        return;
+    }
+    float v = g[i];
+    h[i] = (v / (1.0f + exp(-v))) * u[i];
 }
 "#;
 
@@ -306,6 +432,7 @@ kernel void q8_matvec(
     struct Pipeline {
         queue: *mut c_void,
         pipeline: *mut c_void,
+        silu: *mut c_void,
         release: unsafe extern "C" fn(*mut c_void),
     }
 
@@ -317,6 +444,9 @@ kernel void q8_matvec(
             unsafe {
                 if !self.pipeline.is_null() {
                     (self.release)(self.pipeline);
+                }
+                if !self.silu.is_null() {
+                    (self.release)(self.silu);
                 }
                 if !self.queue.is_null() {
                     (self.release)(self.queue);
@@ -337,48 +467,47 @@ kernel void q8_matvec(
         y_cap: usize,
     }
 
-    unsafe impl Send for Scratch {}
-    unsafe impl Sync for Scratch {}
-
     fn scratch_pair(
         device: *mut c_void,
         x_bytes: usize,
         y_bytes: usize,
     ) -> Option<(*mut c_void, *mut c_void)> {
-        use std::sync::Mutex;
-        static SCRATCH: OnceLock<Mutex<Scratch>> = OnceLock::new();
-        let fns = fns()?;
-        let mut slot = SCRATCH
-            .get_or_init(|| {
-                Mutex::new(Scratch {
+        use std::cell::RefCell;
+        thread_local! {
+            static SCRATCH: RefCell<Scratch> = const {
+                RefCell::new(Scratch {
                     x: ptr::null_mut(),
                     y: ptr::null_mut(),
                     x_cap: 0,
                     y_cap: 0,
                 })
-            })
-            .lock()
-            .ok()?;
-        unsafe {
-            if slot.x_cap < x_bytes {
-                if !slot.x.is_null() {
-                    (fns.release)(slot.x);
-                }
-                slot.x = (fns.msg_buf)(device, fns.sel_new_buf, x_bytes, STORAGE_SHARED);
-                slot.x_cap = if slot.x.is_null() { 0 } else { x_bytes };
-            }
-            if slot.y_cap < y_bytes {
-                if !slot.y.is_null() {
-                    (fns.release)(slot.y);
-                }
-                slot.y = (fns.msg_buf)(device, fns.sel_new_buf, y_bytes, STORAGE_SHARED);
-                slot.y_cap = if slot.y.is_null() { 0 } else { y_bytes };
-            }
-            if slot.x.is_null() || slot.y.is_null() {
-                return None;
-            }
-            Some((slot.x, slot.y))
+            };
         }
+        let fns = fns()?;
+        SCRATCH.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            unsafe {
+                if slot.x_cap < x_bytes {
+                    if !slot.x.is_null() {
+                        (fns.release)(slot.x);
+                    }
+                    slot.x = (fns.msg_buf)(device, fns.sel_new_buf, x_bytes, STORAGE_SHARED);
+                    slot.x_cap = if slot.x.is_null() { 0 } else { x_bytes };
+                }
+                if slot.y_cap < y_bytes {
+                    if !slot.y.is_null() {
+                        (fns.release)(slot.y);
+                    }
+                    slot.y = (fns.msg_buf)(device, fns.sel_new_buf, y_bytes, STORAGE_SHARED);
+                    slot.y_cap = if slot.y.is_null() { 0 } else { y_bytes };
+                }
+                if slot.x.is_null() || slot.y.is_null() {
+                    None
+                } else {
+                    Some((slot.x, slot.y))
+                }
+            }
+        })
     }
 
     unsafe fn compile(device: *mut c_void) -> Option<Pipeline> {
@@ -397,29 +526,231 @@ kernel void q8_matvec(
         if lib.is_null() {
             return None;
         }
-        let name = std::ffi::CString::new("q8_matvec").ok()?;
-        let fname = (fns.msg1)(class, fns.sel_utf8, name.as_ptr() as *mut c_void);
-        let func = (fns.msg1)(lib, fns.sel_new_fn, fname);
+        let func_of = |name: &str| -> Option<*mut c_void> {
+            let cname = std::ffi::CString::new(name).ok()?;
+            let fname = (fns.msg1)(class, fns.sel_utf8, cname.as_ptr() as *mut c_void);
+            let func = (fns.msg1)(lib, fns.sel_new_fn, fname);
+            if func.is_null() {
+                None
+            } else {
+                Some(func)
+            }
+        };
+        let func = func_of("q8_matvec")?;
+        let silu_fn = func_of("silu_mul")?;
         (fns.release)(lib);
-        if func.is_null() {
-            return None;
-        }
         err = ptr::null_mut();
         let pipeline = (fns.msg_pipe)(device, fns.sel_new_pipe, func, &mut err);
         (fns.release)(func);
         if pipeline.is_null() {
+            (fns.release)(silu_fn);
+            return None;
+        }
+        err = ptr::null_mut();
+        let silu = (fns.msg_pipe)(device, fns.sel_new_pipe, silu_fn, &mut err);
+        (fns.release)(silu_fn);
+        if silu.is_null() {
+            (fns.release)(pipeline);
             return None;
         }
         let queue = (fns.msg0)(device, fns.sel_new_queue);
         if queue.is_null() {
             (fns.release)(pipeline);
+            (fns.release)(silu);
             return None;
         }
         Some(Pipeline {
             queue,
             pipeline,
+            silu,
             release: fns.release,
         })
+    }
+
+    unsafe fn encode_q8(
+        fns: &ComputeFns,
+        enc: *mut c_void,
+        pipe: *mut c_void,
+        weights: *mut c_void,
+        x_buf: *mut c_void,
+        x_off: usize,
+        y_buf: *mut c_void,
+        y_off: usize,
+        job: &Q8Job,
+    ) {
+        (fns.msg1)(enc, fns.sel_set_pipe, pipe);
+        (fns.msg_set_buf)(enc, fns.sel_set_buf, weights, 0, 0);
+        (fns.msg_set_buf)(enc, fns.sel_set_buf, x_buf, x_off, 1);
+        (fns.msg_set_buf)(enc, fns.sel_set_buf, y_buf, y_off, 2);
+        let params = Params {
+            rows: job.rows as u32,
+            width: job.width as u32,
+            off_lo: job.offset as u32,
+            off_hi: (job.offset >> 32) as u32,
+        };
+        (fns.msg_set_bytes)(
+            enc,
+            fns.sel_set_bytes,
+            (&params as *const Params).cast(),
+            std::mem::size_of::<Params>(),
+            3,
+        );
+        oa_metal_dispatch(enc, fns.sel_dispatch, job.rows, THREADS);
+    }
+
+    pub(super) fn q8_matvec_many(
+        metal: &MetalShared,
+        jobs: &[Q8Job],
+        x: &[f32],
+    ) -> Option<Vec<Vec<f32>>> {
+        if jobs.is_empty() {
+            return Some(Vec::new());
+        }
+        if jobs.iter().any(|j| j.width != x.len() || j.rows == 0) {
+            return None;
+        }
+        let fns = fns()?;
+        let pipe = pipeline_for(metal.device)?;
+        let y_elems: usize = jobs.iter().map(|j| j.rows).sum();
+        unsafe {
+            let (x_buf, y_buf) = scratch_pair(metal.device, x.len() * 4, y_elems * 4)?;
+            let x_ptr = (fns.msg0)(x_buf, fns.sel_contents) as *mut f32;
+            if x_ptr.is_null() {
+                return None;
+            }
+            ptr::copy_nonoverlapping(x.as_ptr(), x_ptr, x.len());
+            let cmd = (fns.msg0)(pipe.queue, fns.sel_cmd);
+            let enc = (fns.msg0)(cmd, fns.sel_enc);
+            if cmd.is_null() || enc.is_null() {
+                return None;
+            }
+            let mut y_off = 0usize;
+            for job in jobs {
+                encode_q8(
+                    fns,
+                    enc,
+                    pipe.pipeline,
+                    metal.buffer,
+                    x_buf,
+                    0,
+                    y_buf,
+                    y_off * 4,
+                    job,
+                );
+                y_off += job.rows;
+            }
+            (fns.msg_void)(enc, fns.sel_end);
+            (fns.msg_void)(cmd, fns.sel_commit);
+            (fns.msg_void)(cmd, fns.sel_wait);
+            let y_ptr = (fns.msg0)(y_buf, fns.sel_contents) as *const f32;
+            if y_ptr.is_null() {
+                return None;
+            }
+            let mut out = Vec::with_capacity(jobs.len());
+            let mut off = 0usize;
+            for job in jobs {
+                let mut row = vec![0f32; job.rows];
+                ptr::copy_nonoverlapping(y_ptr.add(off), row.as_mut_ptr(), job.rows);
+                out.push(row);
+                off += job.rows;
+            }
+            Some(out)
+        }
+    }
+
+    pub(super) fn q8_ffn(
+        metal: &MetalShared,
+        gate: &Q8Job,
+        up: &Q8Job,
+        down: &Q8Job,
+        x: &[f32],
+    ) -> Option<Vec<f32>> {
+        if gate.rows != up.rows || gate.width != x.len() || down.width != gate.rows {
+            return None;
+        }
+        let fns = fns()?;
+        let pipe = pipeline_for(metal.device)?;
+        let hid = gate.rows;
+        let y_elems = hid * 3 + down.rows;
+        unsafe {
+            let (x_buf, y_buf) = scratch_pair(metal.device, x.len() * 4, y_elems * 4)?;
+            let x_ptr = (fns.msg0)(x_buf, fns.sel_contents) as *mut f32;
+            if x_ptr.is_null() {
+                return None;
+            }
+            ptr::copy_nonoverlapping(x.as_ptr(), x_ptr, x.len());
+            let cmd = (fns.msg0)(pipe.queue, fns.sel_cmd);
+            let enc = (fns.msg0)(cmd, fns.sel_enc);
+            if cmd.is_null() || enc.is_null() {
+                return None;
+            }
+            let gate_off = 0usize;
+            let up_off = hid;
+            let hid_off = hid * 2;
+            let down_off = hid * 3;
+            encode_q8(
+                fns,
+                enc,
+                pipe.pipeline,
+                metal.buffer,
+                x_buf,
+                0,
+                y_buf,
+                gate_off * 4,
+                gate,
+            );
+            encode_q8(
+                fns,
+                enc,
+                pipe.pipeline,
+                metal.buffer,
+                x_buf,
+                0,
+                y_buf,
+                up_off * 4,
+                up,
+            );
+            (fns.msg1)(enc, fns.sel_set_pipe, pipe.silu);
+            (fns.msg_set_buf)(enc, fns.sel_set_buf, y_buf, gate_off * 4, 0);
+            (fns.msg_set_buf)(enc, fns.sel_set_buf, y_buf, up_off * 4, 1);
+            (fns.msg_set_buf)(enc, fns.sel_set_buf, y_buf, hid_off * 4, 2);
+            let n = hid as u32;
+            (fns.msg_set_bytes)(
+                enc,
+                fns.sel_set_bytes,
+                (&n as *const u32).cast(),
+                std::mem::size_of::<u32>(),
+                3,
+            );
+            const SILU_THREADS: usize = 256;
+            oa_metal_dispatch(
+                enc,
+                fns.sel_dispatch,
+                hid.div_ceil(SILU_THREADS),
+                SILU_THREADS,
+            );
+            encode_q8(
+                fns,
+                enc,
+                pipe.pipeline,
+                metal.buffer,
+                y_buf,
+                hid_off * 4,
+                y_buf,
+                down_off * 4,
+                down,
+            );
+            (fns.msg_void)(enc, fns.sel_end);
+            (fns.msg_void)(cmd, fns.sel_commit);
+            (fns.msg_void)(cmd, fns.sel_wait);
+            let y_ptr = (fns.msg0)(y_buf, fns.sel_contents) as *const f32;
+            if y_ptr.is_null() {
+                return None;
+            }
+            let mut out = vec![0f32; down.rows];
+            ptr::copy_nonoverlapping(y_ptr.add(down_off), out.as_mut_ptr(), down.rows);
+            Some(out)
+        }
     }
 
     pub(super) fn q8_matvec(
@@ -522,5 +853,76 @@ mod tests {
         let metal = crate::metal_wrap::wrap_shared(&padded).unwrap();
         let gpu_off = q8_matvec(&metal, 128, rows, width, &x).unwrap();
         assert_eq!(cpu, gpu_off, "Metal Q8 matvec must honor a non-zero offset");
+
+        let jobs = [
+            Q8Job {
+                offset: 128,
+                rows,
+                width,
+            },
+            Q8Job {
+                offset: 128,
+                rows,
+                width,
+            },
+        ];
+        let batched = q8_matvec_many(&metal, &jobs, &x).unwrap();
+        assert_eq!(batched.len(), 2);
+        assert_eq!(cpu, batched[0], "batched Q8 must match sequential");
+        assert_eq!(cpu, batched[1], "batched Q8 must match sequential");
+    }
+
+    #[test]
+    fn metal_q8_ffn_matches_cpu_when_available() {
+        let hidden = 32usize;
+        let mid = 64usize;
+        let gate_w = encode_q8(mid, hidden);
+        let up_w = encode_q8(mid, hidden);
+        let down_w = encode_q8(hidden, mid);
+        let mut blob = gate_w.clone();
+        let up_off = blob.len();
+        blob.extend_from_slice(&up_w);
+        let down_off = blob.len();
+        blob.extend_from_slice(&down_w);
+        let x = vec![0.5f32; hidden];
+        let gate = crate::generate::matvec_q8_bytes(&gate_w, &x).unwrap();
+        let up = crate::generate::matvec_q8_bytes(&up_w, &x).unwrap();
+        let hid: Vec<f32> = gate
+            .iter()
+            .zip(up.iter())
+            .map(|(g, u)| {
+                let s = *g / (1.0 + (-*g).exp());
+                s * *u
+            })
+            .collect();
+        let cpu = crate::generate::matvec_q8_bytes(&down_w, &hid).unwrap();
+        let Ok(metal) = crate::metal_wrap::wrap_shared(&blob) else {
+            return;
+        };
+        let Some(gpu) = q8_ffn(
+            &metal,
+            &Q8Job {
+                offset: 0,
+                rows: mid,
+                width: hidden,
+            },
+            &Q8Job {
+                offset: up_off,
+                rows: mid,
+                width: hidden,
+            },
+            &Q8Job {
+                offset: down_off,
+                rows: hidden,
+                width: mid,
+            },
+            &x,
+        ) else {
+            return;
+        };
+        assert_eq!(cpu.len(), gpu.len());
+        for (a, b) in cpu.iter().zip(gpu.iter()) {
+            assert!((a - b).abs() < 1e-4, "FFN mismatch cpu={a} gpu={b}");
+        }
     }
 }
