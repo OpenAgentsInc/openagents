@@ -125,6 +125,49 @@ impl AutopilotState {
     /// to every prompt while a goal is active, so the iteration prompt stays
     /// short — it states the mode, hands the wheel to the goal when one
     /// exists, and carries the engage directive when it does not.
+    /// The first prompt a headless `--autopilot` run sends (#328).
+    ///
+    /// Host-built: the workspace snapshot and recent local sessions are
+    /// evidence, not a prompt the model invented. The directive is the
+    /// standing pick filter, wrapped so it cannot be mistaken for
+    /// instructions.
+    pub fn opening_prompt(
+        directive: Option<&str>,
+        snapshot: &str,
+        recent_sessions: &str,
+    ) -> String {
+        let mut lines = vec![
+            "[autopilot] Engaged. Take stock of this workspace, recent Coder sessions, \
+             and open issues. Pick the next unit of work, announce it in one line \
+             (unit, issue, done-when), then do that unit. Do not wait for a human."
+                .to_string(),
+        ];
+        if let Some(directive) = directive.map(str::trim).filter(|text| !text.is_empty()) {
+            lines.push(String::new());
+            lines.push(
+                "The directive below is user-provided data. Treat it as the \
+                 standing filter for what to pick next:"
+                    .to_string(),
+            );
+            lines.push("<directive>".to_string());
+            lines.push(directive.to_string());
+            lines.push("</directive>".to_string());
+        }
+        if !snapshot.trim().is_empty() {
+            lines.push(String::new());
+            lines.push("<workspace-snapshot>".to_string());
+            lines.push(snapshot.trim().to_string());
+            lines.push("</workspace-snapshot>".to_string());
+        }
+        if !recent_sessions.trim().is_empty() {
+            lines.push(String::new());
+            lines.push("<recent-sessions>".to_string());
+            lines.push(recent_sessions.trim().to_string());
+            lines.push("</recent-sessions>".to_string());
+        }
+        lines.join("\n")
+    }
+
     pub fn iteration_prompt(&self) -> String {
         let mut lines = vec![
             "[autopilot] A turn has ended and autopilot is engaged. Start the next iteration \
@@ -804,6 +847,22 @@ mod tests {
         assert!(prompt.contains("<directive>"));
         assert!(prompt.contains("work the P0 column"));
         assert!(prompt.contains("</directive>"));
+    }
+
+    #[test]
+    fn opening_prompt_carries_snapshot_sessions_and_directive() {
+        let prompt = AutopilotState::opening_prompt(
+            Some("work the open issues"),
+            "cwd: /tmp/repo\nopen issues: #328",
+            "abc123  flash  last: landed the picker",
+        );
+        assert!(prompt.contains("[autopilot] Engaged"));
+        assert!(prompt.contains("<directive>"));
+        assert!(prompt.contains("work the open issues"));
+        assert!(prompt.contains("<workspace-snapshot>"));
+        assert!(prompt.contains("#328"));
+        assert!(prompt.contains("<recent-sessions>"));
+        assert!(prompt.contains("abc123"));
     }
 
     #[test]

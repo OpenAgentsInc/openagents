@@ -74,6 +74,10 @@ Coder options:
                      most recent session.
   --cloud-history    Also store transcript events and outcome text on the server.
                      Off by default; local files remain the source of truth.
+  --autopilot        Run Autopilot unattended: pick the next unit from open
+                     issues, recent sessions, and this workspace, and keep going.
+                     Use `openagents coder --autopilot`. `--dry-run` prints the
+                     plan without calling a model.
   -h, --help         Print this and exit.
   -V, --version      Print the version and exit.
 
@@ -182,7 +186,17 @@ fn has_only_coder_options(arguments: &[String]) -> bool {
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _ = tracing_subscriber::fmt::try_init();
     crate::diag::initialize_color_from_environment();
-    let arguments: Vec<String> = env::args().skip(1).collect();
+    let mut arguments: Vec<String> = env::args().skip(1).collect();
+    // `openagents --autopilot` is the agent-facing spelling. The loop lives
+    // on `coder`; prepend that command so clap sees it.
+    if arguments.iter().any(|argument| argument == "--autopilot")
+        && arguments.first().map(String::as_str) != Some("coder")
+        && !names_a_cli_command(&arguments)
+    {
+        let mut forwarded = vec!["coder".to_string()];
+        forwarded.append(&mut arguments);
+        arguments = forwarded;
+    }
 
     if matches!(arguments.as_slice(), [flag] if flag == "-h" || flag == "--help") {
         print!("{HELP}");

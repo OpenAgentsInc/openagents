@@ -2429,6 +2429,8 @@ mod child_option_tests {
             last: false,
             all: false,
             headless: false,
+            autopilot: false,
+            dry_run: false,
             export: None,
             plain: false,
             dev: false,

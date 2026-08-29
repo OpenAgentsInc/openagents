@@ -1051,6 +1051,118 @@ fn headless_without_a_prompt_refuses_and_opens_no_thread() {
     );
 }
 
+// --------------------------------------------------------------- `--autopilot`
+
+/// `--autopilot --dry-run` prints the plan and never opens a thread (#328).
+#[test]
+fn autopilot_dry_run_prints_the_plan_and_opens_no_thread() {
+    let server = RouteServer::start(coder_routes);
+    let origin = server.origin();
+    let run = oa_env(
+        &[
+            "--api-url",
+            &origin,
+            "coder",
+            "--autopilot",
+            "--dry-run",
+            "work the open issues",
+        ],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
+    assert!(
+        run.stdout.contains("Autopilot dry-run"),
+        "dry-run did not name itself: {}",
+        run.stdout
+    );
+    assert!(
+        run.stdout.contains("work the open issues"),
+        "dry-run dropped the directive: {}",
+        run.stdout
+    );
+    assert!(
+        run.stdout.contains("Would engage Autopilot"),
+        "dry-run did not say what it would do: {}",
+        run.stdout
+    );
+    let paths: Vec<String> = server.hits().into_iter().map(|hit| hit.path).collect();
+    assert!(
+        !paths.iter().any(|p| p == "/api/v1/threads"),
+        "--autopilot --dry-run opened a thread: {paths:?}"
+    );
+}
+
+/// `--dry-run` is not a free-floating flag.
+#[test]
+fn dry_run_without_autopilot_refuses() {
+    let run = oa_env(&["coder", "--dry-run"], &[("OPENAGENTS_TOKEN", "t")]);
+    assert_eq!(run.status, Some(2), "stdout: {}", run.stdout);
+    assert!(
+        run.stderr.contains("--autopilot"),
+        "the refusal did not name --autopilot: {}",
+        run.stderr
+    );
+}
+
+/// The stand-in is not a work loop.
+#[test]
+fn autopilot_cannot_combine_with_offline() {
+    let run = oa_env(
+        &["coder", "--autopilot", "--offline"],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert_eq!(run.status, Some(2), "stdout: {}", run.stdout);
+    assert!(
+        run.stderr.contains("--offline") || run.stderr.contains("stand-in"),
+        "the refusal did not name --offline: {}",
+        run.stderr
+    );
+}
+
+/// `coder --help` names the agent-facing flags.
+#[test]
+fn coder_help_names_autopilot() {
+    let run = oa_env(&["coder", "--help"], &[]);
+    assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
+    assert!(
+        run.stdout.contains("--autopilot"),
+        "coder help omitted --autopilot: {}",
+        run.stdout
+    );
+    assert!(
+        run.stdout.contains("--dry-run"),
+        "coder help omitted --dry-run: {}",
+        run.stdout
+    );
+}
+
+/// A dead hop stops the loop; it does not retry forever (#328).
+#[test]
+fn autopilot_stops_on_a_dead_hop() {
+    let dead = "http://127.0.0.1:1";
+    let run = oa_env(
+        &["--api-url", dead, "coder", "--autopilot"],
+        &[("OPENAGENTS_TOKEN", "t")],
+    );
+    assert_eq!(
+        run.status,
+        Some(2),
+        "a dead hop did not stop Autopilot: {} {}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        !run.stdout.contains("[stand-in]"),
+        "a failed Autopilot turn reached the stand-in: {}",
+        run.stdout
+    );
+    assert!(
+        run.stderr.contains("Autopilot stopped") || run.stderr.contains("could not be reached"),
+        "the refusal did not say the loop stopped: {}",
+        run.stderr
+    );
+}
+
 /// The same omission, refused the same way on both coder paths.
 ///
 /// This is the defect stated as a property: `--offline` and `--headless` were

@@ -5,6 +5,17 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Headless Autopilot: `openagents coder --autopilot` (#328)
+
+- issues: #328
+- commits: this change
+- contracts-specs: Coder Autopilot CLI
+- invariants: `--dry-run` opens no thread; a dead hop stops the loop; `--offline` cannot combine
+- evidence: `autopilot_dry_run_prints_the_plan_and_opens_no_thread`; `autopilot_stops_on_a_dead_hop`; `coder_help_names_autopilot`
+- lane: grok coder-autopilot-cli
+
+An agent can run `openagents coder --autopilot` and the CLI takes stock of this workspace, recent local sessions, and open issues, then keeps iterating. `--dry-run` prints the plan without calling a model.
+
 ## Coder 0.2.0-rc2: no workspace dump on first frame, take the terminal first
 
 - issues: none (owner: 0.2.0-rc1 painted the #316 snapshot into the transcript and leaked CSI-u on first open)

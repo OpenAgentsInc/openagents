@@ -763,6 +763,22 @@ pub struct CoderArgs {
     #[arg(long, help = "Run in non-interactive headless mode")]
     pub headless: bool,
 
+    /// Unattended Autopilot loop (#328). Takes stock of this workspace,
+    /// recent local sessions, and open issues, then keeps iterating until
+    /// a stop condition. Implies headless: no TUI.
+    #[arg(
+        long,
+        help = "Run Autopilot unattended from open issues, recent sessions, and this workspace"
+    )]
+    pub autopilot: bool,
+
+    /// With `--autopilot`, print the plan and exit without calling a model.
+    #[arg(
+        long,
+        help = "With --autopilot, print what would be picked and exit without calling a model"
+    )]
+    pub dry_run: bool,
+
     #[arg(long, help = "Export conversation transcript to file")]
     pub export: Option<String>,
 
@@ -1721,7 +1737,16 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     None
                 };
-                if coder.headless {
+                if coder.autopilot || coder.dry_run {
+                    crate::coder::autopilot_run::run(
+                        coder,
+                        session_base,
+                        token,
+                        repository,
+                        resumed,
+                    )
+                    .await?;
+                } else if coder.headless {
                     run_headless_coder(coder, &session_base, token, repository, resumed).await?;
                 } else {
                     crate::interactive::run_tui(coder, session_base, token, repository, resumed)

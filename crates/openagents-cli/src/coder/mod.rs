@@ -9,6 +9,7 @@ pub mod acp;
 pub mod acp_harness;
 pub mod agents;
 pub mod autopilot;
+pub mod autopilot_run;
 pub mod clipboard;
 pub mod commands;
 pub mod credit;
