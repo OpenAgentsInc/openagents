@@ -9,6 +9,7 @@ once the gates in the plan pass.
 | --- | --- |
 | [INTENT.md](./INTENT.md) | What the owner asked for, and what this program does not include |
 | [PLAN.md](./PLAN.md) | First implementation plan, crate allowlist, CLI surface, and stages |
+| [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md) | Weights-to-token walkthrough: tensors, quantization, load, decode |
 
 Related older writing stays where it is. It is evidence, not this program's
 authority:
