@@ -155,13 +155,128 @@ it, and nothing in the prompts suggests it at task start.
   precede real parallel batches; terse narration without R1 would just be
   quieter stalling.
 
-## Measurement plan
+## Measuring each change: the rails already exist
 
-Land one recommendation at a time. Before each: record the current suite row
-(`bench/suites/`, pinned digests, same thresholds). After: same suite, and
-read three numbers from the ATIF pair — `tool_calls_per_round`, the `waste`
-block, `median_inter_round_text_chars` — plus the score. Keep what moved the
-score without raising cost; write the falsifiable entry in
-`best-practices.md` (T-series for process levers) with this document as
-provenance. R2 and R3 are the predicted largest movers: the smoke session
-spent most of its wall clock on wait scaffolding that neither change allows.
+This repository already built the instrument for exactly this question. The
+loop is `docs/coder/autoimprove.md` (the plan and the verification law),
+`docs/coder/runbook.md` (the operating procedure), and
+`docs/coder/best-practices.md` (the falsifiable ledger). The substrate:
+
+- **Harbor + Terminal-Bench 2.0** through `bench/adapters/openagents_coder.py`,
+  which builds the working-tree CLI, installs it in each trial container, and
+  copies the trial's native ATIF export out as `trajectory.json`. A verifier
+  in the environment decides pass/fail; the agent's claim never does.
+- **Pinned suites** (`bench/suites/*.suite.json`): tasks pinned by content
+  digest, not name. A run that skipped a pinned task is a smoke run the store
+  refuses to record as a score.
+- **An append-only, hash-chained store** (`bench-results/*.jsonl`) with a
+  deliberate regression row kept in `tb2-quick.jsonl` to prove the floor
+  fires. Threshold edits are their own change (ledger M4) — never in the same
+  commit as a run they would flatter.
+- **A citation-checked review loop** (`pnpm run coder:review`): a separate
+  reviewer conversation over the trial artifacts, where every claim must cite
+  `trial:<task>#step-<id>` refs that resolve, or the review is refused whole.
+- **Prior art:** the T1/T2/T3 cycles on 2026-08-28 measured batching,
+  `--stat`-before-`-p`, and lane-aware verbosity exactly this way — T1
+  with/without on `git-leak-recovery` showed +52% billed tokens without the
+  sentence; T3 cut completion tokens 41% (`reviews/2026-08-28-t1-t2-t3-git-leak.md`).
+  The plugin A/B disposition (`plugin-ab-disposition.json`) is the same
+  pattern for tool availability.
+
+So the Cursorize program does not need a new harness. Each R-item becomes a
+runbook §4 cycle: same suite, same model, same lane, one lever, ATIF pair,
+store rows, cited review, ledger entry.
+
+### Suites and their roles
+
+| Suite | Tasks | Role in this program |
+| --- | --- | --- |
+| `tb2-quick` | 2 (`regex-log`, `openssl-selfsigned-cert`) | The iteration lane. Two trials, minutes per run, gate-floored. A delta here is a **selector, not a conclusion** (ledger M5: rates of 0/.5/1 only). |
+| `plugin-ab-test` | 1 (`build-cython-ext`) | The compile-fix loop; the R1/R2 round-count oracles in miniature. |
+| `plugin-ab-git` | 2 (`git-leak-recovery`, `sanitize-git-repo`) | High-output-volume forensics; where the quadratic-replay cost shows. T1/T2 were measured here. |
+| `tb2-cross-section` | 12 | The confirmation lane, only after a quick-lane selector fires. Includes `openssl-selfsigned-cert` — "the purest batching discriminator in the set" — and `sqlite-with-gcov` for output volume. |
+| `tb2-quick` local lane | 2 | Unmetered; wall clock and output tokens are the axes. The R4/R5 falsification lane when proxy spend should stay flat. |
+
+### What one cycle looks like
+
+Concretely, R1 (parallel tool-call rounds) as the worked example:
+
+1. **Baseline** (unchanged tree, no new lever):
+
+   ```sh
+   bench/run-suite.sh bench/suites/tb2-quick.suite.json \
+     --model openai/gpt-5.6-luna --lane proxy \
+     --jobs-dir /tmp/gym-jobs/cursorize-r1-baseline
+   openagents gym results score /tmp/gym-jobs/cursorize-r1-baseline/<run> \
+     --suite tb2-quick --lane proxy --append
+   openagents gym results trend tb2-quick
+   ```
+
+2. **Lever**: the one-sentence prompt change in `surfaces.rs` (R1's change),
+   in a fresh worktree; repack the CLI tarball so the arena runs it. CLI
+   version and surface digests pin into every row, so baseline and lever rows
+   differ in exactly that axis.
+3. **Re-run**: identical command, new jobs-dir. Nothing else varies.
+4. **Read the ATIF pair**, not only the score: `tool_calls_per_round`,
+   billed prompt tokens, rounds, the `waste` block, plus the verifier
+   verdicts. Process levers move cost before they move success rate —
+   the T1 review is the template for reading a token delta without a
+   score delta honestly.
+5. **Review** with `pnpm run coder:review -- <job-dir> --suite tb2-quick \
+   --lane proxy --lever <diff-ref> --slug cursorize-r1 --reviewer-model <other-family>`.
+   Every proposal cites trajectory steps; unresolvable citations refuse the
+   review.
+6. **Decide and record**: keep (append ledger entry, promote R1 to `adopted`
+   in this document), revert (keep the row, write the refutation), or
+   escalate to `tb2-cross-section` when the quick delta encourages but
+   n=2 cannot conclude.
+
+### Per-recommendation measurement contracts
+
+Each R-item gets its oracle and its expected axis stated **before** the run
+(runbook §3: if you cannot name the measuring suite, the lever is not ready).
+
+| Lever | Oracle suite (selector → confirm) | Axis that confirms | Axis that would refute | Metric gaps to close first |
+| --- | --- | --- | --- | --- |
+| R1 parallel rounds | `tb2-quick` → `tb2-cross-section` (`openssl-selfsigned-cert` is the batching discriminator) | rounds ↓, billed tokens ↓ at equal success | success ↓, or tokens flat while failed-call rate rises | none — ATIF steps already carry call counts |
+| R2 background bash + zero-model wait | `plugin-ab-test` (`build-cython-ext` compile loop) → cross-section | wall clock ↓, sleep/poll rounds → 0 | rounds ↑ without wall-clock gain | none — wall clock is in every row |
+| R3 live waste nudge | `tb2-quick` local lane (unmetered; output tokens = minutes) | repeated-command-head waste ↓ in ATIF | nudge fires but waste unchanged | none — the classifier exists |
+| R4 terse inter-round narration | `tb2-quick` local, then proxy | completion tokens ↓ (T3-style), wall clock ↓ on local | success ↓ on `fix-code-vulnerability` (terse hides reasoning errors) | add `median_inter_round_text_chars` to ATIF `final_metrics` |
+| R5 subagent telemetry | no behavior change claimed | `extra.subagent` populated in exports | — | telemetry only; not measurable on suites |
+| R6 web capabilities | no honest tb2 oracle today (`allow_internet = true` makes web available to every trial) | needs a designated offline→online task pair first | — | per `plugin-ab-disposition.json`: `no_oracle_yet` until an oracle is named |
+| R7 goal registration | cross-section task 12 (`schemelike-metacircular-eval`, long horizon) | fewer abandoned/timeout-shaped failures | overhead tokens with no completion change | requires the task to run at all under Rosetta; budget the 2400 s verifier |
+
+### Threats to validity, from the runbook's stop rules
+
+- **Lane flakiness is not a delta.** Flash proxy trials have died on
+  container→proxy misses (`regex-log` 502s, three store rows). A 0-success
+  row on a lane that previously scored is a lane signature; re-run before
+  reading it as the lever's effect.
+- **Emulation noise.** Under qemu the verifier segfaults; Rosetta (or a
+  cloud `--env`) is a prerequisite for any graded run. Timeout-shaped
+  failures get `--timeout-multiplier 2.0` before they count.
+- **n=2 arithmetic.** `tb2-quick` admits three success rates. Treat quick
+  rows as selectors; only a cross-section row (or a repeated quick pair)
+  concludes. The store's threshold gates enforce this for score tier.
+- **Cost honesty.** Local-lane rows price as `null` (`unmetered_local_lane`),
+  and cached-token splits are missing on proxy rows, so dollar figures are
+  ceilings. Compare levers on rounds, tokens, and wall clock first.
+- **The store is the conscience.** Never edit `bench-results/*.jsonl`;
+  append through `gym results score --append`, keep regression rows, and
+  never change a threshold in the same change as the run it flatters.
+
+### Sequencing
+
+1. **R1 first**: prompt-only change (no harness work), the suite with a
+   named batching discriminator, and prior T1 art to compare against.
+2. **R2 + R3 together are the predicted largest movers** (the smoke session
+   burned most of its wall clock on wait scaffolding), but R2 is Rust tool
+   work — land it as its own cycle, then measure R3 on top so their effects
+   do not confound.
+3. **R4** reuses the T3 measurement pattern directly.
+4. **R5–R7** trail: telemetry, oracle-less, and long-horizon respectively —
+   each waits for its measurement gap to close.
+
+Every adopted item flips to `adopted` in this document with its store rows
+and review file as provenance; every refuted one stays, struck through, so
+the loop does not rediscover it.
