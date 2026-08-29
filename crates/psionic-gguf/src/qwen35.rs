@@ -49,6 +49,7 @@ struct Shapes {
     conv_kernel: usize,
     v_head_reordered: bool,
     ffn: usize,
+    n_ctx: usize,
 }
 
 pub fn has_hybrid_graph(mapped: &MappedWeights) -> bool {
@@ -122,6 +123,7 @@ fn shapes(meta: &GgufMeta) -> Shapes {
             .map(|v| v != 0)
             .unwrap_or(true),
         ffn: meta.kv_u64("qwen35.feed_forward_length").unwrap_or(0) as usize,
+        n_ctx: crate::context::runtime_n_ctx(meta, None) as usize,
     }
 }
 
@@ -186,6 +188,8 @@ pub fn embed_and_forward(
     let s = shapes(meta);
     if state.position == 0 {
         crate::metal_gemm::reset_hybrid_state();
+    } else {
+        crate::metal_gemm::begin_gpu_token();
     }
     let mut hidden = crate::generate::embed_token(mapped, token, s.hidden)
         .ok_or_else(|| String::from("embed"))?;
@@ -196,15 +200,54 @@ pub fn embed_and_forward(
                 forward_hybrid(mapped, &s, index, hidden, conv, delta)?
             }
             LayerState::Full { keys, values } => {
+                let spec = crate::metal_gemm::HybridSpec {
+                    hidden: s.hidden,
+                    epsilon: s.epsilon,
+                    state_size: s.state_size,
+                    group_count: s.group_count,
+                    time_step_rank: s.time_step_rank,
+                    inner_size: s.inner_size,
+                    conv_kernel: s.conv_kernel,
+                    v_head_reordered: s.v_head_reordered,
+                    ffn: s.ffn,
+                };
+                let attn = crate::metal_gemm::AttnSpec {
+                    heads: s.head_count,
+                    kv_heads: s.kv_heads,
+                    dim: s.head_dim,
+                    rotary: s.rotary_dim,
+                    rope_theta: s.rope_theta,
+                    mrope: s.mrope,
+                    n_ctx: s.n_ctx,
+                };
+                let n_full = s.n_layers / s.interval.max(1);
+                let slot = index / s.interval.max(1);
+                if let Some(out) = crate::metal_gemm::run_full_layer(
+                    mapped,
+                    &spec,
+                    &attn,
+                    index,
+                    hidden.as_slice(),
+                    slot,
+                    n_full,
+                    state.position,
+                ) {
+                    if out.len() == s.hidden {
+                        hidden = out;
+                    }
+                    continue;
+                }
+                if crate::metal_gemm::gpu_attn_live() {
+                    return Err(String::from(
+                        "gpu full-attention failed after KV cache is live",
+                    ));
+                }
                 if let Some(flushed) = crate::metal_gemm::flush_hybrid_hidden(s.hidden) {
                     hidden = flushed;
                 }
                 forward_full(mapped, &s, index, hidden, keys, values, state.position)?
             }
         };
-    }
-    if let Some(flushed) = crate::metal_gemm::flush_hybrid_hidden(s.hidden) {
-        hidden = flushed;
     }
     state.position = state.position.saturating_add(1);
     Ok(hidden)

@@ -2,9 +2,9 @@
 
 - Class: owner-accepted compare contract
 - Status: accepted 2026-08-29; bench landed (#361). Hybrid quality
-  holdout landed (#357). GPU hybrid GDN + FFN landed (~9.6 tok/s).
-  GPU full-attention and a faster Q8 kernel are still required to
-  beat warm Ollama (#358). Tokenizer leftovers (#359).
+  holdout landed (#357). GPU full-attention, SIMD Q8, and fused
+  greedy landed (~16 tok/s). A faster Q8 kernel is still required
+  to beat warm Ollama (#358). Tokenizer leftovers (#359).
 - Ledger: [INTENT.md](./INTENT.md), [PLAN.md](./PLAN.md), [CLI.md](./CLI.md)
 - Ollama reference: [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md)
 - Decoder math: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md)
@@ -45,6 +45,8 @@ and the hybrid fixture). The four-tensor CI file stays `embed_lmhead`.
 27B greedy `hello` first 32 token IDs match Ollama
 ([2026-08-29-hybrid-holdout.md](./2026-08-29-hybrid-holdout.md)).
 The CPU hybrid is the quality graph, not the speed path.
+Warm Metal decode is ~16 tok/s
+([2026-08-29-gpu-attn.md](./2026-08-29-gpu-attn.md)).
 
 ## Compare axes
 

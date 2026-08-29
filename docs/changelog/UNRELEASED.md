@@ -5,6 +5,21 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## GPU full-attention and SIMD Q8 (#358)
+
+- issues: #358
+- commits: this change
+- contracts-specs: `docs/psionic/PARITY.md`
+- invariants: `--backend cpu` stays correct; no `--local` flip
+- evidence: `docs/psionic/2026-08-29-gpu-attn.md`;
+  `metal_q8_matches_cpu_when_available`; 27B holdout 32 IDs
+- lane: cursor session 7822942d
+
+Full-attention and KV run on Metal in the same stream as hybrid
+GDN. Q8 is a 4-row SIMD-group matvec. Greedy rms + lm-head +
+argmax stay on that stream after the last layer. Warm 27B decode
+is ~16 tok/s. #358 stays open.
+
 ## GPU hybrid GDN + FFN (#358)
 
 - issues: #358

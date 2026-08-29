@@ -29,6 +29,12 @@ pub fn greedy_from_hidden(
     hidden: &[f32],
     tok: &TokenizerTables,
 ) -> Option<(u32, String)> {
+    if let Some(id) = crate::metal_gemm::try_greedy_id(mapped, hidden) {
+        return Some((id, tok.token_piece(id)));
+    }
+    let hidden =
+        crate::metal_gemm::flush_hybrid_hidden(hidden.len()).unwrap_or_else(|| hidden.to_vec());
+    let hidden = hidden.as_slice();
     let w = decode_row(mapped, "output_norm.weight", 0, hidden.len())
         .unwrap_or_else(|| vec![1f32; hidden.len()]);
     let normed = rmsnorm(hidden, &w);
