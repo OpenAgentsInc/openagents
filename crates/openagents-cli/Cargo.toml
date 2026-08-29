@@ -1,6 +1,6 @@
 [package]
 name = "openagents-cli"
-version = "0.2.0-rc.12"
+version = "0.2.0-rc.13"
 # The integrated Coder markdown engine uses edition 2024 let chains.
 edition = "2024"
 license.workspace = true

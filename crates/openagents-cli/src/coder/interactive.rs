@@ -1211,20 +1211,43 @@ async fn run_one_shot(
     });
     // Drain the stream, printing as the turn speaks. Chunk lines go out as
     // they arrive so a caller following the output sees the answer stream;
-    // everything else is a status line the transcript also carries. The
-    // sender half lives in the turn task, so the loop ends when that task
-    // drops its clones — after the turn's Done.
+    // everything else is a status line the transcript also carries.
+    //
+    // Stop at Done. The session still holds a Sender after the turn, so
+    // waiting for the channel to disconnect never returns (#343). The TUI
+    // loop already breaks on Done; this path has to as well.
+    //
+    // Flush every write. stdout is fully buffered when it is not a TTY.
     while let Ok(control) = rx.recv() {
+        let ended = one_shot_control_ends_the_turn(&control);
         match control {
             Control::Turn { event, .. } => match *event {
-                Control::Chunk(chunk) => print!("{chunk}"),
-                Control::Failed(error) => eprintln!("Coder: {error}"),
-                Control::Notice(notice) => eprintln!("Coder: {notice}"),
+                Control::Chunk(chunk) => {
+                    print!("{chunk}");
+                    let _ = stdout().flush();
+                }
+                Control::Failed(error) => {
+                    eprintln!("Coder: {error}");
+                    let _ = stderr().flush();
+                }
+                Control::Notice(notice) => {
+                    eprintln!("Coder: {notice}");
+                    let _ = stderr().flush();
+                }
                 _ => {}
             },
-            Control::Failed(error) => eprintln!("Coder: {error}"),
-            Control::Notice(notice) => eprintln!("Coder: {notice}"),
+            Control::Failed(error) => {
+                eprintln!("Coder: {error}");
+                let _ = stderr().flush();
+            }
+            Control::Notice(notice) => {
+                eprintln!("Coder: {notice}");
+                let _ = stderr().flush();
+            }
             _ => {}
+        }
+        if ended {
+            break;
         }
     }
     let mut returned_session = turn_task
@@ -2672,6 +2695,17 @@ enum SessionBoot<'a> {
     FullScreen,
 }
 
+/// True when `--prompt` has seen the turn's last event and must stop
+/// draining. The session still holds a `Sender`, so waiting for disconnect
+/// after `Done` never returns.
+fn one_shot_control_ends_the_turn(control: &Control) -> bool {
+    match control {
+        Control::Turn { event, .. } => matches!(**event, Control::Done),
+        Control::Done => true,
+        _ => false,
+    }
+}
+
 fn session_boot(prompt: Option<&str>, tty: bool) -> SessionBoot<'_> {
     match (prompt, tty) {
         (None, false) => SessionBoot::RefuseNoTty,
@@ -2726,6 +2760,22 @@ impl Drop for TerminalCleanup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_shot_stops_on_done_not_on_disconnect() {
+        let done = Control::Turn {
+            id: TurnId::new(1),
+            event: Box::new(Control::Done),
+        };
+        assert!(one_shot_control_ends_the_turn(&done));
+        assert!(one_shot_control_ends_the_turn(&Control::Done));
+        assert!(!one_shot_control_ends_the_turn(&Control::Chunk(
+            "pong".into()
+        )));
+        assert!(!one_shot_control_ends_the_turn(&Control::Failed(
+            "catalog".into()
+        )));
+    }
 
     #[test]
     fn a_prompt_without_a_tty_is_the_one_shot_path() {

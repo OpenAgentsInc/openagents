@@ -5,6 +5,34 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.13
+
+- issues: #343
+- commits: this change
+- contracts-specs: CLI crate version; producer name `X.Y.Z-rc.N`
+- invariants: published `<version, platform>` objects stay immutable
+- evidence: `one_shot_stops_on_done_not_on_disconnect`; `a_prompt_without_a_token_exits_naming_login`; live bucket already holds `0.2.0-rc.12`
+- lane: cursor session abb3a3ed
+
+The `openagents-cli` crate is `0.2.0-rc.13`. rc.12 is published and
+immutable. This line flushes `--prompt` writes and stops the one-shot
+drain on `Done` so a piped caller sees the answer and the process exits.
+
+## `--prompt` flushes each streamed write (#343)
+
+- issues: #343
+- commits: this change
+- contracts-specs: `run_one_shot` flushes stdout/stderr after every chunk, failure, and notice, and stops on `Done` instead of waiting for disconnect
+- invariants: a piped `--prompt` must show text before process exit and must exit after the turn
+- evidence: `one_shot_stops_on_done_not_on_disconnect`; `a_prompt_without_a_token_exits_naming_login`
+- lane: cursor session abb3a3ed
+
+`--prompt` exists for pipes. Two defects stacked: `print!` without a
+flush left the answer in the libc buffer, and the drain loop waited for
+the channel to disconnect while the session still held a `Sender`, so
+the process never exited after `Done`. The TUI already breaks on `Done`.
+This path now flushes and stops on `Done`.
+
 ## CLI source version is 0.2.0-rc.12
 
 - issues: #334, #337

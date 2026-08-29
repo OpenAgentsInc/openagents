@@ -2446,3 +2446,22 @@ fn repeated_scopes_are_all_sent() {
     let sent: serde_json::Value = serde_json::from_str(&sent).expect("the start body is JSON");
     assert_eq!(sent["scope"], "chat:account forge:write");
 }
+
+/// `--prompt` is the headless path. Without a token it must refuse by name
+/// and exit, not sit on a TTY wait or a buffered hang (#343).
+#[test]
+fn a_prompt_without_a_token_exits_naming_login() {
+    let start = std::time::Instant::now();
+    let run = oa(&["--prompt", "reply pong"]);
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(8),
+        "--prompt without a token took {:?}; the one-shot path hung",
+        start.elapsed()
+    );
+    let text = format!("{}\n{}", run.stdout, run.stderr);
+    assert!(
+        text.contains("Sign in with /login"),
+        "unsigned --prompt must name /login\n{text}"
+    );
+    assert_eq!(run.status, Some(0), "stderr: {}", run.stderr);
+}
