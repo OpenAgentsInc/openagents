@@ -13,15 +13,15 @@ the top. It does not spawn `llama-server`. It does not call Ollama.
 
 ```text
 CLAIM
-actor/session: psionic CLI teach-status contract
-base: 43d471cc56f6ea8e0db434762be19019df7dec0f
-worktree/branch: psionic-cli-docs / detached github/main
-scope: CLI commands, teach mode, canonical status script, build order
-paths: docs/psionic/CLI.md and cross-links in docs/psionic/
+actor/session: psionic issue ledger 344-347 + unload/memory/TUI strings
+base: ae754381292a38bbc03051369f427d0d4b713bfe
+worktree/branch: detached github/main
+scope: issue ledger, inference unload, memory statuses, Coder TUI load strings
+paths: docs/psionic/CLI.md, docs/psionic/INTENT.md, docs/psionic/README.md, docs/psionic/PLAN.md
 hot files: none
 hot contracts: none
 verification: docs-only; whitespace and path-local review
-claimed_at: 2026-08-29T16:20:00Z
+claimed_at: 2026-08-29T16:25:00Z
 ```
 
 ## How you watch the work
@@ -61,6 +61,7 @@ Product lifecycle and the visible run loop. No training. No mesh.
 | `inference serve` | Same load path, then bind OpenAI-compatible HTTP on `127.0.0.1`. Refuse `0.0.0.0` by default. Optional for first Coder green. |
 | `inference status` | Show whether a `serve` child of this CLI is loaded, which model, backend, digest. |
 | `inference stop` | Stop that `serve`. An in-process Coder turn does not use this. |
+| `inference unload` | Release in-process mmap/Metal weights. Distinct from `inference stop` (serve child). |
 | `inference doctor` | Backends, store path, last admitted model, Metal/CPU presence. |
 
 `run` flags:
@@ -100,10 +101,12 @@ want the same messages the product command will keep.
 
 ### `openagents coder`
 
-Unchanged until stage 4 in [PLAN.md](./PLAN.md). Then
-`--model psionic:<id>` uses the same in-process path as `inference run`,
-without teach lines in the TUI unless you opt in. Ollama stays on
-`ollama:` until replacement gates pass.
+Load, unload, and memory UI are OpenAgents issues 345–347. `--model
+psionic:` generate is still later (stage 4 in [PLAN.md](./PLAN.md)).
+While in-process load runs, the Coder session UI shows the load messages
+in this file through Weights ready. Do not dump the full teach essay
+into the chat transcript unless the user opts in. Throttle like
+`prefill.pos`. Ollama stays on `ollama:` until replacement gates pass.
 
 ## Build order
 
@@ -124,13 +127,43 @@ run. Later slices keep the earlier messages.
 | 9 | `prefill.done` | `run --prompt` | Prefill all prompt positions. |
 | 10 | `gen.done` | `run --prompt --max-tokens` | Decode, sample, stream, stop. **Inference complete.** |
 | 11 | (product) | `models`, `serve`, `doctor`, Coder | Lifecycle around the same path. |
+| 12 | (product) | `inference unload`, `inference status --json` memory fields, Coder load UI | Unload, memory, and Coder TUI load progress (issues 345–347). Parallel to generate. Requires `map.done` (issue 344). Do not skip generate. |
 
 Slice 1 is the first code packet after provenance. It prints `Looking
 for GGUF` through `Found GGUF at …`. Slice 3 is the first packet that
-proves we parsed a real file. Slice 10 is the first token out.
+proves we parsed a real file. Slice 10 is the first token out. Slice 12
+is a product surface on top of `map.done`; it does not replace slices
+7–10.
 
 Do not skip ahead to generate while `meta.done` is missing. Do not hide
 a missing step by calling Ollama.
+
+**Unload (issue 346)** — ids and messages exactly:
+
+| id | Message |
+| --- | --- |
+| `unload.start` | `Unloading weights` |
+| `unload.mmap` | `Unmapping GGUF` |
+| `unload.metal` | `Releasing Metal buffer` (skip on CPU-only) |
+| `unload.done` | `Weights unloaded` |
+| `unload.fail` | `Unload failed: {reason}` |
+
+**Memory (issue 347)** — ids and messages exactly:
+
+| id | Message |
+| --- | --- |
+| `mem.mmap` | `mmap resident {rss} / mapped {mapped}` |
+| `mem.metal` | `Metal buffer {size}` (skip on CPU-only) |
+| `mem.rss` | `Process RSS {size}` |
+| `mem.caches` | `Caches KV {kv} GDN {gdn}` |
+
+`inference status --json` also reports `mmap_bytes`, `metal_bytes`,
+`rss_bytes`, `cache_kv_bytes`, `cache_gdn_bytes`.
+
+**Coder TUI (issue 345)** — while in-process load runs, the Coder
+session UI shows CLI.md load messages through Weights ready. Do not
+dump the full teach essay into the chat transcript unless the user
+opts in. Throttle like `prefill.pos`.
 
 ## Teach output
 

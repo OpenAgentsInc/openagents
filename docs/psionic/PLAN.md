@@ -211,6 +211,13 @@ wrap" finding before Coder depends on token-time events. If the imported
 executor still completes first, either fix it in the imported crate or refuse
 Coder interactive mode until it streams.
 
+OpenAgents issues 344–347 track the product surfaces on this path.
+Issue 344 is `inference run` through `map.done`. Issue 345 is Coder TUI
+load progress through Weights ready (throttle like `prefill.pos`; the
+full teach essay stays out of the chat transcript unless the user opts
+in). Issue 346 is unload. Issue 347 is memory visualization. `--model
+psionic:` generate remains stage 4.
+
 ## Stages
 
 ### 0. This folder
@@ -236,9 +243,17 @@ family and digest.
 **Exit:** fixture admission is deterministic in CI. `run --until
 meta.done` prints the canonical statuses on a fixture file.
 
+Stage 2 still owns parse. OpenAgents issue 344 continues from here
+through `map.done`.
+
 ### 3. `openagents inference` + in-process generate
 
 Tokenizer, mmap/Metal, context, prefill, decode (`--until gen.done`).
+Stage 3 still owns mmap. OpenAgents issue 344 is `inference run` through
+`map.done`. Issues 345–347 (Coder TUI load UI, unload, memory) sit on
+top of `map.done` and run in parallel with generate. Implementation has
+not started.
+
 Model store, `add`/`models`/`doctor`. Optional loopback `serve` if it is
 cheaper than a second API.
 

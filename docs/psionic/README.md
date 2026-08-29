@@ -14,6 +14,13 @@ once the gates in the plan pass.
 | [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md) | How Ollama loads weights and generates a token, GGUF and MLX |
 | [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md) | Lowest-level llama.cpp GGUF parse, mmap, Metal mapping, graph, Q8_0 |
 
+OpenAgents issues (`openagents issue`; GitHub issues remain for reproducible bugs):
+
+- https://openagents.com/OpenAgentsInc/openagents/issues/344 — `inference run` through GGUF weights ready (`map.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress (blocked by 344)
+- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights (blocked by 344)
+- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory (blocked by 344 and 346)
+
 Related older writing stays where it is. It is evidence, not this program's
 authority:
 

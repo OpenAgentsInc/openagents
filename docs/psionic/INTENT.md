@@ -4,8 +4,16 @@
 - Status: accepted 2026-08-29
 - Source: current owner conversation
 - Ledger: this file, [PLAN.md](./PLAN.md), and [CLI.md](./CLI.md)
-- Feature issue: none. Repository policy keeps GitHub issues for reproducible
-  bugs. This folder is the work-packet ledger.
+- Work tracker: OpenAgents issue tracker (`openagents issue`), not GitHub.
+  GitHub issues remain for reproducible bugs. This folder is the
+  work-packet ledger.
+
+OpenAgents issues for this program:
+
+- https://openagents.com/OpenAgentsInc/openagents/issues/344 — `inference run` through GGUF weights ready (`map.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress (blocked by 344)
+- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights (blocked by 344)
+- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory (blocked by 344 and 346)
 
 ## Outcome
 
