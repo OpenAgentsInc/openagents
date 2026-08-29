@@ -94,6 +94,10 @@ pub enum Commands {
     Trace(TraceArgs),
     /// Local swarm: discover sessions and exchange messages between them
     Swarm(crate::swarm_args::SwarmArgs),
+    /// In-process local inference (GGUF load, teach run)
+    Inference(crate::inference::InferenceArgs),
+    /// Psionic library harness: inspect, admit, backends
+    Psionic(crate::psionic::PsionicArgs),
     /// Replace this binary with the release the channel names
     #[command(alias = "self-update")]
     Update(UpdateArgs),
@@ -1831,6 +1835,16 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
         Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
         Commands::Swarm(swarm) => crate::swarm_args::run_swarm(swarm.action, cli.json).await,
+        Commands::Inference(inf) => match crate::inference::run(inf, cli.json) {
+            Ok(()) => {}
+            Err(crate::inference::InferenceExit::Failed) => std::process::exit(1),
+            Err(crate::inference::InferenceExit::Usage(message)) => fail(&message),
+        },
+        Commands::Psionic(psi) => match crate::psionic::run(psi, cli.json) {
+            Ok(()) => {}
+            Err(crate::inference::InferenceExit::Failed) => std::process::exit(1),
+            Err(crate::inference::InferenceExit::Usage(message)) => fail(&message),
+        },
         Commands::Update(update) => {
             let outcome = crate::update::run(
                 update.channel,

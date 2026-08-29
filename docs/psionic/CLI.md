@@ -1,7 +1,7 @@
 # OpenAgents CLI: local inference commands and teach status
 
 - Class: owner-accepted CLI and teach-mode contract
-- Status: accepted 2026-08-29; implementation not started
+- Status: accepted 2026-08-29; slices 0–6 landed (OpenAgents #344, `map.done`)
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
 - Bytes behind the statuses: [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)

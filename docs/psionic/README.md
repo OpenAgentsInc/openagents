@@ -13,6 +13,7 @@ once the gates in the plan pass.
 | [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md) | Weights-to-token walkthrough: tensors, quantization, load, decode |
 | [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md) | How Ollama loads weights and generates a token, GGUF and MLX |
 | [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md) | Lowest-level llama.cpp GGUF parse, mmap, Metal mapping, graph, Q8_0 |
+| [PROVENANCE.md](./PROVENANCE.md) | What we studied vs copied for the in-tree GGUF crate |
 
 OpenAgents issues (`openagents issue`; GitHub issues remain for reproducible bugs):
 
@@ -33,5 +34,6 @@ The 2026-07-08 retirement of the Tassadar training-program docs does not
 block this CLI inference slice. That retirement parked distributed training,
 gym, and executor research. This folder is a new, bounded product program.
 
-Implementation code has not landed. Do not treat this folder as proof that
-the binary already contains Psionic.
+`crates/psionic-gguf` and `openagents inference run` land slices 0–6
+(`map.done`). Later slices (context, generate, Coder `--model psionic:`)
+are not in the binary yet.

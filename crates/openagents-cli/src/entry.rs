@@ -48,6 +48,8 @@ Commands:
   memory      Manage account memory
   api         Invoke an OpenAgents API route
   plugin      Manage capability plugins
+  inference   Local GGUF load and in-process inference
+  psionic     Psionic library harness
   trace       Inspect and export traces
   update      Update this CLI
 

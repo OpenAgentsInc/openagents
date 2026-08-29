@@ -1,0 +1,214 @@
+//! Binary tests for `openagents inference run` through `map.done`.
+
+use std::io::Write;
+use std::process::Command;
+
+fn bin() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_openagents"))
+}
+
+fn fixture_gguf() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("qwen35.gguf");
+    psionic_gguf::write_qwen35_fixture(&path).expect("write fixture");
+    dir
+}
+
+fn stderr_ids(output: &std::process::Output) -> Vec<String> {
+    let text = String::from_utf8_lossy(&output.stderr);
+    text.lines()
+        .filter_map(|line| {
+            if line.starts_with('{') {
+                let v: serde_json::Value = serde_json::from_str(line).ok()?;
+                v.get("id")?.as_str().map(str::to_string)
+            } else if let Some(rest) = line.strip_prefix('[') {
+                rest.split(']').next().map(str::to_string)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn json_states(output: &std::process::Output) -> Vec<(String, String)> {
+    let text = String::from_utf8_lossy(&output.stderr);
+    text.lines()
+        .filter_map(|line| {
+            let v: serde_json::Value = serde_json::from_str(line).ok()?;
+            Some((
+                v.get("id")?.as_str()?.to_string(),
+                v.get("state")?.as_str()?.to_string(),
+            ))
+        })
+        .collect()
+}
+
+#[test]
+fn preview_prints_pending_script() {
+    let output = bin()
+        .args(["inference", "run", "--preview", "--json"])
+        .output()
+        .expect("run");
+    assert!(output.status.success(), "{:?}", output);
+    let states = json_states(&output);
+    assert_eq!(states[0].0, "run.preview");
+    assert_eq!(states[0].1, "ok");
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "gguf.look" && state == "pending"),
+        "{states:?}"
+    );
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "map.done" && state == "pending"),
+        "{states:?}"
+    );
+    assert_eq!(states.last().map(|p| p.0.as_str()), Some("gen.done"));
+}
+
+#[test]
+fn missing_gguf_fails_with_canonical_id() {
+    let output = bin()
+        .args(["inference", "run", "--json"])
+        .output()
+        .expect("run");
+    assert!(!output.status.success());
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "gguf.fail.arg" && state == "fail"),
+        "{states:?}"
+    );
+}
+
+#[test]
+fn malformed_magic_fails() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("not.gguf");
+    let mut f = std::fs::File::create(&path).unwrap();
+    f.write_all(b"XXXX\x03\x00\x00\x00").unwrap();
+    let output = bin()
+        .args([
+            "inference",
+            "run",
+            "--json",
+            "--gguf",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run");
+    assert!(!output.status.success());
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "gguf.fail.magic" && state == "fail"),
+        "{states:?}"
+    );
+}
+
+#[test]
+fn until_meta_done_on_fixture() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "run",
+            "--json",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--until",
+            "meta.done",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "meta.done" && state == "ok"),
+        "{states:?}"
+    );
+    assert!(
+        !states.iter().any(|(id, _)| id == "tok.read"),
+        "must stop at meta.done: {states:?}"
+    );
+}
+
+#[test]
+fn until_map_done_on_fixture() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "run",
+            "--json",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--until",
+            "map.done",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "map.done" && state == "ok"),
+        "{states:?}"
+    );
+    assert!(
+        !states
+            .iter()
+            .any(|(id, _)| id == "ctx.alloc" || id == "build.stop"),
+        "{states:?}"
+    );
+}
+
+#[test]
+fn inspect_fixture() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args(["psionic", "inspect", path.to_str().unwrap(), "--json"])
+        .output()
+        .expect("run");
+    assert!(output.status.success(), "{:?}", output);
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(v["architecture"], "qwen35");
+}
+
+#[test]
+fn help_lists_inference() {
+    let output = bin().args(["inference", "--help"]).output().expect("run");
+    assert!(output.status.success());
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("run"), "{text}");
+}
+
+#[test]
+fn text_preview_mentions_looking_for_gguf() {
+    let output = bin()
+        .args(["inference", "run", "--preview"])
+        .output()
+        .expect("run");
+    assert!(output.status.success());
+    let ids = stderr_ids(&output);
+    assert!(ids.contains(&"run.preview".into()));
+    assert!(ids.contains(&"gguf.look".into()));
+}

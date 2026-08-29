@@ -1586,6 +1586,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memmap2"
+version = "0.9.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1806,6 +1815,7 @@ dependencies = [
  "openagents-coder-contract",
  "portable-pty",
  "pretty_assertions",
+ "psionic-gguf",
  "pulldown-cmark",
  "ratatui",
  "regex",
@@ -2017,6 +2027,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "psionic-gguf"
+version = "0.1.0"
+dependencies = [
+ "memmap2",
+ "serde",
+ "sha2",
 ]
 
 [[package]]

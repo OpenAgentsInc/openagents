@@ -16,6 +16,7 @@ path = "src/bin/coder_surfaces.rs"
 
 [dependencies]
 openagents-coder-contract = { path = "../openagents-coder-contract" }
+psionic-gguf = { path = "../psionic-gguf" }
 reqwest = { workspace = true, features = ["stream"] }
 serde.workspace = true
 serde_json.workspace = true

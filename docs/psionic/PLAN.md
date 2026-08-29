@@ -1,7 +1,7 @@
 # Initial plan: Psionic Qwen 3.8 local inference in `openagents`
 
 - Class: owner-accepted implementation plan / work packet
-- Status: accepted 2026-08-29; implementation not started
+- Status: accepted 2026-08-29; slices 0–6 (`map.done`) landed in `crates/psionic-gguf` + `openagents inference run`
 - Intent: [INTENT.md](./INTENT.md)
 - CLI statuses: [CLI.md](./CLI.md)
 - Base at plan authoring: `8c0989a5a3f82029a020330c5b18b311a20d1efc` (`github/main`)

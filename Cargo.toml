@@ -15,6 +15,7 @@ members = [
     "crates/oa-workroomd",
     "crates/oa-cloud-run-bridge",
     "crates/claude_agent_sdk",
+    "crates/psionic-gguf",
 ]
 resolver = "2"
 
