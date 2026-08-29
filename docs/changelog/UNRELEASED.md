@@ -5,6 +5,39 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc6
+
+- issues: none (owner request: ship current main as rc6)
+- commits: this change
+- contracts-specs: CLI crate version; Coder idle welcome chrome
+- invariants: non-release builds still report `0.0.0-dev`; the idle card title is `New in v0.2.0`, not the RC name
+- evidence: `crates/openagents-cli/tests/coder_frame.rs` startup-facts frame test; `a_non_release_build_reports_a_development_version`
+- lane: grok 0.2.0-rc6 bump
+
+The `openagents-cli` crate is `0.2.0-rc6`. The idle card is "New in v0.2.0".
+
+## Coder idle card names only 0.2.0 work
+
+- issues: none (owner request)
+- commits: this change
+- contracts-specs: Coder idle welcome chrome
+- invariants: the card title is `New in v0.2.0`; 0.1.1 lines stay off it
+- evidence: `startup_facts_are_centered_outside_the_transcript`
+- lane: grok 0.2.0-rc6 tui
+
+The idle card keeps `/model`, Coder Local, Shift+Tab to Local, and that GitHub login is optional. The 0.1.1 ATIF, Grok, and Flash lines are gone.
+
+## Coder caret is one amber hardware cursor
+
+- issues: none (owner request)
+- commits: this change
+- contracts-specs: Coder TUI composer caret
+- invariants: the frame does not paint a `REVERSED` block over the hardware caret; OSC 12 colours it `#FFB000`; OSC 112 restores the terminal colour on exit
+- evidence: `trailing_spaces_are_kept_and_the_caret_sits_after_them`
+- lane: grok 0.2.0-rc6 tui
+
+The composer caret is the blinking hardware cursor, coloured palette amber. The reverse-video block that sat around a yellow terminal cursor is gone.
+
 ## CLI source version is 0.2.0-rc5
 
 - issues: none (owner request: ship current main as rc5)

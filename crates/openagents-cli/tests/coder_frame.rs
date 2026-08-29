@@ -73,7 +73,8 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(text.contains("/Users/example/work/openagents"));
     assert!(text.contains("https://openagents.com/api/v1"));
     assert!(text.contains("Type /help for commands and keys."));
-    assert!(text.contains("New in v0.2.0-rc5"), "{text}");
+    assert!(text.contains("New in v0.2.0"), "{text}");
+    assert!(!text.contains("New in v0.2.0-rc"), "{text}");
     assert!(text.contains("/model picks Pro and Local models"), "{text}");
     assert!(
         text.contains("Coder Local answers from Ollama on this machine"),
@@ -83,14 +84,18 @@ fn startup_facts_are_centered_outside_the_transcript() {
         text.contains("Shift+Tab reaches Local when Qwen 3.8 is loaded"),
         "{text}"
     );
-    assert!(text.contains("Grok is a first-class delegate"), "{text}");
+    assert!(text.contains("GitHub login is optional"), "{text}");
     assert!(
-        text.contains("ATIF export keeps subagent streams"),
+        !text.contains("ATIF export keeps subagent streams"),
         "{text}"
     );
-    assert!(text.contains("ATIF export keeps the swarm inbox"), "{text}");
     assert!(
-        text.contains("Flash routes simple requests to Gemini 3.7 Flash"),
+        !text.contains("ATIF export keeps the swarm inbox"),
+        "{text}"
+    );
+    assert!(!text.contains("Grok is a first-class delegate"), "{text}");
+    assert!(
+        !text.contains("Flash routes simple requests to Gemini 3.7 Flash"),
         "{text}"
     );
 
@@ -119,7 +124,7 @@ fn startup_facts_are_centered_outside_the_transcript() {
         .find(|y| row_at(*y).contains("Coder v"))
         .expect("startup box title");
     let news_row = (0..buffer.area.height)
-        .find(|y| row_at(*y).contains("New in v0.2.0-rc5"))
+        .find(|y| row_at(*y).contains("New in v0.2.0"))
         .expect("changelog box title");
     assert!(
         news_row > title_row,
@@ -145,7 +150,7 @@ fn startup_facts_are_centered_outside_the_transcript() {
         "changelog box should wrap its lines, not match the facts box: news={news_box_width} facts={facts_box_width}\n{news_title:?}\n{facts_title:?}"
     );
 
-    let longest = "Flash routes simple requests to Gemini 3.7 Flash";
+    let longest = "Shift+Tab reaches Local when Qwen 3.8 is loaded";
     assert_eq!(
         news_box_width,
         longest.len() + 4,
@@ -940,10 +945,12 @@ fn what_is_typed_is_drawn_in_the_input_box() {
 /// put a `REVERSED` block on the cursor cell so a line ending in a space did
 /// not look like a line that ended earlier. The wrapping is now
 /// `openagents_cli::composer`, which slices byte ranges out of the text and so
-/// cannot lose a space; this holds it to that.
+/// cannot lose a space; this holds it to that. The caret is the hardware
+/// cursor, not a painted reverse block.
 #[test]
-fn trailing_spaces_are_kept_and_the_block_cursor_sits_after_them() {
+fn trailing_spaces_are_kept_and_the_caret_sits_after_them() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::layout::Position;
     use ratatui::style::Modifier;
 
     let mut ui = CoderUi::new();
@@ -971,17 +978,15 @@ fn trailing_spaces_are_kept_and_the_block_cursor_sits_after_them() {
                 .contains(Modifier::REVERSED)
         })
         .collect();
-    assert_eq!(reversed.len(), 1, "expected exactly one block cursor");
-
-    // One cell past `ab   `, inside the border and the `" > "` gutter.
-    let (x, _) = reversed[0];
-    assert_eq!(x, 1 + 3 + 5, "the block cursor is not after the spaces");
-
-    // And it is still the palette: REVERSED swaps the two colours for that
-    // cell, it does not introduce a third.
-    let cell = buffer.cell(reversed[0]).unwrap();
-    assert_eq!(cell.fg, Color::Rgb(255, 176, 0));
-    assert_eq!(cell.bg, Color::Rgb(8, 6, 0));
+    assert!(
+        reversed.is_empty(),
+        "the frame must not paint a second reverse-block cursor: {reversed:?}"
+    );
+    assert_eq!(
+        ui.cursor,
+        Some(Position::new(1 + 3 + 5, ui.cursor.expect("caret").y)),
+        "the hardware caret is not after the spaces"
+    );
 }
 
 #[test]

@@ -30,16 +30,13 @@ const TOOL_SETTLE_FRAMES: u64 = 10;
 /// into one `+N earlier` counter, counted rather than stored as text.
 pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
-/// Idle "New in v0.2.0-rc5" card. Seven lines is the ceiling so the pair of
+/// Idle "New in v0.2.0" card. Seven lines is the ceiling so the pair of
 /// boxes still fits an ordinary terminal.
 const WELCOME_WHAT_IS_NEW: &[&str] = &[
     "/model picks Pro and Local models",
     "Coder Local answers from Ollama on this machine",
     "Shift+Tab reaches Local when Qwen 3.8 is loaded",
-    "ATIF export keeps subagent streams",
-    "ATIF export keeps the swarm inbox",
-    "Grok is a first-class delegate",
-    "Flash routes simple requests to Gemini 3.7 Flash",
+    "GitHub login is optional",
 ];
 
 /// Who this session is signed in as.
@@ -1084,15 +1081,9 @@ impl CoderUi {
             .style(status_style)
             .alignment(ratatui::layout::Alignment::Right);
         frame.render_widget(lane_widget, lane_area);
-        // A block cursor, as grok-build's textarea draws one: the hardware
-        // cursor alone is easy to lose in the alternate screen, and a trailing
-        // space with nothing over it looks like a line that ends earlier than
-        // it does. `REVERSED` swaps the two palette colours for one cell, so
-        // the block is ground-on-amber and the palette is untouched.
-        let buf = frame.buffer_mut();
-        if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
-            cell.modifier.insert(Modifier::REVERSED);
-        }
+        // The caret is the hardware cursor: one blinking cell, coloured
+        // amber by OSC 12 in `run_tui`. A painted `REVERSED` block on top of
+        // it was a second, larger cursor around a yellow one.
 
         // The toast, when one is showing, rides over the status row's left
         // edge — the one place every eye already checks for live state, and
@@ -1413,7 +1404,7 @@ impl CoderUi {
                     .collect::<Vec<_>>(),
             );
             let news_block = Block::default()
-                .title(" New in v0.2.0-rc5 ")
+                .title(" New in v0.2.0 ")
                 .title_alignment(Alignment::Center)
                 .borders(Borders::ALL)
                 .border_style(value_style)

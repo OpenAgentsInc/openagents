@@ -25,6 +25,7 @@ use crate::composer::history::History;
 use crate::runtime::{ImageAttachment, Lane};
 use crossterm::{
     ExecutableCommand,
+    cursor::SetCursorStyle,
     event::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
         Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
@@ -63,6 +64,12 @@ const REVOCATION_GRACE: Duration = Duration::from_secs(10);
 /// the next event — which is the behavior wanted: a "Copied!" that vanishes
 /// before it is read is a message that was never shown.
 const CLIPBOARD_TOAST_TICKS: u64 = 60;
+
+/// Palette amber (`TEXT_COLOR` `#FFB000`). OSC 12 colours the hardware caret
+/// so it is not the terminal's default yellow sitting inside a painted block.
+const CURSOR_COLOR_SET: &str = "\x1b]12;#FFB000\x07";
+/// Restore the terminal's own caret colour on the way out.
+const CURSOR_COLOR_RESET: &str = "\x1b]112\x07";
 
 /// Hosted lanes need an OpenAgents account. Local does not (#325).
 pub const HOSTED_NEEDS_SIGN_IN: &str = "This lane talks to OpenAgents. Sign in with /login, or use Coder Local if Ollama is installed.";
@@ -112,6 +119,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         PushKeyboardEnhancementFlags(flags),
         EnableBracketedPaste
     );
+    let _ = stdout.execute(SetCursorStyle::BlinkingBlock);
+    let _ = stdout.write_all(CURSOR_COLOR_SET.as_bytes());
+    let _ = stdout.flush();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.show_cursor()?;
@@ -2431,6 +2441,8 @@ impl Drop for TerminalCleanup {
             DisableBracketedPaste,
             PopKeyboardEnhancementFlags
         );
+        let _ = std::io::stdout().execute(SetCursorStyle::DefaultUserShape);
+        let _ = std::io::stdout().write_all(CURSOR_COLOR_RESET.as_bytes());
         let _ = std::io::stdout().execute(DisableMouseCapture);
         let _ = disable_raw_mode();
         let _ = std::io::stdout().execute(LeaveAlternateScreen);
