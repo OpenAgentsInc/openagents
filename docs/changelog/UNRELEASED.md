@@ -5,6 +5,19 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.17
+
+- issues: #351
+- commits: this change
+- contracts-specs: CLI crate version; producer name `X.Y.Z-rc.N`
+- invariants: published `<version, platform>` objects stay immutable
+- evidence: `cmp_release_versions`; live bucket already holds `0.2.0-rc.16`
+- lane: cursor session abb3a3ed
+
+The `openagents-cli` crate is `0.2.0-rc.17`. rc.16 is published and
+immutable. This line carries the scrolled-up transcript pin (#351) onto
+Apple aarch64 and Windows x86_64.
+
 ## Scrolled-up transcript stays put while tokens stream (#351)
 
 - issues: #351
