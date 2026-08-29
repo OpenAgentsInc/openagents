@@ -194,7 +194,9 @@ fn has_only_coder_options(arguments: &[String]) -> bool {
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = tracing_subscriber::fmt::try_init();
+    let _ = tracing_subscriber::fmt::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
     crate::diag::initialize_color_from_environment();
     let mut arguments: Vec<String> = env::args().skip(1).collect();
     // `openagents --autopilot` is the agent-facing spelling. The loop lives

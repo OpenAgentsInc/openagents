@@ -620,7 +620,17 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
         }
 
-        if !event::poll(Duration::from_millis(50))? {
+        if !event::poll(Duration::from_millis(0))? {
+            if let Some(active) = active_turn.as_mut() {
+                tokio::select! {
+                    _ = &mut active.task => {
+                        active_turn = None;
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(20)) => {}
+                }
+            } else {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
             continue;
         }
         let key = match event::read()? {

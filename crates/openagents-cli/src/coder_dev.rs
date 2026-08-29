@@ -99,11 +99,7 @@ fn api_bin() -> Result<PathBuf, Box<dyn std::error::Error>> {
         if path.is_file() {
             return Ok(path);
         }
-        return Err(format!(
-            "OPENAGENTS_CODER_API_BIN is not a file: {}",
-            path.display()
-        )
-        .into());
+        return Err(format!("OPENAGENTS_CODER_API_BIN is not a file: {}", path.display()).into());
     }
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
