@@ -1,8 +1,9 @@
 # Qwen 3.8 inference pipeline
 
 - Class: conceptual pipeline
-- Status: describes the OpenAgents approach; this repository does not yet
-  run the loop in-process
+- Status: describes the OpenAgents approach; `map.done` / Coder `/load`
+  landed. Context, prefill, and generate are not in the binary yet
+  (OpenAgents #352–#356).
 - Date: 2026-08-29
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
@@ -62,7 +63,8 @@ Planned in Psionic
 : Named in the Qwen 3.8 roadmap, not the first Coder claim.
 
 OpenAgents not started
-: This repository has no in-process path yet. Coder still uses Ollama.
+: This repository has no in-process path for that step yet. Coder
+  `--local` still uses Ollama. Load through `map.done` is started.
 
 ## Model numbers
 
@@ -95,8 +97,11 @@ The 64 layers repeat this pattern 16 times: three *Gated DeltaNet*
 (linear-attention) layers, then one gated full-attention layer. Every layer
 also has a *feed-forward network* (FFN).
 
-**Status:** Facts implemented in Psionic R1. OpenAgents has not bound a
-content-addressed GGUF in this repository.
+**Status:** Facts implemented in Psionic R1. OpenAgents admits
+architecture `qwen35` and has mapped the development Ollama
+`qwen3.8:27b-mtp-q8_0` blob in-process (`Weights ready`, 27.1 GiB
+mapped, RSS ~184 MiB). It has not bound a content-addressed store
+copy or a generate loop.
 
 ## Primitive: tensor
 
@@ -302,8 +307,9 @@ Coder is the process that holds the weights. `openagents inference serve` can
 expose the same load over loopback HTTP. That is the same library, not a
 second engine install.
 
-**Status:** CPU and CUDA load implemented in Psionic. Metal incomplete.
-OpenAgents in-process load not started.
+**Status:** CPU and CUDA load implemented in Psionic. Metal incomplete
+in the sibling graph. OpenAgents in-process mmap + Metal shared wrap
+is landed (`map.done`, Coder `/load`). Context allocation is #352.
 
 ## Stage: tokenize and apply the chat template
 
@@ -444,6 +450,21 @@ Every fourth layer uses *softmax attention* with *grouped-query attention*
 16 full-attention layers (64/4). Cache grows with tokens. At native context
 262,144 that cost is large. The first CUDA gate in Psionic is 4,096 tokens,
 not the native maximum.
+
+F16 KV bytes for this shape:
+
+```text
+kv_bytes = 2 * 16 * 4 * 256 * n_ctx * 2
+         = 128 KiB * n_ctx
+n_ctx = 4096   → 512 MiB
+n_ctx = 8192   → 1 GiB
+n_ctx = 262144 → 32 GiB
+```
+
+Gated DeltaNet recurrent + conv state does not shrink when `n_ctx`
+drops. Publish `cache_kv_bytes` and `cache_gdn_bytes` separately.
+OpenAgents #352 allocates these on the existing mmap; default runtime
+`n_ctx` is 4096.
 
 **Status:** Implemented on CPU and CUDA in Psionic. OpenAgents must pass
 requested context into memory admission (the analogue of Ollama `num_ctx`).

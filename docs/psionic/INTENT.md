@@ -10,10 +10,15 @@
 
 OpenAgents issues for this program:
 
-- https://openagents.com/OpenAgentsInc/openagents/issues/344 — `inference run` through GGUF weights ready (`map.done`)
-- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress
-- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights
-- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory
+- https://openagents.com/OpenAgentsInc/openagents/issues/344 — `inference run` through GGUF weights ready (`map.done`) (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/352 — `inference run` through context ready (`ctx.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/353 — Progress bar and percent for long inference steps
+- https://openagents.com/OpenAgentsInc/openagents/issues/354 — `inference run` through prompt tokens (`prompt.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/355 — `inference run` through prefill (`prefill.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/356 — `inference run` through first generated tokens (`gen.done`)
 
 ## Outcome
 

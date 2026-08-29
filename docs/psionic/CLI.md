@@ -1,7 +1,7 @@
 # OpenAgents CLI: local inference commands and teach status
 
 - Class: owner-accepted CLI and teach-mode contract
-- Status: accepted 2026-08-29; slices 0–6 and 12 landed (OpenAgents #344–#347)
+- Status: accepted 2026-08-29; slices 0–6 and 12 landed (OpenAgents #344–#347). Next: #352–#356 (`ctx.done` through `gen.done`, plus progress bars).
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
 - Bytes behind the statuses: [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
@@ -13,15 +13,15 @@ the top. It does not spawn `llama-server`. It does not call Ollama.
 
 ```text
 CLAIM
-actor/session: psionic issue ledger 344-347 + unload/memory/TUI strings
-base: ae754381292a38bbc03051369f427d0d4b713bfe
+actor/session: psionic next-slice ledger 352-356
+base: aab4b1d0d8e66a4ba972632d2ce085f4714540b4
 worktree/branch: detached github/main
-scope: issue ledger, inference unload, memory statuses, Coder TUI load strings
-paths: docs/psionic/CLI.md, docs/psionic/INTENT.md, docs/psionic/README.md, docs/psionic/PLAN.md
+scope: live /load receipt, progress-bar contract, ctx math, next issues
+paths: docs/psionic/
 hot files: none
 hot contracts: none
 verification: docs-only; whitespace and path-local review
-claimed_at: 2026-08-29T16:25:00Z
+claimed_at: 2026-08-29T18:43:00Z
 ```
 
 ## How you watch the work
@@ -123,10 +123,10 @@ run. Later slices keep the earlier messages.
 | 4 | `tok.done` | `run --prompt …` (tokenize only) | Vocab and BPE merges from GGUF KV. |
 | 5 | `admit.done` | `psionic admit`, `inference add` | Required `qwen35` names (and Ollama `mtp.*` rename if needed). Store copy. |
 | 6 | `map.done` | `run` | mmap, named tensors, CPU vs Metal placement, shared Metal buffer, `data` pointers. |
-| 7 | `ctx.done` | `run` | Context, hybrid KV and Gated DeltaNet caches, scheduler. |
-| 8 | `prompt.done` | `run --prompt` | Chat template and tokenize. |
-| 9 | `prefill.done` | `run --prompt` | Prefill all prompt positions. |
-| 10 | `gen.done` | `run --prompt --max-tokens` | Decode, sample, stream, stop. **Inference complete.** |
+| 7 | `ctx.done` | `run` | Context, hybrid KV and Gated DeltaNet caches, scheduler. **#352.** |
+| 8 | `prompt.done` | `run --prompt` | Chat template and tokenize. **#354** (blocked by #352). |
+| 9 | `prefill.done` | `run --prompt` | Prefill all prompt positions. **#355** (blocked by #354 and #353). |
+| 10 | `gen.done` | `run --prompt --max-tokens` | Decode, sample, stream, stop. **Inference complete.** **#356** (blocked by #355). |
 | 11 | (product) | `models`, `serve`, `doctor`, Coder | Lifecycle around the same path. |
 | 12 | (product) | `inference unload`, `inference status --json` memory fields, Coder `/load` `/unload` | Unload, memory, and Coder TUI load progress (issues 345–347). Parallel to generate. Requires `map.done` (issue 344). Do not skip generate. **Landed.** |
 
@@ -165,6 +165,35 @@ a missing step by calling Ollama.
 session UI shows CLI.md load messages through Weights ready. Do not
 dump the full teach essay into the chat transcript unless the user
 opts in. Throttle like `prefill.pos`.
+
+**Live receipt (2026-08-29, Coder 0.2.0-rc.15, ATIF
+`2026-08-29T18-39-56-258Z`)** — `/load` of Ollama
+`qwen3.8:27b-mtp-q8_0` (blob
+`sha256-2bb22714289826d7b9e0ba376c3ce47d08bce39abe598745857c44d88c09bdbf`)
+printed `Weights ready (27.1 GiB mapped)` in well under a second.
+Footer: mapped 27.1 GiB, Metal 27.1 GiB, process RSS ~184 MiB. That is
+mmap plus Metal `newBufferWithBytesNoCopy`, not a 27 GiB copy. Missing
+fixture path and `muse-glimmer` architecture refuse used the canonical
+fail strings. Behaving correctly.
+
+The compact TUI line still omitted mmap **resident**. Issue **#353**
+adds resident vs mapped on that line.
+
+**Progress bars (issue 353)** — a step that can run longer than about
+two seconds shows a determinate meter. mmap of a warm 27 GiB file is
+not such a step. Do not paint a fake load bar over `map.mmap`.
+
+Teach / Coder status-row text when a total is known:
+
+```text
+{label} [{bar}] {pct}% {done}/{total} {unit}
+```
+
+`{bar}` is 20 cells (`#` filled, `-` empty). `{pct}` is integer 0–100.
+Throttle like `prefill.pos`. `--json` adds `pct`, `done`, `total`,
+`unit`, `label` on the same step `id`. First consumers: `prefill.pos`
+(unit `pos`), `gen.step` (unit `tok`), chunked `ctx.kv` only if
+allocation itself exceeds ~2s, and later `gguf.download.progress`.
 
 ## Teach output
 
@@ -354,6 +383,12 @@ shared wrap cannot be created; do not fall back to Ollama.
 
 ### Slice 7 — context and caches
 
+Issue **#352**. Default runtime `{n}` is **4096**, not the trained
+262,144. F16 KV for the 27B-class `qwen35` file is `128 KiB * n_ctx`
+(16 full-attention layers × 4 KV heads × 256 × 2 buffers × 2 bytes).
+Gated DeltaNet bytes do not shrink when `{n}` drops. Print KV and GDN
+separately. Formulas: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md).
+
 | id | Message |
 | --- | --- |
 | `ctx.alloc` | `Allocating context` |
@@ -390,7 +425,17 @@ shared wrap cannot be created; do not fall back to Ollama.
 
 `prefill.pos` may throttle (for example every 32 positions plus last)
 so a long prompt does not flood the terminal. `--teach` still shows
-start and complete. `--json` may emit every position.
+start and complete. `--json` may emit every throttled tick.
+
+When prefill lasts more than about two seconds, the status row and
+teach line use the #353 meter:
+
+```text
+Prefill [####----------------] 20% 64/320 pos
+```
+
+The `id` stays `prefill.pos`. The short message above remains valid
+for the tiny fixture.
 
 ### Slice 10 — generate
 

@@ -17,10 +17,15 @@ once the gates in the plan pass.
 
 OpenAgents issues (`openagents issue`; GitHub issues remain for reproducible bugs):
 
-- https://openagents.com/OpenAgentsInc/openagents/issues/344 — `inference run` through GGUF weights ready (`map.done`)
-- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress
-- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights
-- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory
+- https://openagents.com/OpenAgentsInc/openagents/issues/344 — `inference run` through GGUF weights ready (`map.done`) (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/352 — `inference run` through context ready (`ctx.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/353 — Progress bar and percent for long inference steps
+- https://openagents.com/OpenAgentsInc/openagents/issues/354 — `inference run` through prompt tokens (`prompt.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/355 — `inference run` through prefill (`prefill.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/356 — `inference run` through first generated tokens (`gen.done`)
 
 Related older writing stays where it is. It is evidence, not this program's
 authority:
@@ -35,5 +40,8 @@ block this CLI inference slice. That retirement parked distributed training,
 gym, and executor research. This folder is a new, bounded product program.
 
 `crates/psionic-gguf` and `openagents inference run` land slices 0–6
-(`map.done`). Later slices (context, generate, Coder `--model psionic:`)
-are not in the binary yet.
+(`map.done`) plus slice 12 (`/load`, `/unload`, memory). A live Coder
+`/load` of the development Ollama `qwen3.8:27b-mtp-q8_0` blob reached
+`Weights ready (27.1 GiB mapped)` with RSS far below mapped size.
+Context, prefill, generate, and Coder `--model psionic:` are not in the
+binary yet. Next built status is `ctx.alloc`.

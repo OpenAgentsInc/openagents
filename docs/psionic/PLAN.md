@@ -1,7 +1,7 @@
 # Initial plan: Psionic Qwen 3.8 local inference in `openagents`
 
 - Class: owner-accepted implementation plan / work packet
-- Status: accepted 2026-08-29; slices 0–6 (`map.done`) landed; slice 12 (unload, memory, Coder `/load`) landed in OpenAgents #345–#347
+- Status: accepted 2026-08-29; slices 0–6 and 12 landed (#344–#347). Next queue: #352 `ctx.done`, #353 progress bars, #354 `prompt.done`, #355 `prefill.done`, #356 `gen.done`.
 - Intent: [INTENT.md](./INTENT.md)
 - CLI statuses: [CLI.md](./CLI.md)
 - Base at plan authoring: `8c0989a5a3f82029a020330c5b18b311a20d1efc` (`github/main`)
@@ -9,26 +9,37 @@
 
 ```text
 CLAIM
-actor/session: docs/psionic plan authoring
-base: 8c0989a5a3f82029a020330c5b18b311a20d1efc
-worktree/branch: psionic-inference-docs / main
-scope: owner intent and first plan for in-binary Qwen 3.8 local inference
+actor/session: psionic next-slice ledger 352-356
+base: aab4b1d0d8e66a4ba972632d2ce085f4714540b4
+worktree/branch: detached github/main
+scope: live /load receipt, ctx math, next issue queue
 paths: docs/psionic/
 hot files: none
 hot contracts: none
 verification: docs-only; whitespace and path-local review
-claimed_at: 2026-08-29T15:47:00Z
+claimed_at: 2026-08-29T18:43:00Z
 ```
 
 ## Current facts
 
-Coder local is Ollama. `Lane::Local` in `crates/openagents-cli` talks to
-`GET /api/tags` and `POST /api/chat`. There is no `inference` or `psionic`
-subcommand.
+Coder `--local` is still Ollama. `openagents inference` and
+`openagents psionic` exist. Slices 0–6 and 12 are in the binary
+(`map.done`, `/load`, `/unload`, memory JSON).
+
+Live 2026-08-29: Coder `/load` of the development Ollama
+`qwen3.8:27b-mtp-q8_0` GGUF blob reached `Weights ready (27.1 GiB
+mapped)` in well under a second, Metal wrap 27.1 GiB, process RSS
+~184 MiB (ATIF `2026-08-29T18-39-56-258Z`). mmap + NoCopy. Next
+built step is `ctx.alloc` (`build.stop`).
+
+`Lane::Local` still talks to `GET /api/tags` and `POST /api/chat`.
+Do not flip `--local` until stage 6 gates pass.
 
 Psionic already has a Qwen 3.8 program (CPU and CUDA serving
-`implemented_early`, Metal `partial` as of the 2026-08-28 audit). That code
-lives in the sibling repo. This repo does not depend on it.
+`implemented_early`, Metal `partial` as of the 2026-08-28 audit). That
+code lives in the sibling repo. This repo imports only the narrow
+`crates/psionic-gguf` leaf through `map.done`. It does not depend on
+`psionic-serve`.
 
 `psionic-serve` as a crate is the wrong import unit. Its `Cargo.toml` pulls
 cluster, train, eval, research, router, catalog, and every backend. Importing
@@ -212,12 +223,10 @@ wrap" finding before Coder depends on token-time events. If the imported
 executor still completes first, either fix it in the imported crate or refuse
 Coder interactive mode until it streams.
 
-OpenAgents issues 344–347 track the product surfaces on this path.
-Issue 344 is `inference run` through `map.done`. Issue 345 is Coder TUI
-load progress through Weights ready (throttle like `prefill.pos`; the
-full teach essay stays out of the chat transcript unless the user opts
-in). Issue 346 is unload. Issue 347 is memory visualization. `--model
-psionic:` generate remains stage 4.
+OpenAgents issues 344–347 landed the product surfaces through
+`map.done` plus unload and memory. The next queue is #352 `ctx.done`
+(cache math), #353 progress bars, #354 `prompt.done`, #355
+`prefill.done`, #356 `gen.done`. `--model psionic:` remains stage 4.
 
 ## Stages
 
@@ -254,14 +263,16 @@ Stage 3 still owns mmap. OpenAgents issue 344 is `inference run` through
 `map.done`. Issues 345–347 (Coder TUI load UI, unload, memory) sit on
 top of `map.done` and run in parallel with generate. Those three landed
 (`inference unload`, `status --json` memory fields, Coder `/load` and
-`/unload`). Generate (`ctx.done` through `gen.done`) is still open.
+`/unload`). Generate is #352–#356 (`ctx.done` through `gen.done`).
 
 Model store, `add`/`models`/`doctor`. Optional loopback `serve` if it is
 cheaper than a second API.
 
 **Exit:** `openagents inference run --prompt …` prints `Inference
 complete` on the fixture. `openagents inference doctor` is green on a
-machine with the fixture.
+machine with the fixture. Default runtime context for `ctx.done` is
+4096. F16 KV for the 27B-class file is `128 KiB * n_ctx` (512 MiB at
+4096). GDN bytes stay published separately and do not follow `n_ctx`.
 
 ### 4. Coder tool loop
 
