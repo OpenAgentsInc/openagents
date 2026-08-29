@@ -32,6 +32,21 @@ mod macos {
     ) -> *mut c_void;
 
     static FNS: OnceLock<Option<MetalFns>> = OnceLock::new();
+    static DEVICE: OnceLock<DevicePtr> = OnceLock::new();
+
+    struct DevicePtr(*mut c_void);
+    unsafe impl Send for DevicePtr {}
+    unsafe impl Sync for DevicePtr {}
+
+    fn shared_device() -> Option<*mut c_void> {
+        let fns = fns()?;
+        let slot = DEVICE.get_or_init(|| DevicePtr(unsafe { (fns.create_device)() }));
+        if slot.0.is_null() {
+            None
+        } else {
+            Some(slot.0)
+        }
+    }
 
     struct MetalFns {
         create_device: CreateDevice,
@@ -96,10 +111,10 @@ mod macos {
     }
 
     pub struct MetalShared {
-        device: *mut c_void,
-        buffer: *mut c_void,
+        pub(crate) device: *mut c_void,
+        pub(crate) buffer: *mut c_void,
         pub length: u64,
-        release: ObjcRelease,
+        pub(crate) release: ObjcRelease,
     }
 
     unsafe impl Send for MetalShared {}
@@ -111,9 +126,7 @@ mod macos {
                 if !self.buffer.is_null() {
                     (self.release)(self.buffer);
                 }
-                if !self.device.is_null() {
-                    (self.release)(self.device);
-                }
+                // Process-wide device is reused for compute pipelines.
             }
         }
     }
@@ -124,10 +137,7 @@ mod macos {
             return Err(String::from("empty mapping"));
         }
         unsafe {
-            let device = (fns.create_device)();
-            if device.is_null() {
-                return Err(String::from("no Metal device"));
-            }
+            let device = shared_device().ok_or_else(|| String::from("no Metal device"))?;
             let buffer = (fns.new_buffer)(
                 device,
                 fns.sel_new_buffer,
@@ -137,7 +147,6 @@ mod macos {
                 ptr::null_mut(),
             );
             if buffer.is_null() {
-                (fns.release)(device);
                 return Err(String::from("newBufferWithBytesNoCopy returned nil"));
             }
             Ok(MetalShared {

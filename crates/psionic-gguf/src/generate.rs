@@ -4,8 +4,8 @@
 use crate::mmap::MappedWeights;
 use crate::tokenizer::TokenizerTables;
 
-const Q8_BLOCK: usize = 34;
-const Q8_K: usize = 32;
+pub(crate) const Q8_BLOCK: usize = 34;
+pub(crate) const Q8_K: usize = 32;
 
 pub fn embed_token(mapped: &MappedWeights, token: u32, width: usize) -> Option<Vec<f32>> {
     decode_row(mapped, "token_embd.weight", token as usize, width)
@@ -97,7 +97,7 @@ pub(crate) fn matvec(mapped: &MappedWeights, name: &str, x: &[f32]) -> Option<Ve
     let src = unsafe { std::slice::from_raw_parts(view.data, view.len) };
     match view.info.ggml_type {
         0 => matvec_f32(src, x),
-        8 => matvec_q8(src, x),
+        8 => crate::metal_gemm::try_q8_matvec(mapped, name, x).or_else(|| matvec_q8(src, x)),
         _ => None,
     }
 }
@@ -119,6 +119,10 @@ fn matvec_f32(src: &[u8], x: &[f32]) -> Option<Vec<f32>> {
         out[r] = acc;
     }
     Some(out)
+}
+
+pub(crate) fn matvec_q8_bytes(src: &[u8], x: &[f32]) -> Option<Vec<f32>> {
+    matvec_q8(src, x)
 }
 
 fn matvec_q8(src: &[u8], x: &[f32]) -> Option<Vec<f32>> {

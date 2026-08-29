@@ -11,3 +11,6 @@ libc = "0.2"
 memmap2 = "0.9"
 serde.workspace = true
 sha2.workspace = true
+
+[build-dependencies]
+cc = "1"

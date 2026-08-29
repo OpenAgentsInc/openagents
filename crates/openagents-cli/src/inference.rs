@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use psionic_gguf::format::ParseError;
 use psionic_gguf::metal_wrap::MetalShared;
@@ -908,7 +908,7 @@ fn map_weights(
         walk.printer
             .ok("map.metal", "Wrapping mmap as Metal shared buffer");
         match psionic_gguf::metal_wrap::wrap_shared(&mapped.mmap) {
-            Ok(buf) => metal_keep = Some(buf),
+            Ok(buf) => metal_keep = Some(Arc::new(buf)),
             Err(reason) => {
                 if matches!(backend, InferenceBackend::Metal) {
                     walk.printer.fail(
@@ -1142,6 +1142,11 @@ fn continue_prefill_gen(
     walk.printer.ok("prefill.start", "Prefill starting");
     if walk.hit("prefill.start") {
         return Ok(());
+    }
+    let metal = current_metal();
+    let _gemm = psionic_gguf::metal_gemm::bind(metal.as_deref());
+    if metal.is_some() {
+        walk.printer.ok("gemm.metal", "Q8 GEMM on Metal");
     }
 
     let n = tokens.len() as u64;
@@ -1433,6 +1438,13 @@ extern "C" fn on_sigint(_: libc::c_int) {
     CANCELLED.store(true, Ordering::SeqCst);
 }
 
+fn current_metal() -> Option<Arc<MetalShared>> {
+    holder()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().and_then(|session| session.metal.clone()))
+}
+
 fn with_mapped<R>(f: impl FnOnce(&MappedWeights) -> R) -> Option<R> {
     let guard = holder().lock().ok()?;
     let session = guard.as_ref()?;
@@ -1440,7 +1452,7 @@ fn with_mapped<R>(f: impl FnOnce(&MappedWeights) -> R) -> Option<R> {
 }
 
 struct LoadedSession {
-    metal: Option<MetalShared>,
+    metal: Option<Arc<MetalShared>>,
     /// Held until unload so the mapping stays resident. Dropped after Metal.
     mapped: MappedWeights,
     mmap_bytes: u64,

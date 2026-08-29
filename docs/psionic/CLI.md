@@ -443,6 +443,7 @@ list). The id stays `prompt.done`.
 | --- | --- |
 | `prefill.start` | `Prefill starting` |
 | `graph.hybrid` | `Decoder graph is qwen35 hybrid` (hybrid files only) |
+| `gemm.metal` | `Q8 GEMM on Metal` (Metal backend only) |
 | `prefill.pos` | `Prefill position {i}/{n}` |
 | `prefill.done` | `Prefill complete` |
 

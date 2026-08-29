@@ -232,8 +232,9 @@ Coder interactive mode until it streams.
 
 OpenAgents issues 344–347 and 352–356 landed load through fixture
 `gen.done`. Hybrid quality (#357) recorded a 27B greedy 32-token match
-vs Ollama. The next queue is [PARITY.md](./PARITY.md): Metal tok/s
-(#358), remaining tokenizer work (#359), sampling (#360), then
+vs Ollama. Metal Q8 matvec (#358) is on the shared buffer; tiled
+`mul_mat_q8_0` is still required to beat warm Ollama tok/s. Next:
+remaining tokenizer work (#359), sampling (#360), then
 `--model psionic:` (stage 4, #362). Bench (#361) already landed.
 
 ## Stages
