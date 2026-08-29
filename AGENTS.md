@@ -554,11 +554,6 @@ is Rust. Phoenix Effect-or-Elixir questions belong in
   leaf consumed by `crates/openagents-cli`. It is distinct from Cloud
   `oa-node` Psionic worker attachment. Do not import `psionic-serve`,
   train, cluster, or mlx crates.
-  **Amended 2026-08-29 (OpenAgents #344):** the workspace also contains
-  `crates/psionic-gguf`, the narrow local-inference GGUF parse/mmap/Metal
-  leaf consumed by `crates/openagents-cli`. It is distinct from Cloud
-  `oa-node` Psionic worker attachment. Do not import `psionic-serve`,
-  train, cluster, or mlx crates.
 - **Mobile policy (owner decision, amended 2026-08-27):** the OpenAgents mobile
   application, push worker, scheduler, and OTA service are retired. No installed
   users or store listing require a compatibility path. Preserve database rows
