@@ -45,7 +45,7 @@ line takes the next `rc.N`. The bucket already holds `0.2.0-rc8`,
 `0.2.0-rc.8`, `0.2.0-rc9`, `0.2.0-rc.10`, `0.2.0-rc.11`, `0.2.0-rc.12`,
 `0.2.0-rc.13`, `0.2.0-rc.14`, `0.2.0-rc.15`, `0.2.0-rc.16`,
 `0.2.0-rc.17`, and `0.2.0-rc.18`. Do not reuse 8 through 18. The next
-dotted name is `0.2.0-rc.19`.
+dotted name is `0.2.0-rc.20`.
 
 `--version` must already be the `openagents-cli` version in
 `crates/openagents-cli/Cargo.toml` and in `Cargo.lock`, and

@@ -265,6 +265,7 @@ struct BenchTimes {
     gen_ms: u64,
     prompt_tokens: u64,
     generated: u32,
+    graph: String,
 }
 
 struct Walk {
@@ -469,6 +470,7 @@ fn walk_run(opts: WalkOpts) -> Result<(), InferenceExit> {
                 gen_ms: 0,
                 prompt_tokens: 0,
                 generated: 0,
+                graph: String::from(psionic_gguf::qwen35::GRAPH_STUB),
             })
         }),
     };
@@ -1090,11 +1092,7 @@ fn continue_prompt(walk: &Walk, meta: &psionic_gguf::GgufMeta) -> Result<(), Inf
     let template = meta
         .get("tokenizer.chat_template")
         .and_then(psionic_gguf::format::GgufValue::as_str);
-    let rendered = if template.is_some_and(|t| t.contains("{%") || t.contains("{{ messages")) {
-        render_chat(prompt, None)
-    } else {
-        render_chat(prompt, template)
-    };
+    let rendered = render_chat(prompt, template);
 
     walk.printer.ok("prompt.tokenize", "Tokenizing prompt");
     if walk.hit("prompt.tokenize") {
@@ -1145,15 +1143,37 @@ fn continue_prefill_gen(
 
     let n = tokens.len() as u64;
     let every = if n > 64 { 32 } else { 1 };
-    for i in 1..=n {
+    let width = meta.kv_u64("qwen35.embedding_length").unwrap_or(8) as usize;
+    let hybrid = with_mapped(psionic_gguf::qwen35::has_hybrid_graph).unwrap_or(false);
+    if hybrid {
+        walk.printer
+            .ok("graph.hybrid", "Decoder graph is qwen35 hybrid");
+    }
+    if let Some(times) = &walk.times {
+        if let Ok(mut t) = times.lock() {
+            t.graph = if hybrid {
+                String::from(psionic_gguf::qwen35::GRAPH_HYBRID)
+            } else {
+                String::from(psionic_gguf::qwen35::GRAPH_STUB)
+            };
+        }
+    }
+    let mut decode = if hybrid {
+        with_mapped(|mapped| psionic_gguf::qwen35::new_state(meta, mapped))
+    } else {
+        None
+    };
+    let mut hidden = vec![0f32; width];
+    for (i, token) in tokens.iter().copied().enumerate() {
         if cancelled() {
             walk.printer.ok("gen.stop.cancel", "Stop: cancelled");
             return Err(InferenceExit::Failed);
         }
-        if should_emit(i, n, every) {
-            let short = format!("Prefill position {i}/{n}");
+        let pos = (i as u64) + 1;
+        if should_emit(pos, n, every) {
+            let short = format!("Prefill position {pos}/{n}");
             let message = if n > 32 {
-                format_bar("Prefill", i, n, "pos").unwrap_or(short)
+                format_bar("Prefill", pos, n, "pos").unwrap_or(short)
             } else {
                 short
             };
@@ -1161,21 +1181,34 @@ fn continue_prefill_gen(
                 "prefill.pos",
                 &message,
                 json!({
-                    "pct": if n == 0 { 0 } else { (i * 100) / n },
-                    "done": i,
+                    "pct": if n == 0 { 0 } else { (pos * 100) / n },
+                    "done": pos,
                     "total": n,
                     "unit": "pos",
                     "label": "Prefill",
                 }),
             );
         }
+        if let Some(state) = decode.as_mut() {
+            match with_mapped(|mapped| {
+                psionic_gguf::qwen35::embed_and_forward(mapped, meta, token, state)
+            }) {
+                Some(Ok(next)) => hidden = next,
+                Some(Err(reason)) => {
+                    walk.printer
+                        .fail("prefill.fail", &format!("Hybrid prefill failed: {reason}"));
+                    return Err(InferenceExit::Failed);
+                }
+                None => {}
+            }
+        }
     }
-
-    let width = meta.kv_u64("qwen35.embedding_length").unwrap_or(8) as usize;
-    let mut hidden =
-        with_mapped(|mapped| psionic_gguf::generate::prefill_hidden(mapped, tokens, width))
-            .flatten()
-            .unwrap_or_else(|| vec![0f32; width]);
+    if decode.is_none() {
+        hidden =
+            with_mapped(|mapped| psionic_gguf::generate::prefill_hidden(mapped, tokens, width))
+                .flatten()
+                .unwrap_or(hidden);
+    }
 
     walk.printer.ok("prefill.done", "Prefill complete");
     walk.mark("prefill");
@@ -1235,7 +1268,19 @@ fn continue_prefill_gen(
         }
         generated += 1;
         last_id = id;
-        if let Some(next) =
+        if let Some(state) = decode.as_mut() {
+            match with_mapped(|mapped| {
+                psionic_gguf::qwen35::embed_and_forward(mapped, meta, id, state)
+            }) {
+                Some(Ok(next)) => hidden = next,
+                Some(Err(reason)) => {
+                    walk.printer
+                        .fail("gen.fail", &format!("Hybrid decode failed: {reason}"));
+                    return Err(InferenceExit::Failed);
+                }
+                None => {}
+            }
+        } else if let Some(next) =
             with_mapped(|mapped| psionic_gguf::generate::embed_token(mapped, id, width)).flatten()
         {
             hidden = next;
@@ -1278,7 +1323,7 @@ fn emit_bench_summary(walk: &Walk) {
     let mut doc = json!({
         "engine": "openagents",
         "version": env!("CARGO_PKG_VERSION"),
-        "graph": "embed_lmhead",
+        "graph": t.graph,
         "map_ms": t.map_ms,
         "ctx_ms": t.ctx_ms,
         "prompt_ms": t.prompt_ms,
@@ -1321,12 +1366,8 @@ fn compare_ollama(tag: &str, prompt: &str, max_tokens: u32) -> Result<(u64, u32)
         "options": {"num_predict": max_tokens, "temperature": 0}
     });
     let started = std::time::Instant::now();
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| e.to_string())?;
-    let response = rt.block_on(async {
-        reqwest::Client::builder()
+    let value = block_on_detached(async move {
+        let response = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(|e| e.to_string())?
@@ -1334,12 +1375,12 @@ fn compare_ollama(tag: &str, prompt: &str, max_tokens: u32) -> Result<(u64, u32)
             .json(&body)
             .send()
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("HTTP {}", response.status()));
+        }
+        response.json::<Value>().await.map_err(|e| e.to_string())
     })?;
-    if !response.status().is_success() {
-        return Err(format!("HTTP {}", response.status()));
-    }
-    let value: Value = rt.block_on(response.json()).map_err(|e| e.to_string())?;
     let ms = started.elapsed().as_millis() as u64;
     let text = value.get("response").and_then(Value::as_str).unwrap_or("");
     let tokens = value
@@ -1347,6 +1388,25 @@ fn compare_ollama(tag: &str, prompt: &str, max_tokens: u32) -> Result<(u64, u32)
         .and_then(Value::as_u64)
         .unwrap_or(text.split_whitespace().count() as u64) as u32;
     Ok((ms, tokens))
+}
+
+fn block_on_detached<T, F>(fut: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: std::future::Future<Output = Result<T, String>> + Send + 'static,
+{
+    std::thread::Builder::new()
+        .name("oa-ollama-compare".into())
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| e.to_string())?
+                .block_on(fut)
+        })
+        .map_err(|e| e.to_string())?
+        .join()
+        .map_err(|_| String::from("ollama compare thread panicked"))?
 }
 
 static CANCELLED: AtomicBool = AtomicBool::new(false);

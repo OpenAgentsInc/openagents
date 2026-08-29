@@ -5,6 +5,38 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.20
+
+- issues: #357, #359
+- commits: this change
+- contracts-specs: producer name `X.Y.Z-rc.N`
+- invariants: published `<version, platform>` objects stay immutable
+- evidence: `hybrid_fixture_bench_names_qwen35_hybrid`;
+  `bench_compare_ollama_skips_without_nested_runtime_panic`
+- lane: cursor session 7822942d
+
+The `openagents-cli` crate is `0.2.0-rc.20`. rc.19 is published and
+immutable. This line is the CPU hybrid graph, tokenizer specials, and
+the `--compare-ollama` nested-runtime fix.
+
+## Hybrid qwen35 CPU graph and tokenizer specials (#357, #359)
+
+- issues: #357, #359
+- commits: this change
+- contracts-specs: `docs/psionic/PARITY.md`; `docs/psionic/CLI.md`
+- invariants: no `psionic-serve` import; no `--local` flip; Ollama compare
+  does not nest a Tokio runtime
+- evidence: `hybrid_fixture_greedy_is_deterministic`;
+  `specials_are_atomic_and_newline_is_gpt2_byte`;
+  `hybrid_fixture_bench_names_qwen35_hybrid`;
+  `bench_compare_ollama_skips_without_nested_runtime_panic`
+- lane: cursor session 7822942d
+
+`inference run` / `bench` walk 64 trunk layers (skip MTP) when FFN
+tensors exist. Fixture `gen.done` stays on the four-tensor stub.
+Chat wrap treats `<|im_start|>` as one token. `--compare-ollama`
+no longer panics inside the CLI Tokio runtime.
+
 ## CLI source version is 0.2.0-rc.19
 
 - issues: #357, #358, #359, #360, #361, #362, #363, #364

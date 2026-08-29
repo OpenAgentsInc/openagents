@@ -12,6 +12,13 @@ pub fn embed_token(mapped: &MappedWeights, token: u32, width: usize) -> Option<V
         .or_else(|| decode_row(mapped, "token_embd.weight", 0, width))
 }
 
+pub(crate) fn lookup<'a>(
+    mapped: &'a MappedWeights,
+    name: &str,
+) -> Option<&'a crate::mmap::TensorView> {
+    mapped.tensors.get(name)
+}
+
 pub fn prefill_hidden(mapped: &MappedWeights, tokens: &[u32], width: usize) -> Option<Vec<f32>> {
     let last = *tokens.last()?;
     embed_token(mapped, last, width)
@@ -34,7 +41,12 @@ pub fn greedy_from_hidden(
     Some((id, tok.token_piece(id)))
 }
 
-fn decode_row(mapped: &MappedWeights, name: &str, row: usize, width: usize) -> Option<Vec<f32>> {
+pub(crate) fn decode_row(
+    mapped: &MappedWeights,
+    name: &str,
+    row: usize,
+    width: usize,
+) -> Option<Vec<f32>> {
     let view = mapped.tensors.get(name)?;
     let src = unsafe { std::slice::from_raw_parts(view.data, view.len) };
     match view.info.ggml_type {
@@ -80,7 +92,7 @@ fn decode_q8_row(src: &[u8], row: usize, width: usize) -> Option<Vec<f32>> {
     Some(out)
 }
 
-fn matvec(mapped: &MappedWeights, name: &str, x: &[f32]) -> Option<Vec<f32>> {
+pub(crate) fn matvec(mapped: &MappedWeights, name: &str, x: &[f32]) -> Option<Vec<f32>> {
     let view = mapped.tensors.get(name)?;
     let src = unsafe { std::slice::from_raw_parts(view.data, view.len) };
     match view.info.ggml_type {
@@ -172,7 +184,7 @@ fn q8_row_dot(
     acc
 }
 
-fn rmsnorm(x: &[f32], w: &[f32]) -> Vec<f32> {
+pub(crate) fn rmsnorm(x: &[f32], w: &[f32]) -> Vec<f32> {
     let mut ss = 0f32;
     for v in x {
         ss += *v * *v;
@@ -184,7 +196,7 @@ fn rmsnorm(x: &[f32], w: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-fn f16_to_f32(bytes: [u8; 2]) -> f32 {
+pub(crate) fn f16_to_f32(bytes: [u8; 2]) -> f32 {
     let h = u16::from_le_bytes(bytes);
     let sign = u32::from(h >> 15);
     let exp = u32::from((h >> 10) & 0x1f);

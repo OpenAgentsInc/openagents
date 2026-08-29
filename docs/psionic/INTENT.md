@@ -28,8 +28,9 @@ OpenAgents issues for this program:
 - https://openagents.com/OpenAgentsInc/openagents/issues/363 — Coder stream and cancel
 - https://openagents.com/OpenAgentsInc/openagents/issues/364 — Default `--local` after replacement gates
 
-Compare contract: [PARITY.md](./PARITY.md). Slices 7–10 landed. Coder
-`--local` generate remains later.
+Compare contract: [PARITY.md](./PARITY.md). Slices 7–10 and the CPU
+hybrid graph (#357) landed. Tokenizer specials (#359) landed. Coder
+`--local` generate remains later. Metal tok/s is #358.
 
 ## Outcome
 

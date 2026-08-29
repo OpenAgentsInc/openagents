@@ -100,6 +100,36 @@ impl GgufMeta {
     pub fn kv_u64(&self, key: &str) -> Option<u64> {
         self.get(key).and_then(GgufValue::as_u64)
     }
+
+    pub fn kv_f32(&self, key: &str) -> Option<f32> {
+        match self.get(key)? {
+            GgufValue::F32(v) => Some(*v),
+            GgufValue::F64(v) => Some(*v as f32),
+            GgufValue::U32(v) => Some(*v as f32),
+            GgufValue::U64(v) => Some(*v as f32),
+            _ => None,
+        }
+    }
+
+    pub fn kv_i64_array(&self, key: &str) -> Option<Vec<i64>> {
+        match self.get(key)? {
+            GgufValue::Array(items) => items
+                .iter()
+                .map(|item| match item {
+                    GgufValue::I8(v) => Some(*v as i64),
+                    GgufValue::I16(v) => Some(*v as i64),
+                    GgufValue::I32(v) => Some(*v as i64),
+                    GgufValue::I64(v) => Some(*v),
+                    GgufValue::U8(v) => Some(*v as i64),
+                    GgufValue::U16(v) => Some(*v as i64),
+                    GgufValue::U32(v) => Some(*v as i64),
+                    GgufValue::U64(v) if *v <= i64::MAX as u64 => Some(*v as i64),
+                    _ => None,
+                })
+                .collect(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -317,18 +347,47 @@ fn element_size(ty: u32) -> Option<u64> {
 /// Write a tiny admitted Qwen 3.8-family GGUF for tests. Padded to 16 KiB so
 /// Metal `newBufferWithBytesNoCopy` can wrap a page-sized mapping.
 pub fn write_qwen35_fixture(path: &Path) -> std::io::Result<u64> {
+    write_qwen35_fixture_kind(path, false)
+}
+
+/// One Gated DeltaNet layer plus FFN so the hybrid graph can run in CI.
+pub fn write_qwen35_hybrid_fixture(path: &Path) -> std::io::Result<u64> {
+    write_qwen35_fixture_kind(path, true)
+}
+
+fn write_qwen35_fixture_kind(path: &Path, hybrid: bool) -> std::io::Result<u64> {
     let mut body = Vec::new();
     body.extend_from_slice(&MAGIC);
     body.extend_from_slice(&3u32.to_le_bytes());
 
     let tokens = ["a", "b", "c", "d"];
     let merges = ["a b"];
-    let tensors: &[(&str, &[u64])] = &[
+    let stub: &[(&str, &[u64])] = &[
         ("token_embd.weight", &[8, 4]),
         ("output.weight", &[8, 4]),
         ("output_norm.weight", &[8]),
         ("blk.0.attn_norm.weight", &[8]),
     ];
+    let hybrid_tensors: &[(&str, &[u64])] = &[
+        ("token_embd.weight", &[8, 4]),
+        ("output.weight", &[8, 4]),
+        ("output_norm.weight", &[8]),
+        ("blk.0.attn_norm.weight", &[8]),
+        ("blk.0.post_attention_norm.weight", &[8]),
+        ("blk.0.attn_qkv.weight", &[8, 12]),
+        ("blk.0.attn_gate.weight", &[8, 4]),
+        ("blk.0.ssm_alpha.weight", &[8, 1]),
+        ("blk.0.ssm_beta.weight", &[8, 1]),
+        ("blk.0.ssm_out.weight", &[4, 8]),
+        ("blk.0.ssm_conv1d.weight", &[2, 12]),
+        ("blk.0.ssm_norm.weight", &[4]),
+        ("blk.0.ssm_a", &[1]),
+        ("blk.0.ssm_dt.bias", &[1]),
+        ("blk.0.ffn_gate.weight", &[8, 16]),
+        ("blk.0.ffn_up.weight", &[8, 16]),
+        ("blk.0.ffn_down.weight", &[16, 8]),
+    ];
+    let tensors = if hybrid { hybrid_tensors } else { stub };
 
     let kv: Vec<(&str, GgufValue)> = vec![
         ("general.architecture", GgufValue::String("qwen35".into())),
@@ -339,6 +398,15 @@ pub fn write_qwen35_fixture(path: &Path) -> std::io::Result<u64> {
         ("qwen35.context_length", GgufValue::U32(32)),
         ("qwen35.full_attention_interval", GgufValue::U32(4)),
         ("qwen35.nextn.predict_layers", GgufValue::U32(0)),
+        ("qwen35.nextn_predict_layers", GgufValue::U32(0)),
+        ("qwen35.ssm.conv_kernel", GgufValue::U32(2)),
+        ("qwen35.ssm.state_size", GgufValue::U32(4)),
+        ("qwen35.ssm.group_count", GgufValue::U32(1)),
+        ("qwen35.ssm.time_step_rank", GgufValue::U32(1)),
+        ("qwen35.ssm.inner_size", GgufValue::U32(4)),
+        ("qwen35.attention.head_count", GgufValue::U32(1)),
+        ("qwen35.attention.head_count_kv", GgufValue::U32(1)),
+        ("qwen35.attention.key_length", GgufValue::U32(8)),
         ("tokenizer.ggml.model", GgufValue::String("gpt2".into())),
         (
             "tokenizer.ggml.tokens",

@@ -1,8 +1,9 @@
 # Ollama parity and speed program
 
 - Class: owner-accepted compare contract
-- Status: accepted 2026-08-29; bench lands in this wave (#361). Hybrid
-  quality (#357) and Metal tok/s (#358) are open.
+- Status: accepted 2026-08-29; bench landed (#361). Hybrid CPU graph
+  (#357) and tokenizer specials (#359) land in this wave. Metal tok/s
+  (#358) is still open.
 - Ledger: [INTENT.md](./INTENT.md), [PLAN.md](./PLAN.md), [CLI.md](./CLI.md)
 - Ollama reference: [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md)
 - Decoder math: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md)
@@ -38,8 +39,11 @@ Do not check the blob into git. Do not put 27B weights in CI.
 | Tokens | not quality-comparable | holdout |
 | Measure | `inference bench` | `--compare-ollama` when the daemon is up |
 
-`graph` in the bench JSON is `embed_lmhead` until #357 lands. Do not
-publish a quality-parity sentence while that field is `embed_lmhead`.
+`graph` is `qwen35_hybrid` when `blk.0.ffn_down.weight` exists (27B
+and the hybrid fixture). The four-tensor CI file stays `embed_lmhead`.
+Do not publish a quality-parity sentence until a 27B greedy holdout
+matches Ollama token IDs. The CPU hybrid is the quality graph, not
+the speed path.
 
 ## Compare axes
 

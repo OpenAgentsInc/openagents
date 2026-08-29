@@ -40,7 +40,15 @@ pub fn runtime_n_ctx(meta: &GgufMeta, requested: Option<u64>) -> u64 {
 }
 
 pub fn plan_caches(meta: &GgufMeta, n_ctx: u64) -> CachePlan {
-    let n_layers = meta.kv_u64("qwen35.block_count").unwrap_or(1).max(1);
+    let nextn = meta
+        .kv_u64("qwen35.nextn_predict_layers")
+        .or_else(|| meta.kv_u64("qwen35.nextn.predict_layers"))
+        .unwrap_or(0);
+    let n_layers = meta
+        .kv_u64("qwen35.block_count")
+        .unwrap_or(1)
+        .saturating_sub(nextn)
+        .max(1);
     let interval = meta
         .kv_u64("qwen35.full_attention_interval")
         .unwrap_or(4)
@@ -191,5 +199,52 @@ mod tests {
         assert_eq!(plan.n_gdn, 48);
         // F16 K+V: 2 * 16 * 4 * 256 * n_ctx * 2 = 64 KiB * n_ctx
         assert_eq!(plan.kv_bytes, 64 * 1024 * 4096);
+    }
+
+    #[test]
+    fn mtp_extra_layer_is_not_a_cache_slot() {
+        let meta = GgufMeta {
+            version: 3,
+            n_tensors: 0,
+            n_kv: 0,
+            kv: vec![
+                (
+                    "qwen35.block_count".into(),
+                    crate::format::GgufValue::U32(65),
+                ),
+                (
+                    "qwen35.nextn_predict_layers".into(),
+                    crate::format::GgufValue::U32(1),
+                ),
+                (
+                    "qwen35.full_attention_interval".into(),
+                    crate::format::GgufValue::U32(4),
+                ),
+                (
+                    "qwen35.embedding_length".into(),
+                    crate::format::GgufValue::U32(5120),
+                ),
+                (
+                    "qwen35.attention.head_count_kv".into(),
+                    crate::format::GgufValue::U32(4),
+                ),
+                (
+                    "qwen35.attention.head_count".into(),
+                    crate::format::GgufValue::U32(24),
+                ),
+                (
+                    "qwen35.attention.key_length".into(),
+                    crate::format::GgufValue::U32(256),
+                ),
+            ],
+            tensors: vec![],
+            data_offset: 0,
+            alignment: 32,
+            file_size: 0,
+        };
+        let plan = plan_caches(&meta, 4096);
+        assert_eq!(plan.n_layers, 64);
+        assert_eq!(plan.n_full, 16);
+        assert_eq!(plan.n_gdn, 48);
     }
 }

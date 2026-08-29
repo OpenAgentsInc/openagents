@@ -226,6 +226,74 @@ fn bench_fixture_prints_json_summary() {
 }
 
 #[test]
+fn bench_compare_ollama_skips_without_nested_runtime_panic() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "bench",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--prompt",
+            "hello",
+            "--max-tokens",
+            "1",
+            "--compare-ollama",
+            "oa-missing-compare-tag",
+        ])
+        .output()
+        .expect("run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "compare must not panic a nested tokio runtime: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Cannot start a runtime from within a runtime"),
+        "{stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|_| panic!("bench stdout must be JSON, got {stdout:?}"));
+    assert_eq!(v["graph"], "embed_lmhead");
+    assert!(
+        v["ollama_skipped"].as_bool() == Some(true) || v.get("ollama_ms").is_some(),
+        "{v}"
+    );
+}
+
+#[test]
+fn hybrid_fixture_bench_names_qwen35_hybrid() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("qwen35.gguf");
+    psionic_gguf::write_qwen35_hybrid_fixture(&path).expect("write");
+    let output = bin()
+        .args([
+            "inference",
+            "bench",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--prompt",
+            "hello",
+            "--max-tokens",
+            "1",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|_| panic!("bench stdout must be JSON, got {stdout:?}"));
+    assert_eq!(v["graph"], "qwen35_hybrid", "{v}");
+    assert!(v["generated"].as_u64().unwrap() >= 1, "{v}");
+}
+
+#[test]
 fn help_lists_inference() {
     let output = bin().args(["inference", "--help"]).output().expect("run");
     assert!(output.status.success());

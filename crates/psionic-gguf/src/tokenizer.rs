@@ -40,10 +40,13 @@ pub fn load_tokenizer(meta: &GgufMeta) -> Result<TokenizerTables, String> {
     })
 }
 
-/// Qwen chat wrap when GGUF has no `tokenizer.chat_template`.
+/// Qwen chat wrap. Jinja `tokenizer.chat_template` is not executed.
 pub fn render_chat(prompt: &str, template: Option<&str>) -> String {
     if let Some(t) = template {
-        if t.contains("{{") {
+        if t.contains("{%") || t.contains("{{ messages") {
+            return qwen_user_wrap(prompt);
+        }
+        if t.contains("{{") && !t.contains("{%") {
             return t
                 .replace("{{ content }}", prompt)
                 .replace("{{content}}", prompt)
@@ -53,6 +56,10 @@ pub fn render_chat(prompt: &str, template: Option<&str>) -> String {
             return format!("{t}\n{prompt}");
         }
     }
+    qwen_user_wrap(prompt)
+}
+
+fn qwen_user_wrap(prompt: &str) -> String {
     format!("<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n")
 }
 
@@ -64,7 +71,8 @@ impl TokenizerTables {
             .unwrap_or_else(|| format!("<{id}>"))
     }
 
-    /// GPT-2 style BPE. Unknown characters become token 0 (deterministic).
+    /// GPT-2 / Qwen BPE. Special tokens match as whole pieces first.
+    /// Unknown characters become token 0 (deterministic).
     pub fn encode(&self, text: &str) -> Result<Vec<u32>, String> {
         if self.tokens.is_empty() {
             return Err(String::from("empty vocab"));
@@ -77,16 +85,111 @@ impl TokenizerTables {
         for (i, merge) in self.merges.iter().enumerate() {
             rank.insert(merge.as_str(), i);
         }
+        let specials = specials_longest(&self.tokens);
+        let use_bytes = self.tokens.iter().any(|t| t == "Ċ" || t == "Ġ");
 
         let mut ids = Vec::new();
-        for word in split_words(text) {
-            ids.extend(bpe_word(&word, &id_of, &rank));
+        for span in split_specials(text, &specials) {
+            match span {
+                Span::Special(tok) => {
+                    if let Some(&id) = id_of.get(tok) {
+                        ids.push(id);
+                    }
+                }
+                Span::Text(piece) => {
+                    for word in split_words(piece) {
+                        let encoded = if use_bytes { gpt2_bytes(&word) } else { word };
+                        ids.extend(bpe_word(&encoded, &id_of, &rank));
+                    }
+                }
+            }
         }
         if ids.is_empty() {
             ids.push(0);
         }
         Ok(ids)
     }
+}
+
+enum Span<'a> {
+    Special(&'a str),
+    Text(&'a str),
+}
+
+fn specials_longest(tokens: &[String]) -> Vec<String> {
+    let mut specials: Vec<String> = tokens
+        .iter()
+        .filter(|t| t.starts_with("<|") && t.ends_with("|>"))
+        .cloned()
+        .collect();
+    specials.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    specials
+}
+
+fn split_specials<'a>(text: &'a str, specials: &[String]) -> Vec<Span<'a>> {
+    if specials.is_empty() {
+        return vec![Span::Text(text)];
+    }
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < text.len() {
+        let rest = &text[i..];
+        let mut hit: Option<&str> = None;
+        for s in specials {
+            if rest.starts_with(s.as_str()) {
+                hit = Some(s.as_str());
+                break;
+            }
+        }
+        if let Some(s) = hit {
+            out.push(Span::Special(&text[i..i + s.len()]));
+            i += s.len();
+        } else {
+            let start = i;
+            let ch = text[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+            i += ch;
+            while i < text.len() {
+                let rest = &text[i..];
+                if specials.iter().any(|s| rest.starts_with(s.as_str())) {
+                    break;
+                }
+                i += rest.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+            }
+            let _ = bytes;
+            out.push(Span::Text(&text[start..i]));
+        }
+    }
+    out
+}
+
+fn gpt2_bytes(text: &str) -> String {
+    text.as_bytes().iter().copied().map(encode_byte).collect()
+}
+
+fn byte_encoder() -> [char; 256] {
+    let mut bs: Vec<u8> = (b'!'..=b'~').collect();
+    bs.extend(0xA1u8..=0xAC);
+    bs.extend(0xAEu8..=0xFF);
+    let mut cs: Vec<u32> = bs.iter().map(|b| *b as u32).collect();
+    let mut n = 0u32;
+    for b in 0u8..=255 {
+        if !bs.contains(&b) {
+            bs.push(b);
+            cs.push(256 + n);
+            n += 1;
+        }
+    }
+    let mut out = ['\0'; 256];
+    for (b, c) in bs.into_iter().zip(cs.into_iter()) {
+        out[b as usize] = char::from_u32(c).unwrap_or('\u{FFFD}');
+    }
+    out
+}
+
+fn encode_byte(b: u8) -> char {
+    static TABLE: std::sync::OnceLock<[char; 256]> = std::sync::OnceLock::new();
+    TABLE.get_or_init(byte_encoder)[b as usize]
 }
 
 fn split_words(text: &str) -> Vec<String> {
@@ -162,5 +265,32 @@ mod tests {
         assert!(!ids.is_empty());
         let again = tok.encode(&rendered).unwrap();
         assert_eq!(ids, again);
+    }
+
+    #[test]
+    fn specials_are_atomic_and_newline_is_gpt2_byte() {
+        let tok = TokenizerTables {
+            model: String::from("gpt2"),
+            n_tokens: 6,
+            n_merges: 0,
+            bos: 0,
+            eos: 1,
+            tokens: vec![
+                "<|im_start|>".into(),
+                "<|im_end|>".into(),
+                "user".into(),
+                "hello".into(),
+                "assistant".into(),
+                "Ċ".into(),
+            ],
+            merges: vec![],
+        };
+        let rendered = render_chat("hello", Some("{% messages %}"));
+        let ids = tok.encode(&rendered).unwrap();
+        assert_eq!(
+            ids,
+            vec![0, 2, 5, 3, 1, 5, 0, 4, 5],
+            "wrap must be specials + user + Ċ + hello + …, got {ids:?}"
+        );
     }
 }

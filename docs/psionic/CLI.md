@@ -92,7 +92,9 @@ openagents inference run
 
 Stdout is one JSON object (`map_ms`, `ctx_ms`, `prefill_ms`, `gen_ms`,
 `prompt_tokens`, `generated`, `tok_per_s`, `graph`, `engine`, `version`).
-Teach lines stay on stderr. `graph` is `embed_lmhead` until #357.
+Teach lines stay on stderr. `graph` is `qwen35_hybrid` when the file
+has decoder FFN tensors, else `embed_lmhead`. `--compare-ollama` runs
+on a detached thread so it does not nest Tokio runtimes.
 
 `--verbose` (global) adds debug logs. It does not replace `--teach`.
 Teach is the stable, user-facing script. Verbose is for developers
