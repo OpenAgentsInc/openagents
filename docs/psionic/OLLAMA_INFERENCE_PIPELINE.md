@@ -6,7 +6,8 @@
 - Source: `/Users/christopherdavid/work/projects/repos/ollama` at
   `f96e7aa0513b9973a0ccc71be414c2ecb9d65b1a` (`main`, commit message
   `lint fix (#18081)`)
-- Related: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md)
+- Related: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md),
+  [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
 
 This document is how Ollama, in that checkout, takes a model from disk to a
 streamed token. It is not a comparison with Psionic. It is not a claim that
@@ -54,7 +55,10 @@ GGUF (`llama-server`)
   false. The scheduler calls `llm.LoadModel` to read GGUF *metadata*, then
   `llm.NewLlamaServer`, which starts the bundled `llama-server` binary with
   `--model` pointing at the blob. llama.cpp maps the file, places layers on
-  CPU and GPU, and serves `/completion` and `/v1/chat/completions`.
+  CPU and GPU, and serves `/completion` and `/v1/chat/completions`. The
+  bytes of that load and the generate graph are
+  [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md).
+  OpenAgents does that work in-process and does not start this child.
 
 Safetensors / MLX (`mlxrunner`)
 : `Model.Config.ModelFormat` is `"safetensors"`. `Model.IsMLX()` is true.
@@ -379,7 +383,11 @@ The HTTP process never holds the weight tensors. If the child dies
 - `ollama create` conversion from Hugging Face or safetensors into GGUF or
   MLX blobs (`server/create.go`, `x/create`). That is packaging, then the
   load paths above.
-- Exact ggml kernel math inside llama.cpp `b10630`. That source is fetched
-  at build time, not present as a tree in the Ollama clone.
-- Psionic's loader, admission, or Metal path. That comparison is a separate
-  document.
+- Exact ggml kernel math, mmap, Metal shared mapping, and the `qwen35`
+  graph inside llama.cpp. That walkthrough is
+  [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md),
+  against the local llama.cpp checkout. Ollama fetches pin `b10630` at
+  build time and applies `llama/compat/`; the OpenAgents in-process slice
+  implements that library path and does not spawn `llama-server`.
+- Psionic's loader, admission, or Metal path in this repository. Implementation
+  has not landed. The llama.cpp document is the contract for that work.

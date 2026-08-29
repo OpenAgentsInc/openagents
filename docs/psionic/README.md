@@ -11,6 +11,7 @@ once the gates in the plan pass.
 | [PLAN.md](./PLAN.md) | First implementation plan, crate allowlist, CLI surface, and stages |
 | [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md) | Weights-to-token walkthrough: tensors, quantization, load, decode |
 | [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md) | How Ollama loads weights and generates a token, GGUF and MLX |
+| [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md) | Lowest-level llama.cpp GGUF parse, mmap, Metal mapping, graph, Q8_0 |
 
 Related older writing stays where it is. It is evidence, not this program's
 authority:

@@ -7,6 +7,7 @@
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
 - Facts: Psionic `docs/qwen38/` in the sibling repository
+- llama.cpp bytes: [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
 
 You already run Qwen 3.8 locally through Ollama (`qwen3.8:27b-mtp-q8_0`). This
 document is the same path inside `openagents`: every step from a weight file
