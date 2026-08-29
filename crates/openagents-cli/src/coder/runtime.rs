@@ -594,6 +594,11 @@ impl Session {
         self.inner.local_session_summary()
     }
 
+    /// Place the host workspace snapshot on the next request (#316).
+    pub fn seed_workspace_snapshot(&mut self, text: &str) {
+        self.inner.seed_workspace_snapshot(text);
+    }
+
     /// Open a new local record seeded from a previous checkpoint (#315).
     ///
     /// The previous transcript stays on disk. The model-facing `messages`
@@ -1401,5 +1406,52 @@ mod tests {
             .unwrap_err();
         assert!(error.contains(&source_id), "{error}");
         assert!(error.contains("no checkpoint"), "{error}");
+    }
+
+    #[test]
+    fn a_workspace_snapshot_is_on_the_wire_and_is_not_a_tool_result() {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut session = Session::open_at(
+            Lane::Flash,
+            "flash",
+            None,
+            Vec::new(),
+            "http://127.0.0.1:1/api/v1".to_string(),
+            Some("test-token".to_string()),
+            false,
+            tx,
+        );
+        let text = crate::coder::snapshot::render(
+            &crate::coder::snapshot::GitSnapshot {
+                cwd: "/work/repo".into(),
+                inside_work_tree: true,
+                branch: Some("main".into()),
+                sha: Some("abc1234".into()),
+                ..crate::coder::snapshot::GitSnapshot::default()
+            },
+            &[],
+            None,
+        );
+        session.seed_workspace_snapshot(&text);
+        let user = session
+            .inner
+            .messages
+            .iter()
+            .find(|message| message.role == "user")
+            .and_then(|message| message.content.clone())
+            .unwrap_or_default();
+        assert!(user.contains("Workspace snapshot (host)"), "{user}");
+        assert!(user.contains("branch: main @ abc1234"), "{user}");
+        assert!(session.inner.messages.iter().all(|message| {
+            message.content.as_deref().unwrap_or_default().len()
+                <= crate::coder::snapshot::CHAR_LIMIT + 32
+        }));
+        assert!(
+            session
+                .inner
+                .messages
+                .iter()
+                .all(|message| message.tool_calls.is_none())
+        );
     }
 }

@@ -21,6 +21,7 @@ pub mod osc8;
 pub mod recall;
 pub mod runtime;
 pub mod selection;
+pub mod snapshot;
 pub mod transcript;
 pub mod tui;
 pub mod turn;

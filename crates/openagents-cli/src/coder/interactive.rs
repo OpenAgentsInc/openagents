@@ -183,6 +183,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         }
         ui.show_welcome = false;
     }
+    let checkpoint = loaded.summary.last_checkpoint.clone();
+    let snapshot_text =
+        crate::coder::snapshot::workspace_snapshot(&cwd, checkpoint.as_deref()).await;
+    ui.entries
+        .push(Entry::new(Role::Notice, snapshot_text.clone()));
     let atif_directory = loaded.store.directory().to_path_buf();
     // This session joins the local swarm: other tabs and, later, delegate
     // children discover it through this registration. Failing to register is
@@ -230,7 +235,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             let origin = origin.trim_end_matches("/api/v1").trim_end_matches('/');
             ui.identity = resolve_identity(origin, &Secret::new(token)).await;
         }
-        let opened = Session::open(
+        let mut opened = Session::open(
             lane.clone(),
             &lane_name,
             reasoning.clone(),
@@ -238,12 +243,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             false,
             tx.clone(),
         );
-        let opened = match local_store.take() {
+        opened = match local_store.take() {
             Some(store) => {
                 opened.with_local_session(store, &restored_events, options.cloud_history)
             }
             None => opened,
         };
+        opened.seed_workspace_snapshot(&snapshot_text);
         session = Some(Arc::new(Mutex::new(opened)));
     } else if let Some(token) = crate::coder::runtime::user_token() {
         let endpoint = crate::auth::resolve_endpoint(None, None)?;
@@ -253,7 +259,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             // yet an account name, and the row may only show one the server
             // gave.
             ui.identity = resolve_identity(&endpoint.origin, &token).await;
-            let opened = Session::open(
+            let mut opened = Session::open(
                 lane.clone(),
                 &lane_name,
                 reasoning.clone(),
@@ -261,12 +267,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 false,
                 tx.clone(),
             );
-            let opened = match local_store.take() {
+            opened = match local_store.take() {
                 Some(store) => {
                     opened.with_local_session(store, &restored_events, options.cloud_history)
                 }
                 None => opened,
             };
+            opened.seed_workspace_snapshot(&snapshot_text);
             session = Some(Arc::new(Mutex::new(opened)));
         } else {
             // A stored token the deployment refused. The row says the
@@ -432,12 +439,15 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                         &mut autopilot.stops,
                                         &mut autopilot_last_heartbeat,
                                     );
+                                    let live =
+                                        session.as_ref().expect("a turn ran, so a session exists");
+                                    refresh_workspace_snapshot(&mut ui, live, &cwd).await;
                                     let prompt = autopilot.iteration_prompt();
                                     start_prompt(
                                         &mut ui,
                                         prompt,
                                         Vec::new(),
-                                        session.as_ref().expect("a turn ran, so a session exists"),
+                                        live,
                                         &tx,
                                         &mut turns,
                                         &mut active_turn,
@@ -508,7 +518,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             // which account it belongs to before changing the
                             // identity row.
                             ui.identity = current_identity().await;
-                            let opened = Session::open(
+                            let mut opened = Session::open(
                                 lane.clone(),
                                 &lane_name,
                                 reasoning.clone(),
@@ -516,7 +526,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 false,
                                 tx.clone(),
                             );
-                            let opened = match local_store.take() {
+                            opened = match local_store.take() {
                                 Some(store) => opened.with_local_session(
                                     store,
                                     &restored_events,
@@ -524,6 +534,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 ),
                                 None => opened,
                             };
+                            opened.seed_workspace_snapshot(&snapshot_text);
                             session = Some(Arc::new(Mutex::new(opened)));
                             refresh_credit(&tx);
                         }
@@ -1758,6 +1769,7 @@ async fn submit(
             },
         ));
         if autopilot.engaged && matches!(turns.phase(), TurnPhase::Idle) {
+            refresh_workspace_snapshot(ui, session, cwd).await;
             let prompt = autopilot.iteration_prompt();
             start_prompt(ui, prompt, Vec::new(), session, tx, turns, active_turn).await;
             update_activity(ui, turns, prompt_queue.len());
@@ -1786,6 +1798,21 @@ async fn submit(
     start_prompt(ui, text, images, session, tx, turns, active_turn).await;
     update_activity(ui, turns, prompt_queue.len());
     commands::Outcome::Done
+}
+
+async fn refresh_workspace_snapshot(
+    ui: &mut CoderUi,
+    session: &Arc<Mutex<Session>>,
+    cwd: &std::path::Path,
+) {
+    let checkpoint = session
+        .lock()
+        .await
+        .local_session_summary()
+        .and_then(|summary| summary.last_checkpoint.clone());
+    let text = crate::coder::snapshot::workspace_snapshot(cwd, checkpoint.as_deref()).await;
+    ui.entries.push(Entry::new(Role::Notice, text.clone()));
+    session.lock().await.seed_workspace_snapshot(&text);
 }
 
 async fn start_prompt(

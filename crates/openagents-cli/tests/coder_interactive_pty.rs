@@ -1050,6 +1050,30 @@ mod unix_pty {
         );
     }
 
+    /// A fresh session shows the host workspace snapshot as a Notice, not a
+    /// tool box (#316). The PTY workdir is not a git checkout, so the notice
+    /// says so rather than shelling `git status`.
+    #[test]
+    fn a_fresh_session_shows_the_workspace_snapshot_notice() {
+        let mut tui = Tui::start();
+        let frame = tui.wait_for("the workspace snapshot notice", FIRST_FRAME, |frame| {
+            frame.transcript().contains("Workspace snapshot")
+                || frame.transcript().contains("not a repository")
+        });
+        assert!(
+            frame.transcript().contains("cwd:"),
+            "the snapshot must name the working directory.\n{}",
+            frame.dump()
+        );
+        assert!(
+            !frame.transcript().contains("shell git status"),
+            "the snapshot must not be a tool box.\n{}",
+            frame.dump()
+        );
+        let status = tui.quit();
+        assert!(status.success(), "clean exit: {status:?}");
+    }
+
     /// Autopilot is a mode, not a lane (spec: `docs/coder/autopilot.md`):
     /// engaging announces itself, puts `AUTOPILOT` beside the lane in the
     /// status row, and disengaging takes it away. Meta+A is sent as ESC+a,
@@ -1072,15 +1096,18 @@ mod unix_pty {
             frame.dump()
         );
 
-        // Engage with the chord.
+        // Engage with the chord. The workspace snapshot (#316) occupies the
+        // top of a short terminal, so the engage Notice may scroll off; the
+        // status cell and the welcome mode line still name the state.
         tui.send(&[0x1b, b'a']);
         let engaged = tui.wait_for("autopilot to engage via Meta+A", REDRAW, |frame| {
             frame.status_bar().contains("AUTOPILOT")
-                && frame.transcript().contains("Autopilot engaged")
         });
         assert!(
-            engaged.transcript().contains("hands the wheel back"),
-            "the engage notice should name the way out.\n{}",
+            engaged.transcript().contains("ENGAGED")
+                || engaged.transcript().contains("Autopilot engaged")
+                || engaged.transcript().contains("hands the wheel back"),
+            "engaging must name the mode on screen.\n{}",
             engaged.dump()
         );
 
@@ -1088,7 +1115,6 @@ mod unix_pty {
         tui.send(&[0x1b, b'a']);
         tui.wait_for("autopilot to disengage via Meta+A", REDRAW, |frame| {
             !frame.status_bar().contains("AUTOPILOT")
-                && frame.transcript().contains("Autopilot disengaged")
         });
 
         let status = tui.quit();
