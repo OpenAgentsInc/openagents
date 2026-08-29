@@ -5,6 +5,19 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.12
+
+- issues: #334, #337
+- commits: this change
+- contracts-specs: CLI crate version; producer name `X.Y.Z-rc.N`
+- invariants: non-release builds still report `0.0.0-dev`; published `<version, platform>` objects stay immutable
+- evidence: live bucket already holds `0.2.0-rc.10` and `0.2.0-rc.11`
+- lane: cursor session abb3a3ed
+
+The `openagents-cli` crate is `0.2.0-rc.12`. rc.11 is published and
+immutable. This line is EventStream typing (#334) plus mid-turn capability
+declarations (#337).
+
 ## A capability loaded mid-turn is declared on the next model round (#337)
 
 - issues: #337
