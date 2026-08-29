@@ -9,17 +9,22 @@ GitHub Actions workflow.
 ## What the installer expects
 
 The installer served at `https://openagents.com/install.sh` is the contract.
-Under a base URL of `https://openagents.com/releases` it fetches three shapes:
+Under a base URL of `https://openagents.com/releases` it fetches these shapes:
 
 | Path | Body |
 | --- | --- |
 | `<base>/<channel>` | A bare version string, such as `0.1.0` |
-| `<base>/openagents-<version>-<platform>` | The executable |
-| `<base>/SHA256SUMS-<version>` | One `<sha256>  <name>` line per platform |
+| `<base>/openagents-<version>-<platform>` | The CLI executable |
+| `<base>/openagents-coder-api-<version>-<platform>` | The local inference door `coder --dev` starts |
+| `<base>/SHA256SUMS-<version>` | One `<sha256>  <name>` line per object |
 
 The platform strings are `macos-aarch64`, `macos-x86_64`, `linux-x86_64`,
 `linux-x86_64-musl`, `linux-aarch64`, `linux-aarch64-musl`, and
 `windows-x86_64`.
+
+A release that names `openagents-coder-api` in `SHA256SUMS` is what the
+installer copies into the same bin directory as `openagents`. A historical
+sums file with no such entry still installs the CLI alone.
 
 ## Version names
 
@@ -228,12 +233,14 @@ executables instead. This is the deliberate shape, not an unfinished step.
 
 A tarball would buy three things. It compresses, which matters to whoever pays
 for egress; it carries a directory of files, which matters when a release is
-more than one file; and on macOS it is a container, which is the only thing
-Apple can staple a notarization ticket to.
+more than independently named objects; and on macOS it is a container, which is
+the only thing Apple can staple a notarization ticket to.
 
 None of the three pays here. The binaries are already stripped and the wire is
-already compressed by the transport where it helps. A release is exactly one
-file per platform, so an archive would exist only to be immediately unpacked.
+already compressed by the transport where it helps. A release is two named
+executables per platform — `openagents-<version>-<platform>` and
+`openagents-coder-api-<version>-<platform>` — each with its own sums line, so
+an archive would exist only to be immediately unpacked.
 And the stapling argument runs backwards once you follow it: Apple cannot
 staple a ticket to a bare Mach-O — `xcrun stapler staple` fails with error 73 —
 but the thing stapling buys is offline Gatekeeper verification, and Gatekeeper
@@ -253,9 +260,11 @@ the published sums. And the change is not additive: the installer, the sums
 file, `oa update`, and every published object name would all have to move
 together, breaking every installer already in circulation.
 
-If a release ever becomes more than one file per platform — a shell completion
-set, a man page, a sidecar — the calculation changes and the tarball becomes
-the right container. It is not that today.
+If a release ever becomes more than these two named objects per platform — a
+shell completion set, a man page, another sidecar — the calculation changes
+and the tarball becomes the right container. Two independently checksummed
+executables are not that case: the installer already fetches named objects
+and verifies each against `SHA256SUMS`.
 
 ## Credential handling
 
@@ -330,6 +339,10 @@ This matters beyond cosmetics. `oa update` compares what the running binary
 reports against what the channel pointer resolves to. A binary published as
 `0.1.0-rc.2` that reported `0.1.0` would make every update either a no-op or a
 perpetual reinstall, depending on which way the comparison fell.
+
+`oa update` still replaces only the CLI binary. A reader who installed with
+`install.sh` already has `openagents-coder-api` in the same bin directory;
+re-running the installer is what refreshes that sibling today.
 
 ## Where `oa update` fits
 

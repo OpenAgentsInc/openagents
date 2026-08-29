@@ -7,10 +7,12 @@
 # https://openagents.com/releases it fetches:
 #
 #   <base>/<channel>                              a bare version string
-#   <base>/openagents-<version>-<platform>        the executable, no extension
+#   <base>/openagents-<version>-<platform>        the CLI, no extension
+#   <base>/openagents-coder-api-<version>-<platform>
+#                                                 the local inference door
 #   <base>/SHA256SUMS-<version>                   "<sha256>  <name>" per line
 #
-# Anything this script emits that disagrees with those three shapes is a broken
+# Anything this script emits that disagrees with those four shapes is a broken
 # release, so the names are derived here once and never spelled twice.
 #
 # Producer version grammar (stricter than the installer consumer grammar):
@@ -87,6 +89,23 @@ notary_env=${OPENAGENTS_NOTARY_ENV:-/Users/christopherdavid/work/.secrets/appsto
 # codesign defaults the identifier to the basename, which would give the same
 # build a different identity depending on where it was staged.
 signing_identifier='com.openagents.cli'
+api_signing_identifier='com.openagents.coder-api'
+
+# Honour an operator-set target dir so a shared cache can sit outside a
+# disposable worktree. Cargo already reads CARGO_TARGET_DIR; the paths below
+# must agree with it.
+target_dir=${CARGO_TARGET_DIR:-"$repo_root/target"}
+
+staged_name() {
+  echo "$1-$version-$2"
+}
+
+sums_name_for() {
+  case "$2" in
+    windows-*) echo "$1.exe" ;;
+    *) echo "$1" ;;
+  esac
+}
 
 die() {
   echo "$@" >&2
@@ -103,7 +122,7 @@ while [ $# -gt 0 ]; do
     --allow-prerelease-channel) allow_prerelease_channel=1; shift ;;
     --skip-notarization) skip_notarization=1; shift ;;
     --skip-tests) skip_tests=1; shift ;;
-    -h | --help) sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -230,6 +249,8 @@ load_notary_env() {
 sign_and_notarize() {
   artifact=$1
   platform=$2
+  identifier=$3
+  entitlements=${4:-}
 
   command -v codesign >/dev/null 2>&1 || die "codesign is required for $platform"
 
@@ -239,8 +260,8 @@ sign_and_notarize() {
   [ -n "${OA_DEVELOPER_ID_APPLICATION:-}" ] ||
     die "OA_DEVELOPER_ID_APPLICATION is not set in $notary_env"
 
-  echo "  signing $platform as $signing_identifier"
-  # Hardened runtime (`--options runtime`) is required by notarization, and the
+  echo "  signing $(basename "$artifact") as $identifier"
+  # Hardened runtime (`--options runtime`) is required by notarization. The
   # CLI embeds a wasm JIT: wasmtime mmaps executable pages for Cranelift at
   # every plugin invoke (`oa plugin run`, the coder capability search, the
   # /resume foreign-session scanner). Under hardened runtime without the JIT
@@ -249,14 +270,23 @@ sign_and_notarize() {
   # CODESIGNING "Invalid Page" — which took down every 0.2.0-rc binary the
   # moment a capability ran (issues #329, #330). These entitlements are what
   # notarized JIT apps ship (Electron, Firefox, wasmtime's own release docs).
-  entitlements="$repo_root/ops/macos-entitlements.plist"
-  [ -f "$entitlements" ] || die "missing $entitlements; hardened runtime needs the JIT entitlements"
-  codesign --force --timestamp --options runtime \
-    --entitlements "$entitlements" \
-    --identifier "$signing_identifier" \
-    --sign "$OA_DEVELOPER_ID_APPLICATION" \
-    "$artifact" >/dev/null 2>&1 ||
-    die "codesign failed for $platform"
+  # openagents-coder-api does not JIT, so it signs with hardened runtime only.
+  codesign_log="$artifact.codesign.log"
+  if [ -n "$entitlements" ]; then
+    [ -f "$entitlements" ] || die "missing $entitlements; hardened runtime needs the JIT entitlements"
+    codesign --force --timestamp --options runtime \
+      --entitlements "$entitlements" \
+      --identifier "$identifier" \
+      --sign "$OA_DEVELOPER_ID_APPLICATION" \
+      "$artifact" >"$codesign_log" 2>&1 ||
+      { cat "$codesign_log" >&2; die "codesign failed for $artifact"; }
+  else
+    codesign --force --timestamp --options runtime \
+      --identifier "$identifier" \
+      --sign "$OA_DEVELOPER_ID_APPLICATION" \
+      "$artifact" >"$codesign_log" 2>&1 ||
+      { cat "$codesign_log" >&2; die "codesign failed for $artifact"; }
+  fi
 
   codesign --verify --strict "$artifact" ||
     die "signature does not verify for $platform"
@@ -325,14 +355,20 @@ for platform in $targets; do
   # Every artifact is rebuilt from source into its own target directory. Nothing
   # is copied forward from a previous run, so a build that fails cannot leave a
   # stale binary behind for the verification step to bless.
-  # The shipped binary is the OpenAgents CLI. With no command it opens Coder;
-  # named commands use the shared CLI runtime. One binary keeps Coder, forge,
-  # trace, and self-update on the same release path.
+  # The shipped pair is the OpenAgents CLI and the local inference door it
+  # starts under `coder --dev`. Both use the same target triple. A platform
+  # that produces only one of them is not a platform this release covers.
   case "$triple" in
-    *windows*) output="$repo_root/target/$triple/release/openagents.exe" ;;
-    *) output="$repo_root/target/$triple/release/openagents" ;;
+    *windows*)
+      cli_output="$target_dir/$triple/release/openagents.exe"
+      api_output="$target_dir/$triple/release/openagents-coder-api.exe"
+      ;;
+    *)
+      cli_output="$target_dir/$triple/release/openagents"
+      api_output="$target_dir/$triple/release/openagents-coder-api"
+      ;;
   esac
-  rm -f "$output"
+  rm -f "$cli_output" "$api_output"
 
   build_log="$dist/$platform.build.log"
   if [ "$builder" = zigbuild ]; then
@@ -348,7 +384,7 @@ for platform in $targets; do
   # way the comparison fell. `build.rs` declares the dependency on this
   # variable, so changing it rebuilds.
   if ! (cd "$repo_root" && OPENAGENTS_CLI_RELEASE_VERSION="$version" \
-    $build_command --release -p openagents-cli --target "$triple") \
+    $build_command --release -p openagents-cli -p openagents-coder-api --target "$triple") \
     >"$build_log" 2>&1; then
     echo "  SKIP: build failed (see $build_log)"
     tail -5 "$build_log" | sed 's/^/    /'
@@ -356,43 +392,76 @@ for platform in $targets; do
     continue
   fi
 
-  [ -f "$output" ] || { echo "  SKIP: build reported success but produced no binary"; missing="$missing $platform"; continue; }
+  [ -f "$cli_output" ] || { echo "  SKIP: build reported success but produced no CLI binary"; missing="$missing $platform"; continue; }
+  [ -f "$api_output" ] || { echo "  SKIP: build reported success but produced no openagents-coder-api binary"; missing="$missing $platform"; continue; }
 
   # The forgery check. `file` reads the actual Mach-O/ELF/PE header rather than
-  # trusting the path the compiler was asked to write to.
-  signature=$(file -b "$output")
+  # trusting the path the compiler was asked to write to. Both binaries of a
+  # platform must match that platform.
+  signature=$(file -b "$cli_output")
+  api_signature=$(file -b "$api_output")
+  refused=0
   # shellcheck disable=SC2254
   case "$signature" in
     $expected*) ;;
     *)
-      echo "  REFUSED: $output is '$signature', expected '$expected'"
-      echo "  Refusing to publish a binary under a platform name it does not match."
-      missing="$missing $platform"
-      continue
+      echo "  REFUSED: $cli_output is '$signature', expected '$expected'"
+      refused=1
       ;;
   esac
+  # shellcheck disable=SC2254
+  case "$api_signature" in
+    $expected*) ;;
+    *)
+      echo "  REFUSED: $api_output is '$api_signature', expected '$expected'"
+      refused=1
+      ;;
+  esac
+  if [ "$refused" = 1 ]; then
+    echo "  Refusing to publish a binary under a platform name it does not match."
+    missing="$missing $platform"
+    continue
+  fi
 
   # The installer never appends an extension to the artifact URL, on any
   # platform: it computes artifact_base before it branches on windows and never
   # revisits it. The staged file name matches that URL exactly.
-  artifact="$dist/openagents-$version-$platform"
-  cp "$output" "$artifact"
-  chmod +x "$artifact"
+  cli_artifact="$dist/$(staged_name openagents "$platform")"
+  api_artifact="$dist/$(staged_name openagents-coder-api "$platform")"
+  cp "$cli_output" "$cli_artifact"
+  cp "$api_output" "$api_artifact"
+  chmod +x "$cli_artifact" "$api_artifact"
 
   notary_status='not-applicable'
   notary_submission=''
+  api_notary_status='not-applicable'
+  api_notary_submission=''
   case "$platform" in
-    macos-*) sign_and_notarize "$artifact" "$platform" ;;
+    macos-*)
+      sign_and_notarize "$cli_artifact" "$platform" "$signing_identifier" \
+        "$repo_root/ops/macos-entitlements.plist"
+      cli_notary_status=$notary_status
+      cli_notary_submission=$notary_submission
+      sign_and_notarize "$api_artifact" "$platform" "$api_signing_identifier"
+      api_notary_status=$notary_status
+      api_notary_submission=$notary_submission
+      notary_status=$cli_notary_status
+      notary_submission=$cli_notary_submission
+      ;;
   esac
 
-  sha=$(shasum -a 256 "$artifact" | awk '{print $1}')
-  size=$(wc -c <"$artifact" | tr -d ' ')
-  echo "  ok  $signature"
+  sha=$(shasum -a 256 "$cli_artifact" | awk '{print $1}')
+  size=$(wc -c <"$cli_artifact" | tr -d ' ')
+  api_sha=$(shasum -a 256 "$api_artifact" | awk '{print $1}')
+  api_size=$(wc -c <"$api_artifact" | tr -d ' ')
+  echo "  ok  CLI $signature"
   echo "      sha256 $sha  ($size bytes)"
+  echo "  ok  coder-api $api_signature"
+  echo "      sha256 $api_sha  ($api_size bytes)"
 
   built="$built $platform"
   manifest_entries="$manifest_entries
-    {\"platform\": \"$platform\", \"target\": \"$triple\", \"builder\": \"$builder\", \"sha256\": \"$sha\", \"bytes\": $size, \"notarization\": \"$notary_status\", \"notarization_submission\": \"$notary_submission\"},"
+    {\"platform\": \"$platform\", \"target\": \"$triple\", \"builder\": \"$builder\", \"sha256\": \"$sha\", \"bytes\": $size, \"notarization\": \"$notary_status\", \"notarization_submission\": \"$notary_submission\", \"coder_api_sha256\": \"$api_sha\", \"coder_api_bytes\": $api_size, \"coder_api_notarization\": \"$api_notary_status\", \"coder_api_notarization_submission\": \"$api_notary_submission\"},"
   echo
 done
 
@@ -405,16 +474,16 @@ done
 # a landed installer, so the sums file reproduces it exactly: the artifact keeps
 # its extensionless name and the sums entry carries the .exe the installer will
 # search for. Diverging here would checksum-fail every Windows install.
+# Each platform contributes two names: the CLI and openagents-coder-api.
 sums="$dist/SHA256SUMS-$version"
 : >"$sums"
 for platform in $built; do
-  artifact="openagents-$version-$platform"
-  sums_name=$artifact
-  case "$platform" in
-    windows-*) sums_name="$artifact.exe" ;;
-  esac
-  sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}')
-  printf '%s  %s\n' "$sha" "$sums_name" >>"$sums"
+  for kind in openagents openagents-coder-api; do
+    artifact=$(staged_name "$kind" "$platform")
+    sums_name=$(sums_name_for "$artifact" "$platform")
+    sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}')
+    printf '%s  %s\n' "$sha" "$sums_name" >>"$sums"
+  done
 done
 
 # The commit alone is not a claim about what was built. A dirty worktree
@@ -514,22 +583,25 @@ fi
 : >"$merged_sums"
 covered=''
 for platform in $all_platforms; do
-  artifact="openagents-$version-$platform"
-  sums_name=$artifact
-  case "$platform" in
-    windows-*) sums_name="$artifact.exe" ;;
-  esac
-
-  sha=''
-  case " $built " in
-    *" $platform "*) sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}') ;;
-    *)
-      sha=$(awk -v name="$sums_name" '$2 == name || $2 == "*" name { print $1; exit }' "$published_sums")
-      ;;
-  esac
-
-  if [ -n "$sha" ]; then
-    printf '%s  %s\n' "$sha" "$sums_name" >>"$merged_sums"
+  platform_sha=''
+  for kind in openagents openagents-coder-api; do
+    artifact=$(staged_name "$kind" "$platform")
+    sums_name=$(sums_name_for "$artifact" "$platform")
+    sha=''
+    case " $built " in
+      *" $platform "*) sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}') ;;
+      *)
+        sha=$(awk -v name="$sums_name" '$2 == name || $2 == "*" name { print $1; exit }' "$published_sums")
+        ;;
+    esac
+    if [ -n "$sha" ]; then
+      printf '%s  %s\n' "$sha" "$sums_name" >>"$merged_sums"
+      if [ "$kind" = openagents ]; then
+        platform_sha=$sha
+      fi
+    fi
+  done
+  if [ -n "$platform_sha" ]; then
     covered="$covered $platform"
   fi
 done
@@ -549,22 +621,21 @@ fi
 
 echo "Publishing to gs://$bucket"
 for platform in $built; do
-  artifact="openagents-$version-$platform"
-  sums_name=$artifact
-  case "$platform" in
-    windows-*) sums_name="$artifact.exe" ;;
-  esac
-  local_sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}')
-  published_sha=$(awk -v name="$sums_name" '$2 == name || $2 == "*" name { print $1; exit }' "$published_sums")
-  if [ -n "$published_sha" ]; then
-    if [ "$published_sha" != "$local_sha" ]; then
-      die "refusing to replace immutable $artifact: published sha256 $published_sha, rebuilt sha256 $local_sha"
+  for kind in openagents openagents-coder-api; do
+    artifact=$(staged_name "$kind" "$platform")
+    sums_name=$(sums_name_for "$artifact" "$platform")
+    local_sha=$(shasum -a 256 "$dist/$artifact" | awk '{print $1}')
+    published_sha=$(awk -v name="$sums_name" '$2 == name || $2 == "*" name { print $1; exit }' "$published_sums")
+    if [ -n "$published_sha" ]; then
+      if [ "$published_sha" != "$local_sha" ]; then
+        die "refusing to replace immutable $artifact: published sha256 $published_sha, rebuilt sha256 $local_sha"
+      fi
+      echo "  keeping published $artifact ($local_sha)"
+      continue
     fi
-    echo "  keeping published $platform ($local_sha)"
-    continue
-  fi
-  gcloud storage cp "$dist/$artifact" "gs://$bucket/$artifact" \
-    --content-type=application/octet-stream --quiet
+    gcloud storage cp "$dist/$artifact" "gs://$bucket/$artifact" \
+      --content-type=application/octet-stream --quiet
+  done
 done
 cp "$merged_sums" "$sums"
 gcloud storage cp "$sums" "gs://$bucket/SHA256SUMS-$version" \

@@ -57,3 +57,15 @@ if [ "$failed" -ne 0 ]; then
 fi
 
 echo "ops/release-cli-version-test.sh: all refusals matched"
+
+# Sibling object names live in this script. A release that forgets them
+# ships a CLI `coder --dev` cannot start.
+grep -F -q 'openagents-coder-api' "$release" || {
+  echo "FAIL release script no longer names openagents-coder-api" >&2
+  exit 1
+}
+grep -F -q 'staged_name openagents-coder-api' "$release" || {
+  echo "FAIL release script does not stage openagents-coder-api-<version>-<platform>" >&2
+  exit 1
+}
+echo "ok   sibling artifact name"

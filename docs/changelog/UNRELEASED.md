@@ -5,6 +5,21 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI release ships openagents-coder-api beside the CLI (#335)
+
+- issues: #335
+- commits: this change
+- contracts-specs: `ops/release-cli.sh` sibling object `openagents-coder-api-<version>-<platform>`; installer bin-dir placement
+- invariants: a published `<version, platform>` object stays immutable, including the sibling
+- evidence: SHA256SUMS names both objects; `coder --dev` looks next to `current_exe` and in `~/.openagents/bin`
+- lane: cursor session abb3a3ed
+
+`coder --dev` starts `openagents-coder-api` from the same directory as the CLI.
+The release now builds that binary for every platform, stages
+`openagents-coder-api-<version>-<platform>`, and publishes it as a second
+object. The installer copies it into the same bin dir when the sums file names
+it.
+
 ## CLI release names are X.Y.Z or X.Y.Z-rc.N (#336)
 
 - issues: #336
