@@ -875,6 +875,27 @@ impl HarnessToolRegistry {
             .unwrap_or_default()
     }
 
+    /// Run `test_report` on a captured dump and put the typed failures first
+    /// (#317). If the guest is not loaded or refuses, the dump is unchanged.
+    async fn prepend_test_report(&self, dump: &str, runner: &str) -> String {
+        let Some(plugin) = self
+            .loaded_plugins()
+            .into_iter()
+            .find(|plugin| plugin.manifest.name == "test_report")
+        else {
+            return dump.to_string();
+        };
+        let parsed = plugins::run_plugin_text(
+            plugin,
+            &serde_json::json!({ "text": dump, "runner": runner }),
+        )
+        .await;
+        if parsed.contains("refused") {
+            return dump.to_string();
+        }
+        format!("test_report ({runner}):\n{parsed}\n\n--- captured output ---\n{dump}")
+    }
+
     pub fn list_tools(&self) -> Vec<ToolDefinition> {
         let mut skill_list = String::new();
         for (name, info) in &self.skills {
@@ -1299,6 +1320,18 @@ impl HarnessToolRegistry {
                     };
                 }
 
+                if cargo_workspace_suite_command(cmd) {
+                    return ToolOutput {
+                        call_id: call.id.clone(),
+                        output: "This session refuses `cargo test --workspace` from a tool call. \
+                                 Name a package (`cargo test -p …`) or a test filter. The \
+                                 pre-push hook still runs the workspace suite."
+                            .to_string(),
+                        is_error: true,
+                        duration_ms: 0,
+                    };
+                }
+
                 let (output_str, failed) = run_real_shell_logged(
                     cmd,
                     &self.cwd,
@@ -1307,6 +1340,12 @@ impl HarnessToolRegistry {
                     self.session_dir.as_deref(),
                 )
                 .await;
+                let output_str = match test_runner_kind(cmd) {
+                    Some(runner) if output_str != CANCELLED_TOOL_RESULT => {
+                        self.prepend_test_report(&output_str, runner).await
+                    }
+                    _ => output_str,
+                };
                 ToolOutput {
                     call_id: call.id.clone(),
                     output: output_str,
@@ -2510,6 +2549,56 @@ const REFUSED: &[(&str, &str)] = &[
         "That would write over a raw device.",
     ),
 ];
+
+/// `cargo test --workspace` as a cargo flag (not a test-binary argument
+/// after `--`). The workspace suite belongs to the pre-push hook (#317).
+pub fn cargo_workspace_suite_command(cmd: &str) -> bool {
+    let cargo_part = cmd.splitn(2, " -- ").next().unwrap_or(cmd);
+    cargo_invocation(cargo_part).is_some_and(|args| {
+        args.iter().any(|word| word == "test") && args.iter().any(|word| word == "--workspace")
+    })
+}
+
+/// Which test-report runner a shell line looks like, if any.
+pub fn test_runner_kind(cmd: &str) -> Option<&'static str> {
+    let lower = cmd.to_ascii_lowercase();
+    if lower.contains("pytest") {
+        return Some("pytest");
+    }
+    if cargo_invocation(cmd).is_some_and(|args| args.iter().any(|word| word == "test")) {
+        return Some("cargo");
+    }
+    if lower.contains("vitest") {
+        return Some("vitest");
+    }
+    if lower.contains("jest") {
+        return Some("jest");
+    }
+    if lower.contains("go test") {
+        return Some("go");
+    }
+    None
+}
+
+/// Arguments after a `cargo` executable in `cmd`, when cargo is what runs.
+fn cargo_invocation(cmd: &str) -> Option<Vec<String>> {
+    for segment in cmd.split(|ch| matches!(ch, ';' | '|' | '\n' | '&')) {
+        let mut words = segment.split_whitespace();
+        let Some(executable) = (loop {
+            match words.next() {
+                Some(word) if word.contains('=') && !word.starts_with('-') => continue,
+                Some(word) => break Some(word.trim_matches('\'').trim_matches('"')),
+                None => break None,
+            }
+        }) else {
+            continue;
+        };
+        if executable == "cargo" || executable.ends_with("/cargo") {
+            return Some(words.map(str::to_string).collect());
+        }
+    }
+    None
+}
 
 /// Why this command will not be run, or `None` when it will.
 pub fn check_shell_refusal(cmd: &str) -> Option<String> {
@@ -5383,6 +5472,92 @@ mod tests {
         assert!(
             value.pointer("/ok/failed").is_some() || value.get("ok").is_some(),
             "test_report did not parse: {}",
+            out.output
+        );
+    }
+
+    #[test]
+    fn cargo_test_workspace_is_recognised_and_test_binary_args_are_not() {
+        assert!(cargo_workspace_suite_command("cargo test --workspace"));
+        assert!(cargo_workspace_suite_command(
+            "cargo test --workspace -p openagents-cli"
+        ));
+        assert!(!cargo_workspace_suite_command(
+            "cargo test -p openagents-cli --lib snapshot"
+        ));
+        assert!(!cargo_workspace_suite_command(
+            "cargo test -p openagents-cli -- --workspace"
+        ));
+        assert!(!cargo_workspace_suite_command(
+            "echo cargo test --workspace"
+        ));
+    }
+
+    #[test]
+    fn test_runner_kind_names_cargo_pytest_jest_and_go() {
+        assert_eq!(
+            test_runner_kind("cargo test -p openagents-cli --lib foo"),
+            Some("cargo")
+        );
+        assert_eq!(test_runner_kind("pytest tests/"), Some("pytest"));
+        assert_eq!(test_runner_kind("go test ./..."), Some("go"));
+        assert_eq!(test_runner_kind("npx vitest run"), Some("vitest"));
+        assert_eq!(test_runner_kind("ls"), None);
+    }
+
+    #[tokio::test]
+    async fn cargo_test_workspace_is_refused_before_it_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        let out = registry
+            .execute_tool(&ToolCall {
+                id: "1".to_string(),
+                name: "bash".to_string(),
+                arguments: serde_json::json!({"command": "cargo test --workspace"}),
+            })
+            .await;
+        assert!(out.is_error, "{}", out.output);
+        assert!(
+            out.output.contains("pre-push"),
+            "the refusal must name the hook: {}",
+            out.output
+        );
+        assert!(
+            !out.output.contains("Compiling"),
+            "the workspace suite must not have run: {}",
+            out.output
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failing_cargo_dump_through_bash_is_prefixed_with_test_report() {
+        let Some(repo) = shipped_repo() else {
+            return;
+        };
+        let registry = HarnessToolRegistry::new(Some(repo));
+        let dump = "test tools::foo ... FAILED\nthread 'tools::foo' panicked at src/tools.rs:1:1:\nassertion failed\n";
+        let command = format!("cargo test --version >/dev/null; printf '%s' '{dump}'");
+        let out = registry
+            .execute_tool(&ToolCall {
+                id: "1".to_string(),
+                name: "bash".to_string(),
+                arguments: serde_json::json!({ "command": command }),
+            })
+            .await;
+        assert!(!out.is_error, "{}", out.output);
+        assert!(
+            out.output.contains("test_report (cargo)"),
+            "the host must prepend test_report: {}",
+            out.output
+        );
+        assert!(
+            out.output.contains("tools::foo") || out.output.contains("foo"),
+            "the typed failure must name the test: {}",
+            out.output
+        );
+        assert!(
+            out.output.contains("--- captured output ---"),
+            "{}",
             out.output
         );
     }
