@@ -1172,6 +1172,10 @@ async fn run_one_shot(
         return Ok(());
     }
 
+    if let Some(advice) = commands::atif_export_advice(&prompt) {
+        eprintln!("Coder: {advice}");
+    }
+
     // Mint the turn through the same reducer the frame uses, then run it to
     // completion on the runtime task. The stream ends when `execute_turn`
     // returns, which is always after exactly one Done.
@@ -2424,12 +2428,13 @@ async fn submit(
         return commands::run(ui, text.trim(), tx, cwd);
     }
 
-    if commands::looks_like_atif_export(&text) {
-        ui.entries.push(Entry::new(
-            Role::Notice,
-            "That looks like an ATIF export. `/continue` (or `/continue last`) starts a new session from the checkpoint instead of splicing the dump into this one.",
-        ));
-        return commands::Outcome::Done;
+    // #341: a line that looks like an ATIF export path still goes to the
+    // model — the user may want exactly that (read the dump, summarize it,
+    // cross-examine an old session). The advice rides along as a notice; it
+    // never replaces the send. Annotate, don't intercept.
+    if let Some(advice) = commands::atif_export_advice(&text) {
+        ui.entries
+            .push(Entry::new(Role::Notice, advice.to_string()));
     }
 
     if !matches!(turns.phase(), TurnPhase::Idle) {

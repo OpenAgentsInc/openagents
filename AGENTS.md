@@ -567,6 +567,10 @@ is Rust. Phoenix Effect-or-Elixir questions belong in
   only. Do not add TypeScript behavior-contract packages. Do not weaken an
   oracle to make a change pass — that is a contract change and needs the
   owner's sign-off.
+- **Do not stand between the user and their intent.** Heuristics may attach
+  advice. They must not drop, refuse, or redirect user-authored composer text
+  or `--prompt` text. Slash commands the user invoked, and gates the user
+  configured, are the exception. Annotate; do not intercept.
 - Keep Claim Your Agent public identity flows tweet-first where possible:
   use the shared owner-claim/X verification routes, the friendly
   `Verifying my agent ... Code: ...` copy, and public tweet-author binding

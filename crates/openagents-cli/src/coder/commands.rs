@@ -170,8 +170,10 @@ pub enum Outcome {
 pub const CONTINUE_HINT: &str =
     "To pick this up in a new session without the transcript: `/continue`.";
 
-/// Whether a composer line is an ATIF export path the owner is trying to
-/// splice in. Those dumps belong on disk; `/continue` is the resume path.
+/// Whether a composer line is an ATIF export path. Advisory only (#341): the
+/// line still goes to the model, which can read the dump with the shell tool
+/// whenever it is asked to. Callers attach [`ATIF_EXPORT_ADVICE`] and send —
+/// never refuse, redirect, or drop the prompt.
 pub fn looks_like_atif_export(text: &str) -> bool {
     let text = text.trim().trim_matches('`').trim_matches('"');
     let lower = text.to_ascii_lowercase();
@@ -180,6 +182,19 @@ pub fn looks_like_atif_export(text: &str) -> bool {
     }
     let in_exports = lower.contains(".openagents/exports/") || lower.contains("/exports/");
     in_exports && (lower.contains("atif") || lower.ends_with(".json"))
+}
+
+/// The advisory that rides along when a composer line matches
+/// [`looks_like_atif_export`] (#341). Advice attached to the send, never a
+/// refusal: the user's text reaches the model either way, and `/continue` is
+/// named in case a checkpoint resume was what the line meant to do.
+pub const ATIF_EXPORT_ADVICE: &str = "Note: that looks like an ATIF export path. If you meant to resume the checkpoint rather than have this session read the dump, `/continue` (or `/continue last`) starts a new session from it.";
+
+/// The advisory for a composer line that looks like an ATIF export path, or
+/// `None` for an ordinary prompt. The caller sends either way (#341): `Some`
+/// means "send, and show the advice beside it", never "send instead".
+pub fn atif_export_advice(text: &str) -> Option<&'static str> {
+    looks_like_atif_export(text).then_some(ATIF_EXPORT_ADVICE)
 }
 
 /// Run one `/` line. `line` still carries its leading slash.
@@ -906,6 +921,32 @@ mod tests {
             "read crates/openagents-cli/src/runtime.rs"
         ));
         assert!(!looks_like_atif_export("/help"));
+    }
+
+    /// #341: a matching line is annotated and sent, never refused. The
+    /// advisory is advice beside the action; the detector on its own drops
+    /// nothing.
+    #[test]
+    fn an_atif_export_line_is_annotated_and_sent_not_refused() {
+        let export = "~/.openagents/exports/1a0434b26a4-atif.json";
+        let advice = atif_export_advice(export).expect("an export path gets the advisory");
+        assert!(
+            advice.contains("/continue"),
+            "the advice names the resume path"
+        );
+        assert!(
+            advice.contains("Note:"),
+            "the advice reads as a note, not a veto"
+        );
+
+        // An ordinary prompt is sent with no annotation attached.
+        assert_eq!(
+            atif_export_advice("read crates/openagents-cli/src/runtime.rs"),
+            None
+        );
+        // And the detection itself never consumes the line: `submit` sends
+        // `text` unchanged whether or not the advisory fired.
+        assert_eq!(export, "~/.openagents/exports/1a0434b26a4-atif.json");
     }
 }
 

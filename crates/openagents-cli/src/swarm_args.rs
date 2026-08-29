@@ -673,22 +673,20 @@ mod no_arg_default_tests {
         let owner = "1ainboxa0000000test000000";
         crate::swarm::register(
             home.path(),
-            &registration(
-                owner,
-                1_000,
-                owner_dir.path().join("inbox.jsonl"),
-            ),
+            &registration(owner, 1_000, owner_dir.path().join("inbox.jsonl")),
         )
         .unwrap();
-        let refused =
-            mute_target_error(home.path(), "bogus-session-abc").expect("must refuse");
+        let refused = mute_target_error(home.path(), "bogus-session-abc").expect("must refuse");
         assert!(refused.contains("bogus-session-abc"), "{refused}");
         assert!(refused.contains("is registered"), "{refused}");
         // A registered target passes.
         assert_eq!(mute_target_error(home.path(), owner), None);
         // Nothing was written to the owner's mute list.
-        let directory =
-            inbox_directory(&crate::swarm::load_registration(home.path(), owner).unwrap().unwrap());
+        let directory = inbox_directory(
+            &crate::swarm::load_registration(home.path(), owner)
+                .unwrap()
+                .unwrap(),
+        );
         assert!(crate::swarm::load_mute_list(&directory).is_empty());
     }
 
@@ -707,8 +705,7 @@ mod no_arg_default_tests {
             ),
         )
         .unwrap();
-        let refused =
-            mute_target_error(home.path(), "bogus-session-abc").expect("must refuse");
+        let refused = mute_target_error(home.path(), "bogus-session-abc").expect("must refuse");
         assert!(refused.contains("bogus-session-abc"), "{refused}");
     }
 

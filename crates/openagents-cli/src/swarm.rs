@@ -1822,9 +1822,9 @@ mod tests {
 
         // Heartbeat aged out while the pid still answers: the pid was
         // recycled or the registration was copied, and neither is alive.
-        registration.heartbeat_at_ms = registration.heartbeat_at_ms.saturating_sub(
-            registration.alive_after_ms + 1,
-        );
+        registration.heartbeat_at_ms = registration
+            .heartbeat_at_ms
+            .saturating_sub(registration.alive_after_ms + 1);
         assert_eq!(registration.state(), SwarmState::Stale);
 
         // Fresh heartbeat from a dead pid: nothing is home.
