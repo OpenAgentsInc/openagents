@@ -460,8 +460,27 @@ fn repair(session: Option<&str>, yes: bool, json: bool) {
     }
 }
 
+/// Validate a mute target against the registry, returning an error string
+/// when the id is not registered (#340). Split out of [`mute`] so tests can
+/// exercise the refusal without going through [`crate::cli::fail`]'s
+/// `process::exit`.
+fn mute_target_error(home: &std::path::Path, session: &str) -> Option<String> {
+    match crate::swarm::load_registration(home, session) {
+        Ok(Some(_)) => None,
+        Ok(None) => Some(format!("no session `{session}` is registered")),
+        Err(why) => Some(why),
+    }
+}
+
 fn mute(session: &str, inbox: Option<&str>, silencing: bool, json: bool) {
     let home = crate::auth::home_directory();
+    // A mute for an unregistered session is a typo made permanent: it sits in
+    // the list doing nothing, and the person who meant to silence a chatty
+    // neighbor keeps hearing them. The tool contract refuses such ids for the
+    // same reason; the CLI path validates the target beside the inbox (#340).
+    if let Some(why) = mute_target_error(&home, session) {
+        crate::cli::fail(&why);
+    }
     let owner = match inbox {
         Some(id) => id.to_string(),
         None => match default_inbox_owner(&home) {
@@ -639,5 +658,54 @@ mod no_arg_default_tests {
     fn no_arg_default_reports_nothing_registered_as_none() {
         let home = tempfile::tempdir().unwrap();
         assert_eq!(default_inbox_owner(home.path()).unwrap(), None);
+    }
+
+    /// A mute for an unregistered session id must refuse (#340), the same way
+    /// the tool contract refuses it: a typo in the target is otherwise made
+    /// permanent in the owner's mute list, with no signal anything went wrong.
+    #[test]
+    fn mute_refuses_an_unregistered_target_id() {
+        let home = tempfile::tempdir().unwrap();
+        let owner_dir = tempfile::tempdir().unwrap();
+        let owner = "1ainboxa0000000test000000";
+        crate::swarm::register(
+            home.path(),
+            &registration(
+                owner,
+                1_000,
+                owner_dir.path().join("inbox.jsonl"),
+            ),
+        )
+        .unwrap();
+        let refused =
+            mute_target_error(home.path(), "bogus-session-abc").expect("must refuse");
+        assert!(refused.contains("bogus-session-abc"), "{refused}");
+        assert!(refused.contains("is registered"), "{refused}");
+        // A registered target passes.
+        assert_eq!(mute_target_error(home.path(), owner), None);
+        // Nothing was written to the owner's mute list.
+        let directory =
+            inbox_directory(&crate::swarm::load_registration(home.path(), owner).unwrap().unwrap());
+        assert!(crate::swarm::load_mute_list(&directory).is_empty());
+    }
+
+    /// Unmute carries the same typo guard: refusing an id nobody registered
+    /// is the point, and a registered id is required before the list changes.
+    #[test]
+    fn unmute_refuses_an_unregistered_target_id() {
+        let home = tempfile::tempdir().unwrap();
+        let owner_dir = tempfile::tempdir().unwrap();
+        crate::swarm::register(
+            home.path(),
+            &registration(
+                "1ainboxa0000000test000000",
+                1_000,
+                owner_dir.path().join("inbox.jsonl"),
+            ),
+        )
+        .unwrap();
+        let refused =
+            mute_target_error(home.path(), "bogus-session-abc").expect("must refuse");
+        assert!(refused.contains("bogus-session-abc"), "{refused}");
     }
 }
