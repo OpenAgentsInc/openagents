@@ -343,7 +343,7 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "[dry-run] Native CLI build command:"
-  echo "[dry-run]   ops/release-cli.sh --version $(printf '%q' "$BENCH_CLI_VERSION") --targets $(printf '%q' "$BENCH_CLI_PLATFORM")"
+  echo "[dry-run]   ops/release-cli.sh --version $(printf '%q' "$BENCH_CLI_VERSION") --targets $(printf '%q' "$BENCH_CLI_PLATFORM") --bench"
   echo
   if [ -n "$OPENAGENTS_TOKEN" ]; then
     echo "[dry-run] Register command:"
@@ -395,7 +395,8 @@ fi
 log "Building native OpenAgents CLI for $BENCH_CLI_PLATFORM..."
 "$REPO_ROOT/ops/release-cli.sh" \
   --version "$BENCH_CLI_VERSION" \
-  --targets "$BENCH_CLI_PLATFORM"
+  --targets "$BENCH_CLI_PLATFORM" \
+  --bench
 
 if [ ! -x "$BENCH_CLI_BINARY" ]; then
   log "Native CLI build did not produce $BENCH_CLI_BINARY."

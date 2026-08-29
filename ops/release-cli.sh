@@ -30,6 +30,10 @@
 # Options:
 #   --version X.Y.Z or X.Y.Z-rc.N
 #                             Required. The version to build and name.
+#   --bench                   Build-only for the Gym arena (bench/run-suite.sh).
+#                             Accepts the X.Y.Z-bench.<stamp> name the runner
+#                             mints and skips publish paths entirely; a bench
+#                             artifact is never a release.
 #   --targets "a b c"         Platforms to attempt. Defaults to all seven.
 #   --publish                 Upload to the release bucket. Off by default.
 #                             Runs the Cargo completion gate first unless
@@ -122,6 +126,7 @@ while [ $# -gt 0 ]; do
     --allow-prerelease-channel) allow_prerelease_channel=1; shift ;;
     --skip-notarization) skip_notarization=1; shift ;;
     --skip-tests) skip_tests=1; shift ;;
+    --bench) bench=1; skip_tests=1; skip_notarization=1; shift ;;
     -h | --help) sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
@@ -133,8 +138,16 @@ done
 # the literal `rc`, a dot, and a decimal integer with no leading zeros.
 # The installer still accepts a broader suffix so already-published names
 # such as 0.2.0-rc7 remain fetchable; this script will not mint another.
-printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.(0|[1-9][0-9]*))?$' ||
-  die "invalid version: $version (expected X.Y.Z or X.Y.Z-rc.N)"
+# A bench build names the arena artifact instead (X.Y.Z-bench.<stamp>):
+# working-tree provenance in the name, and never a release.
+if [ "${bench:-0}" = 1 ]; then
+  printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-bench\.[0-9]+$' ||
+    die "invalid bench version: $version (expected X.Y.Z-bench.<stamp>)"
+  [ "$publish" = 0 ] || die "--bench is refused with --publish; a bench artifact is not a release"
+else
+  printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.(0|[1-9][0-9]*))?$' ||
+    die "invalid version: $version (expected X.Y.Z or X.Y.Z-rc.N)"
+fi
 
 case "$version" in
   *-*) prerelease=1 ;;
@@ -161,8 +174,14 @@ crate_version=$(awk '
   }
 ' "$crate_manifest")
 [ -n "$crate_version" ] || die "could not read version from $crate_manifest"
-[ "$crate_version" = "$version" ] ||
-  die "crates/openagents-cli/Cargo.toml version is $crate_version, not $version"
+# A bench build names the working tree, not a release: the version is
+# provenance in the artifact name, and the digest the adapter records is the
+# real identity. Skip the source-agreement and changelog gates that only
+# make sense for something a person could install.
+if [ "${bench:-0}" != 1 ]; then
+  [ "$crate_version" = "$version" ] ||
+    die "crates/openagents-cli/Cargo.toml version is $crate_version, not $version"
+fi
 
 lockfile="$repo_root/Cargo.lock"
 [ -f "$lockfile" ] || die "missing $lockfile"
@@ -177,11 +196,13 @@ lock_version=$(awk '
   }
 ' "$lockfile")
 [ -n "$lock_version" ] || die "could not read openagents-cli version from $lockfile"
-[ "$lock_version" = "$version" ] ||
-  die "Cargo.lock package openagents-cli version is $lock_version, not $version"
+if [ "${bench:-0}" != 1 ]; then
+  [ "$lock_version" = "$version" ] ||
+    die "Cargo.lock package openagents-cli version is $lock_version, not $version"
+fi
 
 changelog="$repo_root/docs/changelog/UNRELEASED.md"
-if [ -f "$changelog" ]; then
+if [ -f "$changelog" ] && [ "${bench:-0}" != 1 ]; then
   if ! grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?' "$changelog" | grep -qx "$version"; then
     die "docs/changelog/UNRELEASED.md does not name release $version"
   fi

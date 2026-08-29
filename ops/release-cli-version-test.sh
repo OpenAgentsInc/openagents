@@ -48,6 +48,12 @@ expect_die "leading-zero rc" 0.2.0-rc.08 "invalid version"
 expect_die "alpha suffix" 0.2.0-alpha.1 "invalid version"
 expect_die "skip-tests with publish" 0.2.0-rc.8 "--skip-tests is refused with --publish" --publish --skip-tests
 
+# Bench grammar: only X.Y.Z-bench.<stamp>, never with --publish.
+expect_die "bench bare" 0.2.0-bench "invalid bench version" --bench
+expect_die "bench no stamp" 0.2.0-bench. "invalid bench version" --bench
+expect_die "bench stamp not numeric" 0.2.0-bench.abc "invalid bench version" --bench
+expect_die "bench with publish" 0.2.0-bench.123 "--bench is refused with --publish" --bench --publish
+
 # Canonical RC name that is not this tree's crate version. 0.2.0-rc.8 is
 # already in the bucket; the name guard must still pass, and the
 # source-version check is the correct next stop.
