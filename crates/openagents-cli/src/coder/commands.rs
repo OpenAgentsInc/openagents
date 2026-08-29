@@ -817,10 +817,10 @@ fn spawn_run(ui: &mut CoderUi, command: &str, tx: &Sender<Control>, cwd: &Path) 
     tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
 
-        let mut spawn = tokio::process::Command::new("/bin/sh");
+        let argv = crate::pty::shell_command(&command);
+        let mut spawn = tokio::process::Command::new(&argv[0]);
         spawn
-            .arg("-c")
-            .arg(&command)
+            .args(&argv[1..])
             .current_dir(&cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

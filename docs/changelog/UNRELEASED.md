@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Windows bash tool uses cmd.exe, not /bin/sh (#350)
+
+- issues: #350
+- commits: this change
+- contracts-specs: `pty::shell_command` is the host-shell argv; bash `/run` spawn through it; coder `rust.bash` surface
+- invariants: none changed
+- evidence: `a_line_a_shell_would_change_the_meaning_of_is_given_to_a_shell`; `a_bash_command_that_exits_non_zero_is_reported_as_an_error`
+- lane: cursor session abb3a3ed
+
+On Windows the bash tool spawned `/bin/sh`, which is not there, so every
+command failed with "The system cannot find the path specified" before the
+line ran. File write still worked. The runner now uses this machine's shell:
+`/bin/sh -c` on Unix, `%COMSPEC% /d /c` (usually `cmd.exe`) on Windows.
+
 ## CLI source version is 0.2.0-rc.15
 
 - issues: #345, #346, #347

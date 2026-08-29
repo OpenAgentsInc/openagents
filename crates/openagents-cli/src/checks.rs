@@ -20,7 +20,7 @@ pub struct CheckScope {
     /// What the scope is for, shown when the model lists what it can ask for.
     #[serde(default)]
     pub description: Option<String>,
-    /// The command lines to run, in order, through the same `/bin/sh` runner
+    /// The command lines to run, in order, through the same host-shell runner
     /// as every other tool call — same refusal gate, same output ceiling,
     /// same persistence for long runs.
     pub run: Vec<String>,

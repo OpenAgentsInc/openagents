@@ -1050,7 +1050,7 @@ impl HarnessToolRegistry {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "command": {"type": "string", "description": "The command line to run through /bin/sh -c."},
+                        "command": {"type": "string", "description": "The command line to run through this machine's shell (/bin/sh -c on Unix, cmd.exe /c on Windows)."},
                         "timeout_seconds": {"type": "integer", "description": "How long to wait. Defaults to 120; raise for a build or test run."}
                     },
                     "required": ["command"]
@@ -3171,10 +3171,10 @@ async fn run_real_shell_logged(
     cargo_target: Option<&Path>,
 ) -> (String, bool) {
     let started = std::time::Instant::now();
-    let mut command = Command::new("/bin/sh");
+    let argv = crate::pty::shell_command(cmd);
+    let mut command = Command::new(&argv[0]);
     command
-        .arg("-c")
-        .arg(cmd)
+        .args(&argv[1..])
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

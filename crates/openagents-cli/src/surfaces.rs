@@ -51,7 +51,7 @@ pub mod tool_descriptions {
     /// `rust.edit`
     pub const RUST_EDIT: &str = "Replace one exact run of text in a file. `oldText` must appear exactly once: if it appears more than once the edit is refused and the file is left alone, so add the lines above and below the one you mean until the match is unique, then call again. Several replacements on one file can be sent as `edits: [{oldText, newText}, ...]`; they apply in order, all land or none do, and the call prices as one against the turn budget. `oldText`/`newText` are not used when `edits` is present. Match byte for byte first; if nothing matches exactly, the site is still found when the difference is only trailing or leading whitespace, or doubled backslashes before a newline, and whole lines are replaced -- but a miss is cheaper than a misspelled guess, so copy the text rather than retyping it. On a miss the reply shows the file's real lines beside what you sent. `newText` may be empty to delete the run. Use this rather than `sed` for a surgical change.";
     /// `rust.bash`
-    pub const RUST_BASH: &str = "Run a command through `/bin/sh -c` in the session's working directory, {cwd}. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. For git, survey with `--stat` or `--name-only` before `-p`; a full patch in the transcript is re-sent every later round. A call still spelled `shell` reaches the same runner and is recorded as `bash`.";
+    pub const RUST_BASH: &str = "Run a command through this machine's shell in the session's working directory, {cwd}: `/bin/sh -c` on Unix, `cmd.exe /d /c` on Windows. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. On Windows use cmd syntax (`dir`, `type`, `start \"\" file`); Unix utilities such as `pwd` and `ls` are not cmd builtins. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. For git, survey with `--stat` or `--name-only` before `-p`; a full patch in the transcript is re-sent every later round. A call still spelled `shell` reaches the same runner and is recorded as `bash`.";
     /// `rust.skill`
     pub const RUST_SKILL: &str = "Read one of this repository skill procedures: a written procedure with conventions, commands, and rules. Call it before doing work a skill covers. Skills available:{skills}";
     /// `rust.openagents`
@@ -90,7 +90,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:6298d52940368fa55f6f73ff86a2a226fe9816c17b0e0f858e7ff22f341aa5ed",
+        "sha256:5169a762cf1dbc285017f620458c21a0042db8bcab7d43c6320e494bd978ed04",
     ),
     (
         "catalog-lines",

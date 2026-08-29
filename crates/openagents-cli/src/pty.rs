@@ -287,9 +287,22 @@ pub fn needs_a_shell(line: &str) -> bool {
 }
 
 /// The command that runs `line` under this machine's shell.
+///
+/// Unix: `/bin/sh -c <line>`, or `$SHELL -c` when `SHELL` is set.
+/// Windows has no `/bin/sh`. CreateProcess then fails with
+/// "The system cannot find the path specified. (os error 3)" before the
+/// line runs (#350). Windows: `%COMSPEC% /d /c <line>` (`cmd.exe`).
 pub fn shell_command(line: &str) -> Vec<String> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    vec![shell, "-c".to_string(), line.to_string()]
+    #[cfg(windows)]
+    {
+        let shell = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+        vec![shell, "/d".to_string(), "/c".to_string(), line.to_string()]
+    }
+    #[cfg(not(windows))]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        vec![shell, "-c".to_string(), line.to_string()]
+    }
 }
 
 // ------------------------------------------------------------------ screen
@@ -747,7 +760,43 @@ mod tests {
         assert!(needs_a_shell("ls | wc -l"));
         assert!(needs_a_shell("echo $HOME"));
         assert!(!needs_a_shell("git status"));
-        assert_eq!(shell_command("ls | wc -l").len(), 3);
+        let piped = shell_command("ls | wc -l");
+        assert_eq!(piped.last().map(String::as_str), Some("ls | wc -l"));
         assert_eq!(shell_command("ls").last().map(String::as_str), Some("ls"));
+        #[cfg(windows)]
+        {
+            assert!(
+                piped[0].to_ascii_lowercase().ends_with("cmd.exe"),
+                "{}",
+                piped[0]
+            );
+            assert_eq!(&piped[1..3], ["/d", "/c"]);
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(piped.len(), 3);
+            assert_eq!(piped[1], "-c");
+        }
+    }
+
+    /// #350: Windows CreateProcess of `/bin/sh` fails with os error 3 before
+    /// the line runs. The host argv must name cmd (or COMSPEC) and `/c`.
+    #[test]
+    fn windows_host_shell_never_names_bin_sh() {
+        let argv = shell_command("echo ok");
+        assert_eq!(argv.last().map(String::as_str), Some("echo ok"));
+        #[cfg(windows)]
+        {
+            assert!(
+                !argv.iter().any(|part| part.contains("/bin/sh")),
+                "{argv:?}"
+            );
+            assert_eq!(argv.get(1).map(String::as_str), Some("/d"));
+            assert_eq!(argv.get(2).map(String::as_str), Some("/c"));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(argv.get(1).map(String::as_str), Some("-c"));
+        }
     }
 }
