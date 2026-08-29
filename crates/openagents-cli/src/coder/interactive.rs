@@ -1339,6 +1339,13 @@ fn restore_entries(ui: &mut CoderUi, events: &[crate::session_store::StoredEvent
                 }
                 Entry::new(Role::Notice, format!("Checkpoint: {note}"))
             }
+            "turn.notice" => {
+                let note = text("text");
+                if note.trim().is_empty() {
+                    continue;
+                }
+                Entry::new(Role::Notice, note)
+            }
             _ => continue,
         };
         entry.at = event.at_ms;

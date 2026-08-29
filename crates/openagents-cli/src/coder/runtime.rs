@@ -20,9 +20,10 @@
 //! ## Nothing here invents an answer
 //!
 //! Every path is the model's own words or a [`Control::Failed`] naming what
-//! refused. There is no fallback model, no synthesized reply, and no invented
-//! grant: the session below refuses out loud and this file carries the refusal
-//! to the screen instead of painting over it.
+//! refused. There is no synthesized reply and no invented grant: the session
+//! below refuses out loud and this file carries the refusal to the screen
+//! instead of painting over it. Hop death (#321) may finish *this turn* on
+//! local without changing the standing lane.
 
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,8 +33,7 @@ use std::time::Instant;
 
 use crate::coder::turn::TurnId;
 use crate::runtime::{
-    ChatMessage, CoderRuntimeSession, ImageAttachment, Lane, ModelStreamEvent, ToolEvent,
-    TurnProgress, TurnUsage,
+    ChatMessage, CoderRuntimeSession, ImageAttachment, Lane, ModelStreamEvent, ToolEvent, TurnUsage,
 };
 use crate::surfaces::system_prompt as prompt;
 use crate::tools::{DelegationGate, HarnessToolRegistry, ToolDefinition};
@@ -484,19 +484,7 @@ impl Session {
                 }
             }))
             .observing_progress(Arc::new(move |event| {
-                let message = match event {
-                    TurnProgress::Waiting {
-                        retry: 0,
-                        max_retries: _,
-                    } => Some("Waiting for the model...".to_string()),
-                    TurnProgress::Waiting { retry, max_retries } => Some(format!(
-                        "Waiting for the model (retry {retry} of {max_retries})..."
-                    )),
-                    TurnProgress::Retrying { retry, max_retries } => Some(format!(
-                        "No response after 10 seconds. Retrying ({retry} of {max_retries})..."
-                    )),
-                    TurnProgress::Clear => None,
-                };
+                let message = event.status_line();
                 let id = progress_turns.lock().ok().and_then(|turns| turns.active);
                 if let Some(id) = id {
                     send_turn(&progress, id, Control::Waiting(message));
@@ -877,6 +865,16 @@ impl Session {
                 // becoming a sentence somebody could read as a reply.
                 if !answer.is_empty() && !self.live_streaming.load(Ordering::Relaxed) {
                     send_turn(&sink, id, Control::Chunk(answer));
+                }
+                if self.inner.fell_back_to_local {
+                    send_turn(
+                        &sink,
+                        id,
+                        Control::Notice(
+                            "Inference hop died; this turn finished on local. Standing lane is unchanged."
+                                .to_string(),
+                        ),
+                    );
                 }
             }
             Err(error) => send_turn(&sink, id, Control::Failed(error.to_string())),

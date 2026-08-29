@@ -13,12 +13,18 @@
 //! ## A turn that cannot reach a model fails
 //!
 //! Every path out of [`CoderRuntimeSession::execute_turn`] is either the
-//! model's own words or an `Err`. There is no fallback model, no synthesized
-//! reply, and no invented grant. Two of those existed here and both reached
-//! readers: `create_thread` answered a refusal by returning a grant it made up
-//! with the caller's own PAT inside it, and the proxy arm answered a rejected
+//! model's own words or an `Err`. There is no synthesized reply and no
+//! invented grant. Two of those existed here and both reached readers:
+//! `create_thread` answered a refusal by returning a grant it made up with
+//! the caller's own PAT inside it, and the proxy arm answered a rejected
 //! request with the sentence `Completed autonomous reasoning turn (offline
 //! fallback).` and exit 0. Neither comes back.
+//!
+//! Hop death is different (#321). A 413 retries the same hop once after
+//! dropping the oldest tool-result group. Unreachable or 502 transport may
+//! finish *this turn* on a live local probe. The standing lane does not
+//! change; the fallback is reported, not silent. A credit refusal still
+//! fails the turn.
 //!
 //! ## A turn writes itself locally before the thread is settled
 //!
@@ -86,6 +92,32 @@ use std::time::Duration;
 type Failure = Box<dyn std::error::Error + Send + Sync>;
 const FIRST_RESPONSE_RETRIES: usize = 1;
 
+/// How the inference hop died, when it did. Shown on the status line at
+/// once rather than only later as `turn.failed` text (#321).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HopClass {
+    /// The proxy or an upstream refused the body as too large.
+    PayloadTooLarge,
+    /// The hop returned 502 (including an HTML gateway page).
+    BadGateway,
+    /// The hop could not be reached at all.
+    Unreachable,
+    /// Bytes arrived that could not be decoded as a stream event.
+    Decode,
+}
+
+impl HopClass {
+    /// The short status line a live frame shows while this class is happening.
+    pub fn status_line(self) -> &'static str {
+        match self {
+            Self::PayloadTooLarge => "Inference hop 413 (payload too large)",
+            Self::BadGateway => "Inference hop 502",
+            Self::Unreachable => "Inference hop unreachable",
+            Self::Decode => "Inference hop decode error",
+        }
+    }
+}
+
 /// How a turn's first-response watchdog changes while the model is silent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnProgress {
@@ -93,8 +125,30 @@ pub enum TurnProgress {
     Waiting { retry: usize, max_retries: usize },
     /// The silent request reached its deadline and the runtime is replacing it.
     Retrying { retry: usize, max_retries: usize },
+    /// The hop died; the status line names the class immediately (#321).
+    Hop(HopClass),
     /// The model responded or the turn ended, so the waiting state can leave.
     Clear,
+}
+
+impl TurnProgress {
+    /// Text the TUI status line shows for this progress, or `None` to clear it.
+    pub fn status_line(self) -> Option<String> {
+        match self {
+            Self::Waiting {
+                retry: 0,
+                max_retries: _,
+            } => Some("Waiting for the model...".to_string()),
+            Self::Waiting { retry, max_retries } => Some(format!(
+                "Waiting for the model (retry {retry} of {max_retries})..."
+            )),
+            Self::Retrying { retry, max_retries } => Some(format!(
+                "No response after 10 seconds. Retrying ({retry} of {max_retries})..."
+            )),
+            Self::Hop(class) => Some(class.status_line().to_string()),
+            Self::Clear => None,
+        }
+    }
 }
 
 pub type TurnProgressObserver = Arc<dyn Fn(TurnProgress) + Send + Sync>;
@@ -918,6 +972,14 @@ impl ThreadRecord {
         Self::new("turn.checkpoint", serde_json::json!({ "text": text }))
     }
 
+    /// Something the runtime did that the reader should see, not model speech.
+    ///
+    /// Used for hop-death local fallback (#321): the standing lane did not
+    /// change, but this turn answered somewhere else.
+    pub fn notice(text: &str) -> Self {
+        Self::new("turn.notice", serde_json::json!({ "text": text }))
+    }
+
     /// One swarm send or receive, attributed to the sessions that talked.
     /// Never a user turn: the ATIF exporter and resume skip this as speech
     /// and carry it as a tool observation when the TUI drew one.
@@ -1233,6 +1295,12 @@ pub struct CoderRuntimeSession {
     /// This session's swarm identity. Set when the session registers; drain
     /// and the swarm tools are no-ops without it.
     swarm: Option<crate::swarm::SwarmBinding>,
+    /// When set, [`Self::run_local_turn`] answers with this installed tag
+    /// even if the standing lane is hosted. Cleared after the fallback turn.
+    local_model_override: Option<String>,
+    /// True when the turn in flight finished on local because the hop died.
+    /// The standing [`Self::lane`] is unchanged.
+    pub fell_back_to_local: bool,
 }
 
 impl CoderRuntimeSession {
@@ -1290,6 +1358,8 @@ impl CoderRuntimeSession {
             outcome: None,
             pending_failure: None,
             swarm: None,
+            local_model_override: None,
+            fell_back_to_local: false,
         }
     }
 
@@ -2302,6 +2372,8 @@ impl CoderRuntimeSession {
         self.last_calls = 0;
         self.last_reasoning.clear();
         self.pending_failure = None;
+        self.fell_back_to_local = false;
+        self.local_model_override = None;
         // While the turn runs, the session's standing outcome is an
         // interruption. A turn that returns replaces it below; a session
         // dropped or quit mid-turn never gets that far, and this is what
@@ -2354,11 +2426,12 @@ impl CoderRuntimeSession {
         &mut self,
         prompt: &str,
         tool_defs: &[ToolDefinition],
-        mut chunk_callback: F,
+        chunk_callback: F,
     ) -> Result<String, Failure>
     where
         F: FnMut(&str) + Send + 'static,
     {
+        let mut chunk_callback = Some(chunk_callback);
         if let Lane::Named(id) = self.lane.clone() {
             self.check_named(&id).await?;
         }
@@ -2387,21 +2460,9 @@ impl CoderRuntimeSession {
 
         for _ in 0..MAX_TOOL_STEPS {
             self.drain_swarm_inbox().await;
-            let req_body = serde_json::json!({
-                "model": grant.model,
-                "messages": chat_completion_messages(&self.messages),
-                "tools": tool_defs.iter().map(|t| serde_json::json!({
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters
-                    }
-                })).collect::<Vec<_>>(),
-                "stream": true
-            });
-
-            let (step, deferred_text) = 'attempt: {
+            let mut compact_used = false;
+            let (step, deferred_text) = 'got_step: loop {
+                let req_body = thread_proxy_body(&grant.model, &self.messages, tool_defs);
                 let retry = FIRST_RESPONSE_RETRIES;
                 for attempt in 0..=retry {
                     let mut headers = HeaderMap::new();
@@ -2419,12 +2480,58 @@ impl CoderRuntimeSession {
                         .send()
                         .await;
 
-                    // A refused or unreachable proxy is a failed turn. The version
-                    // this replaces streamed the words `Completed autonomous reasoning
-                    // turn (offline fallback).` and returned success, so a rejected
-                    // request and a finished one looked the same on screen.
+                    // A refused or unreachable proxy used to fail the turn
+                    // immediately. 413 compact-retries once; 502/unreachable
+                    // may finish this turn on local (#321). Credit refusals
+                    // and other statuses still fail.
                     let resp = match resp {
                         Ok(r) if r.status().is_success() => r,
+                        Ok(r) if r.status().as_u16() == 413 => {
+                            self.tell_progress(TurnProgress::Hop(HopClass::PayloadTooLarge));
+                            let status = r.status();
+                            let body = r.text().await.unwrap_or_default();
+                            let why = format!(
+                                "{} refused the turn: {status} {}",
+                                grant.proxy_url,
+                                snippet(&body)
+                            );
+                            if !compact_used {
+                                drop_oldest_tool_results(&mut self.messages);
+                                compact_used = true;
+                                continue 'got_step;
+                            }
+                            self.note(vec![ThreadRecord::checkpoint(
+                                "Inference hop 413 after one compact retry. Oldest tool results were dropped. Standing lane is unchanged. Next: shrink the transcript or switch to local.",
+                            )])
+                            .await;
+                            return Err(self
+                                .record_failure(error_code::PROVIDER_FAILED, why)
+                                .await);
+                        }
+                        Ok(r) if r.status().as_u16() == 502 => {
+                            self.tell_progress(TurnProgress::Hop(HopClass::BadGateway));
+                            let status = r.status();
+                            let body = r.text().await.unwrap_or_default();
+                            let why = format!(
+                                "{} refused the turn: {status} {}",
+                                grant.proxy_url,
+                                snippet(&body)
+                            );
+                            match self
+                                .finish_turn_on_local(
+                                    tool_defs,
+                                    chunk_callback.take().expect("turn callback"),
+                                )
+                                .await?
+                            {
+                                Some(answer) => return Ok(answer),
+                                None => {
+                                    return Err(self
+                                        .record_failure(error_code::PROVIDER_FAILED, why)
+                                        .await);
+                                }
+                            }
+                        }
                         Ok(r) => {
                             self.tell_progress(TurnProgress::Clear);
                             let status = r.status();
@@ -2439,11 +2546,22 @@ impl CoderRuntimeSession {
                                 .await);
                         }
                         Err(error) => {
-                            self.tell_progress(TurnProgress::Clear);
+                            self.tell_progress(TurnProgress::Hop(HopClass::Unreachable));
                             let why = format!("{} could not be reached: {error}", grant.proxy_url);
-                            return Err(self
-                                .record_failure(error_code::PROVIDER_FAILED, why)
-                                .await);
+                            match self
+                                .finish_turn_on_local(
+                                    tool_defs,
+                                    chunk_callback.take().expect("turn callback"),
+                                )
+                                .await?
+                            {
+                                Some(answer) => return Ok(answer),
+                                None => {
+                                    return Err(self
+                                        .record_failure(error_code::PROVIDER_FAILED, why)
+                                        .await);
+                                }
+                            }
                         }
                     };
 
@@ -2488,7 +2606,7 @@ impl CoderRuntimeSession {
                             }
                             WatchdogNext::Item(Some(Ok(event))) => event,
                             WatchdogNext::Item(Some(Err(error))) => {
-                                self.tell_progress(TurnProgress::Clear);
+                                self.tell_progress(TurnProgress::Hop(HopClass::Decode));
                                 let why = format!(
                                     "the reply from {} stopped mid-stream: {error}",
                                     grant.proxy_url
@@ -2547,7 +2665,7 @@ impl CoderRuntimeSession {
                     }
 
                     self.tell_progress(TurnProgress::Clear);
-                    break 'attempt (step, deferred_text);
+                    break 'got_step (step, deferred_text);
                 }
                 unreachable!("the first-response attempt loop always returns or breaks")
             };
@@ -2567,7 +2685,9 @@ impl CoderRuntimeSession {
                 final_answer = step.content;
                 self.tell_stream(ModelStreamEvent::ContentCommitted);
                 if !deferred_text.is_empty() {
-                    chunk_callback(&deferred_text);
+                    if let Some(cb) = chunk_callback.as_mut() {
+                        cb(&deferred_text);
+                    }
                 }
                 // The answer joins the transcript. `run_tools` records an
                 // assistant turn only when that turn called a tool, so without
@@ -2871,11 +2991,12 @@ impl CoderRuntimeSession {
     async fn run_responses_turn<F>(
         &mut self,
         tool_defs: &[ToolDefinition],
-        mut chunk_callback: F,
+        chunk_callback: F,
     ) -> Result<String, Failure>
     where
         F: FnMut(&str) + Send + 'static,
     {
+        let mut chunk_callback = Some(chunk_callback);
         let mut final_answer = String::new();
         let mut answered = false;
         // Resolve a switchable lane once per turn. A tool loop stays on the
@@ -2885,23 +3006,6 @@ impl CoderRuntimeSession {
 
         for _ in 0..MAX_TOOL_STEPS {
             self.drain_swarm_inbox().await;
-            let input = messages_to_responses_input(&self.messages);
-            let mut body = serde_json::json!({
-                "input": input,
-                "tools": tool_defs.iter().map(|t| serde_json::json!({
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters
-                    }
-                })).collect::<Vec<_>>(),
-                "stream": true
-            });
-            if let Some(model) = &resolved_model {
-                body["model"] = serde_json::Value::String(model.clone());
-            }
-
             let url = format!("{}/responses", self.api_base);
             let mut headers = HeaderMap::new();
             headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -2912,7 +3016,24 @@ impl CoderRuntimeSession {
                 );
             }
 
-            let (step, deferred_text, completed) = 'attempt: {
+            let mut compact_used = false;
+            let (step, deferred_text, completed) = 'got_step: loop {
+                let input = messages_to_responses_input(&self.messages);
+                let mut body = serde_json::json!({
+                    "input": input,
+                    "tools": tool_defs.iter().map(|t| serde_json::json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters
+                        }
+                    })).collect::<Vec<_>>(),
+                    "stream": true
+                });
+                if let Some(model) = &resolved_model {
+                    body["model"] = serde_json::Value::String(model.clone());
+                }
                 let retry = FIRST_RESPONSE_RETRIES;
                 for attempt in 0..=retry {
                     let resp = self
@@ -2924,6 +3045,50 @@ impl CoderRuntimeSession {
                         .await;
                     let resp = match resp {
                         Ok(r) if r.status().is_success() => r,
+                        Ok(r) if r.status().as_u16() == 413 => {
+                            self.tell_progress(TurnProgress::Hop(HopClass::PayloadTooLarge));
+                            let status = r.status();
+                            let response_body = r.text().await.unwrap_or_default();
+                            let why = format!(
+                                "{url} refused the turn: {status} {}",
+                                snippet(&response_body)
+                            );
+                            if !compact_used {
+                                drop_oldest_tool_results(&mut self.messages);
+                                compact_used = true;
+                                continue 'got_step;
+                            }
+                            self.note(vec![ThreadRecord::checkpoint(
+                                "Inference hop 413 after one compact retry. Oldest tool results were dropped. Standing lane is unchanged. Next: shrink the transcript or switch to local.",
+                            )])
+                            .await;
+                            return Err(self
+                                .record_failure(error_code::PROVIDER_FAILED, why)
+                                .await);
+                        }
+                        Ok(r) if r.status().as_u16() == 502 => {
+                            self.tell_progress(TurnProgress::Hop(HopClass::BadGateway));
+                            let status = r.status();
+                            let response_body = r.text().await.unwrap_or_default();
+                            let why = format!(
+                                "{url} refused the turn: {status} {}",
+                                snippet(&response_body)
+                            );
+                            match self
+                                .finish_turn_on_local(
+                                    tool_defs,
+                                    chunk_callback.take().expect("turn callback"),
+                                )
+                                .await?
+                            {
+                                Some(answer) => return Ok(answer),
+                                None => {
+                                    return Err(self
+                                        .record_failure(error_code::PROVIDER_FAILED, why)
+                                        .await);
+                                }
+                            }
+                        }
                         Ok(r) => {
                             self.tell_progress(TurnProgress::Clear);
                             let status = r.status();
@@ -2935,11 +3100,22 @@ impl CoderRuntimeSession {
                                 .await);
                         }
                         Err(error) => {
-                            self.tell_progress(TurnProgress::Clear);
+                            self.tell_progress(TurnProgress::Hop(HopClass::Unreachable));
                             let why = format!("{url} could not be reached: {error}");
-                            return Err(self
-                                .record_failure(error_code::PROVIDER_FAILED, why)
-                                .await);
+                            match self
+                                .finish_turn_on_local(
+                                    tool_defs,
+                                    chunk_callback.take().expect("turn callback"),
+                                )
+                                .await?
+                            {
+                                Some(answer) => return Ok(answer),
+                                None => {
+                                    return Err(self
+                                        .record_failure(error_code::PROVIDER_FAILED, why)
+                                        .await);
+                                }
+                            }
                         }
                     };
 
@@ -2974,7 +3150,7 @@ impl CoderRuntimeSession {
                             }
                             WatchdogNext::Item(Some(Ok(event))) => event,
                             WatchdogNext::Item(Some(Err(error))) => {
-                                self.tell_progress(TurnProgress::Clear);
+                                self.tell_progress(TurnProgress::Hop(HopClass::Decode));
                                 let why =
                                     format!("the reply from {url} stopped mid-stream: {error}");
                                 self.last_usage.add(step.usage);
@@ -3058,7 +3234,7 @@ impl CoderRuntimeSession {
                     }
 
                     self.tell_progress(TurnProgress::Clear);
-                    break 'attempt (step, deferred_text, completed);
+                    break 'got_step (step, deferred_text, completed);
                 }
                 unreachable!("the first-response attempt loop always returns or breaks")
             };
@@ -3082,7 +3258,9 @@ impl CoderRuntimeSession {
                 final_answer = step.content;
                 self.tell_stream(ModelStreamEvent::ContentCommitted);
                 if !deferred_text.is_empty() {
-                    chunk_callback(&deferred_text);
+                    if let Some(cb) = chunk_callback.as_mut() {
+                        cb(&deferred_text);
+                    }
                 }
                 self.messages.push(ChatMessage {
                     role: "assistant".to_string(),
@@ -3415,6 +3593,47 @@ impl CoderRuntimeSession {
         }
     }
 
+    /// Model name `run_local_turn` should resolve: a hop-death override, or
+    /// the standing local lane. Hosted lanes without an override refuse.
+    fn local_model_wanted(&self) -> Result<String, Failure> {
+        if let Some(model) = &self.local_model_override {
+            return Ok(model.clone());
+        }
+        match &self.lane {
+            Lane::Local(wanted) => Ok(wanted.clone()),
+            _ => Err("run_local_turn was called off the local lane".into()),
+        }
+    }
+
+    /// Finish the in-flight turn on a live local probe without changing the
+    /// standing lane (#321). `None` means the probe missed; the hop failure
+    /// should stand.
+    async fn finish_turn_on_local<F>(
+        &mut self,
+        tool_defs: &[ToolDefinition],
+        chunk_callback: F,
+    ) -> Result<Option<String>, Failure>
+    where
+        F: FnMut(&str) + Send + 'static,
+    {
+        let model = match self.installed_local_models().await {
+            Ok(models) if !models.is_empty() => models[0].clone(),
+            _ => return Ok(None),
+        };
+        let notice = format!(
+            "Inference hop died; this turn finished on local ({model}). Standing lane is unchanged."
+        );
+        self.note(vec![ThreadRecord::notice(&notice)]).await;
+        self.fell_back_to_local = true;
+        self.local_model_override = Some(model);
+        let result = self.run_local_turn(tool_defs, chunk_callback).await;
+        self.local_model_override = None;
+        match result {
+            Ok(answer) => Ok(Some(answer)),
+            Err(error) => Err(error),
+        }
+    }
+
     // ────────────────────────────────────────────────────── the local lane
 
     /// Whether an Ollama server on this machine can answer, from one bounded
@@ -3579,14 +3798,15 @@ impl CoderRuntimeSession {
     where
         F: FnMut(&str) + Send + 'static,
     {
-        let Lane::Local(wanted) = self.lane.clone() else {
-            return Err("run_local_turn was called off the local lane".into());
-        };
+        let wanted = self.local_model_wanted()?;
+        let keep_grant = self.local_model_override.is_some();
         let model = self.resolve_local_model(&wanted).await?;
         self.last_model = Some(format!("ollama:{model}"));
-        // No grant is minted here and none is invented: the model is on this
-        // machine, so there is nothing for the server to authorise.
-        self.last_grant = None;
+        // A native local session has no grant. A hop-death fallback keeps the
+        // hosted thread so the next turn can resume it (#321).
+        if !keep_grant {
+            self.last_grant = None;
+        }
 
         let url = format!("{}/api/chat", self.ollama_host.trim_end_matches('/'));
         let mut final_answer = String::new();
@@ -3808,9 +4028,7 @@ impl CoderRuntimeSession {
             images: Vec::new(),
         });
         self.note(vec![ThreadRecord::budget_instruction()]).await;
-        let Lane::Local(wanted) = self.lane.clone() else {
-            return Err("run_local_turn was called off the local lane".into());
-        };
+        let wanted = self.local_model_wanted()?;
         let model = self.resolve_local_model(&wanted).await?;
         let mut req_body = serde_json::json!({
             "model": model,
@@ -4154,6 +4372,51 @@ fn answered_model(headers: &HeaderMap) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Drop the oldest assistant tool-call plus its tool-result messages.
+///
+/// A 413 has already broken the prompt-cache prefix, so this is allowed to
+/// rewrite the in-flight array. Reasoning is not on the wire. Returns whether
+/// anything was removed.
+fn drop_oldest_tool_results(messages: &mut Vec<ChatMessage>) -> bool {
+    let Some(tool_i) = messages.iter().position(|m| m.role == "tool") else {
+        return false;
+    };
+    let start = if tool_i > 0
+        && messages[tool_i - 1].role == "assistant"
+        && messages[tool_i - 1].tool_calls.is_some()
+    {
+        tool_i - 1
+    } else {
+        tool_i
+    };
+    let mut end = tool_i + 1;
+    while end < messages.len() && messages[end].role == "tool" {
+        end += 1;
+    }
+    messages.drain(start..end);
+    true
+}
+
+fn thread_proxy_body(
+    model: &str,
+    messages: &[ChatMessage],
+    tool_defs: &[ToolDefinition],
+) -> serde_json::Value {
+    serde_json::json!({
+        "model": model,
+        "messages": chat_completion_messages(messages),
+        "tools": tool_defs.iter().map(|t| serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters
+            }
+        })).collect::<Vec<_>>(),
+        "stream": true
+    })
+}
+
 /// Convert the session's messages to the OpenAI chat-completions wire shape.
 ///
 /// Text-only messages keep the compact string form. A user message carrying
@@ -4347,6 +4610,73 @@ fn ollama_message(message: &ChatMessage) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hop_status_lines_name_the_class() {
+        assert_eq!(
+            TurnProgress::Hop(HopClass::PayloadTooLarge)
+                .status_line()
+                .as_deref(),
+            Some("Inference hop 413 (payload too large)")
+        );
+        assert_eq!(
+            TurnProgress::Hop(HopClass::Unreachable)
+                .status_line()
+                .as_deref(),
+            Some("Inference hop unreachable")
+        );
+        assert_eq!(
+            TurnProgress::Hop(HopClass::BadGateway)
+                .status_line()
+                .as_deref(),
+            Some("Inference hop 502")
+        );
+        assert_eq!(
+            TurnProgress::Hop(HopClass::Decode).status_line().as_deref(),
+            Some("Inference hop decode error")
+        );
+    }
+
+    #[test]
+    fn compact_drops_the_oldest_tool_group_and_leaves_the_user_prompt() {
+        let mut messages = vec![
+            ChatMessage {
+                role: "user".to_string(),
+                content: Some("start".into()),
+                tool_calls: None,
+                tool_call_id: None,
+                images: Vec::new(),
+            },
+            ChatMessage {
+                role: "assistant".to_string(),
+                content: None,
+                tool_calls: Some(vec![serde_json::json!({"id":"c1"})]),
+                tool_call_id: None,
+                images: Vec::new(),
+            },
+            ChatMessage {
+                role: "tool".to_string(),
+                content: Some("dump".into()),
+                tool_calls: None,
+                tool_call_id: Some("c1".into()),
+                images: Vec::new(),
+            },
+            ChatMessage {
+                role: "assistant".to_string(),
+                content: Some("later".into()),
+                tool_calls: None,
+                tool_call_id: None,
+                images: Vec::new(),
+            },
+        ];
+        assert!(drop_oldest_tool_results(&mut messages));
+        assert_eq!(
+            messages.iter().map(|m| m.role.as_str()).collect::<Vec<_>>(),
+            vec!["user", "assistant"]
+        );
+        assert_eq!(messages[1].content.as_deref(), Some("later"));
+        assert!(!drop_oldest_tool_results(&mut messages));
+    }
 
     #[test]
     fn ollama_host_resolution_prefers_the_openagents_variable() {

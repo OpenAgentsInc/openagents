@@ -17,7 +17,7 @@
 //!   what it says.
 
 use openagents_cli::runtime::{
-    CoderRuntimeSession, Lane, MAX_TOOL_STEPS, ModelStreamEvent, TurnUsage,
+    CoderRuntimeSession, HopClass, Lane, MAX_TOOL_STEPS, ModelStreamEvent, TurnProgress, TurnUsage,
 };
 use openagents_cli::tools::HarnessToolRegistry;
 use std::sync::{Arc, Mutex};
@@ -741,9 +741,13 @@ async fn a_refused_proxy_call_ends_the_turn() {
 }
 
 /// An unreachable proxy is an error, not an empty success.
+///
+/// Local is pointed at a closed port so a live Ollama on this machine cannot
+/// finish the turn (#321). With no local probe, hop death still fails.
 #[tokio::test]
 async fn an_unreachable_host_ends_the_turn() {
     let mut session = session(Lane::default(), DEAD.to_string());
+    session.ollama_host = "http://127.0.0.1:1".to_string();
     let message = session
         .execute_turn("hello", |_| {})
         .await
@@ -751,6 +755,7 @@ async fn an_unreachable_host_ends_the_turn() {
         .to_string();
     assert!(!message.is_empty());
     assert!(session.last_grant.is_none());
+    assert!(!session.fell_back_to_local);
 }
 
 // ─────────────────────────────────────────────────────────── the tool loop
@@ -1545,6 +1550,188 @@ async fn a_refused_turn_records_the_failure_and_never_an_answer() {
     assert!(
         failure.to_string().contains("402"),
         "the caller was told something else: {failure}"
+    );
+}
+
+/// A 413 retries once after dropping the oldest tool results, then checkpoints
+/// instead of a bare `turn.failed` (#321).
+#[tokio::test]
+async fn a_413_compacts_once_then_checkpoints_instead_of_a_bare_failure() {
+    let proxy_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = Arc::clone(&proxy_calls);
+    let stub = start(move |request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
+        }
+        if line.starts_with("POST /api/inference/proxy") {
+            let n = seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if n == 0 {
+                return Reply::Sse(
+                    vec![frame(
+                        serde_json::json!({"choices":[{"delta":{"tool_calls":[{
+                            "index": 0,
+                            "id": "call_a",
+                            "function": {"name": "bash", "arguments": "{\"command\":\"echo hello\"}"}
+                        }]}}]}),
+                    )],
+                    None,
+                );
+            }
+            return Reply::Body(413, "text/plain", "payload too large".to_string());
+        }
+        Reply::Body(404, "text/plain", "no".into())
+    });
+
+    let progress = Arc::new(Mutex::new(Vec::new()));
+    let seen_progress = Arc::clone(&progress);
+    let mut session =
+        session(Lane::default(), stub.base.clone()).observing_progress(Arc::new(move |event| {
+            seen_progress.lock().unwrap().push(event);
+        }));
+    let failure = session
+        .execute_turn("what does echo hello print?", |_| {})
+        .await
+        .expect_err("a 413 hop answered");
+    session.finish().await.expect("the ending failed");
+
+    let events = recorded(&stub);
+    let kinds = kinds(&events);
+    assert!(
+        kinds.contains(&"turn.checkpoint".to_string()),
+        "413 must checkpoint: {kinds:?}"
+    );
+    assert_eq!(
+        kinds.last().map(String::as_str),
+        Some("turn.failed"),
+        "the compacted 413 must still fail: {kinds:?}"
+    );
+    assert!(
+        failure.to_string().contains("413"),
+        "the caller was not told it was a 413: {failure}"
+    );
+    assert_eq!(
+        proxy_calls.load(std::sync::atomic::Ordering::SeqCst),
+        3,
+        "tool-call hop plus one compact retry, not a tool loop against 413"
+    );
+
+    let proxies: Vec<String> = stub
+        .requests()
+        .into_iter()
+        .filter(|request| request.starts_with("POST /api/inference/proxy"))
+        .collect();
+    assert!(
+        proxies[1].contains(r#""role":"tool""#),
+        "the 413'd hop should still carry the tool result: {}",
+        proxies[1]
+    );
+    assert!(
+        !proxies[2].contains(r#""role":"tool""#),
+        "the compact retry must drop the oldest tool result: {}",
+        proxies[2]
+    );
+
+    let hops = progress.lock().unwrap().clone();
+    assert!(
+        hops.iter()
+            .any(|event| *event == TurnProgress::Hop(HopClass::PayloadTooLarge)),
+        "the status line never saw 413: {hops:?}"
+    );
+}
+
+/// Unreachable/502 transport finishes the in-flight turn on a live local
+/// probe and leaves the standing lane alone (#321).
+#[tokio::test]
+async fn a_502_finishes_the_turn_on_local_without_changing_the_lane() {
+    let ollama = ollama_stub();
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
+        }
+        if line.starts_with("POST /api/inference/proxy") {
+            return Reply::Body(502, "text/html", "<html>bad gateway</html>".to_string());
+        }
+        Reply::Body(404, "text/plain", "no".into())
+    });
+
+    let mut session = session(Lane::default(), stub.base.clone());
+    session.ollama_host = ollama.base.trim_end_matches("/api/v1").to_string();
+    let standing = session.lane.clone();
+    let answer = session
+        .execute_turn("say pong", |_| {})
+        .await
+        .expect("a 502 with a live local probe should finish the turn");
+    assert_eq!(answer, "PONG");
+    assert_eq!(session.lane, standing, "the standing lane must not change");
+    assert!(session.fell_back_to_local);
+    assert!(
+        session.last_grant.is_some(),
+        "the hosted thread must survive the fallback"
+    );
+    assert_eq!(session.last_model.as_deref(), Some("ollama:qwen3:0.6b"));
+
+    let events = recorded(&stub);
+    let kinds = kinds(&events);
+    assert!(
+        kinds.contains(&"turn.notice".to_string()),
+        "fallback must be a Notice: {kinds:?}"
+    );
+    assert!(
+        !kinds.contains(&"turn.failed".to_string()),
+        "a recovered turn recorded a failure: {kinds:?}"
+    );
+}
+
+/// A credit refusal is not hop death: local stays unused even when it would
+/// answer.
+#[tokio::test]
+async fn a_credit_refusal_does_not_fall_back_to_local() {
+    let ollama = ollama_stub();
+    let stub = start(|request, origin| {
+        let line = request.lines().next().unwrap_or_default().to_string();
+        if line.starts_with("POST") && line.contains("/events") {
+            return appended();
+        }
+        if line.starts_with("POST") && line.contains("/report") {
+            return filed(0);
+        }
+        if line.starts_with("POST /api/v1/threads") {
+            return Reply::Body(200, "application/json", grant_body(origin, "glm-5.3-flash"));
+        }
+        Reply::Body(
+            402,
+            "application/json",
+            r#"{"code":"credit_exhausted","message":"nothing left"}"#.to_string(),
+        )
+    });
+
+    let mut session = session(Lane::default(), stub.base.clone());
+    session.ollama_host = ollama.base.trim_end_matches("/api/v1").to_string();
+    session
+        .execute_turn("do something", |_| {})
+        .await
+        .expect_err("a credit refusal fell back to local");
+    assert!(!session.fell_back_to_local);
+    assert!(
+        !ollama
+            .request_lines()
+            .iter()
+            .any(|line| line.starts_with("POST /api/chat")),
+        "local chat was used on a credit refusal"
     );
 }
 
