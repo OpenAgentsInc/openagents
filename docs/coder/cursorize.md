@@ -221,13 +221,22 @@ store rows, cited review, ledger entry.
 
 ### Suites and their roles
 
+**The optimization target is `glm-5.3-flash` (native Coder Flash, proxy
+lane) — the model Coder actually ships on.** Every recipe below runs
+`-m zai/gglm-5.3-flash --lane proxy` against `https://openagents.com`, the
+same recipe as the T1/T2/T3 cycles and the plugin A/B rows. Baselines
+already on the store for Flash: `tb2-quick` 1 of 2 (462.1 s, gate passed,
+#143), `tb2-cross-section` 7 of 12 (4,243 s). Luna (`gpt-5.6-luna`) rows
+exist as cross-model context; do not read a Flash lever's delta off a Luna
+row.
+
 | Suite | Tasks | Role in this program |
 | --- | --- | --- |
-| `tb2-quick` | 2 (`regex-log`, `openssl-selfsigned-cert`) | The iteration lane. Two trials, minutes per run, gate-floored. A delta here is a **selector, not a conclusion** (ledger M5: rates of 0/.5/1 only). |
-| `plugin-ab-test` | 1 (`build-cython-ext`) | The compile-fix loop; the R1/R2 round-count oracles in miniature. |
-| `plugin-ab-git` | 2 (`git-leak-recovery`, `sanitize-git-repo`) | High-output-volume forensics; where the quadratic-replay cost shows. T1/T2 were measured here. |
-| `tb2-cross-section` | 12 | The confirmation lane, only after a quick-lane selector fires. Includes `openssl-selfsigned-cert` — "the purest batching discriminator in the set" — and `sqlite-with-gcov` for output volume. |
-| `tb2-quick` local lane | 2 | Unmetered; wall clock and output tokens are the axes. The R4/R5 falsification lane when proxy spend should stay flat. |
+| `tb2-quick` | 2 (`regex-log`, `openssl-selfsigned-cert`) | The iteration lane. Two trials, minutes per run, gate-floored. A delta here is a **selector, not a conclusion** (ledger M5: rates of 0/.5/1 only). Flash baseline on store: 1 of 2. |
+| `plugin-ab-test` | 1 (`build-cython-ext`) | The compile-fix loop; the R1/R2 round-count oracles in miniature. Flash ran it 1 of 1 with 55 shell calls in the plugin A/B — the round-count baseline is already captured. |
+| `plugin-ab-git` | 2 (`git-leak-recovery`, `sanitize-git-repo`) | High-output-volume forensics; where the quadratic-replay cost shows. T1/T2 were measured here on Flash. |
+| `tb2-cross-section` | 12 | The confirmation lane, only after a quick-lane selector fires. Includes `openssl-selfsigned-cert` — "the purest batching discriminator in the set" — and `sqlite-with-gcov` for output volume. Flash baseline on store: 7 of 12. |
+| `tb2-quick` local lane | 2 | Unmetered; wall clock and output tokens are the axes. The R4 falsification lane when proxy spend should stay flat (Ollama qwen3.8:27b, `--n-concurrent 1`). |
 
 ### What one cycle looks like
 
@@ -237,7 +246,7 @@ Concretely, R1 (parallel tool-call rounds) as the worked example:
 
    ```sh
    bench/run-suite.sh bench/suites/tb2-quick.suite.json \
-     --model openai/gpt-5.6-luna --lane proxy \
+     --model zai/gglm-5.3-flash --lane proxy \
      --jobs-dir /tmp/gym-jobs/cursorize-r1-baseline
    openagents gym results score /tmp/gym-jobs/cursorize-r1-baseline/<run> \
      --suite tb2-quick --lane proxy --append
@@ -255,7 +264,9 @@ Concretely, R1 (parallel tool-call rounds) as the worked example:
    the T1 review is the template for reading a token delta without a
    score delta honestly.
 5. **Review** with `pnpm run coder:review -- <job-dir> --suite tb2-quick \
-   --lane proxy --lever <diff-ref> --slug cursorize-r1 --reviewer-model <other-family>`.
+   --lane proxy --lever <diff-ref> --slug cursorize-r1 --reviewer-model <other-family>`
+   (e.g. a Luna reviewer for a Flash cycle — different family per the
+   runbook).
    Every proposal cites trajectory steps; unresolvable citations refuse the
    review.
 6. **Decide and record**: keep (append ledger entry, promote R1 to `adopted`
@@ -270,10 +281,10 @@ Each R-item gets its oracle and its expected axis stated **before** the run
 
 | Lever | Oracle suite (selector → confirm) | Axis that confirms | Axis that would refute | Metric gaps to close first |
 | --- | --- | --- | --- | --- |
-| R1 parallel rounds | `tb2-quick` → `tb2-cross-section` (`openssl-selfsigned-cert` is the batching discriminator) | rounds ↓, billed tokens ↓ at equal success | success ↓, or tokens flat while failed-call rate rises | none — ATIF steps already carry call counts |
-| R2 background bash + zero-model wait | `plugin-ab-test` (`build-cython-ext` compile loop) → cross-section | wall clock ↓, sleep/poll rounds → 0 | rounds ↑ without wall-clock gain | none — wall clock is in every row |
+| R1 parallel rounds | `tb2-quick` → `tb2-cross-section` (`openssl-selfsigned-cert` is the batching discriminator) | rounds ↓, billed tokens ↓ at equal success | success ↓, or tokens flat while failed-call rate rises | none — ATIF steps already carry call counts; Cursor baseline to beat: 237 same-instant batches of 2–8 in 2.28 h |
+| R2 background bash + zero-model wait | `plugin-ab-test` (`build-cython-ext` compile loop) → cross-section | wall clock ↓, sleep/poll rounds → 0 | rounds ↑ without wall-clock gain | none — wall clock is in every row; Flash `plugin-ab-test` baseline (55 shell calls, 1 of 1) already on store |
 | R3 live waste nudge | `tb2-quick` local lane (unmetered; output tokens = minutes) | repeated-command-head waste ↓ in ATIF | nudge fires but waste unchanged | none — the classifier exists |
-| R4 terse inter-round narration | `tb2-quick` local, then proxy | completion tokens ↓ (T3-style), wall clock ↓ on local | success ↓ on `fix-code-vulnerability` (terse hides reasoning errors) | add `median_inter_round_text_chars` to ATIF `final_metrics` |
+| R4 terse inter-round narration | `tb2-quick` local, then proxy Flash | completion tokens ↓ (T3-style, whose −41% was measured on Flash), wall clock ↓ on local | success ↓ on `fix-code-vulnerability` (terse hides reasoning errors) | add `median_inter_round_text_chars` to ATIF `final_metrics` |
 | R5 subagent telemetry | no behavior change claimed | `extra.subagent` populated in exports | — | telemetry only; not measurable on suites |
 | R6 web capabilities | no honest tb2 oracle today (`allow_internet = true` makes web available to every trial) | needs a designated offline→online task pair first | — | per `plugin-ab-disposition.json`: `no_oracle_yet` until an oracle is named |
 | R7 goal registration | cross-section task 12 (`schemelike-metacircular-eval`, long horizon) | fewer abandoned/timeout-shaped failures | overhead tokens with no completion change | requires the task to run at all under Rosetta; budget the 2400 s verifier |
@@ -323,12 +334,14 @@ a finding: our agent-facing transcript is the better archival format.
 ### Sequencing
 
 1. **R1 first**: prompt-only change (no harness work), the suite with a
-   named batching discriminator, and prior T1 art to compare against.
+   named batching discriminator, and prior T1 art to compare against (T1
+   itself was measured on Flash: +52% billed tokens without the sentence).
 2. **R2 + R3 together are the predicted largest movers** (the smoke session
    burned most of its wall clock on wait scaffolding), but R2 is Rust tool
    work — land it as its own cycle, then measure R3 on top so their effects
    do not confound.
-3. **R4** reuses the T3 measurement pattern directly.
+3. **R4** reuses the T3 measurement pattern directly (T3's −41% completion
+   tokens was a Flash measurement).
 4. **R5–R7** trail: telemetry, oracle-less, and long-horizon respectively —
    each waits for its measurement gap to close.
 
