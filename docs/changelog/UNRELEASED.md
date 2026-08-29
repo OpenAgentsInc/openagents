@@ -5,6 +5,18 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc7
+
+- issues: none (owner request: republish the rc channel with the #330 fix)
+- commits: this change
+- contracts-specs: CLI crate version
+- invariants: non-release builds still report `0.0.0-dev`
+- evidence: `crates/openagents-cli/tests/coder_frame.rs` startup-facts frame test; `a_non_release_build_reports_a_development_version`
+- lane: coder crash fix session
+
+The `openagents-cli` crate is `0.2.0-rc7`. Its macOS artifact is the first
+channel binary signed with the wasm JIT entitlements (#330).
+
 ## macOS release binaries keep the wasm JIT entitlements (#330)
 
 - issues: #330
