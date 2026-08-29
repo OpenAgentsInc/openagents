@@ -5,6 +5,17 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc4
+
+- issues: none (owner request: ship current main as rc4)
+- commits: this change
+- contracts-specs: CLI crate version; Coder idle welcome chrome
+- invariants: non-release builds still report `0.0.0-dev`
+- evidence: `crates/openagents-cli/tests/coder_frame.rs` startup-facts frame test; `a_non_release_build_reports_a_development_version`
+- lane: grok 0.2.0-rc4 bump
+
+The `openagents-cli` crate is `0.2.0-rc4`. The idle card is "New in v0.2.0-rc4". This candidate includes Autopilot in the session skills (#328) on top of headless Autopilot and the 0.2.0-rc2 first-frame fixes.
+
 ## Coder skills name Autopilot so a session can start it (#328)
 
 - issues: #328
