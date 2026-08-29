@@ -96,9 +96,23 @@ pub struct SessionOptions {
 }
 
 pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::Error>> {
-    if !atty_is_terminal() {
-        println!("Non-interactive terminal detected. Run `openagents` from a terminal.");
-        return Ok(());
+    // A one-shot prompt must not depend on a terminal: its whole reason to
+    // exist is headless tests and scripts, where no TTY will ever be attached
+    // (#338). The refusal below is for an interactive Coder with nothing to
+    // run, not for `--prompt`. (Session registration happens inside
+    // `run_one_shot`, so the swarm still sees exactly one registration.)
+    match session_boot(options.prompt.as_deref(), atty_is_terminal()) {
+        SessionBoot::RefuseNoTty => {
+            println!("Non-interactive terminal detected. Run `openagents` from a terminal.");
+            return Ok(());
+        }
+        SessionBoot::OneShot(prompt) => {
+            return run_one_shot(options, prompt.to_string()).await;
+        }
+        SessionBoot::FullScreen => {
+            // A TTY with a prompt keeps the full-screen path: the reader
+            // watches the turn run and the TUI exits at its boundary.
+        }
     }
 
     // Take the terminal before any await. 0.2.0-rc1 ran git + issue list
@@ -1041,6 +1055,170 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // no longer exists is the stale state every other member then has to
     // interpret. Best-effort — the exit path owns neither the filesystem nor
     // a network.
+    let _ = crate::swarm::unregister(&crate::swarm::default_home(), &swarm_session_id);
+    Ok(())
+}
+
+/// One prompt, no terminal: the `--prompt` path for pipes, CI, and headless
+/// tests (#338, built on #333).
+///
+/// This mirrors the session setup the TUI performs — local store, snapshot
+/// seed, swarm registration, lane resolution — and then drives one turn the
+/// same way the frame does: mint the turn id through the reducer, stream
+/// [`Control`] events to stdout as plain lines, and end the thread before
+/// exiting. What it deliberately does not do is draw. Nothing here touches
+/// the alternate screen, raw mode, or the event queue, so the same binary is
+/// safe to call from a script that captures stdout.
+async fn run_one_shot(
+    options: SessionOptions,
+    prompt: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let root = crate::session_store::default_root();
+    let mut loaded = match options.resume.as_deref() {
+        None => crate::session_store::LocalSessionStore::create(
+            &root,
+            &cwd,
+            &options.lane_name,
+            options.reasoning.clone(),
+            options.cloud_history,
+        )?,
+        Some("") => crate::session_store::LocalSessionStore::load_last(&root, &cwd)?
+            .ok_or_else(|| format!("No saved Coder session exists for {}.", cwd.display()))?,
+        Some(id) => crate::session_store::LocalSessionStore::load_id(&root, &cwd, id)?
+            .ok_or_else(|| format!("No saved Coder session has id `{id}`."))?,
+    };
+    let resumed = options.resume.is_some();
+    let lane_name = if resumed && !options.lane_explicit {
+        loaded.summary.lane.clone()
+    } else {
+        options.lane_name.clone()
+    };
+    let reasoning = if resumed && options.reasoning.is_none() {
+        loaded.summary.reasoning.clone()
+    } else {
+        options.reasoning.clone()
+    };
+    let lane = Lane::from_str(&lane_name);
+    let reasoning = reasoning.or_else(|| lane.default_reasoning().map(str::to_string));
+    loaded.store.set_lane(&lane_name)?;
+    loaded.store.set_reasoning(reasoning.as_deref())?;
+    let cloud_history = options.cloud_history && !lane.is_local();
+    loaded.store.set_cloud_history(cloud_history)?;
+
+    let (tx, rx) = mpsc::channel::<Control>();
+    let agents = crate::coder::acp::find_agents().await.unwrap_or_default();
+    let mut session = Session::open(
+        lane.clone(),
+        &lane_name,
+        reasoning.clone(),
+        agents,
+        false,
+        tx.clone(),
+    );
+    // Kept before the store moves into the session: the swarm registration
+    // and the inbox path are keyed on this directory.
+    let store_directory = loaded.store.directory().to_path_buf();
+    let swarm_session_id = loaded.summary.id.clone();
+    let checkpoint = loaded.summary.last_checkpoint.clone();
+    session = session.with_local_session(loaded.store, &loaded.events, cloud_history);
+    let snapshot_text =
+        crate::coder::snapshot::workspace_snapshot(&cwd, checkpoint.as_deref()).await;
+    session.seed_workspace_snapshot(&snapshot_text);
+    if let Some(notice) = crate::plugins::session_start_capability_notice(
+        &crate::plugins::discover_catalog(&cwd),
+        crate::plugins::Approval {
+            mounts_allowed: true,
+        },
+    ) {
+        session.seed_capability_notice(&notice);
+    }
+
+    // The swarm registration the TUI would have made. A headless one-shot
+    // is still a session a neighbor might want to reach, and the same
+    // best-effort rule holds: failure is a printed warning, never fatal.
+    let swarm_home = crate::swarm::default_home();
+    let swarm_registration = crate::swarm::Registration {
+        schema: crate::swarm::REGISTRATION_SCHEMA.to_string(),
+        session_id: swarm_session_id.clone(),
+        pid: std::process::id(),
+        cwd: cwd.display().to_string(),
+        lane: lane_name.clone(),
+        model: None,
+        role: "root".to_string(),
+        parent: None,
+        worktree: None,
+        status: None,
+        inbox: store_directory.join("inbox.jsonl").display().to_string(),
+        alive_after_ms: crate::swarm::DEFAULT_ALIVE_AFTER_MS,
+        started_at_ms: crate::swarm::now_ms(),
+        heartbeat_at_ms: crate::swarm::now_ms(),
+    };
+    if let Err(why) = crate::swarm::register(&swarm_home, &swarm_registration) {
+        eprintln!("Coder: swarm registration failed: {why}");
+    }
+
+    if !options.dev && !lane.is_local() && !session.has_user_token() {
+        eprintln!("{HOSTED_NEEDS_SIGN_IN}");
+        let spent_line = tokio::time::timeout(REVOCATION_GRACE, session.finish())
+            .await
+            .map_err(|_| "Coder: the session was still working; its thread was left open.")?;
+        match spent_line {
+            Ok(Some(line)) => println!("{line}"),
+            Ok(None) => {}
+            Err(error) => eprintln!("Coder: the thread was not ended: {error}"),
+        }
+        let _ = crate::swarm::unregister(&crate::swarm::default_home(), &swarm_session_id);
+        return Ok(());
+    }
+
+    // Mint the turn through the same reducer the frame uses, then run it to
+    // completion on the runtime task. The stream ends when `execute_turn`
+    // returns, which is always after exactly one Done.
+    let mut turns = TurnState::default();
+    let TurnEffect::Started(id) = turns.apply(TurnAction::Start) else {
+        return Err("the turn could not be started".into());
+    };
+    let turn_task = tokio::spawn(async move {
+        session
+            .execute_turn_with_id_and_images(id, &prompt, &[], tx.clone())
+            .await;
+        session
+    });
+    // Drain the stream, printing as the turn speaks. Chunk lines go out as
+    // they arrive so a caller following the output sees the answer stream;
+    // everything else is a status line the transcript also carries. The
+    // sender half lives in the turn task, so the loop ends when that task
+    // drops its clones — after the turn's Done.
+    while let Ok(control) = rx.recv() {
+        match control {
+            Control::Turn { event, .. } => match *event {
+                Control::Chunk(chunk) => print!("{chunk}"),
+                Control::Failed(error) => eprintln!("Coder: {error}"),
+                Control::Notice(notice) => eprintln!("Coder: {notice}"),
+                _ => {}
+            },
+            Control::Failed(error) => eprintln!("Coder: {error}"),
+            Control::Notice(notice) => eprintln!("Coder: {notice}"),
+            _ => {}
+        }
+    }
+    let mut returned_session = turn_task
+        .await
+        .map_err(|error| format!("turn task: {error}"))?;
+    println!();
+
+    // The screen is gone before this would matter, and a thread left open
+    // holds its grant's remaining budget. The session came back from the
+    // turn task, so its thread can be ended properly rather than dropped.
+    let spent_line = tokio::time::timeout(REVOCATION_GRACE, returned_session.finish())
+        .await
+        .map_err(|_| "Coder: the session was still working; its thread was left open.")?;
+    match spent_line {
+        Ok(Some(line)) => println!("{line}"),
+        Ok(None) => {}
+        Err(error) => eprintln!("Coder: the thread was not ended: {error}"),
+    }
     let _ = crate::swarm::unregister(&crate::swarm::default_home(), &swarm_session_id);
     Ok(())
 }
@@ -2459,6 +2637,24 @@ pub fn export(ui: &mut CoderUi) {
 /// be offered. Re-exported here because that is where the completer looks.
 pub use commands::names as command_names;
 
+/// How `run_tui` starts given a `--prompt` and whether a terminal is attached
+/// (#338). A TTY always takes the full-screen path; `--prompt` without a TTY
+/// is the one-shot path; no prompt and no TTY is the existing refusal.
+#[derive(Debug, PartialEq, Eq)]
+enum SessionBoot<'a> {
+    RefuseNoTty,
+    OneShot(&'a str),
+    FullScreen,
+}
+
+fn session_boot(prompt: Option<&str>, tty: bool) -> SessionBoot<'_> {
+    match (prompt, tty) {
+        (None, false) => SessionBoot::RefuseNoTty,
+        (Some(prompt), false) => SessionBoot::OneShot(prompt),
+        (_, true) => SessionBoot::FullScreen,
+    }
+}
+
 fn atty_is_terminal() -> bool {
     if !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
         return false;
@@ -2505,6 +2701,17 @@ impl Drop for TerminalCleanup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_prompt_without_a_tty_is_the_one_shot_path() {
+        assert_eq!(session_boot(None, false), SessionBoot::RefuseNoTty);
+        assert_eq!(
+            session_boot(Some("hello"), false),
+            SessionBoot::OneShot("hello")
+        );
+        assert_eq!(session_boot(Some("hello"), true), SessionBoot::FullScreen);
+        assert_eq!(session_boot(None, true), SessionBoot::FullScreen);
+    }
 
     #[test]
     fn every_listed_command_is_handled() {

@@ -584,6 +584,14 @@ mod tests {
     }
 
     #[test]
+    fn prompt_is_recorded_on_the_session_options() {
+        let Parsed::Run(options, _) = parse(&["--prompt".into(), "hello".into()]).unwrap() else {
+            panic!("expected Coder options");
+        };
+        assert_eq!(options.prompt.as_deref(), Some("hello"));
+    }
+
+    #[test]
     fn coder_history_is_local_by_default() {
         let Parsed::Run(options, _) = parse(&[]).unwrap() else {
             panic!("expected Coder options");
