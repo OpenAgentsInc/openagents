@@ -8,6 +8,7 @@ pub mod context;
 pub mod format;
 pub mod generate;
 pub mod metal_gemm;
+pub mod metal_graph;
 pub mod metal_wrap;
 pub mod mmap;
 pub mod progress;

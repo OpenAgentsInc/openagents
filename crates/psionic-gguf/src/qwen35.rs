@@ -48,6 +48,7 @@ struct Shapes {
     inner_size: usize,
     conv_kernel: usize,
     v_head_reordered: bool,
+    ffn: usize,
 }
 
 pub fn has_hybrid_graph(mapped: &MappedWeights) -> bool {
@@ -120,6 +121,7 @@ fn shapes(meta: &GgufMeta) -> Shapes {
             .kv_u64("qwen35.ssm.v_head_reordered")
             .map(|v| v != 0)
             .unwrap_or(true),
+        ffn: meta.kv_u64("qwen35.feed_forward_length").unwrap_or(0) as usize,
     }
 }
 
@@ -182,6 +184,9 @@ pub fn embed_and_forward(
     state: &mut DecodeState,
 ) -> Result<Vec<f32>, String> {
     let s = shapes(meta);
+    if state.position == 0 {
+        crate::metal_gemm::reset_hybrid_state();
+    }
     let mut hidden = crate::generate::embed_token(mapped, token, s.hidden)
         .ok_or_else(|| String::from("embed"))?;
     for (index, layer) in state.layers.iter_mut().enumerate() {
@@ -191,9 +196,15 @@ pub fn embed_and_forward(
                 forward_hybrid(mapped, &s, index, hidden, conv, delta)?
             }
             LayerState::Full { keys, values } => {
+                if let Some(flushed) = crate::metal_gemm::flush_hybrid_hidden(s.hidden) {
+                    hidden = flushed;
+                }
                 forward_full(mapped, &s, index, hidden, keys, values, state.position)?
             }
         };
+    }
+    if let Some(flushed) = crate::metal_gemm::flush_hybrid_hidden(s.hidden) {
+        hidden = flushed;
     }
     state.position = state.position.saturating_add(1);
     Ok(hidden)
@@ -240,6 +251,27 @@ fn forward_hybrid(
     conv_state: &mut [f32],
     delta_state: &mut [f32],
 ) -> Result<Vec<f32>, String> {
+    let spec = crate::metal_gemm::HybridSpec {
+        hidden: s.hidden,
+        epsilon: s.epsilon,
+        state_size: s.state_size,
+        group_count: s.group_count,
+        time_step_rank: s.time_step_rank,
+        inner_size: s.inner_size,
+        conv_kernel: s.conv_kernel,
+        v_head_reordered: s.v_head_reordered,
+        ffn: s.ffn,
+    };
+    if let Some(out) = crate::metal_gemm::run_hybrid_layer(
+        mapped,
+        &spec,
+        index,
+        input.as_slice(),
+        index,
+        s.n_layers,
+    ) {
+        return Ok(if out.len() == s.hidden { out } else { input });
+    }
     let p = format!("blk.{index}");
     let attn_norm = vec_f32(mapped, &format!("{p}.attn_norm.weight"))?;
     let hidden_norm = rms_norm_eps(input.as_slice(), attn_norm.as_slice(), s.epsilon);

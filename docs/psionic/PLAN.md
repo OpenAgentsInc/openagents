@@ -232,9 +232,9 @@ Coder interactive mode until it streams.
 
 OpenAgents issues 344–347 and 352–356 landed load through fixture
 `gen.done`. Hybrid quality (#357) recorded a 27B greedy 32-token match
-vs Ollama. Metal Q8 batches and fused FFN (#358) are on the shared
-buffer (~6.5 tok/s); tiled
-`mul_mat_q8_0` is still required to beat warm Ollama tok/s. Next:
+vs Ollama. GPU hybrid GDN + FFN (#358) is on the shared buffer
+(~9.6 tok/s); GPU full-attention and a faster Q8 kernel are still
+required to beat warm Ollama tok/s. Next:
 remaining tokenizer work (#359), sampling (#360), then
 `--model psionic:` (stage 4, #362). Bench (#361) already landed.
 

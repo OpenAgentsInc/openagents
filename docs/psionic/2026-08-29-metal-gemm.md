@@ -47,10 +47,8 @@ never emits `gemm.metal`. That run is the 0.31 tok/s line.
 
 ## Remaining kernel
 
-Need a tiled Metal `mul_mat_q8_0` (SIMD-group GEMM) and GDN/attention
-on GPU so one command buffer can cover a layer. This landing batches
-same-X Q8 GEMMs and fuses FFN (`gate`, `up`, `silu_mul`, `down`) into
-one wait. Hybrid layers still wait for GDN on CPU between those
-batches. That is the remaining #358 gap.
+GPU hybrid GDN + FFN later landed at ~9.6 tok/s
+([2026-08-29-gpu-hybrid.md](./2026-08-29-gpu-hybrid.md)). The remaining
+#358 gap is GPU full-attention and a faster Q8 kernel.
 
 `--local` was not flipped.
