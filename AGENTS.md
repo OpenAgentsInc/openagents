@@ -342,6 +342,9 @@ not waive these controls:
   any current surface. AssuranceSpec semantics do not live there.
 - `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
   those areas.
+- `docs/os/` owns CoderOS research: a Coder-first Linux distro that draws
+  on Omarchy's desktop ideas. Research and sequencing notes only. Not ISO,
+  substrate, or product-promise authority. Start with `docs/os/README.md`.
 
 ## Live Public Reference Surfaces
 
