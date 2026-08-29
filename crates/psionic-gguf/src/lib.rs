@@ -4,20 +4,25 @@
 //! mapping as a Metal shared buffer. This crate is not the Qwen 3.8 decoder.
 
 pub mod admit;
+pub mod context;
 pub mod format;
+pub mod generate;
 pub mod metal_wrap;
 pub mod mmap;
+pub mod progress;
 pub mod tokenizer;
 
 pub use admit::{admit, translate_tensor_name, Admission, AdmitError, FAMILY_QWEN35};
+pub use context::{plan_caches, runtime_n_ctx, CachePlan, DEFAULT_RUNTIME_CTX};
 pub use format::{
     ggml_type_name, parse_bytes, parse_path, write_qwen35_fixture, GgufMeta, ParseError,
     TensorInfo, MAGIC,
 };
 pub use mmap::{map_file, MappedWeights};
-pub use tokenizer::{load_tokenizer, TokenizerTables};
+pub use progress::{format_bar, should_emit};
+pub use tokenizer::{load_tokenizer, render_chat, TokenizerTables};
 
-pub const PROVENANCE_PIN: &str = "issue-344-map.done";
+pub const PROVENANCE_PIN: &str = "issue-352-ctx.done";
 
 pub fn format_size(bytes: u64) -> String {
     const KIB: f64 = 1024.0;

@@ -20,6 +20,9 @@ OpenAgents issues for this program:
 - https://openagents.com/OpenAgentsInc/openagents/issues/355 — `inference run` through prefill (`prefill.done`)
 - https://openagents.com/OpenAgentsInc/openagents/issues/356 — `inference run` through first generated tokens (`gen.done`)
 
+Slices 7–10 land in the same packet as those five issues. Coder `--local`
+generate remains later.
+
 ## Outcome
 
 Pull **only the parts of Psionic required for local inference** into this

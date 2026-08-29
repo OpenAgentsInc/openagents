@@ -297,7 +297,7 @@ fn run_load_command(ui: &mut CoderUi, arguments: &[String], tx: &Sender<Control>
                     return;
                 }
                 let fail = state == "fail";
-                let terminal = fail || id == "map.done";
+                let terminal = fail || id == "map.done" || id == "ctx.done";
                 let due = {
                     let Ok(mut painted) = last_paint.lock() else {
                         return;
@@ -1108,7 +1108,10 @@ mod tests {
         );
         drain_load(&mut ui, &rx);
         let line = ui.load_line.clone().expect("load line");
-        assert!(line.contains("Weights ready"), "load line was {line:?}");
+        assert!(
+            line.contains("Context ready") || line.contains("Weights ready"),
+            "load line was {line:?}"
+        );
         assert!(ui.memory_line.is_some(), "memory meter after load");
         assert!(!ui.loading, "must not look like a chatting turn");
         assert_eq!(run(&mut ui, "/unload", &tx, Path::new(".")), Outcome::Done);

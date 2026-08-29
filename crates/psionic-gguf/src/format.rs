@@ -65,7 +65,14 @@ pub struct TensorInfo {
 impl TensorInfo {
     pub fn nbytes(&self) -> Option<u64> {
         let n_elem = self.dims.iter().try_fold(1u64, |a, d| a.checked_mul(*d))?;
-        element_size(self.ggml_type).map(|sz| n_elem.saturating_mul(sz))
+        match self.ggml_type {
+            8 => {
+                // Q8_0: 32 elements per 34-byte block (f16 scale + 32 i8).
+                let blocks = n_elem.div_ceil(32);
+                Some(blocks.saturating_mul(34))
+            }
+            _ => element_size(self.ggml_type).map(|sz| n_elem.saturating_mul(sz)),
+        }
     }
 }
 

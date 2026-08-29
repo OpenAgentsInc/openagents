@@ -1140,7 +1140,7 @@ fn load_status_shows_weights_ready_outside_the_transcript() {
     );
     apply(
         &mut ui,
-        Control::MemoryLine(Some("mmap 16.0 KiB · RSS 12.0 MiB".into())),
+        Control::MemoryLine(Some("mmap 16.0 KiB / 16.0 KiB · RSS 12.0 MiB".into())),
     );
     let screen = text_of(&draw(&mut ui));
     assert!(

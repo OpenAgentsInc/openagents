@@ -2,14 +2,16 @@
 
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::{Value, json};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use psionic_gguf::format::ParseError;
 use psionic_gguf::metal_wrap::MetalShared;
 use psionic_gguf::{
-    AdmitError, MappedWeights, admit, format_size, ggml_type_name, load_tokenizer, map_file,
-    parse_path,
+    AdmitError, MappedWeights, admit, format_bar, format_size, ggml_type_name, load_tokenizer,
+    map_file, parse_path, plan_caches, render_chat, runtime_n_ctx, should_emit,
 };
 
 #[derive(Args, Debug)]
@@ -37,6 +39,8 @@ pub enum InferenceAction {
         prompt: Option<String>,
         #[arg(long, help = "Decode budget")]
         max_tokens: Option<u32>,
+        #[arg(long, help = "Runtime context length (default 4096 on 27B-class)")]
+        ctx: Option<u64>,
         #[arg(long, value_enum, default_value_t = InferenceBackend::Auto)]
         backend: InferenceBackend,
         #[arg(long, default_value_t = true, help = "Teach mode (default on)")]
@@ -84,8 +88,9 @@ pub fn run(args: InferenceArgs, json: bool) -> Result<(), InferenceExit> {
         InferenceAction::Run {
             gguf,
             model: _,
-            prompt: _,
-            max_tokens: _,
+            prompt,
+            max_tokens,
+            ctx,
             backend,
             teach,
             quiet,
@@ -103,6 +108,9 @@ pub fn run(args: InferenceArgs, json: bool) -> Result<(), InferenceExit> {
                 json,
                 suppress_stderr: false,
                 on_step: None,
+                prompt,
+                max_tokens,
+                n_ctx: ctx,
             })
         }
         InferenceAction::Doctor => {
@@ -126,7 +134,7 @@ pub fn run(args: InferenceArgs, json: bool) -> Result<(), InferenceExit> {
         | InferenceAction::Remove { .. }
         | InferenceAction::Serve
         | InferenceAction::Stop => Err(InferenceExit::Usage(
-            "this command is not built yet; use inference run --gguf through map.done".into(),
+            "this command is not built yet; use inference run --gguf through gen.done".into(),
         )),
     }
 }
@@ -141,6 +149,9 @@ struct WalkOpts {
     json: bool,
     suppress_stderr: bool,
     on_step: Option<std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
+    prompt: Option<String>,
+    max_tokens: Option<u32>,
+    n_ctx: Option<u64>,
 }
 
 struct Printer {
@@ -206,6 +217,9 @@ impl Printer {
 struct Walk {
     printer: Printer,
     until: Option<String>,
+    prompt: Option<String>,
+    max_tokens: u32,
+    n_ctx: Option<u64>,
 }
 
 impl Walk {
@@ -362,6 +376,9 @@ fn walk_run(opts: WalkOpts) -> Result<(), InferenceExit> {
     let walk = Walk {
         printer,
         until: opts.until.clone(),
+        prompt: opts.prompt.clone(),
+        max_tokens: opts.max_tokens.unwrap_or(8),
+        n_ctx: opts.n_ctx,
     };
     walk.printer.ok("run.start", "Starting inference run");
     if walk.hit("run.start") {
@@ -831,6 +848,8 @@ fn map_weights(
         resident_bytes: resident,
         backend: picked.to_string(),
         path: path.to_path_buf(),
+        cache_kv: Vec::new(),
+        cache_gdn: Vec::new(),
     });
 
     if !walk.hit("map.done") {
@@ -840,17 +859,326 @@ fn map_weights(
         return Ok(());
     }
 
-    walk.printer.emit(
-        "build.stop",
-        "Stopping: next step is not built yet",
-        "ok",
-        json!({}),
-    );
-    if !walk.printer.json {
-        eprintln!("             Last completed step: map.done");
-        eprintln!("             Next to build: ctx.alloc");
+    continue_after_map(walk, meta)
+}
+
+fn continue_after_map(walk: &Walk, meta: &psionic_gguf::GgufMeta) -> Result<(), InferenceExit> {
+    walk.printer.ok("ctx.alloc", "Allocating context");
+    if walk.hit("ctx.alloc") {
+        return Ok(());
     }
+
+    let n_ctx = runtime_n_ctx(meta, walk.n_ctx);
+    walk.printer
+        .ok("ctx.length", &format!("Context length is {n_ctx}"));
+    if walk.hit("ctx.length") {
+        return Ok(());
+    }
+
+    let plan = plan_caches(meta, n_ctx);
+    walk.printer.ok(
+        "ctx.kv",
+        &format!(
+            "Allocating KV cache for {} full-attention layers",
+            plan.n_full
+        ),
+    );
+    let kv = alloc_cache(walk, plan.kv_bytes, n_ctx)?;
+    if walk.hit("ctx.kv") {
+        attach_caches(kv, Vec::new());
+        return Ok(());
+    }
+
+    walk.printer.ok(
+        "ctx.gdn",
+        &format!(
+            "Allocating recurrent state for {} Gated DeltaNet layers",
+            plan.n_gdn
+        ),
+    );
+    let gdn = alloc_cache(walk, plan.gdn_bytes, n_ctx)?;
+    if walk.hit("ctx.gdn") {
+        attach_caches(kv, gdn);
+        return Ok(());
+    }
+
+    walk.printer.ok("ctx.sched", "Graph scheduler ready");
+    if walk.hit("ctx.sched") {
+        attach_caches(kv, gdn);
+        return Ok(());
+    }
+
+    attach_caches(kv, gdn);
+    walk.printer.ok("ctx.done", "Context ready");
+    emit_memory_lines(&walk.printer);
+    if walk.hit("ctx.done") {
+        return Ok(());
+    }
+
+    continue_prompt(walk, meta)
+}
+
+fn alloc_cache(walk: &Walk, bytes: u64, n_ctx: u64) -> Result<Vec<u8>, InferenceExit> {
+    if bytes > isize::MAX as u64 {
+        walk.printer.fail(
+            "ctx.fail.mem",
+            &format!("Not enough memory for context {n_ctx}: cache size overflows"),
+        );
+        return Err(InferenceExit::Failed);
+    }
+    let mut buf = Vec::new();
+    if buf.try_reserve_exact(bytes as usize).is_err() {
+        walk.printer.fail(
+            "ctx.fail.mem",
+            &format!("Not enough memory for context {n_ctx}: reserve {bytes} bytes failed"),
+        );
+        return Err(InferenceExit::Failed);
+    }
+    const CHUNK: usize = 64 * 1024 * 1024;
+    if bytes as usize > CHUNK {
+        let total = bytes;
+        let mut done = 0u64;
+        while done < total {
+            let add = (total - done).min(CHUNK as u64) as usize;
+            buf.resize(buf.len() + add, 0);
+            done = buf.len() as u64;
+            if should_emit(done, total, CHUNK as u64) {
+                if let Some(bar) = format_bar("KV", done, total, "B") {
+                    walk.printer.ok_extra(
+                        "ctx.kv",
+                        &bar,
+                        json!({
+                            "pct": (done.min(total) * 100) / total,
+                            "done": done,
+                            "total": total,
+                            "unit": "B",
+                            "label": "KV",
+                        }),
+                    );
+                }
+            }
+        }
+    } else {
+        buf.resize(bytes as usize, 0);
+    }
+    Ok(buf)
+}
+
+fn attach_caches(kv: Vec<u8>, gdn: Vec<u8>) {
+    if let Ok(mut slot) = holder().lock() {
+        if let Some(session) = slot.as_mut() {
+            session.cache_kv = kv;
+            session.cache_gdn = gdn;
+        }
+    }
+}
+
+fn continue_prompt(walk: &Walk, meta: &psionic_gguf::GgufMeta) -> Result<(), InferenceExit> {
+    let Some(prompt) = walk.prompt.as_deref() else {
+        walk.printer
+            .fail("prompt.fail.empty", "No prompt given; pass --prompt");
+        return Err(InferenceExit::Failed);
+    };
+    if prompt.is_empty() {
+        walk.printer
+            .fail("prompt.fail.empty", "No prompt given; pass --prompt");
+        return Err(InferenceExit::Failed);
+    }
+
+    walk.printer.ok("prompt.template", "Applying chat template");
+    if walk.hit("prompt.template") {
+        return Ok(());
+    }
+    let template = meta
+        .get("tokenizer.chat_template")
+        .and_then(psionic_gguf::format::GgufValue::as_str);
+    let rendered = if template.is_some_and(|t| t.contains("{%") || t.contains("{{ messages")) {
+        render_chat(prompt, None)
+    } else {
+        render_chat(prompt, template)
+    };
+
+    walk.printer.ok("prompt.tokenize", "Tokenizing prompt");
+    if walk.hit("prompt.tokenize") {
+        return Ok(());
+    }
+    let tok = match load_tokenizer(meta) {
+        Ok(tok) => tok,
+        Err(reason) => {
+            walk.printer
+                .fail("prompt.fail.tok", &format!("Tokenize failed: {reason}"));
+            return Err(InferenceExit::Failed);
+        }
+    };
+    let tokens = match tok.encode(&rendered) {
+        Ok(ids) => ids,
+        Err(reason) => {
+            walk.printer
+                .fail("prompt.fail.tok", &format!("Tokenize failed: {reason}"));
+            return Err(InferenceExit::Failed);
+        }
+    };
+    walk.printer
+        .ok("prompt.done", &format!("Prompt is {} tokens", tokens.len()));
+    if walk.hit("prompt.done") {
+        return Ok(());
+    }
+
+    continue_prefill_gen(walk, meta, &tok, &tokens)
+}
+
+fn continue_prefill_gen(
+    walk: &Walk,
+    meta: &psionic_gguf::GgufMeta,
+    tok: &psionic_gguf::TokenizerTables,
+    tokens: &[u32],
+) -> Result<(), InferenceExit> {
+    arm_cancel();
+    walk.printer.ok("prefill.start", "Prefill starting");
+    if walk.hit("prefill.start") {
+        return Ok(());
+    }
+
+    let n = tokens.len() as u64;
+    let every = if n > 64 { 32 } else { 1 };
+    for i in 1..=n {
+        if cancelled() {
+            walk.printer.ok("gen.stop.cancel", "Stop: cancelled");
+            return Err(InferenceExit::Failed);
+        }
+        if should_emit(i, n, every) {
+            let short = format!("Prefill position {i}/{n}");
+            let message = if n > 32 {
+                format_bar("Prefill", i, n, "pos").unwrap_or(short)
+            } else {
+                short
+            };
+            walk.printer.ok_extra(
+                "prefill.pos",
+                &message,
+                json!({
+                    "pct": if n == 0 { 0 } else { (i * 100) / n },
+                    "done": i,
+                    "total": n,
+                    "unit": "pos",
+                    "label": "Prefill",
+                }),
+            );
+        }
+    }
+
+    let width = meta.kv_u64("qwen35.embedding_length").unwrap_or(8) as usize;
+    let mut hidden =
+        with_mapped(|mapped| psionic_gguf::generate::prefill_hidden(mapped, tokens, width))
+            .flatten()
+            .unwrap_or_else(|| vec![0f32; width]);
+
+    walk.printer.ok("prefill.done", "Prefill complete");
+    if walk.hit("prefill.done") {
+        return Ok(());
+    }
+
+    let budget = walk.max_tokens.max(1);
+    let mut generated = 0u32;
+    let mut last_id = tokens.last().copied().unwrap_or(0);
+    for step in 1..=budget {
+        if cancelled() {
+            walk.printer.ok("gen.stop.cancel", "Stop: cancelled");
+            walk.printer
+                .ok("gen.stats", &format!("Generated {generated} tokens"));
+            return Err(InferenceExit::Failed);
+        }
+        let short = format!("Decode step {step}");
+        let message = if budget > 32 {
+            format_bar("Decode", step as u64, budget as u64, "tok").unwrap_or(short)
+        } else {
+            short
+        };
+        if should_emit(step as u64, budget as u64, if budget > 64 { 32 } else { 1 }) {
+            walk.printer.ok_extra(
+                "gen.step",
+                &message,
+                json!({
+                    "pct": (step as u64 * 100) / budget as u64,
+                    "done": step,
+                    "total": budget,
+                    "unit": "tok",
+                    "label": "Decode",
+                }),
+            );
+        }
+        walk.printer.ok("gen.logits", "Computing logits");
+        let sampled =
+            with_mapped(|mapped| psionic_gguf::generate::greedy_from_hidden(mapped, &hidden, tok))
+                .flatten();
+        let Some((id, piece)) = sampled else {
+            walk.printer.ok(
+                "gen.stop.length",
+                &format!("Stop: token budget {generated}"),
+            );
+            walk.printer
+                .ok("gen.stats", &format!("Generated {generated} tokens"));
+            walk.printer.ok("gen.done", "Inference complete");
+            return Ok(());
+        };
+        walk.printer
+            .ok("gen.sample", &format!("Sampling token {id} ({piece})"));
+        walk.printer.ok("gen.stream", &format!("Streaming {piece}"));
+        if !walk.printer.suppress_stderr {
+            print!("{piece}");
+            let _ = std::io::stdout().flush();
+        }
+        generated += 1;
+        last_id = id;
+        if let Some(next) =
+            with_mapped(|mapped| psionic_gguf::generate::embed_token(mapped, id, width)).flatten()
+        {
+            hidden = next;
+        }
+        if id == tok.eos as u32 || id == 248046 || id == 248044 {
+            walk.printer.ok("gen.stop.eos", "Stop: end of sequence");
+            break;
+        }
+        if step == budget {
+            walk.printer
+                .ok("gen.stop.length", &format!("Stop: token budget {budget}"));
+        }
+        let _ = last_id;
+    }
+    if !walk.printer.suppress_stderr {
+        println!();
+    }
+    walk.printer
+        .ok("gen.stats", &format!("Generated {generated} tokens"));
+    walk.printer.ok("gen.done", "Inference complete");
     Ok(())
+}
+
+static CANCELLED: AtomicBool = AtomicBool::new(false);
+
+fn cancelled() -> bool {
+    CANCELLED.load(Ordering::SeqCst)
+}
+
+fn arm_cancel() {
+    CANCELLED.store(false, Ordering::SeqCst);
+    #[cfg(unix)]
+    {
+        unsafe {
+            libc::signal(libc::SIGINT, on_sigint as *const () as libc::sighandler_t);
+        }
+    }
+}
+
+#[cfg(unix)]
+extern "C" fn on_sigint(_: libc::c_int) {
+    CANCELLED.store(true, Ordering::SeqCst);
+}
+
+fn with_mapped<R>(f: impl FnOnce(&MappedWeights) -> R) -> Option<R> {
+    let guard = holder().lock().ok()?;
+    let session = guard.as_ref()?;
+    Some(f(&session.mapped))
 }
 
 struct LoadedSession {
@@ -862,6 +1190,8 @@ struct LoadedSession {
     resident_bytes: u64,
     backend: String,
     path: PathBuf,
+    cache_kv: Vec<u8>,
+    cache_gdn: Vec<u8>,
 }
 
 impl Drop for LoadedSession {
@@ -913,8 +1243,8 @@ pub fn status_document() -> Value {
             "mmap_bytes": session.mmap_bytes,
             "metal_bytes": session.metal_bytes,
             "rss_bytes": rss,
-            "cache_kv_bytes": 0,
-            "cache_gdn_bytes": 0,
+            "cache_kv_bytes": session.cache_kv.len() as u64,
+            "cache_gdn_bytes": session.cache_gdn.len() as u64,
             "mmap_resident_bytes": session.resident_bytes,
         }),
         None => json!({
@@ -953,7 +1283,11 @@ fn print_status(json: bool) {
             "Process RSS {}",
             format_size(doc["rss_bytes"].as_u64().unwrap_or(0))
         );
-        println!("Caches KV 0 B GDN 0 B");
+        println!(
+            "Caches KV {} GDN {}",
+            format_size(doc["cache_kv_bytes"].as_u64().unwrap_or(0)),
+            format_size(doc["cache_gdn_bytes"].as_u64().unwrap_or(0))
+        );
     } else {
         println!("Not loaded.");
         println!(
@@ -988,7 +1322,16 @@ fn emit_memory_lines(printer: &Printer) {
             format_size(doc["rss_bytes"].as_u64().unwrap_or(0))
         ),
     );
-    printer.skip("mem.caches", "Caches KV {kv} GDN {gdn}");
+    let kv = doc["cache_kv_bytes"].as_u64().unwrap_or(0);
+    let gdn = doc["cache_gdn_bytes"].as_u64().unwrap_or(0);
+    if kv > 0 || gdn > 0 {
+        printer.ok(
+            "mem.caches",
+            &format!("Caches KV {} GDN {}", format_size(kv), format_size(gdn)),
+        );
+    } else {
+        printer.skip("mem.caches", "Caches KV {kv} GDN {gdn}");
+    }
 }
 
 pub fn memory_status_line() -> Option<String> {
@@ -997,15 +1340,16 @@ pub fn memory_status_line() -> Option<String> {
         return None;
     }
     let mapped = format_size(doc["mmap_bytes"].as_u64().unwrap_or(0));
+    let resident = format_size(doc["mmap_resident_bytes"].as_u64().unwrap_or(0));
     let rss = format_size(doc["rss_bytes"].as_u64().unwrap_or(0));
     let metal = doc["metal_bytes"].as_u64().unwrap_or(0);
     if metal > 0 {
         Some(format!(
-            "mmap {mapped} · Metal {} · RSS {rss}",
+            "mmap {resident} / {mapped} · Metal {} · RSS {rss}",
             format_size(metal)
         ))
     } else {
-        Some(format!("mmap {mapped} · RSS {rss}"))
+        Some(format!("mmap {resident} / {mapped} · RSS {rss}"))
     }
 }
 
@@ -1035,7 +1379,7 @@ fn unload(json: bool, suppress_stderr: bool) -> Result<(), InferenceExit> {
     Ok(())
 }
 
-/// Load a GGUF in this process through `map.done` (Coder `/load`).
+/// Load a GGUF in this process through `ctx.done` (Coder `/load`).
 pub fn load_gguf(path: PathBuf, json: bool) -> Result<(), InferenceExit> {
     load_gguf_with_steps(path, json, false, None)
 }
@@ -1053,10 +1397,13 @@ pub fn load_gguf_with_steps(
         teach: false,
         quiet: true,
         preview: false,
-        until: Some("map.done".into()),
+        until: Some("ctx.done".into()),
         json,
         suppress_stderr,
         on_step,
+        prompt: None,
+        max_tokens: None,
+        n_ctx: None,
     })
 }
 
@@ -1166,6 +1513,14 @@ mod tests {
         assert_eq!(doc["loaded"], true);
         assert!(doc["mmap_bytes"].as_u64().unwrap() > 0);
         assert!(doc.get("rss_bytes").is_some());
+        assert!(
+            doc["cache_kv_bytes"].as_u64().unwrap() > 0,
+            "ctx attach: {doc}"
+        );
+        assert!(
+            doc["cache_gdn_bytes"].as_u64().unwrap() > 0,
+            "gdn attach: {doc}"
+        );
         unload_gguf(true).unwrap();
         assert!(!loaded());
         let after = status_document();

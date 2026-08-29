@@ -5,6 +5,35 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.18
+
+- issues: #352, #353, #354, #355, #356
+- commits: this change
+- contracts-specs: `docs/psionic/CLI.md` slices 7–10; producer name `X.Y.Z-rc.N`
+- invariants: published `<version, platform>` objects stay immutable
+- evidence: `until_ctx_done_on_fixture`; `until_prompt_done_on_fixture`; `until_gen_done_on_fixture`; `fixture_plan_is_nonzero_and_matches_formula`; `bar_bounds`
+- lane: cursor session 7822942d
+
+The `openagents-cli` crate is `0.2.0-rc.18`. rc.17 is published and
+immutable. This line is context allocation, progress bars, tokenize,
+prefill, and generate on the fixture path.
+
+## Inference run walks through Context ready and Inference complete (#352–#356)
+
+- issues: #352, #353, #354, #355, #356
+- commits: this change
+- contracts-specs: `docs/psionic/CLI.md` `ctx.*`, `prompt.*`, `prefill.*`, `gen.*`, progress meter
+- invariants: no `psionic-serve` import; no Ollama fallback
+- evidence: `until_ctx_done_on_fixture`; `until_gen_done_on_fixture`; `load_then_status_then_unload_on_fixture`
+- lane: cursor session 7822942d
+
+`inference run` allocates hybrid KV and Gated DeltaNet caches (default
+runtime `n_ctx` 4096 on 27B-class files), tokenizes `--prompt`, prefills,
+and greedy-decodes. The TUI memory line shows mmap resident / mapped.
+Determinate bars paint when a total is known and the step is long.
+Fixture `gen.done` is embed → RMSNorm → lm-head. 27B uses the same
+leaf plus Q8_0; it is not the 64-layer hybrid graph.
+
 ## CLI source version is 0.2.0-rc.17
 
 - issues: #351

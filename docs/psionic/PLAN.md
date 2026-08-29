@@ -1,7 +1,7 @@
 # Initial plan: Psionic Qwen 3.8 local inference in `openagents`
 
 - Class: owner-accepted implementation plan / work packet
-- Status: accepted 2026-08-29; slices 0–6 and 12 landed (#344–#347). Next queue: #352 `ctx.done`, #353 progress bars, #354 `prompt.done`, #355 `prefill.done`, #356 `gen.done`.
+- Status: accepted 2026-08-29; slices 0–10 and 12 landed (#344–#347, #352–#356). Coder `--local` generate is still later.
 - Intent: [INTENT.md](./INTENT.md)
 - CLI statuses: [CLI.md](./CLI.md)
 - Base at plan authoring: `8c0989a5a3f82029a020330c5b18b311a20d1efc` (`github/main`)
@@ -23,14 +23,17 @@ claimed_at: 2026-08-29T18:43:00Z
 ## Current facts
 
 Coder `--local` is still Ollama. `openagents inference` and
-`openagents psionic` exist. Slices 0–6 and 12 are in the binary
-(`map.done`, `/load`, `/unload`, memory JSON).
+`openagents psionic` exist. Slices 0–10 and 12 are in the binary
+(`ctx.done` through `gen.done` on the fixture, `/load` attaches
+caches, `/unload`, memory JSON).
 
 Live 2026-08-29: Coder `/load` of the development Ollama
 `qwen3.8:27b-mtp-q8_0` GGUF blob reached `Weights ready (27.1 GiB
 mapped)` in well under a second, Metal wrap 27.1 GiB, process RSS
-~184 MiB (ATIF `2026-08-29T18-39-56-258Z`). mmap + NoCopy. Next
-built step is `ctx.alloc` (`build.stop`).
+~184 MiB (ATIF `2026-08-29T18-39-56-258Z`). mmap + NoCopy. `#352`
+allocates default `n_ctx` 4096 (~512 MiB F16 KV plus GDN). Fixture
+`gen.done` is embed → norm → lm-head. 27B decode uses the same
+path plus Q8_0 row/matvec; it is not the 64-layer hybrid graph.
 
 `Lane::Local` still talks to `GET /api/tags` and `POST /api/chat`.
 Do not flip `--local` until stage 6 gates pass.

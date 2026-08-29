@@ -1,7 +1,7 @@
 # OpenAgents CLI: local inference commands and teach status
 
 - Class: owner-accepted CLI and teach-mode contract
-- Status: accepted 2026-08-29; slices 0–6 and 12 landed (OpenAgents #344–#347). Next: #352–#356 (`ctx.done` through `gen.done`, plus progress bars).
+- Status: accepted 2026-08-29; slices 0–10 and 12 landed (OpenAgents #344–#347, #352–#356).
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
 - Bytes behind the statuses: [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
@@ -72,6 +72,7 @@ openagents inference run
   --model <id>               Admitted store id (later)
   --prompt <text>            Prompt for tokenize and generate steps
   --max-tokens <n>           Decode budget (generate steps)
+  --ctx <n>                  Runtime context length (default 4096 on 27B-class)
   --backend auto|metal|cpu   Default auto
   --teach / --no-teach       Teach is default on run until Coder is the product path
   --quiet                    One line per phase, no teach explanations
@@ -176,8 +177,8 @@ mmap plus Metal `newBufferWithBytesNoCopy`, not a 27 GiB copy. Missing
 fixture path and `muse-glimmer` architecture refuse used the canonical
 fail strings. Behaving correctly.
 
-The compact TUI line still omitted mmap **resident**. Issue **#353**
-adds resident vs mapped on that line.
+The compact TUI line is `mmap {resident} / {mapped} · Metal {size} · RSS {rss}`
+(Metal omitted on CPU-only).
 
 **Progress bars (issue 353)** — a step that can run longer than about
 two seconds shows a determinate meter. mmap of a warm 27 GiB file is
@@ -384,10 +385,10 @@ shared wrap cannot be created; do not fall back to Ollama.
 ### Slice 7 — context and caches
 
 Issue **#352**. Default runtime `{n}` is **4096**, not the trained
-262,144. F16 KV for the 27B-class `qwen35` file is `128 KiB * n_ctx`
-(16 full-attention layers × 4 KV heads × 256 × 2 buffers × 2 bytes).
-Gated DeltaNet bytes do not shrink when `{n}` drops. Print KV and GDN
-separately. Formulas: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md).
+262,144. F16 KV for the 27B-class `qwen35` file is `64 KiB * n_ctx`
+(16 full-attention layers × 4 KV heads × 256 × 2 buffers × 2 bytes =
+256 MiB at 4096). Gated DeltaNet bytes do not shrink when `{n}` drops.
+Print KV and GDN separately. Formulas: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md).
 
 | id | Message |
 | --- | --- |

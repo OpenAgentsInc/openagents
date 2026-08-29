@@ -230,6 +230,142 @@ fn unload_with_nothing_loaded_still_prints_weights_unloaded() {
 }
 
 #[test]
+fn until_ctx_done_on_fixture() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "run",
+            "--json",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--until",
+            "ctx.done",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "ctx.done" && state == "ok"),
+        "{states:?}"
+    );
+    assert!(
+        !states
+            .iter()
+            .any(|(id, _)| id == "prompt.template" || id == "build.stop"),
+        "{states:?}"
+    );
+}
+
+#[test]
+fn until_prompt_done_on_fixture() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "run",
+            "--json",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--prompt",
+            "hello",
+            "--until",
+            "prompt.done",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "prompt.done" && state == "ok"),
+        "{states:?}"
+    );
+    assert!(
+        !states.iter().any(|(id, _)| id == "prefill.start"),
+        "{states:?}"
+    );
+}
+
+#[test]
+fn until_gen_done_on_fixture() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "run",
+            "--json",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--prompt",
+            "hello",
+            "--max-tokens",
+            "2",
+            "--until",
+            "gen.done",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "prefill.done" && state == "ok"),
+        "{states:?}"
+    );
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "gen.done" && state == "ok"),
+        "{states:?}"
+    );
+}
+
+#[test]
+fn missing_prompt_fails_after_ctx() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "run",
+            "--json",
+            "--gguf",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run");
+    assert!(!output.status.success());
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "prompt.fail.empty" && state == "fail"),
+        "{states:?}"
+    );
+}
+
+#[test]
 fn status_json_includes_memory_fields() {
     let output = bin()
         .args(["inference", "status", "--json"])
