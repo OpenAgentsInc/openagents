@@ -1,7 +1,9 @@
 # Initial plan: Psionic Qwen 3.8 local inference in `openagents`
 
 - Class: owner-accepted implementation plan / work packet
-- Status: accepted 2026-08-29; slices 0–10 and 12 landed (#344–#347, #352–#356). Coder `--local` generate is still later.
+- Status: accepted 2026-08-29; slices 0–10 and 12 landed (#344–#347,
+  #352–#356). Next wave: [PARITY.md](./PARITY.md) (#357–#364). Coder
+  `--local` generate is still later.
 - Intent: [INTENT.md](./INTENT.md)
 - CLI statuses: [CLI.md](./CLI.md)
 - Base at plan authoring: `8c0989a5a3f82029a020330c5b18b311a20d1efc` (`github/main`)
@@ -9,15 +11,15 @@
 
 ```text
 CLAIM
-actor/session: psionic next-slice ledger 352-356
-base: aab4b1d0d8e66a4ba972632d2ce085f4714540b4
-worktree/branch: detached github/main
-scope: live /load receipt, ctx math, next issue queue
-paths: docs/psionic/
-hot files: none
-hot contracts: none
-verification: docs-only; whitespace and path-local review
-claimed_at: 2026-08-29T18:43:00Z
+actor/session: cursor parity-rc19
+base: 3ef730b776fabecd18b83cda184cce1b0b690499
+worktree/branch: .oa-worktrees/issue-parity-rc19
+scope: docs/psionic next-wave ledger + inference bench
+paths: docs/psionic/, crates/psionic-gguf, crates/openagents-cli
+hot files: crates/openagents-cli/src/inference.rs
+hot contracts: docs/psionic/CLI.md
+verification: cargo test -p psionic-gguf; cargo test -p openagents-cli --test inference_test
+claimed_at: 2026-08-29T19:00:00Z
 ```
 
 ## Current facts
@@ -31,9 +33,10 @@ Live 2026-08-29: Coder `/load` of the development Ollama
 `qwen3.8:27b-mtp-q8_0` GGUF blob reached `Weights ready (27.1 GiB
 mapped)` in well under a second, Metal wrap 27.1 GiB, process RSS
 ~184 MiB (ATIF `2026-08-29T18-39-56-258Z`). mmap + NoCopy. `#352`
-allocates default `n_ctx` 4096 (~512 MiB F16 KV plus GDN). Fixture
+allocates default `n_ctx` 4096 (256 MiB F16 KV plus GDN). Fixture
 `gen.done` is embed → norm → lm-head. 27B decode uses the same
-path plus Q8_0 row/matvec; it is not the 64-layer hybrid graph.
+path plus a parallel CPU Q8_0 matvec; it is not the 64-layer hybrid
+graph. Measure with `inference bench`. Quality vs Ollama is #357.
 
 `Lane::Local` still talks to `GET /api/tags` and `POST /api/chat`.
 Do not flip `--local` until stage 6 gates pass.
@@ -91,6 +94,7 @@ openagents inference status
 openagents inference stop
 openagents inference unload
 openagents inference doctor
+openagents inference bench --gguf <path> --prompt <text> --max-tokens <n>
 ```
 
 `run` is the first command to implement. It prints the canonical status
@@ -226,10 +230,10 @@ wrap" finding before Coder depends on token-time events. If the imported
 executor still completes first, either fix it in the imported crate or refuse
 Coder interactive mode until it streams.
 
-OpenAgents issues 344–347 landed the product surfaces through
-`map.done` plus unload and memory. The next queue is #352 `ctx.done`
-(cache math), #353 progress bars, #354 `prompt.done`, #355
-`prefill.done`, #356 `gen.done`. `--model psionic:` remains stage 4.
+OpenAgents issues 344–347 and 352–356 landed load through fixture
+`gen.done`. The next queue is [PARITY.md](./PARITY.md): hybrid decode
+(#357), Metal tok/s (#358), tokenizer (#359), sampling (#360), bench
+(#361), then `--model psionic:` (stage 4, #362).
 
 ## Stages
 
@@ -274,7 +278,7 @@ cheaper than a second API.
 **Exit:** `openagents inference run --prompt …` prints `Inference
 complete` on the fixture. `openagents inference doctor` is green on a
 machine with the fixture. Default runtime context for `ctx.done` is
-4096. F16 KV for the 27B-class file is `128 KiB * n_ctx` (512 MiB at
+4096. F16 KV for the 27B-class file is `64 KiB * n_ctx` (256 MiB at
 4096). GDN bytes stay published separately and do not follow `n_ctx`.
 
 ### 4. Coder tool loop
@@ -343,4 +347,6 @@ adapter stays Cloud capacity advertising.
 - Making Psionic the Cloud inference product
 - Deleting Ollama in the same commit as the first import
 - Publishing a second engine tarball
-- Claiming Psionic is faster than Ollama on Qwen 3.8 until stage 5 measures it
+- Claiming we are faster or better than Ollama on Qwen 3.8 until
+  [PARITY.md](./PARITY.md) receipts exist (`graph` is not `embed_lmhead`,
+  and bench tok/s ≥ Ollama on the holdout)

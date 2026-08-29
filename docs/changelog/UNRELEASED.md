@@ -5,6 +5,33 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.19
+
+- issues: #357, #358, #359, #360, #361, #362, #363, #364
+- commits: this change
+- contracts-specs: `docs/psionic/PARITY.md`; producer name `X.Y.Z-rc.N`
+- invariants: published `<version, platform>` objects stay immutable
+- evidence: `bench_fixture_prints_json_summary`; `until_gen_done_on_fixture`
+- lane: cursor session 7822942d
+
+The `openagents-cli` crate is `0.2.0-rc.19`. rc.18 is published and
+immutable. This line is the Ollama parity ledger, `inference bench`,
+and a parallel CPU Q8_0 lm-head.
+
+## Inference bench and Ollama parity wave (#357–#364)
+
+- issues: #357, #358, #359, #360, #361, #362, #363, #364
+- commits: this change
+- contracts-specs: `docs/psionic/PARITY.md`, `docs/psionic/CLI.md` slice 13
+- invariants: no Ollama generate fallback; no `psionic-serve` import
+- evidence: `bench_fixture_prints_json_summary`
+- lane: cursor session 7822942d
+
+`inference bench` times map, ctx, prefill, and generate. `--compare-ollama`
+is skip-if-down. The Q8_0 lm-head uses a parallel CPU matvec. Hybrid
+quality (#357) and Metal tok/s (#358) remain open. `graph` is
+`embed_lmhead`.
+
 ## CLI source version is 0.2.0-rc.18
 
 - issues: #352, #353, #354, #355, #356

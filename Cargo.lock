@@ -1795,7 +1795,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-cli"
-version = "0.2.0-rc.18"
+version = "0.2.0-rc.19"
 dependencies = [
  "anstyle",
  "anstyle-lossy",

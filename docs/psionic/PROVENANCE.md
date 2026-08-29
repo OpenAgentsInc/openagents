@@ -1,7 +1,7 @@
 # Provenance: local GGUF load slice
 
 - Class: implementation provenance
-- Status: issue 344 (`map.done`)
+- Status: issues 344–347, 352–356 landed; #361 bench in this wave
 - Date: 2026-08-29
 
 This repository did not copy the Psionic monorepo. `crates/psionic-gguf` is

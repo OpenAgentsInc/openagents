@@ -1,9 +1,9 @@
 # Qwen 3.8 inference pipeline
 
 - Class: conceptual pipeline
-- Status: describes the OpenAgents approach; `map.done` / Coder `/load`
-  landed. Context, prefill, and generate are not in the binary yet
-  (OpenAgents #352–#356).
+- Status: describes the OpenAgents approach; load through fixture
+  `gen.done` landed (#344–#347, #352–#356). Hybrid 64-layer decode is
+  #357. Speed vs Ollama is [PARITY.md](./PARITY.md).
 - Date: 2026-08-29
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
@@ -455,11 +455,13 @@ F16 KV bytes for this shape:
 
 ```text
 kv_bytes = 2 * 16 * 4 * 256 * n_ctx * 2
-         = 128 KiB * n_ctx
-n_ctx = 4096   → 512 MiB
-n_ctx = 8192   → 1 GiB
-n_ctx = 262144 → 32 GiB
+         = 64 KiB * n_ctx
+n_ctx = 4096   → 256 MiB
+n_ctx = 8192   → 512 MiB
+n_ctx = 262144 → 16 GiB
 ```
+
+(The earlier 128 KiB × `n_ctx` line double-counted F16 K+V.)
 
 Gated DeltaNet recurrent + conv state does not shrink when `n_ctx`
 drops. Publish `cache_kv_bytes` and `cache_gdn_bytes` separately.

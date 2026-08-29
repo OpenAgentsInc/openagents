@@ -14,14 +14,22 @@ OpenAgents issues for this program:
 - https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress (closed)
 - https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights (closed)
 - https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory (closed)
-- https://openagents.com/OpenAgentsInc/openagents/issues/352 — `inference run` through context ready (`ctx.done`)
-- https://openagents.com/OpenAgentsInc/openagents/issues/353 — Progress bar and percent for long inference steps
-- https://openagents.com/OpenAgentsInc/openagents/issues/354 — `inference run` through prompt tokens (`prompt.done`)
-- https://openagents.com/OpenAgentsInc/openagents/issues/355 — `inference run` through prefill (`prefill.done`)
-- https://openagents.com/OpenAgentsInc/openagents/issues/356 — `inference run` through first generated tokens (`gen.done`)
+- https://openagents.com/OpenAgentsInc/openagents/issues/352 — `inference run` through context ready (`ctx.done`) (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/353 — Progress bar and percent for long inference steps (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/354 — `inference run` through prompt tokens (`prompt.done`) (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/355 — `inference run` through prefill (`prefill.done`) (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/356 — `inference run` through first generated tokens (`gen.done`) (closed)
+- https://openagents.com/OpenAgentsInc/openagents/issues/357 — Hybrid qwen35 decode (Ollama token parity)
+- https://openagents.com/OpenAgentsInc/openagents/issues/358 — Metal GEMM so 27B tok/s beats Ollama
+- https://openagents.com/OpenAgentsInc/openagents/issues/359 — Chat template and tokenizer IDs
+- https://openagents.com/OpenAgentsInc/openagents/issues/360 — Explicit sampling
+- https://openagents.com/OpenAgentsInc/openagents/issues/361 — `inference bench` + Ollama compare
+- https://openagents.com/OpenAgentsInc/openagents/issues/362 — Coder `--model psionic:`
+- https://openagents.com/OpenAgentsInc/openagents/issues/363 — Coder stream and cancel
+- https://openagents.com/OpenAgentsInc/openagents/issues/364 — Default `--local` after replacement gates
 
-Slices 7–10 land in the same packet as those five issues. Coder `--local`
-generate remains later.
+Compare contract: [PARITY.md](./PARITY.md). Slices 7–10 landed. Coder
+`--local` generate remains later.
 
 ## Outcome
 
@@ -96,9 +104,9 @@ can instead:
    multi-round tool turn **inside this process**.
 3. See engine, backend, and artifact digest recorded in ATIF.
 
-Until generate lands, success for each slice is: `openagents inference
-run --gguf <path> --until <step>` prints the canonical statuses in
-[CLI.md](./CLI.md) and stops cleanly.
+Until #357 and #358 land, success for each slice is still the
+[CLI.md](./CLI.md) `--until` statuses. Quality and tok/s vs Ollama are
+[PARITY.md](./PARITY.md), not a public claim.
 
 That is the product. Broader Psionic-in-the-harness work rides on
 `openagents psionic` after this lane works.

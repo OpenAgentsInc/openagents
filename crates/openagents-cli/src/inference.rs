@@ -75,6 +75,21 @@ pub enum InferenceAction {
     Unload,
     /// Backends, store path, Metal/CPU presence
     Doctor,
+    /// Time map, ctx, prefill, and generate
+    Bench {
+        #[arg(long, help = "Local GGUF path")]
+        gguf: Option<PathBuf>,
+        #[arg(long, help = "Prompt for tokenize and generate")]
+        prompt: Option<String>,
+        #[arg(long, help = "Decode budget")]
+        max_tokens: Option<u32>,
+        #[arg(long, help = "Runtime context length")]
+        ctx: Option<u64>,
+        #[arg(long, value_enum, default_value_t = InferenceBackend::Auto)]
+        backend: InferenceBackend,
+        #[arg(long, help = "Time local Ollama on the same prompt")]
+        compare_ollama: Option<String>,
+    },
 }
 
 #[derive(Debug)]
@@ -111,8 +126,33 @@ pub fn run(args: InferenceArgs, json: bool) -> Result<(), InferenceExit> {
                 prompt,
                 max_tokens,
                 n_ctx: ctx,
+                bench: false,
+                compare_ollama: None,
             })
         }
+        InferenceAction::Bench {
+            gguf,
+            prompt,
+            max_tokens,
+            ctx,
+            backend,
+            compare_ollama,
+        } => walk_run(WalkOpts {
+            gguf,
+            backend,
+            teach: false,
+            quiet: true,
+            preview: false,
+            until: None,
+            json,
+            suppress_stderr: false,
+            on_step: None,
+            prompt,
+            max_tokens,
+            n_ctx: ctx,
+            bench: true,
+            compare_ollama,
+        }),
         InferenceAction::Doctor => {
             run_doctor(json);
             Ok(())
@@ -152,6 +192,8 @@ struct WalkOpts {
     prompt: Option<String>,
     max_tokens: Option<u32>,
     n_ctx: Option<u64>,
+    bench: bool,
+    compare_ollama: Option<String>,
 }
 
 struct Printer {
@@ -214,12 +256,48 @@ impl Printer {
     }
 }
 
+struct BenchTimes {
+    mark: std::time::Instant,
+    map_ms: u64,
+    ctx_ms: u64,
+    prompt_ms: u64,
+    prefill_ms: u64,
+    gen_ms: u64,
+    prompt_tokens: u64,
+    generated: u32,
+}
+
 struct Walk {
     printer: Printer,
     until: Option<String>,
     prompt: Option<String>,
     max_tokens: u32,
     n_ctx: Option<u64>,
+    bench: bool,
+    compare_ollama: Option<String>,
+    times: Option<Mutex<BenchTimes>>,
+}
+
+impl Walk {
+    fn mark(&self, phase: &str) {
+        let Some(times) = &self.times else {
+            return;
+        };
+        let Ok(mut t) = times.lock() else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        let dt = now.saturating_duration_since(t.mark).as_millis() as u64;
+        t.mark = now;
+        match phase {
+            "map" => t.map_ms = dt,
+            "ctx" => t.ctx_ms = dt,
+            "prompt" => t.prompt_ms = dt,
+            "prefill" => t.prefill_ms = dt,
+            "gen" => t.gen_ms = dt,
+            _ => {}
+        }
+    }
 }
 
 impl Walk {
@@ -379,6 +457,20 @@ fn walk_run(opts: WalkOpts) -> Result<(), InferenceExit> {
         prompt: opts.prompt.clone(),
         max_tokens: opts.max_tokens.unwrap_or(8),
         n_ctx: opts.n_ctx,
+        bench: opts.bench,
+        compare_ollama: opts.compare_ollama.clone(),
+        times: opts.bench.then(|| {
+            Mutex::new(BenchTimes {
+                mark: std::time::Instant::now(),
+                map_ms: 0,
+                ctx_ms: 0,
+                prompt_ms: 0,
+                prefill_ms: 0,
+                gen_ms: 0,
+                prompt_tokens: 0,
+                generated: 0,
+            })
+        }),
     };
     walk.printer.ok("run.start", "Starting inference run");
     if walk.hit("run.start") {
@@ -454,7 +546,11 @@ fn walk_run(opts: WalkOpts) -> Result<(), InferenceExit> {
         return Ok(());
     }
 
-    open_and_map(&walk, path, file_size, opts.backend)
+    let result = open_and_map(&walk, path, file_size, opts.backend);
+    if walk.bench {
+        emit_bench_summary(&walk);
+    }
+    result
 }
 
 fn open_and_map(
@@ -855,6 +951,7 @@ fn map_weights(
     if !walk.hit("map.done") {
         emit_memory_lines(&walk.printer);
     }
+    walk.mark("map");
     if walk.hit("map.done") {
         return Ok(());
     }
@@ -910,6 +1007,7 @@ fn continue_after_map(walk: &Walk, meta: &psionic_gguf::GgufMeta) -> Result<(), 
 
     attach_caches(kv, gdn);
     walk.printer.ok("ctx.done", "Context ready");
+    walk.mark("ctx");
     emit_memory_lines(&walk.printer);
     if walk.hit("ctx.done") {
         return Ok(());
@@ -1020,6 +1118,12 @@ fn continue_prompt(walk: &Walk, meta: &psionic_gguf::GgufMeta) -> Result<(), Inf
     };
     walk.printer
         .ok("prompt.done", &format!("Prompt is {} tokens", tokens.len()));
+    if let Some(times) = &walk.times {
+        if let Ok(mut t) = times.lock() {
+            t.prompt_tokens = tokens.len() as u64;
+        }
+    }
+    walk.mark("prompt");
     if walk.hit("prompt.done") {
         return Ok(());
     }
@@ -1074,6 +1178,7 @@ fn continue_prefill_gen(
             .unwrap_or_else(|| vec![0f32; width]);
 
     walk.printer.ok("prefill.done", "Prefill complete");
+    walk.mark("prefill");
     if walk.hit("prefill.done") {
         return Ok(());
     }
@@ -1124,7 +1229,7 @@ fn continue_prefill_gen(
         walk.printer
             .ok("gen.sample", &format!("Sampling token {id} ({piece})"));
         walk.printer.ok("gen.stream", &format!("Streaming {piece}"));
-        if !walk.printer.suppress_stderr {
+        if !walk.printer.suppress_stderr && !walk.bench {
             print!("{piece}");
             let _ = std::io::stdout().flush();
         }
@@ -1145,13 +1250,103 @@ fn continue_prefill_gen(
         }
         let _ = last_id;
     }
-    if !walk.printer.suppress_stderr {
+    if !walk.printer.suppress_stderr && !walk.bench {
         println!();
     }
+    if let Some(times) = &walk.times {
+        if let Ok(mut t) = times.lock() {
+            t.generated = generated;
+        }
+    }
+    walk.mark("gen");
     walk.printer
         .ok("gen.stats", &format!("Generated {generated} tokens"));
     walk.printer.ok("gen.done", "Inference complete");
     Ok(())
+}
+
+fn emit_bench_summary(walk: &Walk) {
+    let times = walk.times.as_ref().and_then(|slot| slot.lock().ok());
+    let Some(t) = times else {
+        return;
+    };
+    let tok_per_s = if t.gen_ms == 0 {
+        0.0
+    } else {
+        (t.generated as f64) * 1000.0 / (t.gen_ms as f64)
+    };
+    let mut doc = json!({
+        "engine": "openagents",
+        "version": env!("CARGO_PKG_VERSION"),
+        "graph": "embed_lmhead",
+        "map_ms": t.map_ms,
+        "ctx_ms": t.ctx_ms,
+        "prompt_ms": t.prompt_ms,
+        "prefill_ms": t.prefill_ms,
+        "gen_ms": t.gen_ms,
+        "prompt_tokens": t.prompt_tokens,
+        "generated": t.generated,
+        "tok_per_s": tok_per_s,
+    });
+    if let Some(tag) = &walk.compare_ollama {
+        match compare_ollama(tag, walk.prompt.as_deref().unwrap_or(""), walk.max_tokens) {
+            Ok((ms, tokens)) => {
+                let ollama_tps = if ms == 0 {
+                    0.0
+                } else {
+                    (tokens as f64) * 1000.0 / (ms as f64)
+                };
+                doc["ollama_tag"] = json!(tag);
+                doc["ollama_ms"] = json!(ms);
+                doc["ollama_generated"] = json!(tokens);
+                doc["ollama_tok_per_s"] = json!(ollama_tps);
+            }
+            Err(reason) => {
+                walk.printer
+                    .skip("bench.ollama", &format!("Ollama compare skipped: {reason}"));
+                doc["ollama_tag"] = json!(tag);
+                doc["ollama_skipped"] = json!(true);
+            }
+        }
+    }
+    walk.printer.ok("bench.done", "Benchmark complete");
+    println!("{doc}");
+}
+
+fn compare_ollama(tag: &str, prompt: &str, max_tokens: u32) -> Result<(u64, u32), String> {
+    let body = json!({
+        "model": tag,
+        "prompt": prompt,
+        "stream": false,
+        "options": {"num_predict": max_tokens, "temperature": 0}
+    });
+    let started = std::time::Instant::now();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = rt.block_on(async {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|e| e.to_string())?
+            .post("http://127.0.0.1:11434/api/generate")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())
+    })?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    let value: Value = rt.block_on(response.json()).map_err(|e| e.to_string())?;
+    let ms = started.elapsed().as_millis() as u64;
+    let text = value.get("response").and_then(Value::as_str).unwrap_or("");
+    let tokens = value
+        .get("eval_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(text.split_whitespace().count() as u64) as u32;
+    Ok((ms, tokens))
 }
 
 static CANCELLED: AtomicBool = AtomicBool::new(false);
@@ -1404,6 +1599,8 @@ pub fn load_gguf_with_steps(
         prompt: None,
         max_tokens: None,
         n_ctx: None,
+        bench: false,
+        compare_ollama: None,
     })
 }
 

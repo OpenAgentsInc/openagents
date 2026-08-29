@@ -391,6 +391,7 @@ The HTTP process never holds the weight tensors. If the child dies
   build time and applies `llama/compat/`; the OpenAgents in-process slice
   implements that library path and does not spawn `llama-server`. The
   CLI labels for that path are [CLI.md](./CLI.md).
-- Psionic's loader, admission, or Metal path in this repository.
-  Implementation has not landed. The llama.cpp document is the library
-  contract. The CLI document is the command and status contract.
+- How OpenAgents compares to this holdout: [PARITY.md](./PARITY.md).
+  Load through fixture `gen.done` has landed. Hybrid decode is #357.
+- The llama.cpp document is the library contract. The CLI document is
+  the command and status contract.

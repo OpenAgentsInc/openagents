@@ -1,7 +1,9 @@
 # OpenAgents CLI: local inference commands and teach status
 
 - Class: owner-accepted CLI and teach-mode contract
-- Status: accepted 2026-08-29; slices 0–10 and 12 landed (OpenAgents #344–#347, #352–#356).
+- Status: accepted 2026-08-29; slices 0–10 and 12 landed (OpenAgents
+  #344–#347, #352–#356). Bench is #361. Quality/speed vs Ollama:
+  [PARITY.md](./PARITY.md).
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
 - Bytes behind the statuses: [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
@@ -13,15 +15,15 @@ the top. It does not spawn `llama-server`. It does not call Ollama.
 
 ```text
 CLAIM
-actor/session: psionic next-slice ledger 352-356
-base: aab4b1d0d8e66a4ba972632d2ce085f4714540b4
-worktree/branch: detached github/main
-scope: live /load receipt, progress-bar contract, ctx math, next issues
-paths: docs/psionic/
-hot files: none
-hot contracts: none
-verification: docs-only; whitespace and path-local review
-claimed_at: 2026-08-29T18:43:00Z
+actor/session: cursor parity-rc19
+base: 3ef730b776fabecd18b83cda184cce1b0b690499
+worktree/branch: .oa-worktrees/issue-parity-rc19
+scope: bench command + next-wave ledger
+paths: docs/psionic/, crates/openagents-cli
+hot files: crates/openagents-cli/src/inference.rs
+hot contracts: docs/psionic/CLI.md
+verification: cargo test -p openagents-cli --test inference_test
+claimed_at: 2026-08-29T19:00:00Z
 ```
 
 ## How you watch the work
@@ -63,6 +65,7 @@ Product lifecycle and the visible run loop. No training. No mesh.
 | `inference stop` | Stop that `serve`. An in-process Coder turn does not use this. |
 | `inference unload` | Release in-process mmap/Metal weights. Distinct from `inference stop` (serve child). |
 | `inference doctor` | Backends, store path, last admitted model, Metal/CPU presence. |
+| `inference bench` | Time map, ctx, prefill, generate. Optional `--compare-ollama`. **#361.** |
 
 `run` flags:
 
@@ -79,6 +82,17 @@ openagents inference run
   --preview                  Print the full status script; do not open a GGUF
   --until <step-id>          Stop after this step succeeds
 ```
+
+`inference bench` reuses `run` flags `--gguf`, `--prompt`, `--max-tokens`,
+`--ctx`, `--backend`, plus:
+
+```text
+  --compare-ollama <tag>     Time local Ollama on the same prompt (skip if down)
+```
+
+Stdout is one JSON object (`map_ms`, `ctx_ms`, `prefill_ms`, `gen_ms`,
+`prompt_tokens`, `generated`, `tok_per_s`, `graph`, `engine`, `version`).
+Teach lines stay on stderr. `graph` is `embed_lmhead` until #357.
 
 `--verbose` (global) adds debug logs. It does not replace `--teach`.
 Teach is the stable, user-facing script. Verbose is for developers
@@ -104,8 +118,9 @@ want the same messages the product command will keep.
 
 Load, unload, and memory UI landed in OpenAgents issues 345–347. `--model
 psionic:` generate is still later (stage 4 in [PLAN.md](./PLAN.md)).
-`/load <path>` shows CLI.md load messages through Weights ready on the
-session status row. `/unload` releases the in-process mmap. Do not dump
+`/load <path>` shows CLI.md load messages through Context ready on the
+session status row and attaches KV/GDN caches. `/unload` releases the
+in-process mmap. Do not dump
 the full teach essay into the chat transcript unless the user opts in.
 Throttle like `prefill.pos`. Ollama stays on `ollama:` until replacement
 gates pass.
@@ -127,9 +142,10 @@ run. Later slices keep the earlier messages.
 | 7 | `ctx.done` | `run` | Context, hybrid KV and Gated DeltaNet caches, scheduler. **#352.** |
 | 8 | `prompt.done` | `run --prompt` | Chat template and tokenize. **#354** (blocked by #352). |
 | 9 | `prefill.done` | `run --prompt` | Prefill all prompt positions. **#355** (blocked by #354 and #353). |
-| 10 | `gen.done` | `run --prompt --max-tokens` | Decode, sample, stream, stop. **Inference complete.** **#356** (blocked by #355). |
+| 10 | `gen.done` | `run --prompt --max-tokens` | Decode, sample, stream, stop. **Inference complete.** **#356.** **Landed** (fixture graph). |
 | 11 | (product) | `models`, `serve`, `doctor`, Coder | Lifecycle around the same path. |
-| 12 | (product) | `inference unload`, `inference status --json` memory fields, Coder `/load` `/unload` | Unload, memory, and Coder TUI load progress (issues 345–347). Parallel to generate. Requires `map.done` (issue 344). Do not skip generate. **Landed.** |
+| 12 | (product) | `inference unload`, `inference status --json` memory fields, Coder `/load` `/unload` | Unload, memory, and Coder TUI load progress (issues 345–347). **Landed.** |
+| 13 | (measure) | `inference bench` | Wall times and tok/s. Optional Ollama compare. **#361.** |
 
 Slice 1 is the first code packet after provenance. It prints `Looking
 for GGUF` through `Found GGUF at …`. Slice 3 is the first packet that

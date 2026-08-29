@@ -121,23 +121,55 @@ fn matvec_q8(src: &[u8], x: &[f32]) -> Option<Vec<f32>> {
     }
     let rows = src.len() / row_bytes;
     let mut out = vec![0f32; rows];
-    for r in 0..rows {
-        let mut acc = 0f32;
-        let start = r * row_bytes;
-        for b in 0..blocks {
-            let off = start + b * Q8_BLOCK;
-            let d = f16_to_f32(src[off..off + 2].try_into().ok()?);
-            for j in 0..Q8_K {
-                let i = b * Q8_K + j;
-                if i >= width {
-                    break;
-                }
-                acc += d * (src[off + 2 + j] as i8 as f32) * x[i];
-            }
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .clamp(1, 8);
+    if rows < 64 || threads == 1 {
+        for (r, slot) in out.iter_mut().enumerate() {
+            *slot = q8_row_dot(src, r, row_bytes, blocks, width, x);
         }
-        out[r] = acc;
+        return Some(out);
     }
+    let chunk = rows.div_ceil(threads);
+    std::thread::scope(|scope| {
+        for (t, slot) in out.chunks_mut(chunk).enumerate() {
+            let start = t * chunk;
+            scope.spawn(move || {
+                for (i, dest) in slot.iter_mut().enumerate() {
+                    *dest = q8_row_dot(src, start + i, row_bytes, blocks, width, x);
+                }
+            });
+        }
+    });
     Some(out)
+}
+
+fn q8_row_dot(
+    src: &[u8],
+    row: usize,
+    row_bytes: usize,
+    blocks: usize,
+    width: usize,
+    x: &[f32],
+) -> f32 {
+    let start = row * row_bytes;
+    if start + row_bytes > src.len() {
+        return 0.0;
+    }
+    let mut acc = 0f32;
+    for b in 0..blocks {
+        let off = start + b * Q8_BLOCK;
+        let d = f16_to_f32([src[off], src[off + 1]]);
+        for j in 0..Q8_K {
+            let i = b * Q8_K + j;
+            if i >= width {
+                break;
+            }
+            acc += d * (src[off + 2 + j] as i8 as f32) * x[i];
+        }
+    }
+    acc
 }
 
 fn rmsnorm(x: &[f32], w: &[f32]) -> Vec<f32> {

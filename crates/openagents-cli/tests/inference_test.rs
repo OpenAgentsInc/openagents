@@ -194,11 +194,44 @@ fn inspect_fixture() {
 }
 
 #[test]
+fn bench_fixture_prints_json_summary() {
+    let dir = fixture_gguf();
+    let path = dir.path().join("qwen35.gguf");
+    let output = bin()
+        .args([
+            "inference",
+            "bench",
+            "--gguf",
+            path.to_str().unwrap(),
+            "--prompt",
+            "hello",
+            "--max-tokens",
+            "2",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|_| panic!("bench stdout must be JSON, got {stdout:?}"));
+    assert_eq!(v["engine"], "openagents");
+    assert_eq!(v["graph"], "embed_lmhead");
+    assert!(v["generated"].as_u64().unwrap() >= 1, "{v}");
+    assert!(v.get("tok_per_s").is_some(), "{v}");
+    assert!(v.get("map_ms").is_some(), "{v}");
+}
+
+#[test]
 fn help_lists_inference() {
     let output = bin().args(["inference", "--help"]).output().expect("run");
     assert!(output.status.success());
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.contains("run"), "{text}");
+    assert!(text.contains("bench"), "{text}");
 }
 
 #[test]
