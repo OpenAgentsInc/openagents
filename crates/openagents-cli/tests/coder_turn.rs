@@ -393,7 +393,7 @@ async fn a_turn_opens_a_thread_runs_a_tool_and_streams_the_answer() {
             *at += 1;
             return if *at == 1 {
                 Reply::Sse(vec![call(
-                    "shell",
+                    "bash",
                     serde_json::json!({"command": "printf ONE_TWO_THREE"}),
                 )])
             } else {
@@ -863,10 +863,7 @@ async fn a_tool_that_failed_is_settled_as_a_failure() {
             let mut at = step.lock().unwrap();
             *at += 1;
             return if *at == 1 {
-                Reply::Sse(vec![call(
-                    "shell",
-                    serde_json::json!({"command": "exit 7"}),
-                )])
+                Reply::Sse(vec![call("bash", serde_json::json!({"command": "exit 7"}))])
             } else {
                 Reply::Sse(vec![text("it failed")])
             };
@@ -900,7 +897,7 @@ async fn a_destructive_command_is_refused_and_the_refusal_says_why() {
             *at += 1;
             return if *at == 1 {
                 Reply::Sse(vec![call(
-                    "shell",
+                    "bash",
                     serde_json::json!({"command": "rm -rf ~/"}),
                 )])
             } else {

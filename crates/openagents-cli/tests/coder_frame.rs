@@ -338,12 +338,12 @@ fn a_failed_tool_call_says_so_on_its_header() {
         &mut ui,
         Control::Tool {
             call_id: "c1".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: r#"{"command":"cargo test"}"#.to_string(),
         },
     );
     let header = ui.entries.last().unwrap().text.clone();
-    assert_eq!(header, "shell cargo test");
+    assert_eq!(header, "bash cargo test");
 
     apply(
         &mut ui,
@@ -362,7 +362,7 @@ fn a_failed_tool_call_says_so_on_its_header() {
     );
 
     let entry = ui.entries.last().unwrap();
-    assert_eq!(entry.text, "shell cargo test — failed");
+    assert_eq!(entry.text, "bash cargo test — failed");
     assert!(
         entry
             .output
@@ -381,7 +381,7 @@ fn a_shell_tool_uses_a_prompt_marker_on_screen() {
         &mut ui,
         Control::Tool {
             call_id: "c1".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: r#"{"command":"cargo test"}"#.to_string(),
         },
     );
@@ -391,8 +391,8 @@ fn a_shell_tool_uses_a_prompt_marker_on_screen() {
         screen.starts_with(&format!("{}○ > cargo test", " ".repeat(80))),
         "{screen}"
     );
-    assert!(!screen.contains("shell cargo test"), "{screen}");
-    assert_eq!(ui.entries[0].tool.as_ref().unwrap().function_name, "shell");
+    assert!(!screen.contains("bash cargo test"), "{screen}");
+    assert_eq!(ui.entries[0].tool.as_ref().unwrap().function_name, "bash");
 }
 
 #[test]
@@ -402,7 +402,7 @@ fn an_active_tool_rail_moves_until_the_call_finishes() {
         &mut ui,
         Control::Tool {
             call_id: "c1".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: r#"{"command":"cargo test"}"#.to_string(),
         },
     );
@@ -573,7 +573,7 @@ fn reduced_motion_keeps_the_active_tool_state_static() {
         &mut ui,
         Control::Tool {
             call_id: "c1".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: r#"{"command":"cargo test"}"#.to_string(),
         },
     );
@@ -738,7 +738,7 @@ fn long_tool_output_sweeps_from_its_first_rows_to_its_last_rows() {
         &mut ui,
         Control::Tool {
             call_id: "scrolling-output".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: r#"{"command":"long command"}"#.to_string(),
         },
     );
@@ -785,7 +785,7 @@ fn cli_help_with_inline_code_stays_literal() {
         &mut ui,
         Control::Tool {
             call_id: "help".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: r#"{"command":"openagents issue --help"}"#.to_string(),
         },
     );
@@ -823,7 +823,7 @@ fn reduced_motion_opens_long_tool_output_at_its_last_rows() {
         &mut ui,
         Control::Tool {
             call_id: "still-output".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: r#"{"command":"long command"}"#.to_string(),
         },
     );

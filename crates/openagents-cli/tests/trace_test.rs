@@ -369,7 +369,7 @@ fn an_atif_document_is_summarized_from_its_own_contents() {
           "steps": [
             { "source": "user", "timestamp": "2026-08-01T00:00:00Z" },
             { "source": "assistant", "model_name": "opus", "timestamp": "2026-08-01T00:01:00Z",
-              "tool_calls": [{"name":"shell"},{"name":"read"}],
+              "tool_calls": [{"name":"bash"},{"name":"read"}],
               "metrics": { "prompt_tokens": 100, "completion_tokens": 20 } }
           ]
         }"#,

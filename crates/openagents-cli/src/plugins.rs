@@ -199,14 +199,25 @@ pub fn validate_manifest(value: &serde_json::Value) -> Result<Manifest, Refusal>
     // than one that failed to install: the model is told a capability exists
     // and every call to it lands on the builtin. Refused here, so it reaches
     // neither the catalog nor a load.
-    if crate::tools::BUILTIN_TOOL_NAMES.contains(&name) {
+    // A retired alias is reserved too: `shell` is no longer declared, but a
+    // plugin under that name would still answer calls the shim routes to the
+    // builtin, so it is unreachable the same way.
+    if crate::tools::BUILTIN_TOOL_NAMES.contains(&name)
+        || crate::tools::SHELL_RUNNER_NAMES.contains(&name)
+    {
         return Err(refuse(
             "name_reserved",
             format!(
                 "the manifest is named `{name}`, which is a built-in tool of this session. \
                  The builtin answers first, so the plugin could never run. Rename it; \
                  the reserved names are {}",
-                crate::tools::BUILTIN_TOOL_NAMES.join(", ")
+                crate::tools::BUILTIN_TOOL_NAMES
+                    .iter()
+                    .chain(crate::tools::SHELL_RUNNER_NAMES.iter())
+                    .filter(|name| **name != "shell")
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         ));
     }

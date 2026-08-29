@@ -54,7 +54,6 @@ impl ToolPool {
                     | "write"
                     | "edit"
                     | "bash"
-                    | "shell"
                     | "skill"
                     | "grep"
                     | "glob"

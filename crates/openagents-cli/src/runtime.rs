@@ -75,7 +75,7 @@
 //! is checked against the live catalog before a thread is opened rather than
 //! guessed at.
 
-use crate::tools::{HarnessToolRegistry, ToolCall, ToolDefinition};
+use crate::tools::{HarnessToolRegistry, ToolCall, ToolDefinition, canonical_tool_name};
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt, future::join_all};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
@@ -3282,18 +3282,24 @@ impl CoderRuntimeSession {
             .map(|(id, name, args_str)| {
                 let arguments: serde_json::Value =
                     serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
+                // One name for one runner (#320): the recorded call carries
+                // the name the catalog declares, and a refusal of a
+                // concatenated name records under that same spelling rather
+                // than the stream's glitch.
+                let name = canonical_tool_name(&name).to_string();
                 (
                     ToolCall {
                         id: id.clone(),
                         name: name.clone(),
                         arguments,
                     },
+                    name,
                     args_str,
                 )
             })
             .collect::<Vec<_>>();
 
-        for (call, args_str) in &calls {
+        for (call, _name, args_str) in &calls {
             // Before the call, so a caller drawing a frame can show what is in
             // flight rather than only what has already finished.
             self.tell(ToolEvent::Started {
@@ -3305,7 +3311,7 @@ impl CoderRuntimeSession {
 
         let (_keep_open, fallback) = tokio::sync::watch::channel(false);
         let cancellation = self.tool_cancellation.as_ref().cloned().unwrap_or(fallback);
-        let results = join_all(calls.iter().map(|(call, _)| {
+        let results = join_all(calls.iter().map(|(call, _name, _args_str)| {
             self.tools
                 .execute_tool_cancellable(call, cancellation.clone())
         }))
@@ -3317,7 +3323,7 @@ impl CoderRuntimeSession {
         self.last_calls += calls.len();
         let mut ran = Vec::with_capacity(calls.len());
         let mut cancelled = false;
-        for ((call, args_str), result) in calls.into_iter().zip(results) {
+        for ((call, _name, args_str), result) in calls.into_iter().zip(results) {
             cancelled |= result.output == crate::tools::CANCELLED_TOOL_RESULT;
             self.tell(ToolEvent::Finished {
                 call_id: call.id.clone(),
@@ -3944,6 +3950,11 @@ impl StepAccumulator {
             entry.0 = id.to_string();
         }
         if let Some(name) = incoming_name {
+            // The declared name, whatever the stream spelled (#320): a model
+            // on the old catalog may still send the retired alias, and
+            // everything downstream — the Ollama call id, the assistant wire
+            // message, the `tool.ran` record — names the tool by this.
+            let name = canonical_tool_name(name);
             if entry.1.is_empty() {
                 entry.1 = name.to_string();
             } else if name.starts_with(&entry.1) {
@@ -4008,7 +4019,11 @@ impl StepAccumulator {
                         ) {
                             self.tool_calls.insert(
                                 index as usize,
-                                (call_id.to_string(), name.to_string(), arguments.to_string()),
+                                (
+                                    call_id.to_string(),
+                                    canonical_tool_name(name).to_string(),
+                                    arguments.to_string(),
+                                ),
                             );
                         }
                     }
@@ -4059,11 +4074,13 @@ impl StepAccumulator {
                     continue;
                 };
                 let index = self.tool_calls.len();
-                let name = function
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
+                let name = canonical_tool_name(
+                    function
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default(),
+                )
+                .to_string();
                 let arguments = match function.get("arguments") {
                     Some(serde_json::Value::String(raw)) => raw.clone(),
                     Some(value) => value.to_string(),

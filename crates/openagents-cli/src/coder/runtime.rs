@@ -328,7 +328,7 @@ pub struct Session {
 impl Session {
     /// Open a session on `lane`, reporting everything it does to `tx`.
     ///
-    /// The tools are the full set — `read`, `write`, `edit`, `bash`, `shell`,
+    /// The tools are the full set — `read`, `write`, `edit`, `bash`,
     /// `skill`, `openagents`, `capability`, and `delegate` — on the same terms
     /// `oa coder` gets them: children run on this lane, on this credential, and
     /// cannot delegate again.
@@ -424,6 +424,10 @@ impl Session {
                     name,
                     arguments,
                 } => {
+                    // The screen sees the name the catalog declares (#320):
+                    // a call still spelled `shell` starts as `bash`, so the
+                    // header, the box, and the record all say one word.
+                    let name = crate::tools::canonical_tool_name(&name).to_string();
                     let id = observed_turns.lock().ok().and_then(|mut turns| {
                         let id = turns.active?;
                         turns.calls.insert(call_id.clone(), id);

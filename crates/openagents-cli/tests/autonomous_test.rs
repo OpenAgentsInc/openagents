@@ -234,7 +234,7 @@ async fn shell_output_cut_through_a_multibyte_character_is_truncated_not_fatal()
     let command = "head -c 29999 /dev/zero | tr '\\0' 'a' && printf '€€€€€€€€€€'";
     let call = ToolCall {
         id: "call_trunc".to_string(),
-        name: "shell".to_string(),
+        name: "bash".to_string(),
         arguments: serde_json::json!({ "command": command }),
     };
 
@@ -525,7 +525,7 @@ async fn cancelling_a_shell_tool_call_stops_the_command_it_started() {
 
     let call = ToolCall {
         id: "call_orphan".to_string(),
-        name: "shell".to_string(),
+        name: "bash".to_string(),
         arguments: serde_json::json!({
             "command": format!("sleep 2 && touch '{}'", witness.display())
         }),
@@ -570,7 +570,7 @@ async fn a_failing_shell_command_is_reported_as_a_failure_through_the_tool_resul
     let failed = registry
         .execute_tool(&ToolCall {
             id: "call_fail".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: serde_json::json!({ "command": "exit 42" }),
         })
         .await;
@@ -584,7 +584,7 @@ async fn a_failing_shell_command_is_reported_as_a_failure_through_the_tool_resul
     let worked = registry
         .execute_tool(&ToolCall {
             id: "call_ok".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: serde_json::json!({ "command": "echo fine" }),
         })
         .await;

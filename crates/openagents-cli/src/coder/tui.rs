@@ -1736,16 +1736,18 @@ fn tool_duration_seconds(entry: &Entry) -> Option<(bool, u64)> {
 }
 
 /// Use a prompt marker for shell calls without changing their stored tool name.
+///
+/// `bash` is the declared name (#320); `shell` is still matched for records
+/// sessions wrote before the alias was retired, so an old transcript replays
+/// with the same marker it got live.
 fn tool_header_text(entry: &Entry) -> String {
-    if entry
+    let name = entry
         .tool
         .as_ref()
-        .is_some_and(|tool| tool.function_name == "shell")
-    {
-        format!(
-            ">{}",
-            entry.text.strip_prefix("shell").unwrap_or(&entry.text)
-        )
+        .map(|tool| tool.function_name.as_str())
+        .unwrap_or("");
+    if name == "shell" || name == "bash" {
+        format!(">{}", entry.text.strip_prefix(name).unwrap_or(&entry.text))
     } else {
         entry.text.clone()
     }

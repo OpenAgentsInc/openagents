@@ -1,6 +1,6 @@
 //! The tools a session declares to the model, and what running them does.
 //!
-//! The built-in tools: `read`, `write`, `edit`, `bash`, `shell`, `skill`,
+//! The built-in tools: `read`, `write`, `edit`, `bash`, `skill`,
 //! `checkpoint`, `openagents`, `swarm_list`, `swarm_send`, `swarm_inbox`,
 //! `capability`, and — only where a delegation gate exists —
 //! `delegate`. Each is declared to the model and
@@ -15,8 +15,12 @@
 //! touch a file without spelling the intent as a shell command. They are pi's
 //! four, deliberately kept to pi's size: `read` returns a file, `write`
 //! replaces one, `edit` replaces one exact run of text inside one, and `bash`
-//! is `shell` under the name that set uses — the same arm answers both, so
-//! they cannot drift apart. What the originals did not have is here because
+//! is the shell. A second name for it, `shell`, once lived in the catalog
+//! beside it (#320): the model picked at random between two words for one
+//! runner, and the duplicated declaration is how concatenated names like
+//! `shellshell` showed up in live transcripts. The catalog now declares one
+//! name; a call still spelled `shell` runs, recorded as `bash` (#320).
+//! What the originals did not have is here because
 //! this repository has shipped and fixed each of them: a bounded cut steps
 //! back to a character boundary, a failure reports `is_error: true`, a refusal
 //! is output the model can read and retry from, and `write` and `edit` stage
@@ -81,10 +85,10 @@ pub fn check_tool_description(
     format!(
         "Run a named check scope this repository declares in `.openagents/checks.json`, \
          cheapest-first: `diff` for the files you changed, wider scopes only when the narrow \
-         one is green and the question needs it. Each command runs through the same `shell` \
+         one is green and the question needs it. Each command runs through the same `bash` \
          rules. A failure is checked against this session's baseline of known failures \
          (taken from clean-tree runs) and labelled inherited or new, so attribution never \
-         costs another sweep. Declared scopes:\n{}\nUse `shell` directly for anything else.",
+         costs another sweep. Declared scopes:\n{}\nUse `bash` directly for anything else.",
         listed.join("\n")
     )
 }
@@ -120,12 +124,11 @@ const ECHO_LIMIT: usize = 2_000;
 /// session answers it with a refusal, which shadows a plugin just as
 /// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
 /// list and the arms in step.
-pub const BUILTIN_TOOL_NAMES: [&str; 14] = [
+pub const BUILTIN_TOOL_NAMES: [&str; 13] = [
     "read",
     "write",
     "edit",
     "bash",
-    "shell",
     "skill",
     "checkpoint",
     "openagents",
@@ -148,7 +151,7 @@ pub const BUILTIN_TOOL_NAMES: [&str; 14] = [
 /// The handler is given the whole [`ToolCall`] rather than just its arguments
 /// so it can stream what it is doing against the call's own id while it runs.
 /// A name that collides with a built-in is refused at registration: a host
-/// tool that shadowed `shell` would be a tool the model believes it knows the
+/// tool that shadowed `bash` would be a tool the model believes it knows the
 /// behaviour of and does not.
 pub struct HostTool {
     pub definition: ToolDefinition,
@@ -168,6 +171,80 @@ pub type HostToolFn = Arc<
 /// The stable tool result emitted when a turn stops an in-flight tool.
 ///
 /// JSON makes the outcome machine-readable in the transcript and ATIF export.
+/// The names the shell runner has answered under: the declared name and the
+/// retired alias. The alias is gone from the catalog (#320) but stays
+/// reserved — a plugin or a glitch may not take it — and a concatenation
+/// check that forgot it would read `shellbash` as an unknown word rather
+/// than a doubled tool call.
+pub const SHELL_RUNNER_NAMES: [&str; 2] = ["bash", "shell"];
+
+/// Whether `name` is a declared tool with another name concatenated onto it.
+///
+/// Live streams have sent `shellshell`, `openagentsopenagents`, and
+/// `skillbash` as one tool-call name (#320, sessions 43–44): with two words
+/// for one runner, a doubled token is how the class shows up. A call
+/// arriving under such a name must be refused, never dispatched.
+pub fn is_concatenated_tool_name(name: &str) -> bool {
+    // A declared name is not a concatenation of itself, whatever else it
+    // happens to start with: `swarm_send` reads as `swarm` plus a tail that
+    // is itself a word, and it is the tool.
+    if BUILTIN_TOOL_NAMES.contains(&name) {
+        return false;
+    }
+    for head in BUILTIN_TOOL_NAMES {
+        if head.is_empty() || !name.starts_with(head) || name.len() <= head.len() {
+            continue;
+        }
+        let rest = &name[head.len()..];
+        if BUILTIN_TOOL_NAMES.iter().any(|tail| rest == *tail) {
+            return true;
+        }
+    }
+    // The retired alias is not declared, but a stream that had two words for
+    // one runner can still send one after the other: `shellbash` and its
+    // mirror are the same glitch as `bashbash`.
+    for head in SHELL_RUNNER_NAMES {
+        if !name.starts_with(head) || name.len() <= head.len() {
+            continue;
+        }
+        let rest = &name[head.len()..];
+        if SHELL_RUNNER_NAMES.iter().any(|tail| rest == *tail) {
+            return true;
+        }
+    }
+    // The doubled form, whatever its order: the stream re-sent the whole
+    // name after itself — the half is not a declared name, so the loop
+    // above never saw it. The half has to be one, though: a name that
+    // only happens to read `aaaa` is not a tool call.
+    name.len() % 2 == 0
+        && name.len() > 2
+        && &name[..name.len() / 2] == &name[name.len() / 2..]
+        && SHELL_RUNNER_NAMES
+            .iter()
+            .chain(BUILTIN_TOOL_NAMES.iter())
+            .any(|declared| name.starts_with(declared))
+}
+
+/// The refusal a concatenated tool-call name gets: an error the model can
+/// retry from, naming what arrived.
+pub fn concatenated_name_refusal(name: &str) -> Option<String> {
+    is_concatenated_tool_name(name).then(|| {
+        format!(
+            "Unknown tool: `{name}` reads as two tool names stuck together. \
+             Call one tool at a time with a single declared name."
+        )
+    })
+}
+
+/// The declared name a shell-tool call is answered and recorded under.
+///
+/// `shell` was the second name for the `bash` runner until #320 retired it
+/// from the catalog: a call still spelled `shell` runs, but the record says
+/// `bash`, the name the model was actually told it has.
+pub fn canonical_tool_name(name: &str) -> &str {
+    if name == "shell" { "bash" } else { name }
+}
+
 pub const CANCELLED_TOOL_RESULT: &str = r#"{"status":"cancelled","reason":"turn_cancelled"}"#;
 
 /// The largest index at or below `max` that is a character boundary in `text`.
@@ -839,11 +916,22 @@ impl HarnessToolRegistry {
     /// they have.
     pub fn add_host_tool(&mut self, tool: HostTool) -> Result<(), String> {
         let name = tool.definition.name.clone();
-        if BUILTIN_TOOL_NAMES.contains(&name.as_str()) {
+        // The retired alias is refused too: a host tool named `shell` would
+        // answer from the fallthrough before the shim could route it to the
+        // `bash` arm, and the model would see a tool that is not declared.
+        if BUILTIN_TOOL_NAMES.contains(&name.as_str())
+            || SHELL_RUNNER_NAMES.contains(&name.as_str())
+        {
             return Err(format!(
                 "`{name}` is one of this session's own tools and cannot be replaced by a host \
                  tool. The reserved names are {}.",
-                BUILTIN_TOOL_NAMES.join(", ")
+                BUILTIN_TOOL_NAMES
+                    .iter()
+                    .chain(SHELL_RUNNER_NAMES.iter())
+                    .filter(|name| **name != "shell")
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
         if self.host.iter().any(|held| held.definition.name == name) {
@@ -943,18 +1031,6 @@ impl HarnessToolRegistry {
             ToolDefinition {
                 name: "bash".to_string(),
                 description: text::RUST_BASH.replace("{cwd}", &self.cwd.display().to_string()),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "command": {"type": "string", "description": "The command line to run through /bin/sh -c."},
-                        "timeout_seconds": {"type": "integer", "description": "How long to wait. Defaults to 120; raise for a build or test run."}
-                    },
-                    "required": ["command"]
-                }),
-            },
-            ToolDefinition {
-                name: "shell".to_string(),
-                description: text::RUST_SHELL.replace("{cwd}", &self.cwd.display().to_string()),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -1117,7 +1193,7 @@ impl HarnessToolRegistry {
                      this machine, over the Agent Client Protocol: pass `agent` with one of \
                      {listed} and the task runs in that program with its own tools, its own \
                      credentials, and its own bill — count is then forced to 1, and one \
-                     external agent is the per-turn limit. Prefer `shell` for a single command \
+                     external agent is the per-turn limit. Prefer `bash` for a single command \
                      — an ACP agent is for work worth a whole agent."
                 )
             };
@@ -1237,6 +1313,17 @@ impl HarnessToolRegistry {
         call: &ToolCall,
         mut cancel: watch::Receiver<bool>,
     ) -> ToolOutput {
+        // A name that is a declared tool with another name stuck on it —
+        // `openagentsopenagents`, `bashbash` — is a stream glitch (#320),
+        // refused before anything runs and recorded as nothing at all.
+        if let Some(refusal) = concatenated_name_refusal(&call.name) {
+            return ToolOutput {
+                call_id: call.id.clone(),
+                output: refusal,
+                is_error: true,
+                duration_ms: 0,
+            };
+        }
         if *cancel.borrow() {
             return ToolOutput {
                 call_id: call.id.clone(),
@@ -1245,6 +1332,9 @@ impl HarnessToolRegistry {
                 duration_ms: 0,
             };
         }
+        // The pool gate reads the name as sent: a read-only child was not
+        // told it has `shell`, and normalizing before this check would let
+        // the retired alias through as `bash`.
         if !self.tool_pool.allows(&call.name) {
             return ToolOutput {
                 call_id: call.id.clone(),
@@ -1257,6 +1347,16 @@ impl HarnessToolRegistry {
                 duration_ms: 0,
             };
         }
+        // One name for one runner: a call still spelled `shell` is answered
+        // by the `bash` arm and recorded under the declared name (#320).
+        // `call` is a & here, so the match goes through a local of the same
+        // value under the canonical name.
+        let normalized = ToolCall {
+            id: call.id.clone(),
+            name: canonical_tool_name(&call.name).to_string(),
+            arguments: call.arguments.clone(),
+        };
+        let call = &normalized;
         match call.name.as_str() {
             "read" => {
                 let (output, is_error) = answer_read(&self.cwd, &call.arguments);
@@ -1285,11 +1385,11 @@ impl HarnessToolRegistry {
                     duration_ms: 0,
                 }
             }
-            // One arm for both names: `bash` is the name pi's tool set gives
-            // this, `shell` is the name this session has always given it, and
-            // two implementations would be two behaviours the moment either
-            // one was touched.
-            "shell" | "bash" => {
+            // One arm for the runner, under the one name the catalog
+            // declares (#320). A call still spelled `shell` is normalized
+            // to this arm before the match, so the two can no longer drift:
+            // there is nothing left to drift.
+            "bash" => {
                 let cmd = call
                     .arguments
                     .get("command")
@@ -1621,7 +1721,7 @@ impl HarnessToolRegistry {
                     return ToolOutput {
                         call_id: call.id.clone(),
                         output: "This repository declares no check scopes (no \
-                                 `.openagents/checks.json`). Use `shell` directly."
+                                 `.openagents/checks.json`). Use `bash` directly."
                             .to_string(),
                         is_error: true,
                         duration_ms: 0,
@@ -4981,7 +5081,6 @@ mod tests {
                 "write",
                 "edit",
                 "bash",
-                "shell",
                 "skill",
                 "checkpoint",
                 "openagents",
@@ -5073,7 +5172,6 @@ mod tests {
                 "write",
                 "edit",
                 "bash",
-                "shell",
                 "skill",
                 "swarm_list",
                 "swarm_send",
@@ -5083,6 +5181,122 @@ mod tests {
         let all = names(ToolPool::All);
         assert!(all.contains(&"capability".to_string()), "{all:?}");
         assert!(!all.contains(&"delegate".to_string()), "{all:?}");
+    }
+
+    /// The catalog declares `bash` and nothing else for the shell runner.
+    #[test]
+    fn the_catalog_declares_bash_and_not_shell() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(root.path().to_path_buf()));
+        let names: Vec<String> = registry.list_tools().into_iter().map(|t| t.name).collect();
+        assert!(names.contains(&"bash".to_string()), "{names:?}");
+        assert!(
+            !names.contains(&"shell".to_string()),
+            "the retired alias is declared again: {names:?}"
+        );
+        // And the description that used to say "either name reaches it"
+        // no longer advertises two names for one runner.
+        let bash = registry
+            .list_tools()
+            .into_iter()
+            .find(|t| t.name == "bash")
+            .unwrap();
+        assert!(
+            !bash.description.contains("either name reaches it"),
+            "{}",
+            bash.description
+        );
+        assert!(
+            !bash
+                .description
+                .contains("This is the same runner as `shell`"),
+            "{}",
+            bash.description
+        );
+    }
+
+    /// A call still spelled `shell` runs — the one-release shim — and
+    /// answers from the same arm `bash` does.
+    #[tokio::test]
+    async fn a_shell_named_call_still_runs_the_bash_arm() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        let out = registry
+            .execute_tool(&ToolCall {
+                id: "shell_alias".to_string(),
+                name: "shell".to_string(),
+                arguments: serde_json::json!({"command": "echo alias-live"}),
+            })
+            .await;
+        assert!(!out.is_error, "{}", out.output);
+        assert!(out.output.contains("alias-live"), "{}", out.output);
+    }
+
+    /// A name that is a declared tool with another name stuck on it is
+    /// refused as unknown, never dispatched, and the refusal names what
+    /// arrived: the model can see what it sent.
+    #[tokio::test]
+    async fn concatenated_tool_names_are_refused_not_dispatched() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = HarnessToolRegistry::new(Some(dir.path().to_path_buf()));
+        for name in [
+            "openagentsopenagents",
+            "bashbash",
+            "shellshell",
+            "skillbash",
+        ] {
+            let out = registry
+                .execute_tool(&ToolCall {
+                    id: name.to_string(),
+                    name: name.to_string(),
+                    arguments: serde_json::json!({"command": "echo should-not-run"}),
+                })
+                .await;
+            assert!(out.is_error, "`{name}` was not refused: {}", out.output);
+            assert!(
+                out.output.starts_with("Unknown tool:"),
+                "`{name}` refused without naming itself: {}",
+                out.output
+            );
+            assert!(
+                out.output.contains(name),
+                "`{name}` refused without showing the name: {}",
+                out.output
+            );
+            assert!(
+                !out.output.contains("should-not-run"),
+                "`{name}` dispatched: {}",
+                out.output
+            );
+        }
+    }
+
+    #[test]
+    fn the_concatenated_name_check_reads_the_live_glitches_and_nothing_else() {
+        // The names live transcripts actually carried, plus the class.
+        for name in [
+            "openagentsopenagents",
+            "bashbash",
+            "shellshell",
+            "skillbash",
+            "readwrite",
+        ] {
+            assert!(is_concatenated_tool_name(name), "`{name}` is a glitch");
+        }
+        // A declared name is a tool, not a glitch — including the one that
+        // reads as a word plus a word, and the retired alias itself.
+        for name in BUILTIN_TOOL_NAMES {
+            assert!(!is_concatenated_tool_name(name), "`{name}` is a tool");
+        }
+        assert!(
+            !is_concatenated_tool_name("shell"),
+            "the alias is not a glitch"
+        );
+        assert!(!is_concatenated_tool_name("swarm_send"));
+        // A name that is not a declared tool at all is the fallthrough's
+        // business, not this check's.
+        assert!(!is_concatenated_tool_name("totally-unknown"));
+        assert!(!is_concatenated_tool_name(""));
     }
 
     // ───────────────────────────────────────────────── tools the host answers
@@ -5117,7 +5331,6 @@ mod tests {
                 "write",
                 "edit",
                 "bash",
-                "shell",
                 "skill",
                 "checkpoint",
                 "openagents",

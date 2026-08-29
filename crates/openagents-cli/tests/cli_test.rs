@@ -378,7 +378,7 @@ mod tests {
         let registry = HarnessToolRegistry::new(None);
         let call = ToolCall {
             id: "call_shell_1".to_string(),
-            name: "shell".to_string(),
+            name: "bash".to_string(),
             arguments: serde_json::json!({"command": "echo test_output_123"}),
         };
         let out = registry.execute_tool(&call).await;

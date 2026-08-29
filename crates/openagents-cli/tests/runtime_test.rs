@@ -769,7 +769,7 @@ async fn a_tool_call_runs_and_its_output_returns_to_the_model() {
             let call = serde_json::json!({"choices": [{"delta": {"tool_calls": [{
                 "index": 0,
                 "id": "call_a",
-                "function": {"name": "shell", "arguments": "{\"command\":\"echo marker-9f3\"}"}
+                "function": {"name": "bash", "arguments": "{\"command\":\"echo marker-9f3\"}"}
             }]}}]});
             return Reply::Sse(vec![frame(call)], None);
         }
@@ -823,7 +823,7 @@ async fn a_tool_round_does_not_stream_provisional_text() {
                     frame(serde_json::json!({"choices":[{"delta":{"tool_calls":[{
                         "index": 0,
                         "id": "call_a",
-                        "function": {"name": "shell", "arguments": "{\"command\":\"pwd\"}"}
+                        "function": {"name": "bash", "arguments": "{\"command\":\"pwd\"}"}
                     }]}}]})),
                 ],
                 None,
@@ -1051,7 +1051,7 @@ async fn the_local_lane_runs_tools_and_feeds_the_result_back() {
                 return Reply::Ndjson(
                     vec![serde_json::json!({
                     "message": {"role":"assistant","content":"","tool_calls":[{
-                        "function": {"name":"shell","arguments":{"command":"echo marker-4c1"}}
+                        "function": {"name":"bash","arguments":{"command":"echo marker-4c1"}}
                     }]},
                     "done": false
                 })
@@ -1090,7 +1090,7 @@ async fn the_local_lane_runs_tools_and_feeds_the_result_back() {
         chats[1]
     );
     assert!(
-        chats[1].contains(r#""tool_name":"shell""#),
+        chats[1].contains(r#""tool_name":"bash""#),
         "the tool result did not name its tool for Ollama:\n{}",
         chats[1]
     );
@@ -1280,7 +1280,7 @@ fn recording_stub() -> Stub {
                 frame(serde_json::json!({"choices":[{"delta":{"tool_calls":[{
                     "index": 0,
                     "id": "call_a",
-                    "function": {"name": "shell", "arguments": "{\"command\":\"echo hello\"}"}
+                    "function": {"name": "bash", "arguments": "{\"command\":\"echo hello\"}"}
                 }]}}]})),
             ],
             None,
@@ -1371,7 +1371,10 @@ async fn a_finished_turn_is_written_down_before_the_thread_is_revoked() {
 
     let ran = &events[2]["payload"];
     assert_eq!(ran["call_id"], "call_a");
-    assert_eq!(ran["tool"], "shell");
+    assert_eq!(
+        ran["tool"], "bash",
+        "the record carries the declared name, not the retired alias"
+    );
     assert_eq!(
         ran["arguments"], r#"{"command":"echo hello"}"#,
         "the arguments are the wire's own string, which is what replays"
@@ -1449,7 +1452,7 @@ async fn a_recorded_turn_replays_into_the_conversation_it_came_from() {
     );
     assert_eq!(
         replayed[1].tool_calls.as_ref().unwrap()[0]["function"]["name"],
-        "shell"
+        "bash"
     );
     assert_eq!(replayed[2].tool_call_id.as_deref(), Some("call_a"));
     assert_eq!(replayed[3].content.as_deref(), Some("It said hello."));
@@ -1527,7 +1530,7 @@ async fn the_tool_step_limit_never_removes_tools() {
                 serde_json::json!({"choices":[{"delta":{"tool_calls":[{
                     "index": 0,
                     "id": "call_loop",
-                    "function": {"name": "shell", "arguments": "{\"command\":\"true\"}"}
+                    "function": {"name": "bash", "arguments": "{\"command\":\"true\"}"}
                 }]}}]}),
             )],
             None,
@@ -1599,7 +1602,7 @@ async fn the_tool_step_limit_never_removes_tools() {
         completions
             .iter()
             .filter(|request| !request.contains(r#""tools":[]"#))
-            .all(|request| request.contains(r#""name":"shell""#)),
+            .all(|request| request.contains(r#""name":"bash""#)),
         "a turn round lost its tools"
     );
 }
@@ -1962,7 +1965,7 @@ async fn a_turn_that_runs_out_of_steps_reports_max_steps() {
                 serde_json::json!({"choices":[{"delta":{"tool_calls":[{
                     "index": 0,
                     "id": "call_loop",
-                    "function": {"name": "shell", "arguments": "{\"command\":\"true\"}"}
+                    "function": {"name": "bash", "arguments": "{\"command\":\"true\"}"}
                 }]}}]}),
             )],
             None,
