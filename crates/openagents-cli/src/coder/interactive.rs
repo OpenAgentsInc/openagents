@@ -28,8 +28,8 @@ use crossterm::{
     cursor::SetCursorStyle,
     event::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent,
+        MouseEventKind, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -130,7 +130,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         return Err(error.into());
     }
     let _terminal_cleanup = TerminalCleanup;
-    let _ = stdout.execute(EnableMouseCapture);
+    let mouse_error = enable_session_mouse(&mut stdout).err();
     let flags = event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
         | event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES
         | event::KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES;
@@ -327,6 +327,9 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             Role::Notice,
             crate::runtime::OLLAMA_INSTALL_SIGN.to_string(),
         ));
+    }
+    if let Some(error) = mouse_error {
+        ui.entries.push(Entry::new(Role::Notice, error));
     }
     if options.cloud_history && lane.is_local() {
         ui.entries.push(Entry::new(
@@ -695,33 +698,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
             Event::Key(key) => key,
             Event::Mouse(mouse) => {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => {
-                        ui.selection.clear();
-                        ui.scroll_by(-3);
-                    }
-                    MouseEventKind::ScrollDown => {
-                        ui.selection.clear();
-                        ui.scroll_by(3);
-                    }
-                    _ => {
-                        // The selection owns press/drag/release inside the
-                        // transcript area; elsewhere mouse events are inert.
-                        let in_transcript = ui
-                            .selection
-                            .rows()
-                            .iter()
-                            .any(|row| row.screen_y == mouse.row)
-                            || matches!(
-                                mouse.kind,
-                                MouseEventKind::Drag(_) | MouseEventKind::Up(_)
-                            );
-                        if in_transcript {
-                            ui.selection
-                                .handle_mouse(mouse.column, mouse.row, mouse.kind);
-                        }
-                    }
-                }
+                apply_mouse(&mut ui, mouse);
                 continue;
             }
             _ => continue,
@@ -2734,6 +2711,91 @@ fn atty_is_terminal() -> bool {
     }
 }
 
+/// ANSI mouse-tracking sequences Unix `EnableMouseCapture` already writes.
+///
+/// crossterm's Windows path only calls `SetConsoleMode` and reports that ANSI
+/// is unsupported, so a ConPTY host never sees a mouse-enable request. Wheel
+/// and trackpad then become Up/Down (alternate scroll) and walk input history
+/// (#349). Write these on Windows after the WinAPI enable.
+const MOUSE_CAPTURE_ENABLE_ANSI: &str = "\x1B[?1000h\x1B[?1002h\x1B[?1003h\x1B[?1015h\x1B[?1006h";
+const MOUSE_CAPTURE_DISABLE_ANSI: &str = "\x1B[?1006l\x1B[?1015l\x1B[?1003l\x1B[?1002l\x1B[?1000l";
+
+fn write_host_mouse_tracking(out: &mut impl Write, enable: bool) -> std::io::Result<()> {
+    let seq = if enable {
+        MOUSE_CAPTURE_ENABLE_ANSI
+    } else {
+        MOUSE_CAPTURE_DISABLE_ANSI
+    };
+    out.write_all(seq.as_bytes())?;
+    out.flush()
+}
+
+fn enable_session_mouse(out: &mut impl Write) -> Result<(), String> {
+    let winapi = out.execute(EnableMouseCapture).map(|_| ());
+    let ansi = write_windows_host_mouse_tracking(out, true);
+    match (winapi, ansi) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), ansi) => {
+            let extra = match ansi {
+                Err(ansi_error) => {
+                    format!(" Host mouse sequences also failed ({ansi_error}).")
+                }
+                Ok(()) => String::new(),
+            };
+            Err(format!(
+                "Mouse tracking did not start ({error}).{extra} Trackpad scroll may walk input history instead of the transcript. PageUp and PageDown still scroll."
+            ))
+        }
+        (Ok(()), Err(error)) => Err(format!(
+            "Mouse tracking did not start ({error}). Trackpad scroll may walk input history instead of the transcript. PageUp and PageDown still scroll."
+        )),
+    }
+}
+
+fn write_windows_host_mouse_tracking(out: &mut impl Write, enable: bool) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        write_host_mouse_tracking(out, enable)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (out, enable);
+        Ok(())
+    }
+}
+
+fn disable_session_mouse(out: &mut impl Write) {
+    let _ = out.execute(DisableMouseCapture);
+    let _ = write_windows_host_mouse_tracking(out, false);
+}
+
+fn apply_mouse(ui: &mut CoderUi, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            ui.selection.clear();
+            ui.scroll_by(-3);
+        }
+        MouseEventKind::ScrollDown => {
+            ui.selection.clear();
+            ui.scroll_by(3);
+        }
+        _ => {
+            // The selection owns press/drag/release inside the
+            // transcript area; elsewhere mouse events are inert.
+            let in_transcript = ui
+                .selection
+                .rows()
+                .iter()
+                .any(|row| row.screen_y == mouse.row)
+                || matches!(mouse.kind, MouseEventKind::Drag(_) | MouseEventKind::Up(_));
+            if in_transcript {
+                ui.selection
+                    .handle_mouse(mouse.column, mouse.row, mouse.kind);
+            }
+        }
+    }
+}
+
 /// Restore terminal state even when an input or draw operation returns early.
 struct TerminalCleanup;
 
@@ -2746,7 +2808,7 @@ impl Drop for TerminalCleanup {
         );
         let _ = std::io::stdout().execute(SetCursorStyle::DefaultUserShape);
         let _ = std::io::stdout().write_all(CURSOR_COLOR_RESET.as_bytes());
-        let _ = std::io::stdout().execute(DisableMouseCapture);
+        disable_session_mouse(&mut std::io::stdout());
         let _ = disable_raw_mode();
         let _ = std::io::stdout().execute(LeaveAlternateScreen);
     }
@@ -2837,6 +2899,81 @@ mod tests {
     #[test]
     fn paste_line_endings_become_composer_line_endings() {
         assert_eq!(normalize_paste("one\r\ntwo\rthree"), "one\ntwo\nthree");
+    }
+
+    fn wheel(kind: MouseEventKind) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    fn scrollable_ui() -> CoderUi {
+        let mut ui = CoderUi::new();
+        ui.scroll_max = 20;
+        ui.transcript_height = 10;
+        ui
+    }
+
+    #[test]
+    fn host_mouse_tracking_sequences_match_crossterm_unix() {
+        let mut enable = Vec::new();
+        write_host_mouse_tracking(&mut enable, true).unwrap();
+        assert_eq!(enable, MOUSE_CAPTURE_ENABLE_ANSI.as_bytes());
+        let mut disable = Vec::new();
+        write_host_mouse_tracking(&mut disable, false).unwrap();
+        assert_eq!(disable, MOUSE_CAPTURE_DISABLE_ANSI.as_bytes());
+    }
+
+    #[test]
+    fn wheel_scrolls_the_transcript_even_when_history_has_entries() {
+        let mut ui = scrollable_ui();
+        ui.composer.set_text("draft");
+        let mut history = History::new();
+        history.record("first");
+        history.record("second");
+
+        apply_mouse(&mut ui, wheel(MouseEventKind::ScrollUp));
+        assert_eq!(ui.scroll_override, Some(17));
+        assert_eq!(ui.composer.text(), "draft");
+
+        handle_session_key(
+            &mut ui,
+            &mut history,
+            &up_key(),
+            40,
+            std::path::Path::new("."),
+        );
+        assert_eq!(
+            ui.composer.text(),
+            "second",
+            "the first Up after a wheel event is still the newest history entry"
+        );
+        assert_eq!(ui.scroll_override, Some(17));
+    }
+
+    #[test]
+    fn up_walks_history_before_the_transcript() {
+        let mut ui = scrollable_ui();
+        ui.composer.set_text("draft");
+        let mut history = History::new();
+        history.record("remembered");
+
+        handle_session_key(
+            &mut ui,
+            &mut history,
+            &up_key(),
+            40,
+            std::path::Path::new("."),
+        );
+        assert_eq!(ui.composer.text(), "remembered");
+        assert_eq!(ui.scroll_override, None);
+    }
+
+    fn up_key() -> KeyEvent {
+        KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)
     }
 
     #[test]

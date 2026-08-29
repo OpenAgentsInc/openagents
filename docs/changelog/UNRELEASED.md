@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Windows trackpad scrolls the transcript, not input history (#349)
+
+- issues: #349
+- commits: this change
+- contracts-specs: Windows host mouse tracking writes the same ANSI sequences Unix `EnableMouseCapture` already writes; `apply_mouse` keeps wheel scroll off the history ring
+- invariants: none changed
+- evidence: `host_mouse_tracking_sequences_match_crossterm_unix`; `wheel_scrolls_the_transcript_even_when_history_has_entries`
+- lane: cursor session abb3a3ed
+
+On Windows, `EnableMouseCapture` only called `SetConsoleMode`, so Windows
+Terminal never enabled mouse reports. Trackpad and wheel became Up/Down and
+walked the composer history. The session now writes the ANSI mouse-tracking
+sequences on Windows and names a failed enable instead of swallowing it.
+
 ## CLI source version is 0.2.0-rc.14
 
 - issues: #348
