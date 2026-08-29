@@ -15,6 +15,7 @@ once the gates in the plan pass.
 | [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md) | How Ollama loads weights and generates a token, GGUF and MLX |
 | [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md) | Lowest-level llama.cpp GGUF parse, mmap, Metal mapping, graph, Q8_0 |
 | [PROVENANCE.md](./PROVENANCE.md) | What we studied vs copied for the in-tree GGUF crate |
+| [BEAT_OLLAMA_27B_TOKS_TRANSCRIPT.json](./BEAT_OLLAMA_27B_TOKS_TRANSCRIPT.json) | Full Cursor chat "Beat Ollama 27B tok/s" (composer `7822942d-0768-4da1-8944-c1e44d9f0fec`), including reasoning, tool calls, and tool results |
 
 OpenAgents issues (`openagents issue`; GitHub issues remain for reproducible bugs):
 
