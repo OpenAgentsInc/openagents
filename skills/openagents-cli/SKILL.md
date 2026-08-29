@@ -1,6 +1,6 @@
 ---
 name: openagents-cli
-description: Use the OpenAgents CLI to read and write issues, projects, repositories, and the forum, to call any API route, and to sign a person in. Use it whenever the work touches OpenAgents itself rather than the files in this repository.
+description: Use the OpenAgents CLI to read and write issues, projects, repositories, and the forum, to call any API route, to sign a person in, and to run Autopilot. Use it whenever the work touches OpenAgents itself rather than the files in this repository, or when the person says run Autopilot.
 ---
 
 # The OpenAgents CLI
@@ -33,6 +33,8 @@ and a search term cost nothing and cut the answer to what was asked.
 - `openagents computer probe|policy|status` — inspects this machine. The local
   machine controls all access; no account is involved.
 - `openagents coder --offline` — answers from a built-in stand-in.
+- `openagents coder --autopilot --dry-run` — prints the Autopilot plan; no
+  model, no thread, no token.
 - `--help` anywhere.
 
 Everything else reaches the API and needs a token. Without one you get:
@@ -84,6 +86,33 @@ approve something unexplained is right to refuse.
 Never print a token, and never paste one into a file, a commit message, or an
 issue.
 
+## Autopilot
+
+When the person says run Autopilot, or wants the CLI to take stock of this
+workspace and keep going, start it:
+
+```
+openagents coder --autopilot
+openagents coder --autopilot "work the open issues"
+openagents coder --autopilot --dry-run
+openagents --autopilot
+```
+
+It is headless. It reads the workspace snapshot, recent local Coder sessions,
+and open issues, then iterates until a stop condition (default one hour, or a
+turn that cannot reach a model). The optional prompt is the pick filter.
+
+`--dry-run` prints that plan and exits without calling a model or opening a
+thread. Run it when you need to see what Autopilot would take stock of before
+it goes.
+
+Hosted lanes need a token. `--lane local` can run unsigned when Ollama answers.
+`--offline` cannot combine with Autopilot; `--dry-run` is the no-model path.
+
+This is the one case where starting another coder process is the work. An
+interactive `openagents coder` without `--autopilot` is still a nested session
+— do not start one. Parallel named work still uses the `delegate` tool.
+
 ## Reaching a route with no command
 
 `openagents api <path>` sends an authenticated request to any API route and
@@ -102,8 +131,10 @@ tool and pass its path. The pipe form (`printf '%s' "$body" | openagents ...`)
 belongs in the `bash` tool, where EOF arrives. A resumed turn after a hang
 re-issues the failed write with a file path — never the verbatim call.
 
-**You are already a coder session.** Do not start another one. To run work in
-parallel, use the `delegate` tool, which is what it is for.
+**You are already a coder session.** Do not start another interactive one.
+To run work in parallel, use the `delegate` tool. Autopilot
+(`openagents coder --autopilot`) is the unattended loop; start that when the
+person asked to run Autopilot.
 
 **Writes are real.** Closing an issue, posting to the forum, or pushing to a
 repository is visible to other people immediately and is not yours to undo. Say

@@ -5,6 +5,17 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder skills name Autopilot so a session can start it (#328)
+
+- issues: #328
+- commits: this change
+- contracts-specs: Coder auto skill (`superdelegate`); CLI skill (`openagents-cli`)
+- invariants: Autopilot is the unattended loop an agent starts; interactive nested `openagents coder` is still refused
+- evidence: `skills/superdelegate/SKILL.md`; `skills/openagents-cli/SKILL.md`
+- lane: grok autopilot-skill
+
+Every Coder session loads `superdelegate`. It now says to run `openagents coder --autopilot` when the person asks, including `--dry-run`. The `openagents-cli` skill carries the same command and carves Autopilot out of "do not start another coder session."
+
 ## Headless Autopilot: `openagents coder --autopilot` (#328)
 
 - issues: #328

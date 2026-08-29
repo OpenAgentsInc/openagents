@@ -1,6 +1,6 @@
 ---
 name: superdelegate
-description: How to hand work to another agent and work through an issue backlog with safe parallelism. Loaded into every session.
+description: How to hand work to another agent, run Autopilot, and work through an issue backlog with safe parallelism. Loaded into every session.
 auto: true
 ---
 
@@ -8,11 +8,12 @@ auto: true
 
 ## Which lane
 
-| The work                              | Use              |
-| ------------------------------------- | ---------------- |
-| One command, one answer               | `shell`          |
-| The same thing to N independent parts | `delegate`       |
-| A backlog of issues                   | the method below |
+| The work                                 | Use                 |
+| ---------------------------------------- | ------------------- |
+| One command, one answer                  | `shell`             |
+| The same thing to N independent parts    | `delegate`          |
+| Run Autopilot / keep going from context  | Autopilot below     |
+| A backlog of issues, in parallel         | the method below    |
 
 Run a single command yourself. Starting an agent to run `pwd` costs minutes and
 real money and hands back an answer nobody watched being produced.
@@ -34,6 +35,28 @@ credentials and model rather than spending this session's grant. Prefer it over
 running `devin` yourself through `shell`: a fleet child renders, stops with
 `ctrl+x`, and does not block the turn, while a shell child is one opaque call
 that freezes the session until it ends.
+
+## Autopilot
+
+When the person says **run Autopilot**, start it. Do not reimplement the loop
+in this session.
+
+```
+openagents coder --autopilot
+openagents coder --autopilot "work the open issues"
+openagents coder --autopilot --dry-run
+openagents --autopilot
+```
+
+The CLI takes stock of this workspace, recent local Coder sessions, and open
+issues, then keeps iterating until a stop condition. `--dry-run` prints that
+plan without calling a model. Hosted lanes need a token; `--lane local` can
+run unsigned when Ollama answers.
+
+Autopilot is one unattended loop that picks the next unit itself. `delegate`
+fans the same prompt out to N children. Do not wrap Autopilot in `delegate`.
+Do not start Autopilot for one named issue you can finish here. The
+`openagents-cli` skill has the rest.
 
 ## Burning through a backlog
 
