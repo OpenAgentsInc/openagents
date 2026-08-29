@@ -672,6 +672,26 @@ impl Session {
         &self.lane
     }
 
+    /// Whether this session currently holds an API credential.
+    pub fn has_user_token(&self) -> bool {
+        self.inner.user_token.is_some()
+    }
+
+    /// Re-read the process credential after `/login` writes one.
+    pub fn apply_login_credential(&mut self) {
+        self.inner.user_token = user_token_for(&self.lane);
+    }
+
+    /// Drop the in-memory credential after `/logout` removes the store.
+    pub fn clear_credential(&mut self) {
+        self.inner.user_token = None;
+    }
+
+    /// Opt in or out of server transcript upload. Local stays off the wire.
+    pub fn set_cloud_history(&mut self, enabled: bool) {
+        self.inner.set_cloud_history(enabled);
+    }
+
     /// Move this session onto `lane`, as shift+tab does.
     ///
     /// The thread the session was holding is dropped rather than carried

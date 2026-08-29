@@ -64,6 +64,9 @@ const REVOCATION_GRACE: Duration = Duration::from_secs(10);
 /// before it is read is a message that was never shown.
 const CLIPBOARD_TOAST_TICKS: u64 = 60;
 
+/// Hosted lanes need an OpenAgents account. Local does not (#325).
+pub const HOSTED_NEEDS_SIGN_IN: &str = "This lane talks to OpenAgents. Sign in with /login, or use Coder Local if Ollama is installed.";
+
 /// What `--lane` and `--reasoning` settled on before the screen was entered.
 #[derive(Debug, Clone, Default)]
 pub struct SessionOptions {
@@ -139,12 +142,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     let mut lane = Lane::from_str(&lane_name);
     let reasoning = reasoning.or_else(|| lane.default_reasoning().map(str::to_string));
     loaded.store.set_reasoning(reasoning.as_deref())?;
-    loaded.store.set_cloud_history(options.cloud_history)?;
+    let cloud_history = options.cloud_history && !lane.is_local();
+    loaded.store.set_cloud_history(cloud_history)?;
     ui.lane = lane.label();
     let restored_events = loaded.events;
     ui.local_session_id = Some(loaded.summary.id.clone());
     ui.local_session_path = Some(loaded.store.directory().display().to_string());
-    ui.cloud_history = options.cloud_history;
+    ui.cloud_history = cloud_history;
     // The local lane's walk membership is decided once, here, from one
     // bounded probe (issue #291). `Some` names the model the lane resolves
     // to; `None` covers no server, a refusal, a timeout, and an empty
@@ -223,8 +227,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         ));
     }
     let mut local_store = Some(loaded.store);
-    let mut session: Option<Arc<Mutex<Session>>> = None;
-
+    let mut has_account = false;
     if options.dev {
         ui.entries.push(Entry::new(
             Role::Notice,
@@ -234,23 +237,8 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             let origin = crate::coder::runtime::api_base();
             let origin = origin.trim_end_matches("/api/v1").trim_end_matches('/');
             ui.identity = resolve_identity(origin, &Secret::new(token)).await;
+            has_account = true;
         }
-        let mut opened = Session::open(
-            lane.clone(),
-            &lane_name,
-            reasoning.clone(),
-            agents.clone(),
-            false,
-            tx.clone(),
-        );
-        opened = match local_store.take() {
-            Some(store) => {
-                opened.with_local_session(store, &restored_events, options.cloud_history)
-            }
-            None => opened,
-        };
-        opened.seed_workspace_snapshot(&snapshot_text);
-        session = Some(Arc::new(Mutex::new(opened)));
     } else if let Some(token) = crate::coder::runtime::user_token() {
         let endpoint = crate::auth::resolve_endpoint(None, None)?;
         let token = Secret::new(token);
@@ -259,22 +247,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             // yet an account name, and the row may only show one the server
             // gave.
             ui.identity = resolve_identity(&endpoint.origin, &token).await;
-            let mut opened = Session::open(
-                lane.clone(),
-                &lane_name,
-                reasoning.clone(),
-                agents.clone(),
-                false,
-                tx.clone(),
-            );
-            opened = match local_store.take() {
-                Some(store) => {
-                    opened.with_local_session(store, &restored_events, options.cloud_history)
-                }
-                None => opened,
-            };
-            opened.seed_workspace_snapshot(&snapshot_text);
-            session = Some(Arc::new(Mutex::new(opened)));
+            has_account = true;
         } else {
             // A stored token the deployment refused. The row says the
             // credential is unverified rather than naming whoever it was
@@ -283,15 +256,38 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             ui.identity = crate::coder::tui::Identity::Unverified;
             ui.entries.push(Entry::new(
                 Role::Notice,
-                "Stored token did not authenticate. Press Enter to sign in to OpenAgents.",
+                "Stored token did not authenticate. Sign in with /login.",
             ));
         }
-    } else {
+    }
+    if !options.lane_explicit && local_lane_model.is_none() && !has_account {
         ui.entries.push(Entry::new(
             Role::Notice,
-            "Press Enter to sign in to OpenAgents.",
+            crate::runtime::OLLAMA_INSTALL_SIGN.to_string(),
         ));
     }
+    if options.cloud_history && lane.is_local() {
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            "Local chats stay on this machine. --cloud-history does not upload a local session.",
+        ));
+    }
+    if !has_account && !lane.is_local() && !options.dev {
+        ui.entries
+            .push(Entry::new(Role::Notice, HOSTED_NEEDS_SIGN_IN));
+    }
+    let opened = attach_session(
+        &lane,
+        &lane_name,
+        &reasoning,
+        &agents,
+        &tx,
+        &mut local_store,
+        &restored_events,
+        cloud_history,
+        &snapshot_text,
+    );
+    let mut session: Option<Arc<Mutex<Session>>> = Some(Arc::new(Mutex::new(opened)));
 
     enable_raw_mode()?;
     let mut stdout = stdout();
@@ -466,6 +462,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                         &tx,
                                         &mut turns,
                                         &mut active_turn,
+                                        options.dev,
                                     )
                                     .await;
                                     update_activity(&mut ui, &turns, prompt_queue.len());
@@ -480,6 +477,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             &tx,
                             &mut turns,
                             &mut active_turn,
+                            options.dev,
                         )
                         .await;
                     }
@@ -519,6 +517,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             &tx,
                             &mut turns,
                             &mut active_turn,
+                            options.dev,
                         )
                         .await;
                     }
@@ -533,24 +532,22 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             // which account it belongs to before changing the
                             // identity row.
                             ui.identity = current_identity().await;
-                            let mut opened = Session::open(
-                                lane.clone(),
-                                &lane_name,
-                                reasoning.clone(),
-                                agents.clone(),
-                                false,
-                                tx.clone(),
-                            );
-                            opened = match local_store.take() {
-                                Some(store) => opened.with_local_session(
-                                    store,
+                            if let Some(existing) = &session {
+                                existing.lock().await.apply_login_credential();
+                            } else {
+                                let opened = attach_session(
+                                    &lane,
+                                    &lane_name,
+                                    &reasoning,
+                                    &agents,
+                                    &tx,
+                                    &mut local_store,
                                     &restored_events,
-                                    options.cloud_history,
-                                ),
-                                None => opened,
-                            };
-                            opened.seed_workspace_snapshot(&snapshot_text);
-                            session = Some(Arc::new(Mutex::new(opened)));
+                                    cloud_history,
+                                    &snapshot_text,
+                                );
+                                session = Some(Arc::new(Mutex::new(opened)));
+                            }
                             refresh_credit(&tx);
                         }
                         Err(error) => ui
@@ -748,9 +745,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             &autopilot_closed,
                             &mut autopilot_last_picked,
                             &mut autopilot_last_heartbeat,
+                            options.dev,
                         )
                         .await;
                         match outcome {
+                            commands::Outcome::Login => {
+                                begin_login(&mut login_pending, &mut ui, &tx);
+                            }
                             commands::Outcome::Logout => asked_to_log_out = true,
                             commands::Outcome::QueueStatus => {
                                 ui.entries.push(Entry::new(
@@ -818,23 +819,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             commands::Outcome::Done => {}
                         }
                     }
-                } else if text.trim().is_empty() || text.trim() == "/login" {
-                    if login_pending {
-                        ui.entries.push(Entry::new(
-                            Role::Notice,
-                            "OpenAgents sign-in is already in progress.",
-                        ));
-                    } else {
-                        login_pending = true;
-                        ui.entries
-                            .push(Entry::new(Role::Notice, "Starting OpenAgents sign-in..."));
-                        spawn_session_login(&tx);
-                    }
-                } else {
-                    ui.entries.push(Entry::new(
-                        Role::Notice,
-                        "Press Enter to sign in to OpenAgents.",
-                    ));
+                } else if text.trim() == "/login" {
+                    begin_login(&mut login_pending, &mut ui, &tx);
+                } else if !text.trim().is_empty() {
+                    ui.entries
+                        .push(Entry::new(Role::Notice, HOSTED_NEEDS_SIGN_IN));
                 }
 
                 // `/logout` is run here rather than in the dispatch because the
@@ -870,6 +859,8 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             // to read.
                             ui.identity = crate::coder::tui::Identity::Anonymous;
                             ui.credit = crate::coder::credit::CreditField::Unread;
+                            active.lock().await.clear_credential();
+                            session = Some(active);
                             ui.entries.push(Entry::new(Role::Notice, notice));
                         }
                         Err(_) => {
@@ -905,8 +896,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                 // never asked for, which is the one thing the row must not do.
                 ui.model.clear();
                 if let Some(session) = &session {
-                    session.lock().await.set_lane(lane.clone());
+                    let mut live = session.lock().await;
+                    live.set_lane(lane.clone());
+                    live.set_cloud_history(options.cloud_history);
                 }
+                ui.cloud_history = options.cloud_history && !lane.is_local();
                 record_lane_notice(&mut ui, &mut lane_notice, &lane);
             }
             // The composer did not want it, so it is the session's.
@@ -996,6 +990,47 @@ fn refresh_credit(tx: &Sender<Control>) {
         };
         let _ = tx.send(Control::Credit(outcome));
     });
+}
+
+fn begin_login(login_pending: &mut bool, ui: &mut CoderUi, tx: &Sender<Control>) {
+    if *login_pending {
+        ui.entries.push(Entry::new(
+            Role::Notice,
+            "OpenAgents sign-in is already in progress.",
+        ));
+        return;
+    }
+    *login_pending = true;
+    ui.entries
+        .push(Entry::new(Role::Notice, "Starting OpenAgents sign-in..."));
+    spawn_session_login(tx);
+}
+
+fn attach_session(
+    lane: &Lane,
+    lane_name: &str,
+    reasoning: &Option<String>,
+    agents: &[crate::coder::acp::Agent],
+    tx: &Sender<Control>,
+    local_store: &mut Option<crate::session_store::LocalSessionStore>,
+    restored_events: &[crate::session_store::StoredEvent],
+    cloud_history: bool,
+    snapshot_text: &str,
+) -> Session {
+    let mut opened = Session::open(
+        lane.clone(),
+        lane_name,
+        reasoning.clone(),
+        agents.to_vec(),
+        false,
+        tx.clone(),
+    );
+    opened = match local_store.take() {
+        Some(store) => opened.with_local_session(store, restored_events, cloud_history),
+        None => opened,
+    };
+    opened.seed_workspace_snapshot(snapshot_text);
+    opened
 }
 
 /// Start device sign-in without holding the frame loop while the server waits
@@ -1706,6 +1741,7 @@ async fn submit(
     autopilot_closed: &[String],
     autopilot_last_picked: &mut Option<String>,
     autopilot_last_heartbeat: &mut Option<String>,
+    dev: bool,
 ) -> commands::Outcome {
     ui.scroll_override = None;
     ui.show_welcome = false;
@@ -1786,7 +1822,7 @@ async fn submit(
         if autopilot.engaged && matches!(turns.phase(), TurnPhase::Idle) {
             refresh_workspace_snapshot(ui, session, cwd).await;
             let prompt = autopilot.iteration_prompt();
-            start_prompt(ui, prompt, Vec::new(), session, tx, turns, active_turn).await;
+            start_prompt(ui, prompt, Vec::new(), session, tx, turns, active_turn, dev).await;
             update_activity(ui, turns, prompt_queue.len());
         }
         return commands::Outcome::Done;
@@ -1810,7 +1846,7 @@ async fn submit(
         return commands::Outcome::Done;
     }
 
-    start_prompt(ui, text, images, session, tx, turns, active_turn).await;
+    start_prompt(ui, text, images, session, tx, turns, active_turn, dev).await;
     update_activity(ui, turns, prompt_queue.len());
     commands::Outcome::Done
 }
@@ -1838,7 +1874,18 @@ async fn start_prompt(
     tx: &Sender<Control>,
     turns: &mut TurnState,
     active_turn: &mut Option<ActiveTurn>,
+    dev: bool,
 ) {
+    if !dev {
+        let live = session.lock().await;
+        if !live.lane().is_local() && !live.has_user_token() {
+            drop(live);
+            ui.entries
+                .push(Entry::new(Role::Notice, HOSTED_NEEDS_SIGN_IN));
+            return;
+        }
+    }
+
     ui.loading = true;
     ui.turn_started();
     ui.waiting = None;
@@ -1870,6 +1917,7 @@ async fn start_next_prompt(
     tx: &Sender<Control>,
     turns: &mut TurnState,
     active_turn: &mut Option<ActiveTurn>,
+    dev: bool,
 ) {
     if let (Some(prompt), Some(session)) = (prompt_queue.pop_front(), session) {
         start_prompt(
@@ -1880,6 +1928,7 @@ async fn start_next_prompt(
             tx,
             turns,
             active_turn,
+            dev,
         )
         .await;
     }

@@ -157,6 +157,8 @@ pub enum Outcome {
     /// Start a new local session from a checkpoint (#315). Empty spec is
     /// this session; `last` is the most recent other one; otherwise an id.
     ContinueFrom { spec: String },
+    /// Start OpenAgents device sign-in without blocking the frame.
+    Login,
 }
 
 /// Hint after a dead turn: pick the work up without replaying the dump.
@@ -197,7 +199,7 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
             ui.scroll_override = None;
         }
         "export" => crate::coder::interactive::export(ui),
-        "login" => spawn_login(ui, tx),
+        "login" => return Outcome::Login,
         // Nothing is printed here: the notice is written by `logout` once the
         // thread has been ended and the credential removed, so it says what
         // actually happened rather than what was asked for.
@@ -296,23 +298,6 @@ fn load_gym_run_panel(source: &str) -> Result<crate::gym::schemas::RunStatus, St
     ))
 }
 
-fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {
-    output(ui, "Starting OpenAgents sign-in...");
-    let tx = tx.clone();
-    tokio::spawn(async move {
-        let progress = tx.clone();
-        let text = match crate::coder::interactive::do_login_with_progress(move |message| {
-            let _ = progress.send(Control::Output(message));
-        })
-        .await
-        {
-            Ok(message) => message,
-            Err(error) => format!("Login failed: {error}"),
-        };
-        let _ = tx.send(Control::Output(text));
-    });
-}
-
 // ───────────────────────────────────────────────────────────────── /logout
 
 /// The environment variables that carry a credential into this process.
@@ -325,12 +310,12 @@ fn spawn_login(ui: &mut CoderUi, tx: &Sender<Control>) {
 const ENVIRONMENT_CREDENTIALS: [&str; 2] = ["OPENAGENTS_API_KEY", "OPENAGENTS_TOKEN"];
 
 /// What the session is after a `/logout`. It is not over: the transcript is
-/// still here and the frame's own unauthenticated branch refuses every prompt
-/// at the composer, before any request is built, so there is nothing left that
-/// can fail somewhere far away holding a credential that is gone.
+/// still here. Hosted lanes refuse a prompt until `/login`. Local still
+/// answers on this machine if Ollama is installed. Nothing is left that can
+/// fail somewhere far away holding a credential that is gone.
 const STAYS_OPEN: &str = "- This session stays open and unauthenticated. The transcript is still \
-                          here, every prompt is refused until you log in again, and `/login` — or \
-                          Enter on an empty line — starts a new thread.";
+                          here. Hosted lanes need `/login`. Coder Local still answers on this \
+                          machine if Ollama is installed.";
 
 /// Log this session out of the API it is pointed at.
 ///

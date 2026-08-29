@@ -263,6 +263,12 @@ pub const LOCAL_LANE_NOTICE: &str = crate::surfaces::system_prompt::CODER_LANE_L
 /// inside the trial and failed every graded task.
 pub const OLLAMA_HOST: &str = "http://127.0.0.1:11434";
 
+/// What the TUI shows when Local is wanted and no Ollama server answered.
+///
+/// Named here so the open-time notice (#326) and the in-turn refusal share
+/// one sentence. The pull tag is the Qwen 3.8 gate from issue #292.
+pub const OLLAMA_INSTALL_SIGN: &str = "For local, install Ollama: https://ollama.com/download — then `ollama pull qwen3.8:27b-mtp-q8_0`.";
+
 fn nonempty_host(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -1492,8 +1498,14 @@ impl CoderRuntimeSession {
 
     /// Opt in to durable server transcript storage.
     pub fn with_cloud_history(mut self, enabled: bool) -> Self {
-        self.cloud_history = enabled;
+        self.cloud_history = enabled && !self.lane.is_local();
         self
+    }
+
+    /// Opt in or out of server transcript upload. Local sessions stay off
+    /// the server even when the flag is set (#325).
+    pub fn set_cloud_history(&mut self, enabled: bool) {
+        self.cloud_history = enabled && !self.lane.is_local();
     }
 
     /// Set the Ollama request controls the local lane sends (issue #293).
@@ -2224,6 +2236,9 @@ impl CoderRuntimeSession {
     }
 
     async fn note_cloud(&mut self, events: &[ThreadRecord]) {
+        if self.lane.is_local() {
+            return;
+        }
         if self.cloud_history
             && let Err(error) = self.record(events).await
         {
@@ -3489,7 +3504,7 @@ impl CoderRuntimeSession {
             .map_err(|error| -> Failure {
                 format!(
                     "no Ollama server answered at {}: {error}. \
-                     Start one, or choose a hosted lane.",
+                     {OLLAMA_INSTALL_SIGN} Or choose a hosted lane.",
                     self.ollama_host
                 )
                 .into()

@@ -31,14 +31,17 @@
 //!
 //! ## No provider, no network
 //!
-//! `run_tui` opens a session only when a stored credential validates against
-//! `GET {origin}/api/v1/models`. The harness therefore points
-//! `OPENAGENTS_API_URL` at a stub HTTP server it starts on loopback, which
-//! answers that route and `GET {origin}/api/v1/credit` — the one the status
-//! bar reads its balance from — with `200`, and refuses everything else. So
-//! the session is real, the frame is real, no provider credential is spent,
-//! and nothing leaves the machine. A turn is never completed on purpose: what
-//! is asserted is that Enter *starts* one, which is the part the composer owns.
+//! Signed-in sessions validate a stored credential against
+//! `GET {origin}/api/v1/models`. The harness points `OPENAGENTS_API_URL` at a
+//! stub HTTP server it starts on loopback, which answers that route and
+//! `GET {origin}/api/v1/credit` — the one the status bar reads its balance
+//! from — with `200`, and refuses everything else. So the session is real, the
+//! frame is real, no provider credential is spent, and nothing leaves the
+//! machine. A hosted turn is never completed on purpose: what is asserted is
+//! that Enter *starts* one, which is the part the composer owns.
+//!
+//! Unsigned first-open (#325) opens a session with no token. Hosted prompts
+//! refuse with `/login` instead of starting device authorization.
 
 #[cfg(not(unix))]
 #[test]
@@ -337,6 +340,8 @@ mod unix_pty {
                 unknown_delay,
                 scratch_dir(),
                 &[],
+                true,
+                None,
             )
         }
 
@@ -349,6 +354,24 @@ mod unix_pty {
                 Duration::ZERO,
                 home,
                 arguments,
+                true,
+                None,
+            )
+        }
+
+        /// No OpenAgents token, and a closed Ollama host so the open-time
+        /// probe misses. First-open local-prep (#325, #326).
+        fn start_unsigned() -> Self {
+            Self::start_full_in(
+                ROWS,
+                COLS,
+                STUB_CREDIT,
+                false,
+                Duration::ZERO,
+                scratch_dir(),
+                &[],
+                false,
+                Some("http://127.0.0.1:1"),
             )
         }
 
@@ -360,6 +383,8 @@ mod unix_pty {
             unknown_delay: Duration,
             home: PathBuf,
             arguments: &[&str],
+            with_token: bool,
+            ollama_host: Option<&str>,
         ) -> Self {
             // macOS can refuse concurrent openpty calls under a full workspace
             // test run. One PTY at a time keeps this system-level oracle
@@ -398,7 +423,16 @@ mod unix_pty {
             // the loopback server above and nowhere else.
             command.env("OPENAGENTS_API_URL", &stub.origin);
             command.env("OPENAGENTS_BASE_URL", format!("{}/api/v1", stub.origin));
-            command.env("OPENAGENTS_API_KEY", "pty-harness-not-a-real-credential");
+            if with_token {
+                command.env("OPENAGENTS_API_KEY", "pty-harness-not-a-real-credential");
+            } else {
+                command.env_remove("OPENAGENTS_API_KEY");
+                command.env_remove("OPENAGENTS_TOKEN");
+            }
+            if let Some(host) = ollama_host {
+                command.env("OPENAGENTS_OLLAMA_HOST", host);
+                command.env_remove("OLLAMA_HOST");
+            }
             // A directory that does not exist, so the ACP scan returns an
             // empty list at once instead of probing this machine's agents.
             command.env("ACP_REGISTRY", home.join("no-acp-registry"));
@@ -646,6 +680,58 @@ mod unix_pty {
             !frame.transcript().contains("Coder Flash · https://"),
             "the startup summary should not repeat the lane from the footer.\n{}",
             frame.dump()
+        );
+    }
+
+    /// No OpenAgents token still opens a session. Hosted prompts refuse with
+    /// `/login`; they do not start GitHub device authorization (#325). A
+    /// missing Ollama server is named as an install, not silence (#326).
+    #[test]
+    fn unsigned_first_open_refuses_hosted_turns_and_names_ollama() {
+        let mut tui = Tui::start_unsigned();
+        let frame = tui.wait_for_composer();
+        assert!(
+            frame.composer().is_some(),
+            "unsigned first-open must still render a composer.\n{}",
+            frame.dump()
+        );
+        assert!(
+            !frame.transcript().contains("Press Enter to sign in"),
+            "unsigned first-open must not demand Enter-to-login.\n{}",
+            frame.dump()
+        );
+
+        tui.type_text("hello from an unsigned session");
+        tui.send(b"\r");
+        let after = tui.wait_for(
+            "the hosted-lane sign-in refusal after a prompt",
+            REDRAW,
+            |frame| {
+                let text = frame.transcript();
+                text.contains("hello from an unsigned session")
+                    && text.contains("Sign in with /login")
+            },
+        );
+        let transcript = after.transcript();
+        assert!(
+            transcript.contains("This lane talks to OpenAgents. Sign in with /login"),
+            "a hosted prompt without a token must name /login.\n{}",
+            after.dump()
+        );
+        assert!(
+            transcript.contains("For local, install Ollama"),
+            "a missing Ollama probe must name the install.\n{}",
+            after.dump()
+        );
+        assert!(
+            transcript.contains("https://ollama.com/download"),
+            "a missing Ollama probe must name the download URL.\n{}",
+            after.dump()
+        );
+        assert!(
+            !transcript.contains("Starting OpenAgents sign-in"),
+            "an ordinary prompt must not start device authorization.\n{}",
+            after.dump()
         );
     }
 

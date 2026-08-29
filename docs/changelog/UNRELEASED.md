@@ -5,6 +5,17 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Coder first-open works without OpenAgents sign-in (#325, #326)
+
+- issues: #325, #326
+- commits: this change
+- contracts-specs: Coder TUI first-open; local lane transcript upload
+- invariants: local chats never reach openagents.com; hosted turns name /login instead of starting GitHub device authorization; missing Ollama is an install sign
+- evidence: `unsigned_first_open_refuses_hosted_turns_and_names_ollama`; `a_local_session_does_not_upload_even_with_cloud_history`; `no_local_server_ends_the_turn`
+- lane: grok local-first-325-326
+
+Coder opens a session with no OpenAgents token. Hosted lanes refuse a prompt with `/login`. Local chats stay on disk even with `--cloud-history`. When Ollama is not running, the transcript says to install it.
+
 ## CLI source version is 0.2.0-rc1
 
 - issues: none (owner request: prepare the local release)

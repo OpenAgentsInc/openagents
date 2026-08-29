@@ -1029,6 +1029,14 @@ async fn no_local_server_ends_the_turn() {
         .to_string();
     assert!(message.contains("no Ollama server answered"), "{message}");
     assert!(message.contains("choose a hosted lane"), "{message}");
+    assert!(
+        message.contains("install Ollama"),
+        "missing-Ollama refusal should name the install: {message}"
+    );
+    assert!(
+        message.contains("https://ollama.com/download"),
+        "missing-Ollama refusal should name the download URL: {message}"
+    );
 }
 
 /// A local tool call runs and returns to the local model.
@@ -1342,6 +1350,39 @@ async fn a_default_session_keeps_transcript_content_off_the_server() {
             .map(|event| event.record.event_type.as_str())
             .collect::<Vec<_>>(),
         vec!["turn.user", "turn.reasoning", "tool.ran", "turn.assistant"]
+    );
+}
+
+/// `--cloud-history` on the local lane is a no-op: nothing is posted to the
+/// OpenAgents API, including thread open, events, and report (#325).
+#[tokio::test]
+async fn a_local_session_does_not_upload_even_with_cloud_history() {
+    let api = recording_stub();
+    let ollama = ollama_stub();
+    let mut session = session(Lane::from_str("local"), api.base.clone()).with_cloud_history(true);
+    session.ollama_host = ollama.base.trim_end_matches("/api/v1").to_string();
+
+    let answer = session
+        .execute_turn("hello", |_| {})
+        .await
+        .expect("the local turn failed");
+    assert_eq!(answer, "PONG");
+    session.finish().await.unwrap();
+
+    let lines = api.request_lines();
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains("/threads") || line.contains("/events")),
+        "local lane contacted the OpenAgents API: {lines:?}"
+    );
+    assert!(
+        recorded(&api).is_empty(),
+        "server transcript received events"
+    );
+    assert!(
+        filed_report(&api).is_none(),
+        "local lane filed a thread report"
     );
 }
 
