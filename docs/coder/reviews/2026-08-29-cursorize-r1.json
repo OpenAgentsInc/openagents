@@ -1,0 +1,70 @@
+{
+  "schema": "openagents.coder_review_document.v1",
+  "date": "2026-08-29",
+  "lever": "cursorize-r1",
+  "lever_ref": "96e71693a4",
+  "suite": "tb2-quick",
+  "lane": "proxy",
+  "model": "glm-5.3-flash",
+  "reviewer_model": "gemini-3.7-flash",
+  "reviewer_session": "956bf7e0-dffe-4d0f-8261-1fd4e5398fda",
+  "verdict": "keep_until_more_data",
+  "trials": {
+    "baseline_job": "/tmp/gym-jobs/cursorize-r1-baseline/2026-08-29__17-32-01",
+    "lever_job": "/tmp/gym-jobs/cursorize-r1-lever/2026-08-29__18-31-45",
+    "accepted_task": "openssl-selfsigned-cert",
+    "lane_flake_task": "regex-log (proxy mid-stream decode, 4/4 runs, pre-work)"
+  },
+  "metrics": {
+    "baseline": {
+      "steps": 17,
+      "rounds": 7,
+      "calls": 8,
+      "calls_per_round_mean": 1.1428571428571428,
+      "calls_per_round_max": 2,
+      "median_narration_chars": 135,
+      "billed_tokens": 80990
+    },
+    "lever": {
+      "steps": 14,
+      "rounds": 4,
+      "calls": 8,
+      "calls_per_round_mean": 2.0,
+      "calls_per_round_max": 3,
+      "median_narration_chars": 57,
+      "billed_tokens": 83752
+    }
+  },
+  "rows": {
+    "baseline_row_receipt": "appended 2026-08-29T23:30:37Z",
+    "lever_row_receipt": "appended 2026-08-29T23:41:40Z"
+  },
+  "proposals": [
+    {
+      "action": "keep",
+      "target": "ledger:T5",
+      "status": "proposed",
+      "citations": [
+        "trial:3",
+        "trial:5",
+        "trial:6",
+        "trial:8",
+        "trial:9",
+        "trial:11",
+        "trial:12",
+        "trial:13"
+      ]
+    },
+    {
+      "action": "require",
+      "target": "cross-section holdout",
+      "detail": ">= 5 tasks, round reduction >= 20% on accepted runs, billed tokens cost-neutral before T5 promotes to adopted",
+      "citations": []
+    }
+  ],
+  "risks": [
+    "batched write+run pairs are order-dependent; one live race observed (trial:5/trial:6)",
+    "bulk parallel output can truncate or blow context in one round",
+    "concurrent dispatch would make order-dependent batches race"
+  ]
+}

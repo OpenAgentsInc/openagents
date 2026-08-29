@@ -136,6 +136,27 @@ correlating with acceptance on tasks 1–3. The 2026-08-28 packet ran task
 1 only (`git-leak-recovery` accepted in four Flash trials); tasks 2–3
 were not rerun, so this stays `proposed`.
 
+### T5. Batch independent tool calls into one round — `proposed`
+
+Independent tool calls go out together in one model round; only a call
+whose input depends on an earlier result waits. A batch of reads,
+searches, and shells costs one round trip, not one per call.
+Measured 2026-08-29 on `openssl-selfsigned-cert`, proxy `glm-5.3-flash`
+(n=1 per side): with the T5 sentence, 8 calls in 4 rounds (mean 2.00,
+max 3); without, 8 calls in 7 rounds (mean 1.14, max 2). Steps 17 → 14.
+Verifier accepted both sides; billed tokens +3.4% (80,990 → 83,752) — a
+habit change without a cost win on n=1, the T1 pattern. One risk observed
+live: the lever run batched a `write` with the `bash` that executes the
+written file and completed only because dispatch order held — the sentence
+says "independent", and write-then-run pairs are not independent. Review:
+`docs/coder/reviews/2026-08-29-cursorize-r1.md`.
+**Provenance:** `docs/coder/cursorize.md` R1 (Cursor PSIONIC baseline:
+237 same-instant batches of 2–8 in 2.28 h). **Detection:** ATIF
+`final_metrics.tool_calls_per_round_mean` on the cycle pair; a fall below
+the no-sentence mean flags regression. **Promotion:** cross-section holdout
+(≥ 5 tasks, round reduction ≥ 20% on accepted runs, tokens cost-neutral) —
+stays `proposed` until then.
+
 ## Measurement
 
 ### M1. One lever per cycle — `adopted`

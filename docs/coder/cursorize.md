@@ -41,7 +41,7 @@ are `proposed` until measured.
 | Token accounting | none in the bubbles (`tokenCount` all zero) — Cursor does not surface its own metering | ATIF carries per-step tokens; the store rows carry billed totals |
 | Transcript fidelity | full results in the DB (the JSONL is the lossy export); status `completed`; turn timestamps | ATIF records observations, reasoning, outcomes, and a `waste` audit — parity with the DB, not the JSONL |
 
-## R1. One round, many calls — `proposed`
+## R1. One round, many calls — `measured: selector`
 
 T1 in `best-practices.md` already says batch independent commands into one
 *shell call* with `&&`. The DB reconstruction sharpens the target: Cursor's
@@ -59,8 +59,23 @@ uniform parallelism.
   shells costs one round trip, not one per call; only calls whose inputs
   depend on earlier output wait.
 - **Measure:** add `tool_calls_per_round` mean and max to ATIF
-  `final_metrics`. Target: mean ≥ 2 on research-heavy suites, without a rise
-  in failed-call rate (batching must not batch dependent calls).
+  `final_metrics` (landed in #372, `042b5bf6cb`). Target: mean ≥ 2 on
+  research-heavy suites, without a rise in failed-call rate (batching must
+  not batch dependent calls).
+- **Measured 2026-08-29** (`tb2-quick`, `openssl-selfsigned-cert`, proxy
+  Flash, n=1 per side): habit changed — rounds 7 → 4, calls/round mean
+  1.14 → 2.00 (max 3), steps 17 → 14, at equal success (accepted both
+  sides). Billed tokens 80,990 → 83,752 (+3.4%, within n=1 noise; the T1
+  precedent applies — no cost win claimed). Narration median fell 135 → 57
+  chars (R4's axis, noted not conflated). One live race to watch: the lever
+  run batched a `write` + the `bash` that runs the written file and only
+  completed because dispatch order held. Review
+  (`reviews/2026-08-29-cursorize-r1.md`, Gemini-3.7-flash reviewer):
+  **keep until more data** — promotion to `adopted` requires the
+  cross-section holdout (≥ 5 tasks, round reduction ≥ 20% on accepted runs,
+  tokens cost-neutral). `regex-log` died pre-work in all four runs on the
+  proxy mid-stream decode signature (lane flake, runbook stop rule; not
+  read as a lever effect).
 
 ## R2. Background shell and a zero-model wait — `proposed`
 
