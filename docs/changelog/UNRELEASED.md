@@ -5,6 +5,17 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.10
+
+- issues: #330
+- commits: this change
+- contracts-specs: CLI crate version; producer name `X.Y.Z-rc.N`
+- invariants: non-release builds still report `0.0.0-dev`; published `<version, platform>` objects stay immutable
+- evidence: live bucket already holds `0.2.0-rc8`, `0.2.0-rc.8`, and `0.2.0-rc9`; `SHA256SUMS-0.2.0-rc.10` is 404
+- lane: cursor session abb3a3ed
+
+The `openagents-cli` crate is `0.2.0-rc.10`. RC 8 and 9 are already published, so this is the next producer name under the dotted grammar. Its macOS artifact is the entitlements-bearing #330 republish.
+
 ## CLI release ships openagents-coder-api beside the CLI (#335)
 
 - issues: #335

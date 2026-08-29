@@ -33,7 +33,7 @@ sums file with no such entry still installs the CLI alone.
 | Kind | Form | Example |
 | --- | --- | --- |
 | Stable | `X.Y.Z` | `0.2.0` |
-| Release candidate | `X.Y.Z-rc.N` | `0.2.0-rc.8` |
+| Release candidate | `X.Y.Z-rc.N` | `0.2.0-rc.10` |
 
 `N` is a decimal integer with no leading zeros. The script refuses `rc8`,
 `rc.8`, `0.2.0-rc8`, `0.2.0-rc8.12`, and any other suffix. Already-published
@@ -41,8 +41,9 @@ names such as `0.2.0-rc7` remain fetchable by the installer; this script will
 not mint another.
 
 A published `<version, platform>` object is immutable. A new build of the same
-line takes the next `rc.N`. Do not rebuild `0.2.0-rc.8` to fix a binary;
-publish `0.2.0-rc.9`.
+line takes the next `rc.N`. The bucket already holds `0.2.0-rc8`,
+`0.2.0-rc.8`, and `0.2.0-rc9`. Do not reuse 8 or 9. The next dotted name is
+`0.2.0-rc.10`.
 
 `--version` must already be the `openagents-cli` version in
 `crates/openagents-cli/Cargo.toml` and in `Cargo.lock`, and
@@ -152,7 +153,7 @@ then test the public installer and add the other platforms without changing
 the tested Mac binary:
 
 ```sh
-ops/release-cli.sh --version 0.2.0-rc.8 \
+ops/release-cli.sh --version 0.2.0-rc.10 \
   --targets "macos-aarch64" --publish --allow-partial --allow-prerelease-channel
 
 ops/release-cli.sh --version 0.1.0 \

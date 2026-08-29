@@ -146,7 +146,7 @@ if [ "$publish" = 1 ] && [ "$skip_tests" = 1 ]; then
 fi
 
 # Source, lockfile, and changelog must already name this version. A binary
-# published as 0.2.0-rc.8 whose crate still says 0.2.0-rc7 is a release
+# published as 0.2.0-rc.10 whose crate still says 0.2.0-rc7 is a release
 # nobody can rebuild from the tree that claims to have produced it. These
 # checks run before any build so a bad name never writes artifacts.
 crate_manifest="$repo_root/crates/openagents-cli/Cargo.toml"

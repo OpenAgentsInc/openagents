@@ -48,8 +48,9 @@ expect_die "leading-zero rc" 0.2.0-rc.08 "invalid version"
 expect_die "alpha suffix" 0.2.0-alpha.1 "invalid version"
 expect_die "skip-tests with publish" 0.2.0-rc.8 "--skip-tests is refused with --publish" --publish --skip-tests
 
-# Canonical RC name. The name guard must pass; this tree's crate version
-# is not 0.2.0-rc.8, so the source-version check is the correct next stop.
+# Canonical RC name that is not this tree's crate version. 0.2.0-rc.8 is
+# already in the bucket; the name guard must still pass, and the
+# source-version check is the correct next stop.
 expect_die "canonical rc.N vs crate" 0.2.0-rc.8 "Cargo.toml version"
 
 if [ "$failed" -ne 0 ]; then
