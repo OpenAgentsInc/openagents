@@ -9,6 +9,7 @@ once the gates in the plan pass.
 | --- | --- |
 | [INTENT.md](./INTENT.md) | What the owner asked for, and what this program does not include |
 | [PLAN.md](./PLAN.md) | First implementation plan, crate allowlist, CLI surface, and stages |
+| [CLI.md](./CLI.md) | Commands, teach mode, and the status lines from GGUF lookup through a generated token |
 | [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md) | Weights-to-token walkthrough: tensors, quantization, load, decode |
 | [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md) | How Ollama loads weights and generates a token, GGUF and MLX |
 | [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md) | Lowest-level llama.cpp GGUF parse, mmap, Metal mapping, graph, Q8_0 |

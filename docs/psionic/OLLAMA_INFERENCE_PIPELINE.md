@@ -7,7 +7,8 @@
   `f96e7aa0513b9973a0ccc71be414c2ecb9d65b1a` (`main`, commit message
   `lint fix (#18081)`)
 - Related: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md),
-  [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
+  [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md),
+  [CLI.md](./CLI.md)
 
 This document is how Ollama, in that checkout, takes a model from disk to a
 streamed token. It is not a comparison with Psionic. It is not a claim that
@@ -388,6 +389,8 @@ The HTTP process never holds the weight tensors. If the child dies
   [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md),
   against the local llama.cpp checkout. Ollama fetches pin `b10630` at
   build time and applies `llama/compat/`; the OpenAgents in-process slice
-  implements that library path and does not spawn `llama-server`.
-- Psionic's loader, admission, or Metal path in this repository. Implementation
-  has not landed. The llama.cpp document is the contract for that work.
+  implements that library path and does not spawn `llama-server`. The
+  CLI labels for that path are [CLI.md](./CLI.md).
+- Psionic's loader, admission, or Metal path in this repository.
+  Implementation has not landed. The llama.cpp document is the library
+  contract. The CLI document is the command and status contract.

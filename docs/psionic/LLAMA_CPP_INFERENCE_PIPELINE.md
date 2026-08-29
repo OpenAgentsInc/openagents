@@ -8,7 +8,8 @@
   `metal : assert shared memory padding (#27951)`)
 - Related: [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md)
   (Ollama starts `llama-server`; this document is what that child does),
-  [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md)
+  [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md),
+  [CLI.md](./CLI.md) (user-visible status lines for the same path)
 - First Coder target: GGUF `Q8_0`, architecture `qwen35`, Apple Silicon
   Metal (`macos-aarch64`)
 
@@ -57,7 +58,8 @@ OpenAgents replaces that child. The binary must:
 
 Linking ggml as a crate versus rewriting each kernel is a later crate
 decision. The memory contract, file layout, tensor names, and ops stay
-the same either way.
+the same either way. The CLI prints one status line per stage of that
+contract; the wording is [CLI.md](./CLI.md).
 
 ## The loop in one page
 

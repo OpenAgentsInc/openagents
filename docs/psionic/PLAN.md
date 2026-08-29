@@ -3,6 +3,7 @@
 - Class: owner-accepted implementation plan / work packet
 - Status: accepted 2026-08-29; implementation not started
 - Intent: [INTENT.md](./INTENT.md)
+- CLI statuses: [CLI.md](./CLI.md)
 - Base at plan authoring: `8c0989a5a3f82029a020330c5b18b311a20d1efc` (`github/main`)
 - Sibling reference at plan authoring: local `psionic` checkout (not a pin)
 
@@ -38,7 +39,7 @@ it would recreate the 2026-08-26 size and crash-sharing objections. Extract a
 
 ```text
 openagents (one binary)
-  ├── inference   product: models, serve, status, Coder local engine
+  ├── inference   product: run (teach path), models, serve, status, Coder
   ├── psionic     harness: inspect, admit, backends, library diagnostics
   └── coder       in-process LocalInferenceProvider → psionic-qwen38
                         │
@@ -54,16 +55,20 @@ loopback OpenAI-compatible HTTP server **in this process** so other tools and
 protocol tests share the same library. That HTTP surface is optional for the
 first Coder green. It is not a second engine distribution.
 
-## CLI surface (first cut)
+## CLI surface
+
+Normative command list, teach mode, `--until` ladder, and the exact
+status strings are [CLI.md](./CLI.md). This section is the summary.
 
 Add two root commands next to the existing `Commands` enum in
 `crates/openagents-cli/src/cli.rs`.
 
 ### `openagents inference`
 
-Product lifecycle. No training. No mesh.
+Product lifecycle and the visible in-process loop. No training. No mesh.
 
 ```text
+openagents inference run [--gguf <path>] [--prompt <text>] [--until <step>] [--preview]
 openagents inference models
 openagents inference add <path-or-approved-ref>
 openagents inference remove <model>
@@ -73,17 +78,23 @@ openagents inference stop
 openagents inference doctor
 ```
 
+`run` is the first command to implement. It prints the canonical status
+script (Looking for GGUF, Loading GGUF, Reading metadata, … through
+Inference complete). Teach mode is the default on `run` until Coder is
+the product path. Each slice implements the next `--until` step. A step
+that is not in the binary prints as not built and stops.
+
 `add` inspects with the imported GGUF admission code, writes a manifest
-(digest, family, backend list, license ack), and copies into the model store.
-It does not download unless the reference is on an allowlist with an expected
-digest.
+(digest, family, backend list, license ack), and copies into the model
+store. It does not download unless the reference is on an allowlist with
+an expected digest.
 
 `serve` loads the admitted artifact on the chosen backend and binds
-`127.0.0.1`. Default refuse `0.0.0.0`. Coder does not have to use this HTTP
-port; the same load path is a Rust API.
+`127.0.0.1`. Default refuse `0.0.0.0`. Coder does not have to use this
+HTTP port; the same load path is a Rust API.
 
-`stop` applies to a background serve started by this command. An in-process
-Coder turn does not need a separate daemon.
+`stop` applies to a background serve started by this command. An
+in-process Coder turn does not need a separate daemon.
 
 ### `openagents psionic`
 
@@ -99,6 +110,8 @@ openagents psionic doctor
 
 Later, without expanding product scope: fixture decode, tokenizer parity,
 short greedy probes. Those stay under `psionic` until they are productized.
+The product-visible loop, including teach statuses, stays on
+`inference run` ([CLI.md](./CLI.md)).
 
 ### Coder selection
 
@@ -186,7 +199,8 @@ Ollama:
 - shared: history, max tool steps, ATIF, final-answer ordering
 
 Implement `PsionicLocalProvider` in-process (Rust API). Keep
-`OllamaLocalProvider` on HTTP.
+`OllamaLocalProvider` on HTTP. Coder does not print teach lines unless
+you opt in; `inference run` remains the teaching surface.
 
 ATIF records: canonical model id, artifact digest, backend, engine version
 (CLI version is enough while the library is in-tree), locality `local`, token
@@ -199,31 +213,38 @@ Coder interactive mode until it streams.
 
 ## Stages
 
-### 0. This folder (done in this commit)
+### 0. This folder
 
-Intent, plan, allowlist rules.
+Intent, plan, llama.cpp byte path, CLI teach script.
 
 ### 1. Provenance and compile graph
 
 Pin a Psionic revision. List every crate that must copy for a Qwen 3.8 CPU
-fixture to compile. Write `PROVENANCE.md`. No CLI commands yet.
+fixture to compile. Write `PROVENANCE.md`. CLI may land a `--preview`
+stub that prints pending statuses with no library yet.
 
 **Exit:** `cargo tree` on the leaf crate has no train/cluster/mlx crates.
 
-### 2. Import and admit
+### 2. Import, find GGUF, read metadata
 
-Copy the allowlisted crates. `openagents psionic inspect` and `admit` on a
-fixture GGUF. Tests: malformed GGUF refuses; admitted fixture reports family
-and digest.
+Copy the allowlisted crates. Implement `openagents inference run --gguf`
+through `--until meta.done` (Looking for GGUF → Loading GGUF → Reading
+metadata → tensor index). `openagents psionic inspect` and `admit` on a
+fixture GGUF. Tests: malformed GGUF refuses; admitted fixture reports
+family and digest.
 
-**Exit:** fixture admission is deterministic in CI.
+**Exit:** fixture admission is deterministic in CI. `run --until
+meta.done` prints the canonical statuses on a fixture file.
 
 ### 3. `openagents inference` + in-process generate
 
-Model store, `add`/`models`/`doctor`. In-process greedy or short decode on the
-fixture. Optional loopback `serve` if it is cheaper than a second API.
+Tokenizer, mmap/Metal, context, prefill, decode (`--until gen.done`).
+Model store, `add`/`models`/`doctor`. Optional loopback `serve` if it is
+cheaper than a second API.
 
-**Exit:** `openagents inference doctor` is green on a machine with the fixture.
+**Exit:** `openagents inference run --prompt …` prints `Inference
+complete` on the fixture. `openagents inference doctor` is green on a
+machine with the fixture.
 
 ### 4. Coder tool loop
 
@@ -269,6 +290,8 @@ Slice tests while iterating (named, not called "the gate"):
 
 - `cargo test -p openagents-cli --test …` for CLI/Coder
 - crate-local tests on imported `psionic-*` crates
+- status-script tests: `inference run --json` emits the `id` values in
+  [CLI.md](./CLI.md) for the `--until` step under test
 
 Do not put 27B weights in CI. Use a tiny fixture plus one optional
 operator-only laptop receipt.

@@ -3,7 +3,7 @@
 - Class: owner intent
 - Status: accepted 2026-08-29
 - Source: current owner conversation
-- Ledger: this file plus [PLAN.md](./PLAN.md)
+- Ledger: this file, [PLAN.md](./PLAN.md), and [CLI.md](./CLI.md)
 - Feature issue: none. Repository policy keeps GitHub issues for reproducible
   bugs. This folder is the work-packet ledger.
 
@@ -33,9 +33,10 @@ Cargo invocation, or a second engine installer for that local lane.
    tokenizer, chat template, quantization, license) before claiming
    equivalence with the current Ollama tag. The Ollama name is a discovery
    string, not the artifact contract.
-4. **Two CLI namespaces.**
-   - `openagents inference` — product lifecycle: register models, serve,
-     status, stop, doctor, and the Coder local engine.
+4. **Two CLI namespaces.** Commands, teach mode, and status strings
+   live in [CLI.md](./CLI.md).
+   - `openagents inference` — product lifecycle and `inference run`,
+     the in-process load-and-generate loop you watch while we build it.
    - `openagents psionic` — harness and library work: inspect artifacts,
      list backends, run admission, and other commands that grow the ML
      library inside this repo.
@@ -73,10 +74,15 @@ in the same change so the contract matches the tree.
 A machine that today runs `openagents coder --model ollama:qwen3.8:27b-mtp-q8_0`
 can instead:
 
-1. `openagents inference add` a pinned Qwen 3.8 GGUF.
+1. `openagents inference add` a pinned Qwen 3.8 GGUF (after `inference
+   run` has walked load through generate on that file).
 2. `openagents coder --local` (or `--model psionic:<id>`) complete a
    multi-round tool turn **inside this process**.
 3. See engine, backend, and artifact digest recorded in ATIF.
+
+Until generate lands, success for each slice is: `openagents inference
+run --gguf <path> --until <step>` prints the canonical statuses in
+[CLI.md](./CLI.md) and stops cleanly.
 
 That is the product. Broader Psionic-in-the-harness work rides on
 `openagents psionic` after this lane works.

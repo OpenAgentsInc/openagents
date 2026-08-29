@@ -8,6 +8,7 @@
 - Plan: [PLAN.md](./PLAN.md)
 - Facts: Psionic `docs/qwen38/` in the sibling repository
 - llama.cpp bytes: [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
+- CLI statuses: [CLI.md](./CLI.md)
 
 You already run Qwen 3.8 locally through Ollama (`qwen3.8:27b-mtp-q8_0`). This
 document is the same path inside `openagents`: every step from a weight file
@@ -44,6 +45,10 @@ file on disk
     → sample
     → stream the piece of text to Coder
 ```
+
+The terminal labels for that path (`Looking for GGUF`, `Reading metadata`,
+`Inference complete`, and the rest) are [CLI.md](./CLI.md). You watch
+them on `openagents inference run` while the slices land.
 
 ## Status labels
 
