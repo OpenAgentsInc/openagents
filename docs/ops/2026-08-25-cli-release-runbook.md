@@ -42,8 +42,9 @@ not mint another.
 
 A published `<version, platform>` object is immutable. A new build of the same
 line takes the next `rc.N`. The bucket already holds `0.2.0-rc8`,
-`0.2.0-rc.8`, `0.2.0-rc9`, `0.2.0-rc.10`, `0.2.0-rc.11`, and `0.2.0-rc.12`.
-Do not reuse 8, 9, 10, 11, or 12. The next dotted name is `0.2.0-rc.13`.
+`0.2.0-rc.8`, `0.2.0-rc9`, `0.2.0-rc.10`, `0.2.0-rc.11`, `0.2.0-rc.12`, and
+`0.2.0-rc.13`. Do not reuse 8, 9, 10, 11, 12, or 13. The next dotted name is
+`0.2.0-rc.14`.
 
 `--version` must already be the `openagents-cli` version in
 `crates/openagents-cli/Cargo.toml` and in `Cargo.lock`, and
