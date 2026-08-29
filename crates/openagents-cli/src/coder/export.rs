@@ -399,7 +399,7 @@ fn swarm_section(entries: &[Entry]) -> Vec<Value> {
 /// refuses on, so the two can never disagree about identity), and any head
 /// executed more than once reports how much of the total wall time the
 /// repetitions beyond the first spent.
-fn waste_section(entries: &[Entry]) -> Vec<Value> {
+fn waste_section(entries: &[Entry]) -> (Vec<Value>, u64, usize) {
     use std::collections::BTreeMap;
 
     // Head -> (executions, total seconds across all executions).
@@ -432,7 +432,9 @@ fn waste_section(entries: &[Entry]) -> Vec<Value> {
         }
     }
 
-    families
+    let mut total_wasted_ms = 0u64;
+    let mut repeated_heads = 0usize;
+    let section = families
         .into_iter()
         .filter_map(|(head, (executions, total_ms))| {
             if executions <= 1 {
@@ -442,13 +444,115 @@ fn waste_section(entries: &[Entry]) -> Vec<Value> {
             // time. A single execution of a suite is not waste; the second
             // and third are, whatever they were hunting for.
             let wasted_ms = total_ms * (executions - 1) / executions;
+            total_wasted_ms += wasted_ms;
+            repeated_heads += 1;
             Some(json!({
                 "head": head,
                 "executions": executions,
                 "approx_wasted_seconds": wasted_ms / 1000,
             }))
         })
-        .collect()
+        .collect();
+    (section, total_wasted_ms / 1000, repeated_heads)
+}
+
+/// Tool-call batching, measured at export.
+///
+/// One model round is the span of consecutive `Role::Tool` entries with no
+/// assistant text or user turn between them: the calls the model emitted
+/// together, whatever the harness executed serially. Consecutive batches are
+/// the batching lever's meter (`docs/coder/cursorize.md` R1): a session that
+/// fires one call per round re-sends its transcript once per call, and the
+/// cost is quadratic in exactly the way the lever targets.
+///
+/// Inter-round narration is assistant text that a tool round *follows and
+/// another tool round precedes* — the prose between rounds, not the final
+/// report. `None`-shaped results (`tool_rounds == 0`, or no narration
+/// samples) are the caller's signal to omit the field rather than export a
+/// zero a reader would read as measured.
+fn round_metrics(entries: &[Entry]) -> RoundMetrics {
+    let mut rounds = 0u64;
+    let mut calls = 0u64;
+    let mut max_per_round = 0u64;
+    let mut in_round = false;
+    let mut current = 0u64;
+    // Text seen since the last round ended; promoted to inter-round only
+    // when another round actually starts.
+    let mut pending_narration: Vec<usize> = Vec::new();
+    let mut inter_round_text: Vec<usize> = Vec::new();
+    for entry in entries {
+        match entry.role {
+            Role::Tool if entry.tool.is_some() => {
+                if !in_round {
+                    if rounds > 0 {
+                        inter_round_text.append(&mut pending_narration);
+                    } else {
+                        pending_narration.clear();
+                    }
+                    rounds += 1;
+                    in_round = true;
+                }
+                current += 1;
+                calls += 1;
+            }
+            Role::Assistant => {
+                if in_round {
+                    max_per_round = max_per_round.max(current);
+                    current = 0;
+                    in_round = false;
+                }
+                if !entry.text.trim().is_empty() {
+                    pending_narration.push(entry.text.chars().count());
+                }
+            }
+            Role::You => {
+                if in_round {
+                    max_per_round = max_per_round.max(current);
+                    current = 0;
+                    in_round = false;
+                }
+                pending_narration.clear();
+            }
+            _ => {}
+        }
+    }
+    if in_round {
+        max_per_round = max_per_round.max(current);
+    }
+    let mean = if rounds > 0 {
+        calls as f64 / rounds as f64
+    } else {
+        0.0
+    };
+    RoundMetrics {
+        rounds,
+        calls,
+        mean,
+        max_per_round,
+        median_narration_chars: median_usize(&mut inter_round_text),
+    }
+}
+
+struct RoundMetrics {
+    rounds: u64,
+    calls: u64,
+    mean: f64,
+    max_per_round: u64,
+    median_narration_chars: Option<u64>,
+}
+
+/// Median without allocation games: sorts in place; `None` for no samples.
+fn median_usize(values: &mut Vec<usize>) -> Option<u64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_unstable();
+    let mid = values.len() / 2;
+    Some(if values.len() % 2 == 0 {
+        ((values[mid - 1] + values[mid]) / 2) as u64
+    } else {
+        values[mid] as u64
+    })
 }
 
 fn trajectory_document(
@@ -522,6 +626,31 @@ fn trajectory_document(
     }
 
     let step_count = steps.len();
+    let (repeated_heads, total_wasted_seconds, repeated_head_count) = waste_section(entries);
+    let round = round_metrics(entries);
+    let mut final_metrics = serde_json::Map::new();
+    final_metrics.insert("total_steps".to_string(), json!(step_count));
+    if round.rounds > 0 {
+        final_metrics.insert("tool_rounds".to_string(), json!(round.rounds));
+        final_metrics.insert("tool_calls_total".to_string(), json!(round.calls));
+        final_metrics.insert("tool_calls_per_round_mean".to_string(), json!(round.mean));
+        final_metrics.insert(
+            "tool_calls_per_round_max".to_string(),
+            json!(round.max_per_round),
+        );
+        // Narration needs a sample on both sides of a round to be
+        // "inter-round"; a session that never narrated between rounds omits
+        // the field rather than exporting a measured-looking zero.
+        if let Some(median) = round.median_narration_chars {
+            final_metrics.insert("median_inter_round_text_chars".to_string(), json!(median));
+        }
+    }
+    // Waste is computable for every session — zero is a true zero here.
+    final_metrics.insert(
+        "wasted_seconds_total".to_string(),
+        json!(total_wasted_seconds),
+    );
+    final_metrics.insert("wasted_heads_total".to_string(), json!(repeated_head_count));
     (
         json!({
             "schema_version": SCHEMA_VERSION,
@@ -533,9 +662,7 @@ fn trajectory_document(
                 "model_name": model,
             },
             "steps": steps,
-            "final_metrics": {
-                "total_steps": step_count,
-            },
+            "final_metrics": final_metrics,
             "extra": {
                 "exporter": "openagents.coder.atif_export.v1",
                 "exported_at": at_iso,
@@ -545,7 +672,7 @@ fn trajectory_document(
                 "subagent": subagent_section(entries),
                 "turn_outcomes": turn_outcomes,
                 "waste": {
-                    "repeated_command_heads": waste_section(entries),
+                    "repeated_command_heads": repeated_heads,
                 },
                 "swarm": swarm_section(entries),
             }
@@ -817,6 +944,103 @@ mod tests {
         assert_eq!(
             record["transcript"].as_str().unwrap(),
             "started on grok\nthe crate name\nread_file\nread Cargo.toml"
+        );
+    }
+
+    fn tool_entry(call_id: &str, command: &str) -> Entry {
+        let mut entry = Entry::tool_call(format!("bash {command}"));
+        entry.tool = Some(ToolCall {
+            call_id: call_id.to_string(),
+            function_name: "bash".to_string(),
+            arguments: serde_json::json!({ "command": command }),
+            output: Some("ok".to_string()),
+            error: None,
+            done: true,
+            duration_ms: Some(100),
+        });
+        entry
+    }
+
+    fn text_entry(text: &str) -> Entry {
+        let mut entry = Entry::new(Role::Assistant, text.to_string());
+        entry.finish_text();
+        entry
+    }
+
+    #[test]
+    fn final_metrics_carry_round_batching_and_narration_shape() {
+        // Round 1: two calls in one round. Narration between. Round 2: one
+        // call. A final report after — that is the report, not narration.
+        let entries = vec![
+            tool_entry("c1", "git status"),
+            tool_entry("c2", "ls docs"),
+            text_entry("checking the tree"), // 17 chars, between rounds
+            tool_entry("c3", "cargo check -p openagents-cli"),
+            text_entry("done"), // final report, not between rounds
+        ];
+        let (document, _) = trajectory_document(
+            &entries,
+            "model",
+            "/repo",
+            "main",
+            "session",
+            "2026-08-29T00:00:00.000Z",
+        );
+        let metrics = &document["final_metrics"];
+        assert_eq!(metrics["tool_rounds"], 2);
+        assert_eq!(metrics["tool_calls_total"], 3);
+        assert_eq!(metrics["tool_calls_per_round_mean"], 1.5);
+        assert_eq!(metrics["tool_calls_per_round_max"], 2);
+        assert_eq!(metrics["median_inter_round_text_chars"], 17);
+    }
+
+    #[test]
+    fn a_session_without_tools_omits_round_metrics_rather_than_zeroes() {
+        let entries = vec![text_entry("a plain answer with no tool work")];
+        let (document, _) = trajectory_document(
+            &entries,
+            "model",
+            "/repo",
+            "main",
+            "session",
+            "2026-08-29T00:00:00.000Z",
+        );
+        let metrics = &document["final_metrics"];
+        assert!(metrics.get("tool_rounds").is_none());
+        assert!(metrics.get("tool_calls_total").is_none());
+        assert!(metrics.get("tool_calls_per_round_mean").is_none());
+        assert!(metrics.get("median_inter_round_text_chars").is_none());
+        // Waste is computable for every session; zero is a true zero.
+        assert_eq!(metrics["wasted_heads_total"], 0);
+        assert_eq!(metrics["wasted_seconds_total"], 0);
+        assert_eq!(metrics["total_steps"], 1);
+    }
+
+    #[test]
+    fn final_metrics_sum_waste_across_repeated_heads() {
+        let entries = vec![
+            tool_entry("c1", "cargo test -p openagents-cli"),
+            tool_entry("c2", "cargo test -p openagents-cli"),
+            tool_entry("c3", "cargo test -p openagents-cli"),
+        ];
+        let (document, _) = trajectory_document(
+            &entries,
+            "model",
+            "/repo",
+            "main",
+            "session",
+            "2026-08-29T00:00:00.000Z",
+        );
+        let metrics = &document["final_metrics"];
+        // Three executions of one head: 2/3 of the total time is waste.
+        assert_eq!(metrics["wasted_heads_total"], 1);
+        assert_eq!(metrics["wasted_seconds_total"], 0); // 300ms total, 200ms wasted -> 0s at whole-second resolution
+        assert_eq!(
+            document["extra"]["waste"]["repeated_command_heads"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
         );
     }
 }

@@ -132,3 +132,36 @@ and close the issue without a separate confirmation step.
 Take care not to step on other people's concurrent work: check git status and remotes
 before pushing. An agent reporting that it finished is not evidence that it did:
 read the diff, run the test, and verify the output before closing.
+
+### The unit-of-work flow (do this every time, unprompted)
+
+The owner's standing instruction, from the 2026-07-20 mandate in `AGENTS.md`
+and unlock 64 of `docs/coder/2026-08-28-local-session-audit.md`: every unit
+of implement work runs **fresh worktree → land to `main` → clean up**, and
+nobody should have to say so. When the person says "do the issue", this is
+the flow:
+
+1. **Claim** — comment on the issue that you are taking it (one line: actor,
+   unit, done-when). The tracker is the ledger; this is what stops a sibling
+   tab from implementing the same thing an hour later.
+2. **Isolate** — `worktree start` (the managed tool, not raw
+   `git worktree add`): it fetches `main` when a remote answers, creates a
+   detached tree under `~/.openagents/worktrees`, points this session's file
+   and shell tools at it, and sets `CARGO_TARGET_DIR` outside the disposable
+   tree so the build cache survives. Never implement in the canonical
+   checkout — it is frequently dirty with another agent's live work, and a
+   mixed reset there has cost real landings.
+3. **Implement and verify there** — package-and-name the test from the edit
+   (`cargo test -p <pkg> <name>`), never a fishing `--workspace` run; the
+   pre-push hook runs the full gate at push time.
+4. **Land** — commit with a message that states the change and its evidence
+   (a number, not an adjective), push to the forge remote (`openagents`)
+   `main`, and bring the canonical checkout fast-forwarded if it is safe.
+5. **Close and clean** — close the issue with the landing SHA in the close
+   comment, then `worktree finish` with `landed=true` so the tree and branch
+   are removed. A retry or regression test for the same unit is a
+   continuation: reuse the worktree rather than opening a new one.
+
+If the session dies before landing, the worktree stays and names itself —
+`worktree finish` with `landed=false` says so honestly. What it must never
+do is leave WIP in the shared checkout.
