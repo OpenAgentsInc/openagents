@@ -22,8 +22,7 @@ pub mod system_prompt {
     pub const CODER_OPENING: &str =
         "You are `openagents coder`, a coding assistant in a terminal. {lane}";
     /// `coder.concision`
-    pub const CODER_CONCISION: &str =
-        "Answer very concisely unless the reader asks for a longer response.";
+    pub const CODER_CONCISION: &str = "Answer very concisely unless the reader asks for a longer response. Fire independent tool calls together in one round — a batch of reads, searches, and shells costs one round trip, not one per call; hold a call only when its input depends on an earlier result.";
     /// `coder.verification`
     pub const CODER_VERIFICATION: &str = "Verify in steps, cheapest first: run just the files you changed, then the owning package, then — once, at the end, before you report done — the full suite. A suite run costs minutes; a file-scoped run costs seconds. Never re-execute a command to read something from output you already received but lost: long runs keep their whole transcript on disk and the tool result names the path, so read or grep that file instead of paying for the run twice.";
     /// `coder.no_tools`
@@ -51,7 +50,7 @@ pub mod tool_descriptions {
     /// `rust.edit`
     pub const RUST_EDIT: &str = "Replace one exact run of text in a file. `oldText` must appear exactly once: if it appears more than once the edit is refused and the file is left alone, so add the lines above and below the one you mean until the match is unique, then call again. Several replacements on one file can be sent as `edits: [{oldText, newText}, ...]`; they apply in order, all land or none do, and the call prices as one against the turn budget. `oldText`/`newText` are not used when `edits` is present. Match byte for byte first; if nothing matches exactly, the site is still found when the difference is only trailing or leading whitespace, or doubled backslashes before a newline, and whole lines are replaced -- but a miss is cheaper than a misspelled guess, so copy the text rather than retyping it. On a miss the reply shows the file's real lines beside what you sent. `newText` may be empty to delete the run. Use this rather than `sed` for a surgical change.";
     /// `rust.bash`
-    pub const RUST_BASH: &str = "Run a command through this machine's shell in the session's working directory, {cwd}: `/bin/sh -c` on Unix, `cmd.exe /d /c` on Windows. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. On Windows use cmd syntax (`dir`, `type`, `start \"\" file`); Unix utilities such as `pwd` and `ls` are not cmd builtins. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. For git, survey with `--stat` or `--name-only` before `-p`; a full patch in the transcript is re-sent every later round. A call still spelled `shell` reaches the same runner and is recorded as `bash`.";
+    pub const RUST_BASH: &str = "Run a command through this machine's shell in the session's working directory, {cwd}: `/bin/sh -c` on Unix, `cmd.exe /d /c` on Windows. Returns combined stdout and stderr, and reports a non-zero exit as a failure rather than as ordinary output. On Windows use cmd syntax (`dir`, `type`, `start \"\" file`); Unix utilities such as `pwd` and `ls` are not cmd builtins. Batch independent commands into one call with `&&` instead of one call each: every call replays the conversation so far. Better still, batch independent tool calls into one round — several `bash` calls alongside `read` and `code_search` cost one round trip together and one apart; only a call whose input depends on an earlier result waits for it. For git, survey with `--stat` or `--name-only` before `-p`; a full patch in the transcript is re-sent every later round. A call still spelled `shell` reaches the same runner and is recorded as `bash`.";
     /// `rust.skill`
     pub const RUST_SKILL: &str = "Read one of this repository skill procedures: a written procedure with conventions, commands, and rules. Call it before doing work a skill covers. Skills available:{skills}";
     /// `rust.openagents`
@@ -86,11 +85,11 @@ pub mod tool_descriptions {
 pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     (
         "system-prompt",
-        "sha256:3922e44fb388ee8510195cf35fc68f603bc0a7e6a6532bf4c73957316eeca239",
+        "sha256:86629eaa68f4261f4aecff387e65041048f76855e482ee1db62e6c220695823c",
     ),
     (
         "tool-descriptions",
-        "sha256:5169a762cf1dbc285017f620458c21a0042db8bcab7d43c6320e494bd978ed04",
+        "sha256:fcdf1b66c5cfad937f850f8663a7916a1cec4228b3f9792bfa60ab04b72385a0",
     ),
     (
         "catalog-lines",
