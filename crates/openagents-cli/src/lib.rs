@@ -42,6 +42,7 @@ pub mod pty;
 pub mod repo;
 pub mod resume;
 pub mod runtime;
+pub mod session_search;
 pub mod session_store;
 pub mod signals;
 pub mod surfaces;

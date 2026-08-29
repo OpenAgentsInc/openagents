@@ -536,6 +536,7 @@ async fn a_plugin_named_after_a_builtin_is_never_declared_and_every_declared_too
             "bash",
             "skill",
             "checkpoint",
+            "session_search",
             "openagents",
             "swarm_list",
             "swarm_send",

@@ -47,6 +47,7 @@ impl ToolPool {
                     | "code_search"
                     | "repo_tree"
                     | "test_report"
+                    | "session_search"
             ),
             Self::ReadWrite => matches!(
                 name,
@@ -64,6 +65,7 @@ impl ToolPool {
                     | "code_search"
                     | "repo_tree"
                     | "test_report"
+                    | "session_search"
             ),
             Self::All => true,
         }

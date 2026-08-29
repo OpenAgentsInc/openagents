@@ -1,7 +1,7 @@
 //! The tools a session declares to the model, and what running them does.
 //!
 //! The built-in tools: `read`, `write`, `edit`, `bash`, `skill`,
-//! `checkpoint`, `openagents`, `swarm_list`, `swarm_send`, `swarm_inbox`,
+//! `checkpoint`, `session_search`, `openagents`, `swarm_list`, `swarm_send`, `swarm_inbox`,
 //! `capability`, and — only where a delegation gate exists —
 //! `delegate`. Each is declared to the model and
 //! each has an implementation in [`HarnessToolRegistry::execute_tool`]; the
@@ -124,13 +124,14 @@ const ECHO_LIMIT: usize = 2_000;
 /// session answers it with a refusal, which shadows a plugin just as
 /// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
 /// list and the arms in step.
-pub const BUILTIN_TOOL_NAMES: [&str; 13] = [
+pub const BUILTIN_TOOL_NAMES: [&str; 14] = [
     "read",
     "write",
     "edit",
     "bash",
     "skill",
     "checkpoint",
+    "session_search",
     "openagents",
     "swarm_list",
     "swarm_send",
@@ -1063,6 +1064,27 @@ impl HarnessToolRegistry {
                 }),
             },
             ToolDefinition {
+                name: "session_search".to_string(),
+                description: text::RUST_SESSION_SEARCH.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "The word or phrase to search for, matched case-insensitively. Required and must be non-empty."},
+                        "sources": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": ["coder", "claude", "codex"]},
+                            "description": "Which stores to search. Coder, Claude Code, and Codex when omitted."
+                        },
+                        "cwd_filter": {"type": "string", "description": "Only search sessions whose working directory contains this substring. Defaults to this session's cwd. Pass empty to search every cwd."},
+                        "max_age_days": {"type": "number", "description": "Only search sessions modified within this many days. Default 90."},
+                        "max_sessions": {"type": "integer", "description": "Most sessions to search, newest first. Default 20, capped at 40."},
+                        "max_hits_per_session": {"type": "integer", "description": "Most hits reported per session. Default 3, capped at 10."},
+                        "context_chars": {"type": "integer", "description": "Characters kept around each hit. Default 240, capped at 1000."}
+                    },
+                    "required": ["query"]
+                }),
+            },
+            ToolDefinition {
                 name: "openagents".to_string(),
                 description: text::RUST_OPENAGENTS.to_string(),
                 parameters: serde_json::json!({
@@ -1477,6 +1499,17 @@ impl HarnessToolRegistry {
             }
             "checkpoint" => {
                 let (output, is_error) = answer_checkpoint(&call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                    duration_ms: 0,
+                }
+            }
+            "session_search" => {
+                let home = crate::auth::home_directory();
+                let (output, is_error) =
+                    crate::session_search::run(&home, &self.cwd, &call.arguments);
                 ToolOutput {
                     call_id: call.id.clone(),
                     output,
@@ -5088,6 +5121,7 @@ mod tests {
                 "bash",
                 "skill",
                 "checkpoint",
+                "session_search",
                 "openagents",
                 "swarm_list",
                 "swarm_send",
@@ -5137,7 +5171,14 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             names,
-            vec!["read", "bash", "skill", "swarm_list", "swarm_inbox"]
+            vec![
+                "read",
+                "bash",
+                "skill",
+                "session_search",
+                "swarm_list",
+                "swarm_inbox"
+            ]
         );
 
         for name in [
@@ -5178,6 +5219,7 @@ mod tests {
                 "edit",
                 "bash",
                 "skill",
+                "session_search",
                 "swarm_list",
                 "swarm_send",
                 "swarm_inbox"
@@ -5338,6 +5380,7 @@ mod tests {
                 "bash",
                 "skill",
                 "checkpoint",
+                "session_search",
                 "openagents",
                 "swarm_list",
                 "swarm_send",

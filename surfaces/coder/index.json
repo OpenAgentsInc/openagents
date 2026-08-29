@@ -10,14 +10,14 @@
       "tool-descriptions": {
             "file": "tool-descriptions.v1.json",
             "schema": "openagents.coder_surface.tool_descriptions.v1",
-            "keys": 15,
-            "digest": "sha256:aa034af8af003aff7d79f8b8882fd2adc6cc72459cdfb90853460bc95fb54c0e"
+            "keys": 16,
+            "digest": "sha256:6629d50a7ca0f069e59d76287eca933c009814c53f488f99aeedee26a1be9ab2"
           },
       "catalog-lines": {
             "file": "catalog-lines.v1.json",
             "schema": "openagents.coder_surface.catalog_lines.v1",
             "keys": 14,
-            "digest": "sha256:0c31bd2bc07dce9119aca554fd04c0f78e4561fdecbbf34aa729e1fa78f5ac0f"
+            "digest": "sha256:8d90ce68cd27b1e37bca464055cce05baa87cb7897efe256f958169ff2e630fe"
           }
     }
 }

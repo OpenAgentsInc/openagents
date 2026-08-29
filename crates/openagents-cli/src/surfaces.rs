@@ -64,6 +64,8 @@ pub mod tool_descriptions {
     pub const GOAL: &str = "Report a state change on the active persistent task goal for this session. The goal's objective, status, and budget already accompany each turn; call this with action='complete' when the goal is done and verified, or 'block'/'pause'/'resume' to update its status.";
     /// `rust.checkpoint`
     pub const RUST_CHECKPOINT: &str = "Record one milestone note for this session: which issue or task, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. A few sentences. Write one at every natural milestone -- an issue implemented and green, a blocker hit and worked around, a switch to different work -- and always before the turn's tool budget runs low. The note is shown to whoever resumes this session, including a future session after this one dies; it is the difference between picking up the work and excavating it.";
+    /// `rust.session_search`
+    pub const RUST_SESSION_SEARCH: &str = "Search past Coder sessions on this machine, and Claude Code or Codex conversations when those stores exist, for a word, error, or phrase. Use it when asked where something was discussed, which session mentioned an error, a file, a decision, or a topic, or to grep across past conversations. Defaults to this working directory's Coder sessions. Case-insensitive, newest first, matching only what people said — thinking and tool payloads are not searched. Read-only and bounded: each hit returns session id, cwd, role, and a small window of surrounding context; oversized files are searched from their tail and marked. It never resumes, continues, or writes anything.";
     /// `history_recall`
     pub const HISTORY_RECALL: &str = "Answer a question about this session's own past: what a command printed, what a turn decided, when something happened. Zero model calls, reads the session record owner-locally. The question is one of Grep (find text in past output - use this to recover failure names instead of re-running anything), CursorSlice (records between two sequence numbers), TimeSlice (records between two ISO instants), KeyTurns (first N turns, one span each), or TurnSummary (counts, tools, and text of one turn; its turnId is the sequence number of the turn's first record). Caps bound the answer and a cap hit is reported in the honesty field - `partial_budget` means read more or narrow the question, not that the answer is wrong. The answer cites the exact records it came from.";
     /// `rust.swarm_list`
@@ -86,10 +88,10 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:aa034af8af003aff7d79f8b8882fd2adc6cc72459cdfb90853460bc95fb54c0e",
+        "sha256:6629d50a7ca0f069e59d76287eca933c009814c53f488f99aeedee26a1be9ab2",
     ),
     (
         "catalog-lines",
-        "sha256:0c31bd2bc07dce9119aca554fd04c0f78e4561fdecbbf34aa729e1fa78f5ac0f",
+        "sha256:8d90ce68cd27b1e37bca464055cce05baa87cb7897efe256f958169ff2e630fe",
     ),
 ];

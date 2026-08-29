@@ -3,7 +3,7 @@
   "name": "session_search",
   "version": "0.1.0",
   "author": "OpenAgents",
-  "description": "Search all Claude Code and Codex conversations and sessions on this machine for a word, error, or phrase. Use it when asked where something was discussed, which session mentioned an error message, a file, a decision, or a topic, or to grep across past conversations and chat history. Case-insensitive, newest sessions first, matching only what people actually said — thinking and tool payloads are not searched. Read-only and bounded: each hit returns its role and a small window of surrounding context, oversized session files are searched from their tail and marked, and the output says when the session budget cut the search short. It never resumes, continues, or writes anything.",
+  "description": "Search past Coder sessions on this machine, and Claude Code or Codex conversations when those stores exist, for a word, error, or phrase. Use it when asked where something was discussed, which session mentioned an error, a file, a decision, or a topic, or to grep across past conversations. Defaults to this working directory's Coder sessions. Case-insensitive, newest first, matching only what people said — thinking and tool payloads are not searched. Read-only and bounded: each hit returns session id, cwd, role, and a small window of surrounding context; oversized files are searched from their tail and marked. It never resumes, continues, or writes anything.",
   "artifact": {
     "path": "session_search.wasm",
     "digest": "sha256:969e241ef5eb40b3a064d4d1abec8dc716a63f9be6dd0f4d92c76aad94001611"
