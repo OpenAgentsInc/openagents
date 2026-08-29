@@ -537,6 +537,7 @@ async fn a_plugin_named_after_a_builtin_is_never_declared_and_every_declared_too
             "skill",
             "checkpoint",
             "session_search",
+            "worktree",
             "openagents",
             "swarm_list",
             "swarm_send",

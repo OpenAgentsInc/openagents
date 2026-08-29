@@ -124,7 +124,7 @@ const ECHO_LIMIT: usize = 2_000;
 /// session answers it with a refusal, which shadows a plugin just as
 /// completely. `every_declared_tool_has_an_arm_that_answers_it` keeps this
 /// list and the arms in step.
-pub const BUILTIN_TOOL_NAMES: [&str; 14] = [
+pub const BUILTIN_TOOL_NAMES: [&str; 15] = [
     "read",
     "write",
     "edit",
@@ -132,6 +132,7 @@ pub const BUILTIN_TOOL_NAMES: [&str; 14] = [
     "skill",
     "checkpoint",
     "session_search",
+    "worktree",
     "openagents",
     "swarm_list",
     "swarm_send",
@@ -642,6 +643,9 @@ pub struct HarnessToolRegistry {
     /// gateless one-shot or a test that never joined; the swarm tools then
     /// refuse rather than invent a sender.
     swarm: Option<SwarmBinding>,
+    /// Implement-tab worktree this session started (#319). File and shell
+    /// tools use its path; the original `cwd` stays the checkout we opened in.
+    managed_worktree: Mutex<Option<crate::worktree_host::ManagedWorktree>>,
 }
 
 impl HarnessToolRegistry {
@@ -778,6 +782,16 @@ impl HarnessToolRegistry {
         self.swarm.as_ref()
     }
 
+    /// Directory file and shell tools write in: the managed worktree when
+    /// `worktree start` has run, otherwise the checkout the session opened.
+    pub fn working_dir(&self) -> PathBuf {
+        self.managed_worktree
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|tree| tree.path.clone()))
+            .unwrap_or_else(|| self.cwd.clone())
+    }
+
     fn build(
         cwd: Option<PathBuf>,
         delegation: Option<DelegationGate>,
@@ -805,6 +819,7 @@ impl HarnessToolRegistry {
             event_sink: None,
             acp_sessions: Mutex::new(BTreeMap::new()),
             swarm: None,
+            managed_worktree: Mutex::new(None),
         };
         registry.load_local_skills();
         // Pure-compute first-class guests do not need an operator. Mounted
@@ -1082,6 +1097,25 @@ impl HarnessToolRegistry {
                         "context_chars": {"type": "integer", "description": "Characters kept around each hit. Default 240, capped at 1000."}
                     },
                     "required": ["query"]
+                }),
+            },
+            ToolDefinition {
+                name: "worktree".to_string(),
+                description: text::RUST_WORKTREE.to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["start", "finish"],
+                            "description": "`start` creates a detached worktree under a managed directory and points file/shell tools at it. `finish` removes it when `landed` is true."
+                        },
+                        "landed": {
+                            "type": "boolean",
+                            "description": "With `finish`: true removes the worktree after the unit reached main; false leaves it and names the path."
+                        }
+                    },
+                    "required": ["action"]
                 }),
             },
             ToolDefinition {
@@ -1381,7 +1415,7 @@ impl HarnessToolRegistry {
         let call = &normalized;
         match call.name.as_str() {
             "read" => {
-                let (output, is_error) = answer_read(&self.cwd, &call.arguments);
+                let (output, is_error) = answer_read(&self.working_dir(), &call.arguments);
                 ToolOutput {
                     call_id: call.id.clone(),
                     output,
@@ -1390,7 +1424,7 @@ impl HarnessToolRegistry {
                 }
             }
             "write" => {
-                let (output, is_error) = answer_write(&self.cwd, &call.arguments);
+                let (output, is_error) = answer_write(&self.working_dir(), &call.arguments);
                 ToolOutput {
                     call_id: call.id.clone(),
                     output,
@@ -1399,7 +1433,7 @@ impl HarnessToolRegistry {
                 }
             }
             "edit" => {
-                let (output, is_error) = answer_edit(&self.cwd, &call.arguments);
+                let (output, is_error) = answer_edit(&self.working_dir(), &call.arguments);
                 ToolOutput {
                     call_id: call.id.clone(),
                     output,
@@ -1454,12 +1488,19 @@ impl HarnessToolRegistry {
                     };
                 }
 
+                let work_dir = self.working_dir();
+                let cargo_target = self
+                    .managed_worktree
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.as_ref().map(|tree| tree.cargo_target_dir.clone()));
                 let (output_str, failed) = run_real_shell_logged(
                     cmd,
-                    &self.cwd,
+                    &work_dir,
                     timeout_secs,
                     &mut cancel,
                     self.session_dir.as_deref(),
+                    cargo_target.as_deref(),
                 )
                 .await;
                 let output_str = match test_runner_kind(cmd) {
@@ -1510,6 +1551,59 @@ impl HarnessToolRegistry {
                 let home = crate::auth::home_directory();
                 let (output, is_error) =
                     crate::session_search::run(&home, &self.cwd, &call.arguments);
+                ToolOutput {
+                    call_id: call.id.clone(),
+                    output,
+                    is_error,
+                    duration_ms: 0,
+                }
+            }
+            "worktree" => {
+                let action = call
+                    .arguments
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let (output, is_error) = match action {
+                    "start" => match crate::worktree_host::start(
+                        &self.cwd,
+                        &crate::worktree_host::managed_root(),
+                        &crate::worktree_host::cargo_target_dir(),
+                    ) {
+                        Ok(tree) => {
+                            let doc = crate::worktree_host::start_document(&tree);
+                            if let Ok(mut guard) = self.managed_worktree.lock() {
+                                *guard = Some(tree);
+                            }
+                            (doc, false)
+                        }
+                        Err(why) => (why, true),
+                    },
+                    "finish" => {
+                        let landed = call
+                            .arguments
+                            .get("landed")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let tree = self
+                            .managed_worktree
+                            .lock()
+                            .ok()
+                            .and_then(|mut guard| guard.take());
+                        match tree {
+                            Some(tree) => match crate::worktree_host::finish(&tree, landed) {
+                                Ok(msg) => (msg, false),
+                                Err(why) => (why, true),
+                            },
+                            None => (
+                                "no managed worktree is active in this session; call `worktree` with action start first"
+                                    .to_string(),
+                                true,
+                            ),
+                        }
+                    }
+                    _ => ("action must be `start` or `finish`".to_string(), true),
+                };
                 ToolOutput {
                     call_id: call.id.clone(),
                     output,
@@ -1791,10 +1885,11 @@ impl HarnessToolRegistry {
                     }
                     let (output, is_error) = run_real_shell_logged(
                         command,
-                        &self.cwd,
+                        &self.working_dir(),
                         MAXIMUM_TIMEOUT_SECS,
                         &mut cancel,
                         self.session_dir.as_deref(),
+                        None,
                     )
                     .await;
                     report.push_str(&format!(
@@ -3059,7 +3154,7 @@ async fn run_real_shell(
     timeout_secs: u64,
     cancel: &mut watch::Receiver<bool>,
 ) -> (String, bool) {
-    run_real_shell_logged(cmd, cwd, timeout_secs, cancel, None).await
+    run_real_shell_logged(cmd, cwd, timeout_secs, cancel, None, None).await
 }
 
 /// The real runner, with an optional place to keep whole output.
@@ -3073,6 +3168,7 @@ async fn run_real_shell_logged(
     timeout_secs: u64,
     cancel: &mut watch::Receiver<bool>,
     session_dir: Option<&Path>,
+    cargo_target: Option<&Path>,
 ) -> (String, bool) {
     let started = std::time::Instant::now();
     let mut command = Command::new("/bin/sh");
@@ -3087,6 +3183,9 @@ async fn run_real_shell_logged(
         // other spawn site in this crate — `delegate.rs`, `computer.rs`,
         // `acp.rs` — already puts its child in one; this was the exception.
         .kill_on_drop(true);
+    if let Some(target) = cargo_target {
+        command.env("CARGO_TARGET_DIR", target);
+    }
     #[cfg(unix)]
     command.process_group(0);
     let mut child = match command.spawn() {
@@ -5122,6 +5221,7 @@ mod tests {
                 "skill",
                 "checkpoint",
                 "session_search",
+                "worktree",
                 "openagents",
                 "swarm_list",
                 "swarm_send",
@@ -5220,6 +5320,7 @@ mod tests {
                 "bash",
                 "skill",
                 "session_search",
+                "worktree",
                 "swarm_list",
                 "swarm_send",
                 "swarm_inbox"
@@ -5381,6 +5482,7 @@ mod tests {
                 "skill",
                 "checkpoint",
                 "session_search",
+                "worktree",
                 "openagents",
                 "swarm_list",
                 "swarm_send",
@@ -5902,9 +6004,15 @@ mod defect_tests {
         let (_stop, mut cancel) = watch::channel(false);
         // The wait itself buys the 30-second persistence threshold, so the
         // command is real work plus real waiting rather than a mocked clock.
-        let (text, failed) =
-            run_real_shell_logged(command, work.path(), 60, &mut cancel, Some(session.path()))
-                .await;
+        let (text, failed) = run_real_shell_logged(
+            command,
+            work.path(),
+            60,
+            &mut cancel,
+            Some(session.path()),
+            None,
+        )
+        .await;
         assert!(!failed);
         assert!(text.contains("tail-marker"));
 
@@ -5932,9 +6040,15 @@ mod defect_tests {
         let command = "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo END-MARKER";
 
         let (_stop, mut cancel) = watch::channel(false);
-        let (text, failed) =
-            run_real_shell_logged(command, work.path(), 90, &mut cancel, Some(session.path()))
-                .await;
+        let (text, failed) = run_real_shell_logged(
+            command,
+            work.path(),
+            90,
+            &mut cancel,
+            Some(session.path()),
+            None,
+        )
+        .await;
         assert!(!failed);
         assert!(
             text.contains("Full output kept at"),
@@ -5984,6 +6098,7 @@ mod defect_tests {
             30,
             &mut cancel,
             Some(session.path()),
+            None,
         )
         .await;
         let entries = std::fs::read_dir(session.path()).unwrap().count();
@@ -6413,9 +6528,15 @@ let dir = tempfile::tempdir().unwrap();
         let command = "echo header-marker; sleep 31; echo tail-marker";
 
         let (_stop, mut cancel) = watch::channel(false);
-        let (_text, failed) =
-            run_real_shell_logged(command, work.path(), 60, &mut cancel, Some(session.path()))
-                .await;
+        let (_text, failed) = run_real_shell_logged(
+            command,
+            work.path(),
+            60,
+            &mut cancel,
+            Some(session.path()),
+            None,
+        )
+        .await;
         assert!(!failed);
 
         let logs: Vec<_> = std::fs::read_dir(session.path())
@@ -6439,9 +6560,15 @@ let dir = tempfile::tempdir().unwrap();
         let command = "for i in $(seq 1 1200); do echo padding-line-$i xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; done; sleep 31; echo boom; exit 3";
 
         let (_stop, mut cancel) = watch::channel(false);
-        let (_text, failed) =
-            run_real_shell_logged(command, work.path(), 90, &mut cancel, Some(session.path()))
-                .await;
+        let (_text, failed) = run_real_shell_logged(
+            command,
+            work.path(),
+            90,
+            &mut cancel,
+            Some(session.path()),
+            None,
+        )
+        .await;
         assert!(failed);
 
         let logs: Vec<_> = std::fs::read_dir(session.path())

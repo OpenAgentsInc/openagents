@@ -66,6 +66,7 @@ impl ToolPool {
                     | "repo_tree"
                     | "test_report"
                     | "session_search"
+                    | "worktree"
             ),
             Self::All => true,
         }

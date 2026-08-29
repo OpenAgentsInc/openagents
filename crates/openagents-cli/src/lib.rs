@@ -57,3 +57,4 @@ pub mod trailing_args;
 pub mod tui;
 pub mod update;
 pub mod workspace;
+pub mod worktree_host;

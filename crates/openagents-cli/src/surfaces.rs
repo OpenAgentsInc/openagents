@@ -66,6 +66,8 @@ pub mod tool_descriptions {
     pub const RUST_CHECKPOINT: &str = "Record one milestone note for this session: which issue or task, what landed (files, commits, test results), what is unfinished or broken, and the exact next step. A few sentences. Write one at every natural milestone -- an issue implemented and green, a blocker hit and worked around, a switch to different work -- and always before the turn's tool budget runs low. The note is shown to whoever resumes this session, including a future session after this one dies; it is the difference between picking up the work and excavating it.";
     /// `rust.session_search`
     pub const RUST_SESSION_SEARCH: &str = "Search past Coder sessions on this machine, and Claude Code or Codex conversations when those stores exist, for a word, error, or phrase. Use it when asked where something was discussed, which session mentioned an error, a file, a decision, or a topic, or to grep across past conversations. Defaults to this working directory's Coder sessions. Case-insensitive, newest first, matching only what people said — thinking and tool payloads are not searched. Read-only and bounded: each hit returns session id, cwd, role, and a small window of surrounding context; oversized files are searched from their tail and marked. It never resumes, continues, or writes anything.";
+    /// `rust.worktree`
+    pub const RUST_WORKTREE: &str = "Create or finish a managed git worktree for this session's implement work. `action=start` fetches main when a remote answers, adds a detached worktree under ~/.openagents/worktrees, points file and shell tools at that path, and sets CARGO_TARGET_DIR outside the disposable tree. `action=finish` with `landed=true` removes the worktree after the unit reached main; `landed=false` leaves it and names the path. Use this instead of `git worktree add` on the shared checkout. It never touches foreign uncommitted files in the original cwd.";
     /// `history_recall`
     pub const HISTORY_RECALL: &str = "Answer a question about this session's own past: what a command printed, what a turn decided, when something happened. Zero model calls, reads the session record owner-locally. The question is one of Grep (find text in past output - use this to recover failure names instead of re-running anything), CursorSlice (records between two sequence numbers), TimeSlice (records between two ISO instants), KeyTurns (first N turns, one span each), or TurnSummary (counts, tools, and text of one turn; its turnId is the sequence number of the turn's first record). Caps bound the answer and a cap hit is reported in the honesty field - `partial_budget` means read more or narrow the question, not that the answer is wrong. The answer cites the exact records it came from.";
     /// `rust.swarm_list`
@@ -88,7 +90,7 @@ pub const SURFACE_DIGESTS: [(&str, &str); 3] = [
     ),
     (
         "tool-descriptions",
-        "sha256:6629d50a7ca0f069e59d76287eca933c009814c53f488f99aeedee26a1be9ab2",
+        "sha256:6298d52940368fa55f6f73ff86a2a226fe9816c17b0e0f858e7ff22f341aa5ed",
     ),
     (
         "catalog-lines",
