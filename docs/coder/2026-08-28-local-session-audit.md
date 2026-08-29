@@ -6,7 +6,11 @@ Companion: this directory's other dated notes describe product intent; this
 file describes what the live Coder TUI actually recorded. Sections 11–13
 measure where the tokens and tool calls went, and list the unlocks that
 would have produced the same landings at roughly half the calls and half
-the wall clock.
+the wall clock. The first unattended local-lane landing (Qwen 3.8, #320)
+is scored against those unlocks in
+[`2026-08-29-qwen38-local-320-thread.md`](./2026-08-29-qwen38-local-320-thread.md);
+several Flash cache/compaction items invert there because the meter is
+wall clock, not billed prefix cache.
 
 ## 1. Where the conversations are
 
