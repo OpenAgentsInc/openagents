@@ -620,7 +620,7 @@ fn a_parent_sends_to_a_child_by_short_id() {
 }
 
 #[test]
-fn broadcast_to_children_of_queues_for_a_killed_child_and_names_it_stale() {
+fn broadcast_to_children_of_skips_a_killed_child() {
     let home = tempfile::tempdir().unwrap();
     let path = home.path().to_path_buf();
     let live_dir = tempfile::tempdir().unwrap();
@@ -658,28 +658,22 @@ fn broadcast_to_children_of_queues_for_a_killed_child_and_names_it_stale() {
         None,
     )
     .unwrap();
+    // Fan-out (`role:children-of:`) names sessions that can answer (#339).
+    // A stale child stays registered and can still take a *direct* send
+    // into its inbox; it is not a broadcast target.
     assert_eq!(
         report.deliveries.len(),
-        2,
-        "live and stale children both receive"
+        1,
+        "only the live child is a fan-out target"
     );
     assert_eq!(report.deliveries[0].to, "parent-a-child-1");
     assert_eq!(report.deliveries[0].state, "live");
-    assert_eq!(report.deliveries[1].to, "parent-a-child-2");
-    assert_eq!(
-        report.deliveries[1].state, "stale",
-        "the killed child queues, flagged stale at send"
-    );
-    assert!(
-        report.deliveries[1].stale_at_send,
-        "the flag rides the report"
-    );
     assert_eq!(report.undeliverable.len(), 0, "nothing is refused");
     assert_eq!(Mailbox::at(live_dir.path()).messages().unwrap().len(), 1);
     assert_eq!(
         Mailbox::at(dead_dir.path()).messages().unwrap().len(),
-        1,
-        "queued mail waits in the stale child's inbox"
+        0,
+        "stale children are not fan-out targets"
     );
 }
 

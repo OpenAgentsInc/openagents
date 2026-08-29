@@ -212,3 +212,35 @@ fn text_preview_mentions_looking_for_gguf() {
     assert!(ids.contains(&"run.preview".into()));
     assert!(ids.contains(&"gguf.look".into()));
 }
+
+#[test]
+fn unload_with_nothing_loaded_still_prints_weights_unloaded() {
+    let output = bin()
+        .args(["inference", "unload", "--json"])
+        .output()
+        .expect("run");
+    assert!(output.status.success(), "{:?}", output);
+    let states = json_states(&output);
+    assert!(
+        states
+            .iter()
+            .any(|(id, state)| id == "unload.done" && state == "ok"),
+        "{states:?}"
+    );
+}
+
+#[test]
+fn status_json_includes_memory_fields() {
+    let output = bin()
+        .args(["inference", "status", "--json"])
+        .output()
+        .expect("run");
+    assert!(output.status.success(), "{:?}", output);
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(v["loaded"], false);
+    assert_eq!(v["mmap_bytes"], 0);
+    assert_eq!(v["metal_bytes"], 0);
+    assert!(v.get("rss_bytes").is_some(), "{v}");
+    assert_eq!(v["cache_kv_bytes"], 0);
+    assert_eq!(v["cache_gdn_bytes"], 0);
+}

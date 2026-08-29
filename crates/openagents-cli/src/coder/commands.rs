@@ -10,7 +10,7 @@
 //! None of these reaches a model. They run here, print into the transcript as
 //! [`Role::Output`], and are exported as notices rather than as model steps.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
 use crate::tools::{OUTPUT_LIMIT, check_shell_refusal};
@@ -73,6 +73,8 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "gym",
         "show or hide the gym pane: /gym, /gym <suite>, /gym run <id-or-json>, /gym close",
     ),
+    ("load", "load a local GGUF in this process: /load <path>"),
+    ("unload", "release in-process GGUF weights"),
 ];
 
 /// The keys the frame handles. Listed by `/help`, and every one of them is
@@ -141,6 +143,8 @@ pub fn handles(name: &str) -> bool {
             | "run"
             | "swarm"
             | "gym"
+            | "load"
+            | "unload"
     )
 }
 
@@ -231,6 +235,8 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
         "run" => spawn_run(ui, &rest, tx, cwd),
         "swarm" => run_swarm_command(ui, &arguments, &rest),
         "gym" => run_gym_command(ui, &arguments),
+        "load" => run_load_command(ui, &arguments, tx),
+        "unload" => run_unload_command(ui),
         "resume" => spawn_resume(ui, &arguments, tx, cwd),
         "continue" => {
             if arguments.len() > 1 {
@@ -255,6 +261,116 @@ pub fn run(ui: &mut CoderUi, line: &str, tx: &Sender<Control>, cwd: &Path) -> Ou
 fn output(ui: &mut CoderUi, text: &str) {
     ui.entries.push(Entry::new(Role::Output, text));
     ui.scroll_override = None;
+}
+
+fn run_load_command(ui: &mut CoderUi, arguments: &[String], tx: &Sender<Control>) {
+    let Some(path) = arguments.first() else {
+        output(ui, "Use `/load <path-to-gguf>`.");
+        return;
+    };
+    let path = PathBuf::from(path);
+    if !path.is_file() {
+        output(ui, &format!("GGUF not found at {}.", path.display()));
+        return;
+    }
+    // Progress lives on the status row (`load_line`), not the chatting
+    // spinner. The frame loop must keep painting while mmap and Metal wrap.
+    ui.load_line = Some("Looking for GGUF".to_string());
+    ui.loading = false;
+    ui.waiting = None;
+
+    let tx = tx.clone();
+    std::thread::spawn(move || {
+        let last = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sent_fail = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let last_paint = std::sync::Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
+        let on_step = {
+            let last = last.clone();
+            let sent_fail = sent_fail.clone();
+            let last_paint = last_paint.clone();
+            let tx = tx.clone();
+            std::sync::Arc::new(move |id: &str, message: &str, state: &str| {
+                if let Ok(mut slot) = last.lock() {
+                    *slot = message.to_string();
+                }
+                if state == "skip" || matches!(id, "run.start" | "run.until" | "run.teach") {
+                    return;
+                }
+                let fail = state == "fail";
+                let terminal = fail || id == "map.done";
+                let due = {
+                    let Ok(mut painted) = last_paint.lock() else {
+                        return;
+                    };
+                    let now = std::time::Instant::now();
+                    let elapsed_ok = painted
+                        .map(|prev| {
+                            now.duration_since(prev) >= std::time::Duration::from_millis(50)
+                        })
+                        .unwrap_or(true);
+                    if terminal || elapsed_ok {
+                        *painted = Some(now);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if !due && !fail {
+                    return;
+                }
+                if fail {
+                    sent_fail.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                let _ = tx.send(Control::LoadStatus {
+                    message: message.to_string(),
+                    fail,
+                });
+            }) as std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>
+        };
+        match crate::inference::load_gguf_with_steps(path, false, true, Some(on_step)) {
+            Ok(()) => {
+                let _ = tx.send(Control::MemoryLine(crate::inference::memory_status_line()));
+            }
+            Err(_) => {
+                if !sent_fail.load(std::sync::atomic::Ordering::SeqCst) {
+                    let message = last
+                        .lock()
+                        .ok()
+                        .map(|slot| slot.clone())
+                        .unwrap_or_default();
+                    let message = if message.is_empty() {
+                        "Load failed: load did not finish".to_string()
+                    } else {
+                        message
+                    };
+                    let _ = tx.send(Control::LoadStatus {
+                        message,
+                        fail: true,
+                    });
+                }
+            }
+        }
+    });
+}
+
+fn run_unload_command(ui: &mut CoderUi) {
+    match crate::inference::unload_gguf(false) {
+        Ok(()) => {
+            ui.load_line = Some("Weights unloaded".to_string());
+            ui.memory_line = None;
+            ui.loading = false;
+        }
+        Err(error) => {
+            let message = match error {
+                crate::inference::InferenceExit::Usage(message) => message,
+                crate::inference::InferenceExit::Failed => {
+                    "Unload failed: weights could not be released".to_string()
+                }
+            };
+            ui.load_line = Some(message.clone());
+            output(ui, &message);
+        }
+    }
 }
 
 fn run_gym_command(ui: &mut CoderUi, arguments: &[String]) {
@@ -947,6 +1063,89 @@ mod tests {
         // And the detection itself never consumes the line: `submit` sends
         // `text` unchanged whether or not the advisory fired.
         assert_eq!(export, "~/.openagents/exports/1a0434b26a4-atif.json");
+    }
+
+    fn drain_load(ui: &mut CoderUi, rx: &std::sync::mpsc::Receiver<Control>) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            assert!(
+                !left.is_zero(),
+                "load did not settle; load_line={:?}",
+                ui.load_line
+            );
+            match rx.recv_timeout(left) {
+                Ok(control) => {
+                    let fail = matches!(&control, Control::LoadStatus { fail: true, .. });
+                    let memory = matches!(&control, Control::MemoryLine(_));
+                    crate::coder::interactive::apply(ui, control);
+                    if fail || memory {
+                        return;
+                    }
+                }
+                Err(_) => panic!("load did not settle; load_line={:?}", ui.load_line),
+            }
+        }
+    }
+
+    #[test]
+    fn load_fixture_shows_weights_ready_and_unload_clears_memory() {
+        let _lock = crate::inference::serialize_load_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("qwen35.gguf");
+        psionic_gguf::write_qwen35_fixture(&path).unwrap();
+        let mut ui = CoderUi::new();
+        ui.show_welcome = false;
+        let (tx, rx) = std::sync::mpsc::channel();
+        assert_eq!(
+            run(
+                &mut ui,
+                &format!("/load {}", path.display()),
+                &tx,
+                Path::new(".")
+            ),
+            Outcome::Done
+        );
+        drain_load(&mut ui, &rx);
+        let line = ui.load_line.clone().expect("load line");
+        assert!(line.contains("Weights ready"), "load line was {line:?}");
+        assert!(ui.memory_line.is_some(), "memory meter after load");
+        assert!(!ui.loading, "must not look like a chatting turn");
+        assert_eq!(run(&mut ui, "/unload", &tx, Path::new(".")), Outcome::Done);
+        assert_eq!(ui.load_line.as_deref(), Some("Weights unloaded"));
+        assert!(ui.memory_line.is_none());
+    }
+
+    #[test]
+    fn load_bad_magic_shows_canonical_fail_and_does_not_hang() {
+        let _lock = crate::inference::serialize_load_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("not.gguf");
+        std::fs::write(&path, b"XXXX\x03\x00\x00\x00").unwrap();
+        let mut ui = CoderUi::new();
+        ui.show_welcome = false;
+        let (tx, rx) = std::sync::mpsc::channel();
+        run(
+            &mut ui,
+            &format!("/load {}", path.display()),
+            &tx,
+            Path::new("."),
+        );
+        drain_load(&mut ui, &rx);
+        let line = ui.load_line.clone().expect("fail line");
+        assert!(
+            line.contains("Not a GGUF file") || line.contains("magic"),
+            "{line}"
+        );
+        assert!(!ui.loading);
+        assert!(ui.memory_line.is_none());
+        assert!(
+            ui.entries
+                .iter()
+                .any(|entry| entry.text.contains("Not a GGUF") || entry.text.contains("magic")),
+            "{:?}",
+            ui.entries.iter().map(|e| &e.text).collect::<Vec<_>>()
+        );
     }
 }
 

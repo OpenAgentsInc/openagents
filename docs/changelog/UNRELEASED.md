@@ -5,6 +5,58 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.15
+
+- issues: #345, #346, #347
+- commits: this change
+- contracts-specs: CLI crate version; producer name `X.Y.Z-rc.N`
+- invariants: published `<version, platform>` objects stay immutable
+- evidence: `load_fixture_shows_weights_ready_and_unload_clears_memory`; `load_then_status_then_unload_on_fixture`; live bucket already holds `0.2.0-rc.14`
+- lane: cursor session 7822942d
+
+The `openagents-cli` crate is `0.2.0-rc.15`. rc.14 is published and
+immutable. This line is Coder `/load` `/unload`, in-process weight
+release, and memory fields on `inference status`.
+
+## Coder TUI shows local GGUF load progress (#345)
+
+- issues: #345
+- commits: this change
+- contracts-specs: Coder `/load <path>`; CLI.md load messages on the status row
+- invariants: teach essay stays off the transcript; fail magic is not a chatting hang; Ollama `--local` is unchanged
+- evidence: `load_fixture_shows_weights_ready_and_unload_clears_memory`; `load_bad_magic_shows_canonical_fail_and_does_not_hang`; `load_status_shows_weights_ready_outside_the_transcript`
+- lane: cursor session 7822942d
+
+`/load` maps a GGUF in this process and paints CLI.md load messages
+through Weights ready. Progress is a status line, throttled like
+`prefill.pos`. A bad magic string fails with the canonical wording.
+
+## `inference unload` releases in-process weights (#346)
+
+- issues: #346
+- commits: this change
+- contracts-specs: `inference unload`; Coder `/unload`; CLI.md `unload.*` ids
+- invariants: unload is distinct from `inference stop`; mmap then Metal; empty unload still prints Weights unloaded
+- evidence: `unload_with_nothing_loaded_still_prints_weights_unloaded`; `load_then_status_then_unload_on_fixture`
+- lane: cursor session 7822942d
+
+After a load, `inference unload` and Coder `/unload` release the mmap
+and Metal wrap and print `Weights unloaded`. Status then reports not
+loaded.
+
+## `inference status` reports mmap, Metal, and RSS (#347)
+
+- issues: #347
+- commits: this change
+- contracts-specs: `inference status --json` memory fields; CLI.md `mem.*` ids
+- invariants: shared Metal wrap is not a second copy; caches stay pending until ctx; RSS may remain after unload
+- evidence: `status_json_includes_memory_fields`; `load_then_status_then_unload_on_fixture`
+- lane: cursor session 7822942d
+
+Status JSON now includes `mmap_bytes`, `metal_bytes`, `rss_bytes`,
+`cache_kv_bytes`, and `cache_gdn_bytes`. The Coder status row shows a
+compact mmap / Metal / RSS meter while weights are loaded.
+
 ## Windows trackpad scrolls the transcript, not input history (#349)
 
 - issues: #349

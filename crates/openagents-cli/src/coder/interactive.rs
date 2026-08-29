@@ -2115,6 +2115,19 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
             ui.waiting = message;
             ui.scroll_override = None;
         }
+        Control::LoadStatus { message, fail } => {
+            ui.load_line = Some(message.clone());
+            ui.loading = false;
+            ui.waiting = None;
+            if fail {
+                ui.memory_line = None;
+                ui.entries.push(Entry::new(Role::Notice, message));
+            }
+            ui.scroll_override = None;
+        }
+        Control::MemoryLine(line) => {
+            ui.memory_line = line;
+        }
         Control::Output(text) => {
             if !text.trim().is_empty() {
                 ui.entries.push(Entry::new(Role::Output, text));

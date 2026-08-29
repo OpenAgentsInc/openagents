@@ -3,10 +3,13 @@
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use psionic_gguf::format::ParseError;
+use psionic_gguf::metal_wrap::MetalShared;
 use psionic_gguf::{
-    AdmitError, admit, format_size, ggml_type_name, load_tokenizer, map_file, parse_path,
+    AdmitError, MappedWeights, admit, format_size, ggml_type_name, load_tokenizer, map_file,
+    parse_path,
 };
 
 #[derive(Args, Debug)]
@@ -70,6 +73,7 @@ pub enum InferenceAction {
     Doctor,
 }
 
+#[derive(Debug)]
 pub enum InferenceExit {
     Failed,
     Usage(String),
@@ -97,25 +101,31 @@ pub fn run(args: InferenceArgs, json: bool) -> Result<(), InferenceExit> {
                 preview,
                 until,
                 json,
+                suppress_stderr: false,
+                on_step: None,
             })
         }
         InferenceAction::Doctor => {
             run_doctor(json);
             Ok(())
         }
-        InferenceAction::Models | InferenceAction::Status => {
+        InferenceAction::Models => {
             if json {
-                println!("{}", json!({"loaded": false, "models": []}));
+                println!("{}", json!({"loaded": loaded(), "models": []}));
             } else {
                 println!("No admitted models.");
             }
             Ok(())
         }
+        InferenceAction::Status => {
+            print_status(json);
+            Ok(())
+        }
+        InferenceAction::Unload => unload(json, false),
         InferenceAction::Add { .. }
         | InferenceAction::Remove { .. }
         | InferenceAction::Serve
-        | InferenceAction::Stop
-        | InferenceAction::Unload => Err(InferenceExit::Usage(
+        | InferenceAction::Stop => Err(InferenceExit::Usage(
             "this command is not built yet; use inference run --gguf through map.done".into(),
         )),
     }
@@ -129,16 +139,26 @@ struct WalkOpts {
     preview: bool,
     until: Option<String>,
     json: bool,
+    suppress_stderr: bool,
+    on_step: Option<std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
 }
 
 struct Printer {
     json: bool,
     teach: bool,
     quiet: bool,
+    suppress_stderr: bool,
+    on_step: Option<std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
 }
 
 impl Printer {
     fn emit(&self, id: &str, message: &str, state: &str, extra: Value) {
+        if let Some(on_step) = &self.on_step {
+            on_step(id, message, state);
+        }
+        if self.suppress_stderr {
+            return;
+        }
         if self.json {
             let mut obj = extra;
             if !obj.is_object() {
@@ -322,6 +342,8 @@ fn walk_run(opts: WalkOpts) -> Result<(), InferenceExit> {
         json: opts.json,
         teach: opts.teach,
         quiet: opts.quiet,
+        suppress_stderr: opts.suppress_stderr,
+        on_step: opts.on_step,
     };
     if opts.preview || opts.until.as_deref() == Some("script") {
         printer.ok("run.preview", "Preview only; not opening a GGUF");
@@ -766,12 +788,12 @@ fn map_weights(
         ),
     );
 
-    let mut _metal_keep = None;
+    let mut metal_keep = None;
     if want_metal {
         walk.printer
             .ok("map.metal", "Wrapping mmap as Metal shared buffer");
         match psionic_gguf::metal_wrap::wrap_shared(&mapped.mmap) {
-            Ok(buf) => _metal_keep = Some(buf),
+            Ok(buf) => metal_keep = Some(buf),
             Err(reason) => {
                 if matches!(backend, InferenceBackend::Metal) {
                     walk.printer.fail(
@@ -798,9 +820,23 @@ fn map_weights(
         &format!("Weights ready ({size_h} mapped)"),
         json!({"size": file_size}),
     );
+
+    let metal_bytes = metal_keep.as_ref().map(|buf| buf.length).unwrap_or(0);
+    let resident = mapped.resident_bytes();
+    store_loaded(LoadedSession {
+        metal: metal_keep,
+        mapped,
+        mmap_bytes: map_size,
+        metal_bytes,
+        resident_bytes: resident,
+        backend: picked.to_string(),
+        path: path.to_path_buf(),
+    });
+
+    if !walk.hit("map.done") {
+        emit_memory_lines(&walk.printer);
+    }
     if walk.hit("map.done") {
-        drop(_metal_keep);
-        drop(mapped);
         return Ok(());
     }
 
@@ -814,9 +850,219 @@ fn map_weights(
         eprintln!("             Last completed step: map.done");
         eprintln!("             Next to build: ctx.alloc");
     }
-    drop(_metal_keep);
-    drop(mapped);
     Ok(())
+}
+
+struct LoadedSession {
+    metal: Option<MetalShared>,
+    /// Held until unload so the mapping stays resident. Dropped after Metal.
+    mapped: MappedWeights,
+    mmap_bytes: u64,
+    metal_bytes: u64,
+    resident_bytes: u64,
+    backend: String,
+    path: PathBuf,
+}
+
+impl Drop for LoadedSession {
+    fn drop(&mut self) {
+        self.metal.take();
+        let _released = self.mapped.file_size;
+    }
+}
+
+fn holder() -> &'static Mutex<Option<LoadedSession>> {
+    static HOLDER: OnceLock<Mutex<Option<LoadedSession>>> = OnceLock::new();
+    HOLDER.get_or_init(|| Mutex::new(None))
+}
+
+fn store_loaded(session: LoadedSession) {
+    if let Ok(mut slot) = holder().lock() {
+        *slot = Some(session);
+    }
+}
+
+fn take_loaded() -> Option<LoadedSession> {
+    holder().lock().ok().and_then(|mut slot| slot.take())
+}
+
+pub fn loaded() -> bool {
+    holder().lock().ok().is_some_and(|slot| slot.is_some())
+}
+
+fn rss_bytes() -> u64 {
+    use sysinfo::{Pid, ProcessesToUpdate, System};
+    let mut system = System::new();
+    let pid = Pid::from_u32(std::process::id());
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    system
+        .process(pid)
+        .map(|process| process.memory())
+        .unwrap_or(0)
+}
+
+pub fn status_document() -> Value {
+    let rss = rss_bytes();
+    let guard = holder().lock().ok();
+    let session = guard.as_ref().and_then(|slot| slot.as_ref());
+    match session {
+        Some(session) => json!({
+            "loaded": true,
+            "path": session.path.display().to_string(),
+            "backend": session.backend,
+            "mmap_bytes": session.mmap_bytes,
+            "metal_bytes": session.metal_bytes,
+            "rss_bytes": rss,
+            "cache_kv_bytes": 0,
+            "cache_gdn_bytes": 0,
+            "mmap_resident_bytes": session.resident_bytes,
+        }),
+        None => json!({
+            "loaded": false,
+            "mmap_bytes": 0,
+            "metal_bytes": 0,
+            "rss_bytes": rss,
+            "cache_kv_bytes": 0,
+            "cache_gdn_bytes": 0,
+        }),
+    }
+}
+
+fn print_status(json: bool) {
+    let doc = status_document();
+    if json {
+        println!("{doc}");
+        return;
+    }
+    if doc["loaded"].as_bool() == Some(true) {
+        println!(
+            "Loaded {} ({})",
+            doc["path"].as_str().unwrap_or(""),
+            doc["backend"].as_str().unwrap_or("")
+        );
+        println!(
+            "mmap resident {} / mapped {}",
+            format_size(doc["mmap_resident_bytes"].as_u64().unwrap_or(0)),
+            format_size(doc["mmap_bytes"].as_u64().unwrap_or(0))
+        );
+        let metal = doc["metal_bytes"].as_u64().unwrap_or(0);
+        if metal > 0 {
+            println!("Metal buffer {}", format_size(metal));
+        }
+        println!(
+            "Process RSS {}",
+            format_size(doc["rss_bytes"].as_u64().unwrap_or(0))
+        );
+        println!("Caches KV 0 B GDN 0 B");
+    } else {
+        println!("Not loaded.");
+        println!(
+            "Process RSS {}",
+            format_size(doc["rss_bytes"].as_u64().unwrap_or(0))
+        );
+    }
+}
+
+fn emit_memory_lines(printer: &Printer) {
+    let doc = status_document();
+    let mapped = doc["mmap_bytes"].as_u64().unwrap_or(0);
+    let resident = doc["mmap_resident_bytes"].as_u64().unwrap_or(0);
+    printer.ok(
+        "mem.mmap",
+        &format!(
+            "mmap resident {} / mapped {}",
+            format_size(resident),
+            format_size(mapped)
+        ),
+    );
+    let metal = doc["metal_bytes"].as_u64().unwrap_or(0);
+    if metal > 0 {
+        printer.ok("mem.metal", &format!("Metal buffer {}", format_size(metal)));
+    } else {
+        printer.skip("mem.metal", "Metal buffer {size}");
+    }
+    printer.ok(
+        "mem.rss",
+        &format!(
+            "Process RSS {}",
+            format_size(doc["rss_bytes"].as_u64().unwrap_or(0))
+        ),
+    );
+    printer.skip("mem.caches", "Caches KV {kv} GDN {gdn}");
+}
+
+pub fn memory_status_line() -> Option<String> {
+    let doc = status_document();
+    if doc["loaded"].as_bool() != Some(true) {
+        return None;
+    }
+    let mapped = format_size(doc["mmap_bytes"].as_u64().unwrap_or(0));
+    let rss = format_size(doc["rss_bytes"].as_u64().unwrap_or(0));
+    let metal = doc["metal_bytes"].as_u64().unwrap_or(0);
+    if metal > 0 {
+        Some(format!(
+            "mmap {mapped} · Metal {} · RSS {rss}",
+            format_size(metal)
+        ))
+    } else {
+        Some(format!("mmap {mapped} · RSS {rss}"))
+    }
+}
+
+fn unload(json: bool, suppress_stderr: bool) -> Result<(), InferenceExit> {
+    let printer = Printer {
+        json,
+        teach: !json,
+        quiet: json,
+        suppress_stderr,
+        on_step: None,
+    };
+    printer.ok("unload.start", "Unloading weights");
+    let Some(session) = take_loaded() else {
+        printer.skip("unload.mmap", "Unmapping GGUF");
+        printer.skip("unload.metal", "Releasing Metal buffer");
+        printer.ok("unload.done", "Weights unloaded");
+        return Ok(());
+    };
+    printer.ok("unload.mmap", "Unmapping GGUF");
+    if session.metal.is_some() {
+        printer.ok("unload.metal", "Releasing Metal buffer");
+    } else {
+        printer.skip("unload.metal", "Releasing Metal buffer");
+    }
+    drop(session);
+    printer.ok("unload.done", "Weights unloaded");
+    Ok(())
+}
+
+/// Load a GGUF in this process through `map.done` (Coder `/load`).
+pub fn load_gguf(path: PathBuf, json: bool) -> Result<(), InferenceExit> {
+    load_gguf_with_steps(path, json, false, None)
+}
+
+/// Load with optional step callbacks and no teach dump to stderr.
+pub fn load_gguf_with_steps(
+    path: PathBuf,
+    json: bool,
+    suppress_stderr: bool,
+    on_step: Option<std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
+) -> Result<(), InferenceExit> {
+    walk_run(WalkOpts {
+        gguf: Some(path),
+        backend: InferenceBackend::Auto,
+        teach: false,
+        quiet: true,
+        preview: false,
+        until: Some("map.done".into()),
+        json,
+        suppress_stderr,
+        on_step,
+    })
+}
+
+/// Release in-process weights (Coder `/unload`).
+pub fn unload_gguf(json: bool) -> Result<(), InferenceExit> {
+    unload(json, true)
 }
 
 fn run_doctor(json: bool) {
@@ -895,5 +1141,36 @@ pub fn admit_path(path: &Path, json: bool) -> Result<(), InferenceExit> {
             Ok(())
         }
         Err(err) => Err(InferenceExit::Usage(err.to_string())),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn serialize_load_tests() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_then_status_then_unload_on_fixture() {
+        let _guard = serialize_load_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("qwen35.gguf");
+        psionic_gguf::write_qwen35_fixture(&path).unwrap();
+        load_gguf(path, true).unwrap();
+        assert!(loaded());
+        let doc = status_document();
+        assert_eq!(doc["loaded"], true);
+        assert!(doc["mmap_bytes"].as_u64().unwrap() > 0);
+        assert!(doc.get("rss_bytes").is_some());
+        unload_gguf(true).unwrap();
+        assert!(!loaded());
+        let after = status_document();
+        assert_eq!(after["loaded"], false);
+        assert_eq!(after["mmap_bytes"], 0);
+        assert_eq!(after["metal_bytes"], 0);
     }
 }

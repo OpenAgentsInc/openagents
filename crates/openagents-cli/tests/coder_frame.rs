@@ -187,7 +187,7 @@ fn typing_a_slash_opens_an_amber_command_helper() {
 
     let buffer = draw(&mut ui);
     let text = text_of(&buffer);
-    assert!(text.contains("Commands · 16 matches"), "{text}");
+    assert!(text.contains("Commands · 18 matches"), "{text}");
     assert!(text.contains("/clear"), "{text}");
     assert!(text.contains("clear the transcript"), "{text}");
 
@@ -1125,4 +1125,53 @@ fn a_nested_child_tool_stays_inside_the_delegate_box() {
     let screen = text_of(&draw(&mut ui));
     assert!(screen.contains("Read Cargo"), "{screen}");
     assert!(screen.contains("read Cargo.toml"), "{screen}");
+}
+
+#[test]
+fn load_status_shows_weights_ready_outside_the_transcript() {
+    let mut ui = CoderUi::new();
+    ui.show_welcome = false;
+    apply(
+        &mut ui,
+        Control::LoadStatus {
+            message: "Weights ready (16.0 KiB mapped)".into(),
+            fail: false,
+        },
+    );
+    apply(
+        &mut ui,
+        Control::MemoryLine(Some("mmap 16.0 KiB · RSS 12.0 MiB".into())),
+    );
+    let screen = text_of(&draw(&mut ui));
+    assert!(
+        screen.contains("Weights ready (16.0 KiB mapped)"),
+        "{screen}"
+    );
+    assert!(screen.contains("mmap 16.0 KiB"), "{screen}");
+    assert!(
+        !ui.entries
+            .iter()
+            .any(|entry| entry.text.contains("Weights ready")),
+        "teach dump must not land in the transcript"
+    );
+    assert!(!ui.loading);
+}
+
+#[test]
+fn load_fail_shows_canonical_magic_and_is_not_a_chat_turn() {
+    let mut ui = CoderUi::new();
+    ui.show_welcome = false;
+    apply(
+        &mut ui,
+        Control::LoadStatus {
+            message: "Not a GGUF file (magic is XXXX)".into(),
+            fail: true,
+        },
+    );
+    let screen = text_of(&draw(&mut ui));
+    assert!(
+        screen.contains("Not a GGUF file (magic is XXXX)"),
+        "{screen}"
+    );
+    assert!(!ui.loading);
 }

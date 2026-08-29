@@ -1,7 +1,7 @@
 # OpenAgents CLI: local inference commands and teach status
 
 - Class: owner-accepted CLI and teach-mode contract
-- Status: accepted 2026-08-29; slices 0–6 landed (OpenAgents #344, `map.done`)
+- Status: accepted 2026-08-29; slices 0–6 and 12 landed (OpenAgents #344–#347)
 - Intent: [INTENT.md](./INTENT.md)
 - Plan: [PLAN.md](./PLAN.md)
 - Bytes behind the statuses: [LLAMA_CPP_INFERENCE_PIPELINE.md](./LLAMA_CPP_INFERENCE_PIPELINE.md)
@@ -101,12 +101,13 @@ want the same messages the product command will keep.
 
 ### `openagents coder`
 
-Load, unload, and memory UI are OpenAgents issues 345–347. `--model
+Load, unload, and memory UI landed in OpenAgents issues 345–347. `--model
 psionic:` generate is still later (stage 4 in [PLAN.md](./PLAN.md)).
-While in-process load runs, the Coder session UI shows the load messages
-in this file through Weights ready. Do not dump the full teach essay
-into the chat transcript unless the user opts in. Throttle like
-`prefill.pos`. Ollama stays on `ollama:` until replacement gates pass.
+`/load <path>` shows CLI.md load messages through Weights ready on the
+session status row. `/unload` releases the in-process mmap. Do not dump
+the full teach essay into the chat transcript unless the user opts in.
+Throttle like `prefill.pos`. Ollama stays on `ollama:` until replacement
+gates pass.
 
 ## Build order
 
@@ -127,7 +128,7 @@ run. Later slices keep the earlier messages.
 | 9 | `prefill.done` | `run --prompt` | Prefill all prompt positions. |
 | 10 | `gen.done` | `run --prompt --max-tokens` | Decode, sample, stream, stop. **Inference complete.** |
 | 11 | (product) | `models`, `serve`, `doctor`, Coder | Lifecycle around the same path. |
-| 12 | (product) | `inference unload`, `inference status --json` memory fields, Coder load UI | Unload, memory, and Coder TUI load progress (issues 345–347). Parallel to generate. Requires `map.done` (issue 344). Do not skip generate. |
+| 12 | (product) | `inference unload`, `inference status --json` memory fields, Coder `/load` `/unload` | Unload, memory, and Coder TUI load progress (issues 345–347). Parallel to generate. Requires `map.done` (issue 344). Do not skip generate. **Landed.** |
 
 Slice 1 is the first code packet after provenance. It prints `Looking
 for GGUF` through `Found GGUF at …`. Slice 3 is the first packet that

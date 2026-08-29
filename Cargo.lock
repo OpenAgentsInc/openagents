@@ -1795,7 +1795,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-cli"
-version = "0.2.0-rc.14"
+version = "0.2.0-rc.15"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2033,6 +2033,7 @@ dependencies = [
 name = "psionic-gguf"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "memmap2",
  "serde",
  "sha2",

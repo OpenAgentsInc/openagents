@@ -11,9 +11,9 @@
 OpenAgents issues for this program:
 
 - https://openagents.com/OpenAgentsInc/openagents/issues/344 — `inference run` through GGUF weights ready (`map.done`)
-- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress (blocked by 344)
-- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights (blocked by 344)
-- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory (blocked by 344 and 346)
+- https://openagents.com/OpenAgentsInc/openagents/issues/345 — Coder TUI shows local GGUF load progress
+- https://openagents.com/OpenAgentsInc/openagents/issues/346 — Unload local inference weights
+- https://openagents.com/OpenAgentsInc/openagents/issues/347 — Visualize local inference memory
 
 ## Outcome
 

@@ -115,6 +115,11 @@ pub enum Control {
     Login(Result<String, String>),
     /// Replace the temporary first-response status, or clear it with `None`.
     Waiting(Option<String>),
+    /// In-process GGUF load/unload status for the Coder row. Not a transcript
+    /// line: the teach essay stays on `inference run` stderr.
+    LoadStatus { message: String, fail: bool },
+    /// Compact memory readout while in-process weights are loaded.
+    MemoryLine(Option<String>),
     /// What one of the session's own commands printed. Markdown, rendered the
     /// way an answer is, and exported as a notice rather than a model step.
     Output(String),

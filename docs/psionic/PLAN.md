@@ -1,7 +1,7 @@
 # Initial plan: Psionic Qwen 3.8 local inference in `openagents`
 
 - Class: owner-accepted implementation plan / work packet
-- Status: accepted 2026-08-29; slices 0–6 (`map.done`) landed in `crates/psionic-gguf` + `openagents inference run`
+- Status: accepted 2026-08-29; slices 0–6 (`map.done`) landed; slice 12 (unload, memory, Coder `/load`) landed in OpenAgents #345–#347
 - Intent: [INTENT.md](./INTENT.md)
 - CLI statuses: [CLI.md](./CLI.md)
 - Base at plan authoring: `8c0989a5a3f82029a020330c5b18b311a20d1efc` (`github/main`)
@@ -75,6 +75,7 @@ openagents inference remove <model>
 openagents inference serve [--model <id>] [--backend auto|metal|cpu|cuda] [--port <n>]
 openagents inference status
 openagents inference stop
+openagents inference unload
 openagents inference doctor
 ```
 
@@ -251,8 +252,9 @@ through `map.done`.
 Tokenizer, mmap/Metal, context, prefill, decode (`--until gen.done`).
 Stage 3 still owns mmap. OpenAgents issue 344 is `inference run` through
 `map.done`. Issues 345–347 (Coder TUI load UI, unload, memory) sit on
-top of `map.done` and run in parallel with generate. Implementation has
-not started.
+top of `map.done` and run in parallel with generate. Those three landed
+(`inference unload`, `status --json` memory fields, Coder `/load` and
+`/unload`). Generate (`ctx.done` through `gen.done`) is still open.
 
 Model store, `add`/`models`/`doctor`. Optional loopback `serve` if it is
 cheaper than a second API.

@@ -473,6 +473,11 @@ pub struct CoderUi {
     /// feedback lives here rather than in the transcript — a copy is an
     /// action's result, not something anyone said.
     pub toast: Option<(String, u64)>,
+    /// Latest in-process GGUF load/unload message (CLI.md wording). Status
+    /// row / activity line, not a transcript entry.
+    pub load_line: Option<String>,
+    /// Compact mmap/Metal/RSS readout while weights are loaded.
+    pub memory_line: Option<String>,
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -578,6 +583,8 @@ impl CoderUi {
             cursor: None,
             selection: crate::coder::selection::SelectionState::default(),
             toast: None,
+            load_line: None,
+            memory_line: None,
         }
     }
 
@@ -838,6 +845,13 @@ impl CoderUi {
             all_lines.extend(lines);
         }
 
+        if let Some(line) = self.load_line.as_deref().filter(|line| !line.is_empty()) {
+            all_lines.push(Line::from(Span::styled(
+                line.to_string(),
+                style.fg(DIM_TEXT_COLOR),
+            )));
+        }
+
         if self.loading {
             let spinner = SPINNER_FRAMES[self.tick as usize % SPINNER_FRAMES.len()];
             let stopwatch = self.stopwatch_text();
@@ -1024,6 +1038,13 @@ impl CoderUi {
         if !self.activity.is_empty() {
             let separator = if balance.is_empty() { "" } else { " · " };
             let candidate = format!("{balance}{separator}{}", self.activity);
+            if fits_left(&candidate) {
+                balance = candidate;
+            }
+        }
+        if let Some(memory) = self.memory_line.as_deref().filter(|line| !line.is_empty()) {
+            let separator = if balance.is_empty() { "" } else { " · " };
+            let candidate = format!("{balance}{separator}{memory}");
             if fits_left(&candidate) {
                 balance = candidate;
             }
