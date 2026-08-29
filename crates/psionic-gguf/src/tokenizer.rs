@@ -60,7 +60,9 @@ pub fn render_chat(prompt: &str, template: Option<&str>) -> String {
 }
 
 fn qwen_user_wrap(prompt: &str) -> String {
-    format!("<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n")
+    // Ollama / this GGUF Jinja default `enable_thinking` to true, so the
+    // assistant turn opens with `<think>\n`.
+    format!("<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n")
 }
 
 impl TokenizerTables {
@@ -119,11 +121,16 @@ enum Span<'a> {
 fn specials_longest(tokens: &[String]) -> Vec<String> {
     let mut specials: Vec<String> = tokens
         .iter()
-        .filter(|t| t.starts_with("<|") && t.ends_with("|>"))
+        .filter(|t| is_special_token(t))
         .cloned()
         .collect();
     specials.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
     specials
+}
+
+fn is_special_token(token: &str) -> bool {
+    (token.starts_with("<|") && token.ends_with("|>"))
+        || (token.starts_with('<') && token.ends_with('>') && token.len() >= 3)
 }
 
 fn split_specials<'a>(text: &'a str, specials: &[String]) -> Vec<Span<'a>> {
@@ -282,6 +289,7 @@ mod tests {
                 "hello".into(),
                 "assistant".into(),
                 "Ċ".into(),
+                "<think>".into(),
             ],
             merges: vec![],
         };
@@ -289,8 +297,29 @@ mod tests {
         let ids = tok.encode(&rendered).unwrap();
         assert_eq!(
             ids,
-            vec![0, 2, 5, 3, 1, 5, 0, 4, 5],
-            "wrap must be specials + user + Ċ + hello + …, got {ids:?}"
+            vec![0, 2, 5, 3, 1, 5, 0, 4, 5, 6, 5],
+            "wrap must match Ollama thinking-on prompt, got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn twenty_seven_b_hello_prompt_ids_match_ollama_when_blob_present() {
+        let Ok(home) = std::env::var("HOME") else {
+            return;
+        };
+        let path = std::path::PathBuf::from(home).join(
+            ".ollama/models/blobs/sha256-2bb22714289826d7b9e0ba376c3ce47d08bce39abe598745857c44d88c09bdbf",
+        );
+        if !path.is_file() {
+            return;
+        }
+        let meta = crate::parse_path(&path).unwrap();
+        let tok = load_tokenizer(&meta).unwrap();
+        let ids = tok.encode(&render_chat("hello", None)).unwrap();
+        assert_eq!(
+            ids,
+            vec![248045, 846, 198, 14556, 248046, 198, 248045, 74455, 198, 248068, 198],
+            "prompt IDs must match Ollama context[:11], got {ids:?}"
         );
     }
 }

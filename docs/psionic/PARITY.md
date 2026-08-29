@@ -2,8 +2,8 @@
 
 - Class: owner-accepted compare contract
 - Status: accepted 2026-08-29; bench landed (#361). Hybrid CPU graph
-  (#357) and tokenizer specials (#359) land in this wave. Metal tok/s
-  (#358) is still open.
+  quality holdout landed (#357). Tokenizer specials (#359) still have
+  remaining chat/template work. Metal tok/s (#358) is still open.
 - Ledger: [INTENT.md](./INTENT.md), [PLAN.md](./PLAN.md), [CLI.md](./CLI.md)
 - Ollama reference: [OLLAMA_INFERENCE_PIPELINE.md](./OLLAMA_INFERENCE_PIPELINE.md)
 - Decoder math: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_INFERENCE_PIPELINE.md)
@@ -41,9 +41,9 @@ Do not check the blob into git. Do not put 27B weights in CI.
 
 `graph` is `qwen35_hybrid` when `blk.0.ffn_down.weight` exists (27B
 and the hybrid fixture). The four-tensor CI file stays `embed_lmhead`.
-Do not publish a quality-parity sentence until a 27B greedy holdout
-matches Ollama token IDs. The CPU hybrid is the quality graph, not
-the speed path.
+27B greedy `hello` first 32 token IDs match Ollama
+([2026-08-29-hybrid-holdout.md](./2026-08-29-hybrid-holdout.md)).
+The CPU hybrid is the quality graph, not the speed path.
 
 ## Compare axes
 
@@ -76,7 +76,7 @@ Stdout is one JSON object. Teach lines stay on stderr.
 
 | Issue | Unlocks |
 | --- | --- |
-| [#357](https://openagents.com/OpenAgentsInc/openagents/issues/357) | Hybrid graph (quality) |
+| [#357](https://openagents.com/OpenAgentsInc/openagents/issues/357) | Hybrid graph (quality). **Holdout recorded.** |
 | [#358](https://openagents.com/OpenAgentsInc/openagents/issues/358) | Metal GEMM (speed) |
 | [#359](https://openagents.com/OpenAgentsInc/openagents/issues/359) | Chat template / tokenize parity |
 | [#360](https://openagents.com/OpenAgentsInc/openagents/issues/360) | Explicit sampling |

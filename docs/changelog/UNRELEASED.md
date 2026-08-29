@@ -5,6 +5,35 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI source version is 0.2.0-rc.21
+
+- issues: #357
+- commits: this change
+- contracts-specs: producer name `X.Y.Z-rc.N`
+- invariants: published `<version, platform>` objects stay immutable
+- evidence: `docs/psionic/2026-08-29-hybrid-holdout.md`;
+  `twenty_seven_b_hello_prompt_ids_match_ollama_when_blob_present`
+- lane: cursor session 7822942d
+
+The `openagents-cli` crate is `0.2.0-rc.21`. rc.20 is published and
+immutable. This line is the 27B greedy holdout wrap (`<think>`) and
+the recorded 32-token ID match vs Ollama.
+
+## 27B greedy holdout matches Ollama (#357)
+
+- issues: #357
+- commits: this change
+- contracts-specs: `docs/psionic/PARITY.md`; `docs/psionic/CLI.md`
+- invariants: no `--local` flip; slice 9–10 teach ids unchanged
+- evidence: `docs/psionic/2026-08-29-hybrid-holdout.md`;
+  `hybrid_fixture_greedy_is_deterministic`;
+  `twenty_seven_b_hello_prompt_ids_match_ollama_when_blob_present`
+- lane: cursor session 7822942d
+
+Chat wrap follows Ollama thinking-on (11 prompt IDs). `--json`
+`prompt.done` includes `ids`. First 32 generated IDs on `hello` match
+Ollama `qwen3.8:27b-mtp-q8_0`. Speed remains #358.
+
 ## CLI source version is 0.2.0-rc.20
 
 - issues: #357, #359

@@ -231,9 +231,10 @@ executor still completes first, either fix it in the imported crate or refuse
 Coder interactive mode until it streams.
 
 OpenAgents issues 344–347 and 352–356 landed load through fixture
-`gen.done`. The next queue is [PARITY.md](./PARITY.md): hybrid decode
-(#357), Metal tok/s (#358), tokenizer (#359), sampling (#360), bench
-(#361), then `--model psionic:` (stage 4, #362).
+`gen.done`. Hybrid quality (#357) recorded a 27B greedy 32-token match
+vs Ollama. The next queue is [PARITY.md](./PARITY.md): Metal tok/s
+(#358), remaining tokenizer work (#359), sampling (#360), then
+`--model psionic:` (stage 4, #362). Bench (#361) already landed.
 
 ## Stages
 

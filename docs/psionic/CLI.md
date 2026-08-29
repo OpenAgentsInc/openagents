@@ -429,6 +429,9 @@ Print KV and GDN separately. Formulas: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_I
 | `prompt.tokenize` | `Tokenizing prompt` |
 | `prompt.done` | `Prompt is {n} tokens` |
 
+`--json` `prompt.done` may also carry `n` and `ids` (the token ID
+list). The id stays `prompt.done`.
+
 | id | Fail message |
 | --- | --- |
 | `prompt.fail.empty` | `No prompt given; pass --prompt` |
@@ -439,6 +442,7 @@ Print KV and GDN separately. Formulas: [QWEN38_INFERENCE_PIPELINE.md](./QWEN38_I
 | id | Message |
 | --- | --- |
 | `prefill.start` | `Prefill starting` |
+| `graph.hybrid` | `Decoder graph is qwen35 hybrid` (hybrid files only) |
 | `prefill.pos` | `Prefill position {i}/{n}` |
 | `prefill.done` | `Prefill complete` |
 

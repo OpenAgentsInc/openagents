@@ -1114,8 +1114,11 @@ fn continue_prompt(walk: &Walk, meta: &psionic_gguf::GgufMeta) -> Result<(), Inf
             return Err(InferenceExit::Failed);
         }
     };
-    walk.printer
-        .ok("prompt.done", &format!("Prompt is {} tokens", tokens.len()));
+    walk.printer.ok_extra(
+        "prompt.done",
+        &format!("Prompt is {} tokens", tokens.len()),
+        json!({ "n": tokens.len(), "ids": tokens }),
+    );
     if let Some(times) = &walk.times {
         if let Ok(mut t) = times.lock() {
             t.prompt_tokens = tokens.len() as u64;

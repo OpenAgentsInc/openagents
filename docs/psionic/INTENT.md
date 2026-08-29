@@ -105,9 +105,10 @@ can instead:
    multi-round tool turn **inside this process**.
 3. See engine, backend, and artifact digest recorded in ATIF.
 
-Until #357 and #358 land, success for each slice is still the
-[CLI.md](./CLI.md) `--until` statuses. Quality and tok/s vs Ollama are
-[PARITY.md](./PARITY.md), not a public claim.
+#357 quality holdout landed (27B greedy `hello` first 32 IDs match
+Ollama). Until #358 lands, tok/s vs Ollama is still
+[PARITY.md](./PARITY.md), not a public speed claim. Slice statuses
+remain [CLI.md](./CLI.md).
 
 That is the product. Broader Psionic-in-the-harness work rides on
 `openagents psionic` after this lane works.

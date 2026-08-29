@@ -100,8 +100,8 @@ also has a *feed-forward network* (FFN).
 **Status:** Facts implemented in Psionic R1. OpenAgents admits
 architecture `qwen35` and has mapped the development Ollama
 `qwen3.8:27b-mtp-q8_0` blob in-process (`Weights ready`, 27.1 GiB
-mapped, RSS ~184 MiB). It has not bound a content-addressed store
-copy or a generate loop.
+mapped, RSS ~184 MiB). Hybrid generate is in-process (#357 holdout
+recorded). Content-addressed store copy is still later.
 
 ## Primitive: tensor
 

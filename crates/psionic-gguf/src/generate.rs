@@ -136,7 +136,7 @@ fn matvec_q8(src: &[u8], x: &[f32]) -> Option<Vec<f32>> {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
-        .clamp(1, 8);
+        .clamp(1, 16);
     if rows < 64 || threads == 1 {
         for (r, slot) in out.iter_mut().enumerate() {
             *slot = q8_row_dot(src, r, row_bytes, blocks, width, x);
