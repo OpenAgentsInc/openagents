@@ -13,19 +13,32 @@
 # Anything this script emits that disagrees with those three shapes is a broken
 # release, so the names are derived here once and never spelled twice.
 #
+# Producer version grammar (stricter than the installer consumer grammar):
+#   stable  X.Y.Z
+#   RC      X.Y.Z-rc.N     N is a decimal integer with no leading zeros
+# `0.2.0-rc8`, `0.2.0-rc8.12`, `rc.8`, and `rc8` are refused. A published
+# <version, platform> pair is immutable; a new build of the same line takes
+# the next rc.N.
+#
 # Usage:
 #   ops/release-cli.sh --version 0.1.0-rc.1
 #   ops/release-cli.sh --version 0.1.0-rc.1 --publish
 #   ops/release-cli.sh --version 0.1.0 --publish --channel stable
 #
 # Options:
-#   --version X.Y.Z[-suffix]  Required. The version to build and name.
+#   --version X.Y.Z or X.Y.Z-rc.N
+#                             Required. The version to build and name.
 #   --targets "a b c"         Platforms to attempt. Defaults to all seven.
 #   --publish                 Upload to the release bucket. Off by default.
+#                             Runs the Cargo completion gate first unless
+#                             OPENAGENTS_CLI_RELEASE_GATE=passed.
 #   --channel NAME            Point a channel at this version after publishing.
 #   --allow-partial           Publish even though some platforms are missing.
+#                             Use this for an Apple-aarch64-only RC.
 #   --allow-prerelease-channel  Let a prerelease version claim a channel.
 #   --skip-notarization       Build macOS artifacts without Apple notarization.
+#   --skip-tests              Skip the Cargo completion gate. Refused with
+#                             --publish.
 
 set -eu
 
@@ -64,6 +77,7 @@ channel=''
 allow_partial=0
 allow_prerelease_channel=0
 skip_notarization=0
+skip_tests=0
 
 bucket=${OPENAGENTS_RELEASES_BUCKET:-openagentsgemini-cli-releases}
 gcloud_config=${CLOUDSDK_CONFIG:-/Users/christopherdavid/work/.secrets/gcloud-sa-config}
@@ -88,22 +102,71 @@ while [ $# -gt 0 ]; do
     --allow-partial) allow_partial=1; shift ;;
     --allow-prerelease-channel) allow_prerelease_channel=1; shift ;;
     --skip-notarization) skip_notarization=1; shift ;;
-    -h | --help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --skip-tests) skip_tests=1; shift ;;
+    -h | --help) sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
 
 [ -n "$version" ] || die "--version is required"
 
-# The same grammar the installer applies to its argument. A version this script
-# accepts but the installer rejects would publish an artifact nobody can ask for.
-printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?$' ||
-  die "invalid version: $version (expected X.Y.Z or X.Y.Z-suffix)"
+# Producer grammar. Stable is X.Y.Z. An RC is X.Y.Z-rc.N only: the hyphen,
+# the literal `rc`, a dot, and a decimal integer with no leading zeros.
+# The installer still accepts a broader suffix so already-published names
+# such as 0.2.0-rc7 remain fetchable; this script will not mint another.
+printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.(0|[1-9][0-9]*))?$' ||
+  die "invalid version: $version (expected X.Y.Z or X.Y.Z-rc.N)"
 
 case "$version" in
   *-*) prerelease=1 ;;
   *) prerelease=0 ;;
 esac
+
+if [ "$publish" = 1 ] && [ "$skip_tests" = 1 ]; then
+  die "--skip-tests is refused with --publish; run the Cargo completion gate, or set OPENAGENTS_CLI_RELEASE_GATE=passed after it has passed"
+fi
+
+# Source, lockfile, and changelog must already name this version. A binary
+# published as 0.2.0-rc.8 whose crate still says 0.2.0-rc7 is a release
+# nobody can rebuild from the tree that claims to have produced it. These
+# checks run before any build so a bad name never writes artifacts.
+crate_manifest="$repo_root/crates/openagents-cli/Cargo.toml"
+[ -f "$crate_manifest" ] || die "missing $crate_manifest"
+crate_version=$(awk '
+  /^\[package\]/ { in_pkg = 1; next }
+  /^\[/ { in_pkg = 0 }
+  in_pkg && $1 == "version" && $2 == "=" {
+    gsub(/"/, "", $3)
+    print $3
+    exit
+  }
+' "$crate_manifest")
+[ -n "$crate_version" ] || die "could not read version from $crate_manifest"
+[ "$crate_version" = "$version" ] ||
+  die "crates/openagents-cli/Cargo.toml version is $crate_version, not $version"
+
+lockfile="$repo_root/Cargo.lock"
+[ -f "$lockfile" ] || die "missing $lockfile"
+lock_version=$(awk '
+  $0 == "name = \"openagents-cli\"" {
+    getline
+    if ($1 == "version" && $2 == "=") {
+      gsub(/"/, "", $3)
+      print $3
+      exit
+    }
+  }
+' "$lockfile")
+[ -n "$lock_version" ] || die "could not read openagents-cli version from $lockfile"
+[ "$lock_version" = "$version" ] ||
+  die "Cargo.lock package openagents-cli version is $lock_version, not $version"
+
+changelog="$repo_root/docs/changelog/UNRELEASED.md"
+if [ -f "$changelog" ]; then
+  if ! grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._]+)?' "$changelog" | grep -qx "$version"; then
+    die "docs/changelog/UNRELEASED.md does not name release $version"
+  fi
+fi
 
 [ -n "$targets" ] || targets=$all_platforms
 
@@ -111,6 +174,22 @@ for command_name in cargo file shasum; do
   command -v "$command_name" >/dev/null 2>&1 ||
     die "$command_name is required to build a release"
 done
+
+# A publish is a release of this tree. The operator must have run
+# `cargo fmt --all -- --check` then `cargo test --workspace`. The script
+# re-runs that pair unless OPENAGENTS_CLI_RELEASE_GATE=passed records that
+# this session already did. --skip-tests cannot waive it on --publish.
+if [ "$publish" = 1 ]; then
+  if [ "${OPENAGENTS_CLI_RELEASE_GATE:-}" = "passed" ]; then
+    echo "Cargo completion gate: OPENAGENTS_CLI_RELEASE_GATE=passed"
+  else
+    echo "Running Cargo completion gate before publish"
+    (cd "$repo_root" && cargo fmt --all -- --check) ||
+      die "cargo fmt --all -- --check failed; refuse publish"
+    (cd "$repo_root" && cargo test --workspace) ||
+      die "cargo test --workspace failed; refuse publish"
+  fi
+fi
 
 dist="$repo_root/dist/releases/$version"
 rm -rf "$dist"

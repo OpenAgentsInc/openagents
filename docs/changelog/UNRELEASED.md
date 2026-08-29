@@ -5,6 +5,21 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## CLI release names are X.Y.Z or X.Y.Z-rc.N (#336)
+
+- issues: #336
+- commits: this change
+- contracts-specs: `ops/release-cli.sh` producer version grammar; source, lockfile, and changelog agreement; Cargo completion gate on `--publish`
+- invariants: a published `<version, platform>` object stays immutable; a new build takes the next `rc.N`
+- evidence: `ops/release-cli-version-test.sh`
+- lane: cursor session abb3a3ed
+
+`ops/release-cli.sh` refuses `0.2.0-rc8` and other suffix spellings. An RC is
+`X.Y.Z-rc.N` only. The crate, lockfile, and `UNRELEASED.md` must already name
+that version before a build starts. `--publish` runs the Cargo completion gate
+unless `OPENAGENTS_CLI_RELEASE_GATE=passed`. `--skip-tests` cannot waive it.
+`--allow-partial` remains the way to publish an Apple-aarch64-only RC.
+
 ## CLI source version is 0.2.0-rc7
 
 - issues: none (owner request: republish the rc channel with the #330 fix)

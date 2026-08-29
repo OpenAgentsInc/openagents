@@ -21,6 +21,34 @@ The platform strings are `macos-aarch64`, `macos-x86_64`, `linux-x86_64`,
 `linux-x86_64-musl`, `linux-aarch64`, `linux-aarch64-musl`, and
 `windows-x86_64`.
 
+## Version names
+
+`--version` is the published name. The script accepts only two shapes:
+
+| Kind | Form | Example |
+| --- | --- | --- |
+| Stable | `X.Y.Z` | `0.2.0` |
+| Release candidate | `X.Y.Z-rc.N` | `0.2.0-rc.8` |
+
+`N` is a decimal integer with no leading zeros. The script refuses `rc8`,
+`rc.8`, `0.2.0-rc8`, `0.2.0-rc8.12`, and any other suffix. Already-published
+names such as `0.2.0-rc7` remain fetchable by the installer; this script will
+not mint another.
+
+A published `<version, platform>` object is immutable. A new build of the same
+line takes the next `rc.N`. Do not rebuild `0.2.0-rc.8` to fix a binary;
+publish `0.2.0-rc.9`.
+
+`--version` must already be the `openagents-cli` version in
+`crates/openagents-cli/Cargo.toml` and in `Cargo.lock`, and
+`docs/changelog/UNRELEASED.md` must name that exact release. The checks run
+before any compile, so a mismatched name never writes artifacts.
+
+`--publish` also requires the Cargo completion gate:
+`cargo fmt --all -- --check` then `cargo test --workspace`. The script runs
+that pair unless `OPENAGENTS_CLI_RELEASE_GATE=passed` records that this
+session already did. `--skip-tests` is refused with `--publish`.
+
 Three details of that contract are easy to get wrong, so the script derives
 each rather than leaving it to a human:
 
@@ -113,10 +141,15 @@ ops/release-cli.sh --version 0.1.0 --publish --channel stable
 
 ### Publish one Mac first
 
-You can publish the Apple Silicon artifact, test the public installer, and add
-the other six platforms without changing the tested Mac binary:
+An Apple-aarch64-only RC is a partial release. Pass `--allow-partial` so the
+script uploads that one platform instead of refusing the missing six. You can
+then test the public installer and add the other platforms without changing
+the tested Mac binary:
 
 ```sh
+ops/release-cli.sh --version 0.2.0-rc.8 \
+  --targets "macos-aarch64" --publish --allow-partial --allow-prerelease-channel
+
 ops/release-cli.sh --version 0.1.0 \
   --targets "macos-aarch64" --publish --allow-partial
 
@@ -134,6 +167,19 @@ you need to replace a published target.
 ## What the script refuses
 
 Each refusal exists because the failure it prevents is silent.
+
+**A version that is not `X.Y.Z` or `X.Y.Z-rc.N`.** `0.2.0-rc8` and `rc8`
+look like release candidates and are not. The next RC of a line is the next
+integer `N`, never a rebuild of a name that already left the bucket.
+
+**A `--version` that the source tree does not already carry.** The crate
+manifest, `Cargo.lock`, and `docs/changelog/UNRELEASED.md` must name the
+same version. Threading `OPENAGENTS_CLI_RELEASE_VERSION` does not replace
+that agreement.
+
+**A publish without the Cargo completion gate.** `--publish` runs
+`cargo fmt --all -- --check` and `cargo test --workspace` unless
+`OPENAGENTS_CLI_RELEASE_GATE=passed`. `--skip-tests` cannot waive that.
 
 **A binary that does not match its platform name.** After every build the
 script reads the produced file's actual Mach-O, ELF, or PE header and compares
