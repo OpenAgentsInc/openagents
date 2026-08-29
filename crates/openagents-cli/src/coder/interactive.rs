@@ -101,13 +101,16 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     // (#338). The refusal below is for an interactive Coder with nothing to
     // run, not for `--prompt`. (Session registration happens inside
     // `run_one_shot`, so the swarm still sees exactly one registration.)
-    match session_boot(options.prompt.as_deref(), atty_is_terminal()) {
+    // Clone the prompt before the match: `SessionBoot::OneShot` borrows it,
+    // and the one-shot path then moves `options` into `run_one_shot`.
+    let prompt = options.prompt.clone();
+    match session_boot(prompt.as_deref(), atty_is_terminal()) {
         SessionBoot::RefuseNoTty => {
             println!("Non-interactive terminal detected. Run `openagents` from a terminal.");
             return Ok(());
         }
-        SessionBoot::OneShot(prompt) => {
-            return run_one_shot(options, prompt.to_string()).await;
+        SessionBoot::OneShot(_) => {
+            return run_one_shot(options, prompt.expect("OneShot means a prompt was set")).await;
         }
         SessionBoot::FullScreen => {
             // A TTY with a prompt keeps the full-screen path: the reader
