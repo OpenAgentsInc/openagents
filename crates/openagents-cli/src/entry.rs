@@ -61,12 +61,14 @@ Coder options:
                      if none is running. Prefers port 4100; if that is
                      taken, binds 4101. Production origin is unchanged
                      without --dev. Optional: OPENAGENTS_CODER_API_BIN.
-  --lane <name>      Which model answers. `flash`, `pro`, and `free` are the
-                     switchable lanes, and shift+tab moves between them; each
-                     resolves its model from GET /api/v1/models at open.
-                     `pro` is Coder Pro (Sol Medium: gpt-5.6-sol, reasoning
-                     medium). `local` or `ollama:<model>` answers from this
-                     machine; any other name is a catalog id, checked against
+  --lane <name>      Which model answers. `flash`, `pro`, `nitro`, and `free`
+                     are the switchable lanes, and shift+tab moves between
+                     them; each resolves its model from GET /api/v1/models at
+                     open. `pro` is Coder Pro (Sol Medium: gpt-5.6-sol,
+                     reasoning medium). `nitro` is the Nitro door: an Open
+                     Responses server on this machine
+                     (OPENAGENTS_NITRO_ORIGIN, default 127.0.0.1:4200).
+                     `local` or `ollama:<model>` answers from this machine; any other name is a catalog id, checked against
                      GET /api/v1/models, and refused if it is not served.
                      Defaults to `flash`.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to
@@ -90,6 +92,8 @@ Environment:
   OPENAGENTS_API_KEY    The credential to spend. Optional for `--dev`.
   OPENAGENTS_PRO_ORIGIN Production Pro origin. Default https://pro.openagents.com.
   OPENAGENTS_PRO_API_KEY  Bearer for the Pro door in production.
+  OPENAGENTS_NITRO_ORIGIN  The Nitro door origin. Default http://127.0.0.1:4200.
+  OPENAGENTS_NITRO_API_KEY  Bearer for the Nitro door, when it runs with a key.
   OPENAGENTS_CODER_API_BIN
                       Path to the local `openagents-coder-api` binary for `--dev`.
   ACP_REGISTRY          Where the `delegate` tool looks for installed external

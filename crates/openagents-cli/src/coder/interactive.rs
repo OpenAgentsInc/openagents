@@ -337,7 +337,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             "Local chats stay on this machine. --cloud-history does not upload a local session.",
         ));
     }
-    if !has_account && !lane.is_local() && !options.dev {
+    if !has_account && !lane.is_local() && !lane.uses_nitro_origin() && !options.dev {
         ui.entries
             .push(Entry::new(Role::Notice, HOSTED_NEEDS_SIGN_IN));
     }
@@ -1155,7 +1155,7 @@ async fn run_one_shot(
         eprintln!("Coder: swarm registration failed: {why}");
     }
 
-    if !options.dev && !lane.is_local() && !session.has_user_token() {
+    if !options.dev && !lane.is_local() && !lane.uses_nitro_origin() && !session.has_user_token() {
         eprintln!("{HOSTED_NEEDS_SIGN_IN}");
         let spent_line = tokio::time::timeout(REVOCATION_GRACE, session.finish())
             .await
@@ -2496,7 +2496,7 @@ async fn start_prompt(
 ) {
     if !dev {
         let live = session.lock().await;
-        if !live.lane().is_local() && !live.has_user_token() {
+        if !live.lane().is_local() && !live.lane().uses_nitro_origin() && !live.has_user_token() {
             drop(live);
             ui.entries
                 .push(Entry::new(Role::Notice, HOSTED_NEEDS_SIGN_IN));

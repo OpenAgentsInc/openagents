@@ -676,7 +676,10 @@ pub struct CoderArgs {
     )]
     pub child_ask: bool,
 
-    #[arg(long, help = "Target harness lane (e.g. flash, pro, free, local)")]
+    #[arg(
+        long,
+        help = "Target harness lane (e.g. flash, pro, nitro, free, local)"
+    )]
     pub lane: Option<String>,
 
     /// Pick the model a turn runs on by its catalog id.

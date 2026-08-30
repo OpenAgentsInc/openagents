@@ -534,6 +534,16 @@ pub const LANES: &[LaneSpec] = &[
         default_reasoning: Some("medium"),
     },
     LaneSpec {
+        name: "nitro",
+        label: "Coder Nitro",
+        // The Nitro door: an Open Responses server, local by default
+        // (`OPENAGENTS_NITRO_ORIGIN`). The catalog it serves decides what
+        // the lane runs; the demo door lists one echo model. Turns ride
+        // the Responses transport, which is the surface that door speaks.
+        candidates: &["nitro-echo-1"],
+        default_reasoning: None,
+    },
+    LaneSpec {
         name: "free",
         label: "Coder Free",
         // The OpenRouter lane. Inkling first, then whatever the deployment
@@ -597,6 +607,10 @@ pub enum Lane {
     Flash,
     /// The Pro door. Sol Medium (`gpt-5.6-sol` at reasoning `medium`).
     Pro,
+    /// The Nitro door: a local Open Responses server. Its catalog comes
+    /// from that server's `GET /api/v1/models`, and its turns ride the
+    /// Responses transport, which is the surface that door serves.
+    Nitro,
     /// The OpenRouter lane. Its ids come from [`LANES`] too.
     Free,
     /// A model id named directly, checked against `GET /api/v1/models`.
@@ -618,6 +632,7 @@ impl Lane {
             "" => Lane::default(),
             "flash" | "coder-flash" => Lane::Flash,
             "pro" | "coder-pro" => Lane::Pro,
+            "nitro" | "coder-nitro" => Lane::Nitro,
             "free" | "coder-free" => Lane::Free,
             // `gemini`, `gemini-3.7-flash`, `luna`, `gpt-5.6-luna`, `glm-5.3-flash`
             // stay unclaimed as tier aliases. A reader who types a model id
@@ -638,6 +653,7 @@ impl Lane {
         match self {
             Lane::Flash => lane_spec("flash"),
             Lane::Pro => lane_spec("pro"),
+            Lane::Nitro => lane_spec("nitro"),
             Lane::Free => lane_spec("free"),
             // The bare local lane is a table member now (#291): it cycles, and
             // its label comes from the table. A local lane *with a named
@@ -795,6 +811,7 @@ impl Lane {
         match self {
             Lane::Flash => "flash".to_string(),
             Lane::Pro => "pro".to_string(),
+            Lane::Nitro => "nitro".to_string(),
             Lane::Free => "free".to_string(),
             Lane::Named(id) => id.clone(),
             Lane::Local(model) if model.is_empty() => "local".to_string(),
@@ -814,6 +831,11 @@ impl Lane {
             Lane::Named(id) => is_pro_model_id(id),
             _ => false,
         }
+    }
+
+    /// True when this lane's catalog lives on the Nitro door.
+    pub fn uses_nitro_origin(&self) -> bool {
+        matches!(self, Lane::Nitro)
     }
 }
 
@@ -2523,7 +2545,7 @@ impl CoderRuntimeSession {
              reported an outcome.",
         ));
 
-        let answered = if self.use_openresponses {
+        let answered = if self.use_openresponses || self.lane.uses_nitro_origin() {
             self.run_responses_turn(chunk_callback).await
         } else if self.lane.is_local() {
             self.run_local_turn(chunk_callback).await
@@ -5007,7 +5029,13 @@ mod tests {
         assert_eq!(lane.cycle(), start, "the cycle does not close");
         assert_eq!(
             seen,
-            vec!["Coder Flash", "Coder Pro", "Coder Free", "Coder Local"]
+            vec![
+                "Coder Flash",
+                "Coder Pro",
+                "Coder Nitro",
+                "Coder Free",
+                "Coder Local"
+            ]
         );
     }
 
@@ -5016,9 +5044,17 @@ mod tests {
     fn the_cycle_skips_the_local_lane_when_the_probe_found_nothing() {
         let start = Lane::default();
         assert_eq!(start.cycle_gated(None), Lane::Pro);
-        assert_eq!(start.cycle_gated(None).cycle_gated(None), Lane::Free);
+        assert_eq!(start.cycle_gated(None).cycle_gated(None), Lane::Nitro);
         assert_eq!(
             start.cycle_gated(None).cycle_gated(None).cycle_gated(None),
+            Lane::Free
+        );
+        assert_eq!(
+            start
+                .cycle_gated(None)
+                .cycle_gated(None)
+                .cycle_gated(None)
+                .cycle_gated(None),
             start
         );
         // A session sitting on local when the gate is closed still moves; a
@@ -5034,6 +5070,7 @@ mod tests {
         let start = Lane::default();
         let tag = Some("qwen3.8:27b-mtp-q8_0".to_string());
         let local = start
+            .cycle_gated(tag.clone())
             .cycle_gated(tag.clone())
             .cycle_gated(tag.clone())
             .cycle_gated(tag.clone());

@@ -246,6 +246,18 @@ pub use crate::runtime::{PRO_MODEL_IDS, ServedModel, is_pro_model_id};
 /// Production origin for Pro when no `--dev` base is set.
 pub const PRO_PRODUCTION_ORIGIN: &str = "https://pro.openagents.com";
 
+/// Production origin for Nitro when no `--dev` base is set. The door is a
+/// local server, so the default is loopback, not a hosted name.
+pub const NITRO_PRODUCTION_ORIGIN: &str = "http://127.0.0.1:4200";
+
+pub fn nitro_origin() -> String {
+    env::var("OPENAGENTS_NITRO_ORIGIN")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| NITRO_PRODUCTION_ORIGIN.to_string())
+}
+
 pub fn pro_origin() -> String {
     env::var("OPENAGENTS_PRO_ORIGIN")
         .ok()
@@ -277,6 +289,9 @@ pub fn api_base_for(lane: &Lane) -> String {
     if lane.uses_pro_origin() {
         return format!("{}/api/v1", pro_origin());
     }
+    if lane.uses_nitro_origin() {
+        return format!("{}/api/v1", nitro_origin());
+    }
     match crate::auth::resolve_endpoint(None, None) {
         Ok(endpoint) => format!("{}/api/v1", endpoint.origin),
         Err(_) => "https://openagents.com/api/v1".to_string(),
@@ -292,6 +307,20 @@ pub fn user_token() -> Option<String> {
 }
 
 pub fn user_token_for(lane: &Lane) -> Option<String> {
+    if lane.uses_nitro_origin()
+        && env::var("OPENAGENTS_BASE_URL").ok().is_none()
+        && env::var("OPENAGENTS_API_BASE").ok().is_none()
+    {
+        // The demo door admits without a bearer; a key configured on it is
+        // spent from the environment, the way the Pro door's is.
+        if let Ok(value) = env::var("OPENAGENTS_NITRO_API_KEY") {
+            let value = value.trim().to_string();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+        return None;
+    }
     if lane.uses_pro_origin()
         && env::var("OPENAGENTS_BASE_URL").ok().is_none()
         && env::var("OPENAGENTS_API_BASE").ok().is_none()

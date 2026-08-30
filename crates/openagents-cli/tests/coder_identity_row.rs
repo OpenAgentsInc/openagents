@@ -455,13 +455,15 @@ fn cycling_the_lane_changes_both_the_lane_and_the_row() {
     assert!(before.contains("Coder Flash"), "{before}");
     assert!(after.contains("Coder Pro"), "{after}");
 
-    // And it closes, back to where it started. Four table members now
-    // (#298), so the full walk is flash, pro, free, local (resolved to the
+    // And it closes, back to where it started. Five table members now,
+    // so the full walk is flash, pro, nitro, free, local (resolved to the
     // probed tag), flash. This frame has no probe, so the walk carries the
     // tag a probe would have found.
     let tag = Some("qwen3.8:27b-mtp-q8_0".to_string());
-    let free = second.cycle_gated(tag.clone());
-    assert_eq!(free, Lane::Free, "the walk reaches Coder Free after Pro");
+    let nitro = second.cycle_gated(tag.clone());
+    assert_eq!(nitro, Lane::Nitro, "the walk reaches Coder Nitro after Pro");
+    let free = nitro.cycle_gated(tag.clone());
+    assert_eq!(free, Lane::Free, "the walk reaches Coder Free after Nitro");
     let local = free.cycle_gated(tag.clone());
     assert_eq!(
         local,
