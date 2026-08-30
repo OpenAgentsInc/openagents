@@ -1654,11 +1654,15 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             // command. `--dev` names a server on this machine, and the global
             // `--api-url`/`--profile` still wins when both are given. Coder
             // Pro otherwise talks to the Pro door (#298).
+            let mut door = crate::coder_dev::DoorSpec::Threads;
             let session_base = if cli.api_url.is_some() || cli.profile.is_some() {
                 api_base.clone()
             } else if coder.dev {
                 match crate::coder_dev::ensure_running().await {
-                    Ok(api) => api.api_v1(),
+                    Ok(api) => {
+                        door = api.spec;
+                        api.api_v1()
+                    }
                     Err(error) => fail(&error.to_string()),
                 }
             } else {
@@ -1748,10 +1752,12 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         token,
                         repository,
                         resumed,
+                        door,
                     )
                     .await?;
                 } else if coder.headless {
-                    run_headless_coder(coder, &session_base, token, repository, resumed).await?;
+                    run_headless_coder(coder, &session_base, token, repository, resumed, door)
+                        .await?;
                 } else {
                     crate::interactive::run_tui(coder, session_base, token, repository, resumed)
                         .await?;
@@ -4898,6 +4904,7 @@ async fn run_headless_coder(
     token: Option<String>,
     repository: Option<String>,
     resumed: Option<crate::resume::Resumption>,
+    door: crate::coder_dev::DoorSpec,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(prompt) = coder
         .prompt
@@ -4937,7 +4944,8 @@ async fn run_headless_coder(
         Some(api_base.to_string()),
         token,
         tools,
-    );
+    )
+    .use_openresponses(door == crate::coder_dev::DoorSpec::OpenResponses);
     runtime.reasoning = coder
         .reasoning
         .clone()

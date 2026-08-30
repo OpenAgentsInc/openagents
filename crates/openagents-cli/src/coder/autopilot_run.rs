@@ -12,6 +12,7 @@ use std::sync::atomic::AtomicBool;
 
 use crate::cli::{CoderArgs, fail};
 use crate::coder::autopilot::{AutopilotState, StopConditions, StopReason};
+use crate::coder_dev::DoorSpec;
 use crate::runtime::{CoderRuntimeSession, Lane};
 use crate::tools::{DelegationGate, HarnessToolRegistry};
 
@@ -22,6 +23,7 @@ pub async fn run(
     token: Option<String>,
     repository: Option<String>,
     resumed: Option<crate::resume::Resumption>,
+    door: DoorSpec,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !coder.autopilot && coder.dry_run {
         fail("--dry-run is an Autopilot flag. Try `openagents coder --autopilot --dry-run`.");
@@ -74,7 +76,8 @@ pub async fn run(
     .allowing_plugin_mounts();
 
     let mut runtime = CoderRuntimeSession::new(lane.clone(), Some(api_base), token, tools)
-        .with_cloud_history(false);
+        .with_cloud_history(false)
+        .use_openresponses(door == DoorSpec::OpenResponses);
     runtime.reasoning = coder
         .reasoning
         .clone()
