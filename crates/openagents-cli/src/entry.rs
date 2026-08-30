@@ -284,6 +284,7 @@ async fn run_coder(arguments: &[String]) -> Result<(), Box<dyn std::error::Error
                 unsafe {
                     env::set_var("OPENAGENTS_API_URL", &api.origin);
                     env::set_var("OPENAGENTS_BASE_URL", api.api_v1());
+                    env::set_var(crate::coder_dev::SPEC_ENV, api.spec.as_str());
                     if let Some(token) = existing {
                         env::set_var("OPENAGENTS_API_KEY", token);
                     }

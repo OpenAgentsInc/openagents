@@ -1110,7 +1110,7 @@ async fn run_one_shot(
         &lane_name,
         reasoning.clone(),
         agents,
-        false,
+        crate::coder_dev::door_speaks_openresponses(),
         tx.clone(),
     );
     // Kept before the store moves into the session: the swarm registration
@@ -1326,7 +1326,7 @@ fn attach_session(
         lane_name,
         reasoning.clone(),
         agents.to_vec(),
-        false,
+        crate::coder_dev::door_speaks_openresponses(),
         tx.clone(),
     );
     opened = match local_store.take() {
