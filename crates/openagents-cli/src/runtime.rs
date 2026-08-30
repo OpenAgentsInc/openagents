@@ -537,10 +537,10 @@ pub const LANES: &[LaneSpec] = &[
         name: "nitro",
         label: "Coder Nitro",
         // The Nitro door: an Open Responses server, local by default
-        // (`OPENAGENTS_NITRO_ORIGIN`). The catalog it serves decides what
-        // the lane runs; the demo door lists one echo model. Turns ride
-        // the Responses transport, which is the surface that door speaks.
-        candidates: &["nitro-echo-1"],
+        // (`OPENAGENTS_NITRO_ORIGIN`). Gemini first when the door's catalog
+        // serves it; the echo demo answers when it does not. Turns ride the
+        // Responses transport, which is the surface that door speaks.
+        candidates: &["gemini-3.7-flash", "nitro-echo-1"],
         default_reasoning: None,
     },
     LaneSpec {
