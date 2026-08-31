@@ -34,6 +34,10 @@ claimed_at: 2026-08-29T17:15:00Z
    Psionic working as first-class Linux software.
 5. [OPEN-QUESTIONS.md](./OPEN-QUESTIONS.md) — open questions and research
    avenues.
+6. [RESEARCH-LOG-2026-08-31.md](./RESEARCH-LOG-2026-08-31.md) — dated log:
+   the first Phase 0 work (Linux CLI build + Ollama integration on the RTX
+   4080 box, and the systematic Ollama coding-model benchmark), with what to
+   do once that run succeeds.
 
 ## Related OpenAgents documents
 
@@ -67,5 +71,5 @@ its skills, auto-approve defaults, or Arch packaging as OpenAgents policy.
 | Research dossier | this folder |
 | ProductSpec under `specs/` | not written |
 | Issue / work packet for an ISO | none |
-| Linux CLI first-class program | proposed here; not claimed as implementation |
+| Linux CLI first-class program | proposed here; **Phase 0 started 2026-08-31** on the RTX 4080 Linux box — see [RESEARCH-LOG-2026-08-31.md](./RESEARCH-LOG-2026-08-31.md) |
 | Substrate (Arch / Nix / Guix / new) | open; see [SUBSTRATE.md](./SUBSTRATE.md) |
