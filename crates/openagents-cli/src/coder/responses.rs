@@ -19,14 +19,23 @@ const SUMMARY_LIMIT: usize = 120;
 /// Command-line arguments for `openagents responses`.
 #[derive(Args, Debug)]
 pub struct ResponsesArgs {
-    /// Prompt to send to the Coder Responses endpoint.
-    pub prompt: String,
+    /// Prompt to send to the Coder Responses endpoint. A reconnect with
+    /// `--response` takes no prompt: the server refuses new input alongside
+    /// `previous_response_id`.
+    #[arg(required_unless_present = "response")]
+    pub prompt: Option<String>,
 
     /// Coder origin to post to. Defaults to the hosted Coder service.
     #[arg(long)]
     pub origin: Option<String>,
 
-    /// Continue an existing response. Sent as `previous_response_id`.
+    /// Repository the run works in. Sent as `workspace.repository`; a new
+    /// run needs one, and the server refuses a repository outside the
+    /// caller's reach.
+    #[arg(long, value_name = "URL")]
+    pub repo: Option<String>,
+
+    /// Reconnect to an existing response. Sent as `previous_response_id`.
     #[arg(long = "response", value_name = "ID")]
     pub response: Option<String>,
 
@@ -48,11 +57,18 @@ pub async fn run(args: ResponsesArgs) -> Result<(), reqwest::Error> {
     let token = crate::auth::CredentialStore::for_origin(&origin).get_token();
     let client = Client::new(origin, token);
 
-    let mut body = json!({
-        "input": [{"type": "message", "role": "user", "content": args.prompt}]
-    });
-    if let Some(id) = &args.response {
-        body["previous_response_id"] = json!(id);
+    // A reconnect names the response and carries no input: the server
+    // refuses new input alongside `previous_response_id`.
+    let mut body = match (&args.response, &args.prompt) {
+        (Some(id), _) => json!({ "previous_response_id": id }),
+        (None, Some(prompt)) => json!({
+            "input": [{"type": "message", "role": "user", "content": prompt}]
+        }),
+        // clap enforces a prompt when no response is named.
+        (None, None) => unreachable!("clap requires a prompt without --response"),
+    };
+    if let Some(repo) = &args.repo {
+        body["workspace"] = json!({ "repository": repo });
     }
     if let Some(seq) = args.starting_after {
         body["starting_after"] = json!(seq);
