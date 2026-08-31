@@ -47,6 +47,7 @@ Commands:
   forum       Manage forum boards and topics
   memory      Manage account memory
   api         Invoke an OpenAgents API route
+  mcp         Connect to a Coder Cloud MCP server
   plugin      Manage capability plugins
   inference   Local GGUF load and in-process inference
   psionic     Psionic library harness
@@ -96,6 +97,7 @@ Environment:
   OPENAGENTS_NITRO_API_KEY  Bearer for the Nitro door, when it runs with a key.
   OPENAGENTS_CODER_API_BIN
                       Path to the local `openagents-coder-api` binary for `--dev`.
+  OPENAGENTS_MCP_URL  Coder MCP endpoint. The `--endpoint` flag takes precedence.
   ACP_REGISTRY          Where the `delegate` tool looks for installed external
                         agents (cursor, devin, opencode, ...).
 
@@ -288,6 +290,7 @@ async fn run_coder(arguments: &[String]) -> Result<(), Box<dyn std::error::Error
                 unsafe {
                     env::set_var("OPENAGENTS_API_URL", &api.origin);
                     env::set_var("OPENAGENTS_BASE_URL", api.api_v1());
+                    env::set_var(crate::coder_dev::SPEC_ENV, api.spec.as_str());
                     if let Some(token) = existing {
                         env::set_var("OPENAGENTS_API_KEY", token);
                     }

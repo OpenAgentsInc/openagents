@@ -20,8 +20,38 @@ use tokio::time::sleep;
 const PREFERRED: u16 = 4100;
 const FALLBACK: u16 = 4101;
 
+/// The contract a door serves.
+///
+/// `openagents-coder-api` serves the thread/grant/proxy hop; `nitro` serves
+/// Open Responses on `/responses` and has no threads to open. The turn has to
+/// know which one it is talking to before it sends anything.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DoorSpec {
+    Threads,
+    OpenResponses,
+}
+
+/// The environment name that carries [`DoorSpec`] to the session that opens
+/// after `--dev` resolves the door, alongside the origin it already sets.
+pub const SPEC_ENV: &str = "OPENAGENTS_DOOR_SPEC";
+
+impl DoorSpec {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Threads => "threads",
+            Self::OpenResponses => "open-responses",
+        }
+    }
+}
+
+/// Whether the door this process talks to serves Open Responses.
+pub fn door_speaks_openresponses() -> bool {
+    env::var(SPEC_ENV).map(|value| value.trim() == DoorSpec::OpenResponses.as_str()) == Ok(true)
+}
+
 pub struct DevApi {
     pub origin: String,
+    pub spec: DoorSpec,
 }
 
 impl DevApi {
@@ -32,14 +62,22 @@ impl DevApi {
 
 /// Ensure a local Coder inference door is listening. Starts one if needed.
 pub async fn ensure_running() -> Result<DevApi, Box<dyn std::error::Error>> {
-    if let Some(origin) = already_ours(PREFERRED).await {
-        eprintln!("coder-api already running at {origin}");
-        return Ok(DevApi { origin });
+    if let Some(door) = already_ours(PREFERRED).await {
+        eprintln!(
+            "{} door already running at {}",
+            door.spec.as_str(),
+            door.origin
+        );
+        return Ok(door);
     }
     let port = if port_occupied(PREFERRED).await {
-        if let Some(origin) = already_ours(FALLBACK).await {
-            eprintln!("coder-api already running at {origin}");
-            return Ok(DevApi { origin });
+        if let Some(door) = already_ours(FALLBACK).await {
+            eprintln!(
+                "{} door already running at {}",
+                door.spec.as_str(),
+                door.origin
+            );
+            return Ok(door);
         }
         eprintln!("port {PREFERRED} is in use; binding coder-api to {FALLBACK}");
         FALLBACK
@@ -76,9 +114,9 @@ async fn start(port: u16) -> Result<DevApi, Box<dyn std::error::Error>> {
     }
     let _child = command.spawn()?;
     for attempt in 1..=80 {
-        if already_ours(port).await.is_some() {
+        if let Some(door) = already_ours(port).await {
             eprintln!("coder-api ready at {origin}");
-            return Ok(DevApi { origin });
+            return Ok(door);
         }
         if attempt % 10 == 0 {
             eprintln!("still waiting for coder-api ({} seconds)", attempt / 2);
@@ -149,10 +187,10 @@ fn log_path() -> PathBuf {
         .join("dev.log")
 }
 
-async fn already_ours(port: u16) -> Option<String> {
+async fn already_ours(port: u16) -> Option<DevApi> {
     let origin = format!("http://127.0.0.1:{port}");
     match probe(port).await {
-        Probe::Ours => Some(origin),
+        Probe::Ours(spec) => Some(DevApi { origin, spec }),
         _ => None,
     }
 }
@@ -163,17 +201,34 @@ async fn port_occupied(port: u16) -> bool {
 
 #[derive(Debug)]
 enum Probe {
-    Ours,
+    Ours(DoorSpec),
     Other,
     Unreachable,
 }
 
+/// The contract the door at this `/health` response serves.
+pub fn health_spec(head: &str) -> DoorSpec {
+    if head.contains("\"spec\":\"open-responses\"") || head.contains("\"spec\": \"open-responses\"")
+    {
+        DoorSpec::OpenResponses
+    } else {
+        DoorSpec::Threads
+    }
+}
+
+/// Whether a `/health` response comes from a door this CLI can drive.
+///
+/// The names are the doors that serve the lanes: `openagents-coder-api`,
+/// the older `pro` listener, and `nitro`, which serves the Open Responses
+/// contract `--dev` speaks directly. A door that answers `/health` with
+/// another service name is someone else's process on the port.
 pub fn health_is_ours(head: &str) -> bool {
-    head.contains("\"service\":\"openagents-coder-api\"")
-        || head.contains("\"service\": \"openagents-coder-api\"")
-        // Also accept the older `pro` service name for backwards compatibility.
-        || head.contains("\"service\":\"pro\"")
-        || head.contains("\"service\": \"pro\"")
+    ["openagents-coder-api", "pro", "nitro"]
+        .iter()
+        .any(|service| {
+            head.contains(&format!("\"service\":\"{service}\""))
+                || head.contains(&format!("\"service\": \"{service}\""))
+        })
 }
 
 async fn probe(port: u16) -> Probe {
@@ -191,7 +246,7 @@ async fn probe(port: u16) -> Probe {
     };
     let head = std::str::from_utf8(&buf[..n]).unwrap_or("");
     if health_is_ours(head) {
-        Probe::Ours
+        Probe::Ours(health_spec(head))
     } else if head.starts_with("HTTP/") {
         Probe::Other
     } else {
@@ -214,8 +269,25 @@ mod tests {
         assert!(health_is_ours(
             "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"pro\"}"
         ));
+        assert!(health_is_ours(
+            "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"nitro\",\"spec\":\"open-responses\"}"
+        ));
         assert!(!health_is_ours(
             "HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"service\":\"phoenix\"}"
         ));
+    }
+
+    #[test]
+    fn the_door_spec_comes_from_health() {
+        assert_eq!(
+            health_spec(
+                "HTTP/1.1 200 OK\r\n\r\n{\"service\":\"nitro\",\"spec\":\"open-responses\"}"
+            ),
+            DoorSpec::OpenResponses
+        );
+        assert_eq!(
+            health_spec("HTTP/1.1 200 OK\r\n\r\n{\"service\":\"openagents-coder-api\"}"),
+            DoorSpec::Threads
+        );
     }
 }

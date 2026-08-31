@@ -36,6 +36,7 @@ pub mod gym;
 pub mod inference;
 pub mod interactive;
 pub mod markdown;
+pub mod mcp;
 pub mod memory_client;
 pub mod plugins;
 pub mod provider;

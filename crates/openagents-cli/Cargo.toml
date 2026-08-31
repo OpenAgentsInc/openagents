@@ -18,6 +18,11 @@ path = "src/bin/coder_surfaces.rs"
 openagents-coder-contract = { path = "../openagents-coder-contract" }
 psionic-gguf = { path = "../psionic-gguf" }
 reqwest = { workspace = true, features = ["stream"] }
+rmcp = { version = "3.1.4", default-features = false, features = [
+    "client",
+    "reqwest",
+    "transport-streamable-http-client-reqwest",
+] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

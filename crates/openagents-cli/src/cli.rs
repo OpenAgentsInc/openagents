@@ -86,6 +86,8 @@ pub enum Commands {
     Memory(MemoryArgs),
     /// Generic API route invocation
     Api(crate::api_passthrough::ApiArgs),
+    /// Connect to a Coder Cloud MCP server
+    Mcp(crate::mcp::McpArgs),
     /// Sandboxed WebAssembly capability plugins: catalog, digests, and runs
     Plugin(crate::plugins::PluginArgs),
     /// Gym environment, suites, and corpus
@@ -1657,11 +1659,15 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             // command. `--dev` names a server on this machine, and the global
             // `--api-url`/`--profile` still wins when both are given. Coder
             // Pro otherwise talks to the Pro door (#298).
+            let mut door = crate::coder_dev::DoorSpec::Threads;
             let session_base = if cli.api_url.is_some() || cli.profile.is_some() {
                 api_base.clone()
             } else if coder.dev {
                 match crate::coder_dev::ensure_running().await {
-                    Ok(api) => api.api_v1(),
+                    Ok(api) => {
+                        door = api.spec;
+                        api.api_v1()
+                    }
                     Err(error) => fail(&error.to_string()),
                 }
             } else {
@@ -1751,10 +1757,12 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         token,
                         repository,
                         resumed,
+                        door,
                     )
                     .await?;
                 } else if coder.headless {
-                    run_headless_coder(coder, &session_base, token, repository, resumed).await?;
+                    run_headless_coder(coder, &session_base, token, repository, resumed, door)
+                        .await?;
                 } else {
                     crate::interactive::run_tui(coder, session_base, token, repository, resumed)
                         .await?;
@@ -1835,6 +1843,10 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
         Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
+        Commands::Mcp(mcp) => match crate::mcp::run(mcp, &endpoint, &cred_store, cli.json).await {
+            Ok(()) => {}
+            Err(error) => crate::errors::fail(&error.into()),
+        },
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
         Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
         Commands::Swarm(swarm) => crate::swarm_args::run_swarm(swarm.action, cli.json).await,
@@ -4902,6 +4914,7 @@ async fn run_headless_coder(
     token: Option<String>,
     repository: Option<String>,
     resumed: Option<crate::resume::Resumption>,
+    door: crate::coder_dev::DoorSpec,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(prompt) = coder
         .prompt
@@ -4941,7 +4954,8 @@ async fn run_headless_coder(
         Some(api_base.to_string()),
         token,
         tools,
-    );
+    )
+    .use_openresponses(door == crate::coder_dev::DoorSpec::OpenResponses);
     runtime.reasoning = coder
         .reasoning
         .clone()

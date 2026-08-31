@@ -134,7 +134,7 @@ echo "[pre-push guard] cargo test --workspace starting at $(date +%H:%M:%S)..." 
 if ( cd "$root" && cargo test --workspace $fmt_args ) 2>&1 | tee "$test_log" >&2; then
   rm -f "$test_log"
 else
-  failed="$(grep -E '^    [a-zA-Z0-9_]+(::[a-zA-Z0-9_]+)+$' "$test_log" | sed 's/^ *//' | sort -u | tr '\n' ' ')"
+  failed="$( { grep -E '^test [^ ]+ \.\.\. FAILED$' "$test_log" | sed -E 's/^test (.*) \.\.\. FAILED$/\1/'; grep -E '^    [a-zA-Z0-9_]+(::[a-zA-Z0-9_]+)*$' "$test_log" | sed 's/^ *//'; } | grep -E '^[a-zA-Z0-9_]+(::[a-zA-Z0-9_]+)*$' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//' )"
   if [ -n "$failed" ]; then
     echo "[pre-push guard] first run failed; retrying the failing tests once before blocking — load flakes die on the second run (#306):" >&2
     echo "[pre-push guard]   $failed" >&2
