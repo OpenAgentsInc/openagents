@@ -70,6 +70,8 @@ pub enum Commands {
     Repo(RepoArgs),
     /// OpenAgents interactive Coder agent session and autonomous tools
     Coder(CoderArgs),
+    /// Send one prompt to the Coder Responses API and print the returned events
+    Responses(crate::coder::responses::ResponsesArgs),
     /// Run one prompt on many child coding agents at once and report each result
     Delegate(DelegateArgs),
     /// Operator deployment of the OpenAgents fleet
@@ -1768,6 +1770,9 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         .await?;
                 }
             }
+        }
+        Commands::Responses(args) => {
+            crate::coder::responses::run(args, token).await?;
         }
         Commands::Delegate(args) => {
             crate::delegate::run_delegation(

@@ -3,7 +3,31 @@
 //! This first slice exposes only the pieces the CLI needs to post a request
 //! and read the first event from the returned Server-Sent Events stream.
 
-use serde_json::Value;
+use clap::Args;
+use serde_json::{Value, json};
+
+/// Command-line arguments for `openagents responses`.
+#[derive(Args, Debug)]
+pub struct ResponsesArgs {
+    /// Prompt to send to the Coder Responses endpoint.
+    pub prompt: String,
+
+    /// Coder origin to post to.
+    #[arg(long, default_value = "http://127.0.0.1:4000")]
+    pub origin: String,
+}
+
+/// Post a prompt to the Coder Responses endpoint and print the returned text.
+pub async fn run(args: ResponsesArgs, token: Option<String>) -> Result<(), reqwest::Error> {
+    let client = Client::new(args.origin, token);
+    let body = json!({
+        "input": [{"role": "user", "content": args.prompt}]
+    });
+    let response = client.post(&body).await?;
+    let text = response.text().await?;
+    println!("{text}");
+    Ok(())
+}
 
 /// Client for the Coder Responses endpoint.
 pub struct Client {
