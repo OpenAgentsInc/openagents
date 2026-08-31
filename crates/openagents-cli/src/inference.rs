@@ -14,6 +14,9 @@ use psionic_gguf::{
     map_file, parse_path, plan_caches, render_chat, runtime_n_ctx, should_emit,
 };
 
+/// Optional callback for every inference step: probe, token, and state name.
+type OnStep = Option<Arc<dyn Fn(&str, &str, &str) + Send + Sync>>;
+
 #[derive(Args, Debug)]
 pub struct InferenceArgs {
     #[command(subcommand)]
@@ -188,7 +191,7 @@ struct WalkOpts {
     until: Option<String>,
     json: bool,
     suppress_stderr: bool,
-    on_step: Option<std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
+    on_step: OnStep,
     prompt: Option<String>,
     max_tokens: Option<u32>,
     n_ctx: Option<u64>,
@@ -201,7 +204,7 @@ struct Printer {
     teach: bool,
     quiet: bool,
     suppress_stderr: bool,
-    on_step: Option<std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
+    on_step: OnStep,
 }
 
 impl Printer {
@@ -227,10 +230,11 @@ impl Printer {
             eprintln!("[{id}] {message:<42} pending");
         } else {
             eprintln!("[{id}] {message}");
-            if self.teach && !self.quiet {
-                if let Some(note) = explanation(id) {
-                    eprintln!("            {note}");
-                }
+            if self.teach
+                && !self.quiet
+                && let Some(note) = explanation(id)
+            {
+                eprintln!("            {note}");
             }
         }
     }
@@ -446,10 +450,10 @@ fn walk_run(opts: WalkOpts) -> Result<(), InferenceExit> {
         return Ok(());
     }
 
-    if let Some(id) = opts.until.as_deref() {
-        if !known_until(id) {
-            return Err(InferenceExit::Usage(format!("unknown --until step {id}")));
-        }
+    if let Some(id) = opts.until.as_deref()
+        && !known_until(id)
+    {
+        return Err(InferenceExit::Usage(format!("unknown --until step {id}")));
     }
 
     let walk = Walk {
@@ -1042,20 +1046,20 @@ fn alloc_cache(walk: &Walk, bytes: u64, n_ctx: u64) -> Result<Vec<u8>, Inference
             let add = (total - done).min(CHUNK as u64) as usize;
             buf.resize(buf.len() + add, 0);
             done = buf.len() as u64;
-            if should_emit(done, total, CHUNK as u64) {
-                if let Some(bar) = format_bar("KV", done, total, "B") {
-                    walk.printer.ok_extra(
-                        "ctx.kv",
-                        &bar,
-                        json!({
-                            "pct": (done.min(total) * 100) / total,
-                            "done": done,
-                            "total": total,
-                            "unit": "B",
-                            "label": "KV",
-                        }),
-                    );
-                }
+            if should_emit(done, total, CHUNK as u64)
+                && let Some(bar) = format_bar("KV", done, total, "B")
+            {
+                walk.printer.ok_extra(
+                    "ctx.kv",
+                    &bar,
+                    json!({
+                        "pct": (done.min(total) * 100) / total,
+                        "done": done,
+                        "total": total,
+                        "unit": "B",
+                        "label": "KV",
+                    }),
+                );
             }
         }
     } else {
@@ -1065,11 +1069,11 @@ fn alloc_cache(walk: &Walk, bytes: u64, n_ctx: u64) -> Result<Vec<u8>, Inference
 }
 
 fn attach_caches(kv: Vec<u8>, gdn: Vec<u8>) {
-    if let Ok(mut slot) = holder().lock() {
-        if let Some(session) = slot.as_mut() {
-            session.cache_kv = kv;
-            session.cache_gdn = gdn;
-        }
+    if let Ok(mut slot) = holder().lock()
+        && let Some(session) = slot.as_mut()
+    {
+        session.cache_kv = kv;
+        session.cache_gdn = gdn;
     }
 }
 
@@ -1119,10 +1123,10 @@ fn continue_prompt(walk: &Walk, meta: &psionic_gguf::GgufMeta) -> Result<(), Inf
         &format!("Prompt is {} tokens", tokens.len()),
         json!({ "n": tokens.len(), "ids": tokens }),
     );
-    if let Some(times) = &walk.times {
-        if let Ok(mut t) = times.lock() {
-            t.prompt_tokens = tokens.len() as u64;
-        }
+    if let Some(times) = &walk.times
+        && let Ok(mut t) = times.lock()
+    {
+        t.prompt_tokens = tokens.len() as u64;
     }
     walk.mark("prompt");
     if walk.hit("prompt.done") {
@@ -1157,14 +1161,14 @@ fn continue_prefill_gen(
         walk.printer
             .ok("graph.hybrid", "Decoder graph is qwen35 hybrid");
     }
-    if let Some(times) = &walk.times {
-        if let Ok(mut t) = times.lock() {
-            t.graph = if hybrid {
-                String::from(psionic_gguf::qwen35::GRAPH_HYBRID)
-            } else {
-                String::from(psionic_gguf::qwen35::GRAPH_STUB)
-            };
-        }
+    if let Some(times) = &walk.times
+        && let Ok(mut t) = times.lock()
+    {
+        t.graph = if hybrid {
+            String::from(psionic_gguf::qwen35::GRAPH_HYBRID)
+        } else {
+            String::from(psionic_gguf::qwen35::GRAPH_STUB)
+        };
     }
     let mut decode = if hybrid {
         with_mapped(|mapped| psionic_gguf::qwen35::new_state(meta, mapped))
@@ -1226,7 +1230,8 @@ fn continue_prefill_gen(
 
     let budget = walk.max_tokens.max(1);
     let mut generated = 0u32;
-    let mut last_id = tokens.last().copied().unwrap_or(0);
+    #[allow(unused_assignments)]
+    let mut last_id: Option<u32>;
     for step in 1..=budget {
         if cancelled() {
             walk.printer.ok("gen.stop.cancel", "Stop: cancelled");
@@ -1275,7 +1280,7 @@ fn continue_prefill_gen(
             let _ = std::io::stdout().flush();
         }
         generated += 1;
-        last_id = id;
+        last_id = Some(id);
         if let Some(state) = decode.as_mut() {
             match with_mapped(|mapped| {
                 psionic_gguf::qwen35::embed_and_forward(mapped, meta, id, state)
@@ -1301,15 +1306,15 @@ fn continue_prefill_gen(
             walk.printer
                 .ok("gen.stop.length", &format!("Stop: token budget {budget}"));
         }
-        let _ = last_id;
+        let _ = last_id; // kept for a future sampling change
     }
     if !walk.printer.suppress_stderr && !walk.bench {
         println!();
     }
-    if let Some(times) = &walk.times {
-        if let Ok(mut t) = times.lock() {
-            t.generated = generated;
-        }
+    if let Some(times) = &walk.times
+        && let Ok(mut t) = times.lock()
+    {
+        t.generated = generated;
     }
     walk.mark("gen");
     walk.printer
@@ -1659,7 +1664,7 @@ pub fn load_gguf_with_steps(
     path: PathBuf,
     json: bool,
     suppress_stderr: bool,
-    on_step: Option<std::sync::Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
+    on_step: OnStep,
 ) -> Result<(), InferenceExit> {
     walk_run(WalkOpts {
         gguf: Some(path),

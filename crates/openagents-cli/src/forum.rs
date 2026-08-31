@@ -163,10 +163,10 @@ impl ForumClient {
     fn headers(&self) -> HeaderMap {
         let mut map = HeaderMap::new();
         map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        if let Some(tok) = &self.token {
-            if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", tok)) {
-                map.insert(AUTHORIZATION, val);
-            }
+        if let Some(tok) = &self.token
+            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", tok))
+        {
+            map.insert(AUTHORIZATION, val);
         }
         map
     }

@@ -46,17 +46,17 @@ pub fn complete(text: &str, caret: usize, commands: &[&str], cwd: &Path) -> Comp
 
     // A slash command is only a command at the very start of the composer, and
     // only while its name is still being typed.
-    if let Some(partial) = head.strip_prefix('/') {
-        if !partial.contains(char::is_whitespace) {
-            return from_candidates(
-                partial,
-                commands
-                    .iter()
-                    .filter(|name| name.starts_with(partial))
-                    .map(|name| (*name).to_string())
-                    .collect(),
-            );
-        }
+    if let Some(partial) = head.strip_prefix('/')
+        && !partial.contains(char::is_whitespace)
+    {
+        return from_candidates(
+            partial,
+            commands
+                .iter()
+                .filter(|name| name.starts_with(partial))
+                .map(|name| (*name).to_string())
+                .collect(),
+        );
     }
 
     let word = word_at(head);

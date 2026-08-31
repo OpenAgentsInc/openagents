@@ -200,10 +200,10 @@ fn models_from_job(job_dir: &Path) -> Vec<String> {
             }
         }
     }
-    if models.is_empty() {
-        if let Some(name) = cfg.get("model").and_then(Value::as_str) {
-            models.push(harbor_model_id(name));
-        }
+    if models.is_empty()
+        && let Some(name) = cfg.get("model").and_then(Value::as_str)
+    {
+        models.push(harbor_model_id(name));
     }
     models
 }
@@ -392,17 +392,16 @@ fn append_report(report: &ScoreReport) -> Result<(), CliError> {
             std::process::exit(APPEND_REFUSED_EXIT);
         }
     }
-    if let Some(job_id) = &report.job_id {
-        if rows
+    if let Some(job_id) = &report.job_id
+        && rows
             .iter()
             .any(|row| row.get("jobId").and_then(Value::as_str) == Some(job_id.as_str()))
-        {
-            eprintln!(
-                "duplicate_job: harbor job {job_id} is already recorded in {}; re-scoring a run does not make it a second run",
-                store.display()
-            );
-            std::process::exit(APPEND_REFUSED_EXIT);
-        }
+    {
+        eprintln!(
+            "duplicate_job: harbor job {job_id} is already recorded in {}; re-scoring a run does not make it a second run",
+            store.display()
+        );
+        std::process::exit(APPEND_REFUSED_EXIT);
     }
 
     let previous = rows.last().and_then(|row| {

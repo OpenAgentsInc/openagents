@@ -209,29 +209,29 @@ pub fn resolve_endpoint(
             profile: name.to_string(),
         });
     }
-    if let Ok(url) = std::env::var("OPENAGENTS_API_URL") {
-        if !url.trim().is_empty() {
-            let origin = normalize_api_origin(&url)?;
-            let name = profile_for_origin(&origin);
-            return Ok(Endpoint {
-                origin,
-                profile: name,
-            });
-        }
+    if let Ok(url) = std::env::var("OPENAGENTS_API_URL")
+        && !url.trim().is_empty()
+    {
+        let origin = normalize_api_origin(&url)?;
+        let name = profile_for_origin(&origin);
+        return Ok(Endpoint {
+            origin,
+            profile: name,
+        });
     }
-    if let Ok(name) = std::env::var("OPENAGENTS_PROFILE") {
-        if !name.trim().is_empty() {
-            let name = name.trim();
-            let origin = profile_origin(name).ok_or_else(|| {
-                AuthError::new(format!(
-                    "unknown OPENAGENTS_PROFILE {name}. Use production, staging, or local"
-                ))
-            })?;
-            return Ok(Endpoint {
-                origin: origin.to_string(),
-                profile: name.to_string(),
-            });
-        }
+    if let Ok(name) = std::env::var("OPENAGENTS_PROFILE")
+        && !name.trim().is_empty()
+    {
+        let name = name.trim();
+        let origin = profile_origin(name).ok_or_else(|| {
+            AuthError::new(format!(
+                "unknown OPENAGENTS_PROFILE {name}. Use production, staging, or local"
+            ))
+        })?;
+        return Ok(Endpoint {
+            origin: origin.to_string(),
+            profile: name.to_string(),
+        });
     }
     Ok(Endpoint {
         origin: PRODUCTION_ORIGIN.to_string(),
@@ -672,13 +672,13 @@ impl CredentialStore {
             }
         }
         let file = self.load_credential_file()?;
-        if let Some(value) = file.tokens.get(&self.origin) {
-            if !value.trim().is_empty() {
-                return Ok(Some(StoredToken {
-                    token: Secret::new(value.trim()),
-                    source: TokenSource::File,
-                }));
-            }
+        if let Some(value) = file.tokens.get(&self.origin)
+            && !value.trim().is_empty()
+        {
+            return Ok(Some(StoredToken {
+                token: Secret::new(value.trim()),
+                source: TokenSource::File,
+            }));
         }
         // The legacy profile file predates per-endpoint keying. Its token is
         // admitted only when the profile names this origin, or names none and
@@ -699,15 +699,14 @@ impl CredentialStore {
                     Some(origin) => origin == self.origin,
                     None => self.origin == PRODUCTION_ORIGIN,
                 };
-                if admitted {
-                    if let Some(value) = profile.token.clone() {
-                        if !value.trim().is_empty() {
-                            return Ok(Some(StoredToken {
-                                token: Secret::new(value.trim()),
-                                source: TokenSource::LegacyConfig,
-                            }));
-                        }
-                    }
+                if admitted
+                    && let Some(value) = profile.token.clone()
+                    && !value.trim().is_empty()
+                {
+                    return Ok(Some(StoredToken {
+                        token: Secret::new(value.trim()),
+                        source: TokenSource::LegacyConfig,
+                    }));
                 }
             }
         }

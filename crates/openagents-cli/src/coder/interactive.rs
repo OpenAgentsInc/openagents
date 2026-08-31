@@ -231,13 +231,13 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         // transcript (#189): what landed, what is broken, what is next. A
         // resume that has to re-derive this from raw tool records is the
         // failure the checkpoint exists to prevent.
-        if let Some(note) = &loaded.summary.last_checkpoint {
-            if !note.trim().is_empty() {
-                ui.entries.push(Entry::new(
-                    Role::Notice,
-                    format!("Last checkpoint:\n{note}"),
-                ));
-            }
+        if let Some(note) = &loaded.summary.last_checkpoint
+            && !note.trim().is_empty()
+        {
+            ui.entries.push(Entry::new(
+                Role::Notice,
+                format!("Last checkpoint:\n{note}"),
+            ));
         }
         ui.show_welcome = false;
     }
@@ -466,11 +466,11 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                                 .as_ref()
                                 .and_then(|s| s.try_lock().ok())
                                 .and_then(|s| s.latest_boundary_mail());
-                            if let Some(receipt) = mail.as_ref() {
-                                if !receipt.consumed.is_empty() {
-                                    ui.entries
-                                        .push(Entry::new(Role::Notice, receipt.announce_line()));
-                                }
+                            if let Some(receipt) = mail.as_ref()
+                                && !receipt.consumed.is_empty()
+                            {
+                                ui.entries
+                                    .push(Entry::new(Role::Notice, receipt.announce_line()));
                             }
                             let mail_stop = mail
                                 .as_ref()
@@ -647,7 +647,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             // therefore the cleared buffer for the next frame, not the frame
             // the reader can see. Repainting from it erases every link run.
             let buffer = completed_frame.buffer.clone();
-            drop(completed_frame);
             let mut out = std::io::stdout();
             let _ = crate::coder::osc8::emit(&mut out, &ui.links, &buffer);
             // The link pass parks the cursor at the last link it repaints.
@@ -1309,6 +1308,7 @@ fn begin_login(login_pending: &mut bool, ui: &mut CoderUi, tx: &Sender<Control>)
     spawn_session_login(tx);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn attach_session(
     lane: &Lane,
     lane_name: &str,
@@ -1432,24 +1432,24 @@ fn seed_model_picker(
     cached_local: Option<&str>,
 ) -> crate::coder::model_picker::PickerState {
     use crate::coder::model_picker::LocalModel;
-    if lane.is_local() {
-        if let Some(tag) = cached_local {
-            let resolved = match lane {
-                Lane::Local(pinned) if !pinned.is_empty() => Some(pinned.as_str()),
-                _ => Some(tag),
-            };
-            return crate::coder::model_picker::PickerState::new(
-                crate::coder::model_picker::local_items(
-                    &[LocalModel {
-                        tag: tag.to_string(),
-                        size_bytes: None,
-                        quantization: None,
-                    }],
-                    resolved,
-                ),
-            )
-            .local();
-        }
+    if lane.is_local()
+        && let Some(tag) = cached_local
+    {
+        let resolved = match lane {
+            Lane::Local(pinned) if !pinned.is_empty() => Some(pinned.as_str()),
+            _ => Some(tag),
+        };
+        return crate::coder::model_picker::PickerState::new(
+            crate::coder::model_picker::local_items(
+                &[LocalModel {
+                    tag: tag.to_string(),
+                    size_bytes: None,
+                    quantization: None,
+                }],
+                resolved,
+            ),
+        )
+        .local();
     }
     model_picker_loading(lane)
 }
@@ -2010,9 +2010,7 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         }
         Control::SubagentOutput { call_id, line } => {
             if let Some(entry) = tool_entry(ui, &call_id) {
-                if !entry.tool.as_ref().is_some_and(|tool| tool.done) {
-                    entry.push_subagent_line(line);
-                }
+                entry.push_subagent_line(line);
             }
         }
         Control::ToolOutput { call_id, chunk } => {
@@ -2312,6 +2310,7 @@ struct AutopilotFrame {
     last_heartbeat: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn submit(
     ui: &mut CoderUi,
     text: String,
@@ -2484,6 +2483,7 @@ async fn refresh_workspace_snapshot(session: &Arc<Mutex<Session>>, cwd: &std::pa
     session.lock().await.seed_workspace_snapshot(&text);
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn start_prompt(
     ui: &mut CoderUi,
     text: String,
@@ -2616,16 +2616,14 @@ fn request_cancel(
     let tx = tx.clone();
     tokio::spawn(async move {
         let mut task = active.task;
-        if active_tools == 0 {
-            task.abort();
-            let _ = task.await;
-        } else if tokio::time::timeout(
-            crate::signals::KILL_GRACE + Duration::from_secs(1),
-            &mut task,
-        )
-        .await
-        .is_err()
-        {
+        let timed_out = active_tools != 0
+            && tokio::time::timeout(
+                crate::signals::KILL_GRACE + Duration::from_secs(1),
+                &mut task,
+            )
+            .await
+            .is_err();
+        if active_tools == 0 || timed_out {
             task.abort();
             let _ = task.await;
         }
@@ -2723,9 +2721,12 @@ fn atty_is_terminal() -> bool {
 /// is unsupported, so a ConPTY host never sees a mouse-enable request. Wheel
 /// and trackpad then become Up/Down (alternate scroll) and walk input history
 /// (#349). Write these on Windows after the WinAPI enable.
+#[allow(dead_code)]
 const MOUSE_CAPTURE_ENABLE_ANSI: &str = "\x1B[?1000h\x1B[?1002h\x1B[?1003h\x1B[?1015h\x1B[?1006h";
+#[allow(dead_code)]
 const MOUSE_CAPTURE_DISABLE_ANSI: &str = "\x1B[?1006l\x1B[?1015l\x1B[?1003l\x1B[?1002l\x1B[?1000l";
 
+#[allow(dead_code)]
 fn write_host_mouse_tracking(out: &mut impl Write, enable: bool) -> std::io::Result<()> {
     let seq = if enable {
         MOUSE_CAPTURE_ENABLE_ANSI

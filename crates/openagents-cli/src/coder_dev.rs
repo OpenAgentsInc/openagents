@@ -101,12 +101,12 @@ fn api_bin() -> Result<PathBuf, Box<dyn std::error::Error>> {
         }
         return Err(format!("OPENAGENTS_CODER_API_BIN is not a file: {}", path.display()).into());
     }
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let sibling = dir.join("openagents-coder-api");
-            if sibling.is_file() {
-                return Ok(sibling);
-            }
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let sibling = dir.join("openagents-coder-api");
+        if sibling.is_file() {
+            return Ok(sibling);
         }
     }
     if let Ok(path) = which("openagents-coder-api") {

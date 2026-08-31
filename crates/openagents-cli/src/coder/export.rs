@@ -109,10 +109,10 @@ pub fn entries_from_chat_messages(messages: &[crate::runtime::ChatMessage]) -> V
         match message.role.as_str() {
             "system" => {}
             "user" => {
-                if let Some(text) = message.content.as_deref() {
-                    if !text.is_empty() {
-                        entries.push(Entry::new(Role::You, text));
-                    }
+                if let Some(text) = message.content.as_deref()
+                    && !text.is_empty()
+                {
+                    entries.push(Entry::new(Role::You, text));
                 }
             }
             "assistant" => {
@@ -121,10 +121,10 @@ pub fn entries_from_chat_messages(messages: &[crate::runtime::ChatMessage]) -> V
                         pending.push(pending_tool_call(call));
                     }
                 }
-                if let Some(text) = message.content.as_deref() {
-                    if !text.is_empty() {
-                        entries.push(Entry::new(Role::Assistant, text));
-                    }
+                if let Some(text) = message.content.as_deref()
+                    && !text.is_empty()
+                {
+                    entries.push(Entry::new(Role::Assistant, text));
                 }
             }
             "tool" => {
@@ -542,13 +542,13 @@ struct RoundMetrics {
 }
 
 /// Median without allocation games: sorts in place; `None` for no samples.
-fn median_usize(values: &mut Vec<usize>) -> Option<u64> {
+fn median_usize(values: &mut [usize]) -> Option<u64> {
     if values.is_empty() {
         return None;
     }
     values.sort_unstable();
     let mid = values.len() / 2;
-    Some(if values.len() % 2 == 0 {
+    Some(if values.len().is_multiple_of(2) {
         ((values[mid - 1] + values[mid]) / 2) as u64
     } else {
         values[mid] as u64

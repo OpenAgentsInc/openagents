@@ -124,18 +124,19 @@ fn matvec_f32(src: &[u8], x: &[f32]) -> Option<Vec<f32>> {
     }
     let rows = src.len() / (width * 4);
     let mut out = vec![0f32; rows];
-    for r in 0..rows {
+    for (r, slot) in out.iter_mut().enumerate() {
         let mut acc = 0f32;
         let base = r * width * 4;
         for (i, xv) in x.iter().enumerate() {
             let w = f32::from_le_bytes(src[base + i * 4..base + i * 4 + 4].try_into().ok()?);
             acc += w * xv;
         }
-        out[r] = acc;
+        *slot = acc;
     }
     Some(out)
 }
 
+#[cfg(test)]
 pub(crate) fn matvec_q8_bytes(src: &[u8], x: &[f32]) -> Option<Vec<f32>> {
     matvec_q8(src, x)
 }

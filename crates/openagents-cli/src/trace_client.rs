@@ -84,10 +84,10 @@ impl TraceClient {
         let mut map = HeaderMap::new();
         map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         map.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        if let Some(token) = &self.token {
-            if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", token)) {
-                map.insert(AUTHORIZATION, value);
-            }
+        if let Some(token) = &self.token
+            && let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", token))
+        {
+            map.insert(AUTHORIZATION, value);
         }
         map
     }

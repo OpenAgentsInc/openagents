@@ -217,10 +217,10 @@ pub fn render_env_report(report: &EnvReport) -> Vec<String> {
             check.name,
             unknown_str(check.observed.as_deref())
         ));
-        if let Some(remedy) = &check.remedy {
-            if !remedy.is_empty() {
-                lines.push(format!("    remedy: {remedy}"));
-            }
+        if let Some(remedy) = &check.remedy
+            && !remedy.is_empty()
+        {
+            lines.push(format!("    remedy: {remedy}"));
         }
     }
     lines

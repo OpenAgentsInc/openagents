@@ -195,12 +195,11 @@ pub fn resolve_api_path(origin: &str, path: &str) -> Result<String, String> {
         return Err(leaves_origin(value, origin));
     }
 
-    if value.starts_with('/') {
+    if let Some(stripped) = value.strip_prefix('/') {
         if !url.path().starts_with("/api/") {
             return Err(format!(
                 "an absolute path must start with /api/. Write {} to resolve it under {}",
-                &value[1..],
-                API_BASE_PATH
+                stripped, API_BASE_PATH
             ));
         }
     } else if !url.path().starts_with(API_BASE_PATH) {

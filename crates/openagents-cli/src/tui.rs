@@ -475,13 +475,13 @@ fn render_pty(f: &mut Frame, area: Rect, pty: &PtyPane) {
     pty.screen.render(inner, f.buffer_mut());
 
     // The child's cursor is the reader's cursor while the child has the keys.
-    if pty.exit.is_none() {
-        if let Some((col, row)) = pty.screen.cursor() {
-            let x = inner.x + col;
-            let y = inner.y + row;
-            if x < inner.right() && y < inner.bottom() {
-                f.set_cursor_position(Position::new(x, y));
-            }
+    if pty.exit.is_none()
+        && let Some((col, row)) = pty.screen.cursor()
+    {
+        let x = inner.x + col;
+        let y = inner.y + row;
+        if x < inner.right() && y < inner.bottom() {
+            f.set_cursor_position(Position::new(x, y));
         }
     }
 }

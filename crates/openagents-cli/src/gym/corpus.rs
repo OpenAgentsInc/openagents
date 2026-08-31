@@ -104,10 +104,7 @@ fn detect_repo_hint(text: &str) -> Option<String> {
     repo_regex()
         .captures(text)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
-        .map(|s| {
-            s.trim_end_matches(|c: char| c == '.' || c == ',' || c == ';' || c == '"' || c == '\'')
-                .to_string()
-        })
+        .map(|s| s.trim_end_matches(['.', ',', ';', '"', '\'']).to_string())
         .or_else(|| {
             // Fallback to the known first-domain repo if it is named anywhere.
             if text.contains("OpenAgentsInc/openagents") {
@@ -170,7 +167,7 @@ fn process_candidate(
         }
     };
 
-    if !summary.as_ref().is_some_and(|s| s.format == "atif") && reasons.is_empty() {
+    if summary.as_ref().is_none_or(|s| s.format != "atif") && reasons.is_empty() {
         reasons.push("not_redactable".to_string());
     }
 
@@ -197,7 +194,9 @@ fn process_candidate(
     }
     if repo_hint.is_none() {
         reasons.push("no_coding_outcome".to_string());
-    } else if is_private_repo_hint(repo_hint.as_ref().unwrap()) {
+    } else if let Some(hint) = repo_hint.as_ref()
+        && is_private_repo_hint(hint)
+    {
         reasons.push("private_repo".to_string());
     }
 

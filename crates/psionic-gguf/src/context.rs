@@ -146,7 +146,7 @@ mod tests {
         assert_eq!(plan.n_gdn, 1);
         assert_eq!(plan.n_kv_heads, 1);
         assert_eq!(plan.head_width, 8);
-        assert_eq!(plan.kv_bytes, 2 * 1 * 1 * 8 * 32 * 2);
+        assert_eq!(plan.kv_bytes, 2 * 8 * 32 * 2);
         assert!(plan.gdn_bytes > 0);
         assert_eq!(plan.kv_bytes, 1024);
     }

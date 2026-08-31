@@ -169,17 +169,17 @@ async fn is_available(
     }
 
     // npx package installed globally.
-    if let Some(npx) = &dist.npx {
-        if npx_installed(&npx.package, npm_root).await {
-            return true;
-        }
+    if let Some(npx) = &dist.npx
+        && npx_installed(&npx.package, npm_root).await
+    {
+        return true;
     }
 
     // uvx package installed as a uv tool.
-    if let Some(uvx) = &dist.uvx {
-        if uvx_installed(&uvx.package, uv_tools).await {
-            return true;
-        }
+    if let Some(uvx) = &dist.uvx
+        && uvx_installed(&uvx.package, uv_tools).await
+    {
+        return true;
     }
 
     false
@@ -328,7 +328,7 @@ fn package_dir(spec: &str) -> &str {
     // "@scope/pkg@1.0.0" -> "@scope/pkg", "pkg@1.0.0" -> "pkg".
     spec.rsplit_once('@')
         .and_then(|(left, right)| {
-            if right.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+            if right.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 Some(left)
             } else {
                 None

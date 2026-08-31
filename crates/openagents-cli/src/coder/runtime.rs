@@ -164,10 +164,10 @@ impl TurnRouter {
         if self.active == Some(id) {
             self.active = None;
         }
-        if let Some((turn, cancellation)) = &self.cancellation {
-            if *turn == id {
-                let _ = cancellation.send(true);
-            }
+        if let Some((turn, cancellation)) = &self.cancellation
+            && *turn == id
+        {
+            let _ = cancellation.send(true);
         }
         self.calls.values().filter(|turn| **turn == id).count()
     }

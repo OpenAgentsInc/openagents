@@ -222,16 +222,16 @@ pub fn embed_and_forward(
                 };
                 let n_full = s.n_layers / s.interval.max(1);
                 let slot = index / s.interval.max(1);
-                if let Some(out) = crate::metal_gemm::run_full_layer(
+                if let Some(out) = crate::metal_gemm::run_full_layer(crate::metal_gemm::FullLayer {
                     mapped,
-                    &spec,
-                    &attn,
+                    spec: &spec,
+                    attn: &attn,
                     index,
-                    hidden.as_slice(),
+                    input: hidden.as_slice(),
                     slot,
                     n_full,
-                    state.position,
-                ) {
+                    position: state.position,
+                }) {
                     if out.len() == s.hidden {
                         hidden = out;
                     }
@@ -415,19 +415,19 @@ fn forward_hybrid(
         let st = &mut delta_state
             [vh * s.state_size * s.state_size..(vh + 1) * s.state_size * s.state_size];
         let out = &mut gated[vh * s.state_size..(vh + 1) * s.state_size];
-        delta_step(
+        delta_step(DeltaHead {
             q,
             k,
             v,
-            decay.get(vh).copied().unwrap_or(1.0),
-            beta_sig.get(vh).copied().unwrap_or(0.0),
-            st,
-            &mut norm_q,
-            &mut norm_k,
-            &mut kv_mem,
-            &mut delta,
-            out,
-        );
+            decay: decay.get(vh).copied().unwrap_or(1.0),
+            beta: beta_sig.get(vh).copied().unwrap_or(0.0),
+            state: st,
+            norm_q: &mut norm_q,
+            norm_k: &mut norm_k,
+            kv_mem: &mut kv_mem,
+            delta: &mut delta,
+            output: out,
+        });
     }
 
     let hybrid_norm = per_head_rms(
@@ -531,17 +531,17 @@ fn forward_full(
         s.mrope,
     );
     let scale = (s.head_dim as f32).sqrt().recip();
-    let attn = attend(
-        query.as_slice(),
-        key.as_slice(),
-        value.as_slice(),
-        keys,
-        values,
-        s.head_count,
-        s.kv_heads,
-        s.head_dim,
+    let attn = attend(Attend {
+        query: query.as_slice(),
+        key: key.as_slice(),
+        value: value.as_slice(),
+        cache_k: keys,
+        cache_v: values,
+        head_count: s.head_count,
+        kv_heads: s.kv_heads,
+        head_dim: s.head_dim,
         scale,
-    );
+    });
     keys.push(key);
     values.push(value);
     let gated: Vec<f32> = attn
@@ -624,19 +624,36 @@ fn conv1d_step(
     Ok(())
 }
 
-fn delta_step(
-    q: &[f32],
-    k: &[f32],
-    v: &[f32],
+/// One gated-delta-net head's step: everything the step reads and writes for
+/// one head, so the kernel below takes one argument instead of eleven.
+struct DeltaHead<'a> {
+    q: &'a [f32],
+    k: &'a [f32],
+    v: &'a [f32],
     decay: f32,
     beta: f32,
-    state: &mut [f32],
-    norm_q: &mut [f32],
-    norm_k: &mut [f32],
-    kv_mem: &mut [f32],
-    delta: &mut [f32],
-    output: &mut [f32],
-) {
+    state: &'a mut [f32],
+    norm_q: &'a mut [f32],
+    norm_k: &'a mut [f32],
+    kv_mem: &'a mut [f32],
+    delta: &'a mut [f32],
+    output: &'a mut [f32],
+}
+
+fn delta_step(head: DeltaHead<'_>) {
+    let DeltaHead {
+        q,
+        k,
+        v,
+        decay,
+        beta,
+        state,
+        norm_q,
+        norm_k,
+        kv_mem,
+        delta,
+        output,
+    } = head;
     let dim = q.len();
     l2(q, norm_q);
     let scale = (dim as f32).sqrt().recip();
@@ -666,17 +683,32 @@ fn delta_step(
     }
 }
 
-fn attend(
-    query: &[f32],
-    key: &[f32],
-    value: &[f32],
-    cache_k: &[Vec<f32>],
-    cache_v: &[Vec<f32>],
+/// One attention read: the projections, the cache, and the shape that ties
+/// them together, so the kernel takes one argument instead of nine.
+struct Attend<'a> {
+    query: &'a [f32],
+    key: &'a [f32],
+    value: &'a [f32],
+    cache_k: &'a [Vec<f32>],
+    cache_v: &'a [Vec<f32>],
     head_count: usize,
     kv_heads: usize,
     head_dim: usize,
     scale: f32,
-) -> Vec<f32> {
+}
+
+fn attend(a: Attend<'_>) -> Vec<f32> {
+    let Attend {
+        query,
+        key,
+        value,
+        cache_k,
+        cache_v,
+        head_count,
+        kv_heads,
+        head_dim,
+        scale,
+    } = a;
     let group = head_count / kv_heads.max(1);
     let mut out = vec![0.0f32; head_count * head_dim];
     for h in 0..head_count {

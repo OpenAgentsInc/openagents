@@ -248,22 +248,46 @@ pub fn run_hybrid_layer(
     }
 }
 
-pub fn run_full_layer(
-    mapped: &MappedWeights,
-    spec: &HybridSpec,
-    attn: &AttnSpec,
-    index: usize,
-    input: &[f32],
-    slot: usize,
-    n_full: usize,
-    position: usize,
-) -> Option<Vec<f32>> {
+/// One full-layer call: which layer runs, what it reads, and where it stands
+/// in the hybrid schedule. Every `run_full_layer` variant takes this, so the
+/// signature survives a new field without growing another argument.
+pub struct FullLayer<'a> {
+    pub mapped: &'a MappedWeights,
+    pub spec: &'a HybridSpec,
+    pub attn: &'a AttnSpec,
+    pub index: usize,
+    pub input: &'a [f32],
+    pub slot: usize,
+    pub n_full: usize,
+    pub position: usize,
+}
+
+pub fn run_full_layer(layer: FullLayer<'_>) -> Option<Vec<f32>> {
+    let FullLayer {
+        mapped,
+        spec,
+        attn,
+        index,
+        input,
+        slot,
+        n_full,
+        position,
+    } = layer;
     if !bound() || spec.ffn == 0 || input.len() != spec.hidden {
         return None;
     }
     #[cfg(target_os = "macos")]
     {
-        macos::run_full_layer(mapped, spec, attn, index, input, slot, n_full, position)
+        macos::run_full_layer(FullLayer {
+            mapped,
+            spec,
+            attn,
+            index,
+            input,
+            slot,
+            n_full,
+            position,
+        })
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -1305,6 +1329,11 @@ kernel void argmax_f32(
         })
     }
 
+    // The arguments are the Objective-C encoder plumbing: a pipe, two buffer
+    // windows, and the offsets into them. Bundling them would move the call
+    // sites away from the shapes the Metal trace names, so the kernel keeps
+    // them in dispatch order.
+    #[allow(clippy::too_many_arguments)]
     unsafe fn encode_q8(
         fns: &ComputeFns,
         enc: *mut c_void,
@@ -2451,16 +2480,17 @@ kernel void argmax_f32(
         ONCE.call_once(|| eprintln!("attn-gpu: {msg}"));
     }
 
-    pub(super) fn run_full_layer(
-        mapped: &MappedWeights,
-        spec: &HybridSpec,
-        attn: &AttnSpec,
-        index: usize,
-        input: &[f32],
-        slot: usize,
-        n_full: usize,
-        position: usize,
-    ) -> Option<Vec<f32>> {
+    pub(super) fn run_full_layer(layer: crate::metal_gemm::FullLayer<'_>) -> Option<Vec<f32>> {
+        let crate::metal_gemm::FullLayer {
+            mapped,
+            spec,
+            attn,
+            index,
+            input,
+            slot,
+            n_full,
+            position,
+        } = layer;
         if std::env::var_os("OPENAGENTS_HYBRID_CPU").is_some()
             || std::env::var_os("OPENAGENTS_ATTN_CPU").is_some()
         {
@@ -2469,9 +2499,9 @@ kernel void argmax_f32(
         if attn.dim != 256
             || attn.heads == 0
             || attn.kv_heads == 0
-            || attn.heads % attn.kv_heads != 0
+            || !attn.heads.is_multiple_of(attn.kv_heads)
             || attn.rotary < 2
-            || attn.rotary % 2 != 0
+            || !attn.rotary.is_multiple_of(2)
             || attn.rotary > attn.dim
             || attn.n_ctx == 0
             || attn.n_ctx > 4096

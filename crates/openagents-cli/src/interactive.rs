@@ -460,10 +460,10 @@ impl CoderApp {
 
     /// Settle whatever was streaming and take the composer off hold.
     fn finish_turn(&mut self) {
-        if let Some(last) = self.entries.last_mut() {
-            if !last.settled {
-                last.settled = true;
-            }
+        if let Some(last) = self.entries.last_mut()
+            && !last.settled
+        {
+            last.settled = true;
         }
         self.busy = false;
     }
@@ -487,10 +487,11 @@ impl CoderApp {
                 // `execute_turn` returns the last step's text, which has
                 // already streamed. It is the fallback for the paths that
                 // return without streaming anything.
-                if let Some(last) = self.entries.last_mut() {
-                    if !last.settled && last.text.is_empty() {
-                        last.text = answer;
-                    }
+                if let Some(last) = self.entries.last_mut()
+                    && !last.settled
+                    && last.text.is_empty()
+                {
+                    last.text = answer;
                 }
                 self.finish_turn();
             }
@@ -547,10 +548,10 @@ impl CoderApp {
     pub fn on_size(&mut self, area: Rect) {
         self.size = area;
         let (cols, rows) = pty_viewport(area);
-        if let Some(pty) = self.pty.as_mut() {
-            if pty.screen.resize(cols, rows) {
-                pty.control.resize(cols, rows);
-            }
+        if let Some(pty) = self.pty.as_mut()
+            && pty.screen.resize(cols, rows)
+        {
+            pty.control.resize(cols, rows);
         }
     }
 
@@ -605,10 +606,10 @@ impl CoderApp {
 
         // Everything else is the program's. It is encoded as the bytes a
         // terminal would have sent, in the cursor mode the program asked for.
-        if let Some(pty) = self.pty.as_ref() {
-            if let Some(bytes) = crate::pty::encode_key(key, pty.screen.application_cursor()) {
-                pty.control.write(&bytes);
-            }
+        if let Some(pty) = self.pty.as_ref()
+            && let Some(bytes) = crate::pty::encode_key(key, pty.screen.application_cursor())
+        {
+            pty.control.write(&bytes);
         }
     }
 
@@ -1162,10 +1163,10 @@ pub async fn run_tui(
     // for local-lane trials, pointing at the host's Ollama from inside the
     // Harbor container. Honor it, or a graded local row is a row of
     // connection refusals.
-    if let Ok(host) = std::env::var("OLLAMA_HOST") {
-        if !host.trim().is_empty() {
-            session.ollama_host = host;
-        }
+    if let Ok(host) = std::env::var("OLLAMA_HOST")
+        && !host.trim().is_empty()
+    {
+        session.ollama_host = host;
     }
     session.repository = repository;
     // A resumed thread is adopted before the screen is entered, so its refusal
@@ -1289,10 +1290,10 @@ async fn run_without_a_terminal(
     // for local-lane trials, pointing at the host's Ollama from inside the
     // Harbor container. Honor it, or a graded local row is a row of
     // connection refusals.
-    if let Ok(host) = std::env::var("OLLAMA_HOST") {
-        if !host.trim().is_empty() {
-            session.ollama_host = host;
-        }
+    if let Ok(host) = std::env::var("OLLAMA_HOST")
+        && !host.trim().is_empty()
+    {
+        session.ollama_host = host;
     }
     session.repository = repository;
     if let Some(resumption) = &resumed {

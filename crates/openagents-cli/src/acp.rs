@@ -440,6 +440,7 @@ impl AcpHarness {
     /// no methods, or only a browser PKCE method (Devin), skip the round-trip
     /// and use stored CLI credentials. Sending `devin-browser` opens a login
     /// window on every run even when the agent already has credentials.
+    #[allow(clippy::too_many_arguments)]
     async fn authenticate_if_needed<F>(
         &self,
         initialized: &serde_json::Value,
@@ -532,7 +533,7 @@ impl AcpHarness {
     {
         let mut command = Command::new(&self.command);
         command
-            .args(&self.spawn_args())
+            .args(self.spawn_args())
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -599,10 +600,11 @@ impl AcpHarness {
         let mut answer = String::new();
         let mut tool_uses = 0u64;
         let mut on_event = |event: AcpEvent| {
-            if let AcpEvent::Tool { kind, .. } = &event {
-                if kind != "thought" && kind != "plan" {
-                    tool_uses += 1;
-                }
+            if let AcpEvent::Tool { kind, .. } = &event
+                && kind != "thought"
+                && kind != "plan"
+            {
+                tool_uses += 1;
             }
             on_event(event);
         };
@@ -899,31 +901,32 @@ where
     // Any other request the agent makes of its client. An unanswered request
     // hangs the agent, so every one gets a reply: the handler's, or the
     // JSON-RPC "method not found" that says this client does not serve it.
-    if !method.is_empty() && method != "session/update" {
-        if let Some(id) = message.get("id").and_then(|v| v.as_u64()) {
-            let params = message
-                .get("params")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-            let reply = if is_ask_user_question(method) {
-                Some(serde_json::json!({"outcome": "cancelled"}))
-            } else {
-                match &harness.on_request {
-                    Some(handler) => handler(method, &params),
-                    None => None,
-                }
-            };
-            let answer_line = match reply {
-                Some(result) => serde_json::json!({"jsonrpc": "2.0", "id": id, "result": result}),
-                None => serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {"code": -32601, "message": "method not found"},
-                }),
-            };
-            write_line(stdin, &answer_line).await?;
-            return Ok(());
-        }
+    if !method.is_empty()
+        && method != "session/update"
+        && let Some(id) = message.get("id").and_then(|v| v.as_u64())
+    {
+        let params = message
+            .get("params")
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
+        let reply = if is_ask_user_question(method) {
+            Some(serde_json::json!({"outcome": "cancelled"}))
+        } else {
+            match &harness.on_request {
+                Some(handler) => handler(method, &params),
+                None => None,
+            }
+        };
+        let answer_line = match reply {
+            Some(result) => serde_json::json!({"jsonrpc": "2.0", "id": id, "result": result}),
+            None => serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {"code": -32601, "message": "method not found"},
+            }),
+        };
+        write_line(stdin, &answer_line).await?;
+        return Ok(());
     }
 
     if method != "session/update" {

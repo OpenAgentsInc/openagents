@@ -387,7 +387,7 @@ fn nearest_digest(target: &str, inventory: &InventoryDocument) -> Option<String>
         if d == 0 {
             continue;
         }
-        if best.map_or(true, |(bd, _)| d < bd) {
+        if best.is_none_or(|(bd, _)| d < bd) {
             best = Some((d, cand));
         }
     }

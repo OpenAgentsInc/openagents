@@ -1479,10 +1479,10 @@ fn strings_within(value: &serde_json::Value, depth: usize, found: &mut Vec<Strin
 
 fn first_string(value: &serde_json::Value, names: &[&str]) -> Option<String> {
     for name in names {
-        if let Some(found) = value.get(*name).and_then(|found| found.as_str()) {
-            if !found.is_empty() {
-                return Some(found.to_string());
-            }
+        if let Some(found) = value.get(*name).and_then(|found| found.as_str())
+            && !found.is_empty()
+        {
+            return Some(found.to_string());
         }
     }
     None
@@ -3146,16 +3146,14 @@ fn handle_run(
         "command request received",
     );
 
-    if let Some(requested) = payload.get("tier").and_then(|v| v.as_str()) {
-        if let Some(requested) = Tier::parse(requested) {
-            if !tier_allows(config.tier, requested) {
-                let detail = "the requested tier exceeds the local ceiling";
-                let _ =
-                    journal.append(request_id, &request, "tier_insufficient", "refused", detail);
-                let _ = sender.send(refuse_frame("tier_insufficient", detail));
-                return;
-            }
-        }
+    if let Some(requested) = payload.get("tier").and_then(|v| v.as_str())
+        && let Some(requested) = Tier::parse(requested)
+        && !tier_allows(config.tier, requested)
+    {
+        let detail = "the requested tier exceeds the local ceiling";
+        let _ = journal.append(request_id, &request, "tier_insufficient", "refused", detail);
+        let _ = sender.send(refuse_frame("tier_insufficient", detail));
+        return;
     }
 
     match decide(&request, config) {
@@ -3479,16 +3477,15 @@ fn handle_agent(
     // The tier the server asked for cannot exceed the local ceiling, and the
     // ceiling itself has to reach past `probe` before anything is delegated at
     // all: a probe-tier machine answers fixed discovery and nothing else.
-    if let Some(requested) = payload.get("tier").and_then(|value| value.as_str()) {
-        if let Some(requested) = Tier::parse(requested) {
-            if !tier_allows(config.tier, requested) {
-                refuse_now(
-                    "tier_insufficient",
-                    "the requested tier exceeds the local ceiling",
-                );
-                return;
-            }
-        }
+    if let Some(requested) = payload.get("tier").and_then(|value| value.as_str())
+        && let Some(requested) = Tier::parse(requested)
+        && !tier_allows(config.tier, requested)
+    {
+        refuse_now(
+            "tier_insufficient",
+            "the requested tier exceeds the local ceiling",
+        );
+        return;
     }
     if !tier_allows(config.tier, Tier::Curated) {
         refuse_now(
@@ -3913,9 +3910,7 @@ fn request_fields(payload: &serde_json::Value) -> Option<CommandRequest> {
 fn bounded_number(payload: &serde_json::Value, names: &[&str], fallback: u64, ceiling: u64) -> u64 {
     for name in names {
         if let Some(value) = payload.get(*name).and_then(|value| value.as_f64()) {
-            if value.is_finite() && value > 0.0 {
-                return (value.floor() as u64).min(ceiling);
-            }
+            return (value.floor() as u64).min(ceiling);
         }
     }
     fallback

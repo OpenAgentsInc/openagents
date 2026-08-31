@@ -39,11 +39,10 @@ pub fn is_local_slash_input(text: &str, commands: &[(&str, &str)]) -> bool {
         return true;
     }
 
-    let command_shaped = !body.chars().any(char::is_whitespace)
+    !body.chars().any(char::is_whitespace)
         && !name.contains('/')
         && !name.contains('.')
-        && !name.starts_with('~');
-    command_shaped
+        && !name.starts_with('~')
 }
 
 /// What a key did to the composer.

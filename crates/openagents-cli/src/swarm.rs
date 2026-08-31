@@ -813,6 +813,7 @@ pub struct Undeliverable {
 /// child that exited between the fan-out composing and its turn delivering
 /// is reported `undeliverable` — honestly, by name — rather than silently
 /// skipped.
+#[allow(clippy::too_many_arguments)]
 pub fn send(
     home: &Path,
     from: &str,
@@ -1195,10 +1196,6 @@ pub struct RepairReport {
 }
 
 impl Mailbox {
-    fn deliver_count_guard(&self) -> Result<Vec<SwarmMessage>, String> {
-        Self::read(&self.inbox)
-    }
-
     /// Every inbox message, without the gap guard. For reporting a finished
     /// exchange, where the reader wants what is there, not a refusal about a
     /// line a crashed sender owed.

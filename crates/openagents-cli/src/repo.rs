@@ -196,15 +196,15 @@ impl RepoClient {
     fn headers(&self, idempotency_key: Option<&str>) -> HeaderMap {
         let mut map = HeaderMap::new();
         map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        if let Some(token) = &self.token {
-            if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", token.expose())) {
-                map.insert(AUTHORIZATION, value);
-            }
+        if let Some(token) = &self.token
+            && let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", token.expose()))
+        {
+            map.insert(AUTHORIZATION, value);
         }
-        if let Some(key) = idempotency_key {
-            if let Ok(value) = HeaderValue::from_str(key) {
-                map.insert("idempotency-key", value);
-            }
+        if let Some(key) = idempotency_key
+            && let Ok(value) = HeaderValue::from_str(key)
+        {
+            map.insert("idempotency-key", value);
         }
         map
     }

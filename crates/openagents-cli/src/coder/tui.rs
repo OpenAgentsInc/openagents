@@ -511,7 +511,6 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
                 .unwrap_or(0);
             let (head, rest) = word.split_at(end);
             current.push_str(head);
-            current_width += head.chars().count();
             lines.push(std::mem::take(&mut current));
             current_width = 0;
             word = rest;

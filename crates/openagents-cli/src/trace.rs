@@ -771,14 +771,14 @@ fn expand_single_digit(replacement: &str, caps: &Captures) -> String {
     let mut out = String::with_capacity(replacement.len());
     let mut chars = replacement.chars().peekable();
     while let Some(ch) = chars.next() {
-        if ch == '$' {
-            if let Some(digit) = chars.peek().and_then(|c| c.to_digit(10)) {
-                chars.next();
-                if let Some(capture) = caps.get(digit as usize) {
-                    out.push_str(capture.as_str());
-                }
-                continue;
+        if ch == '$'
+            && let Some(digit) = chars.peek().and_then(|c| c.to_digit(10))
+        {
+            chars.next();
+            if let Some(capture) = caps.get(digit as usize) {
+                out.push_str(capture.as_str());
             }
+            continue;
         }
         out.push(ch);
     }

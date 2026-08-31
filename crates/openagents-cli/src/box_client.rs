@@ -218,10 +218,10 @@ impl BoxClient {
         let mut map = HeaderMap::new();
         map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         map.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        if let Some(tok) = &self.token {
-            if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", tok)) {
-                map.insert(AUTHORIZATION, val);
-            }
+        if let Some(tok) = &self.token
+            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", tok))
+        {
+            map.insert(AUTHORIZATION, val);
         }
         map
     }
@@ -308,10 +308,10 @@ impl BoxClient {
                 &[200],
             )
             .await;
-        if let Ok(body) = &named {
-            if let Some(id) = text(body, "conversation_id") {
-                return Ok(id);
-            }
+        if let Ok(body) = &named
+            && let Some(id) = text(body, "conversation_id")
+        {
+            return Ok(id);
         }
 
         let user = self

@@ -518,10 +518,10 @@ fn claude_turns(bytes: &[u8]) -> Vec<(String, String)> {
             Some(serde_json::Value::String(content)) => parts.push(content.clone()),
             Some(serde_json::Value::Array(blocks)) => {
                 for block in blocks {
-                    if block.get("type").and_then(|v| v.as_str()) == Some("text") {
-                        if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                            parts.push(text.to_string());
-                        }
+                    if block.get("type").and_then(|v| v.as_str()) == Some("text")
+                        && let Some(text) = block.get("text").and_then(|v| v.as_str())
+                    {
+                        parts.push(text.to_string());
                     }
                 }
             }
@@ -564,10 +564,10 @@ fn codex_turns(bytes: &[u8]) -> Vec<(String, String)> {
         if let Some(serde_json::Value::Array(blocks)) = payload.get("content") {
             for block in blocks {
                 let kind = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                if kind == "input_text" || kind == "output_text" {
-                    if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                        parts.push(text.to_string());
-                    }
+                if (kind == "input_text" || kind == "output_text")
+                    && let Some(text) = block.get("text").and_then(|v| v.as_str())
+                {
+                    parts.push(text.to_string());
                 }
             }
         }
@@ -587,15 +587,15 @@ fn claude_meta(bytes: &[u8]) -> (Option<String>, Option<String>) {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
             continue;
         };
-        if cwd.is_none() {
-            if let Some(dir) = value.get("cwd").and_then(|v| v.as_str()) {
-                cwd = Some(dir.to_string());
-            }
+        if cwd.is_none()
+            && let Some(dir) = value.get("cwd").and_then(|v| v.as_str())
+        {
+            cwd = Some(dir.to_string());
         }
-        if session_id.is_none() {
-            if let Some(id) = value.get("sessionId").and_then(|v| v.as_str()) {
-                session_id = Some(id.to_string());
-            }
+        if session_id.is_none()
+            && let Some(id) = value.get("sessionId").and_then(|v| v.as_str())
+        {
+            session_id = Some(id.to_string());
         }
         if cwd.is_some() && session_id.is_some() {
             break;

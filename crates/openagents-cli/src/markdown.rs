@@ -255,14 +255,13 @@ fn inline(text: &str, base: Style) -> Vec<Span<'static>> {
         let rest = &text[i..];
 
         // A backslash escapes the next character, which is then literal.
-        if let Some(escaped) = rest.strip_prefix('\\') {
-            if let Some(c) = escaped.chars().next() {
-                if "\\`*_[]()#-+.!>".contains(c) {
-                    plain.push(c);
-                    i += 1 + c.len_utf8();
-                    continue;
-                }
-            }
+        if let Some(escaped) = rest.strip_prefix('\\')
+            && let Some(c) = escaped.chars().next()
+            && "\\`*_[]()#-+.!>".contains(c)
+        {
+            plain.push(c);
+            i += 1 + c.len_utf8();
+            continue;
         }
 
         if bytes[i] == b'`' {
@@ -304,19 +303,19 @@ fn inline(text: &str, base: Style) -> Vec<Span<'static>> {
             continue;
         }
 
-        if bytes[i] == b'[' {
-            if let Some(link) = link_at(rest) {
-                flush!();
-                spans.push(Span::styled(
-                    link.text.to_string(),
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::UNDERLINED),
-                ));
-                spans.push(Span::styled(format!(" ({})", link.url), dim()));
-                i += link.consumed;
-                continue;
-            }
+        if bytes[i] == b'['
+            && let Some(link) = link_at(rest)
+        {
+            flush!();
+            spans.push(Span::styled(
+                link.text.to_string(),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::UNDERLINED),
+            ));
+            spans.push(Span::styled(format!(" ({})", link.url), dim()));
+            i += link.consumed;
+            continue;
         }
 
         let ch = rest.chars().next().expect("rest is non-empty");
@@ -645,23 +644,23 @@ fn highlight(line: &str, syntax: &Syntax, mut in_block: bool) -> (Vec<Span<'stat
             continue;
         }
 
-        if let Some((open, close)) = syntax.block_comment {
-            if let Some(after_open) = rest.strip_prefix(open) {
-                flush!();
-                match after_open.find(close) {
-                    Some(end) => {
-                        let stop = open.len() + end + close.len();
-                        spans.push(Span::styled(rest[..stop].to_string(), comment_style()));
-                        i += stop;
-                    }
-                    None => {
-                        spans.push(Span::styled(rest.to_string(), comment_style()));
-                        i = line.len();
-                        in_block = true;
-                    }
+        if let Some((open, close)) = syntax.block_comment
+            && let Some(after_open) = rest.strip_prefix(open)
+        {
+            flush!();
+            match after_open.find(close) {
+                Some(end) => {
+                    let stop = open.len() + end + close.len();
+                    spans.push(Span::styled(rest[..stop].to_string(), comment_style()));
+                    i += stop;
                 }
-                continue;
+                None => {
+                    spans.push(Span::styled(rest.to_string(), comment_style()));
+                    i = line.len();
+                    in_block = true;
+                }
             }
+            continue;
         }
 
         if let Some(marker) = syntax

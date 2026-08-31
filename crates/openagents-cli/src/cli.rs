@@ -3558,10 +3558,11 @@ async fn run_project(action: ProjectAction, api_base: &str, token: Option<String
             if archive && unarchive {
                 fail("Pass either --archive or --unarchive, not both.");
             }
-            if let Some(value) = state.as_deref() {
-                if value != "open" && value != "closed" {
-                    fail("--state accepts open or closed.");
-                }
+            if let Some(value) = state.as_deref()
+                && value != "open"
+                && value != "closed"
+            {
+                fail("--state accepts open or closed.");
             }
             let archived = if archive {
                 Some(true)
@@ -4219,13 +4220,13 @@ async fn run_memory(action: MemoryAction, api_base: &str, token: Option<String>,
 // identity
 // ---------------------------------------------------------------------------
 
-/// The public identity block. Public identifiers only: no seed phrase, no `nsec`,
-/// and no private key reaches this function.
-///
-/// It also carries the protection line. Whether the seed on this machine is
-/// encrypted or is readable text is not something a person can infer from the
-/// path, and the plaintext fallback is only honest if the surface that shows an
-/// identity says so every time.
+// The public identity block. Public identifiers only: no seed phrase, no `nsec`,
+// and no private key reaches this function.
+//
+// It also carries the protection line. Whether the seed on this machine is
+// encrypted or is readable text is not something a person can infer from the
+// path, and the plaintext fallback is only honest if the surface that shows an
+// identity says so every time.
 
 // ---------------------------------------------------------------------------
 // trace
@@ -4575,10 +4576,10 @@ async fn run_deploy(action: DeployAction, api_base: &str, token: Option<String>,
 
     match action {
         DeployAction::List { repo, limit } => {
-            if let Some(limit) = limit {
-                if !(1..=50).contains(&limit) {
-                    fail("--limit must be between 1 and 50.");
-                }
+            if let Some(limit) = limit
+                && !(1..=50).contains(&limit)
+            {
+                fail("--limit must be between 1 and 50.");
             }
             let value = or_fail(client.list(repo.as_deref(), limit).await);
             let targets = value

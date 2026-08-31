@@ -499,7 +499,7 @@ pub const PRO_MODEL_IDS: &[&str] = &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-lu
 
 /// True when `id` is one of [`PRO_MODEL_IDS`].
 pub fn is_pro_model_id(id: &str) -> bool {
-    PRO_MODEL_IDS.iter().any(|candidate| *candidate == id)
+    PRO_MODEL_IDS.contains(&id)
 }
 
 /// Nothing outside this table counts the lanes: [`Lane::cycle`] walks it and
@@ -2838,10 +2838,10 @@ impl CoderRuntimeSession {
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
                 self.tell_stream(ModelStreamEvent::ContentCommitted);
-                if !deferred_text.is_empty() {
-                    if let Some(cb) = chunk_callback.as_mut() {
-                        cb(&deferred_text);
-                    }
+                if !deferred_text.is_empty()
+                    && let Some(cb) = chunk_callback.as_mut()
+                {
+                    cb(&deferred_text);
                 }
                 // The answer joins the transcript. `run_tools` records an
                 // assistant turn only when that turn called a tool, so without
@@ -3402,10 +3402,10 @@ impl CoderRuntimeSession {
             if step.tool_calls.is_empty() {
                 final_answer = step.content;
                 self.tell_stream(ModelStreamEvent::ContentCommitted);
-                if !deferred_text.is_empty() {
-                    if let Some(cb) = chunk_callback.as_mut() {
-                        cb(&deferred_text);
-                    }
+                if !deferred_text.is_empty()
+                    && let Some(cb) = chunk_callback.as_mut()
+                {
+                    cb(&deferred_text);
                 }
                 self.messages.push(ChatMessage {
                     role: "assistant".to_string(),
@@ -3690,22 +3690,23 @@ impl CoderRuntimeSession {
             {
                 ran.push(ThreadRecord::checkpoint(text));
             }
-            if call.name == "swarm_send" && !result.is_error {
-                if let Ok(report) = serde_json::from_str::<serde_json::Value>(&result.output) {
-                    ran.push(ThreadRecord::new(
-                        "swarm_message",
-                        serde_json::json!({
-                            "direction": "sent",
-                            "id": report.get("message_id"),
-                            "from": report.get("from"),
-                            "to": report.get("to"),
-                            "kind": report.get("kind"),
-                            "thread": report.get("thread"),
-                            "reply_expected": call.arguments.get("reply_expected"),
-                            "body": call.arguments.get("body"),
-                        }),
-                    ));
-                }
+            if call.name == "swarm_send"
+                && !result.is_error
+                && let Ok(report) = serde_json::from_str::<serde_json::Value>(&result.output)
+            {
+                ran.push(ThreadRecord::new(
+                    "swarm_message",
+                    serde_json::json!({
+                        "direction": "sent",
+                        "id": report.get("message_id"),
+                        "from": report.get("from"),
+                        "to": report.get("to"),
+                        "kind": report.get("kind"),
+                        "thread": report.get("thread"),
+                        "reply_expected": call.arguments.get("reply_expected"),
+                        "body": call.arguments.get("body"),
+                    }),
+                ));
             }
             self.messages.push(ChatMessage {
                 role: "tool".to_string(),
@@ -4289,11 +4290,11 @@ impl StepAccumulator {
         if let Some(reasoning) = delta.get("reasoning").and_then(|v| v.as_str()) {
             self.reasoning.push_str(reasoning);
         }
-        if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
-            if !content.is_empty() {
-                on_chunk(content);
-                self.content.push_str(content);
-            }
+        if let Some(content) = delta.get("content").and_then(|v| v.as_str())
+            && !content.is_empty()
+        {
+            on_chunk(content);
+            self.content.push_str(content);
         }
         if let Some(calls) = delta.get("tool_calls").and_then(|v| v.as_array()) {
             for call in calls {
@@ -4329,9 +4330,7 @@ impl StepAccumulator {
             // everything downstream — the Ollama call id, the assistant wire
             // message, the `tool.ran` record — names the tool by this.
             let name = canonical_tool_name(name);
-            if entry.1.is_empty() {
-                entry.1 = name.to_string();
-            } else if name.starts_with(&entry.1) {
+            if entry.1.is_empty() || name.starts_with(&entry.1) {
                 entry.1 = name.to_string();
             }
         }
@@ -4371,10 +4370,8 @@ impl StepAccumulator {
         match event_type {
             "response.output_text.delta" => {
                 if let Some(delta) = value.get("delta").and_then(|v| v.as_str()) {
-                    if !delta.is_empty() {
-                        on_chunk(delta);
-                        self.content.push_str(delta);
-                    }
+                    on_chunk(delta);
+                    self.content.push_str(delta);
                 }
             }
             "response.reasoning_summary_text.delta" => {
@@ -4383,24 +4380,22 @@ impl StepAccumulator {
                 }
             }
             "response.output_item.done" => {
-                if let Some(item) = value.get("item") {
-                    if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
-                        if let (Some(call_id), Some(name), Some(arguments), Some(index)) = (
-                            item.get("call_id").and_then(|v| v.as_str()),
-                            item.get("name").and_then(|v| v.as_str()),
-                            item.get("arguments").and_then(|v| v.as_str()),
-                            value.get("output_index").and_then(|v| v.as_u64()),
-                        ) {
-                            self.tool_calls.insert(
-                                index as usize,
-                                (
-                                    call_id.to_string(),
-                                    canonical_tool_name(name).to_string(),
-                                    arguments.to_string(),
-                                ),
-                            );
-                        }
-                    }
+                if let Some(item) = value.get("item")
+                    && let (Some(call_id), Some(name), Some(arguments), Some(index)) = (
+                        item.get("call_id").and_then(|v| v.as_str()),
+                        item.get("name").and_then(|v| v.as_str()),
+                        item.get("arguments").and_then(|v| v.as_str()),
+                        value.get("output_index").and_then(|v| v.as_u64()),
+                    )
+                {
+                    self.tool_calls.insert(
+                        index as usize,
+                        (
+                            call_id.to_string(),
+                            canonical_tool_name(name).to_string(),
+                            arguments.to_string(),
+                        ),
+                    );
                 }
             }
             "response.completed" => {
@@ -4437,10 +4432,8 @@ impl StepAccumulator {
             self.reasoning.push_str(thinking);
         }
         if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
-            if !content.is_empty() {
-                on_chunk(content);
-                self.content.push_str(content);
-            }
+            on_chunk(content);
+            self.content.push_str(content);
         }
         if let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
             for call in calls {
@@ -4738,12 +4731,12 @@ fn ollama_message(message: &ChatMessage) -> serde_json::Value {
                 .collect(),
         );
     }
-    if message.role == "tool" {
-        if let Some(id) = &message.tool_call_id {
-            // `local_<index>_<name>` — the name is what Ollama matches on.
-            let name = id.splitn(3, '_').nth(2).unwrap_or(id);
-            out["tool_name"] = serde_json::json!(name);
-        }
+    if message.role == "tool"
+        && let Some(id) = &message.tool_call_id
+    {
+        // `local_<index>_<name>` — the name is what Ollama matches on.
+        let name = id.splitn(3, '_').nth(2).unwrap_or(id);
+        out["tool_name"] = serde_json::json!(name);
     }
     out
 }

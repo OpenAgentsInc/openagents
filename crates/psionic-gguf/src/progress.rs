@@ -24,7 +24,7 @@ pub fn should_emit(done: u64, total: u64, every: u64) -> bool {
     if total == 0 {
         return false;
     }
-    done == 0 || done == total || (every > 0 && done % every == 0)
+    done == 0 || done == total || (every > 0 && done.is_multiple_of(every))
 }
 
 #[cfg(test)]

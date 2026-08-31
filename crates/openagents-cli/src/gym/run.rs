@@ -116,10 +116,10 @@ impl GymClient {
         let mut map = HeaderMap::new();
         map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         map.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        if let Some(token) = &self.token {
-            if let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}")) {
-                map.insert(AUTHORIZATION, value);
-            }
+        if let Some(token) = &self.token
+            && let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}"))
+        {
+            map.insert(AUTHORIZATION, value);
         }
         map
     }
@@ -437,7 +437,7 @@ async fn execute(
             PathBuf::from(format!("/tmp/gym-jobs-{}", stamp))
         }
     };
-    let _ = tokio::fs::create_dir_all(&jobs_dir).await.map_err(|e| {
+    tokio::fs::create_dir_all(&jobs_dir).await.map_err(|e| {
         CliError::Internal(format!(
             "could not create jobs directory {}: {e}",
             jobs_dir.display()

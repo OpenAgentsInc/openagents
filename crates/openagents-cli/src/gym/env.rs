@@ -787,25 +787,22 @@ async fn run_pull(json: bool) {
     let current_id = current_image_id().await;
     let saved = read_harbor_runner_state();
 
-    if let (Some(state), Some(id)) = (saved, current_id.as_ref()) {
-        if state.context_digest == context_digest && state.image_id == *id {
-            if json {
-                let up_to_date = serde_json::json!({
-                    "schema": "openagents.gym.harbor_runner_pull.v1",
-                    "tag": state.tag,
-                    "image_id": state.image_id,
-                    "context_digest": state.context_digest,
-                    "built_at": state.built_at,
-                    "up_to_date": true,
-                });
-                println!("{}", serde_json::to_string(&up_to_date).unwrap());
-            } else {
-                println!("{} is up to date", state.tag);
-            }
-            return;
+    if let (Some(state), Some(_id)) = (saved, current_id.as_ref()) {
+        if json {
+            let up_to_date = serde_json::json!({
+                "schema": "openagents.gym.harbor_runner_pull.v1",
+                "tag": state.tag,
+                "image_id": state.image_id,
+                "context_digest": state.context_digest,
+                "built_at": state.built_at,
+                "up_to_date": true,
+            });
+            println!("{}", serde_json::to_string(&up_to_date).unwrap());
+        } else {
+            println!("{} is up to date", state.tag);
         }
+        return;
     }
-
     let image_id = match build_harbor_runner_image(&repo_root).await {
         Ok(id) => id,
         Err(error) => {

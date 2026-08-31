@@ -354,10 +354,10 @@ impl TrackerClient {
         let mut map = HeaderMap::new();
         map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         map.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        if let Some(tok) = &self.token {
-            if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", tok)) {
-                map.insert(AUTHORIZATION, val);
-            }
+        if let Some(tok) = &self.token
+            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", tok))
+        {
+            map.insert(AUTHORIZATION, val);
         }
         map
     }
@@ -510,15 +510,15 @@ impl TrackerClient {
             if received == 0 {
                 break;
             }
-            if let Some(total) = pagination.get("total").and_then(Value::as_u64) {
-                if collected.len() as u64 >= total {
-                    break;
-                }
+            if let Some(total) = pagination.get("total").and_then(Value::as_u64)
+                && total <= collected.len() as u64
+            {
+                break;
             }
-            if let Some(total_pages) = pagination.get("total_pages").and_then(Value::as_u64) {
-                if page as u64 >= total_pages {
-                    break;
-                }
+            if let Some(total_pages) = pagination.get("total_pages").and_then(Value::as_u64)
+                && page + 1 >= total_pages as u32
+            {
+                break;
             }
             page += 1;
         }

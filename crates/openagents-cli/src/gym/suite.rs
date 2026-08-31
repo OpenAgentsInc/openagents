@@ -555,13 +555,13 @@ pub fn resolve_for_run_in(suites_dir: &Path, id: &str) -> Result<ResolvedSuite, 
             path.display()
         ))
     })?;
-    if let Some(recorded) = recorded_digest(&manifest.id, &repo_root) {
-        if recorded != digest {
-            return Err(CliError::Configuration(format!(
-                "suite {} has drifted from its recorded digest (recorded {}, current {})",
-                manifest.id, recorded, digest
-            )));
-        }
+    if let Some(recorded) = recorded_digest(&manifest.id, &repo_root)
+        && recorded != digest
+    {
+        return Err(CliError::Configuration(format!(
+            "suite {} has drifted from its recorded digest (recorded {}, current {})",
+            manifest.id, recorded, digest
+        )));
     }
 
     let mut tasks = Vec::with_capacity(manifest.tasks.len());

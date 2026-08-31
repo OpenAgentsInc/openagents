@@ -198,7 +198,7 @@ pub fn is_concatenated_tool_name(name: &str) -> bool {
             continue;
         }
         let rest = &name[head.len()..];
-        if BUILTIN_TOOL_NAMES.iter().any(|tail| rest == *tail) {
+        if BUILTIN_TOOL_NAMES.contains(&rest) {
             return true;
         }
     }
@@ -210,7 +210,7 @@ pub fn is_concatenated_tool_name(name: &str) -> bool {
             continue;
         }
         let rest = &name[head.len()..];
-        if SHELL_RUNNER_NAMES.iter().any(|tail| rest == *tail) {
+        if SHELL_RUNNER_NAMES.contains(&rest) {
             return true;
         }
     }
@@ -218,9 +218,9 @@ pub fn is_concatenated_tool_name(name: &str) -> bool {
     // name after itself — the half is not a declared name, so the loop
     // above never saw it. The half has to be one, though: a name that
     // only happens to read `aaaa` is not a tool call.
-    name.len() % 2 == 0
+    name.len().is_multiple_of(2)
         && name.len() > 2
-        && &name[..name.len() / 2] == &name[name.len() / 2..]
+        && name[..name.len() / 2] == name[name.len() / 2..]
         && SHELL_RUNNER_NAMES
             .iter()
             .chain(BUILTIN_TOOL_NAMES.iter())
@@ -1830,11 +1830,11 @@ impl HarnessToolRegistry {
                         .get("name")
                         .and_then(|v| v.as_str())
                         .is_some();
-                if let Some(plugin) = loaded {
-                    if let Ok(mut held) = self.loaded.lock() {
-                        held.retain(|existing| existing.manifest.name != plugin.manifest.name);
-                        held.push(Arc::new(plugin));
-                    }
+                if let Some(plugin) = loaded
+                    && let Ok(mut held) = self.loaded.lock()
+                {
+                    held.retain(|existing| existing.manifest.name != plugin.manifest.name);
+                    held.push(Arc::new(plugin));
                 }
                 ToolOutput {
                     call_id: call.id.clone(),
@@ -2040,17 +2040,16 @@ impl HarnessToolRegistry {
                 .and_then(|value| value.as_str())
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
+                && value != "worktree"
             {
-                if value != "worktree" {
-                    return make(
-                        format!(
-                            "`{value}` is not an isolation mode. Use `worktree`, or omit it. \
-                             A cwd override is not accepted yet and cannot be combined with isolation."
-                        ),
-                        true,
-                        0,
-                    );
-                }
+                return make(
+                    format!(
+                        "`{value}` is not an isolation mode. Use `worktree`, or omit it. \
+                         A cwd override is not accepted yet and cannot be combined with isolation."
+                    ),
+                    true,
+                    0,
+                );
             }
 
             let model_arg = call
@@ -2370,7 +2369,7 @@ impl HarnessToolRegistry {
                 };
                 let flush_thought = |emit: &mut dyn FnMut(String)| {
                     if let Ok(mut buf) = stream_thought.lock() {
-                        buf.flush(|line| emit(line));
+                        buf.flush(emit);
                     }
                 };
                 match event {
@@ -2498,10 +2497,10 @@ impl HarnessToolRegistry {
                 (DelegateStatus::Cancelled, report, true, session, tools)
             }
         };
-        if let Some(session_id) = &session_id {
-            if let Ok(mut sessions) = self.acp_sessions.lock() {
-                sessions.insert(wanted.to_string(), session_id.clone());
-            }
+        if let Some(session_id) = &session_id
+            && let Ok(mut sessions) = self.acp_sessions.lock()
+        {
+            sessions.insert(wanted.to_string(), session_id.clone());
         }
         let record = DelegateAgentResult {
             status,
@@ -2781,7 +2780,7 @@ const REFUSED: &[(&str, &str)] = &[
 /// `cargo test --workspace` as a cargo flag (not a test-binary argument
 /// after `--`). The workspace suite belongs to the pre-push hook (#317).
 pub fn cargo_workspace_suite_command(cmd: &str) -> bool {
-    let cargo_part = cmd.splitn(2, " -- ").next().unwrap_or(cmd);
+    let cargo_part = cmd.split(" -- ").next().unwrap_or(cmd);
     cargo_invocation(cargo_part).is_some_and(|args| {
         args.iter().any(|word| word == "test") && args.iter().any(|word| word == "--workspace")
     })
@@ -2810,7 +2809,7 @@ pub fn test_runner_kind(cmd: &str) -> Option<&'static str> {
 
 /// Arguments after a `cargo` executable in `cmd`, when cargo is what runs.
 fn cargo_invocation(cmd: &str) -> Option<Vec<String>> {
-    for segment in cmd.split(|ch| matches!(ch, ';' | '|' | '\n' | '&')) {
+    for segment in cmd.split(&[';', '|', '\n', '&'][..]) {
         let mut words = segment.split_whitespace();
         let Some(executable) = (loop {
             match words.next() {
@@ -3614,7 +3613,7 @@ fn answer_swarm_inbox(
     // A named-id drain ignores the filters: the ids are the selection.
     let drain_ids: Option<Vec<String>> = arguments
         .get("drain_ids")
-        .or_else(|| drain)
+        .or(drain)
         .and_then(|value| value.as_array())
         .map(|ids| {
             ids.iter()
@@ -3624,7 +3623,7 @@ fn answer_swarm_inbox(
     if let Some(ids) = &drain_ids {
         let source = arguments
             .get("drain_ids")
-            .or_else(|| drain)
+            .or(drain)
             .and_then(|value| value.as_array());
         if ids.len() != source.map_or(0, Vec::len) {
             return (
@@ -4301,10 +4300,9 @@ fn answer_edit_inner(
 
     // Every tier missed. Show the nearest real text beside what was sent so
     // the next call repairs the needle instead of resending it.
-    let mut message = format!(
-        "That `oldText` does not appear here, exactly or up to whitespace or \
+    let mut message = "That `oldText` does not appear here, exactly or up to whitespace or \
          backslash-escape differences."
-    );
+        .to_string();
     if let Some(report) = diagnose_miss(content, old) {
         message.push_str("\n\n");
         message.push_str(&report);
@@ -4656,8 +4654,13 @@ fn format_miss_report(
         file_anchor + 1
     );
     report.push_str("file shows vs you sent (backslashes doubled so the count is visible):\n");
-    for file_index in window_start..window_end {
-        let file_side = reveal(file_lines[file_index]);
+    for (file_index, file_line) in file_lines
+        .iter()
+        .enumerate()
+        .take(window_end)
+        .skip(window_start)
+    {
+        let file_side = reveal(file_line);
         let sent_row = (file_index + sent_index).checked_sub(file_anchor);
         let sent_side = sent_row
             .and_then(|index| sent_lines.get(index).copied())

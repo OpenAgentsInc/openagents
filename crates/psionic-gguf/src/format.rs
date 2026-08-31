@@ -186,7 +186,7 @@ pub fn parse_bytes(bytes: &[u8]) -> Result<GgufMeta, ParseError> {
     let mut cur = Cursor::new(bytes);
     cur.set_position(4);
     let version = read_u32(&mut cur)?;
-    if version < 2 || version > 3 {
+    if !(2..=3).contains(&version) {
         return Err(ParseError::Version(version));
     }
     let n_tensors = read_u64(&mut cur)?;
@@ -457,7 +457,7 @@ fn write_qwen35_fixture_kind(path: &Path, hybrid: bool) -> std::io::Result<u64> 
         body.extend_from_slice(&off.to_le_bytes());
     }
 
-    while (body.len() as u64) % DEFAULT_ALIGNMENT != 0 {
+    while !(body.len() as u64).is_multiple_of(DEFAULT_ALIGNMENT) {
         body.push(0);
     }
     for payload in payloads {

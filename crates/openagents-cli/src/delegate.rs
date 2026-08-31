@@ -1422,10 +1422,10 @@ impl Harvest {
                 self.assistant.push_str(said);
                 shown.push(Rendered::Text(format!("{said}\n")));
             }
-            if msg.get("type").and_then(|v| v.as_str()) == Some("error") {
-                if let Some(said) = msg.get("message").and_then(|v| v.as_str()) {
-                    self.error = Some(said.to_string());
-                }
+            if msg.get("type").and_then(|v| v.as_str()) == Some("error")
+                && let Some(said) = msg.get("message").and_then(|v| v.as_str())
+            {
+                self.error = Some(said.to_string());
             }
         }
         if let Some(said) = event
@@ -1452,10 +1452,9 @@ impl Harvest {
                 .get("type")
                 .or_else(|| event.get("msg").and_then(|m| m.get("type")))
                 .and_then(|v| v.as_str())
+                && kind != "result"
             {
-                if kind != "result" {
-                    shown.push(Rendered::Note(kind.to_string()));
-                }
+                shown.push(Rendered::Note(kind.to_string()));
             }
         }
         shown
@@ -1992,6 +1991,7 @@ pub fn fanout_for_tool(
 }
 
 /// Run the `delegate` tool under the parent turn's cancellation signal.
+#[allow(clippy::too_many_arguments)]
 pub fn fanout_for_tool_cancellable(
     prompt: &str,
     count: usize,

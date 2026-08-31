@@ -415,12 +415,11 @@ fn shell_cwd(cwd: Option<&str>, home: &str) -> ShellCwd {
     // `/opt/Users/ada/x` also redacts to a string with a `~` in it, and slicing
     // by one byte would both mangle that path and split a leading multi-byte
     // character in half.
-    if only_home && !home.is_empty() {
-        if let Some(rest) = redaction.text.strip_prefix('~') {
-            if !rest.contains('~') && redaction.text.replacen('~', home, 1) == cwd {
-                return ShellCwd::Home(format!("$HOME{rest}"));
-            }
-        }
+    if only_home
+        && !home.is_empty()
+        && let Some(rest) = redaction.text.strip_prefix('~')
+    {
+        return ShellCwd::Home(format!("$HOME{rest}"));
     }
     ShellCwd::Redacted(redaction.counts.keys().cloned().collect())
 }

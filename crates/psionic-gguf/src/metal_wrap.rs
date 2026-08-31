@@ -63,10 +63,8 @@ mod macos {
     }
 
     unsafe fn load() -> Option<MetalFns> {
-        let objc_path = CStr::from_bytes_with_nul(b"/usr/lib/libobjc.A.dylib\0").ok()?;
-        let metal_path =
-            CStr::from_bytes_with_nul(b"/System/Library/Frameworks/Metal.framework/Metal\0")
-                .ok()?;
+        let objc_path = c"/usr/lib/libobjc.A.dylib";
+        let metal_path = c"/System/Library/Frameworks/Metal.framework/Metal";
         let objc = dlopen(objc_path.as_ptr(), RTLD_LAZY);
         let metal = dlopen(metal_path.as_ptr(), RTLD_LAZY);
         if objc.is_null() || metal.is_null() {
@@ -83,7 +81,8 @@ mod macos {
             return None;
         }
         let sel = sel_register(
-            b"newBufferWithBytesNoCopy:length:options:deallocator:\0"
+            c"newBufferWithBytesNoCopy:length:options:deallocator:"
+                .to_bytes()
                 .as_ptr()
                 .cast(),
         );

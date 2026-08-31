@@ -261,7 +261,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn run_coder(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let options = match parse(&arguments) {
+    let options = match parse(arguments) {
         Ok(Parsed::Run(mut options, dev)) => {
             if dev {
                 // Capture a production credential before the origin switches

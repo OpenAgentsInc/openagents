@@ -58,7 +58,7 @@ pub struct RecallSpan {
 /// Where a recall request came from: every entry in the session log carries
 /// its millisecond timestamp, so time slices sort without extra machinery.
 #[derive(Debug, Clone)]
-struct Entry {
+pub struct Entry {
     sequence: u64,
     at_ms: u64,
     kind: String,
@@ -371,7 +371,7 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                 &mut caps_hit,
                 max_spans,
                 max_chars_per_span,
-                matched.into_iter(),
+                matched,
             );
         }
         Question::CursorSlice { from, to } => {
@@ -386,7 +386,7 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                 &mut caps_hit,
                 max_spans,
                 max_chars_per_span,
-                matched.into_iter(),
+                matched,
             );
         }
         Question::TimeSlice { from, to } => {
@@ -404,7 +404,7 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                 &mut caps_hit,
                 max_spans,
                 max_chars_per_span,
-                matched.into_iter(),
+                matched,
             );
         }
         Question::KeyTurns { limit } => {
@@ -418,10 +418,10 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                         break;
                     }
                     turns.push((format!("turn-{}", turns.len() + 1), vec![entry]));
-                } else if let Some((_, run)) = turns.last_mut() {
-                    if run.len() < 64 {
-                        run.push(entry);
-                    }
+                } else if let Some((_, run)) = turns.last_mut()
+                    && run.len() < 64
+                {
+                    run.push(entry);
                 }
             }
             let mut bounded: Vec<Entry> = Vec::new();
@@ -518,7 +518,7 @@ pub fn recall(entries: &[Entry], question: &Question, caps: RecallCaps) -> Recal
                 "turn {turn_id}: {counts_by_kind}; tools: {}; first: {first_text}; last: {last_text}",
                 tools_used.join(","),
             );
-            let bounded = vec![Entry {
+            let bounded = [Entry {
                 sequence: run[0].sequence,
                 at_ms: run[0].at_ms,
                 kind: "turn.summary".to_string(),
