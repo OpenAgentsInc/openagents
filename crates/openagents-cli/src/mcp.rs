@@ -110,8 +110,8 @@ pub fn resolve_url(
 ) -> Result<String, McpError> {
     let candidate = explicit
         .filter(|value| !value.trim().is_empty())
-        .or_else(|| environment.filter(|value| !value.trim().is_empty()))
-        .or_else(|| match profile {
+        .or(environment.filter(|value| !value.trim().is_empty()))
+        .or(match profile {
             "production" => Some(PRODUCTION_MCP_URL),
             "staging" => Some(STAGING_MCP_URL),
             "local" => Some(LOCAL_MCP_URL),
