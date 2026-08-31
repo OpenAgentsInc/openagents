@@ -1772,7 +1772,10 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Responses(args) => {
-            crate::coder::responses::run(args, token).await?;
+            // The Responses command authenticates against the Coder origin it
+            // posts to, not the platform API endpoint, so it resolves its own
+            // bearer from the credential store.
+            crate::coder::responses::run(args).await?;
         }
         Commands::Delegate(args) => {
             crate::delegate::run_delegation(
