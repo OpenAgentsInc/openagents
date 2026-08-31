@@ -173,6 +173,10 @@ published target and its checksum differs, the script refuses the release
 instead of exposing a binary and checksum that disagree. Use a new version when
 you need to replace a published target.
 
+## Release source parity
+
+`--publish` also runs `scripts/release-source-parity.sh` before it builds any artifact. The gate fetches `openagents` and `github` `main`, compares the two SHAs, and refuses the release when they differ. Align the forge and the mirror before you publish, or pass `--pin` to compare the forge against the SHA recorded in `scripts/.release-pinned-commit`.
+
 ## What the script refuses
 
 Each refusal exists because the failure it prevents is silent.

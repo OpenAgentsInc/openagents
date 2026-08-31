@@ -229,6 +229,9 @@ if [ "$publish" = 1 ]; then
     (cd "$repo_root" && cargo test --workspace) ||
       die "cargo test --workspace failed; refuse publish"
   fi
+
+  echo "Checking release source parity"
+  "$repo_root/scripts/release-source-parity.sh"
 fi
 
 dist="$repo_root/dist/releases/$version"
