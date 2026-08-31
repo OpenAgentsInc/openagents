@@ -1,0 +1,44 @@
+source: /home/christopherdavid/openagents/bench-results/ollama-coding-2026-08-31.jsonl
+models measured: 17  errors: 2  skipped: 1
+  ERROR gpt-oss:120b: HTTPError: HTTP Error 500: Internal Server Error
+  ERROR gpt-oss:latest: HTTPError: HTTP Error 500: Internal Server Error
+  SKIP  qwen3.8-flash-next:125b-a6b-nvfp4: not pulled
+
+model                                    score |    pp t/s  gen t/s  ttft s |    lc-pp  lc-ttft |  cg  json
+-----------------------------------------------------------------------------------------------------------
+qwen3.5:0.8b                             1.000 |   13978.81    312.01     0.02 |  33624.51      0.32 |   ✓   2/2
+qwen3.5:2b                               0.693 |    9816.31    196.31     0.02 |  22215.41      0.42 |   ✓   2/2
+gemma4-e4b-gguf:latest                   0.394 |    5059.41    142.21     0.12 |   9730.11      0.92 |   ✓   2/2
+qwen3.5:4b                               0.368 |    4383.61    148.71     0.12 |   8745.91      0.92 |   ✓   2/2
+qwen3:latest                             0.347 |    5369.91    110.81     0.12 |   6708.81      1.12 |   ✓   2/2
+granite4.2:8b                            0.288 |    4465.91    100.21     0.22 |   5666.61      1.62 |   ✓   2/2
+gpt-oss:latest                           0.278 |    3716.31    142.31     2.72 |   7443.41      2.62 |   ✓   2/2
+qwen3.5:9b                               0.252 |    3160.31     97.61     0.12 |   5806.51      1.32 |   ✓   2/2
+qwen3:30b                                0.134 |     780.31     91.81     0.32 |   1691.61      3.92 |   ✗   0/2
+qwen3-coder:latest                       0.126 |     680.51     89.41     0.32 |   1404.31      4.62 |   ✓   2/2
+nemotron-3.5-lightning:30b-a3b           0.081 |     276.51     69.31     0.82 |    629.61     10.62 |   ✓   2/2
+nemotron-3-nano:latest                   0.078 |     287.41     66.41     0.82 |    657.01     10.12 |   ✓   2/2
+qwen3.6:27b                              0.030 |     342.91     22.01     0.72 |    819.61      8.82 |   ✓   2/2
+qwen3.6:27b-coding                       0.030 |     346.51     21.71     0.72 |    818.81      8.82 |   ✓   2/2
+qwen3.8:latest                           0.030 |     330.11     22.51     0.72 |    777.81      9.22 |   ✓   2/2
+qwen35-27b-local:latest                  0.027 |     475.61     13.41     0.62 |   1091.21      6.62 |   ✓   2/2
+qwen3.8:27b-mtp-q8_0                     0.000 |     132.81      6.01     1.72 |    329.41     21.42 |   ✓   2/2
+
+per-prompt medians (pp t/s / gen t/s / ttft s):
+  gemma4-e4b-gguf:latest                   short: 2164.7/144.6/0.0  codegen: 3691.0/143.4/0.0  longctx: 9730.1/135.5/0.9  json: 4651.8/145.4/0.1
+  gpt-oss:latest                           short: 1766.4/144.9/1.6  codegen: 2506.1/144.1/2.9  longctx: 7443.4/136.6/2.6  json: 3149.4/143.6/2.7
+  granite4.2:8b                            short: 2994.8/104.7/0.0  codegen: 4432.1/104.2/0.0  longctx: 5666.6/86.1/1.6  json: 4770.1/106.0/0.3
+  nemotron-3-nano:latest                   short: 112.9/67.3/0.6  codegen: 164.6/66.7/0.7  longctx: 657.0/64.9/10.1  json: 214.9/66.9/0.8
+  nemotron-3.5-lightning:30b-a3b           short: 110.4/66.4/0.6  codegen: 160.5/77.2/0.7  longctx: 629.6/58.3/10.6  json: 205.6/75.2/0.8
+  qwen3-coder:latest                       short: 343.3/91.8/0.2  codegen: 428.9/93.8/0.2  longctx: 1404.3/78.4/4.6  json: 545.5/93.4/0.4
+  qwen3.5:0.8b                             short: 4754.1/310.2/0.0  codegen: 7216.2/316.0/0.0  longctx: 33624.5/308.2/0.3  json: 10320.5/313.5/0.1
+  qwen3.5:2b                               short: 3481.8/192.6/0.0  codegen: 5653.8/194.3/0.0  longctx: 22215.4/198.3/0.4  json: 7914.4/200.2/0.1
+  qwen3.5:4b                               short: 1737.6/149.1/0.1  codegen: 2987.9/148.6/0.1  longctx: 8745.9/145.7/0.9  json: 4062.9/151.4/0.1
+  qwen3.5:9b                               short: 1472.9/97.3/0.1  codegen: 2347.4/97.8/0.1  longctx: 5806.5/96.2/1.3  json: 3014.3/99.0/0.1
+  qwen3.6:27b                              short: 104.9/17.8/0.7  codegen: 177.9/27.7/0.7  longctx: 819.6/17.8/8.8  json: 269.1/24.8/0.8
+  qwen3.6:27b-coding                       short: 106.8/17.5/0.7  codegen: 188.5/27.2/0.7  longctx: 818.8/17.5/8.8  json: 272.0/24.6/0.8
+  qwen3.8:27b-mtp-q8_0                     short: 38.3/4.8/1.6  codegen: 65.5/7.2/1.7  longctx: 329.4/4.2/21.4  json: 98.0/7.7/1.8
+  qwen3.8:latest                           short: 105.5/19.1/0.7  codegen: 176.9/27.0/0.7  longctx: 777.8/15.0/9.2  json: 260.3/28.9/0.8
+  qwen35-27b-local:latest                  short: 161.5/13.6/0.5  codegen: 260.9/13.5/0.5  longctx: 1091.2/12.7/6.6  json: 389.0/13.9/0.6
+  qwen3:30b                                short: 343.5/94.3/0.2  codegen: 478.2/94.5/0.2  longctx: 1691.6/83.4/3.9  json: 607.8/94.9/0.4
+  qwen3:latest                             short: 3959.5/115.0/0.0  codegen: 5094.5/114.5/0.0  longctx: 6708.8/99.0/1.1  json: 5716.8/114.8/0.2
