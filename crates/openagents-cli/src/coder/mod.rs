@@ -21,6 +21,7 @@ pub mod markdown;
 pub mod model_picker;
 pub mod osc8;
 pub mod recall;
+pub mod responses;
 pub mod runtime;
 pub mod selection;
 pub mod snapshot;
