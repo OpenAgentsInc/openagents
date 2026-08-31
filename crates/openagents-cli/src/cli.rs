@@ -86,6 +86,8 @@ pub enum Commands {
     Memory(MemoryArgs),
     /// Generic API route invocation
     Api(crate::api_passthrough::ApiArgs),
+    /// Connect to a Coder Cloud MCP server
+    Mcp(crate::mcp::McpArgs),
     /// Sandboxed WebAssembly capability plugins: catalog, digests, and runs
     Plugin(crate::plugins::PluginArgs),
     /// Gym environment, suites, and corpus
@@ -1838,6 +1840,10 @@ pub async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Memory(mem) => run_memory(mem.action, &api_base, token, cli.json).await,
         Commands::Api(api) => crate::api_passthrough::run(api, &endpoint, cli.json).await,
+        Commands::Mcp(mcp) => match crate::mcp::run(mcp, &endpoint, &cred_store, cli.json).await {
+            Ok(()) => {}
+            Err(error) => crate::errors::fail(&error.into()),
+        },
         Commands::Plugin(plugin) => crate::plugins::run(plugin, cli.json).await,
         Commands::Trace(trace) => run_trace(trace.action, &api_base, token, cli.json).await,
         Commands::Swarm(swarm) => crate::swarm_args::run_swarm(swarm.action, cli.json).await,

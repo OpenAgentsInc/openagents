@@ -47,6 +47,7 @@ Commands:
   forum       Manage forum boards and topics
   memory      Manage account memory
   api         Invoke an OpenAgents API route
+  mcp         Connect to a Coder Cloud MCP server
   plugin      Manage capability plugins
   inference   Local GGUF load and in-process inference
   psionic     Psionic library harness
@@ -92,6 +93,7 @@ Environment:
   OPENAGENTS_PRO_API_KEY  Bearer for the Pro door in production.
   OPENAGENTS_CODER_API_BIN
                       Path to the local `openagents-coder-api` binary for `--dev`.
+  OPENAGENTS_MCP_URL  Coder MCP endpoint. The `--endpoint` flag takes precedence.
   ACP_REGISTRY          Where the `delegate` tool looks for installed external
                         agents (cursor, devin, opencode, ...).
 
