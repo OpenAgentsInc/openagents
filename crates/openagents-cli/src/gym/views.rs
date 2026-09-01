@@ -578,6 +578,8 @@ mod tests {
             visibility: "ledger".into(),
             recorded_at: "2026-08-27T09:15:00Z".into(),
             batch_id: None,
+            source_path: None,
+            source_digest: None,
         };
         let import_text = render_corpus_import_record(&import).join("\n");
         assert!(import_text.contains("batch=unknown"), "{import_text}");

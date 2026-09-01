@@ -330,9 +330,16 @@ fn str_field(value: &serde_json::Value, key: &str) -> Option<String> {
 /// log, or an unknown format — rather than being given invented step counts.
 pub fn summarize_trace_file(path: &Path) -> std::io::Result<TraceSummary> {
     let text = fs::read_to_string(path)?;
+    Ok(summarize_trace_text(path, &text))
+}
+
+/// Summarize trace content that is already in memory — the file at `path`, or a
+/// converted ATIF document derived from it. Same rules as
+/// [`summarize_trace_file`]; the path is carried for reporting only.
+pub fn summarize_trace_text(path: &Path, text: &str) -> TraceSummary {
     let bytes = text.len() as u64;
 
-    let document = serde_json::from_str::<serde_json::Value>(&text)
+    let document = serde_json::from_str::<serde_json::Value>(text)
         .ok()
         .filter(|v| v.is_object());
     let steps = document
@@ -361,13 +368,13 @@ pub fn summarize_trace_file(path: &Path) -> std::io::Result<TraceSummary> {
 
     let (Some(document), Some(steps)) = (document.as_ref(), steps) else {
         if path.to_string_lossy().ends_with(".jsonl") {
-            return Ok(TraceSummary {
+            return TraceSummary {
                 format: "jsonl".to_string(),
                 lines: Some(text.lines().filter(|l| !l.trim().is_empty()).count()),
                 ..base
-            });
+            };
         }
-        return Ok(base);
+        return base;
     };
 
     let mut steps_by_source: BTreeMap<String, usize> = BTreeMap::new();
@@ -418,7 +425,7 @@ pub fn summarize_trace_file(path: &Path) -> std::io::Result<TraceSummary> {
         };
 
     let agent = document.get("agent");
-    Ok(TraceSummary {
+    TraceSummary {
         format: "atif".to_string(),
         schema_version: str_field(document, "schema_version"),
         session_id: str_field(document, "session_id"),
@@ -433,7 +440,7 @@ pub fn summarize_trace_file(path: &Path) -> std::io::Result<TraceSummary> {
         first_timestamp: steps.first().and_then(|s| str_field(s, "timestamp")),
         last_timestamp: steps.last().and_then(|s| str_field(s, "timestamp")),
         ..base
-    })
+    }
 }
 
 // ---------------------------------------------------------------------------

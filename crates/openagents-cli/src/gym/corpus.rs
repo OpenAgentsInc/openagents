@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use crate::errors::CliError;
+use crate::gym::convert;
 use crate::gym::schemas::{CORPUS_IMPORT_RECORD_SCHEMA, CorpusImportRecord};
 use crate::trace::{self, DiscoveryBounds, TraceCandidate, TraceSourceKind};
 use crate::trace_client::MAXIMUM_TRACE_BYTES;
@@ -132,34 +133,43 @@ fn process_candidate(
     let bytes = candidate.bytes;
     let mut reasons = Vec::new();
 
-    // Files above the ingest cap are excluded before any large read.
-    if bytes > MAXIMUM_TRACE_BYTES {
-        reasons.push("excessive_length".to_string());
-        return Ok(InventoryRow {
-            source,
-            path,
-            digest: None,
-            bytes,
-            steps: None,
-            started_at: None,
-            ended_at: None,
-            model: None,
-            repo_hint: None,
-            domain: None,
-            qualifies: false,
-            excluded_because: Some(reasons),
-        });
-    }
-
-    // Conversion is through packaged converters only. The only packaged converter
-    // currently wired is the native ATIF reader; other stores are unconverted and
-    // recorded as not redactable.
+    // Conversion is through packaged converters only: the native ATIF reader for
+    // exports, and the Claude/Codex converters in `gym::convert`. A store with
+    // no converter is recorded as not redactable rather than guessed at.
     let (text, summary, digest) = match candidate.kind {
         TraceSourceKind::OpenagentsExport => {
-            let text = fs::read_to_string(&path)?;
-            let digest = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
-            let summary = trace::summarize_trace_file(&path).ok();
-            (text, summary, Some(digest))
+            // Native files above the ingest cap are excluded before any large read.
+            if bytes > MAXIMUM_TRACE_BYTES {
+                reasons.push("excessive_length".to_string());
+                (String::new(), None, None)
+            } else {
+                let text = fs::read_to_string(&path)?;
+                let digest = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
+                let summary = trace::summarize_trace_file(&path).ok();
+                (text, summary, Some(digest))
+            }
+        }
+        TraceSourceKind::ClaudeSession | TraceSourceKind::CodexSession => {
+            // Converted stores stream line by line, so the pre-parse guard is
+            // about conversion cost, not memory for the whole file — but a
+            // multi-GB rollout is skipped before any read at all.
+            if bytes > convert::MAX_SOURCE_BYTES {
+                reasons.push("oversized_source".to_string());
+                (String::new(), None, None)
+            } else {
+                match convert::convert_candidate(candidate.kind, &path) {
+                    Some(Ok(document)) => {
+                        let text = serde_json::to_string(&document)?;
+                        let digest = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
+                        let summary = Some(trace::summarize_trace_text(&path, &text));
+                        (text, summary, Some(digest))
+                    }
+                    _ => {
+                        reasons.push("not_redactable".to_string());
+                        (String::new(), None, None)
+                    }
+                }
+            }
         }
         _ => {
             reasons.push("not_redactable".to_string());
@@ -334,6 +344,10 @@ pub enum CorpusAction {
         /// Redact and tripwire without uploading or writing the ledger.
         #[arg(long)]
         dry_run: bool,
+        /// Seconds to wait between uploads. Defaults to 30 for batches over
+        /// 10 (about 120 traces/hour); 0 disables pacing.
+        #[arg(long)]
+        pace: Option<u64>,
     },
     /// Summarize the corpus ledger: imported vs still pending in an inventory.
     Status {
@@ -458,6 +472,34 @@ pub struct PreparedImport {
     pub document: Value,
     pub source: String,
     pub domain: String,
+    /// The local file the document came from, kept for `corpus verify`.
+    pub source_path: PathBuf,
+    /// Digest of the pre-redaction local text (native or converted), which is
+    /// what re-hashing the source can actually reproduce later.
+    pub source_digest: String,
+}
+
+/// Produce the uploadable text for one inventory row: the file itself for
+/// native ATIF, the converted document for Claude and Codex sessions. This is
+/// the single dispatch `prepare_import` and `verify_ledger` both use, so the
+/// digest recorded at import time and the digest recomputed at verify time can
+/// only be the same function of the same bytes.
+fn source_text_for(source: &str, path: &Path) -> Result<String, CliError> {
+    let kind = match source {
+        "claude_session" => Some(TraceSourceKind::ClaudeSession),
+        "codex_session" => Some(TraceSourceKind::CodexSession),
+        _ => None,
+    };
+    match kind.and_then(|kind| convert::convert_candidate(kind, path)) {
+        Some(Ok(document)) => serde_json::to_string(&document)
+            .map_err(|e| CliError::Input(format!("could not serialize {}: {e}", path.display()))),
+        Some(Err(error)) => Err(CliError::Input(format!(
+            "could not convert {}: {error}",
+            path.display()
+        ))),
+        None => fs::read_to_string(path)
+            .map_err(|e| CliError::Input(format!("could not read {}: {e}", path.display()))),
+    }
 }
 
 /// Redact and tripwire qualifying rows. Does not upload.
@@ -506,8 +548,15 @@ pub fn prepare_import(
             skipped += 1;
             continue;
         }
-        let source_text = fs::read_to_string(&row.path)
-            .map_err(|e| CliError::Input(format!("could not read {}: {e}", row.path.display())))?;
+        let source_text = source_text_for(&row.source, &row.path)?;
+        let source_digest = format!("sha256:{:x}", Sha256::digest(source_text.as_bytes()));
+        if source_digest != digest {
+            return Err(CliError::Input(format!(
+                "{} drifted since the inventory was written: inventory says {digest}, \
+                 the file now yields {source_digest}. Re-run `gym inventory`.",
+                row.path.display()
+            )));
+        }
         let redacted = crate::trace::redact_text(&source_text, home);
         let findings = tripwire_findings(&redacted.text);
         if !findings.is_empty() {
@@ -524,6 +573,8 @@ pub fn prepare_import(
             document,
             source: row.source.clone(),
             domain: row.domain.clone().unwrap_or_else(|| "unknown".into()),
+            source_path: row.path.clone(),
+            source_digest,
         });
     }
 
@@ -546,6 +597,8 @@ pub fn record_import(
         visibility: visibility.to_string(),
         recorded_at: crate::computer::now_iso8601(),
         batch_id: None,
+        source_path: Some(prepared.source_path.clone()),
+        source_digest: Some(prepared.source_digest.clone()),
     };
     append_ledger(ledger, &record)?;
     Ok(record)
@@ -578,7 +631,28 @@ pub fn corpus_status(ledger: &Path, inventory: Option<&Path>) -> Result<(usize, 
     Ok((imported, pending))
 }
 
-pub fn verify_ledger(ledger: &Path, digests: &[String]) -> Result<Vec<String>, CliError> {
+/// What one `corpus verify` pass actually established.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifyReport {
+    /// Rows whose local source re-hashed to the recorded digest.
+    pub verified: usize,
+    /// Rows that could not be checked locally: no source path recorded (rows
+    /// imported before the ledger carried one), or no source digest to compare.
+    pub unverifiable: usize,
+    /// Every disagreement found, one sentence per row.
+    pub drifts: Vec<String>,
+}
+
+/// Re-hash each ledger row's local source and compare it with the digest the
+/// ledger recorded at import time.
+///
+/// The check is local-only and says so: the server exposes `POST /api/v1/traces`
+/// and no lookup route (`GET /api/v1/traces/:id` does not exist — see
+/// `trace_client.rs`), so there is nothing cheap to ask it. What can be proven
+/// here is that the file a ledger row points at still converts and hashes to
+/// the bytes that were imported; a missing file, a changed file, and a row too
+/// old to carry a source path are each reported as what they are.
+pub fn verify_ledger(ledger: &Path, digests: &[String]) -> Result<VerifyReport, CliError> {
     let rows = read_ledger(ledger)?;
     let wanted: std::collections::BTreeSet<String> = if digests.is_empty() {
         rows.iter().map(|r| r.digest.clone()).collect()
@@ -586,12 +660,46 @@ pub fn verify_ledger(ledger: &Path, digests: &[String]) -> Result<Vec<String>, C
         digests.iter().cloned().collect()
     };
     let mut drifts = Vec::new();
+    let mut verified = 0usize;
+    let mut unverifiable = 0usize;
     for row in &rows {
         if !wanted.contains(&row.digest) {
             continue;
         }
         if !row.digest.starts_with("sha256:") && !row.digest.is_empty() {
             drifts.push(format!("{}: digest is not sha256-prefixed", row.trace_uuid));
+        }
+        let (Some(path), Some(expected)) = (&row.source_path, &row.source_digest) else {
+            unverifiable += 1;
+            continue;
+        };
+        if !path.exists() {
+            drifts.push(format!(
+                "{}: source {} no longer exists",
+                row.trace_uuid,
+                path.display()
+            ));
+            continue;
+        }
+        match source_text_for(&row.source, path) {
+            Ok(text) => {
+                let recomputed = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
+                if recomputed == *expected {
+                    verified += 1;
+                } else {
+                    drifts.push(format!(
+                        "{}: source {} drifted — ledger recorded {expected}, \
+                         re-hash yields {recomputed}",
+                        row.trace_uuid,
+                        path.display()
+                    ));
+                }
+            }
+            Err(error) => drifts.push(format!(
+                "{}: source {} no longer converts: {error}",
+                row.trace_uuid,
+                path.display()
+            )),
         }
     }
     // Induced drift: a requested digest that is not in the ledger.
@@ -602,7 +710,11 @@ pub fn verify_ledger(ledger: &Path, digests: &[String]) -> Result<Vec<String>, C
             ));
         }
     }
-    Ok(drifts)
+    Ok(VerifyReport {
+        verified,
+        unverifiable,
+        drifts,
+    })
 }
 
 pub async fn run_corpus(
@@ -617,6 +729,7 @@ pub async fn run_corpus(
             visibility,
             ledger,
             dry_run,
+            pace,
         } => {
             let visibility = visibility.unwrap_or_else(|| DEFAULT_VISIBILITY.to_string());
             let ledger = match ledger {
@@ -626,12 +739,19 @@ pub async fn run_corpus(
             let home = std::env::var("HOME").unwrap_or_default();
             let (prepared, skipped, mut pending) =
                 prepare_import(&inventory, &visibility, &ledger, &home)?;
+            // The spec promises roughly 120 uploads an hour, so a batch worth
+            // pacing gets 30 seconds between uploads unless the caller says
+            // otherwise. `--pace 0` disables it.
+            let pace_seconds = pace.unwrap_or(if prepared.len() > 10 { 30 } else { 0 });
             let mut imported = 0usize;
             if dry_run {
                 pending += prepared.len();
             } else {
                 let client = crate::trace_client::TraceClient::new(api_base, token);
                 for row in &prepared {
+                    if imported > 0 && pace_seconds > 0 {
+                        tokio::time::sleep(std::time::Duration::from_secs(pace_seconds)).await;
+                    }
                     let stored = client
                         .upload(&row.document, &visibility, None)
                         .await
@@ -698,25 +818,34 @@ pub async fn run_corpus(
                 Some(p) => p,
                 None => default_ledger_path()?,
             };
-            let drifts = verify_ledger(&ledger, &digest)?;
-            if !drifts.is_empty() {
+            let report = verify_ledger(&ledger, &digest)?;
+            if !report.drifts.is_empty() {
                 return Err(CliError::Input(format!(
                     "corpus verify found {} drift(s): {}",
-                    drifts.len(),
-                    drifts.join("; ")
+                    report.drifts.len(),
+                    report.drifts.join("; ")
                 )));
             }
             if json {
                 println!(
                     "{}",
                     serde_json::to_string(&serde_json::json!({
-                        "verified": true,
+                        "verified": report.verified,
+                        "unverifiable": report.unverifiable,
+                        "server_checked": false,
                         "ledger": ledger,
                     }))
                     .unwrap()
                 );
             } else {
-                println!("verified {}", ledger.display());
+                println!(
+                    "verified {} row(s) against local sources ({} unverifiable: no source \
+                     path recorded); server has no trace lookup route, so this check is \
+                     local-only — ledger {}",
+                    report.verified,
+                    report.unverifiable,
+                    ledger.display()
+                );
             }
             Ok(())
         }

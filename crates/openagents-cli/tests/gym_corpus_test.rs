@@ -139,6 +139,8 @@ fn inventory_counts_three_stores_and_extra_paths() {
             .contains(&"not_redactable".to_string())
     );
 
+    // A parseable Codex line with no typed records converts to an empty ATIF
+    // document: redactable now, but with nothing in it.
     let codex_row = doc
         .rows
         .iter()
@@ -150,9 +152,29 @@ fn inventory_counts_three_stores_and_extra_paths() {
             .excluded_because
             .as_ref()
             .unwrap()
-            .contains(&"not_redactable".to_string())
+            .contains(&"insufficient_substance".to_string()),
+        "{:?}",
+        codex_row.excluded_because
     );
-    assert!(codex_row.digest.is_none());
+    assert!(codex_row.digest.is_some(), "converted rows carry a digest");
+
+    // A Claude file with no parseable records at all stays not redactable.
+    let claude_row = doc
+        .rows
+        .iter()
+        .find(|r| r.path.ends_with("session.jsonl"))
+        .unwrap();
+    assert!(!claude_row.qualifies);
+    assert!(
+        claude_row
+            .excluded_because
+            .as_ref()
+            .unwrap()
+            .contains(&"not_redactable".to_string()),
+        "{:?}",
+        claude_row.excluded_because
+    );
+    assert!(claude_row.digest.is_none());
 }
 
 #[test]
@@ -274,11 +296,18 @@ fn import_is_idempotent_and_verify_names_a_missing_digest() {
     let rows = read_ledger(&ledger).unwrap();
     assert_eq!(rows.len(), 1);
 
-    let drifts = verify_ledger(&ledger, &["sha256:deadbeef".to_string()]).unwrap();
+    let report = verify_ledger(&ledger, &["sha256:deadbeef".to_string()]).unwrap();
     assert!(
-        drifts.iter().any(|d| d.contains("sha256:deadbeef")),
-        "{drifts:?}"
+        report.drifts.iter().any(|d| d.contains("sha256:deadbeef")),
+        "{:?}",
+        report.drifts
     );
+
+    // The recorded row itself verifies against its untouched source.
+    let full = verify_ledger(&ledger, &[]).unwrap();
+    assert!(full.drifts.is_empty(), "{:?}", full.drifts);
+    assert_eq!(full.verified, 1);
+    assert_eq!(full.unverifiable, 0);
 }
 
 #[test]

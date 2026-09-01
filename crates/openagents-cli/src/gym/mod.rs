@@ -1,5 +1,6 @@
 //! Gym subcommand implementation: suites, env, corpus, and the frozen schemas.
 
+pub mod convert;
 pub mod corpus;
 pub mod dataset;
 pub mod env;

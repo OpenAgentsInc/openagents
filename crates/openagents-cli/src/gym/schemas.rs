@@ -153,6 +153,14 @@ pub struct CorpusImportRecord {
     pub recorded_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_id: Option<String>,
+    /// The local file this trace was produced from, recorded so `corpus verify`
+    /// can re-hash it later. Absent on rows imported before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<std::path::PathBuf>,
+    /// Digest of the pre-redaction local text (native ATIF or converted
+    /// document) — the value re-hashing the source can reproduce.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_digest: Option<String>,
 }
 
 /// `openagents.gym.dataset_view.v1`
@@ -457,6 +465,8 @@ mod tests {
             visibility: "ledger".into(),
             recorded_at: "2026-08-27T09:15:00Z".into(),
             batch_id: Some("batch-2026-08-27-001".into()),
+            source_path: None,
+            source_digest: None,
         };
         check_or_update("corpus_import_record", &value);
     }
