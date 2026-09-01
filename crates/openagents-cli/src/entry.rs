@@ -62,16 +62,14 @@ Coder options:
                      if none is running. Prefers port 4100; if that is
                      taken, binds 4101. Production origin is unchanged
                      without --dev. Optional: OPENAGENTS_CODER_API_BIN.
-  --lane <name>      Which model answers. `flash`, `pro`, `nitro`, and `free`
-                     are the switchable lanes, and shift+tab moves between
-                     them; each resolves its model from GET /api/v1/models at
-                     open. `pro` is Coder Pro (Sol Medium: gpt-5.6-sol,
-                     reasoning medium). `nitro` is the Nitro door: an Open
-                     Responses server on this machine
-                     (OPENAGENTS_NITRO_ORIGIN, default 127.0.0.1:4200).
-                     `local` or `ollama:<model>` answers from this machine; any other name is a catalog id, checked against
-                     GET /api/v1/models, and refused if it is not served.
-                     Defaults to `flash`.
+  --lane <name>      Advanced. There is one Coder and no in-session model
+                     selection; omit this for the default. When set, it pins a
+                     non-default answering door for the session: `nitro` for a
+                     local Open Responses server (OPENAGENTS_NITRO_ORIGIN,
+                     default 127.0.0.1:4200), or `local`/`ollama:<model>` to
+                     answer from this machine. Any other name is a catalog id,
+                     checked against GET /api/v1/models and refused if it is
+                     not served.
   --reasoning <how>  Recorded on the thread as its reasoning effort. Omit to
                      leave the deployment's own default.
   --prompt <text>    Send one prompt and exit. For headless tests and scripts.
