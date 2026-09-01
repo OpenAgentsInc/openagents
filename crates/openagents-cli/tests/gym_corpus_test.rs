@@ -328,3 +328,16 @@ fn prepare_import_refuses_dark() {
     .unwrap_err();
     assert!(err.to_string().contains("dark"), "{err}");
 }
+
+/// A redacted assignment keeps its name; only a surviving value is a leak.
+#[test]
+fn tripwire_spares_a_redacted_assignment_and_halts_on_a_live_one() {
+    use openagents_cli::gym::corpus::tripwire_findings;
+    let redacted = "the run set OPENAGENTS_TOKEN=[REDACTED_TOKEN] and went on";
+    assert!(
+        tripwire_findings(redacted).is_empty(),
+        "a masked value is not a leak"
+    );
+    let live = "the run printed OPENAGENTS_TOKEN=oa_live_abc123def456 by mistake";
+    assert_eq!(tripwire_findings(live), vec!["env_secret".to_string()]);
+}

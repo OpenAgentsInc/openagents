@@ -393,8 +393,23 @@ pub fn tripwire_findings(text: &str) -> Vec<String> {
     if text.contains("BEGIN PRIVATE KEY") || text.contains("BEGIN RSA PRIVATE KEY") {
         findings.push("private_key".to_string());
     }
-    if text.contains("OPENAGENTS_TOKEN=") || text.contains("OPENAI_API_KEY=") {
-        findings.push("env_secret".to_string());
+    // A redacted assignment keeps its name and masks its value, so the name
+    // alone is not a leak: only a value that survived redaction halts the
+    // batch. The regex crate has no lookahead, so the value is inspected by
+    // hand.
+    for name in ["OPENAGENTS_TOKEN=", "OPENAI_API_KEY="] {
+        let mut from = 0;
+        while let Some(at) = text[from..].find(name) {
+            let value = &text[from + at + name.len()..];
+            if !value.starts_with("[REDACTED") && !value.trim_start().is_empty() {
+                findings.push("env_secret".to_string());
+                break;
+            }
+            from += at + name.len();
+        }
+        if findings.last().map(String::as_str) == Some("env_secret") {
+            break;
+        }
     }
     let key = Regex::new(r"sk-[A-Za-z0-9]{16,}").unwrap();
     if key.is_match(text) {
