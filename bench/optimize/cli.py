@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from .adapter import HoldoutScreenError
+from .aggregate import DEFAULT_N_TRIALS
 from .engine import OptimizeConfig, OptimizeError, run_optimize
 from .metric import DEV_SUITE_ID, HOLDOUT_SUITE_ID
 from .surfaces import repo_root_from
@@ -48,6 +49,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Hard budget: one Harbor trial is one metric call (default 1).",
+    )
+    parser.add_argument(
+        "--n-trials",
+        type=int,
+        default=DEFAULT_N_TRIALS,
+        help=(
+            f"Trials per A/B side (default {DEFAULT_N_TRIALS}). The emitted metric "
+            "carries mean ± spread across trials, not one sample."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -125,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             OptimizeConfig(
                 output=output,
                 max_metric_calls=args.max_metric_calls,
+                n_trials=args.n_trials,
                 dry_run=dry_run,
                 live=args.live,
                 engine=args.engine,

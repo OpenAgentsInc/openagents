@@ -5,14 +5,24 @@ around the Harbor suite runner, emit `openagents.coder_candidate.v1`
 artifacts. Optimizer output is a candidate, never a deployment (ledger O1).
 """
 
+from .aggregate import (
+    DEFAULT_N_TRIALS,
+    aggregate_side,
+    aggregate_values,
+    compare_sides,
+)
 from .candidate import CODER_CANDIDATE_SCHEMA, candidate_id_of, parse_candidate
 from .metric import TOKEN_PENALTY_PER_MILLION, WALL_PENALTY_PER_HOUR, score_job
 
 __all__ = [
     "CODER_CANDIDATE_SCHEMA",
+    "DEFAULT_N_TRIALS",
     "TOKEN_PENALTY_PER_MILLION",
     "WALL_PENALTY_PER_HOUR",
+    "aggregate_side",
+    "aggregate_values",
     "candidate_id_of",
+    "compare_sides",
     "parse_candidate",
     "score_job",
 ]

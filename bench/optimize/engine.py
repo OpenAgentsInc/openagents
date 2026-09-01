@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from .adapter import GymAdapter, GymTask, HoldoutScreenError
+from .aggregate import DEFAULT_N_TRIALS, aggregate_side
 from .emit import acceptance_argument, build_candidate, write_run
-from .job import load_job
-from .metric import DEV_SUITE_ID, HOLDOUT_SUITE_ID, score_job
+from .job import HarborJob, load_job
+from .metric import DEV_SUITE_ID, HOLDOUT_SUITE_ID, JobScore, score_job
 from .surfaces import load_seed_candidate, load_suite_task_ids, repo_root_from
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -25,6 +26,7 @@ DEFAULT_FIXTURE = PACKAGE_DIR / "fixtures" / "tb2-quick-job"
 class OptimizeConfig:
     output: Path
     max_metric_calls: int = 1
+    n_trials: int = DEFAULT_N_TRIALS
     dry_run: bool = True
     live: bool = False
     engine: str = "seed"
@@ -67,6 +69,8 @@ def _dev_tasks(root: Path, config: OptimizeConfig) -> list[GymTask]:
 def run_optimize(config: OptimizeConfig) -> dict[str, Any]:
     if config.max_metric_calls < 1:
         raise OptimizeError("max_metric_calls must be >= 1")
+    if config.n_trials < 1:
+        raise OptimizeError("n_trials must be >= 1")
     if config.live and config.dry_run:
         raise OptimizeError("choose --live or --dry-run, not both")
     if config.dev_suite == HOLDOUT_SUITE_ID and not config.confirm_holdout:
@@ -122,6 +126,19 @@ def run_optimize(config: OptimizeConfig) -> dict[str, Any]:
         tasks=[task.task_id for task in tasks],
     )
 
+    # Multi-trial: score this side n_trials times so the emitted metric carries
+    # a mean and a spread, not one sample (docs/coderbench.md item 2). A live
+    # side re-runs the suite per trial (real variance); a fixture side re-scores
+    # the deterministic job (honest zero spread — a fixture has no variance).
+    trial_scores = _side_trials(
+        adapter,
+        candidate=proposed,
+        tasks=tasks,
+        config=config,
+        first=job_score,
+        first_job=job,
+    )
+
     mutated = proposed != seed
     if mutated:
         disposition = "candidate_emitted"
@@ -156,6 +173,10 @@ def run_optimize(config: OptimizeConfig) -> dict[str, Any]:
         summary=summary,
         risk=risk,
     )
+    side = aggregate_side(
+        label="candidate" if mutated else "incumbent",
+        job_scores=trial_scores,
+    )
     run = {
         "schema": "openagents.coder_optimizer_run.v1",
         "producedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -165,6 +186,8 @@ def run_optimize(config: OptimizeConfig) -> dict[str, Any]:
         "gepaImported": gepa_used,
         "maxMetricCalls": config.max_metric_calls,
         "metricCalls": job_score.metric_calls,
+        "trialsPerSide": config.n_trials,
+        "sideAggregate": side.as_dict(),
         "devSuite": config.dev_suite,
         "holdoutSuite": config.holdout_suite,
         "holdoutRan": False,
@@ -184,6 +207,41 @@ def run_optimize(config: OptimizeConfig) -> dict[str, Any]:
     }
     write_run(Path(config.output), run=run, candidates=[candidate])
     return {"run": run, "candidate": candidate, "output": str(Path(config.output))}
+
+
+def _side_trials(
+    adapter: GymAdapter,
+    *,
+    candidate: dict[str, str],
+    tasks: list[GymTask],
+    config: OptimizeConfig,
+    first: JobScore,
+    first_job: HarborJob,
+) -> list[JobScore]:
+    """Score one side `n_trials` times; `first` is trial one (already scored).
+
+    A live side re-runs the suite per extra trial with a fresh metric budget so
+    each trial is an independent sample. A fixture side re-scores the same
+    deterministic job, which is identical every time — an honest zero-variance
+    side rather than a fabricated spread.
+    """
+    scores = [first]
+    for _ in range(max(1, config.n_trials) - 1):
+        if config.live:
+            adapter.calls_used = 0
+            adapter.evaluate(tasks, candidate, capture_traces=False)
+            trial_job = adapter.job or first_job
+        else:
+            trial_job = first_job
+        scores.append(
+            score_job(
+                trial_job,
+                suite=config.dev_suite,
+                max_metric_calls=config.max_metric_calls,
+                tasks=[task.task_id for task in tasks],
+            )
+        )
+    return scores
 
 
 def _run_gepa(

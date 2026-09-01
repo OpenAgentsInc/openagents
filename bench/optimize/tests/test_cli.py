@@ -57,6 +57,16 @@ class CliTests(unittest.TestCase):
             self.assertEqual(run["acceptance"]["trials"], 1)
             self.assertEqual(run["acceptance"]["floorKind"], "structural")
             self.assertEqual(run["transferLabel"]["modelFamily"], "fixture")
+            # Multi-trial by default: the side carries a mean ± spread.
+            self.assertGreaterEqual(run["trialsPerSide"], 3)
+            side = run["sideAggregate"]
+            self.assertEqual(side["n_trials"], run["trialsPerSide"])
+            self.assertEqual(side["objective_score"]["n"], run["trialsPerSide"])
+            self.assertAlmostEqual(side["objective_score"]["mean"], run["incumbentScore"])
+            # A deterministic fixture side has zero spread, honestly reported.
+            self.assertEqual(side["objective_score"]["stddev"], 0.0)
+            # Unknown cost stays unknown across trials; never a fabricated 0.
+            self.assertIsNone(side["cost_usd"]["mean"])
             candidates = list((output / "candidates").glob("*.json"))
             self.assertEqual(len(candidates), 1)
             candidate = json.loads(candidates[0].read_text())
