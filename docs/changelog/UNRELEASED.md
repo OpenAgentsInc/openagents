@@ -47,6 +47,24 @@ stays on GPU between consecutive hybrid layers. Warm 27B decode is
 Same-X Q8 GEMMs share one command buffer. FFN is `gate` + `up` +
 `silu_mul` + `down` in one wait. Warm 27B decode is ~6.5 tok/s.
 
+## One Coder, no model selection
+
+- issues: coder consolidation
+- commits: this change
+- contracts-specs: the coder session exposes no model/lane selector
+- invariants: one Coder Responses API; `--lane` remains a launch-time
+  door override only, never an in-session picker
+- evidence: `there_is_no_model_command`, `there_is_no_model_picker_or_model_command`,
+  `the_row_never_names_a_model_or_lane_at_any_width`; a live `coder --plain`
+  turn returned the expected token with no lane label
+- lane: this session
+
+The in-session model picker, the `/model` command, the `Ctrl+P` chord, the
+`shift+tab` lane switch, the status-bar model label (`Coder Flash`), and the
+welcome news box are gone. The status row is now spend and build version
+only. The `--lane` help no longer advertises switchable lanes; it reads as
+one Coder with an advanced launch-time override.
+
 ## CLI source version is 0.2.0-rc.22
 
 - issues: #358
