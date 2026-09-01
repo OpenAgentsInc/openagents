@@ -73,7 +73,7 @@ const CURSOR_COLOR_SET: &str = "\x1b]12;#FFB000\x07";
 const CURSOR_COLOR_RESET: &str = "\x1b]112\x07";
 
 /// Hosted lanes need an OpenAgents account. Local does not (#325).
-pub const HOSTED_NEEDS_SIGN_IN: &str = "This lane talks to OpenAgents. Sign in with /login, or use Coder Local if Ollama is installed.";
+pub const HOSTED_NEEDS_SIGN_IN: &str = "Coder talks to OpenAgents. Sign in with /login to start.";
 
 /// What `--lane` and `--reasoning` settled on before the screen was entered.
 #[derive(Debug, Clone, Default)]
@@ -192,8 +192,7 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         options.reasoning.clone()
     };
     loaded.store.set_lane(&lane_name)?;
-    // Mutable because shift+tab moves it.
-    let mut lane = Lane::from_str(&lane_name);
+    let lane = Lane::from_str(&lane_name);
     let reasoning = reasoning.or_else(|| lane.default_reasoning().map(str::to_string));
     loaded.store.set_reasoning(reasoning.as_deref())?;
     let cloud_history = options.cloud_history && !lane.is_local();
@@ -203,22 +202,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
     ui.local_session_id = Some(loaded.summary.id.clone());
     ui.local_session_path = Some(loaded.store.directory().display().to_string());
     ui.cloud_history = cloud_history;
-    // The local lane's walk membership is decided once, here, from one
-    // bounded probe (issue #291). `Some` names the model the lane resolves
-    // to; `None` covers no server, a refusal, a timeout, and an empty
-    // library, and none of those is an error the reader sees. A probe that
-    // found nothing leaves shift+tab walking exactly the hosted lanes.
-    //
-    // The probe is skipped when the reader named the lane explicitly: someone
-    // who pinned `--lane local` or `--model ollama:qwen3.8:…` has already made
-    // the choice the probe would make for them. A resume still probes — its
-    // stored lane is restored either way, and the walk should know whether
-    // `local` is real on this machine before offering it.
-    let local_lane_model = if options.lane_explicit {
-        None
-    } else {
-        crate::runtime::CoderRuntimeSession::probe_local_lane().await
-    };
     if resumed {
         restore_entries(&mut ui, &restored_events);
         ui.model = loaded.summary.last_model.unwrap_or_default();
@@ -322,12 +305,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             ));
         }
     }
-    if !options.lane_explicit && local_lane_model.is_none() && !has_account {
-        ui.entries.push(Entry::new(
-            Role::Notice,
-            crate::runtime::OLLAMA_INSTALL_SIGN.to_string(),
-        ));
-    }
     if let Some(error) = mouse_error {
         ui.entries.push(Entry::new(Role::Notice, error));
     }
@@ -362,10 +339,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
         refresh_credit(&tx);
     }
 
-    // Lane changes describe the current selection, not a sequence of events.
-    // Keep its one transcript entry so rapid Shift+Tab presses do not bury the
-    // conversation beneath stale selections.
-    let mut lane_notice = None;
     let mut turns = TurnState::default();
     // Session-level autopilot mode (`coder/autopilot.rs`). Session-only by
     // design: nothing persists it, so a new session opens human-steered.
@@ -708,36 +681,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
 
         let width = composer_width(terminal.size()?.width);
 
-        // The model picker owns the keyboard while it is open (issues
-        // #323/#324): type-to-filter, arrows to move, Enter to commit, Esc
-        // to dismiss. It runs before every other chord because a modal that
-        // leaks keystrokes to what is underneath is a modal that edits a
-        // draft the reader cannot see.
-        if ui.model_picker.is_some() {
-            let Some(picker) = ui.model_picker.as_mut() else {
-                unreachable!("just checked");
-            };
-            match key.code {
-                KeyCode::Esc => {
-                    ui.model_picker = None;
-                }
-                KeyCode::Enter => {
-                    let selected = picker.selected_item().map(|item| item.id.clone());
-                    if let Some(id) = selected {
-                        commit_model_picker(&session, &mut ui, &mut lane, &id);
-                    }
-                }
-                KeyCode::Up => picker.move_selection(-1),
-                KeyCode::Down => picker.move_selection(1),
-                KeyCode::Backspace => picker.pop_char(),
-                KeyCode::Char(character) => {
-                    picker.push_char(character);
-                }
-                _ => {}
-            }
-            continue;
-        }
-
         // Escape requests turn cancellation. It never exits Coder, and the
         // reducer makes a repeated request idempotent. A visible selection
         // steals Esc first, matching grok-build: dismissing what is on
@@ -822,21 +765,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             continue;
         }
 
-        // Ctrl+P opens the model picker (issues #323/#324), grok-build's
-        // second entry into the same surface. Two departures from grok,
-        // both forced: our composer is always the focused widget, so grok's
-        // "multiline when focused, picker otherwise" split has no second
-        // half; and Ctrl+M is unusable — crossterm maps the raw Ctrl+M byte
-        // (0x0D) to Enter before the app ever sees it, so a Ctrl+M binding
-        // would be dead code in every terminal. Ctrl+P is unbound in the
-        // composer and the frame, and the /help table carries it.
-        if key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            let resolved = (!ui.model.is_empty()).then(|| ui.model.clone());
-            open_model_picker(&lane, resolved.as_deref(), local_lane_model.as_deref(), &tx);
-            ui.model_picker = Some(seed_model_picker(&lane, local_lane_model.as_deref()));
-            continue;
-        }
-
         match ui.composer.handle_key(&key, width) {
             ComposerAction::Submit(text) => {
                 history.record(&text);
@@ -847,7 +775,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                         let outcome = submit(
                             &mut ui,
                             text,
-                            &mut lane,
                             session,
                             &tx,
                             &cwd,
@@ -856,7 +783,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
                             &mut prompt_queue,
                             &mut autopilot_frame,
                             options.dev,
-                            local_lane_model.as_deref(),
                         )
                         .await;
                         match outcome {
@@ -991,29 +917,6 @@ pub async fn run_tui(options: SessionOptions) -> Result<(), Box<dyn std::error::
             }
             ComposerAction::Redraw => history.stop_walking(),
             ComposerAction::Moved => {}
-            // Shift+Tab moves between the switchable lanes. It is handled here
-            // rather than in `handle_session_key` because it has to reach the
-            // session, and the session is behind an async lock.
-            //
-            // The walk is gated (`cycle_gated`, #291): `local` is a member
-            // only when the open-time probe found an Ollama server with
-            // models on it. A machine without one walks flash, pro, free,
-            // flash (#298).
-            ComposerAction::Ignored if key.code == KeyCode::BackTab => {
-                lane = lane.cycle_gated(local_lane_model.clone());
-                ui.lane = lane.label();
-                // Nothing has answered on the new lane yet. Carrying the old
-                // model across would leave the row naming a model this lane
-                // never asked for, which is the one thing the row must not do.
-                ui.model.clear();
-                if let Some(session) = &session {
-                    let mut live = session.lock().await;
-                    live.set_lane(lane.clone());
-                    live.set_cloud_history(options.cloud_history);
-                }
-                ui.cloud_history = options.cloud_history && !lane.is_local();
-                record_lane_notice(&mut ui, &mut lane_notice, &lane);
-            }
             // The composer did not want it, so it is the session's.
             ComposerAction::Ignored => {
                 handle_session_key(&mut ui, &mut history, &key, width, &cwd);
@@ -1338,236 +1241,6 @@ fn attach_session(
         opened.seed_capability_notice(notice);
     }
     opened
-}
-
-/// Open the model picker for the session's lane (issues #323/#324).
-///
-/// The surface follows grok-build's `/model`: one picker per lane, rows from
-/// a per-lane source, opened input-focused. Only Pro and Local have a
-/// per-model choice today; any other lane refuses by name rather than
-/// offering a gateway tier as if it were a choice. The item source is
-/// fetched off the frame loop — a slow catalog or Ollama probe must not
-/// hold a frame — so the picker opens `loading` and fills in, or reports
-/// the refusal as a notice like every other Control.
-fn open_model_picker(
-    lane: &Lane,
-    resolved_model: Option<&str>,
-    cached_local: Option<&str>,
-    tx: &Sender<Control>,
-) {
-    let tx = tx.clone();
-    let lane = lane.clone();
-    let resolved_model = resolved_model.map(str::to_string);
-    let cached_local = cached_local.map(str::to_string);
-    tokio::spawn(async move {
-        let outcome =
-            model_picker_items(&lane, resolved_model.as_deref(), cached_local.as_deref()).await;
-        let _ = tx.send(Control::ModelPicker(outcome));
-    });
-}
-
-/// The per-lane item fetch behind [`open_model_picker`]. Errors are
-/// refusals the picker shows as a notice, not panics — a deployment that is
-/// briefly unreachable must not take the session down for asking.
-async fn model_picker_items(
-    lane: &Lane,
-    resolved_model: Option<&str>,
-    cached_local: Option<&str>,
-) -> Result<crate::coder::model_picker::PickerState, String> {
-    use crate::coder::model_picker::{LocalModel, PickerState};
-    match lane {
-        Lane::Local(_) => {
-            let details = crate::runtime::installed_local_model_details().await;
-            let resolved = match lane {
-                Lane::Local(tag) if !tag.is_empty() => Some(tag.as_str()),
-                _ => cached_local,
-            };
-            match details {
-                Ok(details) => Ok(PickerState::new(crate::coder::model_picker::local_items(
-                    &details
-                        .into_iter()
-                        .map(|detail| LocalModel {
-                            tag: detail.tag,
-                            size_bytes: detail.size_bytes,
-                            quantization: detail.quantization,
-                        })
-                        .collect::<Vec<_>>(),
-                    resolved,
-                ))
-                .local()),
-                Err(why) => Err(why),
-            }
-        }
-        lane if lane.uses_pro_origin() => {
-            let served = probe_served_models_for_picker().await?;
-            Ok(PickerState::new(crate::coder::model_picker::pro_items(
-                &served,
-                resolved_model,
-            )))
-        }
-        _ => Err(format!(
-            "The {} lane has no model list to pick from — models are chosen \
-             per lane. /model works on Pro and Local.",
-            lane.label()
-        )),
-    }
-}
-
-fn model_picker_loading(lane: &Lane) -> crate::coder::model_picker::PickerState {
-    let label = if lane.is_local() {
-        "probing Ollama…"
-    } else {
-        "loading models…"
-    };
-    let picker = crate::coder::model_picker::PickerState::loading(label);
-    if lane.is_local() {
-        picker.local()
-    } else {
-        picker
-    }
-}
-
-fn seed_model_picker(
-    lane: &Lane,
-    cached_local: Option<&str>,
-) -> crate::coder::model_picker::PickerState {
-    use crate::coder::model_picker::LocalModel;
-    if lane.is_local()
-        && let Some(tag) = cached_local
-    {
-        let resolved = match lane {
-            Lane::Local(pinned) if !pinned.is_empty() => Some(pinned.as_str()),
-            _ => Some(tag),
-        };
-        return crate::coder::model_picker::PickerState::new(
-            crate::coder::model_picker::local_items(
-                &[LocalModel {
-                    tag: tag.to_string(),
-                    size_bytes: None,
-                    quantization: None,
-                }],
-                resolved,
-            ),
-        )
-        .local();
-    }
-    model_picker_loading(lane)
-}
-
-/// The served-models read behind the Pro picker, run against the origin the
-/// lane itself uses. Free-standing: the frame holds no session of its own,
-/// and a credential-less session gets the catalog's honest refusal here
-/// rather than an empty picker.
-async fn probe_served_models_for_picker() -> Result<Vec<crate::coder::runtime::ServedModel>, String>
-{
-    let base = crate::coder::runtime::api_base();
-    let token = crate::coder::runtime::user_token();
-    let url = format!("{base}/models");
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|error| format!("could not build an HTTP client: {error}"))?;
-    let mut request = client.get(&url);
-    if let Some(token) = token {
-        request = request.bearer_auth(&token);
-    }
-    let resp = request
-        .send()
-        .await
-        .map_err(|error| format!("{url} could not be reached: {error}"))?;
-    if !resp.status().is_success() {
-        return Err(format!(
-            "{url} refused the model list: {}. Run /login if the credential expired.",
-            resp.status()
-        ));
-    }
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|error| format!("{url} sent a body that was not JSON: {error}"))?;
-    parse_served_models(&body)
-}
-
-/// Parse `GET /api/v1/models`' body into the picker's rows source. Split
-/// from the fetch so a fixture test can hold the shape without a wire.
-fn parse_served_models(
-    body: &serde_json::Value,
-) -> Result<Vec<crate::coder::runtime::ServedModel>, String> {
-    let models = body
-        .get("models")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| format!("{}/models sent no model list", "GET"))?;
-    Ok(models
-        .iter()
-        .filter_map(|m| {
-            Some(crate::coder::runtime::ServedModel {
-                id: m.get("id").and_then(|v| v.as_str())?.to_string(),
-                available: m
-                    .get("availability")
-                    .and_then(|v| v.as_str())
-                    .map(|availability| availability == "available")
-                    .unwrap_or(false),
-                default: m.get("default").and_then(|v| v.as_bool()).unwrap_or(false),
-            })
-        })
-        .collect())
-}
-
-/// Commit a picker row: re-pin the session's lane and drop the picker.
-///
-/// The commit is `set_lane` with the committed pin — the same path shift+tab
-/// uses — so the thread is dropped for exactly the reason the shift+tab path
-/// documents: the old thread's grant pinned the old model for its whole
-/// life, and a model switch that carried the grant over would be a label
-/// claiming a model the wire is not talking to.
-fn commit_model_picker(
-    session: &Option<Arc<Mutex<Session>>>,
-    ui: &mut CoderUi,
-    lane: &mut Lane,
-    id: &str,
-) {
-    match crate::coder::model_picker::commit_lane(lane, id) {
-        Ok(committed) => {
-            let Some(session) = session else {
-                ui.entries.push(Entry::new(
-                    Role::Notice,
-                    "No session is open, so the model cannot be pinned.",
-                ));
-                ui.model_picker = None;
-                ui.scroll_override = None;
-                return;
-            };
-            match session.try_lock() {
-                Ok(mut session) => {
-                    session.set_lane(committed.clone());
-                    *lane = committed.clone();
-                    ui.lane = committed.label();
-                    // Nothing has answered on the committed model yet — the
-                    // row must not name a model this lane never asked for.
-                    ui.model.clear();
-                    ui.entries.push(Entry::new(
-                        Role::Notice,
-                        model_commit_notice(&committed, id),
-                    ));
-                }
-                Err(_) => ui.entries.push(Entry::new(
-                    Role::Notice,
-                    "The running turn must finish before the model can change.".to_string(),
-                )),
-            }
-        }
-        Err(error) => ui.entries.push(Entry::new(Role::Notice, error.to_string())),
-    }
-    ui.model_picker = None;
-    ui.scroll_override = None;
-}
-
-fn model_commit_notice(committed: &Lane, id: &str) -> String {
-    if matches!(committed, Lane::Local(_)) {
-        format!("Model set to {id}. The next turn talks to Ollama on this machine.")
-    } else {
-        format!("Model set to {id}. The next turn opens its own thread on it.")
-    }
 }
 
 /// Start device sign-in without holding the frame loop while the server waits
@@ -2066,30 +1739,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         // The thread the server opened, so `/info` can name it without asking
         // the session for it behind a lock the turn is holding.
         Control::Thread(thread) => ui.thread = Some(thread),
-        // The model picker's items arrived (issues #323/#324). An `Err` is
-        // the per-lane source's refusal — no Ollama server, a catalog the
-        // credential cannot read — shown as a notice, with the picker
-        // closed: an empty picker that stays open is a lie with a border.
-        Control::ModelPicker(outcome) => match outcome {
-            Ok(picker) if !picker.items.is_empty() => ui.model_picker = Some(picker),
-            Ok(picker) => {
-                ui.model_picker = None;
-                ui.entries.push(Entry::new(
-                    Role::Notice,
-                    if picker.local {
-                        crate::runtime::OLLAMA_INSTALL_SIGN.to_string()
-                    } else {
-                        "No models to pick from: the deployment serves none this lane \
-                         can use."
-                            .to_string()
-                    },
-                ));
-            }
-            Err(why) => {
-                ui.model_picker = None;
-                ui.entries.push(Entry::new(Role::Notice, why));
-            }
-        },
         // What the server billed. Only ever a figure it sent.
         Control::Billed(billed) => ui.billed = Some(billed),
         Control::Usage(usage) => {
@@ -2155,26 +1804,6 @@ pub fn apply(ui: &mut CoderUi, control: Control) {
         }
         Control::Goal(goal) => ui.goal = goal,
     }
-}
-
-/// Show the current lane once, replacing the prior lane selection when it is
-/// still present in the transcript.
-fn record_lane_notice(ui: &mut CoderUi, lane_notice: &mut Option<usize>, lane: &Lane) {
-    let text = format!("Lane: {}", lane.label());
-    let updated = lane_notice
-        .and_then(|index| ui.entries.get_mut(index))
-        .filter(|entry| entry.role == Role::Notice && entry.text.starts_with("Lane: "))
-        .is_some_and(|entry| {
-            entry.text = text.clone();
-            true
-        });
-
-    if !updated {
-        ui.entries.push(Entry::new(Role::Notice, text));
-        *lane_notice = Some(ui.entries.len() - 1);
-    }
-
-    ui.scroll_override = None;
 }
 
 fn tool_entry<'a>(ui: &'a mut CoderUi, call_id: &str) -> Option<&'a mut Entry> {
@@ -2314,7 +1943,6 @@ struct AutopilotFrame {
 async fn submit(
     ui: &mut CoderUi,
     text: String,
-    lane: &mut Lane,
     session: &Arc<Mutex<Session>>,
     tx: &Sender<Control>,
     cwd: &std::path::Path,
@@ -2323,7 +1951,6 @@ async fn submit(
     prompt_queue: &mut VecDeque<QueuedPrompt>,
     autopilot: &mut AutopilotFrame,
     dev: bool,
-    cached_local: Option<&str>,
 ) -> commands::Outcome {
     ui.scroll_override = None;
     ui.show_welcome = false;
@@ -2406,45 +2033,6 @@ async fn submit(
             let prompt = autopilot.state.iteration_prompt();
             start_prompt(ui, prompt, Vec::new(), session, tx, turns, active_turn, dev).await;
             update_activity(ui, turns, prompt_queue.len());
-        }
-        return commands::Outcome::Done;
-    }
-
-    // `/model` opens the model picker (issues #323/#324); `/model <id>`
-    // commits directly, refusing unknown ids by name — grok's resolve rule,
-    // and the honesty rule `unresolved_lane` set for the CLI: an id the
-    // deployment does not serve is refused, never quietly substituted.
-    if let Some(argument) = text
-        .trim()
-        .strip_prefix("/model")
-        .filter(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
-    {
-        let argument = argument.trim();
-        if argument.is_empty() {
-            let resolved = (!ui.model.is_empty()).then(|| ui.model.clone());
-            open_model_picker(lane, resolved.as_deref(), cached_local, tx);
-            ui.model_picker = Some(seed_model_picker(lane, cached_local));
-            return commands::Outcome::Done;
-        }
-        match crate::coder::model_picker::commit_lane(lane, argument) {
-            Ok(committed) => {
-                if let Ok(mut session) = session.try_lock() {
-                    session.set_lane(committed.clone());
-                    *lane = committed.clone();
-                    ui.lane = committed.label();
-                    ui.model.clear();
-                    ui.entries.push(Entry::new(
-                        Role::Notice,
-                        model_commit_notice(&committed, argument),
-                    ));
-                } else {
-                    ui.entries.push(Entry::new(
-                        Role::Notice,
-                        "The running turn must finish before the model can change.".to_string(),
-                    ));
-                }
-            }
-            Err(error) => ui.entries.push(Entry::new(Role::Notice, error.to_string())),
         }
         return commands::Outcome::Done;
     }
@@ -2860,27 +2448,15 @@ mod tests {
     #[test]
     fn every_listed_command_is_handled() {
         for (name, _) in crate::coder::commands::COMMANDS {
-            // `/autopilot` and `/model` are handled, just not here: their
-            // state lives in the frame loop, and `submit` claims both before
-            // this dispatch runs (`coder/autopilot::parse_command` and the
-            // `/model` arm; `coder/model_picker.rs` holds the picker's
-            // surface). The named exceptions, not holes — the parse tests in
-            // those modules hold their surfaces.
+            // `/autopilot` is handled, just not here: its state lives in the
+            // frame loop, and `submit` claims it before this dispatch runs
+            // (`coder/autopilot::parse_command`). The named exception, not a
+            // hole — the parse test in that module holds its surface. There is
+            // no model command: Coder is one model, chosen nowhere.
             if *name == "autopilot" {
                 assert!(
                     crate::coder::autopilot::parse_command("/autopilot").is_some(),
                     "`/autopilot` left the dispatch and lost its handler"
-                );
-                continue;
-            }
-            if *name == "model" {
-                assert!(
-                    crate::coder::model_picker::commit_lane(
-                        &crate::runtime::Lane::Pro,
-                        "gpt-5.6-sol"
-                    )
-                    .is_ok(),
-                    "`/model` left the dispatch and lost its commit path"
                 );
                 continue;
             }
@@ -2889,6 +2465,20 @@ mod tests {
                 "`/{name}` is listed by /help and nothing runs it"
             );
         }
+    }
+
+    /// The product has one Coder and no model selection, so no `/model`
+    /// command is listed, completed, or handled anywhere.
+    #[test]
+    fn there_is_no_model_command() {
+        assert!(
+            !crate::coder::commands::COMMANDS
+                .iter()
+                .any(|(name, _)| *name == "model"),
+            "a `/model` command reappeared: the product has one Coder, chosen nowhere"
+        );
+        assert!(!command_names().iter().any(|name| *name == "model"));
+        assert!(!commands::handles("model"));
     }
 
     #[test]
@@ -3198,33 +2788,6 @@ mod tests {
         turns.apply(TurnAction::CompleteCancel(id));
         update_activity(&mut ui, &turns, 0);
         assert_eq!(ui.activity, "Idle");
-    }
-
-    #[test]
-    fn lane_changes_replace_one_notice_even_after_other_output() {
-        let mut ui = CoderUi::new();
-        let mut lane_notice = None;
-
-        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Flash);
-        ui.entries.push(Entry::new(Role::Output, "other output"));
-        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Free);
-
-        assert_eq!(ui.entries.len(), 2);
-        assert_eq!(ui.entries[0].text, "Lane: Coder Free");
-        assert_eq!(ui.entries[1].text, "other output");
-    }
-
-    #[test]
-    fn a_cleared_transcript_starts_a_fresh_lane_notice() {
-        let mut ui = CoderUi::new();
-        let mut lane_notice = None;
-
-        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Flash);
-        ui.entries.clear();
-        record_lane_notice(&mut ui, &mut lane_notice, &Lane::Free);
-
-        assert_eq!(ui.entries.len(), 1);
-        assert_eq!(ui.entries[0].text, "Lane: Coder Free");
     }
 
     #[test]

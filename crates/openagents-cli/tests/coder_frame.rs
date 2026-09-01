@@ -73,110 +73,35 @@ fn startup_facts_are_centered_outside_the_transcript() {
     assert!(text.contains("/Users/example/work/openagents"));
     assert!(text.contains("https://openagents.com/api/v1"));
     assert!(text.contains("Type /help for commands and keys."));
-    assert!(text.contains("New in v0.2.0"), "{text}");
-    assert!(!text.contains("New in v0.2.0-rc"), "{text}");
-    assert!(text.contains("/model picks Pro and Local models"), "{text}");
-    assert!(
-        text.contains("Coder Local answers from Ollama on this machine"),
-        "{text}"
-    );
-    assert!(
-        text.contains("Shift+Tab reaches Local when Qwen 3.8 is loaded"),
-        "{text}"
-    );
-    assert!(text.contains("GitHub login is optional"), "{text}");
-    assert!(
-        !text.contains("ATIF export keeps subagent streams"),
-        "{text}"
-    );
-    assert!(
-        !text.contains("ATIF export keeps the swarm inbox"),
-        "{text}"
-    );
-    assert!(!text.contains("Grok is a first-class delegate"), "{text}");
-    assert!(
-        !text.contains("Flash routes simple requests to Gemini 3.7 Flash"),
-        "{text}"
-    );
+    // One Coder, chosen nowhere: the startup card names no model, no lane,
+    // and there is no "what's new" box advertising a model picker, a local
+    // Ollama lane, or a Shift+Tab lane switch.
+    assert!(!text.contains("New in v0.2.0"), "{text}");
+    assert!(!text.contains("/model"), "{text}");
+    assert!(!text.to_lowercase().contains("ollama"), "{text}");
+    assert!(!text.contains("Shift+Tab"), "{text}");
+    assert!(!text.contains("Coder Local"), "{text}");
+    assert!(!text.contains("Pro and Local"), "{text}");
 
     let row_at = |y: u16| {
         (0..buffer.area.width)
             .map(|x| buffer.cell((x, y)).unwrap().symbol())
             .collect::<String>()
     };
-    let box_span = |y: u16| {
-        let mut first = None;
-        let mut last = None;
-        for x in 0..buffer.area.width {
-            let symbol = buffer.cell((x, y)).unwrap().symbol();
-            if !symbol.chars().all(|c| c.is_whitespace()) {
-                if first.is_none() {
-                    first = Some(x);
-                }
-                last = Some(x);
-            }
-        }
-        let left = first.expect("box left edge");
-        let right = last.expect("box right edge");
-        (left, right)
-    };
     let title_row = (0..buffer.area.height)
         .find(|y| row_at(*y).contains("Coder v"))
         .expect("startup box title");
-    let news_row = (0..buffer.area.height)
-        .find(|y| row_at(*y).contains("New in v0.2.0"))
-        .expect("changelog box title");
-    assert!(
-        news_row > title_row,
-        "the changelog box must sit under the startup box: Coder v on {title_row}, New in on {news_row}"
-    );
     let facts_row = (0..buffer.area.height)
         .find(|y| row_at(*y).contains("Working directory"))
         .expect("working directory row");
+    assert!(
+        facts_row > title_row,
+        "the working-directory row sits under the box title"
+    );
     let facts = row_at(facts_row);
     assert!(
         facts.contains("│ Working directory") || facts.contains(" Working directory"),
         "the startup box needs one column of inner padding: {facts:?}"
-    );
-
-    let news_title = row_at(news_row);
-    let (news_left, news_right) = box_span(news_row);
-    let news_box_width = (news_right - news_left + 1) as usize;
-    let facts_title = row_at(title_row);
-    let (_facts_left, _facts_right) = box_span(title_row);
-    let facts_box_width = (_facts_right - _facts_left + 1) as usize;
-    assert!(
-        news_box_width < facts_box_width,
-        "changelog box should wrap its lines, not match the facts box: news={news_box_width} facts={facts_box_width}\n{news_title:?}\n{facts_title:?}"
-    );
-
-    let longest = "Shift+Tab reaches Local when Qwen 3.8 is loaded";
-    assert_eq!(
-        news_box_width,
-        longest.len() + 4,
-        "changelog box should be the longest line plus borders and one pad column each side: {news_title:?}"
-    );
-    let left_margin = news_left as usize;
-    let right_margin = (buffer.area.width - news_right - 1) as usize;
-    assert!(
-        left_margin.abs_diff(right_margin) <= 1,
-        "changelog box should be centered: left={left_margin} right={right_margin} row={news_title:?}"
-    );
-
-    let content_row = (0..buffer.area.height)
-        .find(|y| row_at(*y).contains(longest))
-        .expect("longest changelog line");
-    let content = row_at(content_row);
-    let start = content.find(longest).expect("longest line");
-    let after = &content[start + longest.len()..];
-    assert!(
-        after.starts_with(" │") || after.starts_with(" |"),
-        "longest changelog line should have one pad column then the right border: {content:?}"
-    );
-    let remainder = after.chars().skip(2).collect::<String>();
-    assert!(
-        remainder.chars().all(|c| c.is_whitespace()),
-        "changelog box should not keep extra inner columns after the longest line: {content:?}"
     );
 }
 
@@ -187,7 +112,7 @@ fn typing_a_slash_opens_an_amber_command_helper() {
 
     let buffer = draw(&mut ui);
     let text = text_of(&buffer);
-    assert!(text.contains("Commands · 18 matches"), "{text}");
+    assert!(text.contains("Commands · 17 matches"), "{text}");
     assert!(text.contains("/clear"), "{text}");
     assert!(text.contains("clear the transcript"), "{text}");
 

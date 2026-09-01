@@ -82,7 +82,12 @@ fn the_footer_omits_account_and_endpoint_details() {
     assert!(!row.contains("AtlantisPleb"), "{row}");
     assert!(!row.contains("openagents.com"), "{row}");
     assert!(row.starts_with("$18.40 left"), "{row}");
-    assert!(row.ends_with("Coder Flash"), "{row}");
+    // One Coder, chosen nowhere: the row names no lane or model.
+    assert!(!row.contains("Coder Flash"), "{row}");
+    assert!(
+        row.ends_with(&format!("v{}", openagents_cli::VERSION)),
+        "{row}"
+    );
 }
 
 /// The row is about what you can do next. A token count is not that.
@@ -258,9 +263,11 @@ fn unpriced(calls: u64) -> openagents_cli::coder::credit::CreditField {
     })
 }
 
-/// Credit begins at the left edge and the lane/model ends at the right edge.
+/// Credit begins at the left edge and only the build version ends at the
+/// right edge. There is one Coder and no model or lane is chosen, so the row
+/// never names one — even after a turn recorded which model answered.
 #[test]
-fn the_footer_aligns_credit_left_and_the_effective_model_right() {
+fn the_footer_aligns_credit_left_and_only_the_version_right() {
     let mut ui = CoderUi::new();
     ui.credit = priced();
     ui.lane = "Coder Flash".to_string();
@@ -269,8 +276,14 @@ fn the_footer_aligns_credit_left_and_the_effective_model_right() {
     let row = status_row(&mut ui);
     assert_eq!(row.find("$18.40 left"), Some(0), "{row}");
     assert!(
-        row.ends_with("Coder Flash · gemini-3.7-flash"),
-        "the model should end at the footer edge: {row}"
+        row.trim_end()
+            .ends_with(&format!("v{}", openagents_cli::VERSION)),
+        "only the build version should end at the footer edge: {row}"
+    );
+    assert!(!row.contains("Coder Flash"), "the row named a lane: {row}");
+    assert!(
+        !row.contains("gemini-3.7-flash"),
+        "the row named a model: {row}"
     );
 }
 
@@ -295,248 +308,54 @@ fn an_unpriced_balance_shows_only_the_credit_figure() {
     }
 }
 
-// ───────────────────────────────────────────────────────────── the lane field
+// ─────────────────────────────────────────────────────── one Coder, no lane
 
-// Issue #131: the lane used to be announced once at session open, at the top
-// of the screen, and then scrolled away. It is a live fact — it changes what
-// the next turn costs and which model answers it — so it belongs in the row
-// that says what you can do next.
-//
-// Every assertion below reads the rendered frame. The rule the row carries is
-// that nothing in it may report a value it did not receive, and for a lane
-// that means the *effective* model: a label still reading "Coder Flash" while
-// a fallback answers is the defect this field exists to prevent.
+// The product has one Coder, spoken to through the Coder Responses API. No
+// model or lane is chosen anywhere, so the status row never names one: the
+// row is spend on the left and working state on the right, with the build
+// version as the only chrome. These assertions read the rendered frame.
 
-/// The two lanes read differently from each other on the frame.
-///
-/// Asserting that the field "renders something" would pass against a row that
-/// renders the wrong lane, so both frames are captured and compared.
+/// Even after a turn recorded which model answered, the status row never
+/// names a model or a lane, at any width.
 #[test]
-fn the_two_lanes_render_differently_from_each_other() {
-    let mut flash = CoderUi::new();
-    flash.identity = signed_in();
-    flash.lane = "Coder Flash".to_string();
-
-    let mut free = CoderUi::new();
-    free.identity = signed_in();
-    free.lane = "Coder Free".to_string();
-
-    let on_flash = status_row(&mut flash);
-    let on_free = status_row(&mut free);
-
-    assert!(on_flash.contains("Coder Flash"), "{on_flash}");
-    assert!(on_free.contains("Coder Free"), "{on_free}");
-    assert!(
-        !on_flash.contains("Coder Free"),
-        "the Flash frame names the other lane: {on_flash}"
-    );
-    assert!(
-        !on_free.contains("Coder Flash"),
-        "the Free frame names the other lane: {on_free}"
-    );
-    assert_ne!(
-        on_flash, on_free,
-        "the two lanes render the same row, so the field reports nothing"
-    );
-}
-
-/// A fallback reads differently from the lane running its own model.
-///
-/// This is the assertion the whole field exists for. The lane is Flash in both
-/// frames; what differs is the model that answered. A row that named only the
-/// lane would render these two identically and tell the reader nothing about
-/// which model is spending their money.
-#[test]
-fn a_fallback_reads_differently_from_the_lane_on_its_own_model() {
-    let mut primary = CoderUi::new();
-    primary.identity = signed_in();
-    primary.lane = "Coder Flash".to_string();
-    apply(&mut primary, Control::Model("glm-5.3-flash".to_string()));
-
-    let mut fell_back = CoderUi::new();
-    fell_back.identity = signed_in();
-    fell_back.lane = "Coder Flash".to_string();
-    apply(
-        &mut fell_back,
-        Control::Model("gemini-3.7-flash".to_string()),
-    );
-
-    let on_primary = status_row(&mut primary);
-    let on_fallback = status_row(&mut fell_back);
-
-    assert_ne!(
-        on_primary, on_fallback,
-        "the row reads the same whether the lane's own model answered or a \
-         fallback did, which is the defect this field exists to prevent"
-    );
-    assert!(
-        on_primary.contains("glm-5.3-flash"),
-        "the row does not name the model that answered: {on_primary}"
-    );
-    assert!(
-        on_fallback.contains("gemini-3.7-flash"),
-        "the row does not name the fallback that answered: {on_fallback}"
-    );
-    assert!(
-        !on_fallback.contains("glm-5.3-flash"),
-        "the row names the model the lane asked for rather than the one that \
-         answered: {on_fallback}"
-    );
-}
-
-/// Before anything answers, the row claims no model at all.
-#[test]
-fn the_row_names_no_model_until_one_has_answered() {
-    let mut ui = CoderUi::new();
-    ui.identity = signed_in();
-    ui.lane = "Coder Flash".to_string();
-
-    let row = status_row(&mut ui);
-    assert!(row.contains("Coder Flash"), "{row}");
-    assert!(
-        !row.contains("·  ") && !row.trim_end().ends_with('·'),
-        "the row left a separator with nothing after it: {row}"
-    );
-    // No id is invented for a lane nothing has answered on yet.
-    for id in ["glm-5.3-flash", "gemini-3.7-flash", "ox-alpha"] {
-        assert!(
-            !row.contains(id),
-            "the row named '{id}' before any model answered: {row}"
-        );
-    }
-}
-
-/// A fresh frame does not open on `ox-alpha`.
-#[test]
-fn a_fresh_session_does_not_open_on_ox_alpha() {
-    let mut ui = CoderUi::new();
-    ui.identity = signed_in();
-    ui.lane = openagents_cli::runtime::Lane::default().label();
-
-    let row = status_row(&mut ui);
-    assert!(
-        !row.contains("ox-alpha"),
-        "a fresh session opened on ox-alpha: {row}"
-    );
-    assert!(
-        !row.contains("Coder Auto"),
-        "the retired Auto lane is still on the row: {row}"
-    );
-    assert!(row.contains("Coder Flash"), "{row}");
-}
-
-/// Shift+tab changes the lane, and the row changes with it.
-///
-/// The cycle is asserted through `Lane::cycle`, which is what the key handler
-/// calls, and the frame is redrawn from what it produced — so a cycle that
-/// moved the lane without the row following would fail here.
-#[test]
-fn cycling_the_lane_changes_both_the_lane_and_the_row() {
-    use openagents_cli::runtime::Lane;
-
-    let mut ui = CoderUi::new();
-    ui.identity = signed_in();
-
-    let first = Lane::default();
-    ui.lane = first.label();
-    let before = status_row(&mut ui);
-
-    let second = first.cycle();
-    assert_ne!(second, first, "shift+tab did not move the lane");
-    ui.lane = second.label();
-    // A new lane has answered nothing yet, which is what the key handler does.
-    ui.model.clear();
-    let after = status_row(&mut ui);
-
-    assert_ne!(
-        before, after,
-        "the lane changed but the row under the input bar did not"
-    );
-    assert!(before.contains("Coder Flash"), "{before}");
-    assert!(after.contains("Coder Pro"), "{after}");
-
-    // And it closes, back to where it started. Five table members now,
-    // so the full walk is flash, pro, nitro, free, local (resolved to the
-    // probed tag), flash. This frame has no probe, so the walk carries the
-    // tag a probe would have found.
-    let tag = Some("qwen3.8:27b-mtp-q8_0".to_string());
-    let nitro = second.cycle_gated(tag.clone());
-    assert_eq!(nitro, Lane::Nitro, "the walk reaches Coder Nitro after Pro");
-    let free = nitro.cycle_gated(tag.clone());
-    assert_eq!(free, Lane::Free, "the walk reaches Coder Free after Nitro");
-    let local = free.cycle_gated(tag.clone());
-    assert_eq!(
-        local,
-        Lane::Local("qwen3.8:27b-mtp-q8_0".to_string()),
-        "the walk reaches the local lane, resolved to the probed tag"
-    );
-    assert_eq!(
-        local.cycle_gated(tag),
-        first,
-        "the cycle does not return to the first lane"
-    );
-}
-
-/// The active lane/model occupies the final footer columns without a gutter.
-#[test]
-fn the_lane_is_flush_against_the_footer_right_edge() {
+fn the_row_never_names_a_model_or_lane_at_any_width() {
     let mut ui = CoderUi::new();
     ui.credit = priced();
+    ui.identity = signed_in();
+    // Whatever the runtime recorded internally, the row must not surface it.
     ui.lane = "Coder Flash".to_string();
     apply(&mut ui, Control::Model("gemini-3.7-flash".to_string()));
 
-    let buffer = draw(&mut ui, 120, 24);
-    let y = buffer.area.height - 1;
-    let row = row(&buffer, y);
-    assert_eq!(row.find("$18.40 left"), Some(0), "{row}");
-    assert!(row.ends_with("Coder Flash · gemini-3.7-flash"), "{row}");
-}
-
-/// A narrow row drops the lane name before the model, and never truncates.
-///
-/// Three fields and a fixed width do not always fit. What must not happen is
-/// a partial catalog id, or a bare `Coder Flash` standing there while a
-/// fallback answers — the second is the forbidden state written out. The
-/// field gives up the lane name first, then renders nothing at all.
-#[test]
-fn a_narrow_row_gives_up_the_lane_name_before_the_model() {
-    let mut ui = CoderUi::new();
-    ui.credit = priced();
-    ui.lane = "Coder Flash".to_string();
-    apply(&mut ui, Control::Model("gemini-3.7-flash".to_string()));
-
-    // Wide: both halves.
-    let wide = row(&draw(&mut ui, 100, 24), 23);
-    assert!(wide.contains("Coder Flash · gemini-3.7-flash"), "{wide}");
-
-    // Narrower: the model survives, the lane name goes.
-    let narrow = row(&draw(&mut ui, 30, 24), 23);
-    assert!(
-        narrow.contains("gemini-3.7-flash"),
-        "the model that answered was dropped before the lane name: {narrow}"
-    );
-    assert!(
-        !narrow.contains("Coder Flash"),
-        "both halves were kept on a row too narrow for them: {narrow}"
-    );
-
-    // At every width, no model id is cut in half.
-    for width in [30u16, 70, 74, 80, 90, 100, 120] {
-        let row_at = row(&draw(&mut ui, width, 24), 23);
-        let cut = ["gemini-3.7-flas", "gemini-3.7-", "emini-3.7-flash"]
-            .iter()
-            .any(|piece| row_at.contains(piece) && !row_at.contains("gemini-3.7-flash"));
-        assert!(
-            !cut,
-            "a model id was cut in half at {width} columns: {row_at}"
-        );
-        // And a bare lane name never stands beside a model that answered.
-        if row_at.contains("Coder Flash") {
+    for width in [30u16, 60, 74, 80, 100, 120] {
+        let row = row(&draw(&mut ui, width, 24), 23);
+        for forbidden in [
+            "Coder Flash",
+            "Coder Pro",
+            "Coder Free",
+            "Coder Local",
+            "gemini-3.7-flash",
+            "glm-5.3-flash",
+        ] {
             assert!(
-                row_at.contains("gemini-3.7-flash"),
-                "the row named the lane while a fallback answered, without \
-                 naming the fallback, at {width} columns: {row_at}"
+                !row.contains(forbidden),
+                "the row named '{forbidden}' at {width} columns: {row}"
             );
         }
     }
+}
+
+/// The right edge of the status row carries only the build version.
+#[test]
+fn the_row_ends_with_the_build_version() {
+    let mut ui = CoderUi::new();
+    ui.credit = priced();
+    ui.lane = "Coder Flash".to_string();
+
+    let buffer = draw(&mut ui, 120, 24);
+    let row = row(&buffer, buffer.area.height - 1);
+    assert_eq!(row.find("$18.40 left"), Some(0), "{row}");
+    assert!(
+        row.ends_with(&format!("v{}", openagents_cli::VERSION)),
+        "the row should end with the build version and nothing else: {row}"
+    );
 }

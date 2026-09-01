@@ -30,14 +30,6 @@ const TOOL_SETTLE_FRAMES: u64 = 10;
 /// into one `+N earlier` counter, counted rather than stored as text.
 pub const MAX_SUBAGENT_LINES: usize = 6;
 const MAX_VISIBLE_COMMAND_SUGGESTIONS: usize = 8;
-/// Idle "New in v0.2.0" card. Seven lines is the ceiling so the pair of
-/// boxes still fits an ordinary terminal.
-const WELCOME_WHAT_IS_NEW: &[&str] = &[
-    "/model picks Pro and Local models",
-    "Coder Local answers from Ollama on this machine",
-    "Shift+Tab reaches Local when Qwen 3.8 is loaded",
-    "GitHub login is optional",
-];
 
 /// Who this session is signed in as.
 ///
@@ -419,14 +411,6 @@ pub struct CoderUi {
     /// row. Held here as display state; the command surface owns the state
     /// itself (`coder/autopilot.rs`) and the frame loop keeps the two in step.
     pub autopilot_engaged: bool,
-    /// The open model picker (issues #323/#324), when one is open.
-    ///
-    /// Held as display state by the frame, exactly like the lane: the items
-    /// come from the per-lane sources in `coder/model_picker.rs`, the filter
-    /// text and cursor live here, and the commit path is a lane pin the
-    /// frame loop applies through the session. `None` renders nothing — a
-    /// reader who never opens `/model` sees no new pixels.
-    pub model_picker: Option<crate::coder::model_picker::PickerState>,
     /// The thread this session holds, once the server has opened one.
     pub thread: Option<String>,
     /// The local source-of-truth session and its directory.
@@ -567,7 +551,6 @@ impl CoderUi {
             endpoint: String::new(),
             lane: String::new(),
             autopilot_engaged: false,
-            model_picker: None,
             thread: None,
             local_session_id: None,
             local_session_path: None,
@@ -708,62 +691,21 @@ impl CoderUi {
 
     /// The same field, narrowed to what will fit beside the credit figure.
     ///
-    /// It gives up the lane name first, then the version, because the model
-    /// is the load-bearing half: `Coder Flash` while Gemini is answering is
-    /// the defect this field exists to prevent, whereas a bare
-    /// `gemini-3.7-flash` is still true. And it renders **nothing at all**
-    /// rather than a form that would not fit whole — never a truncated id,
-    /// and never a lane name standing alone once a model has answered, which
-    /// would be the forbidden state written out. `/info` carries the version,
-    /// lane, and model either way, so what is dropped here is recoverable
-    /// rather than lost.
+    /// It carries only the running build version. There is one Coder and no
+    /// model or lane is chosen, so the status row never names one: the row is
+    /// spend on the left and working state on the right, with the version as
+    /// the single piece of chrome that says which binary produced the frame.
+    /// It renders **nothing at all** rather than a truncation that would not
+    /// fit whole.
     fn lane_field_within(&self, columns: u16) -> String {
         let columns = columns as usize;
-        let fits = |text: &str| text.chars().count() <= columns;
         // The running build, from the same constant the welcome box titles.
         let version = format!("v{}", crate::VERSION);
-
-        // No lane recorded yet: the version is still worth its columns.
-        if self.lane.is_empty() {
-            return match fits(&version) {
-                true => version,
-                false => String::new(),
-            };
+        if version.chars().count() <= columns {
+            version
+        } else {
+            String::new()
         }
-
-        // Nothing has answered yet, so nothing is claimed about a model and
-        // the lane name alone cannot mislead.
-        if self.model.is_empty() {
-            let full = format!("{} · {}", version, self.lane);
-            if fits(&full) {
-                return full;
-            }
-            if fits(&self.lane) {
-                return self.lane.clone();
-            }
-            return match fits(&version) {
-                true => version,
-                false => String::new(),
-            };
-        }
-
-        let full = format!("{} · {} · {}", version, self.lane, self.model);
-        if fits(&full) {
-            return full;
-        }
-        // The model is the load-bearing half; the version rides with it as
-        // long as both fit. The lane name is the nicety.
-        let modelled = format!("{} · {}", version, self.model);
-        if fits(&modelled) {
-            return modelled;
-        }
-        if fits(&self.model) {
-            return self.model.clone();
-        }
-        if fits(&version) {
-            return version;
-        }
-        String::new()
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
@@ -970,10 +912,6 @@ impl CoderUi {
         }
 
         self.render_slash_suggestions(frame, transcript_area);
-        // The model picker draws over the same overlay band, above the
-        // slash suggestions, because it is the deeper surface: `/model`
-        // opened it deliberately, and its rows are the thing on screen.
-        self.render_model_picker(frame, transcript_area);
 
         let input_area = main[1];
 
@@ -1215,96 +1153,6 @@ impl CoderUi {
         frame.render_widget(Paragraph::new(Text::from(rows)).block(block), dropdown);
     }
 
-    /// Draw the open model picker (issues #323/#324), above the composer in
-    /// the same overlay band the slash suggestions use.
-    ///
-    /// The surface follows grok-build's `ArgPicker`: a bordered dropdown of
-    /// `ModelItem` rows — id (amber, `(current)` marker included) with the
-    /// description dimmed beside it — the selected row inverted, and a title
-    /// that names the filter. A loading picker (the Local probe is async)
-    /// renders its loading line instead of rows, so the surface exists from
-    /// the first frame rather than popping in when the network answers.
-    fn render_model_picker(&self, frame: &mut Frame, area: Rect) {
-        let Some(picker) = &self.model_picker else {
-            return;
-        };
-        if area.width < 24 || area.height < 4 {
-            return;
-        }
-
-        if picker.loading {
-            let dropdown = Rect {
-                x: area.x,
-                y: area.bottom().saturating_sub(3),
-                width: area.width,
-                height: 3,
-            };
-            let block = Block::default()
-                .title(Span::styled(
-                    " Models ",
-                    Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR),
-                ))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR));
-            let probing = Paragraph::new(Text::from(Line::from(Span::styled(
-                format!(" {}", picker.loading_label),
-                Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR),
-            ))))
-            .block(block);
-            frame.render_widget(probing, dropdown);
-            return;
-        }
-
-        let visible = picker.visible();
-        if visible.is_empty() {
-            return;
-        }
-        let start = picker
-            .selected
-            .saturating_sub(MAX_VISIBLE_COMMAND_SUGGESTIONS.saturating_sub(1));
-        let shown = visible
-            .iter()
-            .skip(start)
-            .take(MAX_VISIBLE_COMMAND_SUGGESTIONS)
-            .collect::<Vec<_>>();
-        let height = (shown.len() as u16 + 2).min(area.height);
-        let dropdown = Rect {
-            x: area.x,
-            y: area.bottom().saturating_sub(height),
-            width: area.width,
-            height,
-        };
-        let name_style = Style::default().fg(TEXT_COLOR).bg(BACKGROUND_COLOR);
-        let description_style = Style::default().fg(DIM_TEXT_COLOR).bg(BACKGROUND_COLOR);
-        let selected_style = Style::default().fg(BACKGROUND_COLOR).bg(TEXT_COLOR);
-        let title = if picker.query.is_empty() {
-            " Models ".to_string()
-        } else {
-            format!(" Models · {} ", picker.query)
-        };
-        let rows = shown
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let (name_style, description_style) = if start + index == picker.selected {
-                    (selected_style, selected_style)
-                } else {
-                    (name_style, description_style)
-                };
-                Line::from(vec![
-                    Span::styled(format!(" {}  ", item.display), name_style),
-                    Span::styled(item.description.clone(), description_style),
-                ])
-            })
-            .collect::<Vec<_>>();
-        let block = Block::default()
-            .title(Span::styled(title, description_style))
-            .borders(Borders::ALL)
-            .border_style(description_style)
-            .style(name_style);
-        frame.render_widget(Paragraph::new(Text::from(rows)).block(block), dropdown);
-    }
-
     /// Draw the startup facts as centered UI chrome, outside the transcript.
     fn render_welcome(&self, frame: &mut Frame, area: Rect) {
         if area.width < 20 || area.height < 7 {
@@ -1313,21 +1161,9 @@ impl CoderUi {
 
         let width = area.width.saturating_sub(4).min(100);
         // Six content rows, borders, and the padding: the autopilot line
-        // made it seven, and the seventh is within the ceiling this card
-        // guards (`WELCOME_WHAT_IS_NEW` yields before this box does).
+        // made it seven, within the ceiling this card guards.
         let welcome_height = 8.min(area.height);
-        let news_height = (WELCOME_WHAT_IS_NEW.len() as u16).saturating_add(2);
-        let gap = 1u16;
-        let stack_height = welcome_height
-            .saturating_add(gap)
-            .saturating_add(news_height);
-        let show_news = area.height >= stack_height;
-        let used_height = if show_news {
-            stack_height
-        } else {
-            welcome_height
-        };
-        let origin_y = area.y + area.height.saturating_sub(used_height) / 2;
+        let origin_y = area.y + area.height.saturating_sub(welcome_height) / 2;
         let welcome_area = Rect {
             x: area.x + area.width.saturating_sub(width) / 2,
             y: origin_y,
@@ -1371,8 +1207,7 @@ impl CoderUi {
             // The autopilot line lives inside the card rather than beside the
             // version, so a reader learns the mode exists before the first
             // prompt (spec §8). One line, and the card's `8`-line height
-            // already counts it — the news box below is what yields, exactly
-            // as it does for a short terminal.
+            // already counts it.
             Line::from(Span::styled(
                 crate::coder::autopilot::AutopilotState {
                     engaged: self.autopilot_engaged,
@@ -1397,41 +1232,6 @@ impl CoderUi {
             .style(value_style)
             .padding(Padding::horizontal(1));
         frame.render_widget(Paragraph::new(content).block(block), welcome_area);
-
-        if show_news {
-            // Wrap the longest line: one pad column and one border on each side.
-            let news_width = {
-                let content = WELCOME_WHAT_IS_NEW
-                    .iter()
-                    .map(|line| UnicodeWidthStr::width(*line))
-                    .max()
-                    .unwrap_or(0);
-                (content as u16).saturating_add(4).min(area.width).max(3)
-            };
-            let news_area = Rect {
-                x: area.x + area.width.saturating_sub(news_width) / 2,
-                y: welcome_area
-                    .y
-                    .saturating_add(welcome_height)
-                    .saturating_add(gap),
-                width: news_width,
-                height: news_height,
-            };
-            let news = Text::from(
-                WELCOME_WHAT_IS_NEW
-                    .iter()
-                    .map(|line| Line::from(Span::styled(*line, label_style)))
-                    .collect::<Vec<_>>(),
-            );
-            let news_block = Block::default()
-                .title(" New in v0.2.0 ")
-                .title_alignment(Alignment::Center)
-                .borders(Borders::ALL)
-                .border_style(value_style)
-                .style(value_style)
-                .padding(Padding::horizontal(1));
-            frame.render_widget(Paragraph::new(news).block(news_block), news_area);
-        }
     }
 
     /// Calculate the scroll offset that keeps the viewport at the bottom
@@ -2090,38 +1890,29 @@ mod tests {
         );
     }
 
-    /// The status row's right field leads with the build version, then the
-    /// lane, then the model that answered — so any frame, and any screenshot
-    /// of one, says which binary produced the session.
+    /// The status row's right field carries only the build version. There is
+    /// one Coder and no model or lane is ever chosen, so no model or lane name
+    /// appears on the row — even when the session has recorded which model
+    /// answered a turn, the status chrome stays the bare version.
     #[test]
-    fn lane_field_leads_with_the_version() {
+    fn lane_field_is_only_the_version_never_a_model() {
         let mut ui = CoderUi::new();
         ui.lane = "Coder Flash".to_string();
         ui.model = "gemini-3.7-flash".to_string();
 
-        let field = ui.lane_field();
-        assert_eq!(field, "v0.0.0-dev · Coder Flash · gemini-3.7-flash");
-
-        // Before anything has answered, the version still leads the lane.
-        ui.model = String::new();
-        assert_eq!(ui.lane_field(), "v0.0.0-dev · Coder Flash");
+        assert_eq!(ui.lane_field(), "v0.0.0-dev");
+        assert!(!ui.lane_field().contains("Flash"));
+        assert!(!ui.lane_field().contains("gemini"));
     }
 
-    /// Narrow columns drop the version and lane before the model: the
-    /// answering model is the load-bearing half and the version is one of the
-    /// niceties, and a bare model id is still true.
+    /// Narrow columns drop the version whole rather than truncating it.
     #[test]
-    fn lane_field_narrows_to_the_model_before_dropping_anything() {
-        let mut ui = CoderUi::new();
-        ui.lane = "Coder Flash".to_string();
-        ui.model = "gemini-3.7-flash".to_string();
-
-        let narrow = ui.lane_field_within("v0.0.0-dev · gemini-3.7-flash".len() as u16);
-        assert_eq!(narrow, "v0.0.0-dev · gemini-3.7-flash");
-
-        let bare = ui.lane_field_within(ui.model.chars().count() as u16);
-        assert_eq!(bare, "gemini-3.7-flash");
-
+    fn lane_field_renders_nothing_rather_than_a_truncation() {
+        let ui = CoderUi::new();
+        assert_eq!(
+            ui.lane_field_within("v0.0.0-dev".len() as u16),
+            "v0.0.0-dev"
+        );
         // Nothing fits whole: nothing at all renders, never a truncation.
         assert_eq!(ui.lane_field_within(3), "");
     }

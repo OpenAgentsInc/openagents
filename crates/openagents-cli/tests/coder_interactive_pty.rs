@@ -180,50 +180,6 @@ mod unix_pty {
         }
     }
 
-    /// A loopback Ollama `/api/tags` for the Local picker (#324).
-    struct OllamaTags {
-        origin: String,
-    }
-
-    impl OllamaTags {
-        fn start() -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("bind ollama stub");
-            let port = listener.local_addr().expect("ollama address").port();
-            std::thread::spawn(move || {
-                for stream in listener.incoming() {
-                    let Ok(mut stream) = stream else { continue };
-                    let mut request = Vec::new();
-                    let mut byte = [0u8; 1];
-                    while !request.ends_with(b"\r\n\r\n") {
-                        match stream.read(&mut byte) {
-                            Ok(0) | Err(_) => break,
-                            Ok(_) => request.push(byte[0]),
-                        }
-                    }
-                    let body = concat!(
-                        r#"{"models":["#,
-                        r#"{"name":"qwen3.8:27b-mtp-q8_0","size":30000000000,"#,
-                        r#""modified_at":"2026-08-29T00:00:00Z","#,
-                        r#""details":{"quantization_level":"Q8_0"}},"#,
-                        r#"{"name":"qwen3:8b","size":5000000000,"#,
-                        r#""modified_at":"2026-08-28T00:00:00Z"}"#,
-                        r#"]}"#
-                    );
-                    let response = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-                         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                        body.len()
-                    );
-                    let _ = stream.write_all(response.as_bytes());
-                    let _ = stream.flush();
-                }
-            });
-            Self {
-                origin: format!("http://127.0.0.1:{port}"),
-            }
-        }
-    }
-
     // ──────────────────────────────────────────────────────────── the screen
 
     /// One rendered frame, read out of the emulator.
@@ -429,20 +385,6 @@ mod unix_pty {
                 &[],
                 false,
                 Some("http://127.0.0.1:1"),
-            )
-        }
-
-        fn start_local(ollama_host: &str, with_token: bool) -> Self {
-            Self::start_full_in(
-                ROWS,
-                COLS,
-                STUB_CREDIT,
-                false,
-                Duration::ZERO,
-                scratch_dir(),
-                &["--lane", "local"],
-                with_token,
-                Some(ollama_host),
             )
         }
 
@@ -761,11 +703,11 @@ mod unix_pty {
         );
     }
 
-    /// No OpenAgents token still opens a session. Hosted prompts refuse with
-    /// `/login`; they do not start GitHub device authorization (#325). A
-    /// missing Ollama server is named as an install, not silence (#326).
+    /// No OpenAgents token still opens a session. A prompt refuses with
+    /// `/login`; it does not start GitHub device authorization (#325). There
+    /// is one Coder and no local lane, so the refusal never advertises Ollama.
     #[test]
-    fn unsigned_first_open_refuses_hosted_turns_and_names_ollama() {
+    fn unsigned_first_open_refuses_turns_with_login() {
         let mut tui = Tui::start_unsigned();
         let frame = tui.wait_for_composer();
         assert!(
@@ -781,29 +723,20 @@ mod unix_pty {
 
         tui.type_text("hello from an unsigned session");
         tui.send(b"\r");
-        let after = tui.wait_for(
-            "the hosted-lane sign-in refusal after a prompt",
-            REDRAW,
-            |frame| {
-                let text = frame.transcript();
-                text.contains("hello from an unsigned session")
-                    && text.contains("Sign in with /login")
-            },
-        );
+        let after = tui.wait_for("the sign-in refusal after a prompt", REDRAW, |frame| {
+            let text = frame.transcript();
+            text.contains("hello from an unsigned session") && text.contains("Sign in with /login")
+        });
         let transcript = after.transcript();
         assert!(
-            transcript.contains("This lane talks to OpenAgents. Sign in with /login"),
-            "a hosted prompt without a token must name /login.\n{}",
+            transcript.contains("Coder talks to OpenAgents. Sign in with /login"),
+            "a prompt without a token must name /login.\n{}",
             after.dump()
         );
+        // One Coder, no local lane: the refusal must not advertise Ollama.
         assert!(
-            transcript.contains("For local, install Ollama"),
-            "a missing Ollama probe must name the install.\n{}",
-            after.dump()
-        );
-        assert!(
-            transcript.contains("https://ollama.com/download"),
-            "a missing Ollama probe must name the download URL.\n{}",
+            !transcript.to_lowercase().contains("ollama"),
+            "the refusal advertised a local Ollama lane.\n{}",
             after.dump()
         );
         assert!(
@@ -1102,11 +1035,14 @@ mod unix_pty {
         assert!(
             frame
                 .transcript()
-                .contains("/gym — show or hide the gym pane")
-                && frame
-                    .transcript()
-                    .contains("Ctrl+P — open the model picker"),
+                .contains("/gym — show or hide the gym pane"),
             "the `/help` output should list the command table's span.\n{}",
+            frame.dump()
+        );
+        // One Coder, chosen nowhere: `/help` lists no model picker key.
+        assert!(
+            !frame.transcript().contains("model picker"),
+            "the `/help` output still advertises a model picker.\n{}",
             frame.dump()
         );
 
@@ -1341,12 +1277,12 @@ mod unix_pty {
                 && frame.transcript().contains("Autopilot disengaged")
         });
 
-        // The mode never joins the lane walk: the status row still names the
-        // lane, not an autopilot-shaped lane.
+        // With the mode off, the row is back to spend on the left and the
+        // build version on the right — one Coder, no lane named.
         let last_row = frame.status_bar();
         assert!(
-            last_row.contains("Coder "),
-            "the status row must keep naming the lane beside the mode.\n{}",
+            !last_row.contains("Coder ") && !last_row.contains("AUTOPILOT"),
+            "the status row must name no lane or mode once autopilot is off.\n{}",
             last_row
         );
 
@@ -1405,223 +1341,30 @@ mod unix_pty {
         assert!(status.success(), "clean exit: {status:?}");
     }
 
-    /// The model picker (issue #323): Ctrl+P on the Pro lane lists the Pro
-    /// models the deployment serves — in `PRO_MODEL_IDS` order, skipping the
-    /// listed-but-unavailable `terra` — with the picker rows visible.
-    /// Ctrl+M is Enter in this terminal (0x0D), so the chord is Ctrl+P.
+    /// One Coder, chosen nowhere: there is no model picker and no `/model`
+    /// command. Ctrl+P opens nothing, and `/model` is refused by name like any
+    /// unknown slash line rather than opening a chooser.
     #[test]
-    fn model_picker_lists_served_pro_models_and_flash_refuses() {
-        let mut tui = Tui::start_from_home(scratch_dir(), &["--lane", "pro"]);
-        tui.wait_for_composer();
-
-        // Ctrl+P opens the picker loading; the stub answers, and the rows
-        // render with the served Pro models in table order.
-        tui.send(&[0x10]); // Ctrl+P: 0x10 is the raw ctrl-byte crossterm maps to Char(p)+CONTROL
-        tui.wait_for("the model picker to open", REDRAW, |frame| {
-            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
-            frame.rows[..composer_top]
-                .iter()
-                .any(|row| row.contains("gpt-5.6-sol"))
-                && frame.rows[..composer_top]
-                    .iter()
-                    .any(|row| row.contains("gpt-5.6-luna"))
-        });
-        let open = tui.frame();
-        let composer_top = open.composer().expect("composer still up").top;
-        let picker_rows = open.rows[..composer_top].to_vec();
-        let joined = picker_rows.join(" ");
-        assert!(
-            joined.contains("Models"),
-            "the picker carries a title.\n{}",
-            open.dump()
-        );
-        assert!(
-            joined.contains("reasoning medium"),
-            "Pro rows name the reasoning the lane would use.\n{}",
-            open.dump()
-        );
-        // `terra` is in the stub's catalog but unavailable: the picker must
-        // not offer a row the turn would refuse.
-        assert!(
-            !joined.contains("gpt-5.6-terra"),
-            "an unavailable model is not a choice.\n{}",
-            open.dump()
-        );
-
-        // Esc dismisses; the rows go away.
-        tui.send(&[0x1b]);
-        tui.wait_for("the picker to close", REDRAW, |frame| {
-            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
-            !frame.rows[..composer_top]
-                .iter()
-                .any(|row| row.contains("Models"))
-        });
-
-        let status = tui.quit();
-        assert!(status.success(), "clean exit: {status:?}");
-    }
-
-    /// Flash has no per-model list: `/model` refuses by name rather than
-    /// offering the gateway tier as if it were a choice.
-    #[test]
-    fn model_on_flash_refuses_by_name() {
+    fn there_is_no_model_picker_or_model_command() {
         let mut tui = Tui::start();
         tui.wait_for_composer();
 
+        // Ctrl+P used to open the picker; it is unbound now. Then `/model` is
+        // refused as an unknown command — the redraw that refusal forces is
+        // also where we confirm no picker surface ever appeared.
+        tui.send(&[0x10]); // Ctrl+P (raw 0x10), now a no-op.
         tui.type_text("/model");
         tui.send(b"\r");
-        tui.wait_for("Flash `/model` to refuse", REDRAW, |frame| {
-            frame.transcript().contains("has no model list")
+        let frame = tui.wait_for("`/model` to be refused as unknown", REDRAW, |frame| {
+            frame.transcript().contains("There is no") && frame.transcript().contains("model")
         });
-
-        let status = tui.quit();
-        assert!(status.success(), "clean exit: {status:?}");
-    }
-
-    /// Local `/model` lists installed Ollama tags (#324). Unsigned (#327):
-    /// no login, no catalog refusal, the current tag marked, commit re-pins
-    /// without opening a server thread.
-    #[test]
-    fn local_model_picker_lists_tags_unsigned() {
-        let ollama = OllamaTags::start();
-        let mut tui = Tui::start_local(&ollama.origin, false);
-        tui.wait_for_composer();
-
-        tui.type_text("/model");
-        tui.send(b"\r");
-        tui.wait_for("the Local picker to list installed tags", REDRAW, |frame| {
-            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
-            frame.rows[..composer_top]
-                .iter()
-                .any(|row| row.contains("qwen3.8:27b-mtp-q8_0"))
-                && frame.rows[..composer_top]
-                    .iter()
-                    .any(|row| row.contains("qwen3:8b"))
-        });
-        let open = tui.frame();
-        let joined = open.rows.join(" ");
-        assert!(
-            joined.contains("(current)"),
-            "the active local tag is marked current.\n{}",
-            open.dump()
-        );
-        assert!(
-            !open.transcript().contains("Starting OpenAgents sign-in")
-                && !open.transcript().contains("Sign in with /login"),
-            "Local /model must not start hosted auth.\n{}",
-            open.dump()
-        );
-
-        tui.send(&[0x1b]);
-        tui.wait_for("the Local picker to close", REDRAW, |frame| {
-            let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
-            !frame.rows[..composer_top]
-                .iter()
-                .any(|row| row.contains("Models"))
-        });
-        tui.type_text("/model qwen3:8b");
-        tui.send(b"\r");
-        let committed = tui.wait_for("the Local pin to land", REDRAW, |frame| {
-            frame.transcript().contains("Model set to qwen3:8b")
-                && frame.transcript().contains("talks to Ollama")
-        });
-        assert!(
-            committed.status_bar().contains("qwen3:8b"),
-            "the status row names the local tag.\n{}",
-            committed.dump()
-        );
-        assert!(
-            !committed.transcript().contains("opens its own thread"),
-            "Local commit must not re-open a server thread.\n{}",
-            committed.dump()
-        );
-
-        let status = tui.quit();
-        assert!(status.success(), "clean exit: {status:?}");
-    }
-
-    /// Unsigned Local with no Ollama: `/model` shows the #326 install sign,
-    /// not a login prompt and not an empty dropdown (#327).
-    #[test]
-    fn local_model_picker_unsigned_without_ollama_shows_install_sign() {
-        let mut tui = Tui::start_local("http://127.0.0.1:1", false);
-        tui.wait_for_composer();
-
-        tui.type_text("/model");
-        tui.send(b"\r");
-        let frame = tui.wait_for("the install sign instead of a picker", REDRAW, |frame| {
-            frame.transcript().contains("For local, install Ollama")
-        });
-        assert!(
-            frame.transcript().contains("https://ollama.com/download"),
-            "the picker empty-state is the #326 install sign.\n{}",
-            frame.dump()
-        );
-        assert!(
-            !frame.transcript().contains("Starting OpenAgents sign-in")
-                && !frame.transcript().contains("Sign in with /login"),
-            "a missing Ollama must not become a login prompt.\n{}",
-            frame.dump()
-        );
         let composer_top = frame.composer().map(|c| c.top).unwrap_or(0);
         assert!(
             !frame.rows[..composer_top]
                 .iter()
                 .any(|row| row.contains("Models")),
-            "an empty dropdown is not the empty state.\n{}",
+            "a model picker opened.\n{}",
             frame.dump()
-        );
-
-        let status = tui.quit();
-        assert!(status.success(), "clean exit: {status:?}");
-    }
-
-    /// `/model <id>` commits directly: on the Pro lane, a served Pro id
-    /// re-pins the session (the status row names the committed model's
-    /// lane), and an unknown id refuses by name — never a silent fallback.
-    #[test]
-    fn model_direct_commit_pins_the_lane_and_unknown_ids_refuse_by_name() {
-        let mut tui = Tui::start_from_home(scratch_dir(), &["--lane", "pro"]);
-        tui.wait_for_composer();
-
-        tui.type_text("/model gpt-5.6-luna");
-        tui.send(b"\r");
-        let committed = tui.wait_for("the direct commit to land", REDRAW, |frame| {
-            frame.transcript().contains("Model set to gpt-5.6-luna")
-        });
-        // The committed pin is `Named(gpt-5.6-luna)`, whose label names the
-        // model — the row shows what will answer, not what was asked for.
-        assert!(
-            committed.status_bar().contains("gpt-5.6-luna"),
-            "the status row should name the committed model.\n{}",
-            committed.dump()
-        );
-
-        tui.type_text("/model gpt-5.6-nope");
-        tui.send(b"\r");
-        tui.wait_for("the unknown id to refuse", REDRAW, |frame| {
-            frame.transcript().contains("Unknown model: gpt-5.6-nope")
-        });
-
-        // A pin already on the Pro door is still a Pro picker: luna then
-        // sol must not refuse because the lane is now Named.
-        tui.type_text("/model gpt-5.6-sol");
-        tui.send(b"\r");
-        tui.wait_for("the second pin to land on Named", REDRAW, |frame| {
-            frame.transcript().contains("Model set to gpt-5.6-sol")
-        });
-
-        tui.type_text("/info");
-        tui.send(b"\r");
-        let info = tui.wait_for("`/info` to name the committed pin", REDRAW, |frame| {
-            frame.transcript().contains("This session")
-                && frame.transcript().contains("gpt-5.6-sol")
-        });
-        assert!(
-            info.transcript().contains("Lane — Coder (gpt-5.6-sol)")
-                && info.transcript().contains("Thread — none open"),
-            "the pin is session-scoped and drops the old thread.\n{}",
-            info.dump()
         );
 
         let status = tui.quit();
@@ -1680,26 +1423,24 @@ mod unix_pty {
             );
             assert!(
                 frame.status_bar().contains("$18.40 left")
-                    && frame.status_bar().trim_end().ends_with("Coder Flash"),
-                "the status bar should still be on the bottom row after a resize.\n{}",
+                    && !frame.status_bar().contains("Coder Flash"),
+                "the status bar should still be on the bottom row after a resize, \
+                 and never name a lane.\n{}",
                 frame.dump()
             );
         }
     }
 
-    /// The bottom row carries remaining credit on the left and the active lane
-    /// on the right. Account and endpoint details are available through
-    /// `/info`.
+    /// The bottom row carries remaining credit on the left and the build
+    /// version on the right — never a model or lane name, because there is one
+    /// Coder and none is chosen. Account and endpoint details live in `/info`.
     #[test]
-    fn the_bottom_row_carries_credit_and_the_active_lane() {
+    fn the_bottom_row_carries_credit_and_no_lane() {
         let tui = Tui::start();
         let frame = tui.wait_for(
-            "the status bar to report the balance and lane",
+            "the status bar to report the balance",
             FIRST_FRAME,
-            |frame| {
-                let status = frame.status_bar();
-                status.contains("$18.40") && status.contains("Coder Flash")
-            },
+            |frame| frame.status_bar().contains("$18.40"),
         );
 
         let status = frame.status_bar();
@@ -1715,6 +1456,12 @@ mod unix_pty {
             status,
             frame.dump()
         );
+        assert!(
+            !status.contains("Coder Flash") && !status.contains("Coder "),
+            "the row names a lane, but there is one Coder chosen nowhere: {:?}.\n{}",
+            status,
+            frame.dump()
+        );
 
         let balance = status.find("$18.40 left").unwrap_or_else(|| {
             panic!(
@@ -1725,8 +1472,10 @@ mod unix_pty {
         });
         assert_eq!(balance, 0, "the balance should start at the left edge");
         assert!(
-            status.trim_end().ends_with("Coder Flash"),
-            "the lane should end at the right edge, and the row held {status:?}.\n{}",
+            status
+                .trim_end()
+                .ends_with(&format!("v{}", openagents_cli::VERSION)),
+            "the build version should end at the right edge, and the row held {status:?}.\n{}",
             frame.dump()
         );
 
