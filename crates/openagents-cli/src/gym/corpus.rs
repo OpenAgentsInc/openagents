@@ -579,10 +579,17 @@ pub fn prepare_import(
         let redacted = crate::trace::redact_text(&source_text, home);
         let findings = tripwire_findings(&redacted.text);
         if !findings.is_empty() {
-            return Err(CliError::Input(format!(
-                "tripwire halted the batch at digest {digest}: {}",
+            // A trace redaction could not clean never uploads, and no flag can
+            // make it. It is excluded aloud with its reason, and the rest of
+            // the batch — clean traces — proceeds; halting them all made bulk
+            // import a whack-a-mole and protected nothing extra.
+            eprintln!(
+                "excluding {} ({digest}): tripwire {}",
+                row.path.display(),
                 findings.join(", ")
-            )));
+            );
+            skipped += 1;
+            continue;
         }
         let document: Value = serde_json::from_str(&redacted.text).map_err(|e| {
             CliError::Input(format!("redacted {} is not JSON: {e}", row.path.display()))

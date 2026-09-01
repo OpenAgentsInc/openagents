@@ -220,8 +220,18 @@ fn a_planted_secret_in_a_converted_session_trips_the_tripwire() {
     let out = tmp.path().join("inventory.json");
     inventory(&home, &[], &out, INVENTORY_BOUNDS).unwrap();
     let ledger = tmp.path().join("corpus.jsonl");
-    let error = prepare_import(&out, "ledger", &ledger, "/Users/fixture").unwrap_err();
-    assert!(error.to_string().contains("tripwire"), "{error}");
+    // The batch never halts on one dirty trace, and the raw secret never
+    // survives into anything prepared for upload: redaction rewrites the
+    // value, and a value the tripwire still catches excludes that one trace
+    // aloud while the rest proceed.
+    let (prepared, _skipped, _pending) =
+        prepare_import(&out, "ledger", &ledger, "/Users/fixture").unwrap();
+    for item in &prepared {
+        assert!(
+            !item.document.to_string().contains("fx_planted_value_1234"),
+            "a raw secret reached a prepared document"
+        );
+    }
 }
 
 #[test]
