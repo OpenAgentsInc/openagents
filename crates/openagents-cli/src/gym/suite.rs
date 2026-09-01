@@ -27,6 +27,12 @@ struct SuiteManifest {
     tier: String,
     description: String,
     tasks: Vec<SuiteTask>,
+    /// Optional pass/fail floors for a complete scored run of this suite.
+    /// Deliberately OUTSIDE the suite digest: the digest pins what was run,
+    /// and retuning a floor must not make historical runs read as drifted.
+    /// Rows pin the gate they were judged against by its own digest instead.
+    #[serde(default)]
+    gate: Option<crate::gym::gate::GateSpec>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -141,6 +147,15 @@ fn read_manifest(path: &Path) -> Result<SuiteManifest, CliError> {
                 manifest.id,
                 unavailable.len(),
                 unavailable.join(", ")
+            )));
+        }
+    }
+    if let Some(gate) = &manifest.gate {
+        gate.validate(&manifest.id)?;
+        if manifest.id == "smoke" || manifest.tier == "smoke" {
+            return Err(CliError::Configuration(format!(
+                "suite {} is smoke-tier and cannot declare a gate; a smoke run is never a published score, so it has nothing to pass",
+                manifest.id
             )));
         }
     }
@@ -501,6 +516,8 @@ pub struct SuiteMeta {
     pub tier: String,
     pub digest: String,
     pub task_ids: Vec<String>,
+    /// The manifest's `gate` block, when it declares one.
+    pub gate: Option<crate::gym::gate::GateSpec>,
 }
 
 /// Read a suite manifest by id. Drift is reported, not refused — scoring a
@@ -520,6 +537,7 @@ pub fn suite_meta_in(suites_dir: &Path, id: &str) -> Result<SuiteMeta, CliError>
         tier: manifest.tier,
         digest,
         task_ids: manifest.tasks.iter().map(|t| t.id.clone()).collect(),
+        gate: manifest.gate,
     })
 }
 

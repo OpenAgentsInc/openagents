@@ -22,7 +22,19 @@ fn score_reproduces_typescript_priced_lane_verdict() {
     assert_eq!(report.ungraded, 0);
     assert_eq!(report.success_rate, Some(0.5));
     assert_eq!(report.models, vec!["gemini-3.7-flash".to_string()]);
+    // gemini-3.7-flash is in bench/rates.json, so the run prices instead of
+    // reporting unknown: $0.07875 total over 2 accepted outcomes.
+    assert_eq!(report.cost_disposition, "known");
+    assert!((report.cost_per_accepted_outcome_usd.unwrap() - 0.039375).abs() < 1e-12);
+}
+
+#[test]
+fn model_absent_from_the_catalog_stays_cost_unknown() {
+    let report = score_harbor_job(&fixture("unpriced-lane"), "tb2-cross-section", "proxy").unwrap();
+    assert_eq!(report.models, vec!["gpt-5.6-luna".to_string()]);
     assert_eq!(report.cost_disposition, "cost_unknown");
+    assert_eq!(report.cost_per_accepted_outcome_usd, None);
+    assert_eq!(report.total_cost_usd, None);
 }
 
 #[test]
@@ -119,6 +131,15 @@ fn complete_coderbench_smoke_run_may_append_as_smoke() {
         ungraded_ratio: 0.0,
         cost_disposition: "cost_unknown".into(),
         cost_per_accepted_outcome_usd: None,
+        total_cost_usd: None,
+        cost_coverage: "unknown".into(),
+        rate_basis: None,
+        rate_catalog_version: "openagents.coder-rate-catalog.2026-08-25".into(),
+        unpriced_reasons: Vec::new(),
+        prompt_tokens: None,
+        completion_tokens: None,
+        cached_input_tokens: 0,
+        tool_calls: None,
         tasks: vec!["openssl-selfsigned-cert".into(), "regex-log".into()],
         models: Vec::new(),
         wall_clock_seconds: None,

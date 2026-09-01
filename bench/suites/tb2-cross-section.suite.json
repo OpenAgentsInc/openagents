@@ -3,6 +3,22 @@
   "id": "tb2-cross-section",
   "tier": "score",
   "description": "Twelve Terminal-Bench 2.0 tasks across git forensics, builds, C extensions, coverage, security fixes, log parsing, tokenisation, certificates, web-server configuration, and an interpreter. Selection rationale in tb2-cross-section.md.",
+  "gate": {
+    "$comment": [
+      "Floors restored from the retired packages/coder-effectiveness/",
+      "thresholds/tb2-cross-section.json. minSuccessRate starts low on",
+      "purpose: it is a floor that catches a regression, not a target that",
+      "flatters a number, and it should be raised as scheduled runs establish",
+      "what the lane actually holds. No maxCostPerAcceptedOutcomeUsd: the",
+      "models the recorded runs use (gpt-5.6-luna, glm-5.3-flash, local",
+      "qwen3.8) are all unpriced or unmetered, so a ceiling would be",
+      "unverifiable on every healthy run (#125). Restore it in the same",
+      "change that prices the lane in bench/rates.json."
+    ],
+    "minGradedTrials": 8,
+    "minSuccessRate": 0.25,
+    "maxUngradedRatio": 0.2
+  },
   "tasks": [
     {
       "id": "git-leak-recovery",

@@ -1,0 +1,46 @@
+{
+  "$comment": [
+    "Pinned per-token rate catalog for the coder lanes the gym scorer prices.",
+    "Restored from the deleted packages/coder-effectiveness/src/pricing.ts",
+    "snapshot (commit 8703101286, deleted in fae80bde79). The rows are the",
+    "forge model catalog's integer micro-USD per million tokens converted to",
+    "USD per million tokens, and every row still carries the basis the forge",
+    "config gave it: operator_placeholder, a rate no operator has reconciled",
+    "against a provider invoice. The version string is unchanged from the",
+    "TypeScript snapshot because the rows are unchanged; bump it when a row",
+    "changes, because suiteKey pins it and rows priced against different",
+    "catalogs are not comparable.",
+    "ABSENT MODELS ARE ABSENT ON PURPOSE, and an absent rate prices as",
+    "unknown, never zero:",
+    "- gpt-5.6-luna is deliberately unpriced: the forge catalog omits pricing",
+    "  for it so a grant pinned to it records no estimated cost rather than a",
+    "  made-up zero. It is listed under deliberately_unpriced so the scorer",
+    "  can tell 'the catalog refuses to price this' from 'never heard of it'.",
+    "- glm-5.3-flash (the native Coder Flash lane) has no entry because no",
+    "  public list price for the lane serving it is known to this repo; its",
+    "  rows stay cost_unknown until an operator lands a real rate here.",
+    "- Local ollama tags (qwen3.8:27b-mtp-q8_0, qwen3:0.6b, ...) never get",
+    "  rows: the local lane bills no metered tokens, so there is no per-token",
+    "  rate to be in the catalog. That is unmetered_local_lane, not free."
+  ],
+  "schema": "openagents.coder_rate_catalog.v1",
+  "version": "openagents.coder-rate-catalog.2026-08-25",
+  "source_ref": "OpenAgentsInc/openagents.com config/config.exs#model_catalog",
+  "models": {
+    "gemini-3.7-flash": {
+      "input_usd_per_mtok": 1.25,
+      "cached_input_usd_per_mtok": 0.1,
+      "output_usd_per_mtok": 10.0,
+      "rate_basis": "operator_placeholder"
+    },
+    "ox-alpha": {
+      "input_usd_per_mtok": 0.5,
+      "cached_input_usd_per_mtok": 0.5,
+      "output_usd_per_mtok": 2.0,
+      "rate_basis": "operator_placeholder"
+    }
+  },
+  "deliberately_unpriced": {
+    "gpt-5.6-luna": "the forge model catalog omits pricing for this id so a grant pinned to it records no estimated cost rather than a made-up zero"
+  }
+}

@@ -88,22 +88,22 @@ bench/run-suite.sh bench/suites/tb2-cross-section.suite.json \
   --model openai/gpt-5.6-luna --jobs-dir /tmp/gym-jobs-run
 
 # 2. Score it and record it.
-pnpm run effectiveness:report -- /tmp/gym-jobs-run/<job-dir> \
-  --suite tb2-cross-section --lane proxy \
-  --suite-manifest bench/suites/tb2-cross-section.suite.json \
-  --thresholds packages/coder-effectiveness/thresholds/tb2-cross-section.json \
-  --append bench-results/tb2-cross-section.jsonl
+openagents gym results score /tmp/gym-jobs-run/<job-dir> \
+  --suite tb2-cross-section --lane proxy --append
 ```
 
-The report's exit code is unchanged by `--append`: `0` the gate passed, `1` a
-floor was breached, `2` the gate was unverifiable. A fourth code, `3`, means the
-run was scored but the store refused to record it, and it only ever replaces a
-`0`.
+The gate the run is judged against is the `gate` block in the suite's own
+manifest (`bench/suites/<id>.suite.json`), and the rates it is priced against
+are `bench/rates.json` — the scorer finds both from the suite id, so neither
+is a flag to forget. The report's exit code is unchanged by `--append`: `0`
+the gate passed (or the suite declares none), `1` a floor was breached, `2`
+the gate was unverifiable. A fourth code, `3`, means the run was scored but
+the store refused to record it, and it only ever replaces a `0`.
 
 ## Only a full run of a named suite gets in
 
-`--suite-manifest` is not optional here. The store refuses two shapes outright,
-and neither refusal has a flag:
+The suite manifest is not optional here. The store refuses two shapes
+outright, and neither refusal has a flag:
 
 - **`unclassified_run`** — the run named no manifest, so nothing records which
   pinned task list it was supposed to cover. A row whose task list is only
@@ -122,7 +122,7 @@ does not become a row, and it exits `3`.
 ## Reading it
 
 ```sh
-pnpm run effectiveness:compare -- bench-results/tb2-cross-section.jsonl
+openagents gym results compare tb2-cross-section
 ```
 
 Compare verifies the chain first and refuses to compare a store that does not
@@ -175,8 +175,11 @@ A comparison follows the same rule: a delta against an unpriced side is
 | `tier`                        | Always `score`. Written down anyway, so a reader of the file never has to know the store's refusal rule to trust what the rows are.                                                                    |
 | `jobId`                       | The Harbor job. A store refuses a job it already holds — re-scoring a run does not make it a second run.                                                                                               |
 | `costPerAcceptedOutcomeUsd`   | Total run cost over accepted outcomes, failures included, or `null`.                                                                                                                                   |
-| `gateStatus`                  | `passed`, `failed`, `unverifiable`, or `null` when no thresholds file was given.                                                                                                                       |
+| `gateStatus`                  | `passed`, `failed`, `unverifiable`, or `null` when the suite declares no `gate` block (or the run was not gate-eligible).                                                                               |
+| `thresholdsId` / `gateDigest` | Which suite's gate was evaluated, and the digest of the gate content it held at the time — the suite digest deliberately does not cover the gate, so retuning a floor never reads as suite drift.       |
+| `gateFailures`                | The criteria that kept the gate from passing, each with its verdict and the measurement it was judged on. Empty on a pass; absent when no gate was evaluated.                                           |
 | `previousReceipt` / `receipt` | The chain.                                                                                                                                                                                             |
 
-The full type is `BenchResultRow` in
-`packages/coder-effectiveness/src/results-store.ts`.
+The rows are written by `openagents gym results score --append`
+(`crates/openagents-cli/src/gym/results.rs`); the gate lives in the suite
+manifest's `gate` block and the rate catalog in `bench/rates.json`.

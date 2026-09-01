@@ -3,6 +3,23 @@
   "id": "tb2-quick",
   "tier": "score",
   "description": "Two quick Terminal-Bench 2.0 tasks: a narrow but real score suite, small enough to run repeatedly on one machine, floored for its own size. Never comparable to coder-effectiveness-v1 — different suite key.",
+  "gate": {
+    "$comment": [
+      "Floors restored from the retired packages/coder-effectiveness/",
+      "thresholds/tb2-quick.json. minGradedTrials is 2, the whole suite: a",
+      "quick suite that graded one of its two tasks is a success rate over a",
+      "denominator of one. minSuccessRate 0.5 says at least one task must be",
+      "solved - the regression floor, not a target. maxUngradedRatio is 0",
+      "because with two trials the smallest non-zero ratio is a half. No",
+      "maxCostPerAcceptedOutcomeUsd: the lanes this suite runs on are either",
+      "unmetered (local Ollama) or unpriced in bench/rates.json, so a dollar",
+      "ceiling would leave the gate unverifiable on every run - a gate nobody",
+      "reads. Declare one in the same change that makes the lane priceable."
+    ],
+    "minGradedTrials": 2,
+    "minSuccessRate": 0.5,
+    "maxUngradedRatio": 0
+  },
   "tasks": [
     {
       "id": "regex-log",

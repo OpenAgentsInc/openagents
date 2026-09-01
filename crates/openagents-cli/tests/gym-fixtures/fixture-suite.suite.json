@@ -3,6 +3,11 @@
   "id": "fixture-suite",
   "tier": "score",
   "description": "The four tasks the priced-lane and regressed-lane fixture jobs ran.",
+  "gate": {
+    "minGradedTrials": 4,
+    "minSuccessRate": 0.5,
+    "maxUngradedRatio": 0
+  },
   "tasks": [
     {
       "id": "build-cmake",

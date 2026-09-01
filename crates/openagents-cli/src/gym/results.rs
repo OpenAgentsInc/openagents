@@ -6,6 +6,8 @@
 
 use crate::computer::now_iso8601;
 use crate::errors::CliError;
+use crate::gym::gate::{GateOutcome, evaluate_gate};
+use crate::gym::rates::{RateCatalog, UsageForCost, load_rate_catalog, price_usage};
 use crate::gym::schemas::{
     Delta, LaneComparison, LaneRow, RESULTS_TREND_SCHEMA, ResultsTrend, Trend, TrendStep,
 };
@@ -89,16 +91,48 @@ pub struct ScoreReport {
     pub graded: u64,
     pub success_rate: Option<f64>,
     pub ungraded_ratio: f64,
+    /// `known`, `no_accepted_outcomes`, `unmetered_local_lane`,
+    /// `cost_partial`, or `cost_unknown` — the reason the figure below is or
+    /// is not a number. Never a false zero.
     pub cost_disposition: String,
     pub cost_per_accepted_outcome_usd: Option<f64>,
+    /// Sum over the trials the catalog could price, or `None` when none
+    /// priced. Read it next to `cost_coverage`: a `partial` sum understates.
+    pub total_cost_usd: Option<f64>,
+    /// `known`, `partial`, `unknown`, or `unmetered`.
+    pub cost_coverage: String,
+    /// The weakest basis among the rates used: a placeholder anywhere makes
+    /// the whole run placeholder-priced.
+    pub rate_basis: Option<String>,
+    /// Version pin of `bench/rates.json` the run was priced against.
+    pub rate_catalog_version: String,
+    /// Distinct reasons trials went unpriced, for the report to print.
+    pub unpriced_reasons: Vec<String>,
+    /// Summed from the coder's ATIF trajectories; an absent total is unknown.
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub cached_input_tokens: u64,
+    pub tool_calls: Option<u64>,
     pub tasks: Vec<String>,
-    /// Catalog ids from Harbor `config.json` (`ollama/<tag>` becomes `<tag>`).
+    /// Catalog ids from the trials' trajectories, falling back to Harbor
+    /// `config.json` (`ollama/<tag>` becomes `<tag>`).
     pub models: Vec<String>,
     /// `finished_at - started_at` on the Harbor envelope, when both parse.
     pub wall_clock_seconds: Option<f64>,
 }
 
 pub fn score_harbor_job(job_dir: &Path, suite: &str, lane: &str) -> Result<ScoreReport, CliError> {
+    let catalog = load_rate_catalog(&repo_root()?)?;
+    score_harbor_job_with(job_dir, suite, lane, &catalog)
+}
+
+/// Score against an explicit rate catalog. The seam tests use.
+pub fn score_harbor_job_with(
+    job_dir: &Path,
+    suite: &str,
+    lane: &str,
+    catalog: &RateCatalog,
+) -> Result<ScoreReport, CliError> {
     if !job_dir.join("result.json").is_file() {
         return Err(CliError::Input(format!(
             "not a Harbor job directory (no result.json): {}",
@@ -130,20 +164,20 @@ pub fn score_harbor_job(job_dir: &Path, suite: &str, lane: &str) -> Result<Score
         } else {
             name.to_string()
         };
-        trials.push((task, outcome_of(&result)));
+        trials.push(read_trial(&dir, task, outcome_of(&result)));
     }
 
     let accepted = trials
         .iter()
-        .filter(|(_, o)| *o == Outcome::Accepted)
+        .filter(|t| t.outcome == Outcome::Accepted)
         .count() as u64;
     let rejected = trials
         .iter()
-        .filter(|(_, o)| *o == Outcome::Rejected)
+        .filter(|t| t.outcome == Outcome::Rejected)
         .count() as u64;
     let ungraded = trials
         .iter()
-        .filter(|(_, o)| *o == Outcome::Ungraded)
+        .filter(|t| t.outcome == Outcome::Ungraded)
         .count() as u64;
     let graded = accepted + rejected;
     let total = trials.len() as u64;
@@ -157,16 +191,78 @@ pub fn score_harbor_job(job_dir: &Path, suite: &str, lane: &str) -> Result<Score
     } else {
         ungraded as f64 / total as f64
     };
-    let cost_disposition = if accepted == 0 {
-        "no_accepted_outcomes"
-    } else if lane == "local" {
-        "unmetered_local_lane"
+
+    // Price each trial. Unknown stays unknown; a partial numerator over a
+    // full denominator is never presented as the run's cost.
+    let mut priced = 0u64;
+    let mut unpriced = 0u64;
+    let mut unmetered = 0u64;
+    let mut total_usd = 0.0f64;
+    let mut bases: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut unpriced_reasons: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    for trial in &trials {
+        let cost = price_usage(trial.model_id.as_deref(), trial.usage, catalog, lane);
+        match cost.usd {
+            Some(usd) => {
+                priced += 1;
+                total_usd += usd;
+                if let Some(basis) = cost.rate_basis {
+                    bases.insert(basis);
+                }
+            }
+            None => {
+                unpriced += 1;
+                if cost.disposition == "unmetered_local_lane" {
+                    unmetered += 1;
+                }
+                unpriced_reasons.insert(cost.reason);
+            }
+        }
+    }
+    let cost_coverage = if priced == 0 {
+        if total > 0 && unmetered == total {
+            "unmetered"
+        } else {
+            "unknown"
+        }
+    } else if unpriced == 0 {
+        "known"
     } else {
-        "cost_unknown"
+        "partial"
     };
-    let mut tasks: Vec<String> = trials.into_iter().map(|(t, _)| t).collect();
+    let total_cost_usd = (priced > 0).then_some(total_usd);
+    // A placeholder anywhere makes the whole run placeholder-priced.
+    let rate_basis = if bases.contains("operator_placeholder") {
+        Some("operator_placeholder".to_string())
+    } else {
+        bases.iter().next().cloned()
+    };
+    let (cost_disposition, cost_per_accepted_outcome_usd) = if accepted == 0 {
+        ("no_accepted_outcomes", None)
+    } else if cost_coverage == "unmetered" {
+        ("unmetered_local_lane", None)
+    } else if cost_coverage == "known" {
+        ("known", Some(total_usd / accepted as f64))
+    } else if cost_coverage == "partial" {
+        ("cost_partial", None)
+    } else {
+        ("cost_unknown", None)
+    };
+
+    let prompt_tokens = sum_or_none(trials.iter().map(|t| t.usage.prompt_tokens));
+    let completion_tokens = sum_or_none(trials.iter().map(|t| t.usage.completion_tokens));
+    let cached_input_tokens = trials.iter().map(|t| t.usage.cached_input_tokens).sum();
+    let tool_calls = sum_or_none(trials.iter().map(|t| t.tool_calls));
+
+    let mut models: Vec<String> = trials.iter().filter_map(|t| t.model_id.clone()).collect();
+    models.sort();
+    models.dedup();
+    if models.is_empty() {
+        models = models_from_job(job_dir);
+    }
+    let mut tasks: Vec<String> = trials.into_iter().map(|t| t.task).collect();
     tasks.sort();
-    let models = models_from_job(job_dir);
     let wall_clock_seconds = wall_clock_seconds_of(&envelope);
 
     Ok(ScoreReport {
@@ -181,11 +277,111 @@ pub fn score_harbor_job(job_dir: &Path, suite: &str, lane: &str) -> Result<Score
         success_rate,
         ungraded_ratio,
         cost_disposition: cost_disposition.to_string(),
-        cost_per_accepted_outcome_usd: None,
+        cost_per_accepted_outcome_usd,
+        total_cost_usd,
+        cost_coverage: cost_coverage.to_string(),
+        rate_basis,
+        rate_catalog_version: catalog.version.clone(),
+        unpriced_reasons: unpriced_reasons.into_iter().collect(),
+        prompt_tokens,
+        completion_tokens,
+        cached_input_tokens,
+        tool_calls,
         tasks,
         models,
         wall_clock_seconds,
     })
+}
+
+struct TrialFacts {
+    task: String,
+    outcome: Outcome,
+    model_id: Option<String>,
+    usage: UsageForCost,
+    tool_calls: Option<u64>,
+}
+
+/// Read the coder's ATIF export for one trial: the model that ran it and the
+/// token counts to price. A trial the timeout killed leaves no trajectory, so
+/// the model falls back to Harbor's own trial `config.json` — spelled the way
+/// the coder spells it (`provider/name` loses its provider), because a run
+/// mixing completed and killed trials is one model, not two.
+fn read_trial(trial_dir: &Path, task: String, outcome: Outcome) -> TrialFacts {
+    let trajectory = read_json(&trial_dir.join("agent").join("trajectory.json")).ok();
+    let agent = trajectory.as_ref().and_then(|t| t.get("agent"));
+    let model_id = agent
+        .and_then(|a| a.get("model_name"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| model_from_trial_config(trial_dir));
+
+    let final_metrics = trajectory.as_ref().and_then(|t| t.get("final_metrics"));
+    let read_total = |key: &str| {
+        final_metrics
+            .and_then(|m| m.get(key))
+            .and_then(Value::as_u64)
+    };
+    // Cached reads are per step, never totalled by the exporter. No cached
+    // figure anywhere is honestly 0: the coder omits the field when a turn
+    // read no cache, not when it failed to measure.
+    let steps = trajectory
+        .as_ref()
+        .and_then(|t| t.get("steps"))
+        .and_then(Value::as_array);
+    let mut cached_input_tokens = 0u64;
+    let mut tool_calls = 0u64;
+    for step in steps.into_iter().flatten() {
+        cached_input_tokens += step
+            .get("metrics")
+            .and_then(|m| m.get("extra"))
+            .and_then(|e| e.get("cache_read_input_tokens"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        tool_calls += step
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .map(|calls| calls.len() as u64)
+            .unwrap_or(0);
+    }
+
+    TrialFacts {
+        task,
+        outcome,
+        model_id,
+        usage: UsageForCost {
+            prompt_tokens: read_total("total_prompt_tokens"),
+            completion_tokens: read_total("total_completion_tokens"),
+            cached_input_tokens,
+        },
+        tool_calls: steps.map(|_| tool_calls),
+    }
+}
+
+fn model_from_trial_config(trial_dir: &Path) -> Option<String> {
+    let cfg = read_json(&trial_dir.join("config.json")).ok()?;
+    let spelled = cfg
+        .get("agent")
+        .and_then(|a| a.get("model_name"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            cfg.get("config")
+                .and_then(|c| c.get("agent"))
+                .and_then(|a| a.get("model_name"))
+                .and_then(Value::as_str)
+        })?;
+    Some(harbor_model_id(spelled))
+}
+
+/// A sum is only known when every term is. One unknown makes the total
+/// unknown, and an empty run has no total.
+fn sum_or_none(values: impl Iterator<Item = Option<u64>>) -> Option<u64> {
+    let mut sum = 0u64;
+    let mut any = false;
+    for value in values {
+        sum += value?;
+        any = true;
+    }
+    any.then_some(sum)
 }
 
 fn models_from_job(job_dir: &Path) -> Vec<String> {
@@ -277,20 +473,79 @@ fn score_job(
     json: bool,
 ) -> Result<(), CliError> {
     let report = score_harbor_job(job_dir, suite, lane)?;
+    // The gate is evaluated only for a complete run of a score-tier suite:
+    // floors declared over a suite mean nothing over a different set of work,
+    // and an incomplete run is already unpublishable as a score.
+    let meta = suite_meta(&report.suite).ok();
+    let (gate, gate_note) = match &meta {
+        None => (
+            None,
+            Some(format!(
+                "gate: none ({} has no suite manifest under bench/suites)",
+                report.suite
+            )),
+        ),
+        Some(meta) if meta.tier != "score" => (
+            None,
+            Some(format!(
+                "gate: none (suite {} is tier {}, and a smoke run has nothing to pass)",
+                meta.id, meta.tier
+            )),
+        ),
+        Some(meta) => match &meta.gate {
+            None => (
+                None,
+                Some(format!("gate: none declared by suite {}", meta.id)),
+            ),
+            Some(spec) => match append_refusal(&report, meta) {
+                Some(reason) => (
+                    None,
+                    Some(format!(
+                        "gate: not evaluated — this run does not cover suite {} ({reason})",
+                        meta.id
+                    )),
+                ),
+                None => (Some(evaluate_gate(&report, &meta.id, spec)), None),
+            },
+        },
+    };
     if json {
-        println!("{}", serde_json::to_string(&score_json(&report)).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string(&score_json(&report, gate.as_ref())).unwrap()
+        );
     } else {
         for line in score_lines(&report) {
             println!("{line}");
         }
+        match (&gate, &gate_note) {
+            (Some(gate), _) => {
+                for line in gate_lines(gate) {
+                    println!("{line}");
+                }
+            }
+            (None, Some(note)) => println!("{note}"),
+            (None, None) => {}
+        }
     }
     if append {
-        append_report(&report)?;
+        append_report(&report, gate.as_ref())?;
+    }
+    // The retired TypeScript report's exit ladder, restored: 0 the gate
+    // passed (or there was none to pass), 1 a floor was breached, 2 the gate
+    // was unverifiable. Appending first keeps the failed run recorded — the
+    // row is how a regression stays visible.
+    if let Some(gate) = &gate {
+        match gate.status {
+            "failed" => std::process::exit(1),
+            "unverifiable" => std::process::exit(2),
+            _ => {}
+        }
     }
     Ok(())
 }
 
-fn score_json(report: &ScoreReport) -> Value {
+fn score_json(report: &ScoreReport, gate: Option<&GateOutcome>) -> Value {
     serde_json::json!({
         "schema": "openagents.coder_effectiveness.report.v1",
         "suite": report.suite,
@@ -305,9 +560,18 @@ fn score_json(report: &ScoreReport) -> Value {
         "ungradedRatio": report.ungraded_ratio,
         "costPerAcceptedOutcomeUsd": report.cost_per_accepted_outcome_usd,
         "costDisposition": report.cost_disposition,
+        "totalCostUsd": report.total_cost_usd,
+        "costCoverage": report.cost_coverage,
+        "rateBasis": report.rate_basis,
+        "rateCatalogVersion": report.rate_catalog_version,
+        "promptTokens": report.prompt_tokens,
+        "completionTokens": report.completion_tokens,
+        "cachedInputTokens": report.cached_input_tokens,
+        "toolCalls": report.tool_calls,
         "tasks": report.tasks,
         "models": report.models,
         "wallClockSeconds": report.wall_clock_seconds,
+        "gate": gate.map(|g| serde_json::to_value(g).unwrap_or(Value::Null)),
     })
 }
 
@@ -320,7 +584,11 @@ fn score_lines(report: &ScoreReport) -> Vec<String> {
         Some(v) => format!("${v:.4}"),
         None => "unknown".to_string(),
     };
-    vec![
+    let total = match report.total_cost_usd {
+        Some(v) => format!("${v:.4}"),
+        None => "unknown".to_string(),
+    };
+    let mut lines = vec![
         format!(
             "{} {}  accepted={} rejected={} ungraded={} graded={}",
             report.suite,
@@ -334,7 +602,52 @@ fn score_lines(report: &ScoreReport) -> Vec<String> {
             "success_rate={rate}  cost_per_accepted_outcome={cost} ({})",
             report.cost_disposition
         ),
-    ]
+        format!(
+            "total_cost={total}  coverage={}{}",
+            report.cost_coverage,
+            match &report.rate_basis {
+                Some(basis) => format!("  rate_basis={basis}"),
+                None => String::new(),
+            }
+        ),
+    ];
+    if report.prompt_tokens.is_some() || report.completion_tokens.is_some() {
+        lines.push(format!(
+            "tokens prompt={} completion={} cached={}",
+            report
+                .prompt_tokens
+                .map_or_else(|| "unknown".into(), |v: u64| v.to_string()),
+            report
+                .completion_tokens
+                .map_or_else(|| "unknown".into(), |v: u64| v.to_string()),
+            report.cached_input_tokens
+        ));
+    }
+    for reason in &report.unpriced_reasons {
+        lines.push(format!("unpriced: {reason}"));
+    }
+    lines
+}
+
+fn gate_lines(gate: &GateOutcome) -> Vec<String> {
+    let mut lines = vec![match gate.status {
+        "passed" => format!("gate {}: passed", gate.thresholds_id),
+        "failed" => format!("GATE FAILED for {}:", gate.thresholds_id),
+        _ => format!("GATE UNVERIFIABLE for {}:", gate.thresholds_id),
+    }];
+    for criterion in &gate.criteria {
+        lines.push(format!(
+            "  {} {}: {}",
+            match criterion.verdict {
+                "passed" => "passed",
+                "failed" => "FAILED",
+                _ => "UNVERIFIABLE",
+            },
+            criterion.name,
+            criterion.detail
+        ));
+    }
+    lines
 }
 
 /// Why `--append` must refuse this report, or `None` when the row may land.
@@ -373,7 +686,7 @@ pub fn append_refusal(report: &ScoreReport, meta: &crate::gym::suite::SuiteMeta)
     None
 }
 
-fn append_report(report: &ScoreReport) -> Result<(), CliError> {
+fn append_report(report: &ScoreReport, gate: Option<&GateOutcome>) -> Result<(), CliError> {
     let meta = suite_meta(&report.suite)?;
     if let Some(reason) = append_refusal(report, &meta) {
         eprintln!("{reason}");
@@ -409,7 +722,7 @@ fn append_report(report: &ScoreReport) -> Result<(), CliError> {
             .and_then(Value::as_str)
             .map(str::to_string)
     });
-    let row = build_result_row(report, &meta, previous.as_deref());
+    let row = build_result_row(report, &meta, gate, previous.as_deref());
     if let Some(parent) = store.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| CliError::Output(format!("could not create {}: {e}", parent.display())))?;
@@ -673,6 +986,7 @@ pub fn receipt_of(row: &Value) -> String {
 fn build_result_row(
     report: &ScoreReport,
     meta: &crate::gym::suite::SuiteMeta,
+    gate: Option<&GateOutcome>,
     previous: Option<&str>,
 ) -> Value {
     let suite_key = suite_key_of(report, meta);
@@ -708,7 +1022,7 @@ fn build_result_row(
     obj.insert("agentVersions".into(), Value::Array(vec![]));
     obj.insert(
         "rateCatalogVersion".into(),
-        Value::String("openagents.coder-rate-catalog.2026-08-25".into()),
+        Value::String(report.rate_catalog_version.clone()),
     );
     obj.insert(
         "tasks".into(),
@@ -724,28 +1038,52 @@ fn build_result_row(
         report.success_rate.map(json_f64).unwrap_or(Value::Null),
     );
     obj.insert("ungradedRatio".into(), json_f64(report.ungraded_ratio));
-    obj.insert("costPerAcceptedOutcomeUsd".into(), Value::Null);
+    obj.insert(
+        "costPerAcceptedOutcomeUsd".into(),
+        report
+            .cost_per_accepted_outcome_usd
+            .map(json_f64)
+            .unwrap_or(Value::Null),
+    );
     obj.insert(
         "costDisposition".into(),
         Value::String(report.cost_disposition.clone()),
     );
-    obj.insert("totalCostUsd".into(), Value::Null);
+    obj.insert(
+        "totalCostUsd".into(),
+        report.total_cost_usd.map(json_f64).unwrap_or(Value::Null),
+    );
     obj.insert(
         "costCoverage".into(),
-        Value::String(
-            if report.cost_disposition == "unmetered_local_lane" {
-                "unmetered"
-            } else {
-                "unknown"
-            }
-            .into(),
-        ),
+        Value::String(report.cost_coverage.clone()),
     );
-    obj.insert("rateBasis".into(), Value::Null);
-    obj.insert("promptTokens".into(), Value::Null);
-    obj.insert("completionTokens".into(), Value::Null);
-    obj.insert("cachedInputTokens".into(), json_u64(0));
-    obj.insert("toolCalls".into(), Value::Null);
+    obj.insert(
+        "rateBasis".into(),
+        report
+            .rate_basis
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    obj.insert(
+        "promptTokens".into(),
+        report.prompt_tokens.map(json_u64).unwrap_or(Value::Null),
+    );
+    obj.insert(
+        "completionTokens".into(),
+        report
+            .completion_tokens
+            .map(json_u64)
+            .unwrap_or(Value::Null),
+    );
+    obj.insert(
+        "cachedInputTokens".into(),
+        json_u64(report.cached_input_tokens),
+    );
+    obj.insert(
+        "toolCalls".into(),
+        report.tool_calls.map(json_u64).unwrap_or(Value::Null),
+    );
     obj.insert(
         "wallClockSeconds".into(),
         report
@@ -753,8 +1091,39 @@ fn build_result_row(
             .map(json_f64)
             .unwrap_or(Value::Null),
     );
-    obj.insert("gateStatus".into(), Value::Null);
-    obj.insert("thresholdsId".into(), Value::Null);
+    // The gate verdict, when one was evaluated. A failed gate still lands as
+    // a row — the record is how a regression stays visible — with the floors
+    // it breached named on the row itself. `gateDigest` pins the gate content
+    // the verdict was scored against, since the suite digest deliberately
+    // does not cover the gate.
+    match gate {
+        Some(gate) => {
+            obj.insert("gateStatus".into(), Value::String(gate.status.into()));
+            obj.insert(
+                "thresholdsId".into(),
+                Value::String(gate.thresholds_id.clone()),
+            );
+            obj.insert("gateDigest".into(), Value::String(gate.gate_digest.clone()));
+            obj.insert(
+                "gateFailures".into(),
+                Value::Array(
+                    gate.breaches()
+                        .map(|c| {
+                            serde_json::json!({
+                                "name": c.name,
+                                "verdict": c.verdict,
+                                "detail": c.detail,
+                            })
+                        })
+                        .collect(),
+                ),
+            );
+        }
+        None => {
+            obj.insert("gateStatus".into(), Value::Null);
+            obj.insert("thresholdsId".into(), Value::Null);
+        }
+    }
     obj.insert(
         "previousReceipt".into(),
         previous
@@ -771,7 +1140,7 @@ fn suite_key_of(report: &ScoreReport, meta: &crate::gym::suite::SuiteMeta) -> St
         "suite": report.suite,
         "suiteDigest": meta.digest,
         "tasks": report.tasks,
-        "rateCatalogVersion": "openagents.coder-rate-catalog.2026-08-25",
+        "rateCatalogVersion": report.rate_catalog_version,
     });
     format!(
         "suite:{}",
@@ -1101,6 +1470,15 @@ mod tests {
             .join(name)
     }
 
+    fn fixture_suites_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/gym-fixtures")
+    }
+
+    fn catalog() -> RateCatalog {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        load_rate_catalog(&root).expect("bench/rates.json is checked in")
+    }
+
     #[test]
     fn priced_lane_matches_typescript_verdict() {
         let report =
@@ -1110,9 +1488,186 @@ mod tests {
         assert_eq!(report.rejected, 2);
         assert_eq!(report.ungraded, 0);
         assert_eq!(report.success_rate, Some(0.5));
-        assert_eq!(report.cost_per_accepted_outcome_usd, None);
-        assert_eq!(report.cost_disposition, "cost_unknown");
+        // 75_000 prompt (40_000 cached) + 3_100 completion tokens of
+        // gemini-3.7-flash at the pinned placeholder rates: $0.07875 total,
+        // over 2 accepted outcomes.
+        assert_eq!(report.cost_disposition, "known");
+        assert_eq!(report.cost_coverage, "known");
+        assert!((report.total_cost_usd.unwrap() - 0.07875).abs() < 1e-12);
+        assert!((report.cost_per_accepted_outcome_usd.unwrap() - 0.039375).abs() < 1e-12);
+        assert_eq!(report.rate_basis.as_deref(), Some("operator_placeholder"));
+        assert_eq!(report.prompt_tokens, Some(75_000));
+        assert_eq!(report.completion_tokens, Some(3_100));
+        assert_eq!(report.cached_input_tokens, 40_000);
+        assert_eq!(report.tool_calls, Some(5));
         assert_eq!(report.models, vec!["gemini-3.7-flash".to_string()]);
+    }
+
+    #[test]
+    fn unpriced_model_keeps_cost_null_and_says_why() {
+        let report = score_harbor_job(&fixture("unpriced-lane"), "fixture-suite", "proxy").unwrap();
+        assert_eq!(report.accepted, 2);
+        assert_eq!(report.cost_per_accepted_outcome_usd, None);
+        assert_eq!(report.total_cost_usd, None);
+        assert_eq!(report.cost_disposition, "cost_unknown");
+        assert_eq!(report.cost_coverage, "unknown");
+        assert!(
+            report
+                .unpriced_reasons
+                .iter()
+                .any(|r| r.contains("gpt-5.6-luna is unpriced")),
+            "{:?}",
+            report.unpriced_reasons
+        );
+    }
+
+    #[test]
+    fn partially_priced_run_withholds_the_figure() {
+        // Two gemini trials price; the gpt-5.6-luna trial does not. A partial
+        // numerator over every accepted outcome would understate the cost.
+        let report = score_harbor_job(&fixture("mixed-lane"), "fixture-suite", "proxy").unwrap();
+        assert_eq!(report.cost_coverage, "partial");
+        assert_eq!(report.cost_disposition, "cost_partial");
+        assert_eq!(report.cost_per_accepted_outcome_usd, None);
+        assert!(report.total_cost_usd.is_some());
+    }
+
+    #[test]
+    fn local_lane_stays_unmetered_not_priced() {
+        let report = score_harbor_job(&fixture("priced-lane"), "fixture-suite", "local").unwrap();
+        assert_eq!(report.cost_disposition, "unmetered_local_lane");
+        assert_eq!(report.cost_coverage, "unmetered");
+        assert_eq!(report.cost_per_accepted_outcome_usd, None);
+        assert_eq!(report.total_cost_usd, None);
+    }
+
+    #[test]
+    fn gate_passes_at_the_floor_and_fails_under_it_naming_the_criterion() {
+        use crate::gym::suite::suite_meta_in;
+        let meta = suite_meta_in(&fixture_suites_dir(), "fixture-suite").unwrap();
+        let spec = meta.gate.as_ref().expect("fixture-suite declares a gate");
+
+        // priced-lane: 2 of 4 accepted, exactly the 0.5 floor.
+        let passing = score_harbor_job_with(
+            &fixture("priced-lane"),
+            "fixture-suite",
+            "proxy",
+            &catalog(),
+        )
+        .unwrap();
+        let gate = evaluate_gate(&passing, &meta.id, spec);
+        assert_eq!(gate.status, "passed");
+        assert_eq!(gate.breaches().count(), 0);
+
+        // regressed-lane: 1 of 4 accepted, under the floor. The verdict names
+        // the breached criterion.
+        let failing = score_harbor_job_with(
+            &fixture("regressed-lane"),
+            "fixture-suite",
+            "proxy",
+            &catalog(),
+        )
+        .unwrap();
+        assert_eq!(failing.success_rate, Some(0.25));
+        let gate = evaluate_gate(&failing, &meta.id, spec);
+        assert_eq!(gate.status, "failed");
+        let breached: Vec<_> = gate.breaches().map(|c| c.name.as_str()).collect();
+        assert_eq!(breached, vec!["success_rate>=0.500"]);
+    }
+
+    #[test]
+    fn cost_ceiling_on_an_unpriced_lane_is_unverifiable_not_a_pass() {
+        use crate::gym::gate::GateSpec;
+        let report = score_harbor_job_with(
+            &fixture("unpriced-lane"),
+            "fixture-suite",
+            "proxy",
+            &catalog(),
+        )
+        .unwrap();
+        let spec = GateSpec {
+            comment: None,
+            min_graded_trials: 1,
+            min_success_rate: 0.25,
+            max_ungraded_ratio: 1.0,
+            max_cost_per_accepted_outcome_usd: Some(1.0),
+            accept_placeholder_rates: false,
+        };
+        let gate = evaluate_gate(&report, "fixture-suite", &spec);
+        assert_eq!(gate.status, "unverifiable");
+        let unverifiable: Vec<_> = gate.breaches().map(|c| c.name.as_str()).collect();
+        assert_eq!(unverifiable, vec!["cost_per_accepted_outcome<=$1.0000"]);
+    }
+
+    #[test]
+    fn built_row_carries_the_gate_verdict_and_the_computed_cost() {
+        use crate::gym::suite::suite_meta_in;
+        let meta = suite_meta_in(&fixture_suites_dir(), "fixture-suite").unwrap();
+        let spec = meta.gate.clone().expect("fixture-suite declares a gate");
+
+        let report = score_harbor_job_with(
+            &fixture("regressed-lane"),
+            "fixture-suite",
+            "proxy",
+            &catalog(),
+        )
+        .unwrap();
+        let gate = evaluate_gate(&report, &meta.id, &spec);
+        let row = build_result_row(&report, &meta, Some(&gate), None);
+        assert_eq!(
+            row.get("gateStatus").and_then(Value::as_str),
+            Some("failed")
+        );
+        assert_eq!(
+            row.get("thresholdsId").and_then(Value::as_str),
+            Some("fixture-suite")
+        );
+        assert!(
+            row.get("gateDigest")
+                .and_then(Value::as_str)
+                .is_some_and(|d| d.starts_with("gate:"))
+        );
+        let failures = row.get("gateFailures").and_then(Value::as_array).unwrap();
+        assert_eq!(
+            failures[0].get("name").and_then(Value::as_str),
+            Some("success_rate>=0.500")
+        );
+        // 205_000 prompt (15_000 cached) + 5_400 completion gemini tokens,
+        // one accepted outcome: the row states the figure, not null.
+        assert!(row.get("costPerAcceptedOutcomeUsd").unwrap().is_f64());
+        assert_eq!(
+            row.get("costDisposition").and_then(Value::as_str),
+            Some("known")
+        );
+        assert_eq!(
+            row.get("rateBasis").and_then(Value::as_str),
+            Some("operator_placeholder")
+        );
+        assert_eq!(
+            row.get("promptTokens").and_then(Value::as_u64),
+            Some(205_000)
+        );
+        // The receipt still covers the new fields.
+        let receipt = row.get("receipt").and_then(Value::as_str).unwrap();
+        assert_eq!(receipt, receipt_of(&row));
+    }
+
+    #[test]
+    fn ungated_suite_keeps_gate_status_null_on_the_row() {
+        use crate::gym::suite::suite_meta_in;
+        let meta = suite_meta_in(&fixture_suites_dir(), "fixture-suite-3").unwrap();
+        assert!(meta.gate.is_none(), "fixture-suite-3 must stay ungated");
+        let report = score_harbor_job_with(
+            &fixture("crashed-verifier"),
+            "fixture-suite-3",
+            "proxy",
+            &catalog(),
+        )
+        .unwrap();
+        let row = build_result_row(&report, &meta, None, None);
+        assert!(row.get("gateStatus").unwrap().is_null());
+        assert!(row.get("thresholdsId").unwrap().is_null());
+        assert!(row.get("gateFailures").is_none());
     }
 
     #[test]
