@@ -51,10 +51,16 @@ pub async fn run(args: ResponsesArgs) -> Result<(), reqwest::Error> {
         .origin
         .clone()
         .unwrap_or_else(|| DEFAULT_ORIGIN.to_string());
-    // The bearer is the one stored for the Coder origin itself, not the one
-    // stored for the platform API endpoint. An origin with no stored
-    // credential sends none.
-    let token = crate::auth::CredentialStore::for_origin(&origin).get_token();
+    // The bearer is the one stored for the Coder origin itself. When none is
+    // stored — the common case, since a person signs in to the platform, not
+    // to Coder directly — the platform account bearer is exchanged for a
+    // short-lived Coder-audience token at `/api/v1/coder/token`, so `responses`
+    // works right after `oa auth login` without a second sign-in. An origin
+    // with neither a stored Coder token nor a platform bearer sends none.
+    let token = match crate::auth::CredentialStore::for_origin(&origin).get_token() {
+        Some(token) => Some(token),
+        None => coder_token_from_platform().await,
+    };
     let client = Client::new(origin, token);
 
     // A reconnect names the response and carries no input: the server
@@ -94,6 +100,32 @@ pub async fn run(args: ResponsesArgs) -> Result<(), reqwest::Error> {
 }
 
 /// Read the Server-Sent Events body and render each event as it arrives.
+/// Exchange the stored platform account bearer for a short-lived
+/// Coder-audience token at `/api/v1/coder/token`. Returns `None` when no
+/// platform bearer is stored or the exchange fails, so the caller falls back
+/// to sending no credential and the server answers with where to authenticate.
+async fn coder_token_from_platform() -> Option<String> {
+    let platform =
+        crate::auth::CredentialStore::for_origin(crate::auth::PRODUCTION_ORIGIN).get_token()?;
+    let url = format!("{}/api/v1/coder/token", crate::auth::PRODUCTION_ORIGIN);
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("authorization", format!("Bearer {platform}"))
+        // An empty POST still needs a Content-Length, or the platform answers
+        // 411 before the controller runs; a `{}` body supplies it.
+        .json(&json!({}))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let body: Value = response.json().await.ok()?;
+    body.get("token")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 async fn render_stream(mut response: reqwest::Response) -> Result<(), reqwest::Error> {
     let mut renderer = Renderer::new(std::io::stdout(), crate::diag::color());
     let mut buffer = String::new();
