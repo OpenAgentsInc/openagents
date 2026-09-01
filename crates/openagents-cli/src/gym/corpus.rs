@@ -566,11 +566,15 @@ pub fn prepare_import(
         let source_text = source_text_for(&row.source, &row.path)?;
         let source_digest = format!("sha256:{:x}", Sha256::digest(source_text.as_bytes()));
         if source_digest != digest {
-            return Err(CliError::Input(format!(
-                "{} drifted since the inventory was written: inventory says {digest}, \
-                 the file now yields {source_digest}. Re-run `gym inventory`.",
+            // A source still being written — a live session, most often — is
+            // not a reason to halt everyone else's import: skip it and let a
+            // later inventory pick it up settled.
+            eprintln!(
+                "skipping {}: drifted since the inventory was written",
                 row.path.display()
-            )));
+            );
+            skipped += 1;
+            continue;
         }
         let redacted = crate::trace::redact_text(&source_text, home);
         let findings = tripwire_findings(&redacted.text);
