@@ -591,9 +591,20 @@ pub fn prepare_import(
             skipped += 1;
             continue;
         }
-        let document: Value = serde_json::from_str(&redacted.text).map_err(|e| {
-            CliError::Input(format!("redacted {} is not JSON: {e}", row.path.display()))
-        })?;
+        let document: Value = match serde_json::from_str(&redacted.text) {
+            Ok(document) => document,
+            Err(e) => {
+                // A conversion that did not yield clean JSON — a truncation
+                // seam that split a string, a malformed source — skips its
+                // one row rather than halting everyone else's import.
+                eprintln!(
+                    "skipping {}: redacted output is not JSON: {e}",
+                    row.path.display()
+                );
+                skipped += 1;
+                continue;
+            }
+        };
         prepared.push(PreparedImport {
             digest,
             document,
