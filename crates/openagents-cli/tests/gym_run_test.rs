@@ -4,8 +4,9 @@
 //! assert exactly what the Rust client puts on the wire.
 
 use openagents_cli::gym::run::{
-    ExecuteArgs, GymClient, HostPlan, RunAction, catalog_model, coder_api_url_for_container,
-    container_docker_args, finalize_job_dir, infer_lane, run,
+    ExecuteArgs, GymClient, HostPlan, RunAction, api_origin, catalog_model,
+    coder_api_url_for_container, container_docker_args, container_env_vars, finalize_job_dir,
+    host_env_vars, infer_lane, preflight_refusal, run, suite_script_args,
 };
 use openagents_cli::gym::schemas::{RUN_STATUS_SCHEMA, RunStatus};
 use openagents_cli::gym::suite::{ResolvedSuite, ResolvedTask, resolve_for_run_in};
@@ -31,6 +32,11 @@ struct StubGymApi {
 /// Start a stub server that accepts `count` requests and always replies with
 /// `body` over a `Connection: close` stream.
 fn stub_gym_api(count: usize, body: Value) -> StubGymApi {
+    stub_gym_api_status(count, 200, body)
+}
+
+/// Same stub, answering every request with `status`.
+fn stub_gym_api_status(count: usize, status: u16, body: Value) -> StubGymApi {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let (sender, seen) = channel();
@@ -89,8 +95,14 @@ fn stub_gym_api(count: usize, body: Value) -> StubGymApi {
                 body: parsed,
             });
 
+            let reason = match status {
+                200 => "OK",
+                401 => "Unauthorized",
+                403 => "Forbidden",
+                _ => "Status",
+            };
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 response_text.len(),
                 response_text
             );
@@ -406,7 +418,7 @@ fn container_docker_args_mount_jobs_and_pin_the_image() {
         timeout_multiplier: Some(1.5),
         env_provider: Some("docker".to_string()),
         run_id: Some("run-1".to_string()),
-        api_base: "http://127.0.0.1:4000/api/v1".to_string(),
+        api_origin: "http://127.0.0.1:4000".to_string(),
         token: Some("token".to_string()),
     };
     let args = container_docker_args(&plan, &plan.jobs_dir);
@@ -431,6 +443,137 @@ fn container_docker_args_mount_jobs_and_pin_the_image() {
 }
 
 #[test]
+fn api_origin_reduces_an_api_v1_base_to_the_bare_origin() {
+    assert_eq!(
+        api_origin("https://openagents.com/api/v1"),
+        "https://openagents.com"
+    );
+    assert_eq!(
+        api_origin("http://localhost:4000/api/v1"),
+        "http://localhost:4000"
+    );
+    assert_eq!(
+        api_origin("http://127.0.0.1:4000/api/v1/"),
+        "http://127.0.0.1:4000"
+    );
+    // An already-bare origin passes through unchanged.
+    assert_eq!(
+        api_origin("https://staging.openagents.com"),
+        "https://staging.openagents.com"
+    );
+    assert_eq!(
+        api_origin("http://localhost:4000/"),
+        "http://localhost:4000"
+    );
+}
+
+#[test]
+fn suite_script_receives_a_bare_origin_api_url() {
+    let plan = host_plan_with_origin(api_origin("https://openagents.com/api/v1"));
+    let args = suite_script_args(&plan);
+    let position = args
+        .iter()
+        .position(|a| a == "--api-url")
+        .expect("--api-url is passed to bench/run-suite.sh");
+    assert_eq!(
+        args[position + 1],
+        "https://openagents.com",
+        "the script appends /api/v1 itself; handing it an /api/v1 base doubles the path"
+    );
+}
+
+#[test]
+fn container_env_carries_a_bare_origin_in_coder_api_url() {
+    let plan = host_plan_with_origin(api_origin("http://127.0.0.1:4000/api/v1"));
+    let vars: std::collections::BTreeMap<_, _> = container_env_vars(&plan).into_iter().collect();
+    // `openagents coder --api-url` refuses any URL with a path, so the
+    // container env must carry the bare (loopback-rewritten) origin.
+    assert_eq!(
+        vars.get("OPENAGENTS_CODER_API_URL").map(String::as_str),
+        Some("http://host.docker.internal:4000")
+    );
+    assert_eq!(
+        vars.get("OPENAGENTS_GYM_API_URL").map(String::as_str),
+        Some("http://host.docker.internal:4000")
+    );
+    assert_eq!(
+        vars.get("OPENAGENTS_GYM_RUN_ID").map(String::as_str),
+        Some("run-1")
+    );
+}
+
+#[test]
+fn host_env_carries_the_bare_origin_unrewritten() {
+    let plan = host_plan_with_origin(api_origin("https://openagents.com/api/v1"));
+    let vars: std::collections::BTreeMap<_, _> = host_env_vars(&plan).into_iter().collect();
+    assert_eq!(
+        vars.get("OPENAGENTS_CODER_API_URL").map(String::as_str),
+        Some("https://openagents.com")
+    );
+    assert_eq!(
+        vars.get("OPENAGENTS_GYM_API_URL").map(String::as_str),
+        Some("https://openagents.com")
+    );
+}
+
+#[tokio::test]
+async fn client_paths_carry_a_single_api_v1_when_rebuilt_from_the_origin() {
+    let stub = stub_gym_api(1, serde_json::json!({"run": {"id": "run-2026-003"}}));
+    // The same derivation execute() performs: origin out of the base, client
+    // back onto `{origin}/api/v1`. The wire path must carry /api/v1 once.
+    let base = format!("{}/api/v1", api_origin(&stub.base));
+    let client = GymClient::new(&base, Some("oa_pat_test".to_string()));
+    client
+        .start_run("tb2-quick", "gpt-5.6-luna", "proxy", 1)
+        .await
+        .expect("the stub answered 200");
+    let req = seen(&stub);
+    assert_eq!(req.path, "/api/v1/gym/runs/start");
+}
+
+#[tokio::test]
+async fn preflight_refusal_on_403_names_the_scope_and_the_login_command() {
+    let stub = stub_gym_api_status(
+        1,
+        403,
+        serde_json::json!({
+            "code": "not_operator",
+            "message": "operator standing required",
+        }),
+    );
+    let client = GymClient::new(&stub.base, Some("oa_pat_test".to_string()));
+    let error = client.preflight().await.expect_err("403 must refuse");
+    let refusal = preflight_refusal(error, "https://openagents.com");
+    let text = refusal.to_string();
+    assert!(text.contains("forge:write"), "{text}");
+    assert!(text.contains("operator"), "{text}");
+    assert!(text.contains("chat:account"), "{text}");
+    assert!(
+        text.contains("openagents auth login --scope forge:write"),
+        "{text}"
+    );
+    assert!(text.contains("not_operator"), "{text}");
+
+    let req = seen(&stub);
+    assert_eq!(req.method, "GET");
+    assert_eq!(req.path, "/api/v1/gym/runs?limit=1");
+}
+
+#[tokio::test]
+async fn status_malformed_answer_surfaces_the_server_body() {
+    // 200 with a body the RunStatus shape cannot absorb: the error must quote
+    // what the server actually said, not just a bare parse failure.
+    let stub = stub_gym_api(1, serde_json::json!({"error": "run row gone missing"}));
+    let client = GymClient::new(&stub.base, Some("oa_pat_test".to_string()));
+    let error = client
+        .get_run("run-2026-004")
+        .await
+        .expect_err("an unparseable body must refuse");
+    let text = error.to_string();
+    assert!(text.contains("run row gone missing"), "{text}");
+}
+
+#[test]
 fn container_api_url_rewrites_loopback() {
     assert_eq!(
         coder_api_url_for_container("http://127.0.0.1:4000/api/v1"),
@@ -444,6 +587,27 @@ fn container_api_url_rewrites_loopback() {
         coder_api_url_for_container("https://openagents.com/api/v1"),
         "https://openagents.com/api/v1"
     );
+}
+
+fn host_plan_with_origin(api_origin: String) -> HostPlan {
+    HostPlan {
+        suite: ResolvedSuite {
+            id: "tb2-quick".to_string(),
+            tasks: vec![ResolvedTask {
+                id: "regex-log".to_string(),
+                dataset: "terminal-bench@2.0".to_string(),
+            }],
+        },
+        model: "openai/gpt-5.6-luna".to_string(),
+        lane: "proxy".to_string(),
+        n_concurrent: 1,
+        jobs_dir: PathBuf::from("/tmp/gym-jobs-test"),
+        timeout_multiplier: None,
+        env_provider: None,
+        run_id: Some("run-1".to_string()),
+        api_origin,
+        token: Some("token".to_string()),
+    }
 }
 
 fn make_job_dir(trials: &[(&str, &str, Option<Value>)]) -> (PathBuf, tempfile::TempDir) {

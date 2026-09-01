@@ -21,7 +21,7 @@ be a forever-running row either. A 409 on the PATCH means another run
 already holds the digest; that is a replay, reported and treated as success.
 
 Without a run id, this keeps its original shape: one POST to
-`/api/v3/gym/runs`, idempotent by recipe digest. Post only runs whose
+`/api/v1/gym/runs`, idempotent by recipe digest. Post only runs whose
 verifier actually ran: a score is a claim, and a crashed grader is not a
 grade.
 """
@@ -292,7 +292,7 @@ def main() -> int:
         "report": report,
     }
 
-    status, body = request_json(f"{arguments.api_url}/api/v3/gym/runs", token, payload, "POST")
+    status, body = request_json(f"{arguments.api_url}/api/v1/gym/runs", token, payload, "POST")
     run = body.get("run") or {}
     print(
         f"{status}: run {run.get('id')} score={run.get('score')} "

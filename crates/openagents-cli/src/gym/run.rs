@@ -124,6 +124,19 @@ impl GymClient {
         map
     }
 
+    /// The cheapest authenticated gym GET: `GET /api/v1/gym/runs?limit=1`.
+    ///
+    /// Gym routes need a bearer holding `forge:write` plus live operator
+    /// standing, and the stored token may hold neither. This asks before the
+    /// run registers anything, so a `not_operator` answer arrives as one
+    /// refusal up front instead of deep inside a Harbor run.
+    pub async fn preflight(&self) -> Result<(), ApiError> {
+        let url = format!("{}/gym/runs?limit=1", self.api_base);
+        self.request("verify gym API access", "GET", &url, None, &[200])
+            .await?;
+        Ok(())
+    }
+
     /// Register a run and return the server-assigned id.
     pub async fn start_run(
         &self,
@@ -205,7 +218,7 @@ impl GymClient {
         let run = value.get("run").unwrap_or(&value);
         serde_json::from_value(run.clone()).map_err(|e| ApiError::Malformed {
             operation: "read a gym run".to_string(),
-            why: e.to_string(),
+            why: format!("{e}; the server answered: {}", body_snippet(&value)),
         })
     }
 
@@ -221,7 +234,7 @@ impl GymClient {
         let runs = value.get("runs").unwrap_or(&value);
         serde_json::from_value(runs.clone()).map_err(|e| ApiError::Malformed {
             operation: "list gym runs".to_string(),
-            why: e.to_string(),
+            why: format!("{e}; the server answered: {}", body_snippet(&value)),
         })
     }
 
@@ -320,6 +333,80 @@ impl GymClient {
     }
 }
 
+/// A bounded rendering of a server body for a Malformed refusal, so a shape
+/// mismatch surfaces what the server actually said instead of a bare parse
+/// error.
+fn body_snippet(value: &Value) -> String {
+    let text = value.to_string();
+    if text.chars().count() > 400 {
+        let cut: String = text.chars().take(400).collect();
+        format!("{cut}…")
+    } else {
+        text
+    }
+}
+
+/// Reduce the CLI's `/api/v1`-suffixed base to the bare origin.
+///
+/// Two consumers need the origin, not the base: `bench/run-suite.sh --api-url`
+/// appends its own `/api/v1/...` paths (a base would double the path), and the
+/// in-container `openagents coder --api-url` refuses any URL that carries a
+/// path (`auth::normalize_api_origin`). The `GymClient` in this module keeps
+/// building its own full `/api/v1/...` paths from the base.
+pub fn api_origin(api_base: &str) -> String {
+    let trimmed = api_base.trim_end_matches('/');
+    if let Some(origin) = trimmed.strip_suffix("/api/v1") {
+        return origin.trim_end_matches('/').to_string();
+    }
+    if let Ok(url) = reqwest::Url::parse(trimmed)
+        && let Some(host) = url.host_str()
+    {
+        return match url.port() {
+            Some(port) => format!("{}://{}:{}", url.scheme(), host, port),
+            None => format!("{}://{}", url.scheme(), host),
+        };
+    }
+    trimmed.to_string()
+}
+
+/// Turn a preflight 401/403 into the one sentence that names the missing
+/// credential and the command that fixes it (docs/coderbench.md, P0 item 3).
+/// Any other failure keeps its ordinary API-error shape.
+pub fn preflight_refusal(error: ApiError, origin: &str) -> CliError {
+    match &error {
+        ApiError::Refused {
+            status,
+            code,
+            request_id,
+            ..
+        } if *status == 401 || *status == 403 => {
+            let code_text = code
+                .as_deref()
+                .map(|c| format!(", code {c}"))
+                .unwrap_or_default();
+            let why = if *status == 401 {
+                "the server did not accept the stored token"
+            } else {
+                "the stored token is not allowed to use the gym API"
+            };
+            CliError::Api {
+                status: *status,
+                code: code.clone(),
+                request_id: request_id.clone(),
+                message: format!(
+                    "gym access check failed before anything was registered: {why} \
+                     (HTTP {status}{code_text}). Gym runs need a bearer holding the \
+                     `forge:write` scope AND live operator (admin) standing on {origin}; \
+                     trace upload separately needs `chat:account`. Sign in with \
+                     `openagents auth login --scope forge:write --scope chat:account` \
+                     against this origin and retry. See openagents docs/coderbench/auth.md."
+                ),
+            }
+        }
+        _ => api_to_cli(error),
+    }
+}
+
 /// Dispatch `openagents gym run`.
 pub async fn run(
     action: RunAction,
@@ -409,10 +496,29 @@ async fn execute(
         )));
     }
 
-    // 5. Register when a token is present; say so when not — never silently.
+    // 5. Preflight: gym routes need `forge:write` plus live operator standing,
+    //    and the stored token may hold neither. A 401/403 refuses here, in one
+    //    sentence naming the scope and the login command, instead of surfacing
+    //    as `not_operator` deep inside a Harbor run. Any other failure —
+    //    transport, 5xx — is inconclusive and does not block: the script path
+    //    already degrades to post-hoc posting when registration fails.
+    let origin = api_origin(api_base);
+    let client = GymClient::new(api_base, token.clone());
+    if token.is_some() {
+        match client.preflight().await {
+            Ok(()) => {}
+            Err(
+                e @ ApiError::Refused {
+                    status: 401 | 403, ..
+                },
+            ) => return Err(preflight_refusal(e, &origin)),
+            Err(e) => eprintln!("gym access preflight inconclusive ({e}); continuing"),
+        }
+    }
+
+    // 6. Register when a token is present; say so when not — never silently.
     //    `bench/run-suite.sh` owns registration when it is the execution
     //    target, so this client does not start a second run beside it.
-    let client = GymClient::new(api_base, token.clone());
     let use_suite_script = will_use_suite_script();
     let registration = if use_suite_script {
         println!("run registration: deferred to bench/run-suite.sh");
@@ -429,7 +535,7 @@ async fn execute(
         None
     };
 
-    // 6. Execute: pinned container first, host-native Harbor as the fallback.
+    // 7. Execute: pinned container first, host-native Harbor as the fallback.
     let jobs_dir = match args.jobs_dir {
         Some(p) => p,
         None => {
@@ -454,7 +560,7 @@ async fn execute(
         timeout_multiplier: args.timeout_multiplier,
         env_provider: args.env,
         run_id: run_id.map(String::from),
-        api_base: api_base.to_string(),
+        api_origin: origin,
         token,
     };
 
@@ -473,7 +579,7 @@ async fn execute(
         }
     };
 
-    // 7. Finalize. A crashed verifier means no trial graded: patch `abandoned`.
+    // 8. Finalize. A crashed verifier means no trial graded: patch `abandoned`.
     let job_dir = job_dir.ok_or_else(|| {
         CliError::Internal("harbor run did not produce a job directory".to_string())
     })?;
@@ -502,7 +608,9 @@ pub struct HostPlan {
     pub timeout_multiplier: Option<f64>,
     pub env_provider: Option<String>,
     pub run_id: Option<String>,
-    pub api_base: String,
+    /// The bare API origin (no `/api/v1`): what `bench/run-suite.sh --api-url`,
+    /// `OPENAGENTS_CODER_API_URL`, and `OPENAGENTS_GYM_API_URL` all expect.
+    pub api_origin: String,
     pub token: Option<String>,
 }
 
@@ -543,25 +651,33 @@ async fn run_on_target(plan: &HostPlan) -> Result<PathBuf, CliError> {
     run_on_host(plan).await
 }
 
+/// The argv handed to `bash bench/run-suite.sh` (after the script path).
+/// `--api-url` is the bare origin: the script appends its own `/api/v1/...`.
+pub fn suite_script_args(plan: &HostPlan) -> Vec<String> {
+    let mut args = vec![
+        format!("bench/suites/{}.suite.json", plan.suite.id),
+        "--model".to_string(),
+        plan.model.clone(),
+        "--lane".to_string(),
+        plan.lane.clone(),
+        "--jobs-dir".to_string(),
+        plan.jobs_dir.to_string_lossy().into_owned(),
+        "--n-concurrent".to_string(),
+        plan.n_concurrent.to_string(),
+        "--api-url".to_string(),
+        plan.api_origin.clone(),
+    ];
+    if let Some(m) = plan.timeout_multiplier {
+        args.push("--timeout-multiplier".to_string());
+        args.push(m.to_string());
+    }
+    args
+}
+
 /// Drive Harbor through the same script `docs/coder/runbook.md` documents.
 async fn run_on_suite_script(plan: &HostPlan, script: &Path) -> Result<PathBuf, CliError> {
-    let suite_file = format!("bench/suites/{}.suite.json", plan.suite.id);
     let mut cmd = Command::new("bash");
-    cmd.arg(script)
-        .arg(&suite_file)
-        .arg("--model")
-        .arg(&plan.model)
-        .arg("--lane")
-        .arg(&plan.lane)
-        .arg("--jobs-dir")
-        .arg(&plan.jobs_dir)
-        .arg("--n-concurrent")
-        .arg(plan.n_concurrent.to_string())
-        .arg("--api-url")
-        .arg(&plan.api_base);
-    if let Some(m) = plan.timeout_multiplier {
-        cmd.arg("--timeout-multiplier").arg(m.to_string());
-    }
+    cmd.arg(script).args(suite_script_args(plan));
     if let Some(token) = &plan.token {
         cmd.env("OPENAGENTS_TOKEN", token);
     }
@@ -632,6 +748,36 @@ async fn run_on_host(plan: &HostPlan) -> Result<PathBuf, CliError> {
     locate_job_dir(&plan.jobs_dir).await
 }
 
+/// Non-secret environment for the host-native Harbor target. Both URL
+/// variables carry the bare origin: the adapter and the coder CLI append (or
+/// refuse) their own paths.
+pub fn host_env_vars(plan: &HostPlan) -> Vec<(String, String)> {
+    let mut vars = vec![(
+        "OPENAGENTS_CODER_API_URL".to_string(),
+        plan.api_origin.clone(),
+    )];
+    if let Some(run_id) = &plan.run_id {
+        vars.push(("OPENAGENTS_GYM_RUN_ID".to_string(), run_id.clone()));
+        vars.push((
+            "OPENAGENTS_GYM_API_URL".to_string(),
+            plan.api_origin.clone(),
+        ));
+    }
+    vars
+}
+
+/// Non-secret environment for the container target: the same origins with
+/// loopback rewritten so the adapter inside the container reaches the host.
+pub fn container_env_vars(plan: &HostPlan) -> Vec<(String, String)> {
+    let origin = coder_api_url_for_container(&plan.api_origin);
+    let mut vars = vec![("OPENAGENTS_CODER_API_URL".to_string(), origin.clone())];
+    if let Some(run_id) = &plan.run_id {
+        vars.push(("OPENAGENTS_GYM_RUN_ID".to_string(), run_id.clone()));
+        vars.push(("OPENAGENTS_GYM_API_URL".to_string(), origin));
+    }
+    vars
+}
+
 fn apply_host_env(cmd: &mut Command, plan: &HostPlan) {
     if let Some(token) = &plan.token {
         cmd.env("OPENAGENTS_TOKEN", token);
@@ -639,10 +785,8 @@ fn apply_host_env(cmd: &mut Command, plan: &HostPlan) {
     if let Ok(binary) = std::env::var("OPENAGENTS_CODER_BINARY") {
         cmd.env("OPENAGENTS_CODER_BINARY", binary);
     }
-    cmd.env("OPENAGENTS_CODER_API_URL", &plan.api_base);
-    if let Some(run_id) = &plan.run_id {
-        cmd.env("OPENAGENTS_GYM_RUN_ID", run_id);
-        cmd.env("OPENAGENTS_GYM_API_URL", &plan.api_base);
+    for (name, value) in host_env_vars(plan) {
+        cmd.env(name, value);
     }
 }
 
@@ -650,16 +794,8 @@ fn apply_container_env(cmd: &mut Command, plan: &HostPlan) {
     if let Some(token) = &plan.token {
         cmd.env("OPENAGENTS_TOKEN", token);
     }
-    cmd.env(
-        "OPENAGENTS_CODER_API_URL",
-        coder_api_url_for_container(&plan.api_base),
-    );
-    if let Some(run_id) = &plan.run_id {
-        cmd.env("OPENAGENTS_GYM_RUN_ID", run_id);
-        cmd.env(
-            "OPENAGENTS_GYM_API_URL",
-            coder_api_url_for_container(&plan.api_base),
-        );
+    for (name, value) in container_env_vars(plan) {
+        cmd.env(name, value);
     }
 }
 
@@ -1097,7 +1233,7 @@ fn print_dry_run_plan(
         })
     );
     println!(
-        "[dry-run]   (will set OPENAGENTS_GYM_RUN_ID=<run-id> and OPENAGENTS_GYM_API_URL=<api-url> for the adapter)"
+        "[dry-run]   (will set OPENAGENTS_GYM_RUN_ID=<run-id> and OPENAGENTS_GYM_API_URL=<api-origin> for the adapter)"
     );
     let jobs = args
         .jobs_dir
@@ -1112,17 +1248,13 @@ fn print_dry_run_plan(
         timeout_multiplier: args.timeout_multiplier,
         env_provider: args.env.clone(),
         run_id: Some("<run-id>".to_string()),
-        api_base: String::new(),
+        api_origin: "<api-origin>".to_string(),
         token: None,
     };
     if will_use_suite_script() {
         println!(
-            "[dry-run] preferred: bash bench/run-suite.sh bench/suites/{}.suite.json --model {} --lane {} --jobs-dir {} --n-concurrent {} --api-url <api-url>",
-            suite.id,
-            model,
-            lane,
-            jobs.display(),
-            args.n_concurrent
+            "[dry-run] preferred: bash bench/run-suite.sh {}",
+            suite_script_args(&plan).join(" ")
         );
     }
     let docker_args = container_docker_args(&plan, &jobs);
