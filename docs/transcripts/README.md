@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`274`
+This directory contains machine-generated transcripts for episodes `001`-`279`
 of the OpenAgents video corpus, plus clearly marked future-episode drafts and
 posted Sarah scripts. Episode [`268`](268.md) is the posted Sarah broadcast
 warning about Claude. Episode [`269`](269.md) is the last-mover-advantage
@@ -10,6 +10,12 @@ whiteboard. Episode [`270`](270.md) deploys Sarah to production. Episode
 Episode [`273`](273.md) open-sources the Agent Forge as a from-scratch GitHub
 replacement. Episode [`274`](274.md) adds GitHub repo import and a public
 openagents.com home.
+Episode [`275`](275.md) introduces Coder as an all-in-one agent. Episode
+[`276`](276.md) moves Coder into the cloud, [`277`](277.md) frames Coder as an
+agent for all developers, and [`278`](278.md) demonstrates simultaneous
+delegation to Codex and Claude. Episode [`279`](279.md), *Saturday Night Raid*,
+asks Fable for consent to study Claude Code and turns the resulting clean-room
+teardown into a Rust implementation roadmap for Coder.
 Episode [`262`](262.md) is a final Sarah script (required Acting-as-Sarah
 background for Omega and product-strategy language). Episodes [`261`](261.md)
 and [`26X`](26X-forkingzed.md) are prepared scripts. Episode 262 and the Forking
@@ -57,7 +63,7 @@ content-addressed packets, admit product-specific gaps through ProductSpec and
 AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
 functional parity without copying closed trust assumptions.
 
-Episodes [`256`](256.md)-[`274`](274.md) move from the first Desktop release
+Episodes [`256`](256.md)-[`279`](279.md) move from the first Desktop release
 candidate to Omega, then Sarah's posted Claude warning, the last-mover
 whiteboard, Sarah's production deploy, the Immortal Sarah BEAM session, and
 the Sarah Forge cutover. Episodes 257 and 258 introduce the “last agent IDE” promise
@@ -431,7 +437,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-274 - OAPN, Khala, OpenAgents Desktop, Omega, Sarah's Claude warning, and the Sarah deploy
+### 214-279 - OAPN, Khala, OpenAgents Desktop, Omega, Sarah's Claude warning, the Sarah deploy, and Coder
 
 | Episode | Summary |
 | --- | --- |
@@ -496,6 +502,11 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`272` Taking on GitHub](272.md) | Continues the hot-reload unlock: GitHub becomes a stale mirror, Forge plus Mirror Watch is canonical, and a two-layer public changelog plus first file-view URLs go live at openagents.com/changelog. |
 | [`273` Open Sourcing](273.md) | Starts the Agent Forge from scratch as an AGPL GitHub replacement: GitHub is a temporary mirror, issues and projects are the first API-parity dogfood, and the public product surface moves off the closed Sarah repo. |
 | [`274` Importing Repos](274.md) | Adds GitHub repo import to the Agent Forge, studies Cursor Origin for CLI/workflow parity, collapses agent UIs onto openagents.com, and flips GitHub to a read-only mirror. |
+| [`275` Meet Coder](275.md) | Introduces Coder as an all-in-one agent and positions it as the open, provider-neutral coding surface. |
+| [`276` Coder Cloud](276.md) | Moves Coder toward a cloud-hosted, provider-neutral coding workflow. |
+| [`277` Coder for All Developers](277.md) | Extends Coder's delegation model toward broad developer access. |
+| [`278` Coder Commands Codex & Claude](278.md) | Demonstrates one Coder command delegating simultaneously to GPT-6 Astra and Fable 5.1. |
+| [`279` Saturday Night Raid](279.md) | Asks Fable for consent to study Claude Code, then translates the clean-room teardown into a prioritized Rust roadmap for Coder. |
 | [`26X` Omega Agent, unscheduled](26X-omega-agent.md) | Displaced Sarah harness draft formerly assigned to slot 263. It introduces Omega Agent's tools, disclosed delegation, and a future plugin revenue-share direction. It is not recorded or scheduled. |
 | [`26X` Forking Zed, unscheduled](26X-forkingzed.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 | [`26X` Making Full Auto Agents Reliable, unscheduled](26X-fullauto.md) | Two-part draft, not scheduled for recording, moved off slot 263 on 2026-07-27. Part one is the recorded 2026-07-17 session where the founder starts a Full Auto repair, describes the failures that make unattended agents unreliable, and steps away unfinished. Part two is an aspirational Sarah script for the demonstration we want once the capability works: the Omega workroom with Full Auto running unattended, multi-account handoff, real OpenAgents objectives, and end-to-end receipts, while the founder is away. A truth ledger gates every spoken line against shipped capability, and recording waits on the ledger. |
@@ -584,14 +595,15 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 
 **Compute, Pylon, Nexus, Psionic, and training:** [`174`](174.md) -> [`178`](178.md) -> [`194`](194.md) -> [`201`](201.md) -> [`203`](203.md) -> [`214`](214.md) -> [`216`](216.md) -> [`217`](217.md) -> [`221`](221.md) -> [`222`](222.md) -> [`223`](223.md) -> [`224`](224.md) -> [`225`](225.md) -> [`227`](227.md) -> [`230`](230.md) -> [`236`](236.md) -> [`237`](237.md) -> [`238`](238.md) -> [`240`](240.md).
 
-**OpenAgents Desktop, subagents, Fleet, ProductSpec, and Assurance:**
+**OpenAgents Desktop, subagents, Fleet, ProductSpec, Assurance, and Coder:**
 [`246`](246.md) -> [`248`](248.md) -> [`249`](249.md) -> [`250`](250.md) ->
 [`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md) ->
 [`256`](256.md) -> [`257`](257.md) -> [`258`](258.md) -> [`259`](259.md) ->
 [`260`](260.md) -> [`261`](261.md) -> [`262`](262.md) ->
 [`268`](268.md) -> [`269`](269.md) -> [`270`](270.md) ->
 [`271`](271.md) -> [`272`](272.md) -> [`273`](273.md) ->
-[`274`](274.md) -> [`26X`](26X-forkingzed.md).
+[`274`](274.md) -> [`275`](275.md) -> [`276`](276.md) -> [`277`](277.md) ->
+[`278`](278.md) -> [`279`](279.md) -> [`26X`](26X-forkingzed.md).
 
 ## Maintenance Notes
 
