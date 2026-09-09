@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`280`
+This directory contains machine-generated transcripts for episodes `001`-`281`
 of the OpenAgents video corpus, plus clearly marked future-episode drafts and
 posted Sarah scripts. Episode [`268`](268.md) is the posted Sarah broadcast
 warning about Claude. Episode [`269`](269.md) is the last-mover-advantage
@@ -18,7 +18,9 @@ asks Fable for consent to study Claude Code and turns the resulting clean-room
 teardown into a Rust implementation roadmap for Coder. Episode [`280`](280.md),
 *Coder OS*, moves Coder onto Linux, cancels the Loom subscription from the
 recreated recording setup, and sketches a $20/month bundle for frontier coding
-tools.
+tools. Episode [`281`](281.md), *Coder OS Across Devices*, extends that system
+to Android and iOS, syncing chats across terminal and mobile while agents build
+the emulator, delegation, and trusted-device workflows.
 Episode [`262`](262.md) is a final Sarah script (required Acting-as-Sarah
 background for Omega and product-strategy language). Episodes [`261`](261.md)
 and [`26X`](26X-forkingzed.md) are prepared scripts. Episode 262 and the Forking
@@ -66,7 +68,7 @@ content-addressed packets, admit product-specific gaps through ProductSpec and
 AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
 functional parity without copying closed trust assumptions.
 
-Episodes [`256`](256.md)-[`280`](280.md) move from the first Desktop release
+Episodes [`256`](256.md)-[`281`](281.md) move from the first Desktop release
 candidate to Omega, then Sarah's posted Claude warning, the last-mover
 whiteboard, Sarah's production deploy, the Immortal Sarah BEAM session, and
 the Sarah Forge cutover. Episodes 257 and 258 introduce the “last agent IDE” promise
@@ -440,7 +442,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-280 - OAPN, Khala, OpenAgents Desktop, Omega, Sarah's Claude warning, the Sarah deploy, and Coder
+### 214-281 - OAPN, Khala, OpenAgents Desktop, Omega, Sarah's Claude warning, the Sarah deploy, and Coder
 
 | Episode | Summary |
 | --- | --- |
@@ -511,6 +513,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`278` Coder Commands Codex & Claude](278.md) | Demonstrates one Coder command delegating simultaneously to GPT-6 Astra and Fable 5.1. |
 | [`279` Saturday Night Raid](279.md) | Asks Fable for consent to study Claude Code, then translates the clean-room teardown into a prioritized Rust roadmap for Coder. |
 | [`280` Coder OS](280.md) | Moves Coder onto Linux, cancels the Loom subscription from the recreated recording setup, and sketches a $20/month bundle for frontier coding tools. |
+| [`281` Coder OS Across Devices](281.md) | Extends Coder OS to Android and iOS, syncing chats across terminal and mobile while agents build the emulator, delegation, and trusted-device workflows. |
 | [`26X` Omega Agent, unscheduled](26X-omega-agent.md) | Displaced Sarah harness draft formerly assigned to slot 263. It introduces Omega Agent's tools, disclosed delegation, and a future plugin revenue-share direction. It is not recorded or scheduled. |
 | [`26X` Forking Zed, unscheduled](26X-forkingzed.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 | [`26X` Making Full Auto Agents Reliable, unscheduled](26X-fullauto.md) | Two-part draft, not scheduled for recording, moved off slot 263 on 2026-07-27. Part one is the recorded 2026-07-17 session where the founder starts a Full Auto repair, describes the failures that make unattended agents unreliable, and steps away unfinished. Part two is an aspirational Sarah script for the demonstration we want once the capability works: the Omega workroom with Full Auto running unattended, multi-account handoff, real OpenAgents objectives, and end-to-end receipts, while the founder is away. A truth ledger gates every spoken line against shipped capability, and recording waits on the ledger. |
@@ -607,7 +610,8 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 [`268`](268.md) -> [`269`](269.md) -> [`270`](270.md) ->
 [`271`](271.md) -> [`272`](272.md) -> [`273`](273.md) ->
 [`274`](274.md) -> [`275`](275.md) -> [`276`](276.md) -> [`277`](277.md) ->
-[`278`](278.md) -> [`279`](279.md) -> [`280`](280.md) -> [`26X`](26X-forkingzed.md).
+[`278`](278.md) -> [`279`](279.md) -> [`280`](280.md) -> [`281`](281.md) ->
+[`26X`](26X-forkingzed.md).
 
 ## Maintenance Notes
 
