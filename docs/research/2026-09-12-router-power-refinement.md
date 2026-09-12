@@ -1,4 +1,4 @@
-# Router Power against Coder's program model: what the evidence bounds and what it leaves open
+# Router Power against Coder's program model: Specific Intelligence and the untested agent runtime
 
 Date: 2026-09-12
 Status: refinement of the Router Power analysis memo. This is a copy of the
@@ -7,7 +7,9 @@ Coder repository, placed here beside the harness-optimization and DSPy
 audits it draws on; the Coder copy is the one the loop updates. The memo it
 refines lives beside it there as
 `docs/evaluation/2026-09-12-router-power-analysis.md`. Read that memo first.
-This document tests its conclusions against Coder's plugin, memory,
+This document restates the same evidence in the vocabulary of the Router
+Power research: Specific Intelligence, residual transferable uncertainty,
+and the agent runtime. It tests the memo against Coder's plugin, memory,
 context-program, and optimizer designs, reads the Router Power code for what
 each study varied and held fixed, and records where the evidence decides a
 recommendation and where it only bounds one. Written against the Coder tree
@@ -16,66 +18,92 @@ parentheses that name the Coder repository are files there, not here.
 
 ## Summary
 
-The memo's engineering conclusions hold, and several are stronger than the
-evidence they rest on. Router Power varied one thing in every harness study:
-the text of the system prompt. It ran no optimizer, applied no validation
-gate to the artifacts whose decay it reports, changed no tool, no bound, and
-no control flow, and measured harness effects on two models whose every
-failure was a fixed 360-second deadline. Coder's program model, as the plugin
-suite, the accepted-memory design, the context program, and the deprecated
-Tassadar program describe it, lives mostly in the region those studies did
-not reach.
+Router Power asks whether residual transferable uncertainty is large enough
+that a centralized router delivers cheaper agent labor than a firm that
+learns on its own. Residual transferable uncertainty is the uncertainty that
+remains after local learning and that transferred learning from other
+customers can reduce. If it stays high, Specific Intelligence does not hold. Specific Intelligence
+is the claim that a firm's own outcome stream is a compounding loop others
+cannot recreate. Most firms should then buy managed outcomes rather than
+keep an autarkic learning loop. The public writeup is bearish Specific
+Intelligence. It locates outcomes pricing at the router, neocloud, or
+rollup layer, not at the model or app layer.
+
+The analysis memo's engineering recommendations survive. The studies do not
+reach Coder's program model. The research plan names the arm as the agent
+runtime: model, harness, tools, retrieval, inference effort, and provider.
+Every harness study varied one thing: the system prompt. Learning ran in
+two ways, both prompt-side: a playbook learner that turns failed transcripts
+into a short operating memo, and a case-retrieval learner that injects two
+successes and one failure before every turn. No study ran an optimizer with
+a gate, changed a tool, a bound, or control flow, or compiled an instruction
+block that could return empty. The strong models' residual failures were a
+fixed 360-second deadline, so the model-swap measured prompt bloat under a
+deadline. Smarter models needed less harness; the remaining failure was
+time.
 
 What Router Power settles for Coder:
 
-- A distilled instruction document learned on one model and shipped to the
-  next without a measurement hurts the next model. Coder's loop found the
-  same on its own model in rounds 13 to 15, and the harness-optimization
-  audit in this repository recorded on 2026-07-04 that
-  code transferred across model families and prompts did not.
-- A learned per-ticket selector over bare model names, trained on outcomes,
-  did not beat the best fixed model when the arms were close in price and
-  quality. Coder's bench has a noise floor that would defeat such a selector
-  on its own.
-- Pooled settled outcomes are not a compounding moat. Coder's docs never
-  claimed one; the Tassadar program stated the data advantage as a test to
-  run and a pitch line to avoid.
+- Distilling commodity information into a standing playbook and shipping it
+  across models hurts the next model. A playbook of one model's failures is
+  knowledge about that model, not a portable Specific Intelligence asset.
+  Coder's loop found the same on its own model in rounds 13 to 15, and the
+  harness-optimization audit in this repository recorded on 2026-07-04 that
+  code transferred across model families and prompts did not. The accepted-memory design already refuses to produce this artifact.
+- A learned per-ticket selector over model names, trained on outcomes, did
+  not beat the best fixed model when the arms were close in price and
+  quality. The research plan said the arm should be the entire runtime.
+  Coder's bench has a noise floor that would defeat a name-only selector on
+  its own. Keep lanes as runtimes. Keep the door a transport.
+- Retrieval the model must ask for is not called. The case-retrieval learner
+  won because the host injected it on every turn. Inject it from the host.
+- Pooled settled outcomes built from commodity information are not a
+  compounding moat. The pooled edge is a novelty advantage: about ten points
+  on problems new to the customer and known to the pool, gone by about 144
+  tickets, reset by a model release. Coder's docs never claimed one. The
+  Tassadar program stated the data advantage as a test to run and a pitch
+  line to avoid.
 
-What Router Power leaves open, and where the memo reads it as closed:
+What Router Power leaves open, and where the memo treats it as closed:
 
-1. **Validated instruction artifacts.** The playbook that cost the next model
-   6 to 10 points was one model draw, format-checked, never run on a held-out
-   ticket before deployment. The one study that had a validation gate rejected
-   its candidates correctly. A compile step whose gate can return no artifact
-   was never tested on a model change. The memo's model-identity stamp is the
-   right rule; the refinement is that the stamp is a gate, and the gate runs
-   on cutover.
+1. **A compiled, gated, model-bound instruction block.** The playbook that
+   cost the next model 6 to 10 points was one model draw, format-checked,
+   never run on a held-out ticket before deployment. The one study that had
+   a validation gate rejected its candidates correctly. A compile step whose
+   gate can return no artifact was never tested on a model change. That is
+   the DSPy rule. The memo's model-identity stamp is the right rule; the
+   stamp is a cutover gate, and the gate may return the empty artifact.
 2. **Instructions plus exemplars.** Retrieval beat the playbook by about 18
    points as alternatives. No arm combined a short instruction block with
    host-injected exemplars, which is what a compiled module is. The memo's
-   "the best policy was no policy at all" is a reading of a horse race between
-   the two halves of that module.
-3. **Anything below the prompt.** Output processors, typed tools, bounds, and
-   control flow were never an arm. Study 7A's timeouts are prompt bloat under
-   a deadline, which is evidence for host-side bounding rather than against
-   harness work. Coder's suite members are host-side and deterministic except
-   for one prelude, and the memo's "prompt-side plugins do not move the numbers"
-   should not be read as a finding about the suite.
-4. **Routing over runtimes, cascades, and a price gap.** Study 1 routed three
+   "the best policy was no policy at all" compares the two halves of that
+   module rather than the module against nothing.
+3. **The tools half of the agent runtime.** Output processors, typed tools,
+   bounds, and control flow were never an arm. Study 7A's timeouts are
+   prompt bloat under a deadline, which is evidence for host-side bounding
+   rather than against harness work. Coder's suite members are host-side and
+   deterministic except for one prelude. The memo's "prompt-side plugins do
+   not move the numbers" is not a finding about the suite.
+4. **Routing over runtimes, and a cascade as a bound.** Study 1 routed three
    cheap flash-class models a factor of 1.6 apart in price on their names
-   alone. Router Power's own review says the arm should be the entire runtime.
-   A deterministic escalation policy on a gate refusal is a bound, not a
-   learned router, and is untested.
-5. **Repository knowledge.** The environment had one manual and one tool set,
-   and the report says store-specific knowledge could not exist there by
-   construction. For a repository the direction of the own-history effect is
+   alone. The research plan says the arm should be the entire runtime. A
+   deterministic escalation policy on a gate refusal is a bound on an
+   observed outcome, not a learned router, and is untested.
+5. **Scarce sensing, which the benchmark assumed away.** The environment had
+   one manual and one tool set. The report says store-specific knowledge
+   could not exist there by construction, and that a domain with a larger,
+   more idiosyncratic knowledge space would likely show slower catch-up and
+   less transfer. Specific Intelligence, in the research writeup, exists
+   where a firm's problems are genuinely its own, in scarce sensing regimes.
+   A repository is that domain. For coding, the own-history effect is
    unknown, not small.
-6. **Facts against prescriptions.** Coder's accepted memory holds settled
+6. **Records against prescriptions.** Coder's accepted memory holds settled
    facts about a repository with provenance, bounded at eight facts and 1,200
    characters, and never extracts. That is a case store of records, not a
-   playbook of behavior, and a fact about a build is model-generic. The memo's
-   rule that every memory fact goes to opt-in on a model change is broader
-   than the evidence.
+   playbook of behavior, and a fact about a build is model-generic. The
+   memo's rule that every memory fact goes to opt-in on a model change is
+   broader than the evidence. Only behavioral instructions need the model
+   stamp.
 
 Section 5 turns those six into the rounds that would decide them.
 
@@ -97,7 +125,7 @@ interventions bound what the numbers can say about Coder.
 | Below the prompt | `PlaybookAgent` and `RetrievalAgent` override `system_prompt` and pass tau2's tools through unchanged. The playbook prompt forbids naming a tool. | Tool wrappers, output processors, bounded or digested tool results, typed or structured output, control flow, decomposition into modules. |
 | Bounds | 360 seconds, a constant in every runner. No turn cap variable exists in the tree. | A bound as an arm; a raised cap. The summary's next-steps item 11 asks for one. |
 | Routing arms | Three flash-class models at $0.00277 to $0.00437 a run, a 14.5-point quality spread, routed on model names by a domain router, an intent router, and a leave-one-trial-out selector. | A price gap; an expensive frontier arm; a cascade (the advertised cascade arm was never implemented, per `writeups/REVIEW.md`); the runtime as the arm, which `writeups/ROUTER_POWER_RESEARCH.md` recommends first. |
-| Heterogeneity | Six synthetic companies from tau2 telecom personas, sharing one policy and one tool set, differing in which fault mechanisms they met first. | Business-rule or tool heterogeneity; the report names it as the axis where store-specific knowledge could exist. |
+| Heterogeneity | Six synthetic companies from tau2 telecom personas, sharing one policy and one tool set, differing in which fault mechanisms they met first. | Business-rule or tool heterogeneity; the report names it as the axis where store-specific knowledge could exist. Per-firm implementation work that would give each company its own tools and policy is assumed away. |
 | Headroom | DeepSeek 90.3% and GLM 79.2% stock in Study 7A, DeepSeek 95.6% in 7B. Every failure of both models in every version was the 360-second limit. | A newer model whose failures are of a kind experience can fix; the summary's next-steps item 5 asks for one. |
 
 Two quotations from the report carry the boundary. On the swap:
@@ -111,9 +139,11 @@ would likely show slower catch-up and could show less transfer"
 
 ## 2. Coder's program model, sorted by what Router Power tested
 
-Router Power's harness arms fall into two classes: instruction text learned
-from outcomes, and exemplars retrieved by similarity. Its routing arm is a
-third. Coder's mechanisms fall into four, and the fourth is the largest.
+Router Power's harness arms fall into two classes: a playbook of instruction
+text learned from outcomes, and a case store of exemplars retrieved by
+similarity. Its routing arm is a third, and it routed on model names. Coder's
+mechanisms fall into four, and the fourth, program structure on the tool
+side of the agent runtime, is the largest.
 
 | Coder mechanism | Class | Runs where | Model may decline | Router Power evidence | Coder evidence |
 | --- | --- | --- | --- | --- | --- |
@@ -131,18 +161,19 @@ third. Coder's mechanisms fall into four, and the fourth is the largest.
 | A learned plugin selector against a fixed rule | Routing, over plugins not models | Proposed as the first learning experiment, with the rule retained when adequate (Tassadar, deprecated) | n/a | Study 1 is about model arms. The plugin-selection question was never posed. | Not run. The deterministic owner-per-call rule is what the suite ships. |
 | Fixed model per lane, chosen on the bench | Routing, coarse | Configuration | n/a | Study 1: the fixed arm won. | Lanes exist. |
 
-Read down the "Router Power evidence" column: the class Coder invests most
-in, program structure on the tool side, has no row in Router Power. The
-class Router Power tested hardest, learned instruction text shipped without
-a gate, is the class Coder's loop already reverts and the accepted-memory
-design already refuses.
+The "Router Power evidence" column is empty for program structure on the
+tool side, which is where Coder spends. The class Router Power tested
+hardest, a playbook of learned instruction text shipped without a gate, is
+the class Coder's loop already reverts and the accepted-memory design
+already refuses. That class is Specific Intelligence built from commodity
+information: a bad router.
 
 ## 3. Where the memo is stronger than the evidence
 
 Each item names the memo's claim, what the evidence supports, and the
-refinement.
+correction in Router Power's own terms.
 
-### 3.1 Harness knowledge decays across models
+### 3.1 A playbook of one model's failures is commodity information
 
 The memo: "Harness knowledge is knowledge about one model's failure modes,"
 and "a sentence learned on one model cost the next model 6 to 10 points."
@@ -155,9 +186,10 @@ set and deploys base when the candidate is not better. Applied to 7A's
 numbers, that gate declines the playbook on both models, since both intervals
 exclude zero, and declines the case store on GLM at +0.0. The report reaches
 the edge of this reading ("a high stock rate for a candidate leaves little
-room for any harness to help") and does not draw it.
+room for any harness to help") and does not draw it. Smarter models needed
+less harness; the playbook was a tax on conversation length.
 
-The refinement: the memo's recommendation 5, stamp the model identity on
+The correction: the memo's recommendation 5, stamp the model identity on
 every measured artifact and withdraw it to opt-in on a model change, is a
 gate described as a withdrawal. Describe it as a gate. On cutover, every
 instruction-side artifact is re-measured on the new model against no
@@ -168,9 +200,10 @@ suite admission already has the shape (a strict per-task test, a held-out
 ten, the suite compared with and without the member); what it lacks is the
 trigger on a catalog change.
 
-What this does not rescue: a standing playbook distilled from outcomes and
-carried across models without that gate. Router Power measured that and it
-loses. The memo's item in "What not to build" stands.
+A standing playbook distilled from outcomes and carried across models
+without that gate still loses. Router Power measured that. That is Specific
+Intelligence built from commodity information. The memo's item in "What not
+to build" stays.
 
 ### 3.2 Retrieval beats a playbook, so the best policy is no policy
 
@@ -185,13 +218,12 @@ between a module and nothing. The Study 2 writeup names the mechanism that a
 combined arm would have to survive, instruction interference, and says it
 "should be tested, not treated as settled."
 
-The refinement: the second sentence of the memo's claim stands, since a
-distilled standing playbook is the artifact that lost. The first sentence is
-not a finding. The untested arm is a validated instruction block of a few
-hundred words, bound to the model it was measured on, beside host-injected
-exemplars. Section 5 gives it a round. Until that round runs, Coder's rule is
-the loop's own: prefer the tool layer, and measure a sentence before it
-stays.
+The correction: do not distill facts into a standing playbook. That artifact
+lost. "No policy at all" is not a finding. The untested arm is a validated
+instruction block of a few hundred words, bound to the model it was measured
+on, beside host-injected exemplars. Section 5 gives it a round. Until that
+round runs, Coder's rule is the loop's own: prefer the tool layer, and
+measure a sentence before it stays.
 
 ### 3.3 Timeouts are where the win rate is
 
@@ -199,19 +231,19 @@ The memo: Study 7A's timeouts are "the single most useful row for Coder,"
 and the fixes are caps with typed endings, pointer answers, early stop on a
 failed gate, and deterministic tools.
 
-The evidence agrees and says more. The strong models' residual failure
-surface was entirely the deadline, so the survival ratio the report computes
-divides by headroom that no harness could address. What 7A measured is the
-token economy of prompt bloat under a fixed deadline: a 900-word block of
-stale prose lengthened conversations, and a 1,500-word block of exemplars
-shortened them slightly. That is a result about what enters the context each
-turn, and the mechanisms that decide that in Coder are host-side: bounded
-tool results, the checkpoint window, the packet rule, and the output
-processors. Router Power's retriever excluded tool output from its query
-because the tool results were near-identical JSON, which is the input
-`shell_digest` and `test_report` exist to digest.
+The evidence agrees. The strong models' residual failure surface was entirely
+the deadline, so the survival ratio the report computes divides by headroom
+that no harness could address. What 7A measured is the token economy of
+prompt bloat under a fixed deadline: a 900-word block of stale prose
+lengthened conversations, and a 1,500-word block of exemplars shortened them
+slightly. That is a result about what enters the context each turn, and the
+mechanisms that decide that in Coder are host-side: bounded tool results,
+the checkpoint window, the packet rule, and the output processors. Those are
+the tools half of the agent runtime. Router Power's retriever excluded tool
+output from its query because the tool results were near-identical JSON,
+which is the input `shell_digest` and `test_report` exist to digest.
 
-The refinement: add the output-processor class to the memo's section 3.3
+The correction: add the output-processor class to the memo's section 3.3
 table as model-generic and untested by Router Power, and keep the suite's
 seconds guard. Round 17 reverted `shell_digest` by that guard at +10.1% on
 seconds against a 27.6% token saving. That guard is Study 7A's lesson applied
@@ -239,9 +271,11 @@ Three things sit outside that regime and the memo folds them in.
   retrieval, inference effort, and provider, and not merely a model name. No
   study did. A Coder lane is a runtime: a model, a suite version, a bound
   set, a price. Choosing among lanes is the decision Study 1 did not test.
-  The memo's lane rule already puts the choice at that granularity; the
-  refinement is only that Study 1 does not argue against it, and the
-  evaluation lane in the memo's recommendation 6 is where lanes get compared.
+  The memo's lane rule already puts the choice at that granularity. Study 1
+  does not argue against it. The evaluation lane in the memo's recommendation
+  6 is where lanes get compared. That is also the information advantage the
+  writeup names at a model release: whoever knows which runtime to cut over
+  to captures the gain.
 - **A cascade as a bound.** Try the cheap lane, and escalate to the strong
   lane when the gate refuses delivery. That is a policy on an observed
   outcome, not a selector on pre-execution information, and Router Power
@@ -255,8 +289,8 @@ Three things sit outside that regime and the memo folds them in.
   The suite ships the rule (one owner per call), and the experiment stays
   open.
 
-What stands: no learned pre-execution selector over model names. `Source`
-stays a transport.
+What stays decided: no learned pre-execution selector over model names.
+`Source` stays a transport.
 
 ### 3.5 Own history holds nothing others cannot supply
 
@@ -268,11 +302,17 @@ more."
 The evidence: the report says store-specific knowledge could not exist in
 its environment by construction, and that a domain with a larger,
 idiosyncratic knowledge space "would likely show slower catch-up and could
-show less transfer." A repository is that domain: its own build, gate,
-conventions, and layout, and no shared manual. For repositories the sign and
-size of the own-history effect are unknown. Coder's own rows point the other
-way from Study 5: the context that cut change-directive calls by 70% was
-facts about this checkout.
+show less transfer." The simulation assumed away per-firm implementation
+work that would give each company its own tools and policy. A repository is
+the idiosyncratic domain: its own build, gate, conventions, and layout, and
+no shared manual. In the research writeup, Specific Intelligence exists
+where a firm's problems are genuinely its own, in scarce sensing regimes,
+and most firms that learn from commodity information are building a bad
+router. A git checkout is closer to scarce sensing than to pooling telecom
+personas that share one manual. For repositories the sign and size of the
+own-history effect are unknown. Coder's own rows point the other way from
+Study 5: the context that cut change-directive calls by 70% was facts about
+this checkout.
 
 One more bound the memo does not weigh: Study 4. Releasing three relevant
 other-company trajectories before a company's first encounter with a problem
@@ -281,11 +321,11 @@ excluding the planned +10). Study 6's novelty edge and Study 4's null are
 both about the first encounter, and they disagree. The memo builds the
 onboarding pitch on Study 6 alone.
 
-The refinement: keep the memo's Study 6 replication, take Study 4's null as
+The correction: keep the memo's Study 6 replication, take Study 4's null as
 the prior, and do not write the onboarding sentence until the row exists.
-Scope retrieval to the repository first, as the memo says, for a different
-reason than Study 5: because that is where the evidence says the knowledge
-is, not because pooling was shown to be worth ten points.
+Scope retrieval to the repository first, as the memo says, because that is
+where the evidence says the knowledge is, not because pooling was shown to
+be worth ten points.
 
 ### 3.6 Every memory fact goes to opt-in on a model change
 
@@ -303,7 +343,7 @@ never extracted from a conversation. "The gate needs Postgres on port 5432"
 is a fact about the world; it does not describe a model and does not expire
 with one.
 
-The refinement: split the stamp. Behavioral instructions (a prelude, a skill
+The correction: split the stamp. Behavioral instructions (a prelude, a skill
 body, a sentence in `agent_instructions.rs`, a plugin whose effect depends on
 the model calling it) carry the model identity and re-validate on cutover.
 Repository facts and settled records carry their evidence digest and expire
@@ -334,30 +374,35 @@ position was already the other way.
   into facts, pending a loop row.
 
 Router Power confirms four positions this repository already held and adds
-numbers to them. That is worth recording because the memo's strategy
-rewrite is for `alpha`; the engineering docs here need no reversal, and a
-reader should not infer one.
+numbers to them. The memo's strategy rewrite is for `alpha`. The engineering
+docs here need no reversal, and a reader should not infer one. Specific
+Intelligence built from commodity information was already declined. The
+agent runtime's tools half was already the bet.
 
 ## 4. What Router Power settles
 
-So that this document is not read as a defense, the findings that decide
-something for Coder, with no refinement:
+The findings that decide something for Coder, with no correction:
 
 - A distilled playbook learned from outcomes on one model, shipped to
-  another without a measurement, hurts. Keep per-turn extraction held back.
-  Keep the loop's revert of the prelude and the two shell-guidance edits.
+  another without a measurement, hurts. That is a bad router: Specific
+  Intelligence built from commodity information. Keep per-turn extraction
+  held back. Keep the loop's revert of the prelude and the two shell-guidance
+  edits.
 - A learned pre-execution selector over model names does not beat a fixed
-  strong model among close arms. Keep `Source` a transport; keep lanes fixed.
+  strong model among close arms. Keep `Source` a transport; keep lanes
+  fixed as runtimes.
 - Retrieval that the model must ask for is not called. Inject it. Coder
   learned this in four rounds before the memo said it.
 - Under a deadline, what enters the context each turn decides the finish
   rate. Budget time in every admission rule, and report resolution
   conditional on finishing.
 - The value of observing many runs on many models at a release is knowing
-  first which model to switch to. Build the evaluation lane before any
-  learner.
-- Pooled settled outcomes are a short head start in the only environment
-  measured. Say nothing stronger until a repository-scoped row exists.
+  first which runtime to switch to. That is an information advantage about
+  cutover, not a compounding Specific Intelligence loop. Build the
+  evaluation lane before any learner.
+- Pooled settled outcomes are a short novelty advantage in the only
+  environment measured. Say nothing stronger until a repository-scoped row
+  exists.
 
 ## 5. The rounds that would decide the open items
 
@@ -379,15 +424,15 @@ that helps.
 
 ## 6. Recommendations, refined
 
-The memo's section 5.1 stands with these edits.
+The memo's section 5.1 stays, with these edits.
 
-1. Recommendation 1 stands: no per-call model selection behind
+1. Recommendation 1 stays: no per-call model selection behind
    `responses::Source`. Add: a lane is a runtime, and the evaluation lane
    compares lanes, not models.
-2. Recommendation 2 stands: host-injected pre-turn retrieval, bounded, two
+2. Recommendation 2 stays: host-injected pre-turn retrieval, bounded, two
    successes and one failure, repository-scoped. Add: measure the packet
    alone and beside a validated instruction block, as one round each.
-3. Recommendations 3 and 4 stand: typed endings for every cap, resolution
+3. Recommendations 3 and 4 stay: typed endings for every cap, resolution
    conditional on finishing, and no done after a failed gate, enforced in
    the loop.
 4. Recommendation 5 splits. Behavioral instructions carry the model identity
@@ -395,22 +440,30 @@ The memo's section 5.1 stands with these edits.
    no artifact as the control. Repository facts and settled records carry
    their evidence digest and expire on evidence. The recall bound stays at
    eight facts and 1,200 characters until a row moves it.
-5. Recommendation 6 stands and moves up: the evaluation lane runs on every
-   catalog change and its verdict row triggers item 4.
-6. Recommendation 7 stands with Study 4's null as the prior and no
+5. Recommendation 6 stays and moves up: the evaluation lane runs on every
+   catalog change and its verdict row triggers item 4. That is the
+   information advantage at a release.
+6. Recommendation 7 stays with Study 4's null as the prior and no
    onboarding claim until the row exists.
-7. Recommendation 8 stands and runs before item 2, so retrieval is measured
+7. Recommendation 8 stays and runs before item 2, so retrieval is measured
    on resolution.
-8. Recommendation 9, billing, stands. Router Power adds nothing against it
+8. Recommendation 9, billing, stays. Router Power adds nothing against it
    and the separability argument in the memo's section 4.3 is the right one.
 9. Add: the output-processor class joins the memo's section 3.3 table as
    model-generic and untested by Router Power, and its admission keeps the
-   seconds guard.
+   seconds guard. That is the tools half of the agent runtime.
 10. Add: a cascade on gate refusal is a bound to measure, not a router to
     decline.
-11. The memo's "What not to build" stands whole. Add nothing to it on the
+11. The memo's "What not to build" stays whole. Add nothing to it on the
     strength of Router Power alone: a compiled, gated, model-bound
     instruction block is not on the list, because it was not tested.
+
+Net for the business: the verification and settlement loop, the neutral
+door, and the evaluation lane that decides cutovers remain the defensible
+claims. Deterministic plugins and typed programs are the durable,
+model-portable half of the agent runtime. Specific Intelligence built from
+commodity information is not. Six one-round experiments in section 5 would
+close the open items.
 
 ## Evidence and derivation
 
@@ -445,10 +498,13 @@ for the interventions: `release/opx/harness/playbook_agent.py`,
 `scripts/self_harness_analyze.py`, `release/patches/README.md`;
 and for the findings, the reports the memo's Sources section lists, plus
 `writeups/ROUTER_POWER_RESEARCH.md` (the runtime-as-arm recommendation and
-the falsification thresholds) and `writeups/REVIEW.md` (the removed cascade
-arm).
+the falsification thresholds), `writeups/REVIEW.md` (the removed cascade
+arm), and the public writeup that names Specific Intelligence, residual
+transferable uncertainty, and outcomes pricing at the router layer
+([Soren Larson, 2026-09-10](https://x.com/hypersoren/status/2098130598858551596)).
 
 How this document differs from the memo: the memo maps Router Power's
 findings onto the strategy claims and the Coder plan; this document maps
-Router Power's interventions onto Coder's mechanisms, and treats a mechanism
-Router Power never varied as open rather than as decided.
+Router Power's interventions onto Coder's mechanisms, uses the research's
+own terms for those interventions, and treats a mechanism Router Power never
+varied as open rather than as decided.
