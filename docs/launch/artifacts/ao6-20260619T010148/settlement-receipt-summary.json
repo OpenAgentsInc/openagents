@@ -1,9 +1,0 @@
-{
-  "receiptRef": "receipt.nexus.tassadar_run_settlement.idempotency.tassadar.ao6.patched2.20260619T010148.manual.v1",
-  "state": null,
-  "amountSats": null,
-  "movementMode": "real_bitcoin",
-  "realBitcoinMoved": true,
-  "contributorRef": null,
-  "challengeRef": null
-}

@@ -1,7 +1,0 @@
-.gcloudignore
-.git
-.git/**
-#!include:.gitignore
-
-# Local infrastructure caches must never enter Cloud Build.
-**/.terraform/**

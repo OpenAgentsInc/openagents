@@ -1,11 +1,0 @@
-Conducting pre-submission checks for stable-macos-arm64-Autopilot.20260619T010148.notarized.dmg and initiating connection to the Apple notary service...
-Submission ID received
-  id: ccc6c3f9-fd2f-4477-9dc4-ad9c27613fec
-Successfully uploaded file
-  id: ccc6c3f9-fd2f-4477-9dc4-ad9c27613fec
-  path: /Users/christopherdavid/work/openagents/apps/autopilot-desktop/artifacts/stable-macos-arm64-Autopilot.20260619T010148.notarized.dmg
-Waiting for processing to complete.
-Current status: In Progress...Current status: In Progress....Current status: In Progress.....Current status: Accepted......Processing complete
-  id: ccc6c3f9-fd2f-4477-9dc4-ad9c27613fec
-  status: Accepted
-

@@ -1,2 +1,0 @@
-[oa:thread ffffffff-ffff-4fff-8fff-ffffffffffff]
-working on build-cmake

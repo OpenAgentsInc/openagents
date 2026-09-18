@@ -1,8 +1,0 @@
-{
-  "schema": "openagents.sarah.lbr_request_quote.v1",
-  "role": "negative",
-  "code": "settlement_forbidden",
-  "reason": "v1 community lane forces no_spend. Paid settlement is SARAH-CW-07.",
-  "settlementMode": "escrow_settle",
-  "kind": 5934
-}

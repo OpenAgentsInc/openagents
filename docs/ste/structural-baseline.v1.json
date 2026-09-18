@@ -1,6 +1,0 @@
-{
-  "schema": "openagents-ste-baseline-v1",
-  "policyRevision": "openagents-ste-policy-v3",
-  "note": "A baseline is a migration ratchet. It is not proof of conformance.",
-  "files": {}
-}
