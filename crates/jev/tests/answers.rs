@@ -255,6 +255,36 @@ fn a_field_that_does_not_read_is_named_by_a_dotted_path() -> Outcome {
         (json!({"model": 7, "answers": {}}), "model"),
         (json!({"model": "m", "answers": 7}), "answers"),
         (json!(["not an object"]), "body"),
+        (
+            json!({"model": "m", "answers": {"c": "not-a-mapping"}}),
+            "answers.c.type",
+        ),
+        (
+            json!({"model": "m", "answers": {"c": {"type": "choice", "choice": "a", "probabilities": {}}}}),
+            "answers.c.confidence",
+        ),
+        (
+            json!({"model": "m", "answers": {"n": {"type": "noul", "noul": "0.5"}}}),
+            "answers.n.noul",
+        ),
+        // A malformed map entry names the entry, inside `legend` or
+        // `probabilities`.
+        (
+            json!({"model": "m", "answers": {"s": {"type": "score", "score": 1.0, "confidence": 1.0, "legend": [], "probabilities": {}}}}),
+            "answers.s.legend",
+        ),
+        (
+            json!({"model": "m", "answers": {"s": {"type": "score", "score": 1.0, "confidence": 1.0, "legend": {"x": "bad"}, "probabilities": {}}}}),
+            "answers.s.legend.x",
+        ),
+        (
+            json!({"model": "m", "answers": {"s": {"type": "score", "score": 1.0, "confidence": 1.0, "legend": {}, "probabilities": {"x": 0.5}}}}),
+            "answers.s.probabilities.x",
+        ),
+        (
+            json!({"model": "m", "answers": {"s": {"type": "score", "score": 1.0, "confidence": 1.0, "legend": {}, "probabilities": {"0": "high"}}}}),
+            "answers.s.probabilities.0",
+        ),
     ];
     for (body, expected) in cases {
         let Err(Error::ResponseValidation {

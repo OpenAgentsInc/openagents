@@ -26,6 +26,12 @@ url = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+
+# The synchronous client's walkthrough needs its feature on.
+[[example]]
+name = "blocking"
+required-features = ["blocking"]
 
 [lints]
 workspace = true

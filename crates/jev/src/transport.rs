@@ -87,19 +87,21 @@ fn value(text: &str) -> Result<HeaderValue> {
 
 /// Headers as one line for a log, with every credential masked.
 ///
-/// A credential keeps its scheme and the last four characters, so two keys read
-/// apart in a log without either one reaching it. Both official SDKs mask the
-/// same five headers.
+/// A key header keeps its scheme and the last four characters, so two keys read
+/// apart in a log without either one reaching it. Every other credential is
+/// masked whole. The masked set is the union of both official sets: the
+/// JavaScript SDK's key headers, and every name the Python SDK marks secret,
+/// which is its own list plus any name holding `token` or `secret`.
 pub(crate) fn redact(headers: &HeaderMap) -> String {
     const KEYS: &[&str] = &["authorization", "proxy-authorization", "x-api-key"];
-    const OPAQUE: &[&str] = &["cookie", "set-cookie"];
+    const OPAQUE: &[&str] = &["api-key", "cookie", "set-cookie"];
     let mut rendered: Vec<String> = Vec::with_capacity(headers.len());
     for (name, value) in headers {
         let name = name.as_str();
         let text = value.to_str().unwrap_or("<not text>");
         let shown = if KEYS.contains(&name) {
             mask(text)
-        } else if OPAQUE.contains(&name) {
+        } else if OPAQUE.contains(&name) || name.contains("token") || name.contains("secret") {
             "***".to_string()
         } else {
             text.to_string()

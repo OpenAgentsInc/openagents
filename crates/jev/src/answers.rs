@@ -396,7 +396,26 @@ fn blame_field(body: &str, fields: &[Field]) -> Option<String> {
                 if !fits {
                     return Some(field.name.to_string());
                 }
+                // A level map decodes only when every key is a level, and a
+                // probability map only when every value is a number. The path
+                // names the entry at fault, the way the Python SDK does.
+                if matches!(field.name, "legend" | "probabilities")
+                    && let Some(bad) = blame_entry(field.name, found)
+                {
+                    return Some(bad);
+                }
             }
+        }
+    }
+    None
+}
+
+/// The entry of a level map that does not decode: a key that is not a level
+/// number, or for `probabilities` a value that is not a number.
+fn blame_entry(field: &str, map: &Value) -> Option<String> {
+    for (key, value) in map.as_object()? {
+        if key.parse::<u32>().is_err() || (field == "probabilities" && !value.is_number()) {
+            return Some(format!("{field}.{key}"));
         }
     }
     None

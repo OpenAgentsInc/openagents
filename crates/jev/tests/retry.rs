@@ -86,6 +86,11 @@ fn the_jitter_takes_a_fraction_off_the_delay() {
         policy.delay_with(0, None, 0.5),
         Duration::from_millis(437) + Duration::from_micros(500)
     );
+    assert_eq!(
+        policy.delay_with(1, None, 0.5),
+        Duration::from_millis(875),
+        "attempt one doubles the base before the draw scales it"
+    );
     let steady = RetryPolicy {
         backoff_jitter: 0.0,
         ..RetryPolicy::default()
@@ -173,6 +178,45 @@ fn a_server_delay_reads_seconds_a_date_and_nothing() -> Outcome {
     Ok(())
 }
 
+/// A millisecond count that cannot be read falls through to the seconds
+/// header, and a seconds count reads fractions.
+#[test]
+fn an_unreadable_millisecond_count_falls_through_to_seconds() -> Outcome {
+    for bad in ["NaN", "-1", "bad", "inf"] {
+        let mut both = headers("retry-after-ms", bad)?;
+        both.insert(
+            HeaderName::from_static("retry-after"),
+            HeaderValue::from_static("1.5"),
+        );
+        assert_eq!(
+            parse_retry_after(&both),
+            Some(Duration::from_millis(1500)),
+            "retry-after-ms {bad:?} falls through to the seconds header"
+        );
+    }
+    assert_eq!(
+        parse_retry_after(&headers("retry-after-ms", "inf")?),
+        None,
+        "an infinite count asks for no wait"
+    );
+    assert_eq!(
+        parse_retry_after(&headers("retry-after", "")?),
+        Some(Duration::ZERO),
+        "a blank seconds count reads as zero"
+    );
+    assert_eq!(
+        parse_retry_after(&headers("retry-after", "1.5")?),
+        Some(Duration::from_millis(1500)),
+        "the seconds count reads fractions"
+    );
+    assert_eq!(
+        parse_retry_after(&headers("retry-after", "1e308")?),
+        None,
+        "a count that overflows asks for no wait"
+    );
+    Ok(())
+}
+
 /// A date is read against the clock, so the test supplies one.
 #[test]
 fn a_server_delay_reads_an_http_date() -> Outcome {
@@ -254,6 +298,40 @@ fn every_field_is_checked() {
         ..RetryPolicy::default()
     };
     assert!(matches!(spent.validate(), Err(Error::Config(_))));
+}
+
+/// A rate-limit error carries the wait the server asked for, and the accessor
+/// reads it back out.
+#[test]
+fn a_rate_limit_error_names_the_wait() -> Outcome {
+    let waiting = headers("retry-after-ms", "125")?;
+    let error = ApiError {
+        status: 429,
+        headers: waiting.clone(),
+        body: None,
+        request_id: None,
+        endpoint: "GET https://api.typesafe.ai/v1/models".to_string(),
+        kind: ApiErrorKind::of(429, &waiting),
+    };
+    assert_eq!(
+        error.kind,
+        ApiErrorKind::RateLimit {
+            retry_after: Some(Duration::from_millis(125))
+        }
+    );
+    assert_eq!(error.retry_after(), Some(Duration::from_millis(125)));
+
+    let quiet = ApiError {
+        status: 429,
+        headers: HeaderMap::new(),
+        body: None,
+        request_id: None,
+        endpoint: "GET https://api.typesafe.ai/v1/models".to_string(),
+        kind: ApiErrorKind::of(429, &HeaderMap::new()),
+    };
+    assert_eq!(quiet.kind, ApiErrorKind::RateLimit { retry_after: None });
+    assert_eq!(quiet.retry_after(), None);
+    Ok(())
 }
 
 /// The policy carries a caller's closure, which has no reading of its own, so

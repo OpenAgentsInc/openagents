@@ -256,16 +256,20 @@ impl ApiError {
 
     /// The message the body carries, read the way both official SDKs read it.
     ///
-    /// A body that names no message falls back to the body itself, cut at 200
-    /// characters, and an empty body to a note that there was none.
+    /// An extracted message is returned as it stands, however long. A body
+    /// that names no message falls back to the body itself, cut at 200
+    /// characters, and an empty body or a JSON `null` to a note that there was
+    /// none.
     #[must_use]
     pub fn message(&self) -> String {
         match self.body.as_ref() {
+            // A body of `null` reads as no body, the way the Python SDK reads
+            // one.
+            Some(ResponseBody::Json(Value::Null)) | None => "status code (no body)".to_string(),
             Some(body) => match extract_message(body) {
-                Some(message) => message,
-                None => truncate(&body.to_string()),
+                Some(message) if !message.is_empty() => message,
+                _ => truncate(&body.to_string()),
             },
-            None => "status code (no body)".to_string(),
         }
     }
 
@@ -291,41 +295,44 @@ impl std::error::Error for ApiError {}
 /// The message a body names, in the order both official SDKs read: a text
 /// body, `error`, `error.message`, `message`, `detail`, `detail.message`, or a
 /// `detail` list rendered as `loc: msg` entries.
+///
+/// An extracted message is not cut: only the raw-body fallback is, the way
+/// both official SDKs cut it.
 fn extract_message(body: &ResponseBody) -> Option<String> {
     let value = match body {
         ResponseBody::Text(text) if text.is_empty() => return None,
-        ResponseBody::Text(text) => return Some(truncate(text)),
+        ResponseBody::Text(text) => return Some(text.clone()),
         // A body that is one JSON string is the message, the way both official
         // SDKs read a parsed body that turns out to be a string.
         ResponseBody::Json(Value::String(text)) if text.is_empty() => return None,
-        ResponseBody::Json(Value::String(text)) => return Some(truncate(text)),
+        ResponseBody::Json(Value::String(text)) => return Some(text.clone()),
         ResponseBody::Json(value) => value,
     };
     let object = value.as_object()?;
     if let Some(error) = object.get("error") {
         if let Some(text) = error.as_str() {
-            return Some(truncate(text));
+            return Some(text.to_string());
         }
         if let Some(text) = error.get("message").and_then(Value::as_str) {
-            return Some(truncate(text));
+            return Some(text.to_string());
         }
     }
     if let Some(text) = object.get("message").and_then(Value::as_str) {
-        return Some(truncate(text));
+        return Some(text.to_string());
     }
     let detail = object.get("detail")?;
     if let Some(text) = detail.as_str() {
-        return Some(truncate(text));
+        return Some(text.to_string());
     }
     if let Some(text) = detail.get("message").and_then(Value::as_str) {
-        return Some(truncate(text));
+        return Some(text.to_string());
     }
     let entries = detail.as_array()?;
     let rendered: Vec<String> = entries.iter().filter_map(describe_entry).collect();
     if rendered.is_empty() {
         None
     } else {
-        Some(truncate(&rendered.join("; ")))
+        Some(rendered.join("; "))
     }
 }
 

@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
@@ -30,6 +31,17 @@ struct Reply {
     headers: Vec<(&'static str, String)>,
     body: String,
     delay: Duration,
+    send: Delivery,
+}
+
+/// How much of the declared body the socket writes.
+enum Delivery {
+    /// The whole body, with an honest content length.
+    Full,
+    /// A content length longer than the body sent, then the socket closes.
+    Short(usize),
+    /// The head and the first bytes of the body, then nothing more.
+    Stalled(usize),
 }
 
 impl Reply {
@@ -40,6 +52,7 @@ impl Reply {
             headers: vec![("content-type", "application/json".to_string())],
             body: body.to_string(),
             delay: Duration::ZERO,
+            send: Delivery::Full,
         }
     }
 
@@ -52,6 +65,18 @@ impl Reply {
     /// The same reply, sent after a wait.
     fn after(mut self, delay: Duration) -> Self {
         self.delay = delay;
+        self
+    }
+
+    /// The same reply, promising a longer body than it sends before closing.
+    fn truncated(mut self) -> Self {
+        self.send = Delivery::Short(self.body.len() + 100);
+        self
+    }
+
+    /// The same reply, sending its head and a few body bytes then holding.
+    fn stalled(mut self) -> Self {
+        self.send = Delivery::Stalled(self.body.len() + 100);
         self
     }
 }
@@ -82,44 +107,94 @@ impl Seen {
 /// The server answers one request per reply and then stops listening, so a call
 /// that sends more requests than the script holds fails to connect.
 async fn serve(script: Vec<Reply>) -> Result<(String, Arc<Mutex<Vec<Seen>>>), std::io::Error> {
+    let replies = std::sync::Mutex::new(script.into_iter());
+    serve_with(move |_| {
+        replies
+            .lock()
+            .expect("the script lock is not poisoned")
+            .next()
+    })
+    .await
+}
+
+/// Answer each request with the reply the handler picks for it, and record
+/// what arrived. The server keeps listening, so it suits calls that run at
+/// the same time and calls whose reply depends on what they sent. A handler
+/// that answers `None` drops the connection unread.
+async fn serve_with(
+    handler: impl Fn(&Seen) -> Option<Reply> + Send + Sync + 'static,
+) -> Result<(String, Arc<Mutex<Vec<Seen>>>), std::io::Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let seen = Arc::new(Mutex::new(Vec::new()));
     let recording = Arc::clone(&seen);
+    let handler = Arc::new(handler);
     tokio::spawn(async move {
-        for reply in script {
+        loop {
             let Ok((mut socket, _)) = listener.accept().await else {
                 return;
             };
             let recording = Arc::clone(&recording);
+            let handler = Arc::clone(&handler);
             // Each connection is answered on its own, so a reply that waits
             // does not hold up the attempt that follows it.
             tokio::spawn(async move {
                 let Some(request) = read_request(&mut socket).await else {
                     return;
                 };
+                let Some(reply) = handler(&request) else {
+                    recording.lock().await.push(request);
+                    return;
+                };
                 recording.lock().await.push(request);
                 if !reply.delay.is_zero() {
                     tokio::time::sleep(reply.delay).await;
                 }
+                let (declared, sent, stall) = match &reply.send {
+                    Delivery::Full => (reply.body.len(), reply.body.as_str(), false),
+                    Delivery::Short(declared) => (*declared, reply.body.as_str(), false),
+                    Delivery::Stalled(declared) => {
+                        (*declared, &reply.body[..reply.body.len().min(8)], true)
+                    }
+                };
                 let mut head = format!(
                     "HTTP/1.1 {} Test\r\ncontent-length: {}\r\nconnection: close\r\n",
-                    reply.status,
-                    reply.body.len()
+                    reply.status, declared
                 );
                 for (name, value) in &reply.headers {
                     head.push_str(&format!("{name}: {value}\r\n"));
                 }
                 head.push_str("\r\n");
-                head.push_str(&reply.body);
+                head.push_str(sent);
                 // The caller may have stopped waiting, so a write that fails
                 // is the test's business rather than the server's.
                 let _ = socket.write_all(head.as_bytes()).await;
                 let _ = socket.flush().await;
+                if stall {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
             });
         }
     });
     Ok((base, seen))
+}
+
+/// Accept connections and drop each one unread, counting them.
+async fn drop_connections() -> Result<(String, Arc<AtomicUsize>), std::io::Error> {
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let base = format!("http://{}", listener.local_addr()?);
+    let hits = Arc::new(AtomicUsize::new(0));
+    let counting = Arc::clone(&hits);
+    tokio::spawn(async move {
+        loop {
+            let Ok((socket, _)) = listener.accept().await else {
+                return;
+            };
+            counting.fetch_add(1, Ordering::Relaxed);
+            drop(socket);
+        }
+    });
+    Ok((base, hits))
 }
 
 /// One request off the wire: its start line, its headers, and its body.
@@ -391,15 +466,18 @@ async fn extra_body_fields_are_merged_last() -> Outcome {
 #[tokio::test]
 async fn each_error_status_names_its_kind() -> Outcome {
     let cases = [
+        (302, ApiErrorKind::Other),
         (400, ApiErrorKind::BadRequest),
         (401, ApiErrorKind::Authentication),
         (403, ApiErrorKind::PermissionDenied),
         (404, ApiErrorKind::NotFound),
+        (408, ApiErrorKind::Other),
+        (409, ApiErrorKind::Other),
+        (418, ApiErrorKind::Other),
         (422, ApiErrorKind::UnprocessableEntity),
         (429, ApiErrorKind::RateLimit { retry_after: None }),
         (500, ApiErrorKind::InternalServer),
         (529, ApiErrorKind::InternalServer),
-        (418, ApiErrorKind::Other),
     ];
     for (status, kind) in cases {
         let body = json!({"error": {"message": format!("status {status}")}}).to_string();
@@ -475,17 +553,36 @@ async fn an_empty_body_says_there_was_none() -> Outcome {
     Ok(())
 }
 
-/// A message longer than 200 characters is cut, and the cut is marked.
+/// A message the SDK extracted is returned whole, however long. Only the
+/// raw-body fallback is cut, at 200 characters with the cut marked. Both
+/// official SDKs draw the line the same way.
 #[tokio::test]
-async fn a_long_body_is_cut_at_200_characters() -> Outcome {
+async fn a_long_message_is_whole_and_a_long_body_is_cut() -> Outcome {
     let long = "x".repeat(300);
     let (base, _) = serve(vec![Reply::new(400, &json!({"error": &long}).to_string())]).await?;
+    let Err(Error::Api(error)) = client(&base, once())?.system_one(asking()).await else {
+        unreachable!("a 400 raises an API error");
+    };
+    assert_eq!(error.message(), long, "an extracted message is not cut");
+
+    let unstructured = format!("{{\"unknown\":\"{long}\"}}");
+    let (base, _) = serve(vec![Reply::new(400, &unstructured)]).await?;
     let Err(Error::Api(error)) = client(&base, once())?.system_one(asking()).await else {
         unreachable!("a 400 raises an API error");
     };
     let message = error.message();
     assert_eq!(message.chars().count(), 201);
     assert!(message.ends_with('…'), "{message}");
+
+    let (base, _) = serve(vec![Reply::new(400, &"x".repeat(201))]).await?;
+    let Err(Error::Api(error)) = client(&base, once())?.system_one(asking()).await else {
+        unreachable!("a 400 raises an API error");
+    };
+    assert_eq!(
+        error.message().chars().count(),
+        201,
+        "a text body is the message, not a fallback"
+    );
     Ok(())
 }
 
@@ -679,7 +776,7 @@ async fn a_body_the_client_cannot_read_names_its_field() -> Outcome {
 async fn the_models_listing_reads_the_envelope() -> Outcome {
     let body = json!({"models": [
         {"name": "jev-latest", "description": "The current model", "release_date": "2026-09-01"},
-        {"name": "jev-1.12"},
+        {"name": "jev-1.12", "description": "The previous model", "release_date": "2026-06-15"},
     ]})
     .to_string();
     let (base, seen) = serve(vec![Reply::new(200, &body)]).await?;
@@ -688,7 +785,7 @@ async fn the_models_listing_reads_the_envelope() -> Outcome {
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].name, "jev-latest");
     assert_eq!(models[0].release_date, "2026-09-01");
-    assert_eq!(models[1].description, "");
+    assert_eq!(models[1].description, "The previous model");
     let seen = seen.lock().await;
     let request = seen.first().ok_or("the server read one request")?;
     assert_eq!(request.method, "GET");
@@ -802,5 +899,480 @@ fn the_body_a_caller_records_is_the_body_the_wire_carries() -> Outcome {
         .body("jev-latest")?;
     assert_eq!(body["model"], json!("jev-1.13.0"));
     assert_eq!(body["caller"], json!("a-test"));
+    Ok(())
+}
+
+/// The Python SDK's parametrized error-body cases: every shape names the same
+/// message and keeps the raw body it came from.
+#[tokio::test]
+async fn the_error_body_edge_cases_both_official_sdks_cover() -> Outcome {
+    let cases: Vec<(String, &str)> = vec![
+        (String::new(), "status code (no body)"),
+        ("null".to_string(), "status code (no body)"),
+        ("[]".to_string(), "[]"),
+        ("42".to_string(), "42"),
+        (r#""json string""#.to_string(), "json string"),
+        ("plain error text".to_string(), "plain error text"),
+        ("not json {".to_string(), "not json {"),
+        ("   ".to_string(), "   "),
+        (r#"{}"#.to_string(), "{}"),
+        (r#"{"foo":"bar"}"#.to_string(), r#"{"foo":"bar"}"#),
+        (r#"[1,2,3]"#.to_string(), "[1,2,3]"),
+        (
+            r#"{"detail":{"message":"detail.message wins"}}"#.to_string(),
+            "detail.message wins",
+        ),
+        (
+            r#"{"detail":[{"msg":"one"},{"msg":"two"}]}"#.to_string(),
+            "one; two",
+        ),
+        (
+            r#"{"detail":[{"loc":["body","questions","q"],"msg":"bad question"}]}"#.to_string(),
+            "questions.q: bad question",
+        ),
+        // A `detail` the extractor cannot read falls back to the body itself.
+        (
+            r#"{"detail":{"errors":[{"msg":"nested"}]}}"#.to_string(),
+            r#"{"detail":{"errors":[{"msg":"nested"}]}}"#,
+        ),
+        (r#"{"detail":null}"#.to_string(), r#"{"detail":null}"#),
+        (r#"{"detail":[]}"#.to_string(), r#"{"detail":[]}"#),
+        // An empty extracted message is no message: the body is the message.
+        (
+            r#"{"error":"","message":"ignored"}"#.to_string(),
+            r#"{"error":"","message":"ignored"}"#,
+        ),
+        (
+            r#"{"detail":[null,42,{"msg":4}]}"#.to_string(),
+            r#"{"detail":[null,42,{"msg":4}]}"#,
+        ),
+    ];
+    for (body, message) in cases {
+        let (base, _) = serve(vec![Reply::new(400, &body)]).await?;
+        let Err(Error::Api(error)) = client(&base, once())?.system_one(asking()).await else {
+            unreachable!("a 400 raises an API error");
+        };
+        assert_eq!(error.message(), message, "body {body}");
+        let kept = error.body.as_ref().map(ToString::to_string);
+        if body.is_empty() {
+            assert_eq!(kept, None, "an empty body stays empty");
+        } else {
+            assert_eq!(kept.as_deref(), Some(body.as_str()), "body {body}");
+        }
+    }
+    Ok(())
+}
+
+/// A rate limit names the wait the server asked for, and `retry_after` reads
+/// it from the error too.
+#[tokio::test]
+async fn a_rate_limit_names_the_wait_the_server_asked_for() -> Outcome {
+    let (base, _) = serve(vec![
+        Reply::new(429, r#"{"error":"slow down"}"#).header("retry-after-ms", "125"),
+    ])
+    .await?;
+    let Err(Error::Api(error)) = client(&base, once())?.system_one(asking()).await else {
+        unreachable!("a 429 raises an API error");
+    };
+    assert_eq!(
+        error.kind,
+        ApiErrorKind::RateLimit {
+            retry_after: Some(Duration::from_millis(125)),
+        }
+    );
+    assert_eq!(error.retry_after(), Some(Duration::from_millis(125)));
+    Ok(())
+}
+
+/// The endpoint an error names keeps the URL's path and drops its
+/// credentials, query, and fragment.
+#[tokio::test]
+async fn the_endpoint_names_the_path_and_omits_url_credentials() -> Outcome {
+    let (base, _) = serve(vec![Reply::new(400, r#"{"error":"nope"}"#)]).await?;
+
+    // A base URL carrying a path prefix and credentials: the wire requests
+    // keep the path, the error's endpoint drops the credentials.
+    let credentialed = base.replacen("http://", "http://user:password@", 1) + "/prefix";
+    let client = Client::new(
+        Config::new()
+            .api_key("k")
+            .base_url(&credentialed)
+            .retry(once()),
+    )?;
+    let Err(Error::Api(error)) = client.system_one(asking()).await else {
+        unreachable!("a 400 raises an API error");
+    };
+    assert!(!error.endpoint.contains("password"), "{}", error.endpoint);
+    assert!(
+        !error.endpoint.contains('?') && !error.endpoint.contains('#'),
+        "{}",
+        error.endpoint
+    );
+    assert!(
+        error.endpoint.ends_with("/prefix/v1/systemone"),
+        "{}",
+        error.endpoint
+    );
+    Ok(())
+}
+
+/// A models listing that cannot be read names the first field that broke,
+/// inside `models` or inside one card.
+#[tokio::test]
+async fn the_models_envelope_names_the_first_field_it_cannot_read() -> Outcome {
+    let cases: Vec<(String, &str)> = vec![
+        ("[]".to_string(), "models"),
+        (r#"{"models": null}"#.to_string(), "models"),
+        (r#"{"models": {}}"#.to_string(), "models"),
+        (r#"{"models": ["x"]}"#.to_string(), "models[0]"),
+        (
+            r#"{"models": [{"name": "m", "description": "d", "release_date": "r"}, 4]}"#
+                .to_string(),
+            "models[1]",
+        ),
+        (
+            r#"{"models": [{"description": "d", "release_date": "r"}]}"#.to_string(),
+            "models[0].name",
+        ),
+        (
+            r#"{"models": [{"name": "m", "release_date": "r"}]}"#.to_string(),
+            "models[0].description",
+        ),
+        (
+            r#"{"models": [{"name": "m", "description": "d", "release_date": 4}]}"#.to_string(),
+            "models[0].release_date",
+        ),
+    ];
+    for (body, field) in cases {
+        let (base, _) = serve(vec![Reply::new(200, &body)]).await?;
+        let Err(Error::ResponseValidation { field_path, .. }) = client(&base, once())?
+            .models()
+            .list(ListOptions::new())
+            .await
+        else {
+            unreachable!("a broken listing is a validation error: {body}");
+        };
+        assert_eq!(field_path, field, "body {body}");
+    }
+    Ok(())
+}
+
+/// A raw listing keeps the fields a card drops, and both shapes ride on one
+/// client.
+#[tokio::test]
+async fn the_models_raw_listing_keeps_what_the_card_drops() -> Outcome {
+    let body = json!({"models": [
+        {"name": "jev-latest", "description": "The current model", "release_date": "2026-09-01",
+         "context_window": 128_000},
+    ]})
+    .to_string();
+    let (base, _) = serve(vec![Reply::new(200, &body), Reply::new(200, &body)]).await?;
+    let client = client(&base, once())?;
+    let models = client.models().list(ListOptions::new()).await?;
+    assert_eq!(models[0].name, "jev-latest");
+    let raw = client.models().list_raw(ListOptions::new()).await?;
+    assert_eq!(raw.status, 200);
+    let parsed: serde_json::Value = serde_json::from_slice(&raw.bytes)?;
+    assert_eq!(parsed["models"][0]["context_window"], json!(128_000));
+    Ok(())
+}
+
+/// A body that stops halfway is a connection error, and the retry brings the
+/// call back.
+#[tokio::test]
+async fn a_body_that_breaks_mid_read_is_retried() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(200, RECORDED_RESPONSE).truncated(),
+        Reply::new(200, RECORDED_RESPONSE),
+    ])
+    .await?;
+    let response = client(&base, eager(2))?.system_one(asking()).await?;
+    assert_eq!(response.model, "jev-1.13.0");
+    let seen = seen.lock().await;
+    assert_eq!(seen.len(), 2, "the broken body was retried");
+    assert_eq!(seen[0].header("x-typesafe-retry-count"), None);
+    assert_eq!(seen[1].header("x-typesafe-retry-count"), Some("1"));
+    Ok(())
+}
+
+/// A body that never finishes is a timeout, and the error names the limit.
+#[tokio::test]
+async fn a_body_that_stalls_mid_read_times_out() -> Outcome {
+    let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE).stalled()]).await?;
+    let client = client(&base, once())?;
+    let Err(Error::Timeout { timeout }) = client
+        .system_one(asking().timeout(Duration::from_millis(60)))
+        .await
+    else {
+        unreachable!("a stalled body times out");
+    };
+    assert_eq!(timeout, Duration::from_millis(60));
+    assert_eq!(seen.lock().await.len(), 1, "nothing is retried under once");
+    Ok(())
+}
+
+/// A 204 carries no body, and the raw response says so plainly.
+#[tokio::test]
+async fn a_204_carries_no_body() -> Outcome {
+    let (base, _) = serve(vec![Reply::new(204, "")]).await?;
+    let raw = client(&base, once())?.system_one_raw(asking()).await?;
+    assert_eq!(raw.status().as_u16(), 204);
+    assert!(raw.bytes().await?.is_empty());
+    Ok(())
+}
+
+/// The last failure of an exhausted policy is the one returned, with the last
+/// attempt's request id.
+#[tokio::test]
+async fn the_last_failure_of_an_exhausted_policy_is_the_one_returned() -> Outcome {
+    let (base, _) = serve(vec![
+        Reply::new(429, r#"{"error":"first"}"#).header("x-typesafe-request-id", "req_01one"),
+        Reply::new(500, r#"{"error":"second"}"#).header("x-typesafe-request-id", "req_02two"),
+        Reply::new(503, r#"{"error":"third"}"#).header("x-typesafe-request-id", "req_03three"),
+    ])
+    .await?;
+    let Err(Error::Api(error)) = client(&base, eager(2))?.system_one(asking()).await else {
+        unreachable!("an exhausted policy returns an API error");
+    };
+    assert_eq!(error.status, 503);
+    assert_eq!(error.message(), "third");
+    assert_eq!(error.request_id.as_deref(), Some("req_03three"));
+    Ok(())
+}
+
+/// A connection error is retried like any retryable failure, and the last one
+/// is the one returned when the retries run out.
+#[tokio::test]
+async fn a_connection_error_is_retried_then_the_last_one_is_returned() -> Outcome {
+    let (base, hits) = drop_connections().await?;
+    let Err(Error::Connection { .. }) = client(&base, eager(2))?.system_one(asking()).await else {
+        unreachable!("a dropped connection is a connection error");
+    };
+    assert_eq!(
+        hits.load(Ordering::Relaxed),
+        3,
+        "one attempt plus two retries"
+    );
+    Ok(())
+}
+
+/// A policy with no backoff still retries; the retry count marks the attempt.
+#[tokio::test]
+async fn zero_backoff_still_retries() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(503, r#"{"error":"down"}"#),
+        Reply::new(200, RECORDED_RESPONSE),
+    ])
+    .await?;
+    let policy = RetryPolicy {
+        max_retries: 1,
+        backoff_initial: Duration::ZERO,
+        backoff_max: Duration::ZERO,
+        backoff_jitter: 0.0,
+        ..RetryPolicy::default()
+    };
+    let response = client(&base, policy)?.system_one(asking()).await?;
+    assert_eq!(response.model, "jev-1.13.0");
+    let seen = seen.lock().await;
+    assert_eq!(seen[0].header("x-typesafe-retry-count"), None);
+    assert_eq!(seen[1].header("x-typesafe-retry-count"), Some("1"));
+    Ok(())
+}
+
+/// Every attempt carries the count of the retries before it.
+#[tokio::test]
+async fn the_retry_count_names_every_attempt() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(503, "{}"),
+        Reply::new(503, "{}"),
+        Reply::new(503, "{}"),
+    ])
+    .await?;
+    let Err(Error::Api(error)) = client(&base, eager(2))?.system_one(asking()).await else {
+        unreachable!("an exhausted policy returns an API error");
+    };
+    assert_eq!(error.status, 503);
+    let seen = seen.lock().await;
+    assert_eq!(seen.len(), 3);
+    assert_eq!(seen[0].header("x-typesafe-retry-count"), None);
+    assert_eq!(seen[1].header("x-typesafe-retry-count"), Some("1"));
+    assert_eq!(seen[2].header("x-typesafe-retry-count"), Some("2"));
+    Ok(())
+}
+
+/// A per-call retry policy retries only the statuses it names, beside calls
+/// that keep the client's policy.
+#[tokio::test]
+async fn a_call_policy_retries_only_the_statuses_it_names() -> Outcome {
+    let busy = r#"{"error":"busy"}"#;
+    let (base, seen) = serve_with(move |request| {
+        let status = if request.header("x-call") == Some("override") {
+            409
+        } else {
+            429
+        };
+        Some(Reply::new(status, busy).header("retry-after-ms", "0"))
+    })
+    .await?;
+    let call_policy = RetryPolicy {
+        max_retries: 2,
+        http_statuses: [409].into_iter().collect(),
+        backoff_initial: Duration::ZERO,
+        backoff_max: Duration::ZERO,
+        backoff_jitter: 0.0,
+        ..RetryPolicy::default()
+    };
+    let client = client(
+        &base,
+        RetryPolicy {
+            max_retries: 1,
+            backoff_initial: Duration::ZERO,
+            backoff_max: Duration::ZERO,
+            backoff_jitter: 0.0,
+            ..RetryPolicy::default()
+        },
+    )?;
+    let mut headers = HeaderMap::new();
+    headers.insert("x-call", HeaderValue::from_static("override"));
+    let override_call = asking().retry(call_policy).headers(headers.clone());
+    let mut inherited = HeaderMap::new();
+    inherited.insert("x-call", HeaderValue::from_static("inherited"));
+
+    let _ = client.system_one(override_call.clone()).await;
+    let _ = client.system_one(asking().headers(inherited)).await;
+    let _ = client.system_one(override_call).await;
+
+    let seen = seen.lock().await;
+    let count = |name: &str| {
+        seen.iter()
+            .filter(|request| request.header("x-call") == Some(name))
+            .count()
+    };
+    assert_eq!(count("override"), 6, "two calls at three attempts each");
+    assert_eq!(count("inherited"), 2, "one call at two attempts");
+    for request in seen.iter() {
+        if request.header("x-call") == Some("override") {
+            continue;
+        }
+        // The inherited call saw 429s and retried under the client's policy.
+        assert_eq!(request.target, "/v1/systemone");
+    }
+    Ok(())
+}
+
+/// A caller-supplied reqwest client's default headers merge in, but the SDK's
+/// own headers still win.
+#[tokio::test]
+async fn a_supplied_http_client_cannot_override_the_sdk_headers() -> Outcome {
+    let mut defaults = HeaderMap::new();
+    defaults.insert("authorization", HeaderValue::from_static("Bearer wrong"));
+    defaults.insert("accept", HeaderValue::from_static("text/plain"));
+    defaults.insert("x-http-default", HeaderValue::from_static("kept"));
+    let http = reqwest::Client::builder()
+        .default_headers(defaults)
+        .build()?;
+    let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;
+    let client = Client::new(
+        Config::new()
+            .api_key("ts-test-key")
+            .base_url(&base)
+            .retry(once())
+            .http_client(http),
+    )?;
+    client.system_one(asking()).await?;
+    let seen = seen.lock().await;
+    let request = seen.first().ok_or("the server read one request")?;
+    assert_eq!(
+        request.header("authorization"),
+        Some("Bearer ts-test-key"),
+        "the SDK's credential wins over the client's default"
+    );
+    assert_eq!(request.header("accept"), Some("application/json"));
+    assert_eq!(
+        request.header("x-http-default"),
+        Some("kept"),
+        "an unrelated client default reaches the wire"
+    );
+    Ok(())
+}
+
+/// A call the caller abandons sends no retry.
+#[tokio::test]
+async fn an_aborted_call_sends_no_retry() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(429, "{}").header("retry-after-ms", "200"),
+        Reply::new(200, RECORDED_RESPONSE),
+    ])
+    .await?;
+    let client = client(&base, eager(2))?;
+    let mut call = Box::pin(client.system_one(asking()));
+    tokio::select! {
+        _ = &mut call => unreachable!("the first reply was a 429"),
+        _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+    }
+    drop(call);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        seen.lock().await.len(),
+        1,
+        "dropping the call cancels the retry"
+    );
+    Ok(())
+}
+
+/// Array and null entries reach the wire in state and in instructions, the
+/// way the official SDKs send them.
+#[tokio::test]
+async fn array_and_null_entries_reach_the_wire() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(200, RECORDED_RESPONSE),
+        Reply::new(200, RECORDED_RESPONSE),
+    ])
+    .await?;
+    let client = client(&base, once())?;
+
+    let array = SystemOneRequest::new(
+        json!(["part one", "part two"]),
+        Questions::new().with(
+            "q",
+            Noul::new(json!(["Is this two parts?", {"note": "yes it is"}])),
+        ),
+    );
+    client.system_one(array).await?;
+
+    let null = SystemOneRequest::new(Entry::Null, Questions::new().with("q", Noul::new("x?")));
+    client.system_one(null).await?;
+
+    let seen = seen.lock().await;
+    let first = seen[0].json()?;
+    assert_eq!(first["state"], json!(["part one", "part two"]));
+    assert_eq!(
+        first["questions"]["q"]["instructions"],
+        json!(["Is this two parts?", {"note": "yes it is"}])
+    );
+    let second = seen[1].json()?;
+    assert_eq!(second["state"], serde_json::Value::Null);
+    Ok(())
+}
+
+/// An extra body keeps nulls and nested values, and the shallow merge lets it
+/// replace the fields the request built.
+#[tokio::test]
+async fn extra_body_keeps_nulls_and_replaces_shallow_fields() -> Outcome {
+    let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;
+    let request = asking().extra_body(serde_json::Map::from_iter([
+        ("model".to_string(), json!("jev-override")),
+        ("state".to_string(), serde_json::Value::Null),
+        ("future_option".to_string(), serde_json::Value::Null),
+        ("nested".to_string(), json!({"enabled": true})),
+    ]));
+    client(&base, once())?.system_one(request).await?;
+    let seen = seen.lock().await;
+    let body = seen[0].json()?;
+    assert_eq!(body["model"], json!("jev-override"));
+    assert_eq!(body["state"], serde_json::Value::Null);
+    assert_eq!(body["future_option"], serde_json::Value::Null);
+    assert_eq!(body["nested"], json!({"enabled": true}));
+    assert_eq!(body["questions"]["refund"]["type"], json!("noul"));
     Ok(())
 }

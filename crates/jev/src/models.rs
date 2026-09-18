@@ -78,22 +78,61 @@ impl<'a> Models<'a> {
     ///
     /// Returns the same errors as [`Client::system_one`], and
     /// [`Error::ResponseValidation`] when the body does not carry a list of
-    /// models.
+    /// models, naming the field at fault the way the Python SDK does:
+    /// `models`, or `models[i].field` for one card.
     pub async fn list(&self, options: ListOptions) -> Result<Vec<ModelCard>> {
         let raw = self.client.list_models(options).await?;
-        let envelope: Envelope =
-            serde_json::from_slice(&raw.bytes).map_err(|_| Error::ResponseValidation {
-                status: raw.status,
-                field_path: "models".to_string(),
-                body: raw.body().map(Box::new),
-                request_id: raw.request_id().map(str::to_string),
-            })?;
-        Ok(envelope.models)
+        let body: serde_json::Value =
+            serde_json::from_slice(&raw.bytes).map_err(|_| invalid(&raw, "models"))?;
+        let cards = body
+            .get("models")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| invalid(&raw, "models"))?;
+        cards
+            .iter()
+            .enumerate()
+            .map(|(at, card)| read_card(&raw, at, card))
+            .collect()
+    }
+
+    /// List the models the account can ask, handing back the response unread,
+    /// the way `models.list().asResponse()` does in the JavaScript SDK and
+    /// `raw_http_response` does in the Python SDK.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Models::list`], other than
+    /// [`Error::ResponseValidation`].
+    pub async fn list_raw(&self, options: ListOptions) -> Result<crate::RawResponse> {
+        self.client.list_models(options).await
     }
 }
 
-/// The body `GET /v1/models` returns.
-#[derive(Deserialize)]
-struct Envelope {
-    models: Vec<ModelCard>,
+/// One card of the listing, or the field that stopped it.
+fn read_card(raw: &crate::RawResponse, at: usize, card: &serde_json::Value) -> Result<ModelCard> {
+    let object = card
+        .as_object()
+        .ok_or_else(|| invalid(raw, format!("models[{at}]")))?;
+    let read = |field: &str| {
+        object
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| invalid(raw, format!("models[{at}].{field}")))
+    };
+    Ok(ModelCard {
+        name: read("name")?,
+        description: read("description")?,
+        release_date: read("release_date")?,
+    })
+}
+
+/// The error a body that is not a model listing raises.
+fn invalid(raw: &crate::RawResponse, field_path: impl Into<String>) -> Error {
+    Error::ResponseValidation {
+        status: raw.status,
+        field_path: field_path.into(),
+        body: raw.body().map(Box::new),
+        request_id: raw.request_id().map(str::to_string),
+    }
 }

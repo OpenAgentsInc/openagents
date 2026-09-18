@@ -246,6 +246,66 @@ fn a_question_written_out_as_json_names_a_type_and_its_criteria() {
     assert!(sound.validate().is_ok());
 }
 
+/// The Python SDK's list of question dictionaries it refuses before a
+/// request: no type, an empty type, a type that is not a string, and a Choice
+/// or Score without criteria.
+#[test]
+fn a_question_written_out_as_json_fails_the_checks_the_python_sdk_runs() {
+    let invalid = [
+        json!({}),
+        json!({"instructions": "?"}),
+        json!({"type": ""}),
+        json!({"type": null}),
+        json!({"type": 1}),
+        json!({"type": ["future"]}),
+        json!("noul"),
+        json!({"type": "choice"}),
+        json!({"type": "score"}),
+        json!({"type": "score", "criteria": []}),
+        json!({"type": "score", "criteria": {"a": 1, "b": 2}}),
+    ];
+    for body in invalid {
+        let set = Questions::new().with("odd", Question::Raw(body.clone()));
+        assert!(
+            matches!(set.validate(), Err(Error::Question { .. })),
+            "{body} fails its checks"
+        );
+    }
+}
+
+/// What the checks do not know is left to the API: a type the SDK does not
+/// name, extra fields, and a criteria shape only the API judges.
+#[test]
+fn a_question_the_checks_do_not_know_is_left_to_the_api() -> Outcome {
+    let passthrough = [
+        json!({"type": "noul", "instructions": null, "weight": 3, "nested": {"k": null}}),
+        json!({"type": "choice", "criteria": {"a": null}, "weight": 2}),
+        json!({"type": "future-type", "instructions": "?"}),
+        json!({"type": "choice", "criteria": ["a"]}),
+    ];
+    for body in passthrough {
+        let set = Questions::new().with("odd", Question::Raw(body.clone()));
+        set.validate()?;
+        assert_eq!(
+            serde_json::to_value(&set)?["odd"],
+            body,
+            "sent as it stands"
+        );
+    }
+    Ok(())
+}
+
+/// A Noul with criteria but no descriptions sends an empty criteria object.
+#[test]
+fn an_empty_noul_criteria_sends_an_empty_object() -> Outcome {
+    let question = Noul::with_criteria("Is it urgent?", NoulCriteria::new());
+    assert_eq!(
+        serde_json::to_value(&question)?,
+        json!({"type": "noul", "instructions": "Is it urgent?", "criteria": {}})
+    );
+    Ok(())
+}
+
 /// The error names the question and never the whole set, so a log line says
 /// which question to fix.
 #[test]

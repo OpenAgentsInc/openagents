@@ -246,8 +246,9 @@ impl Client {
     /// [`Error::Timeout`] when the call fails after its retries, and
     /// [`Error::ResponseValidation`] when the answers do not read.
     pub async fn system_one(&self, request: SystemOneRequest) -> Result<SystemOneResponse> {
-        let response = self.system_one_raw(request).await?;
-        SystemOneResponse::decode(RawResponse::read(response).await?)
+        let prepared = self.prepare_system_one(&request)?;
+        let raw = self.send_read(&prepared).await?;
+        SystemOneResponse::decode(raw)
     }
 
     /// Ask questions about one state and hand back the response unread, for a
@@ -258,18 +259,24 @@ impl Client {
     /// Returns the same errors as [`Client::system_one`], other than
     /// [`Error::ResponseValidation`].
     pub async fn system_one_raw(&self, request: SystemOneRequest) -> Result<reqwest::Response> {
+        let prepared = self.prepare_system_one(&request)?;
+        self.send(&prepared).await
+    }
+
+    /// Everything one `POST /v1/systemone` call sends, before its first
+    /// attempt.
+    fn prepare_system_one(&self, request: &SystemOneRequest) -> Result<Prepared> {
         let body = request.body(&self.inner.default_model)?;
         let encoded = serde_json::to_vec(&Value::Object(body))
             .map_err(|error| Error::Config(format!("the request body is not JSON: {error}")))?;
-        let prepared = self.prepare(
+        self.prepare(
             Method::POST,
             SYSTEM_ONE_PATH,
             Some(encoded),
             &request.headers,
             request.timeout,
-            request.retry,
-        )?;
-        self.send(&prepared).await
+            request.retry.clone(),
+        )
     }
 
     /// One `GET /v1/models`, read into bytes.
@@ -282,7 +289,7 @@ impl Client {
             options.timeout,
             options.retry,
         )?;
-        RawResponse::read(self.send(&prepared).await?).await
+        self.send_read(&prepared).await
     }
 
     /// Everything one call sends, before its first attempt.
@@ -317,7 +324,7 @@ impl Client {
         Ok(Prepared {
             tag: self.inner.requests.fetch_add(1, Ordering::Relaxed) + 1,
             url: format!("{}{path}", self.inner.base_url),
-            endpoint: format!("{method} {}{path}", self.inner.base_url),
+            endpoint: format!("{method} {}{path}", endpoint_of(&self.inner.base_url)),
             method,
             body,
             headers,
@@ -328,17 +335,32 @@ impl Client {
 
     /// One call: the first attempt and every retry the policy allows.
     async fn send(&self, prepared: &Prepared) -> Result<reqwest::Response> {
+        self.send_with(prepared, Client::attempt).await
+    }
+
+    /// One call whose body is read inside each attempt, so a body that stalls
+    /// or breaks is retried the way both official SDKs retry one.
+    async fn send_read(&self, prepared: &Prepared) -> Result<RawResponse> {
+        self.send_with(prepared, Client::attempt_read).await
+    }
+
+    /// The retry loop both send paths share.
+    async fn send_with<T>(
+        &self,
+        prepared: &Prepared,
+        attempt: impl AsyncFn(&Client, &Prepared, u32) -> std::result::Result<T, Failed>,
+    ) -> Result<T> {
         let started = Instant::now();
-        let mut attempt: u32 = 0;
+        let mut attempt_no: u32 = 0;
         loop {
-            match self.attempt(prepared, attempt).await {
-                Ok(response) => return Ok(response),
+            match attempt(self, prepared, attempt_no).await {
+                Ok(done) => return Ok(done),
                 Err(failed) => {
-                    let retries_left = prepared.retry.max_retries.saturating_sub(attempt);
+                    let retries_left = prepared.retry.max_retries.saturating_sub(attempt_no);
                     if retries_left == 0 || !prepared.retry.retries_error(&failed.error) {
                         return Err(failed.error);
                     }
-                    let delay = prepared.retry.delay(attempt, failed.headers.as_ref());
+                    let delay = prepared.retry.delay(attempt_no, failed.headers.as_ref());
                     if let Some(budget) = prepared.retry.budget
                         && started.elapsed().saturating_add(delay) >= budget
                     {
@@ -353,15 +375,50 @@ impl Client {
                     tracing::info!(
                         target: "jev",
                         request = prepared.tag,
-                        retry = attempt + 1,
+                        retry = attempt_no + 1,
                         of = prepared.retry.max_retries,
                         delay_ms = delay.as_millis(),
                         reason = %failed.error,
                         "waiting before the next attempt"
                     );
                     tokio::time::sleep(delay).await;
-                    attempt += 1;
+                    attempt_no += 1;
                 }
+            }
+        }
+    }
+
+    /// One HTTP round trip under one timeout, with the body read inside the
+    /// timeout as well. A body that breaks is a connection failure the policy
+    /// can retry.
+    async fn attempt_read(
+        &self,
+        prepared: &Prepared,
+        attempt: u32,
+    ) -> std::result::Result<RawResponse, Failed> {
+        let response = self.attempt(prepared, attempt).await?;
+        let status = response.status().as_u16();
+        let headers = response.headers().clone();
+        match response.bytes().await {
+            Ok(bytes) => Ok(RawResponse {
+                status,
+                headers,
+                bytes: bytes.to_vec(),
+            }),
+            Err(source) => {
+                // A body that stalls past the timeout is a timeout, the way
+                // the Python SDK names a read timeout.
+                let error = if source.is_timeout() {
+                    Error::Timeout {
+                        timeout: prepared.timeout,
+                    }
+                } else {
+                    Error::connection(source)
+                };
+                Err(Failed {
+                    error,
+                    headers: Some(headers),
+                })
             }
         }
     }
@@ -456,6 +513,7 @@ impl Client {
             target: "jev",
             request = prepared.tag,
             status = status.as_u16(),
+            headers = %transport::redact(&headers),
             body = %String::from_utf8_lossy(&bytes),
             "the failed response carried this body"
         );
@@ -517,6 +575,20 @@ impl RawResponse {
             bytes,
         })
     }
+}
+
+/// The base URL as an error's endpoint names it: the credentials, the query,
+/// and the fragment dropped, the way the Python SDK writes a request's URL.
+fn endpoint_of(base_url: &str) -> String {
+    let mut parsed = match url::Url::parse(base_url) {
+        Ok(parsed) => parsed,
+        Err(_) => return base_url.to_string(),
+    };
+    let _ = parsed.set_username("");
+    let _ = parsed.set_password(None);
+    parsed.set_query(None);
+    parsed.set_fragment(None);
+    parsed.to_string().trim_end_matches('/').to_string()
 }
 
 /// The request id one response carries.

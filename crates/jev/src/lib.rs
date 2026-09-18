@@ -103,6 +103,7 @@
 //! let _ = ApiKey::new::<&str>;
 //! let _ = ApiKey::expose;
 //! let _ = Models::list;
+//! let _ = Models::list_raw;
 //! let _ = ListOptions::new;
 //! let _ = ListOptions::retry;
 //! let _ = ListOptions::timeout;
