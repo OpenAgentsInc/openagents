@@ -1,0 +1,16 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"

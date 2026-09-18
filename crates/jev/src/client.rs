@@ -1,0 +1,591 @@
+//! The client, the request it sends, and the loop that retries one.
+//!
+//! One attempt is one HTTP round trip under one timeout. A failure the policy
+//! retries waits and runs again, and the wait is the policy's own unless the
+//! server asked for a longer one. Every attempt and every retry is one `info`
+//! line under the `jev` target.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::{Method, StatusCode};
+use serde_json::{Map, Value};
+
+use crate::Result;
+use crate::answers::{RawResponse, SystemOneResponse};
+use crate::config::{ApiKey, Config};
+use crate::error::{ApiError, Error, REQUEST_ID_HEADER};
+use crate::models::{ListOptions, Models};
+use crate::questions::{Entry, Questions};
+use crate::retry::{RETRY_COUNT_HEADER, RetryPolicy};
+use crate::transport;
+
+/// The route that answers questions.
+const SYSTEM_ONE_PATH: &str = "/v1/systemone";
+
+/// The route that lists models.
+const MODELS_PATH: &str = "/v1/models";
+
+/// One state, the questions to ask about it, and what this call overrides.
+///
+/// ```
+/// use jev::{Noul, Questions, SystemOneRequest};
+///
+/// let request = SystemOneRequest::new(
+///     "I was charged twice for one order.",
+///     Questions::new().with("billing", Noul::new("Is this about a charge?")),
+/// )
+/// .model("jev-latest");
+/// ```
+#[derive(Debug, Clone)]
+pub struct SystemOneRequest {
+    /// The state every question reads. One state, not a batch.
+    pub state: Entry,
+    /// The questions to ask.
+    pub questions: Questions,
+    /// The model to ask, or the client's default.
+    pub model: Option<String>,
+    /// The policy to retry this call by, or the client's own.
+    pub retry: Option<RetryPolicy>,
+    /// The timeout each attempt of this call takes, or the client's own.
+    pub timeout: Option<Duration>,
+    /// Headers this call adds.
+    pub headers: HeaderMap,
+    /// Fields to merge into the body last, for a field the API takes and this
+    /// crate does not model. A field here replaces one the SDK wrote.
+    pub extra_body: Map<String, Value>,
+}
+
+impl SystemOneRequest {
+    /// Ask questions about one state.
+    #[must_use]
+    pub fn new<E: Into<Entry>>(state: E, questions: Questions) -> Self {
+        Self {
+            state: state.into(),
+            questions,
+            model: None,
+            retry: None,
+            timeout: None,
+            headers: HeaderMap::new(),
+            extra_body: Map::new(),
+        }
+    }
+
+    /// Ask another model than the client's default.
+    #[must_use]
+    pub fn model<M: Into<String>>(mut self, model: M) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    /// Retry this call by another policy.
+    ///
+    /// The policy replaces the client's. Build one over the client's own with
+    /// struct update syntax when you mean to change one field:
+    /// `RetryPolicy { max_retries: 0, ..client.retry().clone() }`.
+    #[must_use]
+    pub fn retry(mut self, retry: RetryPolicy) -> Self {
+        self.retry = Some(retry);
+        self
+    }
+
+    /// Give each attempt of this call another timeout.
+    #[must_use]
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    /// Add headers to this call.
+    #[must_use]
+    pub fn headers(mut self, headers: HeaderMap) -> Self {
+        self.headers = headers;
+        self
+    }
+
+    /// Merge fields into the body last.
+    #[must_use]
+    pub fn extra_body(mut self, extra: Map<String, Value>) -> Self {
+        self.extra_body = extra;
+        self
+    }
+
+    /// The body one call of this request sends, with `default_model` where
+    /// the request names no model of its own. Nothing goes out: a caller
+    /// that records the exchange reads it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Question`] when the question set fails its checks and
+    /// [`Error::Config`] when the questions do not serialize.
+    pub fn body(&self, default_model: &str) -> Result<Map<String, Value>> {
+        self.questions.validate()?;
+        let mut body = Map::new();
+        body.insert("state".to_string(), self.state.to_value());
+        body.insert(
+            "model".to_string(),
+            Value::String(
+                self.model
+                    .clone()
+                    .unwrap_or_else(|| default_model.to_string()),
+            ),
+        );
+        body.insert(
+            "questions".to_string(),
+            serde_json::to_value(&self.questions)
+                .map_err(|error| Error::Config(format!("the questions are not JSON: {error}")))?,
+        );
+        for (name, value) in &self.extra_body {
+            body.insert(name.clone(), value.clone());
+        }
+        Ok(body)
+    }
+}
+
+/// A client for TypeSafe's System One API.
+///
+/// The client is cheap to clone and holds one HTTP connection pool, so build
+/// one and share it.
+#[derive(Debug, Clone)]
+pub struct Client {
+    inner: Arc<Inner>,
+}
+
+/// What every request reads, behind one allocation.
+#[derive(Debug)]
+struct Inner {
+    api_key: ApiKey,
+    base_url: String,
+    default_model: String,
+    timeout: Duration,
+    retry: RetryPolicy,
+    default_headers: HeaderMap,
+    http: reqwest::Client,
+    requests: AtomicU64,
+}
+
+impl Client {
+    /// Build a client from settings, filling in what they leave out from the
+    /// environment and the defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Config`] when no key is set, the base URL is not an
+    /// http or https URL, the timeout is zero, or a retry field is out of
+    /// range.
+    pub fn new(config: Config) -> Result<Self> {
+        let resolved = config.resolve()?;
+        Ok(Self {
+            inner: Arc::new(Inner {
+                api_key: resolved.api_key,
+                base_url: resolved.base_url,
+                default_model: resolved.default_model,
+                timeout: resolved.timeout,
+                retry: resolved.retry,
+                default_headers: resolved.default_headers,
+                http: resolved.http,
+                requests: AtomicU64::new(0),
+            }),
+        })
+    }
+
+    /// Build a client from the environment and the defaults alone.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Client::new`].
+    pub fn from_env() -> Result<Self> {
+        Self::new(Config::new())
+    }
+
+    /// The API root, with trailing slashes dropped.
+    #[must_use]
+    pub fn base_url(&self) -> &str {
+        &self.inner.base_url
+    }
+
+    /// The model a request that names none asks.
+    #[must_use]
+    pub fn default_model(&self) -> &str {
+        &self.inner.default_model
+    }
+
+    /// How long one attempt may take.
+    #[must_use]
+    pub fn timeout(&self) -> Duration {
+        self.inner.timeout
+    }
+
+    /// What the client retries and how long it waits.
+    #[must_use]
+    pub fn retry(&self) -> &RetryPolicy {
+        &self.inner.retry
+    }
+
+    /// The headers every request carries, before the ones the API reads to
+    /// identify it.
+    #[must_use]
+    pub fn default_headers(&self) -> &HeaderMap {
+        &self.inner.default_headers
+    }
+
+    /// The models the account can ask.
+    #[must_use]
+    pub fn models(&self) -> Models<'_> {
+        Models::new(self)
+    }
+
+    /// Ask questions about one state and read the answers.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Question`] when the question set fails its checks,
+    /// before any request. Returns [`Error::Api`], [`Error::Connection`], or
+    /// [`Error::Timeout`] when the call fails after its retries, and
+    /// [`Error::ResponseValidation`] when the answers do not read.
+    pub async fn system_one(&self, request: SystemOneRequest) -> Result<SystemOneResponse> {
+        let response = self.system_one_raw(request).await?;
+        SystemOneResponse::decode(RawResponse::read(response).await?)
+    }
+
+    /// Ask questions about one state and hand back the response unread, for a
+    /// caller that wants the bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Client::system_one`], other than
+    /// [`Error::ResponseValidation`].
+    pub async fn system_one_raw(&self, request: SystemOneRequest) -> Result<reqwest::Response> {
+        let body = request.body(&self.inner.default_model)?;
+        let encoded = serde_json::to_vec(&Value::Object(body))
+            .map_err(|error| Error::Config(format!("the request body is not JSON: {error}")))?;
+        let prepared = self.prepare(
+            Method::POST,
+            SYSTEM_ONE_PATH,
+            Some(encoded),
+            &request.headers,
+            request.timeout,
+            request.retry,
+        )?;
+        self.send(&prepared).await
+    }
+
+    /// One `GET /v1/models`, read into bytes.
+    pub(crate) async fn list_models(&self, options: ListOptions) -> Result<RawResponse> {
+        let prepared = self.prepare(
+            Method::GET,
+            MODELS_PATH,
+            None,
+            &options.headers,
+            options.timeout,
+            options.retry,
+        )?;
+        RawResponse::read(self.send(&prepared).await?).await
+    }
+
+    /// Everything one call sends, before its first attempt.
+    fn prepare(
+        &self,
+        method: Method,
+        path: &'static str,
+        body: Option<Vec<u8>>,
+        headers: &HeaderMap,
+        timeout: Option<Duration>,
+        retry: Option<RetryPolicy>,
+    ) -> Result<Prepared> {
+        let timeout = timeout.unwrap_or(self.inner.timeout);
+        if timeout.is_zero() {
+            return Err(Error::Config(
+                "`timeout` must be a positive duration".to_string(),
+            ));
+        }
+        let retry = match retry {
+            Some(retry) => {
+                retry.validate()?;
+                retry
+            }
+            None => self.inner.retry.clone(),
+        };
+        let headers = transport::headers(
+            &self.inner.default_headers,
+            headers,
+            &self.inner.api_key,
+            body.is_some(),
+        )?;
+        Ok(Prepared {
+            tag: self.inner.requests.fetch_add(1, Ordering::Relaxed) + 1,
+            url: format!("{}{path}", self.inner.base_url),
+            endpoint: format!("{method} {}{path}", self.inner.base_url),
+            method,
+            body,
+            headers,
+            timeout,
+            retry,
+        })
+    }
+
+    /// One call: the first attempt and every retry the policy allows.
+    async fn send(&self, prepared: &Prepared) -> Result<reqwest::Response> {
+        let started = Instant::now();
+        let mut attempt: u32 = 0;
+        loop {
+            match self.attempt(prepared, attempt).await {
+                Ok(response) => return Ok(response),
+                Err(failed) => {
+                    let retries_left = prepared.retry.max_retries.saturating_sub(attempt);
+                    if retries_left == 0 || !prepared.retry.retries_error(&failed.error) {
+                        return Err(failed.error);
+                    }
+                    let delay = prepared.retry.delay(attempt, failed.headers.as_ref());
+                    if let Some(budget) = prepared.retry.budget
+                        && started.elapsed().saturating_add(delay) >= budget
+                    {
+                        tracing::info!(
+                            target: "jev",
+                            request = prepared.tag,
+                            budget_ms = budget.as_millis(),
+                            "the retry budget is spent; returning the last failure"
+                        );
+                        return Err(failed.error);
+                    }
+                    tracing::info!(
+                        target: "jev",
+                        request = prepared.tag,
+                        retry = attempt + 1,
+                        of = prepared.retry.max_retries,
+                        delay_ms = delay.as_millis(),
+                        reason = %failed.error,
+                        "waiting before the next attempt"
+                    );
+                    tokio::time::sleep(delay).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+
+    /// One HTTP round trip under one timeout.
+    async fn attempt(
+        &self,
+        prepared: &Prepared,
+        attempt: u32,
+    ) -> std::result::Result<reqwest::Response, Failed> {
+        let mut headers = prepared.headers.clone();
+        if attempt > 0 {
+            headers.insert(RETRY_COUNT_HEADER, HeaderValue::from(attempt));
+        }
+        tracing::debug!(
+            target: "jev",
+            request = prepared.tag,
+            method = %prepared.method,
+            url = %prepared.url,
+            headers = %transport::redact(&headers),
+            body = %prepared.body_text(),
+            "sending an attempt"
+        );
+        let mut builder = self
+            .inner
+            .http
+            .request(prepared.method.clone(), &prepared.url)
+            .headers(headers)
+            .timeout(prepared.timeout);
+        if let Some(body) = prepared.body.clone() {
+            builder = builder.body(body);
+        }
+        let began = Instant::now();
+        let response = match builder.send().await {
+            Ok(response) => response,
+            Err(error) => {
+                let timed_out = error.is_timeout();
+                let failure = if timed_out {
+                    Error::Timeout {
+                        timeout: prepared.timeout,
+                    }
+                } else {
+                    Error::connection(error)
+                };
+                tracing::info!(
+                    target: "jev",
+                    request = prepared.tag,
+                    method = %prepared.method,
+                    url = %prepared.url,
+                    elapsed_ms = began.elapsed().as_millis(),
+                    reason = %failure,
+                    "the attempt did not reach the API"
+                );
+                return Err(Failed {
+                    error: failure,
+                    headers: None,
+                });
+            }
+        };
+        let status = response.status();
+        tracing::info!(
+            target: "jev",
+            request = prepared.tag,
+            method = %prepared.method,
+            url = %prepared.url,
+            status = status.as_u16(),
+            elapsed_ms = began.elapsed().as_millis(),
+            request_id = request_id(response.headers()).unwrap_or("-"),
+            "the API answered"
+        );
+        if status.is_success() {
+            return Ok(response);
+        }
+        Err(self.failure(prepared, status, response).await)
+    }
+
+    /// The error one failed response raises, with its body read.
+    async fn failure(
+        &self,
+        prepared: &Prepared,
+        status: StatusCode,
+        response: reqwest::Response,
+    ) -> Failed {
+        let headers = response.headers().clone();
+        let bytes = response
+            .bytes()
+            .await
+            .map(|bytes| bytes.to_vec())
+            .unwrap_or_default();
+        let body = transport::parse_body(&bytes);
+        tracing::debug!(
+            target: "jev",
+            request = prepared.tag,
+            status = status.as_u16(),
+            body = %String::from_utf8_lossy(&bytes),
+            "the failed response carried this body"
+        );
+        Failed {
+            error: Error::from(ApiError::new(
+                prepared.endpoint.clone(),
+                status.as_u16(),
+                headers.clone(),
+                body,
+            )),
+            headers: Some(headers),
+        }
+    }
+}
+
+/// One attempt that failed, with the response headers when there was a
+/// response, so the retry can honor a server delay.
+struct Failed {
+    error: Error,
+    headers: Option<HeaderMap>,
+}
+
+/// Everything one call sends, reused by every attempt.
+struct Prepared {
+    tag: u64,
+    method: Method,
+    url: String,
+    endpoint: String,
+    body: Option<Vec<u8>>,
+    headers: HeaderMap,
+    timeout: Duration,
+    retry: RetryPolicy,
+}
+
+impl Prepared {
+    /// The body as text for a `debug` line. Bodies are logged as they are sent,
+    /// the way both official SDKs log them.
+    fn body_text(&self) -> String {
+        match self.body.as_deref() {
+            Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+            None => String::new(),
+        }
+    }
+}
+
+impl RawResponse {
+    /// Read one response into its status, its headers, and its bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Connection`] when the body does not arrive.
+    pub async fn read(response: reqwest::Response) -> Result<Self> {
+        let status = response.status().as_u16();
+        let headers = response.headers().clone();
+        let bytes = response.bytes().await.map_err(Error::connection)?.to_vec();
+        Ok(Self {
+            status,
+            headers,
+            bytes,
+        })
+    }
+}
+
+/// The request id one response carries.
+fn request_id(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+}
+
+/// A client for a caller that runs no `tokio` runtime of its own.
+///
+/// Each call runs on a runtime this client owns. Do not call it from inside a
+/// runtime; use [`Client`] there.
+#[cfg(feature = "blocking")]
+#[derive(Debug)]
+pub struct BlockingClient {
+    client: Client,
+    runtime: tokio::runtime::Runtime,
+}
+
+#[cfg(feature = "blocking")]
+impl BlockingClient {
+    /// Build a blocking client from settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Client::new`], and [`Error::Config`] when
+    /// the runtime does not start.
+    pub fn new(config: Config) -> Result<Self> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| Error::Config(format!("the runtime did not start: {error}")))?;
+        Ok(Self {
+            client: Client::new(config)?,
+            runtime,
+        })
+    }
+
+    /// Build a blocking client from the environment and the defaults alone.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`BlockingClient::new`].
+    pub fn from_env() -> Result<Self> {
+        Self::new(Config::new())
+    }
+
+    /// The async client underneath.
+    #[must_use]
+    pub fn client(&self) -> &Client {
+        &self.client
+    }
+
+    /// Ask questions about one state and read the answers.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Client::system_one`].
+    pub fn system_one(&self, request: SystemOneRequest) -> Result<SystemOneResponse> {
+        self.runtime.block_on(self.client.system_one(request))
+    }
+
+    /// List the models the account can ask.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Models::list`].
+    pub fn list_models(&self, options: ListOptions) -> Result<Vec<crate::ModelCard>> {
+        self.runtime.block_on(self.client.models().list(options))
+    }
+}

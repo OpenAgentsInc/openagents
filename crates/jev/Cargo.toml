@@ -1,0 +1,31 @@
+[package]
+name = "jev"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Typed async client for TypeSafe AI's System One API, the door to the Jev model."
+publish = false
+
+[features]
+# A synchronous wrapper for a caller that runs no `tokio` runtime of its own.
+blocking = ["tokio/rt"]
+# One request against the live API. The test reads `TYPESAFE_API_KEY`.
+live = []
+
+[dependencies]
+httpdate = "1"
+indexmap = { version = "2", features = ["serde"] }
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "thread_rng"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+thiserror = "2"
+tokio = { version = "1", features = ["time"] }
+tracing = "0.1"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+
+[lints]
+workspace = true
