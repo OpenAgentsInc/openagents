@@ -23,6 +23,8 @@ pub mod error;
 pub mod estimator;
 pub mod render;
 pub mod schema;
+#[cfg(feature = "serve")]
+pub mod serve;
 
 pub use api::{Answer, Extensions, NoulCriteria, Question, SystemOneRequest, SystemOneResponse, Usage};
 pub use bridge::{Availability, Bridge, Call, Outcome, Sampling};

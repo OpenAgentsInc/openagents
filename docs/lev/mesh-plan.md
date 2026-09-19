@@ -116,13 +116,12 @@ worker offering `lev-base` without a calibration record for a requested
 family refuses with `uncalibrated`, the same way an unverified kev worker
 refuses rather than silently serving.
 
-## Blocking questions
+## Open questions
 
-- **Licensing.** Serving Apple's on-device model to third parties, for pay,
-  through a mesh, needs somebody to read Apple's terms and say yes or no.
-  Nothing else on this page matters until that is answered. It is a legal
-  read, not an engineering task, and no Lev row is offered for payment
-  before it lands.
+- **Licensing: resolved yes** by the owner on 2026-09-19. Serving Apple's
+  on-device model through the mesh is admitted, and the gating issue is
+  closed. What a row may claim is now a measurement question rather than a
+  legal one.
 - **What a Lev row is worth.** Pricing free inference on a contributor's
   own hardware is a different question from pricing GPU time, and the
   answer affects whether contributors run it at all.

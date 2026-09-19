@@ -126,11 +126,36 @@ a reported probability. The confidence formula is the one TypeSafe's own
 adapter uses and the one kev reproduces, computed on the calibrated
 distribution rather than the raw one.
 
-**Without a fitted map for the question family in hand, Lev does not report
-a probability.** It returns the typed answer, omits the distribution, and
-marks the answer uncalibrated. That refusal is the design, not a gap in it;
-[`calibration.md`](calibration.md) defines what fitting means and what a
-calibrated family has to carry.
+**No Lev number is a calibrated predictive probability, and the door says so
+in every response.** The original rule here was stricter: omit the
+distribution entirely until a map is fitted. The first measurement run
+changed it, and the reasoning is worth keeping visible.
+
+The run found no signal to fit. Sampling spread does not track difficulty —
+top share sits between 0.81 and 1.00 on easy and hard items alike — and the
+certainty band came back `likely` on every item including the wrong ones.
+There is no dynamic range to map, so "wait for a fitted map" would have meant
+"return nothing, indefinitely."
+
+What the door does instead:
+
+- It serves the L2 frequency in `probabilities`, and `confidence` computed
+  from it, so an unmodified System One client round-trips.
+- Every response carries `extensions.calibration`, and `GET /v1/models`
+  repeats it: these are seeded-sampling frequencies measuring decoding
+  consistency, not correctness. The behavior record shows the model holding a
+  wrong answer at 0.81 as steadily as a right one.
+- A caller that will not accept an uncalibrated number sends
+  `extensions.require_calibration` and gets a typed `uncalibrated` refusal.
+
+That posture is the same one kev's card and TypeSafe's own docs take — a
+confidence is a statistic about a distribution's shape, not a verified
+probability of being right. The difference is that kev's distribution comes
+from a head trained against outcomes and Lev's comes from counting samples.
+[`calibration.md`](calibration.md) defines what fitting would mean and what a
+calibrated family would have to carry, and
+[`measurements/2026-09-19-behavior.md`](measurements/2026-09-19-behavior.md)
+records why there is nothing to fit yet.
 
 ## Question isolation without a mask
 

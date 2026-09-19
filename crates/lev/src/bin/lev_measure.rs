@@ -85,12 +85,6 @@ fn counts(values: &[String]) -> BTreeMap<String, usize> {
     out
 }
 
-fn top_share(values: &[String]) -> f64 {
-    let counts = counts(values);
-    let top = counts.values().copied().max().unwrap_or(0);
-    top as f64 / values.len().max(1) as f64
-}
-
 fn main() {
     let mut bridge = match Bridge::discover() {
         Ok(bridge) => bridge,

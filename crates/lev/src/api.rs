@@ -42,13 +42,16 @@ pub struct Extensions {
     /// Ask each answer to carry which estimator ran and what it recorded.
     #[serde(default)]
     pub estimator: bool,
+    /// Refuse rather than return a number no fitted calibration map backs.
+    #[serde(default)]
+    pub require_calibration: bool,
 }
 
 impl Extensions {
     /// Whether the caller asked for nothing.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
-        !self.estimator
+        !self.estimator && !self.require_calibration
     }
 }
 
