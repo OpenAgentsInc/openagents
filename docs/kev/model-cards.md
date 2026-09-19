@@ -6,9 +6,9 @@ and the Hugging Face model pages. They are quoted here so the integration
 plan in [`mesh-plan.md`](mesh-plan.md) can reason about them without
 re-deriving them.
 
-One block is ours rather than quoted, and says so in its first line:
-[Do not read this checkpoint's `score` as a
-position](#do-not-read-this-checkpoints-score-as-a-position).
+Where a block holds our own measurement instead, it says so in its first
+line, as [Do not read this checkpoint's `score` as a
+position](#do-not-read-this-checkpoints-score-as-a-position) does.
 
 ## kev-0.5b (released v0.1.0)
 
@@ -112,8 +112,8 @@ right.
 
 ### Do not read this checkpoint's `score` as a position
 
-Measured here rather than quoted: this is the one block on the page produced
-on OpenAgents infrastructure, by
+Measured here rather than quoted from upstream, on OpenAgents
+infrastructure, by
 [`training/score-probe/`](../../training/score-probe/) against
 `kev-serve` on 2026-09-19, over 96 Score items.
 
