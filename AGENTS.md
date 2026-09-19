@@ -33,6 +33,11 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
 
 ## Crates
 
+- `crates/gym` — the measurement and control plane for decision models:
+  pinned suites, a receipt-chained result store, digested acceptance gates,
+  and the terminal that reads them. It scores whatever answers
+  `POST /v1/systemone` and knows nothing else about the door. Read
+  `docs/gym/` before changing a schema or a gate.
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
 - `crates/kev` — the Rust port of the kev decision model: packed prefill,
   block-causal question isolation, pointer readout, and `kev-serve`, a
