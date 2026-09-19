@@ -33,6 +33,9 @@ pub enum Error {
     /// A question branch plus the state exceeds the token budget.
     #[error("branch too long: {tokens} > {max}")]
     BranchTooLong { tokens: usize, max: usize },
+    /// The `model` field names no loaded variant.
+    #[error("unknown model `{model}`; loaded: {}", known.join(", "))]
+    UnknownModel { model: String, known: Vec<String> },
     /// The tokenizer failed to load or to encode.
     #[error("tokenizer: {0}")]
     Tokenize(String),

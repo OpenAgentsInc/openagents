@@ -29,22 +29,61 @@ pub const INFER_MAX_STATE: usize = 8192;
 /// The branch budget serving admits.
 pub const INFER_MAX_BRANCH: usize = 8192;
 
-/// Everything one running server knows beyond the weights.
-pub struct ServeState {
+/// One loaded checkpoint: its weights plus the card fields `/v1/models`
+/// reports.
+pub struct Variant {
     /// The loaded decision model.
     pub model: DecisionModel,
-    /// The id `/v1/systemone` requests name, and `/v1/models` reports.
+    /// The id requests name, such as `kev-0.5b`.
     pub model_id: String,
-    /// Wire-compatible aliases the listing advertises.
-    pub aliases: Vec<String>,
     /// The artifact location the listing reports as `run`.
     pub run: String,
     /// The base model id the listing reports.
     pub base: String,
     /// The adapter rank `/api/info` reports.
     pub lora: usize,
+}
+
+/// Everything one running server knows beyond the weights.
+pub struct ServeState {
+    /// Every loaded variant; requests pick one by `model` id.
+    pub variants: Vec<Variant>,
+    /// The variant `kev-latest` and an absent `model` field resolve to.
+    pub default: usize,
+    /// Wire-compatible aliases the listing advertises on the default.
+    pub aliases: Vec<String>,
     /// The device name `/api/info` reports.
     pub device: String,
+}
+
+impl ServeState {
+    /// Resolve a request's `model` field to a loaded variant: an exact id,
+    /// `kev-latest` for the default, or an absent field.
+    fn select(&self, model: &str) -> Result<&Variant, Error> {
+        if model == "kev-latest" || model.is_empty() {
+            return Ok(&self.variants[self.default]);
+        }
+        self.variants
+            .iter()
+            .find(|v| v.model_id == model)
+            .ok_or_else(|| Error::UnknownModel {
+                model: model.to_string(),
+                known: self
+                    .variants
+                    .iter()
+                    .map(|v| v.model_id.clone())
+                    .collect(),
+            })
+    }
+
+    /// The variant a request resolves to.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownModel`] when `model` names no loaded variant.
+    pub fn pick<'a>(&'a self, request: &crate::api::SystemOneRequest) -> Result<&'a Variant, Error> {
+        self.select(&request.model)
+    }
 }
 
 /// The error body every refusal shares: FastAPI's `{"detail": …}`.
@@ -85,50 +124,70 @@ async fn systemone_separate(
         .map(Json)
 }
 
-/// `GET /v1/models`: the listing the TypeSafe client reads, with kev's own
-/// artifact fields beside the card fields.
+/// `GET /v1/models`: every loaded variant, with kev's own artifact fields
+/// beside the card fields the TypeSafe client reads.
 async fn models(State(state): State<Arc<ServeState>>) -> Json<Value> {
-    Json(json!({
-        "models": [{
-            "id": state.model_id,
-            "name": state.model_id,
-            "description": "kev decision model, served by the openagents Rust port",
-            "release_date": "2026-09-19",
-            "aliases": state.aliases,
-            "run": state.run,
-            "base": state.base,
-        }]
-    }))
+    let cards: Vec<Value> = state
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            json!({
+                "id": v.model_id,
+                "name": v.model_id,
+                "description": format!("kev decision model on {}, served by the openagents Rust port", v.base),
+                "release_date": "2026-09-19",
+                "aliases": if i == state.default { state.aliases.clone() } else { Vec::<String>::new() },
+                "run": v.run,
+                "base": v.base,
+            })
+        })
+        .collect();
+    Json(json!({ "models": cards }))
 }
 
 /// `GET /api/info`: what is loaded, for operators.
 async fn info(State(state): State<Arc<ServeState>>) -> Json<Value> {
     Json(json!({
-        "run": state.run,
-        "base": state.base,
         "device": state.device,
-        "lora": state.lora,
-        "model_id": state.model_id,
-        "option_isolation": state.model.option_isolation,
+        "default": state.variants[state.default].model_id,
+        "variants": state
+            .variants
+            .iter()
+            .map(|v| json!({
+                "model_id": v.model_id,
+                "run": v.run,
+                "base": v.base,
+                "lora": v.lora,
+                "option_isolation": v.model.option_isolation,
+            }))
+            .collect::<Vec<_>>(),
     }))
 }
 
 /// `POST /api/predict`: a rendered record in, raw option distributions out.
+/// The optional `model` field selects a variant the same way
+/// `/v1/systemone` does.
 async fn predict(
     State(state): State<Arc<ServeState>>,
     body: Bytes,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let record: Record = serde_json::from_slice(&body)
+    let body: Value = serde_json::from_slice(&body)
+        .map_err(|e| unprocessable(format!("request body: {e}")))?;
+    let model_field = body["model"].as_str().unwrap_or("kev-latest").to_string();
+    let record: Record = serde_json::from_value(body.clone())
         .map_err(|e| unprocessable(format!("request body: {e}")))?;
     tokio::task::spawn_blocking(move || {
-        let enc = state
+        let variant = state.select(&model_field)?;
+        let enc = variant
             .model
             .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
         let tokens = enc.ids.len();
         let state_tokens = enc.seg.iter().filter(|s| **s == 0).count();
         let start = Instant::now();
-        let probs = state.model.probs(&enc)?;
+        let probs = variant.model.probs(&enc)?;
         Ok::<_, Error>(json!({
+            "model": variant.model_id,
             "probs": probs,
             "tokens": tokens,
             "state_tokens": state_tokens,
@@ -143,24 +202,28 @@ async fn predict(
 
 /// One packed forward and the shaped response body.
 fn evaluate(state: &ServeState, request: &SystemOneRequest) -> Result<Value, Error> {
+    let variant = state.pick(request)?;
     let (record, meta) = to_record(request)?;
-    let enc = state.model.encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
+    let enc = variant
+        .model
+        .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
     let tokens = enc.ids.len();
     let start = Instant::now();
-    let probs = state.model.probs(&enc)?;
+    let probs = variant.model.probs(&enc)?;
     let latency = start.elapsed().as_secs_f64() * 1000.0;
     let answers = to_answers(&probs, &meta);
     Ok(response_body(
-        &request.model,
+        &variant.model_id,
         &answers,
         tokens,
-        output_tokens(&state.model.tokenizer, &answers),
+        output_tokens(&variant.model.tokenizer, &answers),
         latency,
     ))
 }
 
 /// One forward per question, merged back in request order.
 fn evaluate_separate(state: &ServeState, request: &SystemOneRequest) -> Result<Value, Error> {
+    let variant = state.pick(request)?;
     let mut answers = IndexMap::new();
     let mut tokens = 0usize;
     let mut latency = 0.0;
@@ -168,18 +231,20 @@ fn evaluate_separate(state: &ServeState, request: &SystemOneRequest) -> Result<V
         let mut one = request.clone();
         one.questions.retain(|id, _| id == qid);
         let (record, meta) = to_record(&one)?;
-        let enc = state.model.encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
+        let enc = variant
+            .model
+            .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
         tokens += enc.ids.len();
         let start = Instant::now();
-        let probs = state.model.probs(&enc)?;
+        let probs = variant.model.probs(&enc)?;
         latency += start.elapsed().as_secs_f64() * 1000.0;
         answers.extend(to_answers(&probs, &meta));
     }
     Ok(response_body(
-        &request.model,
+        &variant.model_id,
         &answers,
         tokens,
-        output_tokens(&state.model.tokenizer, &answers),
+        output_tokens(&variant.model.tokenizer, &answers),
         latency,
     ))
 }

@@ -13,7 +13,7 @@ use std::sync::{Arc, OnceLock};
 use candle_core::Device;
 use kev::decision::DecisionModel;
 use kev::lora::LoraConfig;
-use kev::serve::{ServeState, router};
+use kev::serve::{ServeState, Variant, router};
 
 fn dir(env: &str, fallback: &str) -> Option<PathBuf> {
     if let Ok(dir) = std::env::var(env) {
@@ -36,12 +36,15 @@ fn state() -> Option<&'static Arc<ServeState>> {
             .ok()?;
             let model = DecisionModel::load(&base, &adapter, Device::Cpu).ok()?;
             Some(Arc::new(ServeState {
-                model,
-                model_id: "kev-latest".to_string(),
+                variants: vec![Variant {
+                    model,
+                    model_id: "kev-latest".to_string(),
+                    run: adapter.display().to_string(),
+                    base: "Qwen/Qwen2.5-0.5B".to_string(),
+                    lora: lora.r,
+                }],
+                default: 0,
                 aliases: vec!["jev-latest".to_string()],
-                run: adapter.display().to_string(),
-                base: "Qwen/Qwen2.5-0.5B".to_string(),
-                lora: lora.r,
                 device: "cpu".to_string(),
             }))
         })

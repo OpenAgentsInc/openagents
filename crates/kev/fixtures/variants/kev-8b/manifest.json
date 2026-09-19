@@ -1,0 +1,90 @@
+{
+  "run": "/Users/christopherdavid/work/kev-artifacts/runs/kev-8b",
+  "special_ids": {
+    "<|fim_prefix|>": 151659,
+    "<|fim_middle|>": 151660,
+    "<|box_start|>": 151648,
+    "<|box_end|>": 151649,
+    "<|fim_suffix|>": 151661
+  },
+  "files": {
+    "adapter_config.json": {
+      "sha256": "97111686d731b0d31f253519726bc587fac46355127729fe4b6bd353728921b8",
+      "bytes": 1183
+    },
+    "adapter_model.safetensors": {
+      "sha256": "9de59714a5720ca60fd60871be1e30f5fcaece5f378971712f23173e7be2f07a",
+      "bytes": 174652512
+    },
+    "head.safetensors": {
+      "sha256": "02bab911cea314e6ee26ee0cca312c93e05f53f369f8d04bb674f963f6c47dc7",
+      "bytes": 8390960
+    },
+    "head_meta.json": {
+      "sha256": "5b2dc130403b392c596344f8e6b8d2cd48df045839fbb30adb99e05e74db2ea5",
+      "bytes": 1052
+    },
+    "merges.txt": {
+      "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+      "bytes": 1671853
+    },
+    "special_tokens_map.json": {
+      "sha256": "6676f091c8bc4d1b50146427cfde92073402866b87b6e39223227931b70083e9",
+      "bytes": 616
+    },
+    "tokenizer.json": {
+      "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "bytes": 11422654
+    },
+    "tokenizer_config.json": {
+      "sha256": "67e5a0a11cd35f9c00ee52e0af4cdc0baa75fea0cb5fce7d1beb251b4621d15c",
+      "bytes": 5407
+    },
+    "vocab.json": {
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+      "bytes": 2776833
+    }
+  },
+  "artifact_dir": "/Users/christopherdavid/work/kev-artifacts/kev-8b",
+  "head_meta": {
+    "base": "Qwen/Qwen3-8B-Base",
+    "base_revision": "49e3418fbbbca6ecbdf9608b4d22e5a407081db4",
+    "lora": 16,
+    "head_dim": 256,
+    "option_isolation": false,
+    "special_embeddings": false,
+    "holdout": [],
+    "args": {
+      "base": "Qwen/Qwen3-8B-Base",
+      "n_per_source": 1000,
+      "epochs": 2,
+      "lr": 5e-05,
+      "lora": 16,
+      "accum": 4,
+      "holdout": "",
+      "perm_kl": 0.0,
+      "perm_frac": 0.3,
+      "ord_w": 0.0,
+      "suite": "/root/evals/v6/decision-v6",
+      "train_sources": "",
+      "device": "cuda",
+      "batch": 2,
+      "dtype": "bf16",
+      "checkpointing": 1,
+      "option_isolation": 0,
+      "special_embeddings": 0,
+      "head_dim": 256,
+      "lora_targets": "all",
+      "base_revision": "49e3418fbbbca6ecbdf9608b4d22e5a407081db4",
+      "p_none": 0.1,
+      "p_none_distract": 0.12,
+      "p_distract": 0.15,
+      "p_none_pair": 0.25,
+      "synthetic_repeat": 1,
+      "public_frac": 1.0,
+      "out": "/runs/recipe-8b-r1/00-trial-0/checkpoint",
+      "seed": 0
+    },
+    "suite_sha256": "13a1cbf63862492c1275e36c76e08b176a2b3e8b5259f668d7d34a825c86dfd1"
+  }
+}
