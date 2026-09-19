@@ -40,6 +40,7 @@ No answer becomes context for another.
 
 | You want | Read |
 | --- | --- |
+| To pick one for a workload | [`choosing.md`](choosing.md) |
 | The contract, the limits, the design rules | [`jev/knowledge-base.md`](jev/knowledge-base.md) |
 | How a decision model works mechanically | [`kev/architecture.md`](kev/architecture.md) |
 | Why Apple's runtime needs a different mechanism | [`lev/architecture.md`](lev/architecture.md) |
