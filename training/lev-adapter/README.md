@@ -19,10 +19,17 @@ Apple's toolkit.
 | Package format written and read | works, `crates/lev/src/adapter.rs`, 9 tests |
 | Runtime loads a package we wrote | **works** — verified against live hardware |
 | Serving through an adapter | works, `lev-serve --adapter` |
-| Training | **blocked**: Apple's toolkit is not on this machine |
+| Training | toolkit 26.0.0 installed; `BASE_SIGNATURE` matches the device |
 
-Everything on either side of training is done and tested. The gap is the
-toolkit, and it is a download, not a build.
+The toolkit's own `export/constants.py` carries
+`BASE_SIGNATURE = "9799725ff8e851184037110b422d891ad3b92ec1"`, which is
+exactly what this device reports through
+`compatibleAdapterIdentifiers(name:)`. The pairing is confirmed on both
+sides rather than assumed.
+
+Its `assets/base-model.pt` is 12.7 GB — Apple's real 3B base weights, the
+thing no other route provides. That is why the toolkit is the only way to
+train an adapter the runtime finds *useful* rather than merely loadable.
 
 ## Why the toolkit is not in this repository
 
@@ -159,11 +166,11 @@ otherwise:
 | Setting | Value | Why |
 | --- | --- | --- |
 | LoRA rank | 32 | the toolkit's own default; no evidence yet to move it |
-| Epochs | 4 | 26 training records is very little; more epochs on less data overfits |
+| Epochs | 4 | 98 training records is very little; more epochs on less data overfits |
 | Learning rate | 1e-4 | kev's research log found that too high a rate erodes the base knowledge the task depends on, which is the single largest quality effect it recorded |
 | Seed | 0 | recorded so a run reproduces |
 
-**The corpus is the weak point, not the recipe.** 26 training records is far
-below what a fine-tune wants. Growing `support-v1` to 150–200 items per
+**The corpus is the weak point, not the recipe.** 98 training records is
+still below what a fine-tune wants. Growing `support-v1` to 150–200 items per
 family is the same work that unblocks calibration, and it should happen
 before anyone tunes a hyperparameter.

@@ -22,6 +22,11 @@ import argparse
 import json
 import pathlib
 import sys
+from typing import Literal
+
+import toolkit
+
+from pydantic import Field
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SUITE = REPO / "crates" / "lev" / "suites" / "support-v2.json"
@@ -137,14 +142,70 @@ def band_for(correct, base_correct_rate):
     return "even odds" if base_correct_rate >= 0.5 else "unlikely"
 
 
+def schema_for(options, bands=None):
+    """Builds the response_format the toolkit expects.
+
+    Built by the toolkit's own `SchemaAugmenter` rather than by hand. Its
+    output carries `title`, `x-order`, `strict`, a `Response<T>` name, and a
+    specific ordering of keys inside each property, and it validates that
+    ordering on the way in. Reproducing all of that from the documentation is
+    how a subtle mismatch gets into the training data, so this calls the
+    vendor's code and only falls back when the toolkit is absent.
+    """
+    fields = {"choice": (Literal[tuple(options)], Field(description="The admitted option that answers the question."))}
+    if bands:
+        fields["certainty"] = (
+            Literal[tuple(bands)],
+            Field(description="How certain the choice is, on the given ordered scale."),
+        )
+
+    try:
+        sys.path.insert(0, str(toolkit.find()))
+        from examples.utils import SchemaAugmenter  # noqa: PLC0415
+
+        from pydantic import create_model  # noqa: PLC0415
+
+        model = create_model("Decision", **fields)
+        return SchemaAugmenter._convert_schema_data(data_model=model)
+    except Exception as error:  # noqa: BLE001
+        print(
+            f"warning: building the schema by hand because the toolkit was not usable ({error}).\n"
+            "         Train against this only after check_parity.py and a toolkit-built\n"
+            "         comparison agree.",
+            file=sys.stderr,
+        )
+        properties = {"choice": {"description": "The admitted option that answers the question.", "type": "string", "enum": list(options)}}
+        required = ["choice"]
+        if bands:
+            properties["certainty"] = {
+                "description": "How certain the choice is, on the given ordered scale.",
+                "type": "string",
+                "enum": list(bands),
+            }
+            required.append("certainty")
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "Response<Decision>",
+                "strict": "true",
+                "schema": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                    "title": "Decision",
+                    "additionalProperties": False,
+                    "x-order": required,
+                    "$defs": {},
+                },
+            },
+        }
+
+
 def to_record(item, with_band, base_rates):
     options, _ = options_and_legend(item["question"])
-    properties = {"choice": {"type": "string", "enum": options}}
-    required = ["choice"]
+    bands = BANDS if with_band else None
     answer = {"choice": item["truth"]}
     if with_band:
-        properties["certainty"] = {"type": "string", "enum": BANDS}
-        required.append("certainty")
         rate = base_rates.get(item["id"], 1.0)
         answer["certainty"] = band_for(True, rate)
     return [
@@ -152,19 +213,11 @@ def to_record(item, with_band, base_rates):
         {
             "role": "user",
             "content": state_prompt(item["state"]),
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "Decision",
-                    "schema": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": required,
-                        "additionalProperties": False,
-                    },
-                },
-            },
+            "response_format": schema_for(options, bands),
         },
+        # Compact JSON with one space after each structural comma and colon,
+        # which is what `json.dumps` produces by default and what the
+        # toolkit's template expects.
         {"role": "assistant", "content": json.dumps(answer)},
     ]
 
