@@ -17,10 +17,57 @@ two reasons that are independent of each other. The record kept a median
 where the criterion needs a tail, and the floor that would band a tail is
 unmeasured.
 
+## Correction, 2026-09-19
+
+**The accuracy column below is superseded, and the pair this record is built
+on had its accuracy difference withdrawn a few commits before this one
+landed.** The correction is kept in place rather than rewritten away, because
+what survives it is more interesting than what it replaces.
+
+The accuracy numbers here are the **26-item** evaluation partition of the
+52-item `support-v1` suite. `support-v2-three-way` has 157 items, and
+[#9384](https://github.com/OpenAgentsInc/openagents/issues/9384) scored every
+kev checkpoint on it at `5eb912ed97`:
+
+| Door | Accuracy, 157 items | Median latency (contended) |
+| --- | --- | --- |
+| `kev-8b` | **0.879** | ~2,675 ms |
+| `lev-base` | 0.783 | ~2,100 ms |
+| `kev-4b` | 0.745 | ~1,302 ms |
+| `kev-0.5b` | 0.713 | ~204 ms |
+| `kev-0.6b` | 0.675 | ~203 ms |
+
+Three things change.
+
+**The inversion this record names is no longer an accuracy difference.** "Lev
+eight points ahead of kev-4b" was measured on 26 items, where the standard
+error is about 0.07. On 157 items the gap is 0.038 against a floor of 0.056,
+paired *p* = 0.41, and #9384 withdrew it explicitly. There is no accuracy
+ranking left to inverthere — the two doors are indistinguishable on the axis,
+and only latency separates them.
+
+**`kev-8b` is missing, and it is the door that matters most here.** It leads
+every accuracy and calibration column we have, and it is also the *slowest*
+door measured — slower than Lev. So the deployment tension this record exists
+to describe is sharper than the pair it chose: the best door on quality is
+the worst on time, which is the trade a router cannot make and a batch job
+does not mind.
+
+**The conclusion survives without the accuracy claim, and is stronger for
+it.** The closing line — *a door that answers in two seconds is not a router
+whatever it scores* — never needed the ranking. It is a statement about a
+ceiling, not about an ordering, and the ceiling disqualifies Lev and `kev-8b`
+alike regardless of where they place on accuracy. That is the real finding,
+and it is the one `deployment-v1` was built to express.
+
+Both latency sets above were recorded under heavy contention. See
+[`2026-09-19-latency-noise-floor.md`](2026-09-19-latency-noise-floor.md): no
+latency number on this page decides anything until a quiet-machine re-run.
+
 ## The table as recorded
 
 52 authored items, scored on the 26-item evaluation partition, one `jev`
-client and four base URLs.
+client and four base URLs. **Superseded — see the correction above.**
 
 | Door | Accuracy | Accuracy rank | Median latency | p95 on record | Cost lane |
 | --- | --- | --- | --- | --- | --- |
