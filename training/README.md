@@ -8,6 +8,17 @@ training toolkit is Python and there is no other way to produce a
 `.fmadapter` package; `swift/lev-bridge` is Swift because Apple's
 `FoundationModels` framework has no Rust binding.
 
+`baseline` is Python for a different and weaker reason: it is a measurement
+rather than a shipped path. It exists to answer whether frozen sentence
+embeddings plus logistic regression beat the models we trained, and the
+encoders and the regression both live in the Python ecosystem. Nothing in the
+product depends on it. If the answer had been no, the directory would have
+been deleted; the answer was closer than expected, so it stays as the record
+behind [`docs/decision-models/2026-09-19-frozen-embedding-baseline.md`](../docs/decision-models/2026-09-19-frozen-embedding-baseline.md).
+Its scorer is a port of `score` from `crates/gym/src/calibrate.rs`, verified
+against that module's own test fixtures, so a baseline is never scored by a
+different scorer than the doors it is compared against.
+
 Everything either harness produces is consumed by Rust, and the contracts
 between them are tested: `check_parity.py` proves the Python renderer matches
 `crates/lev/src/schema.rs` character for character, and

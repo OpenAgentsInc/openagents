@@ -69,6 +69,12 @@ on a trained certainty band cut log loss from 2.601 to 0.388, where the
 pooled map did not help at all. Nothing in the tree would tell you that
 problem exists.
 
+And the cheap baseline at the bottom of this page demonstrates the split
+directly. On our own `routing` family it **beats Lev by ten points of
+accuracy and is four times worse calibrated** — ECE 0.098 against the 0.024
+of Lev's one admitted map. Sharper, less trustworthy. A tree that ranks by
+accuracy picks it; a caller that routes on a threshold should not.
+
 ### "Decision" is not "classification"
 
 The tree picks a label at every leaf. The contract has three primitives and
@@ -86,7 +92,16 @@ no mechanism keeping the ordering meaningful — it can put mass on levels 0
 and 4 with a trough at 2, and a weighted mean will report 2.
 
 Before adopting anything, ask which primitives it actually serves. "Beats
-Jev" has meant "beats Jev at Choice" in every claim reviewed this week.
+Jev" has meant "beats Jev at Choice" in every claim reviewed this week — and
+it means the same for our own cheap baseline, which **declines 48 of the 98
+items it is handed**, typed as `unsupported_primitive`, because `urgency` is
+a Noul and `severity` is a Score. That is not a gap in the implementation. A
+logistic head over frozen embeddings has nowhere to put an ordered rubric.
+
+Five artifacts reviewed this week serve Choice alone. The pattern is strong
+enough to state as a rule: **cheap means Choice.** Anything that serves Noul
+or Score is either a decision model or a general model, and the price
+difference is the reason this page exists.
 
 ### Two branches are missing
 
@@ -187,6 +202,43 @@ try first anyway when the task is Choice with stable labels. Any selection
 guide that does not have it as a baseline — including the tree above, and
 including most of what we have built — is skipping the cheap answer.
 
+We have since run it on our own data rather than citing someone else's, and
+it holds. On the 50 `routing` items of `support-v2`, same split as every
+published row:
+
+| Door | Accuracy | SE | ECE | Serves |
+| --- | --- | --- | --- | --- |
+| hosted Jev | 0.940 | 0.034 | 0.060 | all three |
+| **frozen `bge-base-en-v1.5` + logistic regression** | **0.920** | 0.038 | 0.098 | Choice only |
+| frozen `all-mpnet-base-v2` | 0.900 | 0.042 | 0.073 | Choice only |
+| frozen `all-MiniLM-L6-v2` | 0.860 | 0.049 | 0.113 | Choice only |
+| Lev, calibrated | 0.820 | 0.054 | **0.024** | all three |
+| kev-0.5b | 0.780 | 0.059 | 0.120 | all three |
+| TF-IDF + logistic regression | 0.580 | 0.070 | 0.231 | Choice only |
+| most common label | 0.280 | 0.063 | — | — |
+
+Three qualifications, and they matter as much as the ranking.
+
+**The interval is wider than the floor suggests.** Our 0.056 figure covers
+seed resampling on 98 items; `routing` is 50. Ask for two *unpaired* sigma on
+an item sample and none of the wins over Lev clear. But both sides answered
+the same fifty items, so a paired test would be tighter than that, and we do
+not hold the per-item answers needed to run one. The truth is between the two
+readings, and [#9377](https://github.com/OpenAgentsInc/openagents/issues/9377)
+stays open to build the door that would settle it.
+
+**"Frozen embeddings" is a range, not a number.** Swapping the encoder moved
+accuracy 0.860 → 0.920 on identical items — a 0.060 spread, slightly *larger*
+than the noise floor. The choice of downloaded encoder matters more than
+anything else in the method, which also qualifies the 0.933 Banking77 row
+above: it is one encoder's result, reported as the technique's.
+
+**The work is in the encoder, not the regression.** TF-IDF with the same head
+scores 0.580, six floors below. So the cheap baseline is cheap at *fit* time
+and still rests on a 109M-parameter model someone else trained. It is a good
+deal, not a free one, and the distinction matters when the constraint is what
+runs on the device rather than what costs money to train.
+
 ## What the general model is actually for
 
 Not "instant classification." That undersells it in one way and oversells it
@@ -211,5 +263,7 @@ this week has it as a branch.
 | [`research/2026-09-19-specialist-classifiers.md`](research/2026-09-19-specialist-classifiers.md) | Why an encoder classifier cannot serve Score, and what happened to the specialist claims under inspection |
 | [`research/2026-09-19-inference-side-scoring.md`](research/2026-09-19-inference-side-scoring.md) | Whether an inference engine's scoring endpoint is a shortcut to a decision model |
 | [`research/2026-09-19-question-text-optimization.md`](research/2026-09-19-question-text-optimization.md) | The one lever available on a closed hosted model |
+| [`2026-09-19-frozen-embedding-baseline.md`](2026-09-19-frozen-embedding-baseline.md) | The cheap baseline measured on our own suite, with its intervals and its refusals |
+| [`research/2026-09-19-compiled-functions.md`](research/2026-09-19-compiled-functions.md) | Whether a compiler can produce a working adapter without labels, which would move this page's root |
 | [`lev/disposition.md`](lev/disposition.md) | A worked example of admitting and refusing one model per workload |
 | [`../gym.md`](../gym.md) | The machinery that decides any of this on your own data |
