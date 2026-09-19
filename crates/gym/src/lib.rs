@@ -23,12 +23,15 @@
 //!   quietly inserted.
 //! - [`gate`] — an acceptance rule that carries its own digest, so changing
 //!   the rule produces a new rule rather than new history.
+//! - [`ab`] — the loop that compares two doors over interleaved seed blocks,
+//!   screens the result, and confirms the win on blocks nobody has drawn.
 //! - [`views`] — rendering where unknown reads as unknown and never as zero.
 //!
 //! What it deliberately does not own: how any model answers. The Gym scores
 //! what comes back from `POST /v1/systemone` and knows nothing else about
 //! the door.
 
+pub mod ab;
 pub mod gate;
 pub mod row;
 pub mod store;
