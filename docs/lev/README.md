@@ -1,16 +1,24 @@
 # Lev
 
-**Status:** partly built, and measured. `crates/lev` serves the System One
-contract from Apple's on-device model, and the real `crates/jev` client
-reaches it with a `base_url` change — the same `POST /v1/systemone` contract
-`crates/kev` is being built to serve from open weights.
+**Status:** built and measured. `crates/lev` serves the System One contract
+from Apple's on-device model, and the real `crates/jev` client reaches it
+with a `base_url` change — the same contract `crates/kev` serves from open
+weights and TypeSafe serves from its own.
 
-What works: the contract types, the schema compiler, the supervised Swift
-helper, question isolation proved against live hardware, the L1, L2, and L3
-estimators, and `lev-serve`. What does not: any calibrated probability. The
-first measurement run found no signal to calibrate, and
-[`measurements/2026-09-19-behavior.md`](measurements/2026-09-19-behavior.md)
-records why.
+Scored against the other two on 52 authored items, evaluation split, one
+client:
+
+| Door | Accuracy | ECE | Brier | Latency |
+| --- | --- | --- | --- | --- |
+| jev (hosted) | 0.96 | 0.099 | 0.026 | ~220 ms |
+| kev-0.5b | 0.88 | 0.176 | 0.122 | ~180 ms |
+| kev-4b | 0.77 | 0.188 | 0.149 | ~1 s |
+| lev (Apple, N=8) | 0.85 | **0.087** | 0.127 | ~1,600 ms |
+
+Lev has the lowest calibration error and the second-worst Brier, which is
+what honestly vague numbers look like. [`disposition.md`](disposition.md) is
+where to start: what Lev is admitted for, what it is refused for, and the
+ranked list of what would improve it.
 
 [`roadmap.md`](roadmap.md) holds the proposed issue sequence for review.
 
@@ -88,7 +96,9 @@ measurement exists yet.
 | [`apple-fm-surface.md`](apple-fm-surface.md) | What this workspace already established about Apple FM across `openagents` and `psionic` history: the bridge contract, the router precedent, the adapter package format, and the typed error surface. |
 | [`calibration.md`](calibration.md) | The rule that no Lev probability gates an action before it is measured, the suites and gates that measure it, and the record a calibrated question family has to carry. |
 | [`mesh-plan.md`](mesh-plan.md) | How a Lev worker differs from a kev worker on the earn mesh: no artifact to verify, no packing win, and a verification floor that has to move from digests to behavior. |
-| [`roadmap.md`](roadmap.md) | The proposed issue sequence, the decisions the owner makes before it starts, and what each step has to prove. |
+| [`disposition.md`](disposition.md) | Where Lev is admitted and refused, the four-way scores, and six ranked improvements with the first one built and measured. |
+| [`roadmap.md`](roadmap.md) | The issue sequence, the decisions as made, and the state of each step. |
+| [`measurements/`](measurements/) | The behavior record, the suite scores, and the comparison runs, with the exact commands. |
 
 ## Related
 

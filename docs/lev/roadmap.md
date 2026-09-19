@@ -71,26 +71,27 @@ L2, marked uncalibrated in every response, or refuses when the caller sends
 | 2 | [#9347](https://github.com/OpenAgentsInc/openagents/issues/9347) contract types, schema compiler | **done** | 22 unit tests, adversarial option text |
 | 3 | [#9348](https://github.com/OpenAgentsInc/openagents/issues/9348) bridge seam, isolation | **done** | sibling 0.62, absent 0.62, state 1.00 on live hardware |
 | 4 | [#9349](https://github.com/OpenAgentsInc/openagents/issues/9349) estimators | **done** | seeds reproduce 16/16 in and across processes |
-| 5 | [#9350](https://github.com/OpenAgentsInc/openagents/issues/9350) calibration map | **blocked** | no raw signal varies with correctness |
+| 5 | [#9350](https://github.com/OpenAgentsInc/openagents/issues/9350) calibration map | **done, negative** | machinery built; no family's map passes the admission gate at this suite size |
 | 6 | [#9351](https://github.com/OpenAgentsInc/openagents/issues/9351) `lev-serve` | **done** | an unmodified `jev` client round-trips all three types |
-| 7 | [#9352](https://github.com/OpenAgentsInc/openagents/issues/9352) band readout | **blocked** | the band is constant on the base model |
+| 7 | [#9352](https://github.com/OpenAgentsInc/openagents/issues/9352) band readout | **done, negative** | implemented; the band is constant on the base model, so nothing fits |
 | 8 | [#9353](https://github.com/OpenAgentsInc/openagents/issues/9353) adapter lane | deferred | Apple's toolkit is an external dependency |
-| 9 | [#9354](https://github.com/OpenAgentsInc/openagents/issues/9354) comparison and disposition | open | needs kev serving to compare against |
+| 9 | [#9354](https://github.com/OpenAgentsInc/openagents/issues/9354) comparison and disposition | **done** | `disposition.md`, four doors on one suite |
 | 10 | [#9355](https://github.com/OpenAgentsInc/openagents/issues/9355) mesh row | **closed** | licensing resolved yes; refile against a disposition |
 
-Steps 5 and 7 are blocked rather than unscheduled, and the reason is the same
-for both. Fitting a calibration map needs a raw signal that varies with
-correctness. The base model, prompted, does not produce one: sampling spread
-runs 0.81 to 1.00 across easy and hard items alike, and the certainty band
-came back `likely` on every item including the wrong ones. The next visible
-move is #9353, an adapter trained to select bands against labelled outcomes,
-which needs a toolkit that is not on this machine.
+Steps 5 and 7 finished with negative results rather than with a feature, and
+that is worth stating precisely. The calibration machinery works: a binned
+map with Jeffreys smoothing, per-family fitting on a held-out split, scoring,
+a record, and an admission gate that requires a map to beat the raw signal on
+items it was not fitted on. Hosted Jev's map passes that gate. None of Lev's
+does, because fitting five bins on six to twelve items degrades a signal more
+often than it improves one. The fix is suite size, which is authoring work.
 
-What ships in the meantime is a typed, shape-guaranteed, deterministic choice
-at no marginal cost, with the response saying plainly what its numbers are
-and are not.
+The band readout is likewise implemented end to end and produces `likely` on
+every item, including the wrong ones, so there is nothing to fit. That needs
+an adapter, which needs a toolkit that is not on this machine.
 
----
+What ships is a typed, shape-guaranteed, deterministic choice at no marginal
+cost, with an approximate confidence whose meaning every response states.
 
 ## [Lev] Apple FM decision-model roadmap and tracking
 
