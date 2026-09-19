@@ -1,6 +1,9 @@
 # OpenAgents agent contract
 
-This repository is a Rust-only workspace. Do not add TypeScript.
+This repository is a Rust-only workspace. Do not add TypeScript. The one
+non-Rust source tree is `swift/lev-bridge`, the helper that reaches Apple's
+`FoundationModels` framework, which has no Rust binding; it is built by a
+repo script and supervised as a child process.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
@@ -37,6 +40,10 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
 - `crates/coder` — the agent: `classify` routes each turn through Jev,
   `generate` answers through an Open Responses door, and the `coder`
   binary draws the conversation in the terminal.
+- `crates/lev` — the same contract answered by Apple's on-device foundation
+  model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
+  helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests
+  without it. Read `docs/lev/` before changing an estimator or the door.
 - `crates/nostr` — pure Nostr protocol and verification primitives
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,
   Block NIP validators). No storage, no network, no third-party Nostr

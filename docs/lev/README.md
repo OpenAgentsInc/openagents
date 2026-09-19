@@ -1,10 +1,17 @@
 # Lev
 
-**Status:** proposed. Nothing on this page is built. Lev is a third
-implementation of the System One contract this repository already speaks:
-the same `POST /v1/systemone` request and answer shapes that `crates/jev`
-sends to TypeSafe and that `crates/kev` is being built to serve locally,
-answered this time by Apple's on-device foundation model.
+**Status:** partly built, and measured. `crates/lev` serves the System One
+contract from Apple's on-device model, and the real `crates/jev` client
+reaches it with a `base_url` change — the same `POST /v1/systemone` contract
+`crates/kev` is being built to serve from open weights.
+
+What works: the contract types, the schema compiler, the supervised Swift
+helper, question isolation proved against live hardware, the L1, L2, and L3
+estimators, and `lev-serve`. What does not: any calibrated probability. The
+first measurement run found no signal to calibrate, and
+[`measurements/2026-09-19-behavior.md`](measurements/2026-09-19-behavior.md)
+records why.
+
 [`roadmap.md`](roadmap.md) holds the proposed issue sequence for review.
 
 The name follows the pattern: Jev is the hosted model, Kev is the open

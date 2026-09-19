@@ -1,48 +1,55 @@
 # Lev roadmap
 
-**Status:** proposed, for review. No issues are filed. Each item below is
-written in the shape this repository files them, so an accepted item can be
-opened without rewriting. The sequence starts with measurement rather than
-code, because the design in [`architecture.md`](architecture.md) depends on
-behavior nobody in this workspace has measured yet.
+**Status:** filed and part-built. The tracker is
+[#9345](https://github.com/OpenAgentsInc/openagents/issues/9345) and the
+items below are issues #9346 to #9355. The sequence started with measurement
+rather than code, and that turned out to matter: the run answered the
+question the design rested on with a no, and the table below records where
+that left each step.
 
 Read [`README.md`](README.md) first for what Lev is,
 [`apple-fm-surface.md`](apple-fm-surface.md) for what is already known, and
 [`calibration.md`](calibration.md) for the rule that governs step 5 onward.
 
-## Decisions before step 1
+## Decisions, as made
 
-Six decisions are the owner's, and four of them change what gets built.
+All six are settled. The owner answered D1 through D3 and D5 directly; D4 and
+D6 were settled by what is on the machine and by the contract.
 
 **D1 — Swift sidecar, or Rust FFI?** This workspace has built the sidecar
 twice, in `psionic` and in `openagents`, and both audits concluded the
 localhost boundary was right. It also means a Rust-only workspace acquires a
 Swift build step, a signed helper, and a supervised child process.
-*Recommendation: the sidecar, with the helper's code signature checked
-before launch from the first commit, which is the discipline the earlier
-lane only reached at commit forty.*
+**Settled: the sidecar**, at `swift/lev-bridge`, built by
+`./scripts/build-lev-bridge.sh`. It speaks line-delimited JSON rather than
+HTTP, because the audit of the first bridge called its hand-rolled socket
+parser naive, and its signature is verified before launch.
 
 **D2 — Reimplement, or depend on `psionic`?** `psionic-apple-fm` is about
 6,200 lines of exactly the contract Lev needs. `AGENTS.md` says sibling
 repositories are reference material and that a design carried over is
 reimplemented here and named in the commit message.
-*Recommendation: reimplement in `crates/lev`, cite `psionic` in the commit
-message, and keep the type names aligned so the two stay comparable.*
+**Settled: reimplemented** in `crates/lev`, with no dependency on a sibling
+repository or an external checkout.
 
 **D3 — Does Lev own the door, or does this repository?** Lev is an
 implementation of the System One contract, and `crates/jev` and `crates/kev`
 already live here. The Apple bridge expertise lives in `psionic`.
-*Recommendation: here. Lev is a decision model, not an Apple integration.*
+**Settled: here**, beside `crates/jev` and `crates/kev`.
 
 **D4 — Base model only in v1, or an adapter too?** An adapter needs Apple's
 adapter training toolkit, which is not on this machine, and it commits the
 project to retraining on Apple's release schedule.
-*Recommendation: base only through step 7. Treat step 8 as a separate yes.*
+**Settled: base only.** The toolkit is not on this machine, and #9353 records
+the shape of the work and the reason it is not scheduled. The measurement run
+raised the stakes on this one: an adapter is now the only visible route to a
+signal worth calibrating.
 
 **D5 — Who reads Apple's terms?** Serving the on-device model to third
 parties through the mesh, for payment, is a licensing question with a yes or
 no answer. Nothing in [`mesh-plan.md`](mesh-plan.md) proceeds without it.
-*Recommendation: answer it before step 9 is scheduled, not when it blocks.*
+**Settled: yes**, by the owner on 2026-09-19. #9355 is closed and
+[`mesh-plan.md`](mesh-plan.md) records it.
 
 **D6 — What does a Lev door do without a distribution?** This one is
 settled by the contract rather than by preference, and it is worth seeing
@@ -50,28 +57,38 @@ before step 2: `jev::NoulAnswer` carries exactly one field, the probability.
 `ChoiceAnswer` and `ScoreAnswer` both require `confidence`. So an estimator
 that produces no distribution cannot serve any of the three question types
 through `/v1/systemone`.
-*Consequence: L1 constrained argmax is an internal fast path for callers
-that want a typed choice with no probability. It is never a door path. The
-door serves L2 or L3, or it refuses.*
+**Settled by the contract: L1 is never a door path.** It is an internal fast
+path for callers that want a typed choice and nothing else. The door serves
+L2, marked uncalibrated in every response, or refuses when the caller sends
+`extensions.require_calibration`.
 
 ## The sequence
 
-| # | Issue | Builds | Proved by |
+| # | Issue | State | Evidence |
 | --- | --- | --- | --- |
-| 0 | [Lev] Apple FM decision-model roadmap and tracking | — | the items below close |
-| 1 | [Lev 1] Behavior measurement harness and the record | a throwaway harness, a committed record | numbers for every unknown in `apple-fm-surface.md` |
-| 2 | [Lev 2] `crates/lev`: contract types and the schema compiler | `api.rs`, `render.rs`, `schema.rs` | every question type compiles to an admitted schema; refusals typed |
-| 3 | [Lev 3] The bridge seam and question isolation | `bridge.rs`, the helper per D1 | kev's isolation probe passes against live hardware |
-| 4 | [Lev 4] Estimators: seeded ensemble and argmax | `estimator.rs` | seeds reproduce; resolution reported; L1 and L2 agree on argmax |
-| 5 | [Lev 5] Suites and the calibration map | `calibrate.rs`, suite fixtures, a record | a fitted map scored on a disjoint partition |
-| 6 | [Lev 6] `lev-serve`: the door and its refusals | `serve.rs`, `src/bin/lev_serve.rs` | a `crates/jev` client round-trips against it unmodified |
-| 7 | [Lev 7] The band readout | schema extension, a second map | L3 agrees with L2 inside tolerance, at one call |
-| 8 | [Lev 8] The adapter lane *(gated on D4 and the toolkit)* | dataset conversion, export, signature pinning | a base-versus-adapter gate on the same suite |
-| 9 | [Lev 9] Comparison and disposition | a card in `docs/lev/` | Lev, kev, and Jev scored on the same items |
-| 10 | [Lev 10] Mesh row *(gated on D5)* | catalog row, probes, door routing | a Lev worker clears a behavioral floor |
+| 0 | [#9345](https://github.com/OpenAgentsInc/openagents/issues/9345) tracker | open | — |
+| 1 | [#9346](https://github.com/OpenAgentsInc/openagents/issues/9346) behavior record | **done** | `docs/lev/measurements/2026-09-19-behavior.md` |
+| 2 | [#9347](https://github.com/OpenAgentsInc/openagents/issues/9347) contract types, schema compiler | **done** | 22 unit tests, adversarial option text |
+| 3 | [#9348](https://github.com/OpenAgentsInc/openagents/issues/9348) bridge seam, isolation | **done** | sibling 0.62, absent 0.62, state 1.00 on live hardware |
+| 4 | [#9349](https://github.com/OpenAgentsInc/openagents/issues/9349) estimators | **done** | seeds reproduce 16/16 in and across processes |
+| 5 | [#9350](https://github.com/OpenAgentsInc/openagents/issues/9350) calibration map | **blocked** | no raw signal varies with correctness |
+| 6 | [#9351](https://github.com/OpenAgentsInc/openagents/issues/9351) `lev-serve` | **done** | an unmodified `jev` client round-trips all three types |
+| 7 | [#9352](https://github.com/OpenAgentsInc/openagents/issues/9352) band readout | **blocked** | the band is constant on the base model |
+| 8 | [#9353](https://github.com/OpenAgentsInc/openagents/issues/9353) adapter lane | deferred | Apple's toolkit is an external dependency |
+| 9 | [#9354](https://github.com/OpenAgentsInc/openagents/issues/9354) comparison and disposition | open | needs kev serving to compare against |
+| 10 | [#9355](https://github.com/OpenAgentsInc/openagents/issues/9355) mesh row | **closed** | licensing resolved yes; refile against a disposition |
 
-Steps 1 through 4 produce no probability anyone may use. Step 5 is the first
-one that does, and step 6 is the first one a caller can reach.
+Steps 5 and 7 are blocked rather than unscheduled, and the reason is the same
+for both. Fitting a calibration map needs a raw signal that varies with
+correctness. The base model, prompted, does not produce one: sampling spread
+runs 0.81 to 1.00 across easy and hard items alike, and the certainty band
+came back `likely` on every item including the wrong ones. The next visible
+move is #9353, an adapter trained to select bands against labelled outcomes,
+which needs a toolkit that is not on this machine.
+
+What ships in the meantime is a typed, shape-guaranteed, deterministic choice
+at no marginal cost, with the response saying plainly what its numbers are
+and are not.
 
 ---
 

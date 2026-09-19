@@ -170,28 +170,29 @@ signature is authoritative before it is launched (`957e646f70`,
 `0919324b30`), which is the shape of supply-chain control a Lev sidecar
 needs from the first commit rather than the fortieth.
 
-## What stays unmeasured
+## What was unmeasured, and now is not
 
-Nothing in either lineage measured the model *as a decision model*. There is
+Nothing in either lineage measured the model *as a decision model*. There was
 no accuracy number, no calibration curve, no order-sensitivity result, and no
 isolation probe against Apple FM anywhere in this workspace. The router was
-verified as "well-formed and plausible," which is a shape check, not a
-quality measurement.
+verified as well-formed and plausible, which is a shape check.
 
-Specifically unknown, and all of it needed before Lev's design can be
-finalized:
+[`measurements/2026-09-19-behavior.md`](measurements/2026-09-19-behavior.md)
+closes that gap, produced by `cargo run -p lev --bin lev-measure` against the
+live runtime. In short: greedy decoding is deterministic, a recorded seed
+reproduces its sample in process and across processes, sampling spread does
+*not* track difficulty, the certainty band is constant, option order flips one
+greedy answer in eight, latency runs 305 ms to 1.7 s as the state grows from
+61 to 7,808 characters, and no guardrail fired on four decision-shaped inputs.
 
-- Whether greedy decoding is deterministic run to run on the same machine.
-- Whether a fixed seed reproduces a sample exactly, across sessions and
-  across process restarts.
-- How sampling spread relates to difficulty at all, which is the entire
-  premise of the L2 estimator.
-- The real context window, and how much of it a state plus one question
-  costs.
-- Latency as a function of state length, and whether per-question sessions
-  pay the full state cost every time.
-- How often guardrails fire on ordinary decision-shaped inputs.
-- Whether an adapter trained for band selection improves calibration enough
-  to justify the retraining treadmill the OS update schedule imposes.
+Two things named here remain open:
 
-[`roadmap.md`](roadmap.md) step 1 is exactly this list.
+- **The context window.** Driving a state past the limit costs a long run and
+  is worth its own record.
+- **Token counts.** The runtime surfaces none, so `usage` stays empty rather
+  than carrying the `prompt.count / 4` fiction the first bridge shipped.
+
+And one new question the record opens: whether an adapter trained to select
+certainty bands against labelled outcomes produces a signal worth
+calibrating, since the prompted base model does not. That is #9353, and it
+needs Apple's toolkit.
