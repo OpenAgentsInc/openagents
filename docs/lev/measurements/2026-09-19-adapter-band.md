@@ -95,3 +95,51 @@ What that points at next:
 in-domain suite. The band's monotonicity is measured on 98 items and three
 bands, so the 0.64 bucket rests on 14 of them. It is a real result and a
 small one.
+
+## Conditioning the calibration map on the band
+
+The band is only worth training if something can use it. The obvious
+consumer is the calibration map: the L2 frequency says how consistently the
+model answered, the band says how reliable an answer like this is, and a
+table fitted per band conditions on both.
+
+`Map::fit_banded` fits one table per band, keeping a band's own table only
+when it rests on at least fifteen observations and falling back to the
+pooled table otherwise — a two-item band claiming its own probability is the
+small-sample failure the admission gate exists to catch.
+
+Fitted on the calibration split, scored on the evaluation split, band
+adapter:
+
+| Map | ECE | Brier | NLL | Confident errors |
+| --- | --- | --- | --- | --- |
+| raw, no map | 0.102 | 0.114 | 2.601 | 9 |
+| pooled | 0.106 | 0.118 | 0.499 | 11 |
+| **band-conditioned** | **0.069** | **0.104** | **0.388** | 11 |
+
+**The pooled map does not help and the band-conditioned map does.** Pooling
+leaves ECE slightly worse than the raw signal — 0.106 against 0.102 — and
+would be refused. Conditioning on the band is admitted outright: ECE 0.102 to
+0.069, log loss 2.601 to 0.388, Brier 0.114 to 0.104.
+
+Log loss falling by 85% is the number that matters here, because log loss is
+what punishes confident wrongness, and overconfidence was the standing
+complaint against both adapters. Conditioning on the band is the first thing
+that has moved it.
+
+Two bands earned their own table, `almost certain` and `likely`. `unlikely`
+held fewer than fifteen calibration items and correctly fell back to the
+pool.
+
+So the band is not decoration. It is the input that makes a Lev calibration
+map work, and the case for training it does not rest on a caller reading the
+band directly.
+
+### What it did not fix
+
+Confident errors went from nine to eleven, and the pooled map has the same
+problem. A calibrated map that assigns 0.95 to the `almost certain` band will
+count every wrong answer in that band as a confident error by definition.
+That is the measure behaving correctly rather than the model failing, but it
+means "confident errors" and "log loss" are now telling different stories and
+the threshold a caller picks matters more than either number alone.

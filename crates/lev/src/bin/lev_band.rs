@@ -17,7 +17,8 @@
 use std::collections::BTreeMap;
 
 use lev::api::{Extensions, SystemOneRequest};
-use lev::bridge::{Bridge, Call, Sampling};
+use lev::bridge::{Bridge, Call, Pool, Sampling};
+use lev::calibrate::{Map, Observation, admit, score};
 use lev::schema::{BANDS, compile};
 use lev::suite::Suite;
 
@@ -27,12 +28,14 @@ fn main() {
     let mut adapter: Option<String> = None;
     let mut label = "lev-base".to_string();
     let mut split = "evaluation".to_string();
+    let mut calibrate = false;
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--adapter" => adapter = args.next().filter(|value| !value.is_empty()),
             "--label" => label = args.next().unwrap_or(label),
             "--split" => split = args.next().unwrap_or(split),
+            "--calibrate" => calibrate = true,
             other => eprintln!("unknown flag {other}"),
         }
     }
@@ -98,4 +101,92 @@ fn main() {
         "\n{distinct} distinct band{} used.",
         if distinct == 1 { "" } else { "s" }
     );
+
+    if !calibrate {
+        return;
+    }
+
+    // Does conditioning the calibration map on the band beat pooling?
+    //
+    // The frequency alone says how consistently the model answered. The band
+    // says how reliable an answer like this is. If the band carries signal,
+    // a table fitted per band should beat one fitted over everything — and
+    // if it does not, the band is decoration.
+    println!("\n## Band-conditioned calibration\n");
+    let pool = Pool::discover(4).expect("a pool starts");
+    let mut rows: Vec<(String, Observation)> = Vec::new();
+
+    for item in &suite.items {
+        let request = SystemOneRequest {
+            state: item.state.clone(),
+            model: None,
+            questions: [("q".to_string(), item.question.clone())].into_iter().collect(),
+            extensions: Extensions::default(),
+        };
+        let Ok(compiled) = compile(&request) else { continue };
+        let Ok(raw) = l2_pool_adapted(&pool, &compiled["q"], 8, adapter.as_deref()) else {
+            continue;
+        };
+        // One extra greedy call for the band.
+        let call = Call::decide(&compiled["q"], Sampling::Greedy).with_band(bands.clone());
+        let call = match adapter.as_deref() {
+            Some(path) => call.with_adapter(path),
+            None => call,
+        };
+        let band = bridge.decide(&call).ok().and_then(|outcome| outcome.band);
+        let correct = raw.choice == item.truth;
+        let observation = match band {
+            Some(band) => Observation::banded(raw.top(), correct, band),
+            None => Observation::new(raw.top(), correct),
+        };
+        rows.push((item.split.clone(), observation));
+    }
+
+    let fit_on: Vec<Observation> =
+        rows.iter().filter(|(s, _)| s == "calibration").map(|(_, o)| o.clone()).collect();
+    let held: Vec<(String, Observation)> =
+        rows.iter().filter(|(s, _)| s == "evaluation").cloned().collect();
+
+    let pooled_map = Map::fit_auto(&fit_on);
+    let banded_map = Map::fit_banded(&fit_on);
+
+    let raw_scores: Vec<Observation> = held.iter().map(|(_, o)| o.clone()).collect();
+    let pooled: Vec<Observation> = held
+        .iter()
+        .map(|(_, o)| Observation::new(pooled_map.apply(o.raw), o.correct))
+        .collect();
+    let conditioned: Vec<Observation> = held
+        .iter()
+        .map(|(_, o)| {
+            Observation::new(banded_map.apply_banded(o.raw, o.band.as_deref()), o.correct)
+        })
+        .collect();
+
+    println!("| Map | ECE | Brier | NLL | Confident errors | Items |");
+    println!("| --- | --- | --- | --- | --- | --- |");
+    for (name, set) in [("raw", &raw_scores), ("pooled", &pooled), ("band-conditioned", &conditioned)] {
+        let m = score(set);
+        println!(
+            "| {name} | {:.3} | {:.3} | {:.3} | {} | {} |",
+            m.ece, m.brier, m.nll, m.confident_errors, m.items
+        );
+    }
+
+    let (ok, why) = admit(score(&raw_scores), score(&conditioned), fit_on.len());
+    println!("\nBand-conditioned map against the raw signal: {why}");
+    println!("Admitted: {ok}");
+    println!(
+        "\nBands with their own table: {:?}",
+        banded_map.by_band.keys().collect::<Vec<_>>()
+    );
+}
+
+/// `l2_pool` with an optional adapter, which the pool API takes per call.
+fn l2_pool_adapted(
+    pool: &Pool,
+    compiled: &lev::schema::Compiled,
+    n: u64,
+    adapter: Option<&str>,
+) -> lev::error::Result<lev::estimator::Raw> {
+    lev::estimator::l2_pool_with(pool, compiled, n, adapter)
 }

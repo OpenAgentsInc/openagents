@@ -10,17 +10,40 @@
 //! scaling, which is what kev uses, does not apply: there are no logits to
 //! scale.
 
+use std::collections::BTreeMap;
+
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 /// One observation: what the estimator reported for the winning option, and
 /// whether that option turned out to be right.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
     /// The raw frequency the winning option carried.
     pub raw: f64,
     /// Whether the winning option was the labelled answer.
     pub correct: bool,
+    /// The certainty band the model selected, when one was asked for.
+    ///
+    /// On the base model this is noise — every item comes back `likely` and
+    /// the lowest band scores highest. On an adapter trained against
+    /// outcomes it is monotone, and a map can use it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub band: Option<String>,
+}
+
+impl Observation {
+    /// An observation with no band.
+    #[must_use]
+    pub const fn new(raw: f64, correct: bool) -> Self {
+        Self { raw, correct, band: None }
+    }
+
+    /// An observation carrying the band the model selected.
+    #[must_use]
+    pub fn banded(raw: f64, correct: bool, band: impl Into<String>) -> Self {
+        Self { raw, correct, band: Some(band.into()) }
+    }
 }
 
 /// One bin of a reliability table.
@@ -45,6 +68,15 @@ pub struct Map {
     pub base_rate: f64,
     /// How many observations the map was fitted on.
     pub fitted_on: usize,
+    /// One table per certainty band, when the model reports a band that
+    /// carries signal.
+    ///
+    /// The frequency alone says how consistently the model answered. The
+    /// band says how reliable an answer like this is. Splitting the table by
+    /// band conditions on both, which is the whole reason for training a
+    /// band in the first place.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub by_band: BTreeMap<String, Vec<Bin>>,
 }
 
 /// The fewest observations a bin should rest on before it is worth having.
@@ -100,7 +132,62 @@ impl Map {
             };
             built.push(Bin { lo, hi, fitted, count });
         }
-        Self { bins: built, base_rate, fitted_on: observations.len() }
+        Self { bins: built, base_rate, fitted_on: observations.len(), by_band: BTreeMap::new() }
+    }
+
+    /// Fits a table per band, falling back to the pooled table where a band
+    /// is too thin to say anything.
+    ///
+    /// A band table is kept only when it rests on at least `ITEMS_PER_BIN`
+    /// observations. Below that the pooled table is the better estimate, and
+    /// a two-item band claiming its own probability is exactly the
+    /// small-sample failure the admission gate exists to catch.
+    #[must_use]
+    pub fn fit_banded(observations: &[Observation]) -> Self {
+        let mut map = Self::fit_auto(observations);
+        let mut grouped: BTreeMap<String, Vec<Observation>> = BTreeMap::new();
+        for observation in observations {
+            if let Some(band) = &observation.band {
+                grouped.entry(band.clone()).or_default().push(observation.clone());
+            }
+        }
+        for (band, inside) in grouped {
+            if inside.len() < ITEMS_PER_BIN {
+                continue;
+            }
+            map.by_band.insert(band, Self::fit_auto(&inside).bins);
+        }
+        map
+    }
+
+    /// Maps a raw signal to a probability, using the band's own table when
+    /// one was fitted for it.
+    #[must_use]
+    pub fn apply_banded(&self, raw: f64, band: Option<&str>) -> f64 {
+        let bins = band
+            .and_then(|band| self.by_band.get(band))
+            .unwrap_or(&self.bins);
+        for bin in bins {
+            if raw >= bin.lo && (raw < bin.hi || (bin.hi - 1.0).abs() < f64::EPSILON) {
+                return bin.fitted;
+            }
+        }
+        self.base_rate
+    }
+
+    /// Rescales a distribution using the band's table where one exists.
+    #[must_use]
+    pub fn apply_distribution_banded(
+        &self,
+        raw: &IndexMap<String, f64>,
+        band: Option<&str>,
+    ) -> IndexMap<String, f64> {
+        let Some((winner, top)) = raw.iter().max_by(|a, b| a.1.total_cmp(b.1)) else {
+            return raw.clone();
+        };
+        let winner = winner.clone();
+        let calibrated = self.apply_banded(*top, band).clamp(0.0, 1.0);
+        rescale(raw, &winner, calibrated)
     }
 
     /// Maps a raw signal to a calibrated probability for the winning option.
@@ -124,22 +211,32 @@ impl Map {
         };
         let winner = winner.clone();
         let calibrated = self.apply(*top).clamp(0.0, 1.0);
-        let rest: f64 = raw.iter().filter(|(k, _)| **k != winner).map(|(_, v)| *v).sum();
-        let remaining = 1.0 - calibrated;
-        raw.iter()
-            .map(|(key, value)| {
-                if *key == winner {
-                    (key.clone(), calibrated)
-                } else if rest > 0.0 {
-                    (key.clone(), remaining * value / rest)
-                } else {
-                    // The estimator was unanimous, so the leftover mass has no
-                    // observed shape to follow and is spread evenly.
-                    (key.clone(), remaining / (raw.len() - 1).max(1) as f64)
-                }
-            })
-            .collect()
+        rescale(raw, &winner, calibrated)
     }
+}
+
+/// Gives the winner its calibrated probability and shares what is left among
+/// the rest, in the proportions the estimator observed.
+fn rescale(
+    raw: &IndexMap<String, f64>,
+    winner: &str,
+    calibrated: f64,
+) -> IndexMap<String, f64> {
+    let rest: f64 = raw.iter().filter(|(k, _)| k.as_str() != winner).map(|(_, v)| *v).sum();
+    let remaining = 1.0 - calibrated;
+    raw.iter()
+        .map(|(key, value)| {
+            if key == winner {
+                (key.clone(), calibrated)
+            } else if rest > 0.0 {
+                (key.clone(), remaining * value / rest)
+            } else {
+                // The estimator was unanimous, so the leftover mass has no
+                // observed shape to follow and is spread evenly.
+                (key.clone(), remaining / (raw.len() - 1).max(1) as f64)
+            }
+        })
+        .collect()
 }
 
 /// How well a set of probabilities matched what happened.
@@ -351,7 +448,14 @@ mod tests {
     use super::*;
 
     fn observations(pairs: &[(f64, bool)]) -> Vec<Observation> {
-        pairs.iter().map(|(raw, correct)| Observation { raw: *raw, correct: *correct }).collect()
+        pairs.iter().map(|(raw, correct)| Observation::new(*raw, *correct)).collect()
+    }
+
+    fn banded(pairs: &[(f64, bool, &str)]) -> Vec<Observation> {
+        pairs
+            .iter()
+            .map(|(raw, correct, band)| Observation::banded(*raw, *correct, *band))
+            .collect()
     }
 
     #[test]
@@ -495,6 +599,51 @@ mod tests {
         assert_eq!(some.bins.len(), 5);
         let many = Map::fit_auto(&observations(&[(1.0, true); 1000]));
         assert_eq!(many.bins.len(), 10, "the table stops widening at ten bins");
+    }
+
+    #[test]
+    fn a_band_table_separates_what_the_frequency_alone_cannot() {
+        // Thirty items, all reported at 1.00 by the estimator, so the pooled
+        // table can only say one thing about them. The band splits them: the
+        // `unlikely` half is right a third of the time and the
+        // `almost certain` half almost always.
+        let mut rows: Vec<(f64, bool, &str)> = Vec::new();
+        for index in 0..15 {
+            rows.push((1.0, index % 3 == 0, "unlikely"));
+        }
+        for index in 0..15 {
+            rows.push((1.0, index != 0, "almost certain"));
+        }
+        let map = Map::fit_banded(&banded(&rows));
+
+        let pooled = map.apply(1.0);
+        let low = map.apply_banded(1.0, Some("unlikely"));
+        let high = map.apply_banded(1.0, Some("almost certain"));
+        assert!(low < pooled, "the low band should read below the pool: {low} against {pooled}");
+        assert!(high > pooled, "the high band should read above it: {high} against {pooled}");
+        assert!(low < 0.5 && high > 0.8, "low {low}, high {high}");
+    }
+
+    #[test]
+    fn a_thin_band_falls_back_to_the_pooled_table() {
+        // Two items in a band is not a probability. The map declines to fit
+        // one and the pooled answer is used instead.
+        let mut rows: Vec<(f64, bool, &str)> = vec![(1.0, false, "unlikely"), (1.0, false, "unlikely")];
+        for _ in 0..20 {
+            rows.push((1.0, true, "almost certain"));
+        }
+        let map = Map::fit_banded(&banded(&rows));
+        assert!(!map.by_band.contains_key("unlikely"), "a two-item band was fitted");
+        assert!(map.by_band.contains_key("almost certain"));
+        // Falling back means the thin band reads the pool, not its own two items.
+        assert!((map.apply_banded(1.0, Some("unlikely")) - map.apply(1.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn an_unknown_band_reads_the_pooled_table() {
+        let map = Map::fit_banded(&banded(&[(1.0, true, "likely"); 20]));
+        assert!((map.apply_banded(1.0, Some("never seen")) - map.apply(1.0)).abs() < 1e-12);
+        assert!((map.apply_banded(1.0, None) - map.apply(1.0)).abs() < 1e-12);
     }
 
     #[test]
