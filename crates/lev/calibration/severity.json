@@ -1,0 +1,63 @@
+{
+  "family": "severity",
+  "estimator": "l2",
+  "samples": 8,
+  "suite": "support-v1",
+  "suite_digest": "35dfdf43c43c036049905845f4a8999e8d41abc9bf29a2a8ec827b65d830700e",
+  "os_build": "25E246",
+  "fitted": "2026-09-19",
+  "map": {
+    "bins": [
+      {
+        "lo": 0.0,
+        "hi": 0.2,
+        "fitted": 0.8333333333333334,
+        "count": 0
+      },
+      {
+        "lo": 0.2,
+        "hi": 0.4,
+        "fitted": 0.8333333333333334,
+        "count": 0
+      },
+      {
+        "lo": 0.4,
+        "hi": 0.6,
+        "fitted": 0.8333333333333334,
+        "count": 0
+      },
+      {
+        "lo": 0.6,
+        "hi": 0.8,
+        "fitted": 0.625,
+        "count": 3
+      },
+      {
+        "lo": 0.8,
+        "hi": 1.0,
+        "fitted": 0.875,
+        "count": 3
+      }
+    ],
+    "base_rate": 0.8333333333333334,
+    "fitted_on": 6
+  },
+  "raw_metrics": {
+    "accuracy": 0.6666666666666666,
+    "ece": 0.1875,
+    "brier": 0.2421875,
+    "nll": 0.6470825029211084,
+    "confident_errors": 0,
+    "items": 6
+  },
+  "calibrated_metrics": {
+    "accuracy": 0.6666666666666666,
+    "ece": 0.13194444444444442,
+    "brier": 0.18431712962962962,
+    "nll": 0.5362531189889002,
+    "confident_errors": 0,
+    "items": 6
+  },
+  "admitted": false,
+  "verdict": "refused: fitted on 6 items, below the floor of 8"
+}

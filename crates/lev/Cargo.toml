@@ -35,6 +35,11 @@ name = "lev-measure"
 path = "src/bin/lev_measure.rs"
 
 [[bin]]
+name = "lev-eval"
+path = "src/bin/lev_eval.rs"
+required-features = ["serve"]
+
+[[bin]]
 name = "lev-compare"
 path = "src/bin/lev_compare.rs"
 required-features = ["serve"]

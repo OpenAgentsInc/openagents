@@ -86,6 +86,9 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
     Json(json!({
         "models": [{
             "name": door.model,
+            // `jev::ModelCard` reads name, description, and release_date, so a
+            // client's `models().list()` works against this door too.
+            "release_date": "2026-09-19",
             "description": "Apple's on-device foundation model, answering the System One contract. \
                             Its probabilities are seeded-sampling frequencies, not calibrated \
                             predictive probabilities.",

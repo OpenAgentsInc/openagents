@@ -151,3 +151,13 @@ async fn a_question_outside_the_bounds_is_refused_before_any_call() {
         .expect_err("a 256-option Choice is refused");
     assert!(matches!(error, jev::Error::Question { .. }), "got {error}");
 }
+
+#[tokio::test]
+async fn a_jev_client_lists_the_door_s_models() {
+    let Some(base) = door().await else { return };
+    let cards = client(&base).models().list(jev::ListOptions::default()).await.expect("the door lists models");
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0].name, "lev-base");
+    assert!(!cards[0].description.is_empty());
+    assert!(!cards[0].release_date.is_empty());
+}

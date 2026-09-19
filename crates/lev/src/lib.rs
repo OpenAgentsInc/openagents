@@ -19,14 +19,17 @@
 
 pub mod api;
 pub mod bridge;
+pub mod calibrate;
 pub mod error;
 pub mod estimator;
 pub mod render;
 pub mod schema;
+pub mod suite;
 #[cfg(feature = "serve")]
 pub mod serve;
 
 pub use api::{Answer, Extensions, NoulCriteria, Question, SystemOneRequest, SystemOneResponse, Usage};
+pub use calibrate::{Map, Metrics, Observation, Record};
 pub use bridge::{Availability, Bridge, Call, Outcome, Sampling};
 pub use estimator::{Estimator, Raw, confidence};
 pub use error::{Refusal, RefusalCode, Result};

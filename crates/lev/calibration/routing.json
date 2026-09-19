@@ -1,0 +1,63 @@
+{
+  "family": "routing",
+  "estimator": "l2",
+  "samples": 8,
+  "suite": "support-v1",
+  "suite_digest": "35dfdf43c43c036049905845f4a8999e8d41abc9bf29a2a8ec827b65d830700e",
+  "os_build": "25E246",
+  "fitted": "2026-09-19",
+  "map": {
+    "bins": [
+      {
+        "lo": 0.0,
+        "hi": 0.2,
+        "fitted": 0.9166666666666666,
+        "count": 0
+      },
+      {
+        "lo": 0.2,
+        "hi": 0.4,
+        "fitted": 0.9166666666666666,
+        "count": 0
+      },
+      {
+        "lo": 0.4,
+        "hi": 0.6,
+        "fitted": 0.9166666666666666,
+        "count": 0
+      },
+      {
+        "lo": 0.6,
+        "hi": 0.8,
+        "fitted": 0.9166666666666666,
+        "count": 0
+      },
+      {
+        "lo": 0.8,
+        "hi": 1.0,
+        "fitted": 0.8846153846153846,
+        "count": 12
+      }
+    ],
+    "base_rate": 0.9166666666666666,
+    "fitted_on": 12
+  },
+  "raw_metrics": {
+    "accuracy": 1.0,
+    "ece": 0.03125,
+    "brier": 0.01171875,
+    "nll": 0.039166969103811296,
+    "confident_errors": 0,
+    "items": 12
+  },
+  "calibrated_metrics": {
+    "accuracy": 1.0,
+    "ece": 0.11271367521367494,
+    "brier": 0.012782845715538033,
+    "nll": 0.11963641000044052,
+    "confident_errors": 0,
+    "items": 12
+  },
+  "admitted": false,
+  "verdict": "refused: ECE 0.031 to 0.113, Brier 0.012 to 0.013; the raw signal was already better"
+}
