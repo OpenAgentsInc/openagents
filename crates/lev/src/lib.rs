@@ -20,11 +20,13 @@
 pub mod api;
 pub mod bridge;
 pub mod error;
+pub mod estimator;
 pub mod render;
 pub mod schema;
 
 pub use api::{Answer, Extensions, NoulCriteria, Question, SystemOneRequest, SystemOneResponse, Usage};
 pub use bridge::{Availability, Bridge, Call, Outcome, Sampling};
+pub use estimator::{Estimator, Raw, confidence};
 pub use error::{Refusal, RefusalCode, Result};
 pub use render::render;
 pub use schema::{BANDS, Compiled, Kind, compile};
