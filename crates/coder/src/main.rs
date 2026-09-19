@@ -321,20 +321,8 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
     // each phase.
     let mut agent_slot = Some(Agent::from_env());
     let mut turn: Option<tokio::task::JoinHandle<Agent>> = None;
-
-    app.push(
-        Intensity::Half,
-        "  ",
-        format!(
-            "coder — classify {}, door {}",
-            if agent_slot.as_ref().unwrap().classifies() {
-                "jev"
-            } else {
-                "off"
-            },
-            agent_slot.as_ref().unwrap().model()
-        ),
-    );
+    // The door's model name rides the composer's location rail.
+    let model = agent_slot.as_ref().unwrap().model().to_string();
 
     let mut events = EventStream::new();
     let mut spinner = interval(Duration::from_millis(50));
@@ -357,7 +345,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
             start_turn(&mut app, &mut agent_slot, &mut turn, &tx, draft);
         }
 
-        draw(terminal, &ladder, &mut app)?;
+        draw(terminal, &ladder, &mut app, &model)?;
 
         tokio::select! {
             maybe = events.next() => {
@@ -505,11 +493,13 @@ fn start_turn(
     }));
 }
 
-/// One frame: scrollback above, the composer at the foot.
+/// One frame: scrollback above, the composer at the foot. `model` is the
+/// door's name, drawn on the location rail.
 fn draw(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     ladder: &Ladder,
     app: &mut App,
+    model: &str,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
@@ -537,7 +527,7 @@ fn draw(
         let mut composer = Composer::new(&mut app.editor, *ladder)
             .prompt(prompt)
             .status(&status)
-            .location("openagents")
+            .location(model)
             .tokens(&app.tokens);
         let box_height = composer.height(area.width).min(area.height);
         let log_area = Rect::new(0, 0, area.width, area.height - box_height);

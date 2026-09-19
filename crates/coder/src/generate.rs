@@ -92,6 +92,11 @@ impl From<reqwest::Error> for GenerateError {
     }
 }
 
+/// How many times an empty stream is attempted before its error surfaces:
+/// transient upstream failures — a malformed function call, a dropped
+/// connection — retry invisibly; a dead door still reports dead.
+const EMPTY_STREAM_ATTEMPTS: usize = 6;
+
 /// One generation: instructions plus conversation in, text plus usage out.
 /// `sink` receives each text delta as it streams, so a caller can draw the
 /// answer as it forms. `meta` receives sideband items a door may emit —
@@ -168,7 +173,10 @@ impl ResponsesDoor {
             "store": false,
             // No tools exist on this door; Gemini will still try to emit a
             // function call when the instructions carry a JSON example, and
-            // the call dies as MALFORMED_FUNCTION_CALL. Forbid it outright.
+            // the call dies as MALFORMED_FUNCTION_CALL. Forbid it outright —
+            // an empty tools array plus tool_choice none, since gateways
+            // differ on which one they translate.
+            "tools": [],
             "tool_choice": "none",
         })
     }
@@ -259,10 +267,12 @@ impl Generate for ResponsesDoor {
         _meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         // A stream that fails before delivering any text is safe to redo —
-        // the user saw nothing and the request is idempotent. One retry
-        // covers transient upstream failures like a model-side malformed
-        // function call.
-        for attempt in 0..2 {
+        // the user saw nothing and the request is idempotent. Keep retrying
+        // with a growing wait: upstream flakes like a model-side malformed
+        // function call are transient, and the retry is invisible. A door
+        // that keeps failing after the last attempt still surfaces its
+        // error — hidden retries, honest failures.
+        for attempt in 0..EMPTY_STREAM_ATTEMPTS {
             let mut delivered = false;
             let result = {
                 let mut wrapped = |delta: &str| {
@@ -272,7 +282,16 @@ impl Generate for ResponsesDoor {
                 self.once(instructions, input, &mut wrapped).await
             };
             match result {
-                Err(GenerateError::Stream(_)) if !delivered && attempt == 0 => continue,
+                Err(GenerateError::Stream(_)) if !delivered => {
+                    if attempt + 1 == EMPTY_STREAM_ATTEMPTS {
+                        return result;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        300 * (attempt as u64 + 1),
+                    ))
+                    .await;
+                    continue;
+                }
                 other => return other,
             }
         }
