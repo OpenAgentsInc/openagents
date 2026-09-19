@@ -21,6 +21,7 @@ the improvement number afterwards mean anything.
 import argparse
 import json
 import pathlib
+import random
 import sys
 from typing import Literal
 
@@ -230,6 +231,41 @@ def to_record(item, with_band, base_rates):
     ]
 
 
+def permutations_of(item, count, rng):
+    """Yields the item under `count` option orders.
+
+    Measured on the first adapter: the base model scores the same forward and
+    reversed, while the adapted model gave back four of its thirteen points
+    under reversal. Every training record had presented its options in one
+    fixed order, so the adapter learned position alongside the judgment.
+
+    Only a Choice is shuffled. A Noul's two options and a Score's ordered
+    levels both carry meaning in their order, and permuting them would teach
+    the model something false.
+    """
+    yield item
+    if count <= 1 or item["question"]["type"] != "choice":
+        return
+    criteria = item["question"]["criteria"]
+    keys = list(criteria.keys())
+    if len(keys) < 2:
+        return
+    seen = {tuple(keys)}
+    for index in range(count - 1):
+        for _ in range(8):
+            shuffled = keys[:]
+            rng.shuffle(shuffled)
+            if tuple(shuffled) not in seen:
+                break
+        else:
+            return
+        seen.add(tuple(shuffled))
+        variant = json.loads(json.dumps(item))
+        variant["id"] = f"{item['id']}#p{index + 1}"
+        variant["question"]["criteria"] = {key: criteria[key] for key in shuffled}
+        yield variant
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", default=str(SUITE))
@@ -239,6 +275,13 @@ def main():
         action="store_true",
         help="train the certainty band as well as the choice",
     )
+    parser.add_argument(
+        "--permutations",
+        type=int,
+        default=1,
+        help="how many option orders each Choice item appears under (default 1, no augmentation)",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="seed for the permutation shuffle")
     parser.add_argument(
         "--base-rates",
         help="JSON map of item id to the base model's measured outcome, for band labels; "
@@ -256,18 +299,31 @@ def main():
     counts = {}
     for split, name in (("calibration", "train"), ("evaluation", "valid")):
         items = [item for item in suite["items"] if item["split"] == split]
+        # Only the training split is augmented. Permuting the evaluation
+        # split would score the same judgment several times and quietly
+        # reweight the suite.
+        permutations = args.permutations if name == "train" else 1
+        rng = random.Random(args.seed)
         path = out / f"{name}.jsonl"
+        written = 0
         with path.open("w") as handle:
             for item in items:
-                handle.write(json.dumps(to_record(item, args.band, base_rates)) + "\n")
-        counts[name] = len(items)
-        print(f"wrote {path} with {len(items)} records", file=sys.stderr)
+                for variant in permutations_of(item, permutations, rng):
+                    # The band label follows the original item: a permuted
+                    # copy is the same judgment on the same state.
+                    rates = base_rates.get(item["id"])
+                    handle.write(json.dumps(to_record(variant, args.band, {variant["id"]: rates} if rates else {})) + "\n")
+                    written += 1
+        counts[name] = written
+        print(f"wrote {path} with {written} records from {len(items)} items", file=sys.stderr)
 
     meta = {
         "suite": suite["name"],
         "suite_digest": suite["digest"],
         "counts": counts,
         "band": args.band,
+        "permutations": args.permutations,
+        "seed": args.seed,
     }
     (out / "conversion.json").write_text(json.dumps(meta, indent=1) + "\n")
     print(json.dumps(meta, indent=1))

@@ -97,8 +97,17 @@ python3 training/lev-adapter/toolkit.py
 # 1. Convert the suite. Training reads the calibration split; the evaluation
 #    split becomes validation and is never trained on, which is what makes
 #    the improvement number afterwards mean anything.
+#
+#    --permutations shuffles Choice option order so an item appears under
+#    several orders. The first adapter gave back four of its thirteen points
+#    when options were reversed, because every record had presented them one
+#    way. Only the training split is augmented.
+#
+#    --band trains the certainty field, labelled from the base model's own
+#    measured outcomes. Produce those first with `lev-eval --dump`.
 cd training/lev-adapter
-python3 convert.py --out data/
+python3 convert.py --out data/ --permutations 3 \
+    --band --base-rates runs/base-rates.json
 
 # 2. Prove the renderers agree. Training data rendered differently from
 #    serving text is the worst kind of bug: everything runs and the numbers
