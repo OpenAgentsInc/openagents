@@ -96,6 +96,7 @@ measurement exists yet.
 | [`apple-fm-surface.md`](apple-fm-surface.md) | What this workspace already established about Apple FM across `openagents` and `psionic` history: the bridge contract, the router precedent, the adapter package format, and the typed error surface. |
 | [`calibration.md`](calibration.md) | The rule that no Lev probability gates an action before it is measured, the suites and gates that measure it, and the record a calibrated question family has to carry. |
 | [`mesh-plan.md`](mesh-plan.md) | How a Lev worker differs from a kev worker on the earn mesh: no artifact to verify, no packing win, and a verification floor that has to move from digests to behavior. |
+| [`improvement-strategy.md`](improvement-strategy.md) | Where Lev loses, why each gap has a different cause, the engineering levers with measured returns, the adapter lane in full, and what not to bother trying. |
 | [`disposition.md`](disposition.md) | Where Lev is admitted and refused, the four-way scores, and six ranked improvements with the first one built and measured. |
 | [`roadmap.md`](roadmap.md) | The issue sequence, the decisions as made, and the state of each step. |
 | [`measurements/`](measurements/) | The behavior record, the suite scores, and the comparison runs, with the exact commands. |
