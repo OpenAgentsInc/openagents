@@ -503,29 +503,13 @@ fn draw(
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
-        let prompt = if app.busy {
-            frame_for(app.tick)
-        } else {
-            coder_terminal::PROMPT
-        };
-        let status = if app.busy {
-            let elapsed = app.busy_since.map_or(0, |since| since.elapsed().as_secs());
-            let clock = if elapsed >= 60 {
-                format!("{}m {}s", elapsed / 60, elapsed % 60)
-            } else {
-                format!("{elapsed}s")
-            };
-            format!("{} {} ({})", frame_for(app.tick), app.status, clock)
+        let status = if app.verbose {
+            format!("{} · v", app.status)
         } else {
             app.status.clone()
         };
-        let status = if app.verbose {
-            format!("{status} · v")
-        } else {
-            status
-        };
         let mut composer = Composer::new(&mut app.editor, *ladder)
-            .prompt(prompt)
+            .prompt(coder_terminal::PROMPT)
             .status(&status)
             .location(model)
             .tokens(&app.tokens);
@@ -574,6 +558,26 @@ fn draw(
                     width,
                 );
             }
+        }
+        // A turn in flight leaves the working line at the transcript's
+        // foot, under whatever is already there — the one place the
+        // spinner lives.
+        if app.busy {
+            let elapsed = app.busy_since.map_or(0, |since| since.elapsed().as_secs());
+            let clock = if elapsed >= 60 {
+                format!("{}m {}s", elapsed / 60, elapsed % 60)
+            } else {
+                format!("{elapsed}s")
+            };
+            expand(
+                &mut rows,
+                Intensity::Half,
+                false,
+                "  ",
+                &Marked::plain(format!("{} working ({clock})", frame_for(app.tick))),
+                0,
+                width,
+            );
         }
         let end = rows.len().saturating_sub(app.scroll);
         let start = end.saturating_sub(shown);
