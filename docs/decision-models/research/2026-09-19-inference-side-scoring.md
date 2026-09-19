@@ -164,6 +164,12 @@ no equivalent.
 
 We should hold our own Score numbers to the same complaint.
 
+**Done, on 2026-09-19:**
+[`../2026-09-19-score-ordinality.md`](../2026-09-19-score-ordinality.md).
+Hosted Jev and Lev survive it. `kev-0.5b` does not: 26 of 60 ramp
+distributions are bimodal, and on 47 of 96 items the weighted mean is not the
+level the model picked.
+
 ## What to do
 
 **Do not build a fourth door.** It exists, it is better than we would build

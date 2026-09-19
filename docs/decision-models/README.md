@@ -46,6 +46,7 @@ No answer becomes context for another.
 | Why Apple's runtime needs a different mechanism | [`lev/architecture.md`](lev/architecture.md) |
 | What Lev is admitted and refused for | [`lev/disposition.md`](lev/disposition.md) |
 | How any of these numbers were produced | [`lev/measurements/`](lev/measurements/) |
+| Whether a Score's ordering means anything, door by door | [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) |
 
 ## The rule this directory keeps
 
@@ -60,6 +61,16 @@ page next to the claim rather than replacing it quietly.
 
 The machinery that enforces this lives in `crates/gym` and is surveyed in
 [`../gym.md`](../gym.md).
+
+## Measurements that cross the implementations
+
+A run about one door stays with that door, as `lev/measurements/` does. A run
+that compares them lives here, so it does not have to be written three times.
+
+| Document | Holds |
+| --- | --- |
+| [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) | Whether a Score's `Σ i · p_i` is a position, on eight doors: monotonicity under an authored ramp, adjacent-versus-distant confusion, and bimodality. Jev and Lev hold; `kev-0.5b` does not. |
+| [`2026-09-19-frozen-embedding-baseline.md`](2026-09-19-frozen-embedding-baseline.md) | What frozen sentence embeddings plus logistic regression do against the doors we trained: it beats Lev and Kev on the one family it can serve, loses to hosted Jev, and refuses half the suite. |
 
 ## Other implementations
 

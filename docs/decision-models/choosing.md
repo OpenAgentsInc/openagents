@@ -91,6 +91,13 @@ rather than by quality. A model whose levels are arbitrary label tokens has
 no mechanism keeping the ordering meaningful — it can put mass on levels 0
 and 4 with a trough at 2, and a weighted mean will report 2.
 
+That is measured, not hypothetical, and it is measured on one of ours:
+`kev-0.5b` does it on 26 of 60 ramp items, where hosted Jev and Lev do it on
+none. Ask which primitives a door serves, then ask whether its Score has been
+held to a ramp —
+[`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md)
+is the test.
+
 Before adopting anything, ask which primitives it actually serves. "Beats
 Jev" has meant "beats Jev at Choice" in every claim reviewed this week — and
 it means the same for our own cheap baseline, which **declines 48 of the 98

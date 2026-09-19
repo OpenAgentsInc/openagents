@@ -2,10 +2,13 @@
 
 **Status:** records external measurements from `projects/repos/kev/`
 (`MODEL_CARD.md`, `docs/model-cards/`, `runs/leaderboard.md`, `PLAN.md`)
-and the Hugging Face model pages. None of these numbers come from
-OpenAgents infrastructure; they are quoted here so the integration plan in
-[`mesh-plan.md`](mesh-plan.md) can reason about them without re-deriving
-them.
+and the Hugging Face model pages. They are quoted here so the integration
+plan in [`mesh-plan.md`](mesh-plan.md) can reason about them without
+re-deriving them.
+
+One block is ours rather than quoted, and says so in its first line:
+[Do not read this checkpoint's `score` as a
+position](#do-not-read-this-checkpoints-score-as-a-position).
 
 ## kev-0.5b (released v0.1.0)
 
@@ -106,6 +109,43 @@ Not intended for production decisions affecting people — moderation, fraud,
 credit, hiring, medical, legal. A `confidence: 0.92` from this model is a
 statistic about its own distribution, not a verified probability of being
 right.
+
+### Do not read this checkpoint's `score` as a position
+
+Measured here rather than quoted: this is the one block on the page produced
+on OpenAgents infrastructure, by
+[`training/score-probe/`](../../training/score-probe/) against
+`kev-serve` on 2026-09-19, over 96 Score items.
+
+**`kev-0.5b`'s `score` field is not a usable ordinal position. Read the
+argmax level instead.**
+
+| | `kev-0.5b` | hosted Jev, same items |
+| --- | --- | --- |
+| Monotonicity under a 12-ramp, 5-level walk (tau) | +0.78 | +1.00 |
+| Mean score at true level 0, then 1 | 1.44, then **1.35** | 0.02, then 0.89 |
+| Errors landing on an adjacent level (null) | 0.63 (0.50) | 1.00 (0.75) |
+| Bimodal distributions, of 96 | **26** | 0 |
+| Items where the mean lands in a trough, of 96 | **28** | 0 |
+| Items where the mean is not the level picked, of 96 | **47** | 0 |
+
+The mechanism matches: with `--ord_w` at its default of zero, a Score
+question's loss is plain cross-entropy over the level options, which is
+indifferent between putting the wrong mass one level away and four levels
+away. As the recipe section above records, this checkpoint predates that
+term. What ordering the answers carry is read off the rubric text by the
+frozen backbone, which is consistent with `kev-4b` (tau +0.98) and `kev-8b`
+(+0.93) walking the same ramp cleanly on the same recipe.
+
+An argmax makes no claim about distance, so a failed ordering leaves it
+standing: it is still a level, right 0.60 of the time on this material. The
+weighted mean does make that claim, and it does not survive, on either
+the five-level ramp or the three-level `severity` rubric, where this
+checkpoint never reports a score below 0.60 or above 1.83 on items whose
+true levels span the whole scale.
+
+Full method, per-door numbers, intervals, and what would change the reading:
+[`docs/decision-models/2026-09-19-score-ordinality.md`](../decision-models/2026-09-19-score-ordinality.md).
 
 ## The preview family
 

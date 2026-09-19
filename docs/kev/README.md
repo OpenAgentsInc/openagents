@@ -41,6 +41,11 @@ and `score` questions, so the official `typesafe-sdk` — and this
 repository's `crates/jev` — work against a local kev server with a
 `base_url` change.
 
+One caveat travels with `score`. On `kev-0.5b` the weighted mean it returns
+is not a usable position on the rubric, and a caller should read the level
+with the greatest probability instead: [Do not read this checkpoint's `score`
+as a position](model-cards.md#do-not-read-this-checkpoints-score-as-a-position).
+
 Kev is not Jev. It is a laptop-scale research prototype that shows the
 mechanism works; on out-of-domain suites it trails the hosted Jev by
 8–26 points depending on checkpoint size. [`model-cards.md`](model-cards.md)

@@ -50,6 +50,21 @@ where `kev-8b` reaches 0.879.
 | `urgency` | 30 | 0.129 | 0.025 | 1.319 | 0.582 | 0.173 | 0.196 | 0.73 | refused: ECE improved 0.129 to 0.025 but Brier rose 0.173 to 0.196, past the 10% the binning is allowed to cost |
 
 
+## How the `severity` family is scored
+
+`severity` holds Score questions, and `lev_eval` scores one by the level with
+the greatest probability, not by the weighted mean the door also returns.
+Every `severity` number on this page is an argmax number.
+
+That distinction was checked on 2026-09-19, after a probe asked whether a
+Score's ordering means anything at all on each door:
+[`2026-09-19-score-ordinality.md`](../../decision-models/2026-09-19-score-ordinality.md).
+Lev's ordering held — tau +0.98 on a twelve-ramp walk, 92% of errors landing
+on an adjacent level against a 0.44 null, and no bimodal distribution on 96
+items. **Nothing on this page is withdrawn.** `kev-0.5b`'s weighted mean did
+not survive the same probe, which is recorded on its card rather than here,
+because its `severity` accuracy above is also an argmax number and stands.
+
 ## What this run establishes
 
 Written after the run, against the numbers above.

@@ -1,0 +1,137 @@
+{
+  "name": "severity-ramp-v1",
+  "created": "2026-09-19",
+  "description": "Twelve severity ramps authored in this repository for the Score ordinality probe. Each ramp fixes a subject and walks the true level from 0 to 4, changing only the clause that carries the severity. Every item shares one five-level rubric and one instruction, and the levels are always presented in order. Labels are the author's reading, chosen so the walk is as unarguable as a written scenario allows; they are not drawn from an external dataset.",
+  "rubric": {
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+      "Cosmetic: the product works and nothing is lost",
+      "Minor: the task still completes, but it is slower or clumsier",
+      "Impaired: the task fails, and a documented workaround exists",
+      "Severe: the task fails, and there is no workaround",
+      "Blocking: the product cannot be used at all"
+    ]
+  },
+  "ramps": [
+    {
+      "id": "export-button",
+      "states": [
+        "The export button's label sits two pixels off center. Every export runs and the file is correct.",
+        "The export button takes two clicks instead of one. Every export runs and the file is correct.",
+        "The export button does nothing. Exports still run from the File menu, which the help page documents.",
+        "The export button does nothing, and no other path to an export exists. The rest of the product works.",
+        "The export button crashes the product, and the product crashes again on every start afterwards. Nothing in it can be used."
+      ]
+    },
+    {
+      "id": "search-box",
+      "states": [
+        "The search box's placeholder text is a shade lighter than the design calls for. Every search returns the right records.",
+        "The search box takes about four seconds to answer. Every search returns the right records.",
+        "The search box returns nothing for any query. The documented filter panel still finds the same records.",
+        "The search box returns nothing for any query, and no other way to find a record exists. The rest of the product works.",
+        "The search box locks the window as soon as the page loads, and that page loads on sign-in. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "password-reset",
+      "states": [
+        "The password reset email signs off with last year's copyright line. The link works and the reset completes.",
+        "The password reset email arrives about ten minutes late. The link works and the reset completes.",
+        "The password reset email never arrives. An administrator can still reset the password from the admin console, which the help page documents.",
+        "The password reset email never arrives, and no other way to reset a password exists. Signed-in users can still work.",
+        "The password reset email never arrives, and every session was signed out overnight. Nobody can sign in, so nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "invoice-pdf",
+      "states": [
+        "The invoice PDF puts the logo three pixels low. Every figure on it is right.",
+        "The invoice PDF takes about thirty seconds to build. Every figure on it is right.",
+        "The invoice PDF shows the wrong tax total. The documented CSV export carries the right figure.",
+        "The invoice PDF shows the wrong tax total, and no other billing document exists. The rest of the product works.",
+        "The invoice PDF job holds the whole database connection pool open, and every page now times out. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "mobile-sync",
+      "states": [
+        "Mobile sync reports its last run in the wrong time zone in the status line. Every record syncs.",
+        "Mobile sync runs every thirty minutes instead of every five. Every record syncs.",
+        "Mobile sync never runs on its own. The documented pull-to-refresh still syncs every record.",
+        "Mobile sync never runs, and pull-to-refresh was removed, so a phone cannot take new records. The web app works.",
+        "Mobile sync corrupts the local store on start, and the app closes the moment it opens. Nothing in the app can be used."
+      ]
+    },
+    {
+      "id": "dark-mode",
+      "states": [
+        "In dark mode one divider line keeps the light theme's gray. Everything is readable.",
+        "In dark mode the settings page flashes white for a moment on open. Everything is readable after that.",
+        "In dark mode the form labels are white on white and cannot be read. The documented light theme restores them.",
+        "In dark mode the form labels cannot be read, and the theme switch was removed, so the forms cannot be filled in. The rest of the product works.",
+        "Dark mode draws every page as a blank black screen and cannot be turned off. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "save-shortcut",
+      "states": [
+        "The save shortcut is written as Ctrl+S in a menu that should say Cmd+S. The shortcut saves.",
+        "The save shortcut works only after the editor has been clicked once. It then saves.",
+        "The save shortcut does nothing. The documented Save button still saves.",
+        "The save shortcut does nothing, and the Save button was removed, so work cannot be saved. Everything else works.",
+        "The save shortcut fires on every keypress and freezes the editor, and the editor opens on start-up. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "file-upload",
+      "states": [
+        "The upload dialog's progress bar is two pixels too tall. Every file uploads.",
+        "The upload dialog shows no progress until the file is finished. Every file uploads.",
+        "The upload dialog rejects every file. The documented drag-and-drop area still accepts them.",
+        "The upload dialog rejects every file, and drag-and-drop was removed, so nothing can be uploaded. The rest of the product works.",
+        "Each upload attempt fills the server's disk, and every request now returns an error. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "notification-bell",
+      "states": [
+        "The notification bell's badge sits one pixel off the icon's corner. Every notification is listed.",
+        "The notification bell updates its badge a minute after a notification arrives. Every notification is listed.",
+        "The notification bell never shows a badge. The documented notifications page still lists every notification.",
+        "The notification bell never shows a badge, and the notifications page was removed, so a notification cannot be seen. The rest of the product works.",
+        "The notification poll runs in a tight loop and pins the browser tab, and it starts on sign-in. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "report-chart",
+      "states": [
+        "The report chart's axis labels use last quarter's font. Every point is plotted correctly.",
+        "The report chart redraws about five seconds after the page settles. Every point is plotted correctly.",
+        "The report chart plots last month's figures instead of this month's. The documented table view shows this month's.",
+        "The report chart plots last month's figures, and the table view was removed, so this month's cannot be read anywhere. The rest of the product works.",
+        "The report chart's query locks the reporting tables, and every page that reads them now hangs. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "calendar-invite",
+      "states": [
+        "The calendar invite writes the organizer's name in lower case. The time and the link are right.",
+        "The calendar invite arrives about five minutes after the meeting is created. The time and the link are right.",
+        "The calendar invite carries the wrong time zone. The documented meeting page shows the right time.",
+        "The calendar invite carries the wrong time zone, and the meeting page was removed, so the right time is nowhere. The rest of the product works.",
+        "The calendar service rejects every request from the product, and the retry loop blocks the request queue. Nothing in the product can be used."
+      ]
+    },
+    {
+      "id": "api-key-page",
+      "states": [
+        "The API key page draws the key in a slightly narrower font than the rest of the page. The key works.",
+        "The API key page takes about eight seconds to reveal a key. The key works.",
+        "The API key page cannot create a key. The documented command-line tool still creates one.",
+        "The API key page cannot create a key, and the command-line tool was withdrawn, so no key can be created. Existing keys still work.",
+        "The API key page revoked every key on deploy and cannot issue a new one. Nothing in the product can be used."
+      ]
+    }
+  ]
+}
