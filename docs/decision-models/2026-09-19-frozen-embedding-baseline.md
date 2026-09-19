@@ -38,7 +38,7 @@ reason rather than per convenience, and here the reason is that the frozen
 encoders only ship with a Python runtime. Every run is a tracked JSON record
 under `training/baseline/runs/`, carrying each scored item's distribution, so
 you can check a number here without rerunning anything. The metric code is a
-port of `score` in `crates/lev/src/calibrate.rs` rather than a fresh
+port of `score` in `crates/gym/src/calibrate.rs` rather than a fresh
 implementation, because a baseline scored by a different scorer measures the
 scorer.
 `training/baseline/check_panel.py` runs that port against the fixtures from
@@ -121,7 +121,7 @@ checks for it and refuses with `option_set_drift`.
 ## The panel
 
 Accuracy, ECE, Brier, log loss, and confident errors, on the winning option's
-reported probability, the same reduction `crates/lev/src/calibrate.rs` makes.
+reported probability, the same reduction `crates/gym/src/calibrate.rs` makes.
 `SE` is the binomial standard error of the accuracy on that many items.
 
 ### `support-v2`, evaluation split, 50 `routing` items
@@ -136,10 +136,11 @@ reported probability, the same reduction `crates/lev/src/calibrate.rs` makes.
 | `all-MiniLM-L6-v2` | one-se | 50 | 0.880 | 0.046 | 0.140 | 0.103 | 0.374 | 1 |
 | TF-IDF | argmin | 10,000 | 0.580 | 0.070 | 0.231 | 0.273 | 0.835 | 3 |
 | TF-IDF | one-se | 100 | 0.600 | 0.069 | 0.089 | 0.235 | 0.664 | 0 |
-| Most common label | — | — | 0.340 | 0.067 | — | — | — | — |
+| The fitting set's most common label | — | — | 0.280 | 0.063 | — | — | — | — |
 
 Bootstrap 95% intervals on the headline rows: `bge` [0.840, 0.980], `mpnet`
-[0.820, 0.980], `MiniLM` [0.760, 0.940], TF-IDF [0.440, 0.720].
+[0.820, 0.980], `MiniLM` [0.760, 0.940], TF-IDF [0.440, 0.720]. The best any
+constant answer could do on these 50 items is 0.380, which `billing` holds.
 
 ### `support-v2-three-way`, development partition, 40 `routing` items
 
@@ -153,7 +154,7 @@ Bootstrap 95% intervals on the headline rows: `bge` [0.840, 0.980], `mpnet`
 | `all-MiniLM-L6-v2` | one-se | 5 | 0.900 | 0.047 | 0.259 | 0.126 | 0.422 | 0 |
 | TF-IDF | argmin | 1,000 | 0.675 | 0.074 | 0.090 | 0.206 | 0.626 | 1 |
 | TF-IDF | one-se | 5 | 0.700 | 0.072 | 0.207 | 0.248 | 0.689 | 0 |
-| Most common label | — | — | 0.375 | 0.077 | — | — | — | — |
+| The fitting set's most common label | — | — | 0.375 | 0.077 | — | — | — | — |
 
 The three-way partition is the honest one for a fitted thing: its builder
 records that the two-way evaluation split was read for every tuning decision

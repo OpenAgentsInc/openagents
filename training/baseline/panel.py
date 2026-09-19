@@ -1,6 +1,6 @@
 """The metric panel every door in this repository is scored on.
 
-This is a port of `score` in `crates/lev/src/calibrate.rs`, and it is a port
+This is a port of `score` in `crates/gym/src/calibrate.rs`, and it is a port
 rather than a fresh implementation on purpose: a baseline whose numbers are
 computed differently from the numbers it is compared against measures the
 difference between two scorers, not the difference between two doors.

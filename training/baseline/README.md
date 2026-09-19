@@ -39,7 +39,7 @@ can check the document's numbers without owning the encoders.
 | File | Holds |
 | --- | --- |
 | `baseline.py` | the measurement: fit, score, refuse, and write the record |
-| `panel.py` | accuracy, ECE, Brier, log loss, and confident errors, ported from `crates/lev/src/calibrate.rs` |
+| `panel.py` | accuracy, ECE, Brier, log loss, and confident errors, ported from `crates/gym/src/calibrate.rs` |
 | `check_panel.py` | proves that port scores the way the Rust does, on the Rust tests' own fixtures |
 | `compare.py` | the baseline against the doors, judged against the measured noise floor |
 | `run.sh` | every run in the record, with revisions pinned |

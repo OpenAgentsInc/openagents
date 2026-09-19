@@ -1,7 +1,7 @@
 {
   "schema": "openagents.baseline.measurement.v1",
   "suite": {
-    "path": "../../crates/lev/suites/support-v2.json",
+    "path": "../../crates/gym/suites/support-v2.json",
     "name": "support-v2",
     "digest": "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368",
     "items": 196,
@@ -59,6 +59,11 @@
       "fitted_on": 50,
       "scored_on": 50,
       "majority_class_floor": 0.28,
+      "scored_label_shares": {
+        "billing": 0.38,
+        "sales": 0.28,
+        "technical": 0.34
+      },
       "selection": {
         "folds": 5,
         "log_loss_by_strength": {
@@ -1454,5 +1459,5 @@
       }
     }
   },
-  "digest": "a62d50cf6c46ebe2b396de0c2285f22406bb862d41d03c42431940faca439477"
+  "digest": "ba3d76febf558cbf1b8c122cbf368b3ccf8f21f34bd74644dd0c65bfbcfa7c00"
 }

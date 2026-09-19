@@ -59,6 +59,11 @@
       "fitted_on": 40,
       "scored_on": 40,
       "majority_class_floor": 0.375,
+      "scored_label_shares": {
+        "billing": 0.375,
+        "sales": 0.3,
+        "technical": 0.325
+      },
       "selection": {
         "folds": 5,
         "log_loss_by_strength": {
@@ -1214,5 +1219,5 @@
       }
     }
   },
-  "digest": "e3228df30dcddee1db41efb35ff3fda95a8bebf8dc250583cf738becf52f4637"
+  "digest": "f2da72be746e410560307e79b9f4488ff89ce59dee8e73118ba198e00bd49676"
 }

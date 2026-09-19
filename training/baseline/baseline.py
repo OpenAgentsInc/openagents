@@ -15,7 +15,7 @@ What it does, per Choice question family:
 3. Refits on the whole fitting partition and predicts a distribution over the
    family's option set for each item in the scoring partition.
 4. Scores the result on the same panel as every other door, through
-   `panel.py`, a port of `crates/lev/src/calibrate.rs`.
+   `panel.py`, a port of `crates/gym/src/calibrate.rs`.
 
 What it refuses, and records as a refusal rather than a failure:
 
@@ -102,6 +102,12 @@ def load_suite(path: Path) -> tuple[dict, str, str, str]:
     else:
         raise SystemExit(f"{path} has neither a partition nor a split field")
     return suite, key, "calibration", scoring
+
+
+def majority_label(labels: np.ndarray) -> str:
+    """The most common label, with ties broken on the label itself."""
+    values = labels.tolist()
+    return max(sorted(set(values)), key=values.count)
 
 
 def option_set(item: dict) -> list[str]:
@@ -300,9 +306,12 @@ def serve_family(
         "scored_on": len(score_items),
         # What always answering the fitting set's most common label would score.
         # A head that does not clear this has learned the label frequencies.
-        "majority_class_floor": float(
-            (y_score == max(set(y_fit.tolist()), key=y_fit.tolist().count)).mean()
-        ),
+        # Ties break on the label itself, so the number does not depend on the
+        # order a set happened to iterate in.
+        "majority_class_floor": float((y_score == majority_label(y_fit)).mean()),
+        "scored_label_shares": {
+            label: float((y_score == label).mean()) for label in sorted(set(y_score.tolist()))
+        },
         "selection": selection,
         "by_rule": by_rule,
     }

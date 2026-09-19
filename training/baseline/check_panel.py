@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Proves `panel.py` scores the way `crates/lev/src/calibrate.rs` scores.
+"""Proves `panel.py` scores the way `crates/gym/src/calibrate.rs` scores.
 
 The fixtures and the asserted values are lifted from that file's own unit
 tests. A baseline computed against a different scorer than the doors it is

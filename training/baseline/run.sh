@@ -17,7 +17,7 @@ BGE=a5beb1e3e68b9ab74eb54cfd186867f64f240e1a      # BAAI/bge-base-en-v1.5
 
 "$PY" check_panel.py
 
-for suite in ../../crates/lev/suites/support-v2.json \
+for suite in ../../crates/gym/suites/support-v2.json \
              ../../crates/gym/suites/support-v2-three-way.json; do
     name=$(basename "$suite" .json)
     "$PY" baseline.py --suite "$suite" --encoder sentence-transformers/all-MiniLM-L6-v2 \
