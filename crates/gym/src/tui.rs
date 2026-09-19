@@ -6,11 +6,15 @@
 //! which candidates were kept, what one item actually looked like, and
 //! whether the record itself still verifies.
 //!
-//! The design is carried from `crates/coder-terminal` and reimplemented
-//! here, because that crate builds on a later ratatui than the Gym does. One
-//! amber hue over a near-black field, four steps of brightness, and a
-//! hairline frame with text riding its rules: [`Intensity`], [`Ladder`], and
-//! [`frame`] are the same shapes under different types.
+//! The design is `crates/coder-terminal`'s and is depended on rather than
+//! copied: [`Intensity`], [`Ladder`], [`frame`], and [`rail`] are that
+//! crate's. One amber hue over a near-black field, four steps of
+//! brightness, and a hairline frame with text riding its rules.
+//!
+//! A table needs two things a composer does not, and both are marked where
+//! they happen: a loudest step that stays legible when the terminal has no
+//! color, in [`ladder`]; and a selection cursor in the frame's gutter,
+//! where the view's lines are drawn.
 //!
 //! Two rules outrank every layout decision in here:
 //!
@@ -33,7 +37,10 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Style;
+
+pub use coder_terminal::{Colorless, Colors, Intensity, Ladder, NEAR_BLACK, NEAR_BLACK_TINT, rgb};
+use coder_terminal::{frame, rail};
 
 pub use records::{
     Candidate, ChainStatus, DoorIdentity, DoorScore, FamilyVerdict, Outcome, Records, RowView,
@@ -43,158 +50,22 @@ pub use records::{
 /// What a value nobody measured looks like.
 pub const DASH: &str = "—";
 
-// ---------------------------------------------------------------------------
-// The amber ladder
-// ---------------------------------------------------------------------------
-
-/// One step of the amber ladder.
+/// The Gym's ladder over `colors`.
 ///
-/// The order is the ladder: `Quarter` is the faintest tone and `Full` the
-/// brightest. The terminal speaks in one hue; tone carries every distinction
-/// it draws.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Intensity {
-    /// 25% amber — receded: a rule, a digest, a column nobody reads twice.
-    Quarter,
-    /// 50% amber — quiet: headings, rails, the reason under a verdict.
-    Half,
-    /// 75% amber — present: the numbers, the rows, the prose.
-    ThreeQuarters,
-    /// 100% amber — loud: a failed gate, a broken chain, the current best.
-    #[default]
-    Full,
+/// It is the Coder terminal's ladder with one option taken differently.
+/// Under `NO_COLOR` the composer dims the faint half and leaves the rest
+/// plain, which is right for prose; a table of verdicts needs its loudest
+/// step to separate too, or a failed gate and an unverifiable one draw
+/// identically on a colorless terminal and the distinction the third
+/// verdict exists for is gone.
+pub fn ladder(colors: Colors) -> Ladder {
+    Ladder::new(colors).when_colorless(Colorless::DimAndBold)
 }
 
-impl Intensity {
-    /// The ladder, faintest to brightest.
-    pub const ALL: [Intensity; 4] = [
-        Intensity::Quarter,
-        Intensity::Half,
-        Intensity::ThreeQuarters,
-        Intensity::Full,
-    ];
-
-    /// The amber of this step, as a packed RGB value.
-    pub const fn color(self) -> u32 {
-        match self {
-            Intensity::Quarter => 0x463100,
-            Intensity::Half => 0x835b00,
-            Intensity::ThreeQuarters => 0xc18600,
-            Intensity::Full => 0xffb000,
-        }
-    }
+/// The Gym's ladder, at whatever color depth the environment reports.
+pub fn ladder_from_environment() -> Ladder {
+    Ladder::from_environment().when_colorless(Colorless::DimAndBold)
 }
-
-/// The near-black field every amber tone sits on.
-pub const NEAR_BLACK: u32 = 0x080600;
-/// The near-black tint the selected row brightens to.
-pub const NEAR_BLACK_TINT: u32 = 0x211700;
-
-/// The color depth the terminal supports.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Colors {
-    /// 24-bit RGB — the ambers render exactly.
-    #[default]
-    True,
-    /// The 256-color palette — ambers render as their nearest cube entries.
-    Indexed,
-    /// Color off (`NO_COLOR`) — tone falls back to modifiers.
-    None,
-}
-
-/// How [`Intensity`] values become terminal colors.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Ladder {
-    colors: Colors,
-}
-
-impl Ladder {
-    /// A ladder for the given color depth.
-    pub const fn new(colors: Colors) -> Self {
-        Self { colors }
-    }
-
-    /// The color depth this ladder serves.
-    pub const fn colors(self) -> Colors {
-        self.colors
-    }
-
-    /// Detects the terminal's color depth from the environment.
-    ///
-    /// `NO_COLOR` wins first — its spec asks for no color at all. Otherwise
-    /// `COLORTERM` decides: `truecolor` or `24bit` means the terminal knows
-    /// RGB, anything else means the 256-color palette.
-    pub fn from_environment() -> Self {
-        Self::detected(|name| std::env::var(name).ok())
-    }
-
-    /// Detects the color depth from a supplied environment lookup, so tests
-    /// need not touch the process environment.
-    pub fn detected(lookup: impl Fn(&str) -> Option<String>) -> Self {
-        if lookup("NO_COLOR").is_some() {
-            return Self::new(Colors::None);
-        }
-        match lookup("COLORTERM").as_deref() {
-            Some("truecolor" | "24bit") => Self::new(Colors::True),
-            _ => Self::new(Colors::Indexed),
-        }
-    }
-
-    /// The style an [`Intensity`] produces at this terminal.
-    ///
-    /// Under `Colors::None` the faint half of the ladder dims and the loud
-    /// step goes bold, so a failed gate and a broken chain still separate
-    /// from the rows around them on a terminal with no color at all.
-    pub fn style(self, intensity: Intensity) -> Style {
-        match self.colors {
-            Colors::True => Style::new().fg(rgb(intensity.color())),
-            Colors::Indexed => Style::new().fg(indexed(intensity)),
-            Colors::None => match intensity {
-                Intensity::Quarter | Intensity::Half => Style::new().add_modifier(Modifier::DIM),
-                Intensity::ThreeQuarters => Style::new(),
-                Intensity::Full => Style::new().add_modifier(Modifier::BOLD),
-            },
-        }
-    }
-
-    /// The near-black field the ambers sit on, at this terminal.
-    pub fn background(self) -> Color {
-        match self.colors {
-            Colors::True => rgb(NEAR_BLACK),
-            Colors::Indexed => Color::Indexed(INDEXED_BACKGROUND),
-            Colors::None => Color::Reset,
-        }
-    }
-
-    /// The tint the selected row sits on, at this terminal.
-    pub fn selection(self) -> Color {
-        match self.colors {
-            Colors::True => rgb(NEAR_BLACK_TINT),
-            Colors::Indexed => Color::Indexed(INDEXED_SELECTION),
-            Colors::None => Color::Reset,
-        }
-    }
-}
-
-/// A packed RGB value as a terminal color.
-const fn rgb(color: u32) -> Color {
-    Color::Rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
-}
-
-/// The indexed entry nearest to each amber on the 256-color cube.
-const fn indexed(intensity: Intensity) -> Color {
-    match intensity {
-        Intensity::Quarter => Color::Indexed(58),
-        Intensity::Half => Color::Indexed(94),
-        Intensity::ThreeQuarters => Color::Indexed(136),
-        Intensity::Full => Color::Indexed(214),
-    }
-}
-
-/// The indexed entry nearest to [`NEAR_BLACK`].
-const INDEXED_BACKGROUND: u8 = 232;
-/// The indexed entry nearest to [`NEAR_BLACK_TINT`].
-const INDEXED_SELECTION: u8 = 235;
 
 // ---------------------------------------------------------------------------
 // Printing a measurement, or printing that there is none
@@ -1223,6 +1094,13 @@ impl App {
         for (offset, line) in body.iter().skip(scroll).take(room).enumerate() {
             let y = top + offset as u16;
             if Some(scroll + offset) == selected {
+                // The cursor the composer has no use for. A composer has
+                // one draft and the caret says where you are in it; a table
+                // has forty rows and needs to say which one the keys and
+                // the inspector will act on. It sits in the gutter between
+                // the wall and the text, which is the terminal's own cell
+                // and not the shared frame's: `frame` draws its rules and
+                // stops there.
                 let tint = Style::new().bg(self.ladder.selection());
                 for x in inner.left() - 1..inner.right() {
                     buf[(x, y)].set_style(tint);
@@ -1284,59 +1162,6 @@ impl App {
             out.push('\n');
         }
         out
-    }
-}
-
-/// The hairline: `─` rules top and bottom, `│` walls, corners `┌┐└┘`.
-fn frame(area: Rect, buf: &mut Buffer, style: Style) {
-    if area.width < 2 || area.height < 2 {
-        return;
-    }
-    let (top, bottom) = (area.top(), area.bottom() - 1);
-    let (left, right) = (area.left(), area.right() - 1);
-    for x in left + 1..right {
-        buf[(x, top)].set_char('─').set_style(style);
-        buf[(x, bottom)].set_char('─').set_style(style);
-    }
-    for y in top + 1..bottom {
-        buf[(left, y)].set_char('│').set_style(style);
-        buf[(right, y)].set_char('│').set_style(style);
-    }
-    buf[(left, top)].set_char('┌').set_style(style);
-    buf[(right, top)].set_char('┐').set_style(style);
-    buf[(left, bottom)].set_char('└').set_style(style);
-    buf[(right, bottom)].set_char('┘').set_style(style);
-}
-
-/// Writes `left` and `right` into the rule at `offset`, each padded with a
-/// space on both sides so the text never touches a corner. A rail wider than
-/// the room left is dropped rather than cut.
-fn rail(
-    area: Rect,
-    buf: &mut Buffer,
-    offset: u16,
-    left: Option<(&str, Style)>,
-    right: Option<(&str, Style)>,
-) {
-    let y = area.top() + offset;
-    if y >= buf.area.bottom() || area.width < 6 {
-        return;
-    }
-    let mut room = usize::from(area.width) - 4;
-    if let Some((text, style)) = left {
-        let named = format!(" {text} ");
-        let taken = count(&named);
-        if taken <= room {
-            room -= taken;
-            buf.set_string(area.left() + 2, y, &named, style);
-        }
-    }
-    if let Some((text, style)) = right {
-        let named = format!(" {text} ");
-        let taken = count(&named);
-        if taken <= room {
-            buf.set_string(area.right() - 2 - taken as u16, y, &named, style);
-        }
     }
 }
 
@@ -1822,13 +1647,15 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::{Color, Modifier};
 
+    /// The terminal as a reader with `NO_COLOR` set sees it.
     fn app(records: Records) -> App {
-        App::new(records, Ladder::new(Colors::None))
+        App::new(records, ladder(Colors::None))
     }
 
     fn colored(records: Records) -> App {
-        App::new(records, Ladder::new(Colors::True))
+        App::new(records, ladder(Colors::True))
     }
 
     fn view_text(records: &Records, view: View) -> String {
@@ -1850,8 +1677,10 @@ mod tests {
         line.split_whitespace().collect()
     }
 
-    /// The color of the cell the first character of `needle` lands in.
-    fn color_of(app: &App, needle: &str) -> Color {
+    /// The color and the modifiers of the cell the first character of
+    /// `needle` lands in. On a colorless terminal the color says nothing
+    /// and the modifiers carry the whole distinction, so both are read.
+    fn drawn(app: &App, needle: &str) -> (Color, Modifier) {
         let area = Rect::new(0, 0, 120, 40);
         let mut buf = Buffer::empty(area);
         app.render(area, &mut buf);
@@ -1862,10 +1691,16 @@ mod tests {
             }
             if let Some(index) = line.find(needle) {
                 let column = line[..index].chars().count() as u16;
-                return buf[(area.left() + column, y)].fg;
+                let cell = &buf[(area.left() + column, y)];
+                return (cell.fg, cell.modifier);
             }
         }
         panic!("{needle} was not drawn");
+    }
+
+    /// The color of the cell the first character of `needle` lands in.
+    fn color_of(app: &App, needle: &str) -> Color {
+        drawn(app, needle).0
     }
 
     /// A door with nothing measured, so every metric column is unknown.
@@ -2050,6 +1885,23 @@ mod tests {
         assert!(
             !unverifiable.contains("✗"),
             "an unverifiable family took the failure mark: {unverifiable}"
+        );
+
+        // With no color the glyphs separate the two, and so does the
+        // weight: `Colorless::DimAndBold` is what keeps the loudest step
+        // from flattening into the plain one here.
+        let mut colorless = app(records.clone());
+        colorless.open(View::Families);
+        let (_, failed_weight) = drawn(&colorless, "✗ failed");
+        let (_, unverifiable_weight) = drawn(&colorless, "? unverifiable");
+        assert_ne!(
+            failed_weight, unverifiable_weight,
+            "a colorless terminal drew the two verdicts alike"
+        );
+        assert!(failed_weight.contains(Modifier::BOLD), "{failed_weight:?}");
+        assert!(
+            unverifiable_weight.contains(Modifier::DIM),
+            "{unverifiable_weight:?}"
         );
 
         let mut app = colored(records);
@@ -2314,7 +2166,7 @@ mod tests {
                 ..DoorScore::default()
             })
             .collect();
-        let mut app = App::new(records, Ladder::new(Colors::None));
+        let mut app = App::new(records, ladder(Colors::None));
         app.handle_key(KeyLike::End);
         let text = app.to_text(120, 12);
         assert!(

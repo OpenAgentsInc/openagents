@@ -6,6 +6,9 @@
 //! ride the top rail, left and right; the token count rides the bottom
 //! right. A rail the rule cannot hold whole is left out rather than cut.
 //!
+//! The box and its rails are [`crate::hairline`]'s, which is the same
+//! drawing the Gym's table sits in.
+//!
 //! The composer draws into a ratatui [`Buffer`]; the shell decides where the
 //! box sits and, if it wants a real terminal cursor, uses the caret position
 //! [`render`][Composer::render] returns.
@@ -13,9 +16,9 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use unicode_width::UnicodeWidthStr;
 
 use crate::editor::Editor;
+use crate::hairline::{frame, rail};
 use crate::intensity::Intensity;
 use crate::ladder::Ladder;
 
@@ -117,8 +120,20 @@ impl<'a> Composer<'a> {
         }
         frame(area, buf, amber);
 
-        rail(area, buf, 0, dim, self.status, self.location);
-        rail(area, buf, height - 1, dim, None, self.tokens);
+        rail(
+            area,
+            buf,
+            0,
+            self.status.map(|text| (text, dim)),
+            self.location.map(|text| (text, dim)),
+        );
+        rail(
+            area,
+            buf,
+            height - 1,
+            None,
+            self.tokens.map(|text| (text, dim)),
+        );
 
         let mut caret_at = (area.left() + 4, area.top() + 1);
         for offset in 0..window.visible as u16 {
@@ -154,54 +169,6 @@ impl<'a> Composer<'a> {
 
 fn inner_width(width: u16) -> usize {
     usize::from(width).saturating_sub(GUTTER).max(1)
-}
-
-/// The hairline: `─` rules top and bottom, `│` walls, corners `┌┐└┘`.
-fn frame(area: Rect, buf: &mut Buffer, style: Style) {
-    let (top, bottom) = (area.top(), area.bottom() - 1);
-    let (left, right) = (area.left(), area.right() - 1);
-    for x in left + 1..right {
-        buf[(x, top)].set_char('─').set_style(style);
-        buf[(x, bottom)].set_char('─').set_style(style);
-    }
-    for y in top + 1..bottom {
-        buf[(left, y)].set_char('│').set_style(style);
-        buf[(right, y)].set_char('│').set_style(style);
-    }
-    buf[(left, top)].set_char('┌').set_style(style);
-    buf[(right, top)].set_char('┐').set_style(style);
-    buf[(left, bottom)].set_char('└').set_style(style);
-    buf[(right, bottom)].set_char('┘').set_style(style);
-}
-
-/// Writes `left` and `right` into the rule at `offset`, each padded with a
-/// space on both sides so the text never touches a corner. A rail wider
-/// than the room left is dropped rather than cut.
-fn rail(
-    area: Rect,
-    buf: &mut Buffer,
-    offset: u16,
-    style: Style,
-    left: Option<&str>,
-    right: Option<&str>,
-) {
-    let y = area.top() + offset;
-    // The room the two rails share: the width less the corners and the rule
-    // cell inside each.
-    let mut room = usize::from(area.width).saturating_sub(4);
-    if let Some(named) = left.map(|text| format!(" {text} ")) {
-        let taken = named.width();
-        if taken <= room {
-            room -= taken;
-            buf.set_string(area.left() + 2, y, &named, style);
-        }
-    }
-    if let Some(named) = right.map(|text| format!(" {text} ")) {
-        let taken = named.width();
-        if taken <= room {
-            buf.set_string(area.right() - 2 - taken as u16, y, &named, style);
-        }
-    }
 }
 
 #[cfg(test)]

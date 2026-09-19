@@ -45,8 +45,10 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
   conformance numbers live in `docs/kev/`; golden fixtures in
   `crates/kev/fixtures/`; weights stay in `~/work/kev-artifacts/` out of git.
 - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
-  the framed composer, and the shell they draw. The rebuild plan lives in
-  `docs/coder/`.
+  the framed composer, and the shell they draw. It also holds the terminal
+  design system every other terminal here depends on — `Intensity`,
+  `Ladder`, `frame`, and `rail`. Extend it rather than copying it. The
+  rebuild plan lives in `docs/coder/`.
 - `crates/coder` — the agent: `classify` routes each turn through Jev,
   `generate` answers through an Open Responses door, and the `coder`
   binary draws the conversation in the terminal.

@@ -20,7 +20,7 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use crossterm::{cursor, execute};
-use gym::tui::{Action, App, KeyLike, Ladder, Records, View};
+use gym::tui::{Action, App, KeyLike, Records, View, ladder_from_environment};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -67,7 +67,7 @@ Keys:
 /// Writes every view to stdout, so the terminal can be read where no
 /// terminal exists.
 fn print() -> io::Result<()> {
-    let mut app = App::new(Records::fixture(), Ladder::from_environment());
+    let mut app = App::new(Records::fixture(), ladder_from_environment());
     let mut out = stdout().lock();
     for view in View::ALL {
         app.open(view);
@@ -111,7 +111,7 @@ fn restore() {
 
 /// The read loop: draw, wait for a key, repeat.
 fn draw(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
-    let mut app = App::new(Records::fixture(), Ladder::from_environment());
+    let mut app = App::new(Records::fixture(), ladder_from_environment());
     loop {
         terminal.draw(|frame| {
             let area = frame.area();
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn the_fixture_opens_with_no_door_and_no_network() {
-        let app = App::new(Records::fixture(), Ladder::from_environment());
+        let app = App::new(Records::fixture(), ladder_from_environment());
         let text = app.to_text(PRINT_WIDTH, PRINT_HEIGHT);
         assert!(text.contains("fixture"), "{text}");
         assert!(text.contains("scoreboard"), "{text}");
