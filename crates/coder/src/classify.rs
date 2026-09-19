@@ -13,10 +13,6 @@ use serde_json::{Value, json};
 
 use crate::generate::Message;
 
-/// The floor under `action`'s confidence: below it the router does not act.
-/// Tuned on nothing yet — the first labeled traces should move it.
-pub const CONFIDENCE_FLOOR: f64 = 0.45;
-
 /// The actions Classify can name, in the order they are offered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -197,9 +193,13 @@ pub fn judgment_of(response: &SystemOneResponse) -> Judgment {
 
 /// The routing table: judgment in, next step out.
 ///
+/// The `none` option is the escape hatch — the choice distribution sums
+/// to one, so when nothing listed fits, `none` is meant to win. There is
+/// no separate confidence gate: the argmax choice rules, and a turn the
+/// judge genuinely has no read on routes through `none`.
+///
 /// - `action` missing or naming nothing listed → `Halt`
 /// - `action` is `none` → `Halt`
-/// - `action` confidence under the floor → `Halt`
 /// - `end_conversation` → `End`
 /// - `clarify` → `Clarify`
 /// - otherwise → `Respond`
@@ -215,13 +215,6 @@ pub fn route(judgment: &Judgment) -> Route {
     };
     match action {
         Action::None => Route::Halt("no listed step fit".to_string()),
-        _ if judgment.action.as_ref().unwrap().confidence < CONFIDENCE_FLOOR => {
-            Route::Halt(format!(
-                "confidence {:.2} under the {:.2} floor",
-                judgment.action.as_ref().unwrap().confidence,
-                CONFIDENCE_FLOOR
-            ))
-        }
         Action::End => Route::End,
         Action::Clarify => Route::Clarify,
         Action::Respond => Route::Respond,
@@ -389,8 +382,10 @@ mod tests {
     }
 
     #[test]
-    fn low_confidence_halts_whatever_the_choice() {
-        assert!(matches!(route(&judgment("respond", 0.2)), Route::Halt(_)));
+    fn the_choice_rules_at_any_confidence() {
+        assert_eq!(route(&judgment("respond", 0.2)), Route::Respond);
+        assert_eq!(route(&judgment("clarify", 0.1)), Route::Clarify);
+        assert!(matches!(route(&judgment("none", 0.3)), Route::Halt(_)));
     }
 
     #[test]
