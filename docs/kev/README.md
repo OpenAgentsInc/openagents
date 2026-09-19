@@ -1,10 +1,11 @@
 # Kev
 
-**Status:** external reference. `kev` is Jared Palmer's open-source
+**Status:** port in progress. `kev` is Jared Palmer's open-source
 reconstruction of a Jev-style decision model, tracked in this workspace as
 `projects/repos/kev/` (manifest entry `jaredpalmer/kev` in
-`~/work/projects/manifest.txt`). Nothing in this repository depends on it
-yet; [`mesh-plan.md`](mesh-plan.md) is the proposed path that changes that.
+`~/work/projects/manifest.txt`). It is being ported into this repository as
+`crates/kev`; [`port-roadmap.md`](port-roadmap.md) holds the issue sequence
+and [`mesh-plan.md`](mesh-plan.md) the fleet path that follows.
 
 ## What it is
 
@@ -91,6 +92,7 @@ revision.
 | [`architecture.md`](architecture.md) | The mechanism kev implements: packing, block-causal mask, branch positions, pointer readout, delimiter hardening, and the wire contract. |
 | [`jev-unmasked.md`](jev-unmasked.md) | What Archer Hume's probes established about the real Jev, and what stays inferred. |
 | [`model-cards.md`](model-cards.md) | `kev-0.5b` in detail — data, recipe, metrics, mechanism tests, limitations — plus the preview family and the research findings behind it. |
+| [`port-roadmap.md`](port-roadmap.md) | The in-progress port of the mechanism into `crates/kev`: what gets pulled over in what order, and the issue that tracks each step. |
 | [`mesh-plan.md`](mesh-plan.md) | The proposed path to serving and training decision models on the earn mesh: Pylon manifests, a psionic decision-model lane, the fleet `systemone` work shape, and the TypeSafe-compatible fan-out API. |
 
 ## Licensing

@@ -1,0 +1,53 @@
+{
+  "run": "/Users/christopherdavid/work/projects/repos/kev/runs/kev",
+  "special_ids": {
+    "<|fim_prefix|>": 151659,
+    "<|fim_middle|>": 151660,
+    "<|box_start|>": 151648,
+    "<|box_end|>": 151649,
+    "<|fim_suffix|>": 151661
+  },
+  "files": {
+    "adapter_config.json": {
+      "sha256": "f7eff412dd2bbc91eed95ace6c7be9820c15444feee1b0410ede565a58acf9c0",
+      "bytes": 1286
+    },
+    "adapter_model.safetensors": {
+      "sha256": "04facd5e97cebce2f00c6525136ff21ac96623c3a9e44b4c590e138dd7587318",
+      "bytes": 35235088
+    },
+    "eval.json": {
+      "sha256": "4eca63b3811b9dadd200df3550d6e0b9e2e0afa06272d5ce6441ed2aca9180f2",
+      "bytes": 4506
+    },
+    "head.safetensors": {
+      "sha256": "6826d0c628b94f82adb8c6f29d5413aa68cfaa673d679fd512e0aac6cff337a3",
+      "bytes": 1837352
+    },
+    "merges.txt": {
+      "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+      "bytes": 1671853
+    },
+    "special_tokens_map.json": {
+      "sha256": "6676f091c8bc4d1b50146427cfde92073402866b87b6e39223227931b70083e9",
+      "bytes": 616
+    },
+    "tokenizer.json": {
+      "sha256": "9c5ae00e602b8860cbd784ba82a8aa14e8feecec692e7076590d014d7b7fdafa",
+      "bytes": 11421896
+    },
+    "tokenizer_config.json": {
+      "sha256": "60f6e7bc948cedd377a20f01d022ef664d026fbc93d72e0a9bdac233f8632181",
+      "bytes": 4689
+    },
+    "vocab.json": {
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+      "bytes": 2776833
+    }
+  },
+  "artifact_dir": "/Users/christopherdavid/work/kev-artifacts/kev-0.5b",
+  "head_meta": {
+    "base": "Qwen/Qwen2.5-0.5B",
+    "lora": 16
+  }
+}
