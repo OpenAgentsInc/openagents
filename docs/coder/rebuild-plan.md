@@ -50,6 +50,29 @@ terminal's visual core, not a port:
 Verify with `cargo test -p coder-terminal` and
 `cargo run -p coder-terminal --example shell`.
 
+`crates/coder` is the agent on top of it — a live conversation, not a
+mock:
+
+- `classify` — the question set and routing table in one module. Four
+  questions over the structured state (`task`, bounded `transcript`):
+  `action` (Choice: `respond` / `clarify` / `end_conversation` / `none`),
+  `needs_code` (Noul), `risk` and `progress` (Scores). The router halts on
+  `none`, on missing answers, and under a `0.45` confidence floor.
+- `generate` — the `Generate` trait plus `ResponsesDoor`, a streaming
+  client for any Open Responses endpoint: `POST {base}/v1/responses`,
+  `input_text`/`output_text` message items, `response.output_text.delta`
+  events into a sink, usage out of `response.completed`. `Door::from_env`
+  reads `CODER_DOOR_URL` (default the public Vercel AI Gateway),
+  `CODER_MODEL`, and `CODER_DOOR_KEY`/`CODER_AI_GATEWAY_KEY`; no key means
+  a `StubGenerate`, so the shell runs with no credentials.
+- `agent` — the two-phase turn: `classify` returns a `Verdict` the
+  terminal draws inline before `reply` streams the answer.
+- `coder` (the binary) — the terminal itself: scrollback with word-wrap
+  and hanging indents, the judgment rendered as dim lines under each user
+  turn, the reply streaming at `ThreeQuarters`, the spinner in the prompt
+  cell while a turn runs, tokens in the bottom rail. Runs with
+  `cargo run -p coder`.
+
 ## The two-tool agent
 
 The agent is a loop with two model calls, each a narrow contract.
@@ -121,23 +144,18 @@ private, so the loop calls it only when `Classify` routes to
 
 Ordered, each independently shippable:
 
-1. **Transcript surface.** A scrollback widget that renders submitted
-   turns, tool output, and agent replies with the intensity ladder —
-   replies at `ThreeQuarters`, tool output at `Half`, errors at `Full`
-   with an underline. The shell example already has the frame.
-2. **Question-set module.** The `Classify` side: a `questions()` function
-   and a `route(answers)` table in one module of the new agent crate,
-   using `crates/jev`. First milestone routes to stub tools and prints
-   the routing decision in the terminal.
-3. **Tools.** `read_file`, `search` (literal string over a bounded
+1. **Tools.** `read_file`, `search` (literal string over a bounded
    directory), `run_build` (allowlisted commands), `apply_edit`
-   (line-anchored, not generated `old_string`).
-4. **`Generate` trait + stub.** The public contract and the stub, so the
-   loop is complete end to end without the private backend.
-5. **Selection, mouse, and paste** in the editor — the pieces the basic
+   (line-anchored, not generated `old_string`). The `needs_code` Noul and
+   the `risk` gate already exist for routing to them.
+2. **A richer question set.** `is_blocked`, `repeats`, and file selection
+   as `Choice` over the real index, per the design rules above.
+3. **Selection, mouse, and paste** in the editor — the pieces the basic
    box skipped.
-6. **Syntax highlighting** through the intensity theme — the other half
+4. **Syntax highlighting** through the intensity theme — the other half
    of the original's visual identity.
+5. **Markdown rendering** for replies — the terminal should draw
+   generated structure, not raw markers.
 
 ## Open questions
 
