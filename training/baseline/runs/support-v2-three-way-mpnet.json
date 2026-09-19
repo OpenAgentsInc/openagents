@@ -1,0 +1,1218 @@
+{
+  "schema": "openagents.baseline.measurement.v1",
+  "suite": {
+    "path": "../../crates/gym/suites/support-v2-three-way.json",
+    "name": "support-v2-three-way",
+    "digest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+    "items": 196,
+    "partition_field": "partition",
+    "fitted_on": "calibration",
+    "scored_on": "development"
+  },
+  "encoder": {
+    "name": "sentence-transformers/all-mpnet-base-v2",
+    "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    "dimensions": 768,
+    "parameters": 109486464,
+    "frozen": true,
+    "input": "the item state only; the question text is constant within a family",
+    "normalized": true
+  },
+  "head": {
+    "model": "multinomial logistic regression, scikit-learn LogisticRegression",
+    "penalty": "l2",
+    "strength_grid": [
+      0.01,
+      0.1,
+      0.5,
+      1.0,
+      2.0,
+      5.0,
+      10.0,
+      50.0,
+      100.0,
+      500.0,
+      1000.0,
+      10000.0
+    ],
+    "strength_selected_on": "calibration, stratified cross-validation",
+    "strength_rules": [
+      "argmin",
+      "one-se"
+    ],
+    "fold_seed": 0
+  },
+  "machine": {
+    "platform": "macOS-26.4-arm64-arm-64bit",
+    "python": "3.12.13"
+  },
+  "served": [
+    {
+      "family": "routing",
+      "served": true,
+      "kind": "choice",
+      "options": [
+        "billing",
+        "technical",
+        "sales"
+      ],
+      "fitted_on": 40,
+      "scored_on": 40,
+      "majority_class_floor": 0.3,
+      "selection": {
+        "folds": 5,
+        "log_loss_by_strength": {
+          "0.01": 1.0972259027484523,
+          "0.1": 1.045795130175597,
+          "0.5": 0.8970610139304827,
+          "1.0": 0.8011295339965929,
+          "2.0": 0.7087175394536839,
+          "5.0": 0.6160064004336423,
+          "10.0": 0.5709701813984834,
+          "50.0": 0.5352528856097286,
+          "100.0": 0.5398940527413311,
+          "500.0": 0.5825178084854099,
+          "1000.0": 0.6223193243235923,
+          "10000.0": 0.698261742518462
+        },
+        "standard_error_by_strength": {
+          "0.01": 0.007413367727836517,
+          "0.1": 0.008968971426623519,
+          "0.5": 0.016512625321561062,
+          "1.0": 0.023755950310662563,
+          "2.0": 0.03353411743606905,
+          "5.0": 0.04973357134975529,
+          "10.0": 0.06304680085986489,
+          "50.0": 0.09572689019978044,
+          "100.0": 0.10983809964106839,
+          "500.0": 0.1428500067926311,
+          "1000.0": 0.15828134612402162,
+          "10000.0": 0.19938180674862824
+        },
+        "strength_by_rule": {
+          "argmin": 50.0,
+          "one-se": 5.0
+        },
+        "at_grid_edge": {
+          "argmin": false,
+          "one-se": false
+        }
+      },
+      "by_rule": {
+        "argmin": {
+          "strength": 50.0,
+          "panel": {
+            "accuracy": 0.9,
+            "ece": 0.12366431805361335,
+            "brier": 0.07317956448892965,
+            "nll": 0.2574170473602104,
+            "confident_errors": 0,
+            "items": 40
+          },
+          "accuracy_standard_error": 0.04743416490252569,
+          "accuracy_interval": [
+            0.8,
+            0.975
+          ],
+          "answers": [
+            {
+              "id": "routing/002",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.976192294965528,
+              "probabilities": {
+                "billing": 0.976192294965528,
+                "sales": 0.0028984941726765763,
+                "technical": 0.02090921086179554
+              }
+            },
+            {
+              "id": "routing/003",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9396092859400208,
+              "probabilities": {
+                "billing": 0.9396092859400208,
+                "sales": 0.05561280617028212,
+                "technical": 0.004777907889697049
+              }
+            },
+            {
+              "id": "routing/007",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9401704376844264,
+              "probabilities": {
+                "billing": 0.9401704376844264,
+                "sales": 0.03331841969972705,
+                "technical": 0.02651114261584637
+              }
+            },
+            {
+              "id": "routing/008",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9370858687271956,
+              "probabilities": {
+                "billing": 0.9370858687271956,
+                "sales": 0.006110201557077258,
+                "technical": 0.05680392971572715
+              }
+            },
+            {
+              "id": "routing/012",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9703636755385335,
+              "probabilities": {
+                "billing": 0.9703636755385335,
+                "sales": 0.025053229428854663,
+                "technical": 0.004583095032611842
+              }
+            },
+            {
+              "id": "routing/013",
+              "choice": "technical",
+              "truth": "billing",
+              "correct": false,
+              "confidence": 0.47652217897568316,
+              "probabilities": {
+                "billing": 0.46426419754855563,
+                "sales": 0.0592136234757611,
+                "technical": 0.47652217897568316
+              }
+            },
+            {
+              "id": "routing/017",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9475964144428625,
+              "probabilities": {
+                "billing": 0.9475964144428625,
+                "sales": 0.00956725974081527,
+                "technical": 0.04283632581632213
+              }
+            },
+            {
+              "id": "routing/018",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9543696221529991,
+              "probabilities": {
+                "billing": 0.9543696221529991,
+                "sales": 0.003142211937560509,
+                "technical": 0.042488165909440524
+              }
+            },
+            {
+              "id": "routing/022",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.7172096942655648,
+              "probabilities": {
+                "billing": 0.14263879796176657,
+                "sales": 0.14015150777266863,
+                "technical": 0.7172096942655648
+              }
+            },
+            {
+              "id": "routing/023",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.9831293571744285,
+              "probabilities": {
+                "billing": 0.009381304586262983,
+                "sales": 0.00748933823930849,
+                "technical": 0.9831293571744285
+              }
+            },
+            {
+              "id": "routing/027",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.9558871187826607,
+              "probabilities": {
+                "billing": 0.01360013966599877,
+                "sales": 0.030512741551340514,
+                "technical": 0.9558871187826607
+              }
+            },
+            {
+              "id": "routing/028",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.46837850611360643,
+              "probabilities": {
+                "billing": 0.2539392490846423,
+                "sales": 0.2776822448017512,
+                "technical": 0.46837850611360643
+              }
+            },
+            {
+              "id": "routing/032",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.8297829497687919,
+              "probabilities": {
+                "billing": 0.024420010129457766,
+                "sales": 0.1457970401017504,
+                "technical": 0.8297829497687919
+              }
+            },
+            {
+              "id": "routing/033",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.9004693250314508,
+              "probabilities": {
+                "billing": 0.06272570297639363,
+                "sales": 0.03680497199215555,
+                "technical": 0.9004693250314508
+              }
+            },
+            {
+              "id": "routing/037",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.917207664247508,
+              "probabilities": {
+                "billing": 0.015654890931400135,
+                "sales": 0.06713744482109185,
+                "technical": 0.917207664247508
+              }
+            },
+            {
+              "id": "routing/038",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.8564126632806525,
+              "probabilities": {
+                "billing": 0.04243470277493144,
+                "sales": 0.10115263394441609,
+                "technical": 0.8564126632806525
+              }
+            },
+            {
+              "id": "routing/042",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.9850605545240697,
+              "probabilities": {
+                "billing": 0.009865689997324458,
+                "sales": 0.9850605545240697,
+                "technical": 0.005073755478605795
+              }
+            },
+            {
+              "id": "routing/043",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.9601589079491738,
+              "probabilities": {
+                "billing": 0.031887040073163994,
+                "sales": 0.9601589079491738,
+                "technical": 0.007954051977662158
+              }
+            },
+            {
+              "id": "routing/047",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.9313776101664623,
+              "probabilities": {
+                "billing": 0.050530200189296624,
+                "sales": 0.9313776101664623,
+                "technical": 0.01809218964424117
+              }
+            },
+            {
+              "id": "routing/048",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.8386120614568304,
+              "probabilities": {
+                "billing": 0.08433429115868743,
+                "sales": 0.8386120614568304,
+                "technical": 0.07705364738448209
+              }
+            },
+            {
+              "id": "routing/052",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.442054922319932,
+              "probabilities": {
+                "billing": 0.4396062784807382,
+                "sales": 0.442054922319932,
+                "technical": 0.11833879919932982
+              }
+            },
+            {
+              "id": "routing/053",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.8130298910828996,
+              "probabilities": {
+                "billing": 0.0722519544006962,
+                "sales": 0.8130298910828996,
+                "technical": 0.11471815451640426
+              }
+            },
+            {
+              "id": "routing/057",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.9005645094449138,
+              "probabilities": {
+                "billing": 0.07998821458444295,
+                "sales": 0.9005645094449138,
+                "technical": 0.01944727597064329
+              }
+            },
+            {
+              "id": "routing/058",
+              "choice": "billing",
+              "truth": "sales",
+              "correct": false,
+              "confidence": 0.4164241865908354,
+              "probabilities": {
+                "billing": 0.4164241865908354,
+                "sales": 0.41405668984167276,
+                "technical": 0.16951912356749188
+              }
+            },
+            {
+              "id": "routing/062",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.8943199854781594,
+              "probabilities": {
+                "billing": 0.031035183528862084,
+                "sales": 0.07464483099297854,
+                "technical": 0.8943199854781594
+              }
+            },
+            {
+              "id": "routing/063",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.7903047677350021,
+              "probabilities": {
+                "billing": 0.06681443209332005,
+                "sales": 0.1428808001716779,
+                "technical": 0.7903047677350021
+              }
+            },
+            {
+              "id": "routing/067",
+              "choice": "sales",
+              "truth": "billing",
+              "correct": false,
+              "confidence": 0.46187229235247845,
+              "probabilities": {
+                "billing": 0.14054742488459945,
+                "sales": 0.46187229235247845,
+                "technical": 0.39758028276292195
+              }
+            },
+            {
+              "id": "routing/068",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.6832182300173263,
+              "probabilities": {
+                "billing": 0.6832182300173263,
+                "sales": 0.036118037404192595,
+                "technical": 0.28066373257848093
+              }
+            },
+            {
+              "id": "routing/072",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9518686375523895,
+              "probabilities": {
+                "billing": 0.9518686375523895,
+                "sales": 0.032780271696129085,
+                "technical": 0.015351090751481266
+              }
+            },
+            {
+              "id": "routing/073",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.8190139131678827,
+              "probabilities": {
+                "billing": 0.8190139131678827,
+                "sales": 0.08925491469168398,
+                "technical": 0.09173117214043314
+              }
+            },
+            {
+              "id": "routing/077",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.5280265021695457,
+              "probabilities": {
+                "billing": 0.33116627439939117,
+                "sales": 0.5280265021695457,
+                "technical": 0.14080722343106306
+              }
+            },
+            {
+              "id": "routing/078",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.8913302079924396,
+              "probabilities": {
+                "billing": 0.022574696741739095,
+                "sales": 0.8913302079924396,
+                "technical": 0.08609509526582138
+              }
+            },
+            {
+              "id": "routing/082",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.5465151773703091,
+              "probabilities": {
+                "billing": 0.43529454428906644,
+                "sales": 0.018190278340624408,
+                "technical": 0.5465151773703091
+              }
+            },
+            {
+              "id": "routing/083",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.7217379671303369,
+              "probabilities": {
+                "billing": 0.7217379671303369,
+                "sales": 0.17596897344916004,
+                "technical": 0.1022930594205031
+              }
+            },
+            {
+              "id": "routing/087",
+              "choice": "billing",
+              "truth": "technical",
+              "correct": false,
+              "confidence": 0.5229373750734155,
+              "probabilities": {
+                "billing": 0.5229373750734155,
+                "sales": 0.02460632821720118,
+                "technical": 0.45245629670938325
+              }
+            },
+            {
+              "id": "routing/088",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.6209930129515266,
+              "probabilities": {
+                "billing": 0.6209930129515266,
+                "sales": 0.3330801354978706,
+                "technical": 0.0459268515506028
+              }
+            },
+            {
+              "id": "routing/092",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.6108829937688698,
+              "probabilities": {
+                "billing": 0.3316971029947501,
+                "sales": 0.6108829937688698,
+                "technical": 0.05741990323638015
+              }
+            },
+            {
+              "id": "routing/093",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.9506555084868501,
+              "probabilities": {
+                "billing": 0.9506555084868501,
+                "sales": 0.007235816259461315,
+                "technical": 0.042108675253688624
+              }
+            },
+            {
+              "id": "routing/097",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.5569807420599916,
+              "probabilities": {
+                "billing": 0.40370600747498125,
+                "sales": 0.5569807420599916,
+                "technical": 0.0393132504650271
+              }
+            },
+            {
+              "id": "routing/098",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.975604436626987,
+              "probabilities": {
+                "billing": 0.011813860455852955,
+                "sales": 0.012581702917160018,
+                "technical": 0.975604436626987
+              }
+            }
+          ]
+        },
+        "one-se": {
+          "strength": 5.0,
+          "panel": {
+            "accuracy": 0.925,
+            "ece": 0.2631147857759086,
+            "brier": 0.12771674227733892,
+            "nll": 0.42240079361324234,
+            "confident_errors": 0,
+            "items": 40
+          },
+          "accuracy_standard_error": 0.041645828122394195,
+          "accuracy_interval": [
+            0.825,
+            1.0
+          ],
+          "answers": [
+            {
+              "id": "routing/002",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.8623019188075465,
+              "probabilities": {
+                "billing": 0.8623019188075465,
+                "sales": 0.03516818988594118,
+                "technical": 0.1025298913065124
+              }
+            },
+            {
+              "id": "routing/003",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.7882079059792128,
+              "probabilities": {
+                "billing": 0.7882079059792128,
+                "sales": 0.17447112337168116,
+                "technical": 0.03732097064910619
+              }
+            },
+            {
+              "id": "routing/007",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.762979203810775,
+              "probabilities": {
+                "billing": 0.762979203810775,
+                "sales": 0.13556719325771588,
+                "technical": 0.10145360293150921
+              }
+            },
+            {
+              "id": "routing/008",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.804264184767585,
+              "probabilities": {
+                "billing": 0.804264184767585,
+                "sales": 0.046969878957015126,
+                "technical": 0.14876593627539997
+              }
+            },
+            {
+              "id": "routing/012",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.832075902287639,
+              "probabilities": {
+                "billing": 0.832075902287639,
+                "sales": 0.12382654849721246,
+                "technical": 0.044097549215148635
+              }
+            },
+            {
+              "id": "routing/013",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.5054027958310916,
+              "probabilities": {
+                "billing": 0.5054027958310916,
+                "sales": 0.12108722931980459,
+                "technical": 0.37350997484910387
+              }
+            },
+            {
+              "id": "routing/017",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.8142883999881986,
+              "probabilities": {
+                "billing": 0.8142883999881986,
+                "sales": 0.06082169273955463,
+                "technical": 0.12488990727224678
+              }
+            },
+            {
+              "id": "routing/018",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.8212948875952956,
+              "probabilities": {
+                "billing": 0.8212948875952956,
+                "sales": 0.03679866525691362,
+                "technical": 0.14190644714779066
+              }
+            },
+            {
+              "id": "routing/022",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.5484361512517002,
+              "probabilities": {
+                "billing": 0.23013981927412616,
+                "sales": 0.22142402947417372,
+                "technical": 0.5484361512517002
+              }
+            },
+            {
+              "id": "routing/023",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.8551844605741468,
+              "probabilities": {
+                "billing": 0.0728817074553896,
+                "sales": 0.07193383197046364,
+                "technical": 0.8551844605741468
+              }
+            },
+            {
+              "id": "routing/027",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.8014146772454094,
+              "probabilities": {
+                "billing": 0.08062806243369505,
+                "sales": 0.11795726032089547,
+                "technical": 0.8014146772454094
+              }
+            },
+            {
+              "id": "routing/028",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.40331991571227094,
+              "probabilities": {
+                "billing": 0.2818030224349919,
+                "sales": 0.31487706185273706,
+                "technical": 0.40331991571227094
+              }
+            },
+            {
+              "id": "routing/032",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.6586064705755554,
+              "probabilities": {
+                "billing": 0.10294476940566222,
+                "sales": 0.23844876001878235,
+                "technical": 0.6586064705755554
+              }
+            },
+            {
+              "id": "routing/033",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.6875857913608234,
+              "probabilities": {
+                "billing": 0.18758383894218225,
+                "sales": 0.1248303696969943,
+                "technical": 0.6875857913608234
+              }
+            },
+            {
+              "id": "routing/037",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.7481420006070537,
+              "probabilities": {
+                "billing": 0.08078480040215534,
+                "sales": 0.17107319899079085,
+                "technical": 0.7481420006070537
+              }
+            },
+            {
+              "id": "routing/038",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.6643604437597116,
+              "probabilities": {
+                "billing": 0.134108440362168,
+                "sales": 0.20153111587812034,
+                "technical": 0.6643604437597116
+              }
+            },
+            {
+              "id": "routing/042",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.87412803717957,
+              "probabilities": {
+                "billing": 0.07121374319485785,
+                "sales": 0.87412803717957,
+                "technical": 0.05465821962557204
+              }
+            },
+            {
+              "id": "routing/043",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.7988513541129219,
+              "probabilities": {
+                "billing": 0.1424903404052532,
+                "sales": 0.7988513541129219,
+                "technical": 0.05865830548182504
+              }
+            },
+            {
+              "id": "routing/047",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.7515032857999189,
+              "probabilities": {
+                "billing": 0.1697994372795115,
+                "sales": 0.7515032857999189,
+                "technical": 0.07869727692056971
+              }
+            },
+            {
+              "id": "routing/048",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.6409241341382063,
+              "probabilities": {
+                "billing": 0.192329388398023,
+                "sales": 0.6409241341382063,
+                "technical": 0.16674647746377066
+              }
+            },
+            {
+              "id": "routing/052",
+              "choice": "billing",
+              "truth": "sales",
+              "correct": false,
+              "confidence": 0.42103906803718716,
+              "probabilities": {
+                "billing": 0.42103906803718716,
+                "sales": 0.3934233299646048,
+                "technical": 0.185537601998208
+              }
+            },
+            {
+              "id": "routing/053",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.6239770217200249,
+              "probabilities": {
+                "billing": 0.16363071102337606,
+                "sales": 0.6239770217200249,
+                "technical": 0.21239226725659907
+              }
+            },
+            {
+              "id": "routing/057",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.75178831692933,
+              "probabilities": {
+                "billing": 0.1713511059891162,
+                "sales": 0.75178831692933,
+                "technical": 0.07686057708155385
+              }
+            },
+            {
+              "id": "routing/058",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.4460966243666523,
+              "probabilities": {
+                "billing": 0.3500788022069113,
+                "sales": 0.4460966243666523,
+                "technical": 0.2038245734264365
+              }
+            },
+            {
+              "id": "routing/062",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.6993594020124235,
+              "probabilities": {
+                "billing": 0.11182531461693043,
+                "sales": 0.18881528337064604,
+                "technical": 0.6993594020124235
+              }
+            },
+            {
+              "id": "routing/063",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.6008069535561786,
+              "probabilities": {
+                "billing": 0.14508660445391136,
+                "sales": 0.25410644198991,
+                "technical": 0.6008069535561786
+              }
+            },
+            {
+              "id": "routing/067",
+              "choice": "technical",
+              "truth": "billing",
+              "correct": false,
+              "confidence": 0.4013992258051837,
+              "probabilities": {
+                "billing": 0.22284440871372715,
+                "sales": 0.37575636548108915,
+                "technical": 0.4013992258051837
+              }
+            },
+            {
+              "id": "routing/068",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.48392019140731707,
+              "probabilities": {
+                "billing": 0.48392019140731707,
+                "sales": 0.14568369985388432,
+                "technical": 0.37039610873879875
+              }
+            },
+            {
+              "id": "routing/072",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.8436182152949997,
+              "probabilities": {
+                "billing": 0.8436182152949997,
+                "sales": 0.09632608817891443,
+                "technical": 0.06005569652608567
+              }
+            },
+            {
+              "id": "routing/073",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.6459214074945886,
+              "probabilities": {
+                "billing": 0.6459214074945886,
+                "sales": 0.18523758928661962,
+                "technical": 0.16884100321879172
+              }
+            },
+            {
+              "id": "routing/077",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.46996505154200224,
+              "probabilities": {
+                "billing": 0.3242709656273062,
+                "sales": 0.46996505154200224,
+                "technical": 0.20576398283069164
+              }
+            },
+            {
+              "id": "routing/078",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.7166765525255587,
+              "probabilities": {
+                "billing": 0.08760071197359626,
+                "sales": 0.7166765525255587,
+                "technical": 0.1957227355008451
+              }
+            },
+            {
+              "id": "routing/082",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.5153410100859599,
+              "probabilities": {
+                "billing": 0.40120829847128375,
+                "sales": 0.08345069144275641,
+                "technical": 0.5153410100859599
+              }
+            },
+            {
+              "id": "routing/083",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.5473911949341524,
+              "probabilities": {
+                "billing": 0.5473911949341524,
+                "sales": 0.2689155323224455,
+                "technical": 0.183693272743402
+              }
+            },
+            {
+              "id": "routing/087",
+              "choice": "billing",
+              "truth": "technical",
+              "correct": false,
+              "confidence": 0.5026926695006416,
+              "probabilities": {
+                "billing": 0.5026926695006416,
+                "sales": 0.08437817710198843,
+                "technical": 0.4129291533973699
+              }
+            },
+            {
+              "id": "routing/088",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.5411391497843443,
+              "probabilities": {
+                "billing": 0.5411391497843443,
+                "sales": 0.3449700185264437,
+                "technical": 0.11389083168921191
+              }
+            },
+            {
+              "id": "routing/092",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.5080401017693119,
+              "probabilities": {
+                "billing": 0.36096510697203993,
+                "sales": 0.5080401017693119,
+                "technical": 0.13099479125864816
+              }
+            },
+            {
+              "id": "routing/093",
+              "choice": "billing",
+              "truth": "billing",
+              "correct": true,
+              "confidence": 0.8117696716729489,
+              "probabilities": {
+                "billing": 0.8117696716729489,
+                "sales": 0.051023803525363426,
+                "technical": 0.13720652480168766
+              }
+            },
+            {
+              "id": "routing/097",
+              "choice": "sales",
+              "truth": "sales",
+              "correct": true,
+              "confidence": 0.4770599178880309,
+              "probabilities": {
+                "billing": 0.40980368568631,
+                "sales": 0.4770599178880309,
+                "technical": 0.11313639642565895
+              }
+            },
+            {
+              "id": "routing/098",
+              "choice": "technical",
+              "truth": "technical",
+              "correct": true,
+              "confidence": 0.8441349012521864,
+              "probabilities": {
+                "billing": 0.07652037496863916,
+                "sales": 0.07934472377917444,
+                "technical": 0.8441349012521864
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "refused": [
+    {
+      "code": "unsupported_primitive",
+      "reason": "A Score is a weighted position on an ordered rubric. Multinomial logistic regression treats its classes as unordered labels, so nothing keeps level 1 between level 0 and level 2 and a weighted mean reports a position on a scale the model does not have.",
+      "family": "severity",
+      "kind": "score",
+      "served": false,
+      "items_refused": 14,
+      "items_in_family": 36
+    },
+    {
+      "code": "unsupported_primitive",
+      "reason": "A Noul is the probability that a statement holds. A classifier fitted on yes and no labels returns the frequency of a label in its training set, which is a different quantity that happens to have the same type.",
+      "family": "urgency",
+      "kind": "noul",
+      "served": false,
+      "items_refused": 24,
+      "items_in_family": 60
+    }
+  ],
+  "pooled": {
+    "argmin": {
+      "panel": {
+        "accuracy": 0.9,
+        "ece": 0.12366431805361335,
+        "brier": 0.07317956448892965,
+        "nll": 0.2574170473602104,
+        "confident_errors": 0,
+        "items": 40
+      },
+      "accuracy_standard_error": 0.04743416490252569,
+      "accuracy_interval": [
+        0.8,
+        0.975
+      ]
+    },
+    "one-se": {
+      "panel": {
+        "accuracy": 0.925,
+        "ece": 0.2631147857759086,
+        "brier": 0.12771674227733892,
+        "nll": 0.42240079361324234,
+        "confident_errors": 0,
+        "items": 40
+      },
+      "accuracy_standard_error": 0.041645828122394195,
+      "accuracy_interval": [
+        0.825,
+        1.0
+      ]
+    }
+  },
+  "fold_seed_spread": {
+    "routing": {
+      "measured": true,
+      "seeds": 8,
+      "by_rule": {
+        "argmin": {
+          "accuracies": [
+            0.9,
+            0.9,
+            0.9,
+            0.9,
+            0.9,
+            0.9,
+            0.9,
+            0.9
+          ],
+          "strengths": [
+            50.0,
+            500.0,
+            100.0,
+            500.0,
+            50.0,
+            100.0,
+            100.0,
+            50.0
+          ],
+          "mean": 0.9,
+          "standard_deviation": 0.0,
+          "range": [
+            0.9,
+            0.9
+          ]
+        },
+        "one-se": {
+          "accuracies": [
+            0.925,
+            0.9,
+            0.925,
+            0.925,
+            0.925,
+            0.925,
+            0.9,
+            0.925
+          ],
+          "strengths": [
+            5.0,
+            50.0,
+            10.0,
+            10.0,
+            5.0,
+            10.0,
+            50.0,
+            5.0
+          ],
+          "mean": 0.9187500000000001,
+          "standard_deviation": 0.010825317547305494,
+          "range": [
+            0.9,
+            0.925
+          ]
+        }
+      }
+    }
+  },
+  "digest": "acac67f4c2fb2965c8d5c64d7ec369274c67f5ce2f01de72f681c176dc5ec2f3"
+}

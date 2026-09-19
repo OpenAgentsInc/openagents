@@ -1,0 +1,4 @@
+# `runs/` is tracked on purpose. A reader should be able to check the record
+# under docs/decision-models/ without owning the encoders or rerunning it.
+.venv/
+__pycache__/

@@ -1,0 +1,13 @@
+[project]
+name = "baseline"
+version = "0.1.0"
+description = "Frozen sentence embeddings plus logistic regression, scored on the same suite and the same metric panel as every other door."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "scikit-learn>=1.5",
+    "sentence-transformers>=3.0",
+]
+
+[tool.uv]
+package = false
