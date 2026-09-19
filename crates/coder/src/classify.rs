@@ -147,7 +147,7 @@ pub fn questions() -> Questions {
 /// The state Classify reads: the latest message and a bounded transcript.
 /// Named fields, not a concatenated string — the questions can point at
 /// `task` and `transcript` directly.
-pub fn state_of(task: &str, transcript: &[Message]) -> Value {
+pub fn state_of(task: &str, transcript: &[Message], repo: &[String]) -> Value {
     let turns: Vec<Value> = transcript
         .iter()
         .rev()
@@ -163,7 +163,7 @@ pub fn state_of(task: &str, transcript: &[Message]) -> Value {
             })
         })
         .collect();
-    json!({ "task": task, "transcript": turns })
+    json!({ "task": task, "transcript": turns, "repo_members": repo })
 }
 
 /// Reads a response into a [`Judgment`].
@@ -281,7 +281,9 @@ mod tests {
                 role: crate::generate::Role::User,
                 text: "hi".to_string(),
             }],
+            &["coder".to_string()],
         );
+        assert_eq!(state["repo_members"][0], "coder");
         assert_eq!(state["task"], "what time is it");
         assert_eq!(state["transcript"][0]["role"], "user");
     }

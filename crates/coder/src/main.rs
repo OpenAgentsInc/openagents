@@ -21,6 +21,7 @@ use coder_terminal::{
     Composer, ComposerAction, Editor, Intensity, Ladder, frame_for, handle_key, wrap_rows,
 };
 use std::io::Write;
+use std::time::Instant;
 
 use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
@@ -110,6 +111,8 @@ struct App {
     queued: Option<String>,
     scroll: usize,
     tick: u64,
+    /// When the turn in flight started, for the status rail's stopwatch.
+    busy_since: Option<Instant>,
 }
 
 impl App {
@@ -244,6 +247,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
         queued: None,
         scroll: 0,
         tick: 0,
+        busy_since: None,
     };
 
     let (tx, mut rx) = mpsc::channel::<Work>(256);
@@ -278,6 +282,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                 Err(_) => app.push_loud("the turn task died"),
             }
             app.busy = false;
+            app.busy_since = None;
             app.status = "ready".to_string();
         }
         if turn.is_none()
@@ -381,6 +386,7 @@ fn start_turn(
         return;
     };
     app.busy = true;
+    app.busy_since = Some(Instant::now());
     app.status = "classifying".to_string();
     app.pending.clear();
     let tx = tx.clone();
@@ -403,9 +409,20 @@ fn draw(
         } else {
             coder_terminal::PROMPT
         };
+        let status = if app.busy {
+            let elapsed = app.busy_since.map_or(0, |since| since.elapsed().as_secs());
+            let clock = if elapsed >= 60 {
+                format!("{}m {}s", elapsed / 60, elapsed % 60)
+            } else {
+                format!("{elapsed}s")
+            };
+            format!("{} {} ({})", frame_for(app.tick), app.status, clock)
+        } else {
+            app.status.clone()
+        };
         let mut composer = Composer::new(&mut app.editor, *ladder)
             .prompt(prompt)
-            .status(&app.status)
+            .status(&status)
             .location("openagents")
             .tokens(&app.tokens);
         let box_height = composer.height(area.width).min(area.height);

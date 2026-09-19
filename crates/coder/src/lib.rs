@@ -15,6 +15,7 @@ pub mod agent;
 pub mod classify;
 pub mod generate;
 pub mod relay;
+pub mod repo;
 
 pub use agent::{Agent, Classified, Verdict};
 pub use classify::{Action, Judgment, Route, route, state_of};
@@ -22,3 +23,4 @@ pub use generate::{
     Door, Generate, GenerateError, Message, Meta, ResponsesDoor, Role, StubGenerate, Usage,
 };
 pub use relay::{Identity, RelayDoor};
+pub use repo::Repo;

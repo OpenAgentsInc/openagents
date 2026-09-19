@@ -6,16 +6,21 @@
 //! [`Agent::reply`] runs Generate when the route says to. The transcript
 //! folds each side in as it lands.
 
+use std::env;
+
 use jev::SystemOneRequest;
 
 use crate::classify::{Judgment, Route, judgment_of, questions, route, state_of};
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
+use crate::repo::Repo;
 
 /// The instructions Generate hears for a plain answer.
 pub const INSTRUCTIONS: &str = "You are Coder, an assistant that lives in a terminal. \
     Answer directly and tersely. Plain prose, short paragraphs, no headers. \
-    If the conversation needs code, say what you would change in words; \
-    you have no tools yet.";
+    If the conversation needs code, say what you would change in words. \
+    The REPO CONTEXT block describes the repository the user is working in: \
+    answer project questions from it and name real paths, and if the context \
+    does not cover the question, say so rather than guessing.";
 
 /// The instructions for a clarifying turn: the router marked the request
 /// ambiguous, so the whole reply is the question.
@@ -48,6 +53,8 @@ pub struct Agent {
     classify: Option<jev::Client>,
     generate: Door,
     transcript: Vec<Message>,
+    /// The repo the shell sits in, when it sits in one.
+    repo: Option<Repo>,
     /// The draft the current turn is classifying, kept until the reply
     /// lands.
     task: String,
@@ -62,6 +69,7 @@ impl Agent {
             classify: jev::Client::from_env().ok(),
             generate: Door::from_env(),
             transcript: Vec::new(),
+            repo: Repo::discover(&env::current_dir().unwrap_or_default()),
             task: String::new(),
         }
     }
@@ -72,8 +80,15 @@ impl Agent {
             classify,
             generate,
             transcript: Vec::new(),
+            repo: None,
             task: String::new(),
         }
+    }
+
+    /// The repo the shell sits in, for the prompt's context block.
+    pub fn with_repo(mut self, repo: Option<Repo>) -> Self {
+        self.repo = repo;
+        self
     }
 
     /// The model the door serves, for the token rail.
@@ -107,7 +122,8 @@ impl Agent {
         let Some(classify) = &self.classify else {
             return Classified::Skipped("no TYPESAFE_API_KEY — generating unrouted".to_string());
         };
-        let state = state_of(&self.task, &self.transcript);
+        let members: &[String] = self.repo.as_ref().map_or(&[], |repo| repo.members());
+        let state = state_of(&self.task, &self.transcript, members);
         match classify
             .system_one(SystemOneRequest::new(state, questions()))
             .await
@@ -135,11 +151,15 @@ impl Agent {
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
-        let instructions = if clarify {
+        let mut instructions = if clarify {
             format!("{INSTRUCTIONS}{CLARIFY_SUFFIX}")
         } else {
             INSTRUCTIONS.to_string()
         };
+        if let Some(repo) = &self.repo {
+            instructions.push_str("\n\n");
+            instructions.push_str(&repo.context_for(&self.task));
+        }
         let (text, usage) = self
             .generate
             .generate(&instructions, &self.transcript, sink, meta)
