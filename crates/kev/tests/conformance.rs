@@ -22,13 +22,21 @@ fn dir(env: &str, fallback: &str) -> Option<PathBuf> {
     dir.exists().then_some(dir)
 }
 
+fn device() -> Device {
+    if std::env::var("KEV_TEST_DEVICE").as_deref() == Ok("metal") {
+        Device::new_metal(0).expect("metal device")
+    } else {
+        Device::Cpu
+    }
+}
+
 fn model() -> Option<&'static DecisionModel> {
     static MODEL: OnceLock<Option<DecisionModel>> = OnceLock::new();
     MODEL
         .get_or_init(|| {
             let adapter = dir("KEV_ARTIFACT_DIR", "../../../kev-artifacts/kev-0.5b")?;
             let base = dir("KEV_BASE_DIR", "../../../kev-artifacts/qwen25-0.5b")?;
-            DecisionModel::load(&base, &adapter, Device::Cpu).ok()
+            DecisionModel::load(&base, &adapter, device()).ok()
         })
         .as_ref()
 }
@@ -161,6 +169,55 @@ fn isolation_probe_holds() {
             _ => assert!(p_secret < 0.2, "sibling secret leaked: {p_secret}"),
         }
     }
+}
+
+#[test]
+fn permutation_probe_reproduces() {
+    let Some(model) = model() else {
+        eprintln!("skipping: no artifact bundle");
+        return;
+    };
+    let probe = fixture("probes/permutation.json");
+    let qid = probe["question"].as_str().unwrap().to_string();
+    let body = fixture("requests/support.json");
+    let request: SystemOneRequest = serde_json::from_value(body["request"].clone()).unwrap();
+    let mut argmaxes = Vec::new();
+    for run in probe["runs"].as_array().unwrap() {
+        // Reorder the choice criteria to the run's recorded order.
+        let order: Vec<String> = serde_json::from_value(run["order"].clone()).unwrap();
+        let mut one = request.clone();
+        let Some(kev::Question::Choice { criteria, .. }) = one.questions.get_mut(&qid) else {
+            panic!("{qid} is not a choice question");
+        };
+        let old = std::mem::take(criteria);
+        for key in &order {
+            criteria.insert(key.clone(), old.get(key).cloned().unwrap_or(Value::Null));
+        }
+        let (record, _) = to_record(&one).unwrap();
+        let enc = model.encode(&record, 8192, 8192).unwrap();
+        let probs = model.probs(&enc).unwrap()[0].clone();
+        let want = run["probs_by_key"].as_object().unwrap();
+        let mut argmax = String::new();
+        let mut best = f64::NEG_INFINITY;
+        for (key, p) in order.iter().zip(&probs) {
+            let want_p = want[key].as_f64().unwrap();
+            assert!(
+                (p - want_p).abs() < 1e-3,
+                "{qid} under order {order:?}: {key} {p} vs {want_p}"
+            );
+            if *p > best {
+                best = *p;
+                argmax = key.clone();
+            }
+        }
+        argmaxes.push(argmax);
+    }
+    eprintln!("permutation argmaxes: {argmaxes:?}");
+    // The fixture's own runs all picked the same key; ours must too.
+    assert!(
+        argmaxes.iter().all(|a| a == &argmaxes[0]),
+        "argmax flipped under reordering: {argmaxes:?}"
+    );
 }
 
 #[test]

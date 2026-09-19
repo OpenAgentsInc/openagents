@@ -2,7 +2,11 @@
 
 **Status:** describes external code in `projects/repos/kev/` (upstream
 `github.com/jaredpalmer/kev`). Everything on this page is implemented and
-measured there; nothing on this page runs in this repository today.
+measured there, and as of the port sequence (openagents#9337) it also runs
+in this repository: `crates/kev/src/encode.rs` holds `encode()` and the
+branch mask, `model.rs`/`lora.rs` the backbone and adapter, `head.rs` the
+pointer readout, `decision.rs` the assembled model, `api.rs`/`render.rs`
+the TypeSafe shapes, and `serve.rs` the HTTP surface.
 
 A kev checkpoint is two trained pieces on a frozen causal LM:
 

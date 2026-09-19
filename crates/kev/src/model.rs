@@ -138,19 +138,23 @@ impl Attention {
             .v_proj
             .forward(x)?
             .reshape((len, self.n_kv_heads, self.head_dim))?;
-        let q = rotary.apply(&q, pos)?.transpose(0, 1)?; // [n_h, len, hd]
-        let k = rotary.apply(&k, pos)?.transpose(0, 1)?; // [n_kv, len, hd]
-        let v = v.transpose(0, 1)?; // [n_kv, len, hd]
+        let q = rotary.apply(&q, pos)?.transpose(0, 1)?.contiguous()?; // [n_h, len, hd]
+        let k = rotary.apply(&k, pos)?.transpose(0, 1)?.contiguous()?; // [n_kv, len, hd]
+        let v = v.transpose(0, 1)?.contiguous()?; // [n_kv, len, hd]
         let groups = self.n_heads / self.n_kv_heads;
         let k = repeat_kv(&k, groups)?;
         let v = repeat_kv(&v, groups)?;
+        // Metal's batched matmul requires contiguous operands.
         let scores = q
-            .matmul(&k.transpose(1, 2)?)?
+            .matmul(&k.transpose(1, 2)?.contiguous()?)?
             .affine(1.0 / (self.head_dim as f64).sqrt(), 0.0)?; // [n_h, len, len]
         let scores = scores.broadcast_add(mask)?;
         let probs = candle_nn::ops::softmax_last_dim(&scores)?;
         let out = probs.matmul(&v)?; // [n_h, len, hd]
-        let out = out.transpose(0, 1)?.reshape((len, self.n_heads * self.head_dim))?;
+        let out = out
+            .transpose(0, 1)?
+            .contiguous()?
+            .reshape((len, self.n_heads * self.head_dim))?;
         self.o_proj.forward(&out)
     }
 }

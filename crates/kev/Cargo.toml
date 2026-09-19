@@ -9,6 +9,8 @@ publish = false
 [features]
 # The `kev-serve` binary and its dependencies.
 serve = ["dep:axum", "dep:tower-http", "dep:tokio"]
+# Apple Metal execution for the backbone.
+metal = ["candle-core/metal", "candle-nn/metal"]
 
 [dependencies]
 candle-core = "0.11"

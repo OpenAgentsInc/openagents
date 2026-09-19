@@ -29,7 +29,8 @@ tokenizer files into `--artifacts`. The Qwen2.5-0.5B base lives at
 | Path | Holds |
 | --- | --- |
 | `requests/` | TypeSafe-shaped request bodies plus the `to_record()` output and per-question metadata the renderer must reproduce |
-| `encodings/` | `encode()` records per request: `ids`, `seg`, `pos`, `opt`, `decide_idx`, `opt_idx` |
+| `encodings/` | `encode()` records with their source `record` embedded: `ids`, `seg`, `pos`, `opt`, `decide_idx`, `opt_idx`, `state_truncated` |
+| `eval.json` | The reference's held-out evaluation of this artifact (accuracy, ECE, temperature scaling, mechanism results); describes the weights, not the port |
 | `golden/` | fp32 CPU per-question probability vectors, shaped answers, token counts |
 | `probes/` | `isolation` (secret in sibling `0.056` / absent `0.056` / in state `0.997`), `packed_vs_separate` (max delta `2.21e-6`), `permutation` (4 orders of `support.department`), `forgery` (option count under fake delimiters) |
 | `tokenizer.json` | Delimiter token ids and sanitized `user_tokens()` cases |

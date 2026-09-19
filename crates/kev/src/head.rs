@@ -58,7 +58,7 @@ impl PointerHead {
     pub fn logits(&self, h_decide: &Tensor, h_opts: &Tensor) -> candle_core::Result<Tensor> {
         let key = self.k.forward(h_opts)?; // [K, dp]
         let query = self.q.forward(h_decide)?; // [1, dp]
-        key.matmul(&query.t()?)?
+        key.matmul(&query.t()?.contiguous()?)?
             .squeeze(1)?
             .affine(1.0 / (self.dp as f64).sqrt(), 0.0)
     }

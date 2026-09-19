@@ -1,11 +1,16 @@
 # Decision models on the mesh
 
-**Status:** proposed. Nothing on this page is implemented. It lays out the
-path to serving and training kev-class decision models across the earn
-mesh — Psionic owns execution and artifacts, Pylon nodes own the hardware,
-Coder's fleet coordinator routes and verifies, and the service exposes a
-TypeSafe-compatible `POST /v1/systemone` that fans out over that network.
-Each phase names the surfaces it lands in and the evidence that proves it.
+**Status:** proposed. The local single-node half of this plan now exists:
+`crates/kev` runs the decision model in Rust and `kev-serve` answers
+`/v1/systemone` on this machine (see
+[`port-roadmap.md`](port-roadmap.md)). What follows — artifact admission,
+catalog rows, fleet fan-out, signed receipts, training dispatch — is not
+implemented. It lays out the path to serving and training kev-class
+decision models across the earn mesh — Psionic owns execution and
+artifacts, Pylon nodes own the hardware, Coder's fleet coordinator routes
+and verifies, and the service exposes a TypeSafe-compatible
+`POST /v1/systemone` that fans out over that network. Each phase names the
+surfaces it lands in and the evidence that proves it.
 
 ## Why this workload fits the mesh
 

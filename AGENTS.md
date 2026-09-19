@@ -34,6 +34,11 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
 ## Crates
 
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
+- `crates/kev` — the Rust port of the kev decision model: packed prefill,
+  block-causal question isolation, pointer readout, and `kev-serve`, a
+  TypeSafe-compatible `POST /v1/systemone` server. Documentation and
+  conformance numbers live in `docs/kev/`; golden fixtures in
+  `crates/kev/fixtures/`; weights stay in `~/work/kev-artifacts/` out of git.
 - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
   the framed composer, and the shell they draw. The rebuild plan lives in
   `docs/coder/`.

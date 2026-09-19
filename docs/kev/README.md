@@ -1,11 +1,12 @@
 # Kev
 
-**Status:** port in progress. `kev` is Jared Palmer's open-source
-reconstruction of a Jev-style decision model, tracked in this workspace as
-`projects/repos/kev/` (manifest entry `jaredpalmer/kev` in
-`~/work/projects/manifest.txt`). It is being ported into this repository as
-`crates/kev`; [`port-roadmap.md`](port-roadmap.md) holds the issue sequence
-and [`mesh-plan.md`](mesh-plan.md) the fleet path that follows.
+**Status:** ported. `kev` is Jared Palmer's open-source reconstruction of a
+Jev-style decision model, tracked in this workspace as `projects/repos/kev/`
+(manifest entry `jaredpalmer/kev` in `~/work/projects/manifest.txt`). The
+Rust port lives in `crates/kev` and answers `POST /v1/systemone` on CPU and
+Metal through `kev-serve`; [`port-roadmap.md`](port-roadmap.md) holds the
+issue sequence and the conformance measurements, and
+[`mesh-plan.md`](mesh-plan.md) holds the fleet path that follows.
 
 ## What it is
 
