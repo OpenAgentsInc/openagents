@@ -35,7 +35,7 @@ use std::time::Instant;
 
 use gym::calibrate::{EstimatorConfig, Metrics, Record};
 use gym::eval::{self, Disposition, Run};
-use gym::gate::{self, Gate};
+use gym::gate::{self, Gate, Profile};
 use gym::questions::QuestionSet;
 use gym::row::{DoorIdentity, Row};
 use gym::store::{Store, StoreError};
@@ -45,6 +45,13 @@ use serde_json::Value;
 
 /// The gate a run is judged by when the suite names none.
 const DEFAULT_GATE: &str = "probability-v1";
+
+/// How many passes `gym latency` makes when the caller names no number.
+///
+/// Eight, to match the eight seed blocks in
+/// `docs/lev/measurements/2026-09-19-seed-variance.md`, so the two spreads
+/// are read off the same number of draws.
+const DEFAULT_BLOCKS: usize = 8;
 
 /// What a door publishes about itself.
 ///
@@ -93,6 +100,7 @@ struct Options {
     fit: bool,
     baseline: Option<String>,
     partition: Option<String>,
+    blocks: Option<usize>,
 }
 
 fn main() {
@@ -104,6 +112,7 @@ fn main() {
         "compare" => run(compare_command(&options)),
         "fit" => run(fit_command(&options)),
         "permute" => run(permute_command(options)),
+        "latency" => run(latency_command(options)),
         "" | "help" | "--help" | "-h" => {
             println!("{USAGE}");
         }
@@ -119,6 +128,7 @@ gym eval     score doors against a suite, fit maps, and record the rows
 gym compare  compare doors from recorded rows
 gym fit      fit and judge from recorded rows, asking no door
 gym permute  measure how much option order moves the answer
+gym latency  measure how much wall clock moves when nothing else does
 
   --door name=url     a door to ask; repeatable
   --jev               hosted Jev, from TYPESAFE_API_KEY
@@ -130,7 +140,8 @@ gym permute  measure how much option order moves the answer
   --record path       append every row to this store
   --records dir       write one calibration record per family here
   --store path        the store `compare` reads
-  --baseline name     the side `compare` measures the others against";
+  --baseline name     the side `compare` measures the others against
+  --blocks n          how many passes `latency` makes; 8 by default";
 
 fn run(outcome: Result<(), String>) {
     if let Err(trouble) = outcome {
@@ -161,6 +172,7 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--records" => options.records = args.next(),
             "--baseline" => options.baseline = args.next(),
             "--partition" => options.partition = args.next(),
+            "--blocks" => options.blocks = args.next().and_then(|n| n.parse().ok()),
             other => eprintln!("unknown flag {other}"),
         }
     }
@@ -1117,4 +1129,139 @@ fn read_rows(path: &str) -> Result<Vec<Row>, String> {
         .into_iter()
         .map(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
         .collect()
+}
+
+/// What one door did over one block of the same workload.
+struct Block {
+    profile: Profile,
+    mean_ms: f64,
+    lost: usize,
+}
+
+/// Runs the same workload against one door several times and reports how
+/// much the answer moves when nothing but the clock changed.
+///
+/// A *block* here is one pass over the items, which is the latency analogue
+/// of a seed block in `lev-seed-sweep`: the door, the items, and the machine
+/// are held fixed, so whatever spread comes out is the floor under any
+/// latency comparison. Wall clock on a shared machine moves with whatever
+/// else is running, and a gate that does not know that spread refuses doors
+/// for noise.
+#[tokio::main(flavor = "current_thread")]
+async fn latency_command(options: Options) -> Result<(), String> {
+    let suite = load_suite(&options)?;
+    let questions = load_questions(&options, &suite)?;
+    let wanted = partitions(&options)?;
+    let items = items_of(&suite, &wanted)?;
+    let doors = open_doors(&options)?;
+    let blocks = options.blocks.unwrap_or(DEFAULT_BLOCKS);
+    if blocks < 2 {
+        return Err("a spread needs at least two blocks; pass --blocks 2 or more".to_string());
+    }
+
+    println!("# Latency across blocks: `{}`\n", suite.name);
+    println!(
+        "{} items from {}, {blocks} blocks, digest `{}`.\n",
+        items.len(),
+        match options.partition.as_deref() {
+            None => "the calibration and development partitions".to_string(),
+            Some(name) => format!("the {name} partition"),
+        },
+        &suite.digest[..16]
+    );
+    println!("Asked as `{}`, digest `{}`.\n", questions.id, &questions.digest()[..16]);
+
+    let mut measured: BTreeMap<String, Vec<Block>> = BTreeMap::new();
+    for block in 0..blocks {
+        // Alternate which door goes first, so a machine that drifts over the
+        // sweep does not hand one door the quiet half of it.
+        let order: Vec<&(String, Client)> = if block % 2 == 0 {
+            doors.iter().collect()
+        } else {
+            doors.iter().rev().collect()
+        };
+        for (name, client) in order {
+            let mut latencies = Vec::with_capacity(items.len());
+            let mut refusals = 0_usize;
+            let mut lost = 0_usize;
+            for item in &items {
+                let question = questions.ask(item).map_err(|error| error.to_string())?;
+                match ask(client, &item.state, question).await {
+                    (Disposition::Harness(_), _) | (_, None) => lost += 1,
+                    (disposition, Some(elapsed)) => {
+                        if matches!(disposition, Disposition::Refused(_)) {
+                            refusals += 1;
+                        }
+                        latencies.push(elapsed);
+                    }
+                }
+            }
+            let mean_ms = if latencies.is_empty() {
+                f64::NAN
+            } else {
+                latencies.iter().sum::<f64>() / latencies.len() as f64
+            };
+            let profile = Profile::timed(&latencies).refusing(refusals);
+            measured.entry(name.clone()).or_default().push(Block { profile, mean_ms, lost });
+        }
+    }
+
+    for (name, blocks) in &measured {
+        println!("## `{name}`\n");
+        println!("| Block | Calls | Refused | Lost | p50 | p95 | Mean |");
+        println!("| --- | --- | --- | --- | --- | --- | --- |");
+        for (index, block) in blocks.iter().enumerate() {
+            println!(
+                "| {index} | {} | {} | {} | {} | {} | {} |",
+                block.profile.calls,
+                block.profile.refusals.unwrap_or_default(),
+                block.lost,
+                milliseconds(block.profile.latency_p50_ms),
+                milliseconds(block.profile.latency_p95_ms),
+                milliseconds(Some(block.mean_ms)),
+            );
+        }
+        println!();
+        let read = |pick: fn(&Profile) -> Option<f64>| -> Vec<f64> {
+            blocks.iter().filter_map(|block| pick(&block.profile)).collect()
+        };
+        let p50 = read(|profile| profile.latency_p50_ms);
+        let p95 = read(|profile| profile.latency_p95_ms);
+        println!("| Statistic | Mean over blocks | Standard deviation | Relative | Range |");
+        println!("| --- | --- | --- | --- | --- |");
+        for (label, values) in [("p50", &p50), ("p95", &p95)] {
+            let Some(line) = spread_line(label, values) else { continue };
+            println!("{line}");
+        }
+        println!();
+    }
+    Ok(())
+}
+
+/// One row of the spread table, or nothing when a door produced no blocks.
+fn spread_line(label: &str, values: &[f64]) -> Option<String> {
+    if values.len() < 2 {
+        return None;
+    }
+    let count = values.len() as f64;
+    let mean = values.iter().sum::<f64>() / count;
+    // The sample standard deviation, with the Bessel correction, because
+    // eight blocks are a sample of the machine's moods rather than all of
+    // them.
+    let variance = values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (count - 1.0);
+    let sigma = variance.sqrt();
+    let low = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let relative = if mean > 0.0 { sigma / mean * 100.0 } else { f64::NAN };
+    Some(format!(
+        "| {label} | {mean:.1} ms | {sigma:.1} ms | {relative:.1}% | {low:.1} to {high:.1} ms |"
+    ))
+}
+
+/// A latency, or a dash where there is none.
+fn milliseconds(value: Option<f64>) -> String {
+    match value {
+        Some(ms) if ms.is_finite() => format!("{ms:.1} ms"),
+        _ => "—".to_string(),
+    }
 }

@@ -82,6 +82,16 @@ is admitted and refused for below does not change, because none of it rests
 on beating Kev. Latency is the axis that might still favor the small doors,
 and the run that produced these rows was too contended to measure it.
 
+**Every column in that table is a column `decision-v1` or `probability-v1`
+judges, and the latency column is not one of them.**
+[`docs/gym/measurements/2026-09-19-deployment-ranking.md`](../gym/measurements/2026-09-19-deployment-ranking.md)
+re-reads the table through `deployment-v1`, which judges latency, cost, and
+refusal rate against ceilings the caller states. Two things it finds are
+about this table rather than about the doors: the ranking inverts between Lev
+and kev-4b once time is a criterion, and not one of the four doors has a p95
+on record, because the median is the statistic that hides the tail a caller
+waits through.
+
 ## Where Lev should be used today
 
 Admitted:
