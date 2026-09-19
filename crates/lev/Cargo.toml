@@ -35,6 +35,10 @@ name = "lev-measure"
 path = "src/bin/lev_measure.rs"
 
 [[bin]]
+name = "lev-permute"
+path = "src/bin/lev_permute.rs"
+
+[[bin]]
 name = "lev-adapter-check"
 path = "src/bin/lev_adapter_check.rs"
 

@@ -45,6 +45,11 @@ def main():
     parser.add_argument("--out")
     parser.add_argument("--name", default="lev")
     parser.add_argument("--toolkit")
+    parser.add_argument("--author", default="openagents")
+    parser.add_argument(
+        "--description",
+        default="Support-desk judgments for the Lev System One door, trained on support-v2.",
+    )
     args = parser.parse_args()
 
     root = toolkit.find(args.toolkit)
@@ -75,6 +80,7 @@ def main():
         "--output-dir",
         str(out.parent.resolve()) + "/",
     ]
+    command += ["--author", args.author, "--description", args.description]
     if args.draft_checkpoint:
         command += ["--draft-checkpoint", str(pathlib.Path(args.draft_checkpoint).resolve())]
     print(" ".join(command), file=sys.stderr)

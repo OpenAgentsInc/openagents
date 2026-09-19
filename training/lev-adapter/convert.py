@@ -129,17 +129,26 @@ def state_prompt(state):
     return f"STATE\n\n{render(state)}"
 
 
-def band_for(correct, base_correct_rate):
-    """The band an outcome-trained example should carry.
+def band_for(record):
+    """The certainty band an item should carry, measured from outcomes.
 
-    Trained against outcomes, not opinions: an example the model should be
-    sure about carries a high band, one it should hedge on carries a low one.
-    The point is that the band means something afterwards, which it does not
-    on the base model, where every item comes back `likely`.
+    The label answers "how reliable is an answer on an item like this?", and
+    it is read off the base model's own behaviour rather than from an
+    opinion: whether the base got this item right, and how firmly it held the
+    answer across seeded samples.
+
+    The confidently-wrong quadrant is the one that matters. On the base
+    model those items come back at high frequency and wrong, and the whole
+    point of a band is to say `unlikely` there instead. A model that hedges
+    before it is wrong is worth more to a workflow than one that is a little
+    more accurate.
     """
+    if record is None:
+        return "likely"
+    correct, top = record.get("correct", True), record.get("top", 1.0)
     if correct:
-        return "almost certain" if base_correct_rate >= 0.9 else "likely"
-    return "even odds" if base_correct_rate >= 0.5 else "unlikely"
+        return "almost certain" if top >= 0.875 else "likely"
+    return "unlikely" if top >= 0.875 else "even odds"
 
 
 def schema_for(options, bands=None):
@@ -206,8 +215,7 @@ def to_record(item, with_band, base_rates):
     bands = BANDS if with_band else None
     answer = {"choice": item["truth"]}
     if with_band:
-        rate = base_rates.get(item["id"], 1.0)
-        answer["certainty"] = band_for(True, rate)
+        answer["certainty"] = band_for(base_rates.get(item["id"]))
     return [
         {"role": "system", "content": instructions_text(item["question"])},
         {
@@ -233,7 +241,8 @@ def main():
     )
     parser.add_argument(
         "--base-rates",
-        help="JSON map of item id to the base model's measured accuracy, for band labels",
+        help="JSON map of item id to the base model's measured outcome, for band labels; "
+        "produced by `lev-eval --dump`",
     )
     args = parser.parse_args()
 

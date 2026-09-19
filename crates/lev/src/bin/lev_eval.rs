@@ -19,6 +19,7 @@ const SUITE: &str = include_str!("../../suites/support-v2.json");
 
 /// What one item produced on one door.
 struct Scored {
+    id: String,
     family: String,
     split: String,
     raw_top: f64,
@@ -72,6 +73,7 @@ async fn run_item(client: &Client, item: &Item) -> Option<Scored> {
     };
     let raw_top = distribution.values().copied().fold(0.0_f64, f64::max);
     Some(Scored {
+        id: item.id.clone(),
         family: item.family.clone(),
         split: item.split.clone(),
         raw_top,
@@ -163,6 +165,7 @@ async fn main() {
                 .map(|s| {
                     serde_json::json!({
                         "door": name,
+                        "id": s.id,
                         "family": s.family,
                         "split": s.split,
                         "raw_top": s.raw_top,
