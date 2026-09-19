@@ -52,10 +52,15 @@ Coder's backend is a relay, not a service.
   Quotas, judgment, and streaming all live worker-side, expressed as
   events — application logic as NIPs, the pattern the Block lane uses
   for Buzz.
-- **One relay serves everything.** `wss://relay.openagents.com` is the
-  same hardened relay this repo ships: Postgres-backed, NIP-42 auth,
-  NIP-29/45/50/59/65/70/86/98, Blossom media, deployable anywhere with
-  `cargo run -p nostr-relay`.
+- **One relay serves everything — and it's yours if you want it.**
+  `wss://relay.openagents.com` runs the same `nostr-relay` binary this
+  repo ships: Postgres-backed, NIP-42 auth, NIP-29/45/50/59/65/70/86/98,
+  Blossom media. Point `CODER_RELAY` at any relay that speaks the
+  protocol — ours, someone else's, or one you run yourself. The whole
+  stack self-hosts: `cargo run -p nostr-relay` against your own Postgres
+  is the production software, and the terminal, the protocol, and the
+  job traffic are all in this repo. No part of the path requires
+  OpenAgents infrastructure.
 
 ## Why Jev
 
