@@ -1,7 +1,8 @@
 //! The composer: the framed input box at the foot of the terminal.
 //!
 //! A hairline frame holds the draft's wrapped rows behind ` > `, two rails
-//! run inside the rules, and the caret is a full block. Status and location
+//! run inside the rules, and the caret is the terminal's own block over an
+//! unmarked cell. Status and location
 //! ride the top rail, left and right; the token count rides the bottom
 //! right. A rail the rule cannot hold whole is left out rather than cut.
 //!
@@ -141,7 +142,10 @@ impl<'a> Composer<'a> {
             }
             let x = area.left() + 4 + column as u16;
             let y = area.top() + 1 + (row.saturating_sub(window.scroll) as u16).min(height - 2);
-            buf[(x, y)].set_char(CARET).set_style(amber);
+            // The cell draws nothing of its own: the terminal's hardware
+            // cursor lands on `caret_at` and inverts the cell, so the block
+            // burns amber. A drawn █ would invert to near-black and cover
+            // the cell — that is what made the caret read dark.
             caret_at = (x, y);
         }
         caret_at
@@ -233,7 +237,8 @@ mod tests {
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 4);
         assert_eq!(lines[0], "┌──────────────────┐");
-        assert!(lines[1].starts_with("│ > █"));
+        assert!(lines[1].starts_with("│ > "));
+        assert!(!lines[1].contains(CARET));
         assert!(lines[2].starts_with("│   "));
         assert_eq!(lines[3], "└──────────────────┘");
     }

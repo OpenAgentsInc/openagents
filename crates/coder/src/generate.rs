@@ -183,24 +183,33 @@ impl ResponsesDoor {
 }
 
 impl ResponsesDoor {
-    /// One streaming attempt: the request plus the SSE read.
+    /// One streaming attempt: the request plus the SSE read. On failure the
+    /// error carries whatever text streamed before it died, so the caller
+    /// can tell whether anything user-visible arrived.
     async fn once(
         &self,
         instructions: &str,
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
-    ) -> Result<(String, Option<Usage>), GenerateError> {
+    ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
         let response = self
             .http
             .post(format!("{}/v1/responses", self.url))
             .bearer_auth(&self.key)
             .json(&self.body(instructions, input))
             .send()
-            .await?;
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => return Err((String::new(), GenerateError::Transport(error))),
+        };
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            return Err(GenerateError::Status(status.as_u16(), clip(&body, 400)));
+            return Err((
+                String::new(),
+                GenerateError::Status(status.as_u16(), clip(&body, 400)),
+            ));
         }
 
         // The SSE stream: `data: {json}` lines, blank-line separated. Delta
@@ -210,7 +219,10 @@ impl ResponsesDoor {
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(error) => return Err((text, GenerateError::Transport(error))),
+            };
             buffer.push_str(&String::from_utf8_lossy(&chunk));
             while let Some(end) = buffer.find('\n') {
                 let line = buffer[..end].trim_end_matches('\r').to_string();
@@ -243,19 +255,29 @@ impl ResponsesDoor {
                             .as_str()
                             .or_else(|| event["message"].as_str())
                             .unwrap_or("the turn failed upstream");
-                        return Err(GenerateError::Stream(message.to_string()));
+                        return Err((text, GenerateError::Stream(message.to_string())));
                     }
                     _ => {}
                 }
             }
         }
         if text.is_empty() {
-            return Err(GenerateError::Stream(
-                "the stream carried no text".to_string(),
+            return Err((
+                text,
+                GenerateError::Stream("the stream carried no text".to_string()),
             ));
         }
         Ok((text, usage))
     }
+}
+
+/// Whether streamed text is user-visible: a reply that opens as a JSON
+/// object or a code fence is a shell plan's wire format, which the
+/// terminal hides while it streams — so a stream that died mid-plan
+/// showed nothing and earns another attempt like an empty one did.
+fn planish(text: &str) -> bool {
+    let text = text.trim_start();
+    text.starts_with('{') || text.starts_with("```")
 }
 
 impl Generate for ResponsesDoor {
@@ -266,25 +288,25 @@ impl Generate for ResponsesDoor {
         sink: &'a mut (dyn FnMut(&str) + Send),
         _meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
-        // A stream that fails before delivering any text is safe to redo —
-        // the user saw nothing and the request is idempotent. Keep retrying
-        // with a growing wait: upstream flakes like a model-side malformed
-        // function call are transient, and the retry is invisible. A door
-        // that keeps failing after the last attempt still surfaces its
-        // error — hidden retries, honest failures.
+        // A stream that fails before showing anything — empty, or holding
+        // only a hidden plan — is safe to redo: the user saw nothing and
+        // the request is idempotent. Keep retrying with a growing wait;
+        // upstream flakes like a model-side malformed function call are
+        // transient, and the retry is invisible. A door that keeps failing
+        // after the last attempt still surfaces its error — hidden
+        // retries, honest failures.
         for attempt in 0..EMPTY_STREAM_ATTEMPTS {
-            let mut delivered = false;
-            let result = {
-                let mut wrapped = |delta: &str| {
-                    delivered = true;
-                    sink(delta);
-                };
-                self.once(instructions, input, &mut wrapped).await
-            };
-            match result {
-                Err(GenerateError::Stream(_)) if !delivered => {
-                    if attempt + 1 == EMPTY_STREAM_ATTEMPTS {
-                        return result;
+            match self.once(instructions, input, sink).await {
+                Err((partial, error)) => {
+                    let visible = !partial.is_empty() && !planish(&partial);
+                    if visible
+                        || !matches!(
+                            error,
+                            GenerateError::Stream(_) | GenerateError::Transport(_)
+                        )
+                        || attempt + 1 == EMPTY_STREAM_ATTEMPTS
+                    {
+                        return Err(error);
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(
                         300 * (attempt as u64 + 1),
@@ -292,7 +314,7 @@ impl Generate for ResponsesDoor {
                     .await;
                     continue;
                 }
-                other => return other,
+                Ok(done) => return Ok(done),
             }
         }
         unreachable!()
@@ -410,6 +432,7 @@ mod tests {
         assert_eq!(body["stream"], true);
         assert_eq!(body["store"], false);
         assert_eq!(body["tool_choice"], "none");
+        assert_eq!(body["tools"], json!([]));
         assert_eq!(body["input"][0]["content"][0]["type"], "input_text");
         assert_eq!(body["input"][1]["content"][0]["type"], "output_text");
     }
