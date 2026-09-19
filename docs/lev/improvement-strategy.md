@@ -39,6 +39,15 @@ A fourth is not visible in the table and matters more than it looks:
 eight, against kev-0.5b's 7.4% over four permutations and hosted Jev's zero
 observed flips.
 
+Two things about that comparison, measured later the same day in
+[`measurements/2026-09-19-flip-rate-variance.md`](measurements/2026-09-19-flip-rate-variance.md).
+The rate holds: over all fifteen pairs of orders a three-option Choice
+admits, the base door flips 0.112, plus or minus 0.069 at two sigma. The
+comparison does not: a flip rate over two orders and one over four are
+different statistics, and on the same door here the share of items that move
+under any of six orders is about twice the average two-order rate. Lev's
+number and kev's were never defined the same way.
+
 ## The shape of the problem
 
 Every one of those gaps traces to the same root. Apple's runtime returns a
@@ -126,7 +135,8 @@ no mask to exploit and has to pay in calls.
 
 *Return: a measurable accuracy gain on multi-option questions. Cost: linear
 in `p`. Status: unstarted; do it after 3, and measure whether the accuracy
-gain survives the latency cost.*
+gain survives the latency cost — against the flip-rate floor, because no
+two-door flip-rate difference measured on this suite has cleared it yet.*
 
 ### 5. Grow the suite until calibration is possible
 

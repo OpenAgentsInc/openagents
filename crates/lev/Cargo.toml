@@ -61,6 +61,10 @@ name = "lev-seed-sweep"
 path = "src/bin/lev_seed_sweep.rs"
 
 [[bin]]
+name = "lev-order-sweep"
+path = "src/bin/lev_order_sweep.rs"
+
+[[bin]]
 name = "lev-render"
 path = "src/bin/lev_render.rs"
 

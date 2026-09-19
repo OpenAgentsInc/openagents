@@ -199,6 +199,17 @@ estimate over `p` option orders removes most of that at `p` times the cost,
 which composes with the concurrency work above. Kev gets this structurally
 from an `option_isolation` variant; Lev has to pay for it.
 
+**Measured more carefully on 2026-09-19.** One in eight was one pair of
+option orders on one item set. Over all fifteen pairs a three-option Choice
+admits, the base door flips 0.112 of its answers, plus or minus 0.069 at two
+sigma, and the pairs themselves run from 0.025 to 0.175. Read the rate as
+about one in nine and read any *comparison* of two flip rates against
+[`measurements/2026-09-19-flip-rate-variance.md`](measurements/2026-09-19-flip-rate-variance.md)
+first: no two-door difference measured on this suite has cleared its own
+floor yet, including the one that was published for the permutation-augmented
+adapter. The lever is still worth pulling. What it buys has not been
+measured.
+
 ### 5. Train an adapter — the only route to accuracy
 
 Accuracy of 0.85 against Jev's 0.96 is not a prompting problem. The certainty

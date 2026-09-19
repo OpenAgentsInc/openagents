@@ -183,6 +183,7 @@ two reasons, which are not inside the floor:
   It has not been given its own noise measurement, and it should be: a count
   that small has a wide interval, and the honest next step is to run the
   permutation probe across seed blocks the way accuracy just was.
+  **Withdrawn on the same day; see the section below.**
 
 One more thing worth recording. **Block 0, which every published Lev number
 on this page and its siblings rests on, drew 0.765 against an eight-block
@@ -190,3 +191,50 @@ mean of 0.781.** Nothing about the conclusions changes — the differences
 that survive survive by four sigma — but the base model's headline number is
 a slightly unlucky draw, and it was presented as the number rather than as a
 draw.
+
+## Correction: the flip-rate difference is inside the noise floor too
+
+Added after
+[`2026-09-19-flip-rate-variance.md`](2026-09-19-flip-rate-variance.md)
+measured what a flip rate on this suite can detect. The correction above
+withdrew the accuracy claim and kept two reasons to prefer one adapter over
+another. This withdraws one of those two.
+
+The flip rate is a greedy statistic, and greedy decoding carries no seed, so
+its perturbation axis is the option order rather than the seed block. A
+three-option Choice has six orders and fifteen pairs of them. Every published
+flip rate used one pair, reversal. Asking all six on the 40 evaluation items
+the three-way suite leaves readable:
+
+| Door | At the reversed pair | Over all fifteen pairs | Range across pairs |
+| --- | --- | --- | --- |
+| `lev-base` | 0.125 | 0.112 | 0.025 to 0.175 |
+| Choice adapter | 0.150 | 0.075 | 0.025 to 0.150 |
+| Band adapter | 0.125 | 0.073 | 0.000 to 0.125 |
+| Permutation adapter | 0.050 | 0.052 | 0.000 to 0.100 |
+
+The band adapter against the permutation adapter is **+0.075 at the reversed
+pair against a two-sigma floor of 0.145**, and **+0.022 over all fifteen
+pairs against a floor of 0.066**. At the reversed pair the two doors flip on
+seven different items, five of them the band adapter's and two the
+permutation adapter's, which an exact paired test puts at p = 0.45.
+
+**"Flip rate moved 0.120 to 0.040" does not hold.** The two adapters are
+indistinguishable on order sensitivity at this suite size, and so is every
+other pair of doors: all six two-door comparisons are inside the floor, on
+the reversed pair, over all fifteen pairs, and on the share of items that
+answer the same under all six orders. The largest is the base against the
+permutation adapter at 1.5 sigma.
+
+That empties the list the correction above left. Both reasons it gave for
+preferring one adapter over another have now been measured:
+
+- **The band is monotone or it is not.** 0.64/0.82/0.95 against a constant
+  `likely` is still a categorical difference, and still stands.
+- **Flip rate moved 0.120 to 0.040.** Withdrawn.
+
+So the case for the permutation adapter rests on the mechanism and on the
+direction of four statistics that all point the same way and none of which
+clears its own floor. Settling it needs about 360 Choice items against this
+suite's 40, or about 70 to settle the base against it. That is the price of
+the claim, and it was not paid.
