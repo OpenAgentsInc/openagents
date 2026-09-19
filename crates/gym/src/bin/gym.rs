@@ -25,6 +25,11 @@
 //!     --door lev=http://127.0.0.1:11436 \
 //!     --questions support-v2-three-way-v2 \
 //!     --record results/support-v2-three-way.jsonl
+//!
+//! # did this commit move the numbers? run it before you push
+//! cargo run -p gym --bin gym -- regress \
+//!     --store results/support-v2-three-way.jsonl \
+//!     --against results/last-week.jsonl
 //! ```
 //!
 //! Hosted Jev reads `TYPESAFE_API_KEY` from the environment. Never pass a key
@@ -37,6 +42,7 @@ use gym::calibrate::{EstimatorConfig, Metrics, Record};
 use gym::eval::{self, Disposition, Run};
 use gym::gate::{self, Gate, Profile};
 use gym::questions::QuestionSet;
+use gym::regress;
 use gym::row::{DoorIdentity, Row};
 use gym::store::{Store, StoreError};
 use gym::suite::{Item, Partition, Suite};
@@ -99,10 +105,12 @@ struct Options {
     records: Option<String>,
     fit: bool,
     baseline: Option<String>,
+    against: Option<String>,
     partition: Option<String>,
     blocks: Option<usize>,
     /// The one family to ask. Every family the suite holds by default.
     family: Option<String>,
+    timeout: Option<u64>,
 }
 
 fn main() {
@@ -115,6 +123,7 @@ fn main() {
         "fit" => run(fit_command(&options)),
         "permute" => run(permute_command(options)),
         "latency" => run(latency_command(options)),
+        "regress" => run(regress_command(&options)),
         "" | "help" | "--help" | "-h" => {
             println!("{USAGE}");
         }
@@ -131,6 +140,7 @@ gym compare  compare doors from recorded rows
 gym fit      fit and judge from recorded rows, asking no door
 gym permute  measure how much option order moves the answer
 gym latency  measure how much wall clock moves when nothing else does
+gym regress  compare a door with its own last recorded run
 
   --door name=url     a door to ask; repeatable
   --jev               hosted Jev, from TYPESAFE_API_KEY
@@ -142,9 +152,17 @@ gym latency  measure how much wall clock moves when nothing else does
   --fit               fit one map per family and judge it
   --record path       append every row to this store
   --records dir       write one calibration record per family here
-  --store path        the store `compare` reads
+  --store path        the store `compare`, `fit`, and `regress` read
   --baseline name     the side `compare` measures the others against
-  --blocks n          how many passes `latency` makes; 8 by default";
+  --against path      the store `regress` measures the rows in `--store`
+                      against; the same store by default
+  --blocks n          how many passes `latency` makes; 8 by default
+  --timeout seconds   how long one call to a `--door` may take; the client's
+                      ten seconds by default, and worth raising on a busy
+                      machine, because a timeout loses the item entirely
+
+`regress` exits 1 when something regressed, 2 when it could not compare, and
+0 otherwise. Read the report either way.";
 
 fn run(outcome: Result<(), String>) {
     if let Err(trouble) = outcome {
@@ -174,9 +192,11 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--record" => options.record = args.next(),
             "--records" => options.records = args.next(),
             "--baseline" => options.baseline = args.next(),
+            "--against" => options.against = args.next(),
             "--partition" => options.partition = args.next(),
             "--blocks" => options.blocks = args.next().and_then(|n| n.parse().ok()),
             "--family" => options.family = args.next(),
+            "--timeout" => options.timeout = args.next().and_then(|value| value.parse().ok()),
             other => eprintln!("unknown flag {other}"),
         }
     }
@@ -266,10 +286,19 @@ fn open_doors(options: &Options) -> Result<Vec<(String, Client)>, String> {
         }
     }
     for (name, url) in &options.doors {
-        let config = Config::new()
+        let mut config = Config::new()
             .api_key("unused-by-a-local-door")
             .base_url(url.clone())
             .default_model(name.clone());
+        // A local door under load can take longer than the client's ten
+        // seconds, and a timeout is a harness failure: the item leaves the
+        // record entirely, and nothing downstream can tell it was ever
+        // asked. Two runs that lost different items are two measurements,
+        // which is what `gym regress` refuses to compare. So the timeout is
+        // a flag, and a busy machine buys a complete record with wall time.
+        if let Some(seconds) = options.timeout {
+            config = config.timeout(std::time::Duration::from_secs(seconds));
+        }
         match Client::new(config) {
             Ok(client) => doors.push((name.clone(), client)),
             Err(error) => eprintln!("skipping {name}: {error}"),
@@ -1294,4 +1323,84 @@ fn milliseconds(value: Option<f64>) -> String {
         Some(ms) if ms.is_finite() => format!("{ms:.1} ms"),
         _ => "—".to_string(),
     }
+}
+/// Did this commit move the numbers?
+///
+/// The one command to run before pushing, because this repository has no CI
+/// to run it for anybody. It asks no door: the rows a run already wrote hold
+/// the whole trace of every call, so comparing this week's run with last
+/// week's is a query over the record.
+///
+/// It exits 1 on a measured regression, 2 when the comparison was refused,
+/// and 0 otherwise. `unverifiable` exits 0 and is not a pass: it means
+/// nobody could tell, and the report says which criterion could not.
+fn regress_command(options: &Options) -> Result<(), String> {
+    let path = options
+        .store
+        .as_deref()
+        .ok_or_else(|| "regress reads recorded rows; pass --store path".to_string())?;
+    let latest = read_rows(path)?;
+    if latest.is_empty() {
+        return Err(format!("{path} holds no rows"));
+    }
+    let earlier = match options.against.as_deref() {
+        Some(against) => {
+            let rows = read_rows(against)?;
+            if rows.is_empty() {
+                return Err(format!("{against} holds no rows"));
+            }
+            Some(rows)
+        }
+        None => None,
+    };
+
+    let rule = gym::ab::Rule::v1();
+    let findings = regress::review(earlier.as_deref(), &latest, &rule);
+
+    println!("# Did this commit move the numbers?\n");
+    match options.against.as_deref() {
+        Some(against) => println!(
+            "`{path}` holds {} rows and `{against}` holds {}. The chains verified, so neither \
+             side's numbers were quietly rewritten. No door was asked.\n",
+            latest.len(),
+            earlier.as_ref().map_or(0, Vec::len),
+        ),
+        None => println!(
+            "`{path}` holds {} rows, and each door's newest run is measured against its own \
+             previous one. The chain verified, so the earlier numbers were not quietly \
+             rewritten. No door was asked.\n",
+            latest.len()
+        ),
+    }
+    if findings.is_empty() {
+        return Err(format!("{path} holds no run this command can read"));
+    }
+    for finding in &findings {
+        println!("{}", regress::render(finding));
+    }
+
+    let verdicts: Vec<gym::gate::Verdict> =
+        findings.iter().filter_map(regress::Finding::verdict).collect();
+    // The provenance belongs under numbers. A run that compared nothing has
+    // none, and printing a page of floors under it would read as though
+    // something had been judged.
+    if !verdicts.is_empty() {
+        println!("{}", regress::render_floors(&rule));
+    }
+    let refused = findings.len() - verdicts.len();
+    if refused > 0 {
+        println!(
+            "{refused} of {} door{} could not be compared, which is neither a pass nor a \
+             regression.\n",
+            findings.len(),
+            if findings.len() == 1 { "" } else { "s" }
+        );
+    }
+    if verdicts.contains(&gym::gate::Verdict::Failed) {
+        std::process::exit(1);
+    }
+    if verdicts.is_empty() {
+        std::process::exit(2);
+    }
+    Ok(())
 }

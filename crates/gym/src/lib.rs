@@ -33,6 +33,8 @@
 //!   probability, and the record that says what it was fitted against.
 //! - [`eval`] — one run over a suite: what a door's answer becomes, and what
 //!   a table of rows says afterwards.
+//! - [`regress`] — one door against its own last recorded run, which is the
+//!   question a repository with no CI asks before every push.
 //!
 //! What it deliberately does not own: how any model answers. The Gym scores
 //! what comes back from `POST /v1/systemone` and knows nothing else about
@@ -43,6 +45,7 @@ pub mod calibrate;
 pub mod eval;
 pub mod gate;
 pub mod questions;
+pub mod regress;
 pub mod row;
 pub mod store;
 pub mod suite;
