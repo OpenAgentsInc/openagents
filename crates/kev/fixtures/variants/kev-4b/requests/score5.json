@@ -1,0 +1,48 @@
+{
+  "request": {
+    "state": "The food was cold, the service was slow, and the bill was wrong. Never again.",
+    "model": "kev-latest",
+    "questions": {
+      "stars": {
+        "type": "score",
+        "instructions": "Star rating implied by the review.",
+        "criteria": [
+          "one star",
+          "two stars",
+          "three stars",
+          "four stars",
+          "five stars"
+        ]
+      }
+    }
+  },
+  "record": {
+    "state": "The food was cold, the service was slow, and the bill was wrong. Never again.",
+    "questions": [
+      {
+        "instr": "Star rating implied by the review.",
+        "options": [
+          "one star",
+          "two stars",
+          "three stars",
+          "four stars",
+          "five stars"
+        ],
+        "label": 0
+      }
+    ]
+  },
+  "meta": [
+    {
+      "id": "stars",
+      "type": "score",
+      "legend": {
+        "0": "one star",
+        "1": "two stars",
+        "2": "three stars",
+        "3": "four stars",
+        "4": "five stars"
+      }
+    }
+  ]
+}

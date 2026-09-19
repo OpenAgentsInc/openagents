@@ -1,0 +1,103 @@
+{
+  "request": {
+    "state": {
+      "ticket": {
+        "channel": "email",
+        "body": "My export has been queued for three days and the download link expired."
+      },
+      "account": {
+        "plan": "pro",
+        "region": "eu"
+      }
+    },
+    "model": "kev-latest",
+    "questions": {
+      "area": {
+        "type": "choice",
+        "instructions": {
+          "question": "Which product area?",
+          "focus": "the failing feature"
+        },
+        "criteria": {
+          "exports": {
+            "what": "Data export jobs and download links"
+          },
+          "sync": "Live sync between devices",
+          "auth": null
+        }
+      },
+      "paying": {
+        "type": "noul",
+        "instructions": "Is the customer on a paid plan?",
+        "criteria": {
+          "true": "plan is not free",
+          "false": "plan is free or unknown"
+        }
+      },
+      "urgency": {
+        "type": "score",
+        "instructions": "How time-sensitive is this ticket?",
+        "criteria": [
+          "can wait a week",
+          "needs attention this week",
+          "blocking work now"
+        ]
+      }
+    }
+  },
+  "record": {
+    "state": "ticket:\n  channel: email\n  body: My export has been queued for three days and the download link expired.\naccount:\n  plan: pro\n  region: eu",
+    "questions": [
+      {
+        "instr": "question: Which product area?\nfocus: the failing feature",
+        "options": [
+          "exports: what: Data export jobs and download links",
+          "sync: Live sync between devices",
+          "auth"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "Is the customer on a paid plan?",
+        "options": [
+          "no: plan is free or unknown",
+          "yes: plan is not free"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "How time-sensitive is this ticket?",
+        "options": [
+          "can wait a week",
+          "needs attention this week",
+          "blocking work now"
+        ],
+        "label": 0
+      }
+    ]
+  },
+  "meta": [
+    {
+      "id": "area",
+      "type": "choice",
+      "keys": [
+        "exports",
+        "sync",
+        "auth"
+      ]
+    },
+    {
+      "id": "paying",
+      "type": "noul"
+    },
+    {
+      "id": "urgency",
+      "type": "score",
+      "legend": {
+        "0": "can wait a week",
+        "1": "needs attention this week",
+        "2": "blocking work now"
+      }
+    }
+  ]
+}
