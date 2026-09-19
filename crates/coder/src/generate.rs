@@ -51,6 +51,15 @@ pub struct Usage {
     pub output_tokens: u64,
 }
 
+/// Sideband information a door may emit mid-turn, before or between text
+/// deltas. Only doors that wrap a remote worker produce it today.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Meta {
+    /// A classification verdict the worker computed, as a display-ready
+    /// line (the NIP-CJ `judgment` feedback payload's `line` field).
+    Judgment(String),
+}
+
 /// What generation can fail with.
 #[derive(Debug)]
 pub enum GenerateError {
@@ -85,7 +94,8 @@ impl From<reqwest::Error> for GenerateError {
 
 /// One generation: instructions plus conversation in, text plus usage out.
 /// `sink` receives each text delta as it streams, so a caller can draw the
-/// answer as it forms.
+/// answer as it forms. `meta` receives sideband items a door may emit —
+/// doors that never emit simply do not call it.
 pub trait Generate: Send + Sync {
     /// Generate the next assistant turn.
     fn generate<'a>(
@@ -93,6 +103,7 @@ pub trait Generate: Send + Sync {
         instructions: &'a str,
         input: &'a [Message],
         sink: &'a mut (dyn FnMut(&str) + Send),
+        meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> impl std::future::Future<Output = Result<(String, Option<Usage>), GenerateError>> + Send + 'a;
 }
 
@@ -165,6 +176,7 @@ impl Generate for ResponsesDoor {
         instructions: &'a str,
         input: &'a [Message],
         sink: &'a mut (dyn FnMut(&str) + Send),
+        _meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         let response = self
             .http
@@ -256,34 +268,42 @@ impl Generate for StubGenerate {
         _instructions: &'a str,
         _input: &'a [Message],
         sink: &'a mut (dyn FnMut(&str) + Send),
+        _meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         sink(&self.line);
         Ok((self.line.clone(), None))
     }
 }
 
-/// Whatever the environment gives: a real door when a key is set, the stub
-/// otherwise.
+/// Whatever the environment gives: an own-key door when a key is set,
+/// the relay when a worker is configured, the stub otherwise.
 pub enum Door {
     /// A live Open Responses endpoint.
     Live(ResponsesDoor),
+    /// A Nostr relay running the NIP-CJ job protocol.
+    Relay(Box<crate::relay::RelayDoor>),
     /// The canned answer.
     Stub(StubGenerate),
 }
 
 impl Door {
-    /// The configured door: live when a key is present, stub otherwise.
+    /// The configured door: own-key when a key is present, the relay
+    /// when `CODER_WORKER` names a worker, stub otherwise.
     pub fn from_env() -> Self {
-        match ResponsesDoor::from_env() {
-            Some(door) => Door::Live(door),
-            None => Door::Stub(StubGenerate::default()),
+        if let Some(door) = ResponsesDoor::from_env() {
+            return Door::Live(door);
         }
+        if let Some(door) = crate::relay::RelayDoor::from_env() {
+            return Door::Relay(Box::new(door));
+        }
+        Door::Stub(StubGenerate::default())
     }
 
     /// The model name the door serves, for the token rail.
     pub fn model(&self) -> &str {
         match self {
             Door::Live(door) => &door.model,
+            Door::Relay(_) => "relay",
             Door::Stub(_) => "stub",
         }
     }
@@ -295,10 +315,12 @@ impl Generate for Door {
         instructions: &'a str,
         input: &'a [Message],
         sink: &'a mut (dyn FnMut(&str) + Send),
+        meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         match self {
-            Door::Live(door) => door.generate(instructions, input, sink).await,
-            Door::Stub(stub) => stub.generate(instructions, input, sink).await,
+            Door::Live(door) => door.generate(instructions, input, sink, meta).await,
+            Door::Relay(door) => door.generate(instructions, input, sink, meta).await,
+            Door::Stub(stub) => stub.generate(instructions, input, sink, meta).await,
         }
     }
 }
@@ -343,7 +365,7 @@ mod tests {
         let stub = StubGenerate::default();
         let mut seen = String::new();
         let (text, usage) = stub
-            .generate("sys", &[], &mut |delta| seen.push_str(delta))
+            .generate("sys", &[], &mut |delta| seen.push_str(delta), &mut |_| {})
             .await
             .unwrap();
         assert_eq!(text, stub.line);

@@ -6,7 +6,9 @@
 //! scrollback, `Ctrl-C` or an empty `Ctrl-D` quits. The env reads
 //! `TYPESAFE_API_KEY` for Classify and `CODER_DOOR_KEY` (or
 //! `CODER_AI_GATEWAY_KEY`), `CODER_DOOR_URL`, and `CODER_MODEL` for
-//! Generate; with neither set the shell still runs on the stub door.
+//! Generate; with no key set, `CODER_WORKER` + `CODER_RELAY` route the
+//! turn through the NIP-CJ job protocol on the relay; otherwise the stub
+//! door answers.
 //!
 //! ```sh
 //! cargo run -p coder
@@ -14,7 +16,7 @@
 
 use std::io::{self, stdout};
 
-use coder::{Agent, Classified, Route, Usage, Verdict};
+use coder::{Agent, Classified, Meta, Route, Usage, Verdict};
 use coder_terminal::{
     Composer, ComposerAction, Editor, Intensity, Ladder, frame_for, handle_key, wrap_rows,
 };
@@ -82,6 +84,8 @@ fn expand(
 enum Work {
     /// Classify finished; the verdict (or the skip note) is for display.
     Classified(Classified),
+    /// A remote worker's judgment feedback line (NIP-CJ), drawn dim.
+    Judgment(String),
     /// A reply delta streamed in.
     Delta(String),
     /// The turn ended; the reply text and usage are final.
@@ -186,10 +190,18 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
     let result = match route {
         Route::Respond | Route::Clarify => {
             let tx = work.clone();
+            let meta_tx = work.clone();
             agent
-                .reply(route == Route::Clarify, &mut |delta| {
-                    let _ = tx.try_send(Work::Delta(delta.to_string()));
-                })
+                .reply(
+                    route == Route::Clarify,
+                    &mut |delta| {
+                        let _ = tx.try_send(Work::Delta(delta.to_string()));
+                    },
+                    &mut |meta| {
+                        let Meta::Judgment(line) = meta;
+                        let _ = meta_tx.try_send(Work::Judgment(line));
+                    },
+                )
                 .await
                 .map_err(|error| error.to_string())
         }
@@ -307,6 +319,9 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                     Work::Classified(Classified::Skipped(note)) => {
                         app.push(Intensity::Half, "  ", note);
                         app.status = "generating".to_string();
+                    }
+                    Work::Judgment(line) => {
+                        app.push(Intensity::Half, "  ", format!("classify → {line}"));
                     }
                     Work::Delta(delta) => app.pending.push_str(&delta),
                     Work::Finished(Ok((text, usage))) => {

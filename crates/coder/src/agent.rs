@@ -9,7 +9,7 @@
 use jev::SystemOneRequest;
 
 use crate::classify::{Judgment, Route, judgment_of, questions, route, state_of};
-use crate::generate::{Door, Generate, GenerateError, Message, Role, Usage};
+use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 
 /// The instructions Generate hears for a plain answer.
 pub const INSTRUCTIONS: &str = "You are Coder, an assistant that lives in a terminal. \
@@ -133,6 +133,7 @@ impl Agent {
         &mut self,
         clarify: bool,
         sink: &mut (dyn FnMut(&str) + Send),
+        meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         let instructions = if clarify {
             format!("{INSTRUCTIONS}{CLARIFY_SUFFIX}")
@@ -141,7 +142,7 @@ impl Agent {
         };
         let (text, usage) = self
             .generate
-            .generate(&instructions, &self.transcript, sink)
+            .generate(&instructions, &self.transcript, sink, meta)
             .await?;
         self.transcript.push(Message {
             role: Role::Assistant,
@@ -170,7 +171,10 @@ mod tests {
         let mut agent = Agent::new(None, Door::Stub(StubGenerate::default()));
         agent.push_user("hello");
         let mut seen = String::new();
-        let (text, _) = agent.reply(false, &mut |d| seen.push_str(d)).await.unwrap();
+        let (text, _) = agent
+            .reply(false, &mut |d| seen.push_str(d), &mut |_| {})
+            .await
+            .unwrap();
         assert_eq!(text, seen);
         assert_eq!(agent.transcript().len(), 2);
         assert_eq!(agent.transcript()[1].role, Role::Assistant);
