@@ -1,109 +1,204 @@
-# Can an inference engine's scoring endpoint replace a trained readout?
+# Inference-side scoring: settled, and not the way the claim says
 
-**Status:** open. Research in progress; this page records the claim and what
-would have to be true for it to change what we build.
-
-## What would change if it holds
-
-A third mechanism for producing option probabilities, alongside the two this
-repository already has:
-
-- **Kev** trains a pointer head against labelled outcomes and reads the
-  hidden state at each option's closing delimiter. Getting there took an
-  adapter, a head, a frozen suite, and a conformance port.
-- **Lev** has no readout at all — Apple's runtime exposes no logits — so its
-  probabilities are frequencies counted over seeded samples and then
-  calibrated. That costs `N` forward passes per question and its resolution
-  is `1/N`.
-- **This** would need neither. Point a scoring endpoint at any open model,
-  hand it a candidate set, and read probabilities back.
-
-If it works and the numbers are usable, it is cheaper than both, and the
-honest conclusion would be that a large part of Kev's port bought something
-obtainable another way. That is a result worth having either way.
+**Status:** settled. The mechanism is real and unremarkable; the quality
+claim is contradicted by the only public paired measurement of exactly this
+architecture. Two things are worth taking from it, and neither is the door.
 
 ## The claim
 
-Quoted from the post that prompted this:
+> sglang offers a scoring endpoint in addition to the normal generation one.
+> In scoring mode, given an input and a set of possible answers, it forces
+> the model to produce probabilities for each one. [...] For deepseek, you
+> have to add a closing think tag before the response. [...] dsv4.1 flash is
+> not as good as jev, but if we had enough spare compute to experiment with
+> this same approach for a larger model then i think the decision quality
+> would be at least as good, if not better.
 
-> sglang (an inference engine) offers a scoring endpoint in addition to the
-> normal generation one. in scoring mode, given an input & set of possible
-> answers, it forces the model to produce probabilities for each one.
->
-> getting the above behavior instead of streamed output is as simple as using
-> sglang's `/v1/score` endpoint instead of `/generate`. there's just one other
-> trick required.
->
-> for deepseek, you have to add a closing think tag before the response. this
-> forces a direct answer instead of a reasoning trace.
->
-> dsv4.1 flash is not as good as jev, but if we had enough spare compute to
-> experiment with this same approach for a larger model then i think the
-> decision quality would be at least as good, if not better.
+## What `/v1/score` actually computes
 
-An endpoint called `deepseek-v4.1-flash-jev` is offered as the demonstration,
-and `github.com/skeptrunedev/jev-recruiter` as an application of it.
+Read from the local clone at `projects/repos/sglang` (`320bdd1ee2`), route at
+`python/sglang/srt/entrypoints/http_server.py:1915`.
 
-## What has to be true
+It is a thin wrapper over *prefill, do not generate, read the next-token
+logprobs for a list of token ids, optionally softmax them*. The whole
+computation is nine lines in
+`python/sglang/srt/managers/tokenizer_manager_score_mixin.py:642`.
 
-Four questions decide whether this is a door, a technique, or a footnote.
-They are ordered by how much they would change.
+Three corrections to the usual description:
 
-### 1. Is it calibrated, or only normalized?
+- **The candidates are single vocabulary token ids**, not strings.
+  Multi-token options are not merely unhandled, they are not representable.
+  The only validation is `token_id >= vocab_size`.
+- **`items` are not the answers.** Each item is a context suffix appended to
+  the query; the result is `[num_items][num_labels]`. The canonical use is
+  reranking.
+- **Softmax is within one item**, never across items. The default
+  (`apply_softmax: false`) returns `exp(logprob)`, true full-vocab
+  probabilities that do not sum to one.
 
-Numbers that sum to one are not probabilities about the world. Kev's come
-from a head trained with cross-entropy against labelled outcomes; that
-training is what makes them predictive rather than merely tidy. A scoring
-endpoint returns token likelihoods under the model's own distribution, which
-is a different quantity.
+Two hazards worth knowing: a missing label token silently becomes probability
+`0.0` rather than an error, and `token_ids_logprob` requests crash the
+scheduler when co-batched with requests that do not use them
+([sglang#34719](https://github.com/sgl-project/sglang/issues/34719), unfixed
+across 0.5.14–0.5.17). "Just use `/v1/score`" is not free.
 
-The measurement that settles it is the one this repository already runs: ECE,
-Brier, and log loss on held-out items, against a fixed gate. Until that
-exists, "produces probabilities" is a statement about the output's shape.
+## The claim was already tested, publicly, and lost
 
-### 2. Does it see the options together, or score them independently?
+[`ekzhang/openjev-sglang`](https://github.com/ekzhang/openjev-sglang) is a
+complete implementation of `POST /v1/systemone` on Qwen3.6-35B-A3B over
+sglang, with a paired evaluation against hosted Jev. It is exactly the door
+the post proposes.
 
-This is the sharpest mechanistic question, and the answer is not in the post.
+On a matched 1,000-question MMLU-Pro subset: **58.8% against Jev's 82.9%.**
+A second open model, Qwen3.8-27B, scored 60.0%.
 
-Hume's probes of hosted Jev found options interacting: appending an
-irrelevant option moved the top-two log-odds, and a reference card placed
-*after* the candidates changed which earlier option won. Fixed independent
-logits under a shared softmax cannot do that. Kev reproduces the behaviour
-because its decision token sits after every option, so the readout sees the
-whole list.
+On 3,270 BoolQ examples, where it does much better:
 
-If a scoring endpoint scores each candidate independently and normalizes
-afterwards, it is a different mechanism wearing the same interface — and
-"none of the above", listwise effects, and anything where options qualify
-each other would behave differently. That difference is testable with the
-probes already in `../kev/architecture.md`.
+| | OpenJev / Qwen3.6 | hosted Jev |
+| --- | --- | --- |
+| Accuracy | 89.45% | **91.56%** |
+| Brier | 0.0812 | **0.0640** |
+| Log loss | 0.2926 | **0.2257** |
+| Mean probability − accuracy | **+3.74%** (overconfident) | −1.87% |
+| Selected-answer ECE, 10 bins | 4.05% | **2.51%** |
 
-### 3. Does it carry the other two primitives?
+The tail is the sharper result. Among answers claimed at 99% or above,
+OpenJev was wrong 32 times in 1,610; Jev was wrong **once in 366**. That is
+the band an application routes on.
 
-Choice maps onto scoring naturally: candidates are options. Noul is
-expressible as two candidates. Score is the hard one — a weighted mean over
-ordered levels needs the ordering to mean something, and a set of
-independently scored strings has no ordering.
+A paired bootstrap clustered by passage puts Jev ahead on accuracy, Brier,
+log loss, and overconfidence with intervals excluding zero — while the **ECE
+interval includes zero**. The honest reading is worse skill and worse
+overconfidence with comparable binned ECE, not "worse at everything."
 
-### 4. What does the think-tag trick generalize to?
+The post's own hedge is the part the evidence contradicts hardest. It
+supposes a larger model would close the gap; DeepSeek-V4.1-Flash is a 552B
+mixture of experts, already far larger than either model tested, and scale is
+not the axis the gap lies on. `openjev`'s own research note reaches the same
+conclusion from inside the implementation: closing it is *"a training
+project, not a serving flag or a small prompt fix."*
 
-Forcing a closing think tag before the response suppresses a reasoning trace.
-That is a property of one model family's prompt format, not of scoring. Any
-approach that needs a per-model incantation to stop the model reasoning has a
-portability cost that should be named rather than absorbed.
+## The think tag is documented behaviour, and it is not free
 
-## The second claim in the post
+Mechanically it closes an empty reasoning block so the next-token
+distribution is over the answer rather than over the first token of a chain
+of thought. It is not a trick — DeepSeek documents it, and on their hosted
+API it is a request field rather than a string hack.
 
-The author also argues decision models eliminate prospecting and sourcing
-work in recruiting. That is a market claim rather than a technical one and it
-is not what this page is about — but it is the kind of claim worth testing
-against the same bar as any other: on labelled outcomes, on items the model
-did not see. `jev-recruiter` is the artifact to read for whether anyone has.
+What the post does not mention is the cost. From `openjev`'s held-out
+measurement, 128 MMLU-Pro questions, same prompt, reasoning budget varied:
 
-## How this gets settled
+| Reasoning cap | Accuracy | Median latency |
+| --- | --- | --- |
+| 0 tokens (the trick) | 53.9% | **0.11 s** |
+| 64 | 51.6% | 0.61 s |
+| 256 | 53.1% | 1.89 s |
+| 1,024 | **68.8%** | 7.25 s |
 
-Research is under way. When it returns, this page either becomes a finding
-with numbers or is marked closed with the reason. If it warrants a door, the
-work belongs behind `POST /v1/systemone` like everything else, and it gets
-scored by `crates/gym` on the same suite as Jev, Kev, and Lev — which is
-precisely the situation the Gym was built for.
+Closing the think tag forfeits about fifteen accuracy points on
+reasoning-heavy choice to buy a 65-fold latency reduction. That is the actual
+trade. Note also that small budgets are *worse* than none: a truncated
+calculation is worse than no calculation.
+
+## `jev-recruiter` is not evidence for any of this
+
+It never touches sglang, `/v1/score`, logprobs, or a think tag. It is a Jev
+*client* — one `POST /v1/systemone` call per decision, every question
+`type: "choice"`, no `noul` and no `score` anywhere in the repository. Its
+only DeepSeek reference is an ordinary `chat/completions` text-fill helper
+the README says is not exposed.
+
+Its own README is more careful than the posts around it:
+
+> A `potential_match` means Jev marked every required criterion as met and
+> supplied observed quotations. It is **not an independently verified
+> qualification or a hiring decision** [...] A quotation can be real while
+> the model's interpretation is wrong.
+
+It samples at most seven screens per profile, messages nobody, and leaves
+shortlisting to a person. The claim that decision models eliminate sourcing
+work is the marketing around the artifact, not the artifact.
+
+## The finding worth keeping: sglang has independently built Kev's mask
+
+This is what the investigation actually bought.
+
+With `--enable-mis`, sglang packs a query and many items into one sequence
+and reads label logprobs at each delimiter — *"score each option's closing
+delimiter position against nominated tokens"*, which is Kev's readout
+position with a frozen LM head in place of a trained pointer head. And its
+FlashInfer mask
+(`python/sglang/srt/layers/attention/flashinfer_backend.py:564`) gives each
+item the shared prefix and itself and nothing else, which is Kev's
+`option_isolation` variant.
+
+The difference matters: **for Kev that isolation is a flag and it is off by
+default**, because with it off the decision token sits after every option and
+reads the whole list — which is what makes "none of the above" and listwise
+effects work. sglang hard-wires the isolated form, enforcing independence of
+irrelevant alternatives by construction, which is precisely the behaviour
+Hume measured hosted Jev *violating*.
+
+So the correct statement of the mechanistic difference is not "independent
+against listwise" — `openjev` renders all options into the prompt and reads
+one softmax over label tokens at a shared position, which is listwise. It is
+**a frozen language-model head over nominated vocabulary tokens, against a
+head trained for the decision.** Both can be listwise; only one was trained
+to be calibrated.
+
+## Score is the untested primitive, everywhere
+
+Noul and Score both fall out of scoring in about forty lines, and `openjev`'s
+Score formula is `Σ i · p_i` — character for character the same as Kev's,
+arrived at independently, which is mild evidence it is the right reading of
+the contract.
+
+But **nothing measures Score, in any public artifact found**. BoolQ tests
+Noul, MMLU-Pro tests Choice, Score is untested everywhere. And it is exactly
+where a label-token readout is weakest: the ordering has to mean something
+for a weighted mean to be meaningful, and `A`, `B`, `C` are arbitrary
+vocabulary tokens carrying no ordinal relation. A model can put mass on
+levels 0 and 4 with a trough at 2 and `Σ i · p` will report 2. Kev's upstream
+training has an explicit ordinal loss term for this; a scoring endpoint has
+no equivalent.
+
+We should hold our own Score numbers to the same complaint.
+
+## What to do
+
+**Do not build a fourth door.** It exists, it is better than we would build
+in a week, and it measured itself into a 24-point hole on MMLU-Pro. Building
+our own would re-derive that result at our expense. `openjev-sglang` also has
+**no licence file**, so it is read-and-cite only regardless.
+
+**Take the evaluation harness instead — it is better than ours.** 3,270
+examples with a passage-clustered bootstrap, paired difference intervals,
+resumable collection that refuses to report on missing rows, and dataset
+byte-hash pinning. Our ECE is a fixed ten-bin table with no bootstrap and no
+clustering, and Kev's calibration numbers are a replayed upstream fixture
+with no harness at all. This is directly relevant to
+[#9376](https://github.com/OpenAgentsInc/openagents/issues/9376), which needs
+a defensible spread for the calibration metrics and would otherwise invent
+one.
+
+**Keep the mask as a reference, not as code.** When Kev's `option_isolation`
+serving mode is built, sglang's FlashInfer backend is the reference for
+expressing "each span attends to prefix and itself" to a batched kernel, and
+PR #10979's accuracy check — multi-item scores must equal single-item scores
+— is the conformance test to mirror. Borrow the kernel shape, not the
+default.
+
+**One half-day experiment is worth running.** We cannot currently say how
+much of Jev's edge is the trained readout and how much is the training data.
+A one-token readout on the same frozen Qwen backbone Kev already uses,
+prompted listwise, scored on the same suite as Kev's pointer head, isolates
+that. It needs no new door and no GPU.
+
+## Sources
+
+[sglang native API](https://docs.sglang.io/docs/basic_usage/native_api) ·
+[sglang PR #10979](https://github.com/sgl-project/sglang/pull/10979) ·
+[sglang issue #34719](https://github.com/sgl-project/sglang/issues/34719) ·
+[ekzhang/openjev-sglang](https://github.com/ekzhang/openjev-sglang) ·
+[skeptrunedev/jev-recruiter](https://github.com/skeptrunedev/jev-recruiter) ·
+[DeepSeek-V4.1-Flash encoding reference](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/main/encoding/README.md)
