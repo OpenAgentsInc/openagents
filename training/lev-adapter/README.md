@@ -36,6 +36,24 @@ ignored by git.
 `~/code/adapter_training_toolkit_v26_0_0`, then `~/Downloads`, and honors
 `LEV_TOOLKIT_ROOT`.
 
+Take version **26.0.0**. The two betas are withdrawn, and 26.0.0 is the last
+release for OS 26 — Apple states it is not compatible with OS 27 and later,
+which is the base-signature treadmill in concrete form.
+
+Its own requirements: Apple silicon with at least 32 GB, or a Linux GPU
+machine, and Python 3.11 or later. It brings its own pinned dependencies:
+
+```sh
+cd training/lev-adapter/toolkit
+python3.11 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Deploying an adapter inside a shipped app additionally needs the Foundation
+Models Framework Adapter Entitlement, which the Account Holder requests.
+Local training and local serving through `Adapter(fileURL:)` do not, which is
+everything this lane does today.
+
 ## The base model signature, and why it governs everything
 
 An adapter is pinned to one base model. The base ships with the operating

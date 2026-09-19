@@ -237,8 +237,12 @@ async fn main() {
                         admitted,
                         verdict,
                     };
-                    let _ = std::fs::create_dir_all(dir);
-                    let path = format!("{dir}/{family}.json");
+                    // Namespaced by door: three doors scoring the same suite
+                    // would otherwise overwrite each other's records, and the
+                    // last one to run would silently win.
+                    let slug = name.replace([' ', '(', ')'], "_");
+                    let _ = std::fs::create_dir_all(format!("{dir}/{slug}"));
+                    let path = format!("{dir}/{slug}/{family}.json");
                     match serde_json::to_string_pretty(&record) {
                         Ok(text) => {
                             if let Err(error) = std::fs::write(&path, text + "\n") {

@@ -22,15 +22,20 @@ import time
 
 import toolkit
 
+# Flags match Apple's documented `examples.train_adapter` CLI exactly. The
+# toolkit owns rank and seed; they are not exposed there, so they are not
+# passed.
 DEFAULTS = {
-    # Apple's exporter records the rank in metadata; 32 is the toolkit's own
-    # default and there is no evidence yet to move it.
-    "rank": 32,
-    # 52 items is a small corpus. More epochs on less data overfits, and the
-    # evaluation split is the only thing that can tell us, so start low.
+    # Apple documents 5. 98 training records is a small corpus and more
+    # epochs on less data overfits, so start one below and let the evaluation
+    # split decide.
     "epochs": 4,
+    # Apple documents 1e-3. Kev's research log found the single largest
+    # quality effect it measured was that too high a rate erodes the base
+    # knowledge the task depends on, so this starts an order lower and moves
+    # only on evidence.
     "learning_rate": 1e-4,
-    "seed": 0,
+    "batch_size": 4,
 }
 
 
@@ -39,10 +44,9 @@ def main():
     parser.add_argument("--data", default="data", help="directory holding train.jsonl and valid.jsonl")
     parser.add_argument("--out", default="runs/lev-v1")
     parser.add_argument("--toolkit", help="toolkit root, or set LEV_TOOLKIT_ROOT")
-    parser.add_argument("--rank", type=int, default=DEFAULTS["rank"])
     parser.add_argument("--epochs", type=int, default=DEFAULTS["epochs"])
     parser.add_argument("--learning-rate", type=float, default=DEFAULTS["learning_rate"])
-    parser.add_argument("--seed", type=int, default=DEFAULTS["seed"])
+    parser.add_argument("--batch-size", type=int, default=DEFAULTS["batch_size"])
     args = parser.parse_args()
 
     root = toolkit.find(args.toolkit)
@@ -72,15 +76,13 @@ def main():
         "--eval-data",
         str(valid.resolve()),
         "--checkpoint-dir",
-        str(out.resolve()),
-        "--rank",
-        str(args.rank),
+        str(out.resolve()) + "/",
         "--epochs",
         str(args.epochs),
         "--learning-rate",
         str(args.learning_rate),
-        "--seed",
-        str(args.seed),
+        "--batch-size",
+        str(args.batch_size),
     ]
 
     record = {
@@ -88,10 +90,9 @@ def main():
         "device_signature_prefix": prefix,
         "command": command,
         "recipe": {
-            "rank": args.rank,
             "epochs": args.epochs,
             "learning_rate": args.learning_rate,
-            "seed": args.seed,
+            "batch_size": args.batch_size,
         },
         "data": {
             "train": str(train.resolve()),
@@ -105,8 +106,9 @@ def main():
     (out / "run.json").write_text(json.dumps(record, indent=1) + "\n")
     print(json.dumps(record, indent=1), file=sys.stderr)
 
-    # The toolkit's example entry point is versioned; if it moved, say so
-    # rather than failing with an import error the operator has to decode.
+    # The toolkit's example entry point is versioned. This matches the
+    # published 26.0.0 CLI; if it moves, say so rather than failing with an
+    # import error the operator has to decode.
     result = subprocess.run(command, cwd=root, check=False)
     if result.returncode != 0:
         print(

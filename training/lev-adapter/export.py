@@ -37,6 +37,11 @@ def verify(package: pathlib.Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", default="runs/lev-v1")
+    parser.add_argument(
+        "--checkpoint",
+        help="the trained checkpoint; defaults to adapter-final.pt inside --run",
+    )
+    parser.add_argument("--draft-checkpoint", help="only if a draft model was trained")
     parser.add_argument("--out")
     parser.add_argument("--name", default="lev")
     parser.add_argument("--toolkit")
@@ -46,6 +51,19 @@ def main():
     run = pathlib.Path(args.run)
     out = pathlib.Path(args.out) if args.out else run / f"{args.name}.fmadapter"
 
+    # Apple's exporter takes the checkpoint file, not the directory holding
+    # it. Passing the directory is the easy mistake and it fails late.
+    checkpoint = (
+        pathlib.Path(args.checkpoint) if args.checkpoint else run / "adapter-final.pt"
+    )
+    if not checkpoint.exists():
+        print(
+            f"no checkpoint at {checkpoint}. Training writes adapter-final.pt into\n"
+            f"--checkpoint-dir; pass --checkpoint if yours is elsewhere.",
+            file=sys.stderr,
+        )
+        return 2
+
     command = [
         sys.executable,
         "-m",
@@ -53,10 +71,12 @@ def main():
         "--adapter-name",
         args.name,
         "--checkpoint",
-        str(run.resolve()),
+        str(checkpoint.resolve()),
         "--output-dir",
-        str(out.parent.resolve()),
+        str(out.parent.resolve()) + "/",
     ]
+    if args.draft_checkpoint:
+        command += ["--draft-checkpoint", str(pathlib.Path(args.draft_checkpoint).resolve())]
     print(" ".join(command), file=sys.stderr)
     result = subprocess.run(command, cwd=root, check=False)
     if result.returncode != 0:

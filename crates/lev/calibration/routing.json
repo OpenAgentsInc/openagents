@@ -2,62 +2,50 @@
   "family": "routing",
   "estimator": "l2",
   "samples": 8,
-  "suite": "support-v1",
-  "suite_digest": "35dfdf43c43c036049905845f4a8999e8d41abc9bf29a2a8ec827b65d830700e",
+  "suite": "support-v2",
+  "suite_digest": "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368",
   "os_build": "25E246",
   "fitted": "2026-09-19",
   "map": {
     "bins": [
       {
         "lo": 0.0,
-        "hi": 0.2,
-        "fitted": 0.9166666666666666,
+        "hi": 0.3333333333333333,
+        "fitted": 0.86,
         "count": 0
       },
       {
-        "lo": 0.2,
-        "hi": 0.4,
-        "fitted": 0.9166666666666666,
-        "count": 0
+        "lo": 0.3333333333333333,
+        "hi": 0.6666666666666666,
+        "fitted": 0.625,
+        "count": 3
       },
       {
-        "lo": 0.4,
-        "hi": 0.6,
-        "fitted": 0.9166666666666666,
-        "count": 0
-      },
-      {
-        "lo": 0.6,
-        "hi": 0.8,
-        "fitted": 0.9166666666666666,
-        "count": 0
-      },
-      {
-        "lo": 0.8,
+        "lo": 0.6666666666666666,
         "hi": 1.0,
-        "fitted": 0.8846153846153846,
-        "count": 12
+        "fitted": 0.8645833333333334,
+        "count": 47
       }
     ],
-    "base_rate": 0.9166666666666666,
-    "fitted_on": 12
+    "base_rate": 0.86,
+    "fitted_on": 50
   },
   "raw_metrics": {
-    "accuracy": 1.0,
-    "ece": 0.03125,
-    "brier": 0.01171875,
-    "nll": 0.039166969103811296,
-    "confident_errors": 0,
-    "items": 12
+    "accuracy": 0.82,
+    "ece": 0.13999999999999999,
+    "brier": 0.135,
+    "nll": 2.8596412441202044,
+    "confident_errors": 5,
+    "items": 50
   },
   "calibrated_metrics": {
-    "accuracy": 1.0,
-    "ece": 0.11271367521367494,
-    "brier": 0.012782845715538033,
-    "nll": 0.11963641000044052,
+    "accuracy": 0.82,
+    "ece": 0.024374999999999994,
+    "brier": 0.13306640624999996,
+    "nll": 0.43107367569485483,
     "confident_errors": 0,
-    "items": 12
+    "items": 50
   },
-  "admitted": false,
-  "verdict": "refused: ECE 0.031 to 0.113, Brier 0.012 to 0.013; the raw signal was already better"
+  "admitted": true,
+  "verdict": "admitted: ECE 0.140 to 0.024, log loss 2.860 to 0.431, Brier 0.135 to 0.133 on held-out items"
 }
