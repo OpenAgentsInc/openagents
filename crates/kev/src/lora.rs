@@ -1,0 +1,65 @@
+//! Applying the peft LoRA adapter to the backbone at load time.
+//!
+//! `adapter_model.safetensors` carries `lora_A`/`lora_B` pairs per targeted
+//! projection; the effective weight is `W + (alpha / r) * B @ A`, exactly
+//! what peft computes for an unmerged inference adapter. The served model
+//! keeps the merged form — the reference does the same through peft's
+//! inference path.
+
+use std::collections::HashMap;
+use std::path::Path;
+
+use candle_core::{DType, Device, Tensor};
+use serde::Deserialize;
+
+use crate::error::{Error, Result};
+use crate::model::{Linear, Qwen2};
+
+/// The `adapter_config.json` fields the merge reads.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoraConfig {
+    /// Adapter rank.
+    pub r: usize,
+    /// Adapter alpha; the merge scale is `lora_alpha / r`.
+    pub lora_alpha: f64,
+    /// Projection names the adapter targets, such as `q_proj`.
+    pub target_modules: Vec<String>,
+}
+
+/// Fold `adapter_model.safetensors` into the backbone's projection weights.
+///
+/// # Errors
+///
+/// Returns [`Error::Artifact`] when the adapter is malformed, names a module
+/// the backbone does not carry, or the pair for a module is incomplete.
+pub fn apply_lora(backbone: &mut Qwen2, dir: &Path, device: &Device) -> Result<()> {
+    let config: LoraConfig = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("adapter_config.json"))
+            .map_err(|e| Error::Artifact(format!("read adapter_config.json: {e}")))?,
+    )?;
+    let scale = config.lora_alpha / config.r as f64;
+    let tensors: HashMap<String, Tensor> =
+        candle_core::safetensors::load(dir.join("adapter_model.safetensors"), device)
+            .map_err(|e| Error::Artifact(format!("load adapter_model.safetensors: {e}")))?
+            .into_iter()
+            .map(|(k, v)| {
+                // peft prefixes `base_model.model.`; the weights themselves
+                // then match the backbone's `model.` layout.
+                let name = k
+                    .strip_prefix("base_model.model.model.")
+                    .or_else(|| k.strip_prefix("base_model.model."))
+                    .unwrap_or(&k)
+                    .to_string();
+                Ok((name, v.to_dtype(DType::F32)?))
+            })
+            .collect::<candle_core::Result<_>>()?;
+    backbone.merge_lora(&tensors, &config.target_modules, scale)
+}
+
+/// `W + scale * B @ A` for one targeted projection, applied in place.
+pub fn merge(linear: &mut Linear, a: &Tensor, b: &Tensor, scale: f64) -> candle_core::Result<()> {
+    // A: [r, in], B: [out, r]; delta: [out, in].
+    let delta = b.matmul(a)?.affine(scale, 0.0)?;
+    linear.weight = (&linear.weight + delta)?;
+    Ok(())
+}

@@ -1,4 +1,18 @@
 {
+  "record": {
+    "state": "Caf\u00e9 \u2014 na\u00efve \u4e2d\u6587 \u0627\u0644\u0639\u0631\u0628\u064a\u0629 \ud83d\ude00 tokens <|endoftext|> and <|name|> sequences",
+    "questions": [
+      {
+        "instr": "Predominant language?",
+        "options": [
+          "english",
+          "french",
+          "mixed"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     34,

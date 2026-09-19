@@ -1,4 +1,16 @@
 {
+  "record": {
+    "state": "The button is greyed out.",
+    "questions": [
+      {
+        "instr": "Pick the only option.",
+        "options": [
+          "sole"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     785,

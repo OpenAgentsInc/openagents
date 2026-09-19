@@ -1,4 +1,17 @@
 {
+  "record": {
+    "state": "Shoes arrived two weeks late and in the wrong size. Also I see two charges on my card.",
+    "questions": [
+      {
+        "instr": "Does this need urgent human attention?",
+        "options": [
+          "no",
+          "yes"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     2016,

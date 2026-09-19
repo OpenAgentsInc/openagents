@@ -80,7 +80,7 @@ fn default_model() -> String {
 
 /// One question rendered for the packed record: instruction text plus the
 /// option texts the pointer head scores.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordQuestion {
     /// The rendered instructions.
     pub instr: String,
@@ -91,7 +91,7 @@ pub struct RecordQuestion {
 }
 
 /// A request flattened into the record `encode()` packs.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Record {
     /// The rendered state text.
     pub state: String,

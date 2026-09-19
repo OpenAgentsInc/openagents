@@ -1,0 +1,357 @@
+//! The Qwen2 backbone the decision model runs once per packed request.
+//!
+//! This is the `.model` half of `Qwen2ForCausalLM` — embeddings, the decoder
+//! layers, the final norm — with two changes from the generation path: the
+//! caller supplies position ids (each question branch restarts after the
+//! state) and an additive attention mask (the block-causal branch mask), and
+//! there is no vocabulary head because the model never generates text.
+//!
+//! Weights load from safetensors and are cast to `f32` for parity with the
+//! reference, which serves fp32 on CPU and MPS.
+
+use std::path::Path;
+
+use candle_core::{DType, Device, Result as CandleResult, Tensor};
+use serde::Deserialize;
+
+use crate::error::{Error, Result};
+
+/// The fields of `config.json` the forward pass reads.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Config {
+    /// Embedding width.
+    pub hidden_size: usize,
+    /// SwiGLU intermediate width.
+    pub intermediate_size: usize,
+    /// Decoder layer count.
+    pub num_hidden_layers: usize,
+    /// Query head count.
+    pub num_attention_heads: usize,
+    /// Key/value head count; queries are grouped when it is smaller.
+    pub num_key_value_heads: usize,
+    /// RMSNorm epsilon.
+    pub rms_norm_eps: f64,
+    /// Rotary base.
+    pub rope_theta: f64,
+    /// Vocabulary rows in the embedding table.
+    pub vocab_size: usize,
+    /// The backbone's position ceiling; the rotary table sizes to the request.
+    pub max_position_embeddings: usize,
+}
+
+impl Config {
+    /// Query head width: `hidden_size / num_attention_heads`.
+    #[must_use]
+    pub fn head_dim(&self) -> usize {
+        self.hidden_size / self.num_attention_heads
+    }
+}
+
+/// `y = x @ w.t() + b`, the `nn.Linear` convention.
+#[derive(Debug, Clone)]
+pub struct Linear {
+    /// `[out, in]`.
+    pub weight: Tensor,
+    /// `[out]`.
+    pub bias: Option<Tensor>,
+}
+
+impl Linear {
+    /// Apply the projection to `[…, in]`.
+    pub fn forward(&self, x: &Tensor) -> CandleResult<Tensor> {
+        let y = x.matmul(&self.weight.t()?)?;
+        match &self.bias {
+            Some(b) => y.broadcast_add(b),
+            None => Ok(y),
+        }
+    }
+}
+
+fn rms_norm(x: &Tensor, weight: &Tensor, eps: f64) -> CandleResult<Tensor> {
+    let x_f32 = x.to_dtype(DType::F32)?;
+    let var = x_f32.sqr()?.mean_keepdim(x_f32.rank() - 1)?;
+    let normed = x_f32.broadcast_div(&(var + eps)?.sqrt()?)?;
+    normed.to_dtype(x.dtype())?.broadcast_mul(weight)
+}
+
+/// Per-layer rotary cos/sin tables for positions up to `len`.
+struct Rotary {
+    cos: Tensor,
+    sin: Tensor,
+}
+
+impl Rotary {
+    fn new(head_dim: usize, theta: f64, len: usize, device: &Device) -> CandleResult<Self> {
+        let half = head_dim / 2;
+        let inv_freq: Vec<f32> = (0..half)
+            .map(|i| (theta as f32).powf(-2.0 * i as f32 / head_dim as f32))
+            .collect();
+        let inv_freq = Tensor::from_vec(inv_freq, half, device)?;
+        let pos = Tensor::arange(0u32, len as u32, device)?.to_dtype(DType::F32)?;
+        let freqs = pos.unsqueeze(1)?.matmul(&inv_freq.unsqueeze(0)?)?; // [len, half]
+        Ok(Self {
+            cos: freqs.cos()?,
+            sin: freqs.sin()?,
+        })
+    }
+
+    /// Rotate `[len, heads, head_dim]` by the per-position tables.
+    fn apply(&self, x: &Tensor, pos: &[i64]) -> CandleResult<Tensor> {
+        let head_dim = x.dim(x.rank() - 1)?;
+        let half = head_dim / 2;
+        let pos_t = Tensor::from_vec(pos.to_vec(), pos.len(), x.device())?;
+        let cos = self.cos.index_select(&pos_t, 0)?.unsqueeze(1)?; // [len, 1, half]
+        let sin = self.sin.index_select(&pos_t, 0)?.unsqueeze(1)?;
+        let x1 = x.narrow(x.rank() - 1, 0, half)?;
+        let x2 = x.narrow(x.rank() - 1, half, half)?;
+        let rot1 = (x1.broadcast_mul(&cos)? - x2.broadcast_mul(&sin)?)?;
+        let rot2 = (x2.broadcast_mul(&cos)? + x1.broadcast_mul(&sin)?)?;
+        Tensor::cat(&[&rot1, &rot2], x.rank() - 1)
+    }
+}
+
+struct Attention {
+    q_proj: Linear,
+    k_proj: Linear,
+    v_proj: Linear,
+    o_proj: Linear,
+    n_heads: usize,
+    n_kv_heads: usize,
+    head_dim: usize,
+}
+
+impl Attention {
+    fn forward(
+        &self,
+        x: &Tensor,
+        rotary: &Rotary,
+        pos: &[i64],
+        mask: &Tensor,
+    ) -> CandleResult<Tensor> {
+        let len = x.dim(0)?;
+        let q = self.q_proj.forward(x)?.reshape((len, self.n_heads, self.head_dim))?;
+        let k = self
+            .k_proj
+            .forward(x)?
+            .reshape((len, self.n_kv_heads, self.head_dim))?;
+        let v = self
+            .v_proj
+            .forward(x)?
+            .reshape((len, self.n_kv_heads, self.head_dim))?;
+        let q = rotary.apply(&q, pos)?.transpose(0, 1)?; // [n_h, len, hd]
+        let k = rotary.apply(&k, pos)?.transpose(0, 1)?; // [n_kv, len, hd]
+        let v = v.transpose(0, 1)?; // [n_kv, len, hd]
+        let groups = self.n_heads / self.n_kv_heads;
+        let k = repeat_kv(&k, groups)?;
+        let v = repeat_kv(&v, groups)?;
+        let scores = q
+            .matmul(&k.transpose(1, 2)?)?
+            .affine(1.0 / (self.head_dim as f64).sqrt(), 0.0)?; // [n_h, len, len]
+        let scores = scores.broadcast_add(mask)?;
+        let probs = candle_nn::ops::softmax_last_dim(&scores)?;
+        let out = probs.matmul(&v)?; // [n_h, len, hd]
+        let out = out.transpose(0, 1)?.reshape((len, self.n_heads * self.head_dim))?;
+        self.o_proj.forward(&out)
+    }
+}
+
+/// Repeat each key/value head `groups` times for grouped-query attention.
+fn repeat_kv(x: &Tensor, groups: usize) -> CandleResult<Tensor> {
+    if groups == 1 {
+        return Ok(x.clone());
+    }
+    let (n_kv, len, hd) = x.dims3()?;
+    x.unsqueeze(1)?
+        .expand((n_kv, groups, len, hd))?
+        .reshape((n_kv * groups, len, hd))
+}
+
+struct Mlp {
+    gate_proj: Linear,
+    up_proj: Linear,
+    down_proj: Linear,
+}
+
+impl Mlp {
+    fn forward(&self, x: &Tensor) -> CandleResult<Tensor> {
+        self.down_proj
+            .forward(&(self.gate_proj.forward(x)?.silu()? * self.up_proj.forward(x)?)?)
+    }
+}
+
+struct Layer {
+    attn: Attention,
+    mlp: Mlp,
+    input_layernorm: Tensor,
+    post_attention_layernorm: Tensor,
+}
+
+/// The Qwen2 decoder trunk: embeddings in, last hidden state out.
+pub struct Qwen2 {
+    config: Config,
+    embed: Tensor,
+    layers: Vec<Layer>,
+    norm: Tensor,
+    device: Device,
+}
+
+fn take(map: &mut std::collections::HashMap<String, Tensor>, name: &str) -> Result<Tensor> {
+    map.remove(name)
+        .ok_or_else(|| Error::Artifact(format!("missing tensor {name}")))
+}
+
+fn load_safetensors(path: &Path, device: &Device) -> Result<std::collections::HashMap<String, Tensor>> {
+    let tensors = candle_core::safetensors::load(path, device)
+        .map_err(|e| Error::Artifact(format!("load {}: {e}", path.display())))?;
+    Ok(tensors)
+}
+
+fn linear(
+    map: &mut std::collections::HashMap<String, Tensor>,
+    name: &str,
+    bias: bool,
+) -> Result<Linear> {
+    let weight = take(map, &format!("{name}.weight"))?;
+    let bias = if bias {
+        Some(take(map, &format!("{name}.bias"))?)
+    } else {
+        None
+    };
+    Ok(Linear { weight, bias })
+}
+
+impl Qwen2 {
+    /// Load `config.json` and `model.safetensors` from `dir`, cast to `f32`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Artifact`] when a file or tensor is missing or malformed.
+    pub fn load(dir: &Path, device: &Device) -> Result<Self> {
+        let config: Config = serde_json::from_str(
+            &std::fs::read_to_string(dir.join("config.json"))
+                .map_err(|e| Error::Artifact(format!("read config.json: {e}")))?,
+        )?;
+        let mut tensors = load_safetensors(&dir.join("model.safetensors"), device)?
+            .into_iter()
+            .map(|(k, v)| {
+                let name = k.strip_prefix("model.").unwrap_or(&k).to_string();
+                Ok((name, v.to_dtype(DType::F32)?))
+            })
+            .collect::<CandleResult<std::collections::HashMap<_, _>>>()?;
+        let embed = take(&mut tensors, "embed_tokens.weight")?;
+        let norm = take(&mut tensors, "norm.weight")?;
+        let mut layers = Vec::with_capacity(config.num_hidden_layers);
+        for i in 0..config.num_hidden_layers {
+            let p = format!("layers.{i}");
+            layers.push(Layer {
+                attn: Attention {
+                    q_proj: linear(&mut tensors, &format!("{p}.self_attn.q_proj"), true)?,
+                    k_proj: linear(&mut tensors, &format!("{p}.self_attn.k_proj"), true)?,
+                    v_proj: linear(&mut tensors, &format!("{p}.self_attn.v_proj"), true)?,
+                    o_proj: linear(&mut tensors, &format!("{p}.self_attn.o_proj"), false)?,
+                    n_heads: config.num_attention_heads,
+                    n_kv_heads: config.num_key_value_heads,
+                    head_dim: config.head_dim(),
+                },
+                mlp: Mlp {
+                    gate_proj: linear(&mut tensors, &format!("{p}.mlp.gate_proj"), false)?,
+                    up_proj: linear(&mut tensors, &format!("{p}.mlp.up_proj"), false)?,
+                    down_proj: linear(&mut tensors, &format!("{p}.mlp.down_proj"), false)?,
+                },
+                input_layernorm: take(&mut tensors, &format!("{p}.input_layernorm.weight"))?,
+                post_attention_layernorm: take(
+                    &mut tensors,
+                    &format!("{p}.post_attention_layernorm.weight"),
+                )?,
+            });
+        }
+        Ok(Self {
+            config,
+            embed,
+            layers,
+            norm,
+            device: device.clone(),
+        })
+    }
+
+    /// The loaded configuration.
+    #[must_use]
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    /// Fold peft `lora_A`/`lora_B` pairs into the targeted projections, with
+    /// `scale = alpha / r` already applied by the caller.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Artifact`] when a targeted pair is missing or malformed.
+    pub fn merge_lora(
+        &mut self,
+        tensors: &std::collections::HashMap<String, Tensor>,
+        targets: &[String],
+        scale: f64,
+    ) -> Result<()> {
+        for (i, layer) in self.layers.iter_mut().enumerate() {
+            for target in targets {
+                let (group, linear) = match target.as_str() {
+                    "q_proj" => ("self_attn", &mut layer.attn.q_proj),
+                    "k_proj" => ("self_attn", &mut layer.attn.k_proj),
+                    "v_proj" => ("self_attn", &mut layer.attn.v_proj),
+                    "o_proj" => ("self_attn", &mut layer.attn.o_proj),
+                    "gate_proj" => ("mlp", &mut layer.mlp.gate_proj),
+                    "up_proj" => ("mlp", &mut layer.mlp.up_proj),
+                    "down_proj" => ("mlp", &mut layer.mlp.down_proj),
+                    other => {
+                        return Err(Error::Artifact(format!(
+                            "adapter targets unknown module {other}"
+                        )));
+                    }
+                };
+                let a = tensors
+                    .get(&format!("layers.{i}.{group}.{target}.lora_A.weight"))
+                    .ok_or_else(|| {
+                        Error::Artifact(format!(
+                            "missing lora_A for layers.{i}.{group}.{target}"
+                        ))
+                    })?;
+                let b = tensors
+                    .get(&format!("layers.{i}.{group}.{target}.lora_B.weight"))
+                    .ok_or_else(|| {
+                        Error::Artifact(format!(
+                            "missing lora_B for layers.{i}.{group}.{target}"
+                        ))
+                    })?;
+                crate::lora::merge(linear, a, b, scale)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The last hidden state for one packed sequence: `[len, hidden_size]`.
+    /// `pos` carries the encoding's position ids and `mask` is the additive
+    /// `[len, len]` block-causal mask.
+    ///
+    /// # Errors
+    ///
+    /// Propagates candle errors from the forward pass.
+    pub fn hidden(&self, ids: &[u32], pos: &[i64], mask: &Tensor) -> Result<Tensor> {
+        let len = ids.len();
+        let ids_t = Tensor::from_vec(ids.to_vec(), len, &self.device)?;
+        let mut x = self.embed.index_select(&ids_t, 0)?; // [len, d]
+        let rope_len = pos.iter().copied().max().unwrap_or(0) as usize + 1;
+        let rotary = Rotary::new(
+            self.config.head_dim(),
+            self.config.rope_theta,
+            rope_len,
+            &self.device,
+        )?;
+        for layer in &self.layers {
+            let h = rms_norm(&x, &layer.input_layernorm, self.config.rms_norm_eps)?;
+            x = (x + layer.attn.forward(&h, &rotary, pos, mask)?)?;
+            let h = rms_norm(&x, &layer.post_attention_layernorm, self.config.rms_norm_eps)?;
+            x = (x + layer.mlp.forward(&h)?)?;
+        }
+        Ok(rms_norm(&x, &self.norm, self.config.rms_norm_eps)?)
+    }
+}

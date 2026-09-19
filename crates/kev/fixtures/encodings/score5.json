@@ -1,4 +1,20 @@
 {
+  "record": {
+    "state": "The food was cold, the service was slow, and the bill was wrong. Never again.",
+    "questions": [
+      {
+        "instr": "Star rating implied by the review.",
+        "options": [
+          "one star",
+          "two stars",
+          "three stars",
+          "four stars",
+          "five stars"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     785,

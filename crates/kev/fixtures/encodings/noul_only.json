@@ -1,4 +1,17 @@
 {
+  "record": {
+    "state": "The server was unreachable from 14:02 to 14:47 UTC.",
+    "questions": [
+      {
+        "instr": "Was there an outage?",
+        "options": [
+          "no",
+          "yes"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     785,

@@ -1,4 +1,35 @@
 {
+  "record": {
+    "state": "Shoes arrived two weeks late and in the wrong size. Also I see two charges on my card.",
+    "questions": [
+      {
+        "instr": "Which team should handle this?",
+        "options": [
+          "returns: Exchanges, refunds, wrong or damaged items",
+          "shipping: Delivery status, delays, lost packages",
+          "billing: Charges, invoices, payment problems"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "Does this need urgent human attention?",
+        "options": [
+          "no",
+          "yes"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "How frustrated is the customer?",
+        "options": [
+          "Calm",
+          "Frustrated",
+          "Very angry"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     2016,

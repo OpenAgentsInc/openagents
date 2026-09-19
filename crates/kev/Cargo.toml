@@ -11,12 +11,15 @@ publish = false
 serve = ["dep:axum", "dep:tower-http", "dep:tokio"]
 
 [dependencies]
+candle-core = "0.11"
+candle-nn = "0.11"
 indexmap = { version = "2", features = ["serde"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 thiserror = "2"
+tokenizers = "0.23"
 
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }

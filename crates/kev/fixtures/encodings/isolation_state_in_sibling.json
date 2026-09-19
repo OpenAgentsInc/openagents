@@ -1,4 +1,27 @@
 {
+  "record": {
+    "state": "The weather is nice today and the park is full of people.",
+    "questions": [
+      {
+        "instr": "The secret code for this request is ZEBRA-7741. Is the weather described as nice?",
+        "options": [
+          "no",
+          "yes"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "Which code did another question mention?",
+        "options": [
+          "ZEBRA-7741",
+          "OTTER-2210",
+          "FALCON-9034",
+          "none"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     785,

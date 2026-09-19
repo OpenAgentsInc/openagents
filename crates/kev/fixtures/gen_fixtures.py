@@ -198,8 +198,9 @@ def dump(path, obj):
         json.dump(obj, f, indent=2)
 
 
-def enc_json(enc):
+def enc_json(enc, rec):
     return {
+        "record": rec,
         "ids": enc["ids"],
         "seg": enc["seg"],
         "pos": enc["pos"],
@@ -237,7 +238,7 @@ def main():
         probs = [p.tolist() for p in model.probs(enc)]
         answers = to_answers(probs, meta)
         dump(f"{args.out}/requests/{name}.json", {"request": req_json, "record": rec, "meta": meta})
-        dump(f"{args.out}/encodings/{name}.json", enc_json(enc))
+        dump(f"{args.out}/encodings/{name}.json", enc_json(enc, rec))
         dump(
             f"{args.out}/golden/{name}.json",
             {
@@ -258,7 +259,7 @@ def main():
         r1, m1 = to_record(req.model_copy(update={"questions": {qid: q}}))
         e1 = model.encode(tok, r1, max_state=max_state, max_branch=max_branch)
         separate.append([p.tolist() for p in model.probs(e1)][0])
-        dump(f"{args.out}/encodings/support_sep_{qid}.json", enc_json(e1))
+        dump(f"{args.out}/encodings/support_sep_{qid}.json", enc_json(e1, r1))
     delta = max(abs(a - b) for pa, sa in zip(packed, separate) for a, b in zip(pa, sa))
     dump(f"{args.out}/probes/packed_vs_separate.json", {"packed": packed, "separate": separate, "max_abs_delta": delta})
     print(f"packed vs separate max delta: {delta:.2e}")
@@ -268,7 +269,7 @@ def main():
     for cond, body in ISOLATION.items():
         enc = model.encode(tok, body, max_state=max_state, max_branch=max_branch)
         iso[cond] = [p.tolist() for p in model.probs(enc)][1]  # distribution of the code question
-        dump(f"{args.out}/encodings/isolation_{cond}.json", enc_json(enc))
+        dump(f"{args.out}/encodings/isolation_{cond}.json", enc_json(enc, body))
     dump(f"{args.out}/probes/isolation.json", iso)
     print("isolation p(ZEBRA-7741):", {k: v[0] for k, v in iso.items()})
 

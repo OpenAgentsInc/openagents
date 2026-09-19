@@ -1,0 +1,115 @@
+//! The assembled decision model: backbone plus LoRA plus pointer head, and
+//! the request-in/probabilities-out path serving runs.
+
+use std::path::Path;
+
+use candle_core::{DType, Device, Tensor};
+use tokenizers::Tokenizer;
+
+use crate::api::{Meta, Record, SystemOneRequest, to_answers, to_record, Answer};
+use crate::encode::{Encoding, branch_mask, encode};
+use crate::error::{Error, Result};
+use crate::head::PointerHead;
+use crate::lora::apply_lora;
+use crate::model::Qwen2;
+
+use indexmap::IndexMap;
+
+/// Backbone plus LoRA adapter plus pointer head, on one device.
+pub struct DecisionModel {
+    /// The Qwen2 trunk, adapter merged in.
+    pub backbone: Qwen2,
+    /// The pointer readout.
+    pub head: PointerHead,
+    /// The artifact bundle's tokenizer.
+    pub tokenizer: Tokenizer,
+    /// Every option span isolated as its own sub-branch.
+    pub option_isolation: bool,
+    /// The device the weights live on.
+    pub device: Device,
+}
+
+impl DecisionModel {
+    /// Load the bundle: `base_dir` holds the Qwen2 checkpoint, `adapter_dir`
+    /// holds `adapter_config.json` + `adapter_model.safetensors` +
+    /// `head.safetensors` + `tokenizer.json`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Artifact`] or [`Error::Tokenize`] for missing or
+    /// malformed files.
+    pub fn load(base_dir: &Path, adapter_dir: &Path, device: Device) -> Result<Self> {
+        let mut backbone = Qwen2::load(base_dir, &device)?;
+        apply_lora(&mut backbone, adapter_dir, &device)?;
+        let head = PointerHead::load(adapter_dir, &device)?;
+        let tokenizer = Tokenizer::from_file(adapter_dir.join("tokenizer.json"))
+            .map_err(|e| Error::Tokenize(e.to_string()))?;
+        Ok(Self {
+            backbone,
+            head,
+            tokenizer,
+            option_isolation: false,
+            device,
+        })
+    }
+
+    /// Pack a rendered record the same way serving does.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`encode`] errors.
+    pub fn encode(&self, record: &Record, max_state: usize, max_branch: usize) -> Result<Encoding> {
+        encode(
+            &self.tokenizer,
+            record,
+            max_state,
+            max_branch,
+            false,
+            self.option_isolation,
+        )
+    }
+
+    /// The additive `[len, len]` mask for one encoding, `f32::MIN` where a
+    /// query may not attend.
+    fn additive_mask(&self, enc: &Encoding) -> Result<Tensor> {
+        let opts = enc
+            .option_isolation
+            .then(|| std::slice::from_ref(&enc.opt));
+        let allow = branch_mask(&[enc.seg.clone()], opts);
+        let len = enc.ids.len();
+        let flat: Vec<f32> = allow[0]
+            .iter()
+            .flat_map(|row| row.iter().map(|yes| if *yes { 0.0 } else { f32::MIN }))
+            .collect();
+        Ok(Tensor::from_vec(flat, (len, len), &self.device)?)
+    }
+
+    /// One option distribution per question for a packed encoding.
+    ///
+    /// # Errors
+    ///
+    /// Propagates candle errors from the forward pass.
+    pub fn probs(&self, enc: &Encoding) -> Result<Vec<Vec<f64>>> {
+        let mask = self.additive_mask(enc)?;
+        let hidden = self.backbone.hidden(&enc.ids, &enc.pos, &mask)?;
+        self.head.probs(&hidden.to_dtype(DType::F32)?, enc)
+    }
+
+    /// The full serving path: request in, typed answers out, in question-id
+    /// order.
+    ///
+    /// # Errors
+    ///
+    /// Propagates validation, encoding, and forward errors.
+    pub fn systemone(
+        &self,
+        request: &SystemOneRequest,
+        max_state: usize,
+        max_branch: usize,
+    ) -> Result<IndexMap<String, Answer>> {
+        let (record, meta): (Record, Vec<Meta>) = to_record(request)?;
+        let enc = self.encode(&record, max_state, max_branch)?;
+        let probs = self.probs(&enc)?;
+        Ok(to_answers(&probs, &meta))
+    }
+}

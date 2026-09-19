@@ -27,6 +27,21 @@ pub enum Error {
     /// A score question carries fewer than two levels.
     #[error("score question `{id}` needs at least two levels, has {count}")]
     TooFewLevels { id: String, count: usize },
+    /// The state alone exceeds the encoding's token budget under `strict`.
+    #[error("state exceeds {max} tokens: {tokens}")]
+    StateTooLong { tokens: usize, max: usize },
+    /// A question branch plus the state exceeds the token budget.
+    #[error("branch too long: {tokens} > {max}")]
+    BranchTooLong { tokens: usize, max: usize },
+    /// The tokenizer failed to load or to encode.
+    #[error("tokenizer: {0}")]
+    Tokenize(String),
+    /// A model, adapter, or head artifact is missing or malformed.
+    #[error("artifact: {0}")]
+    Artifact(String),
+    /// A tensor operation failed inside the runtime.
+    #[error(transparent)]
+    Candle(#[from] candle_core::Error),
     /// A request field failed JSON decoding.
     #[error(transparent)]
     Json(#[from] serde_json::Error),

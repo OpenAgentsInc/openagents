@@ -14,12 +14,25 @@
 //! architecture, the measurements, and the port roadmap.
 
 pub mod api;
+pub mod decision;
+pub mod encode;
 pub mod error;
+pub mod head;
+pub mod lora;
+pub mod model;
 pub mod render;
 
 pub use api::{
     Answer, ChoiceAnswer, Meta, NoulAnswer, Question, Record, RecordQuestion, ScoreAnswer,
     SystemOneRequest, choice_confidence, r2, score_confidence, to_answers, to_record,
 };
+pub use decision::DecisionModel;
+pub use encode::{
+    Encoding, MAX_BRANCH, MAX_STATE, OPT_DECIDE, OPT_NONE, SPECIAL, branch_mask, encode,
+    user_tokens,
+};
 pub use error::{Error, MAX_OPTIONS, Result};
+pub use head::PointerHead;
+pub use lora::{LoraConfig, apply_lora};
+pub use model::{Config, Linear, Qwen2};
 pub use render::{option_text, render, sanitize};

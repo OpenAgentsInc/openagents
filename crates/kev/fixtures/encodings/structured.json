@@ -1,4 +1,35 @@
 {
+  "record": {
+    "state": "ticket:\n  channel: email\n  body: My export has been queued for three days and the download link expired.\naccount:\n  plan: pro\n  region: eu",
+    "questions": [
+      {
+        "instr": "question: Which product area?\nfocus: the failing feature",
+        "options": [
+          "exports: what: Data export jobs and download links",
+          "sync: Live sync between devices",
+          "auth"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "Is the customer on a paid plan?",
+        "options": [
+          "no: plan is free or unknown",
+          "yes: plan is not free"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "How time-sensitive is this ticket?",
+        "options": [
+          "can wait a week",
+          "needs attention this week",
+          "blocking work now"
+        ],
+        "label": 0
+      }
+    ]
+  },
   "ids": [
     151659,
     26534,
