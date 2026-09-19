@@ -1,15 +1,20 @@
-# Text optimization here: nine attempts, no wins
+# Text optimization here: nine programs, one experiment, no wins
 
 A history of DSPy, GEPA, and prompt optimization across `openagents`,
-`psionic`, `coder`, and `backroom`, and what it means for the Gym.
+`psionic`, `coder`, and `backroom`, what it means for the Gym, and the one
+run that finally happened.
 
-Read this before proposing a tenth attempt.
+Read this before proposing an eleventh attempt.
 
 ## The finding
 
 **Nine separate programs for optimizing text or program parameters have been
 built in this workspace since December 2025. Not one has produced a text
 change that beat a baseline on a measurement anyone would accept today.**
+
+The tenth attempt is not a program. It is the experiment the ninth was built
+for, run on 2026-09-19 against hosted Jev, and it is negative:
+[The tenth attempt, which ran](#the-tenth-attempt-which-ran), below.
 
 The ratio is lopsided in a specific way: we have built a great deal of
 machinery *around* optimizers and almost never *run* one. Of the nine, one
@@ -26,6 +31,7 @@ Where evidence exists, it points against the technique:
 | `env_facts` prelude, coder rounds 13–15 | kept once, then **reverted twice** on confirmation |
 | Router Power learned playbook | lost ~18 points to plain retrieval |
 | An external GEPA tool's own benchmark | Jev 80% zero-shot → **77%** optimized |
+| The routing reword, Sep 2026, 400 hosted calls | +0.125 where it was written, **+0.025 where it was not**, against a 0.056 floor, with ECE, Brier, and log loss all worse |
 
 Across roughly 34 rounds of the coder optimization loop, the only three that
 varied instruction text are rounds 13 to 15, and all three ended reverted.
@@ -199,8 +205,9 @@ signatures, artifacts, receipts, budgets, canaries, frontiers, merge
 proposers, settlement gates, and lease proofs. What is missing, every time,
 is a run that finishes and a number that survives a floor.
 
-**We now have the floor.** `docs/decision-models/lev/measurements/` records
-0.056 accuracy at two sigma for a two-door comparison on our suite. That is
+**We now have the floor.**
+[`lev/measurements/2026-09-19-seed-variance.md`](lev/measurements/2026-09-19-seed-variance.md)
+records 0.056 accuracy at two sigma for a two-door comparison on our suite. That is
 the part nobody here has ever had, and it is what turns the tenth attempt
 from a tenth attempt into an experiment.
 
@@ -223,6 +230,12 @@ themselves inside the noise — which is precisely the criticism
 levels at an external tool's five-row minibatch. Having the floor does not
 make the experiment easy. It makes it honest, and it may make it come back
 negative, which on this evidence is the likely outcome.
+
+**That is what happened, and the scoring partition turned out to be tighter
+still.** The routing calibration partition scores 0.975 before anything is
+reworded, so its whole headroom is one item — 0.025, inside the floor before
+a candidate is written. A suite can be too easy to measure a lever on, and
+nothing about that is visible until somebody scores the baseline there.
 
 ## One structural obstacle, invisible until you try — now closed
 
@@ -295,15 +308,70 @@ Three artifacts are worth lifting:
    plus a check that fails when artifact and build disagree, so a text change
    appears in a run row instead of reading as noise.
 
-## The disposition
+## The disposition, which was carried out
 
-Do not start a tenth optimizer. **Run the experiment the ninth one was built
-for and never performed**, at the smallest scale that can clear the floor:
-the routing family's question text — currently one six-word sentence and
-three criteria strings, never measured — optimized on the development
-partition, scored on calibration, on all three doors, against 0.056, on the
-full metric panel.
+The disposition was: do not start a tenth optimizer, and **run the experiment
+the ninth one was built for and never performed** — the routing family's
+question text, optimized on the development partition, scored on calibration,
+against 0.056, on the full metric panel. It said that if the reword cleared
+the floor it would be the first text-optimization win in this workspace's
+history, and that if it did not, the tenth consecutive negative result should
+be written here so the eleventh proposal has to argue with it.
 
-If it clears, it is the first text-optimization win in this workspace's
-history. If it does not, that is the tenth consecutive negative result, and
-it should be written here so the eleventh proposal has to argue with it.
+It did not clear the floor. Here it is.
+
+## The tenth attempt, which ran
+
+2026-09-19, hosted Jev, 400 calls, a few minutes. The full record is
+[`gym/measurements/2026-09-19-question-text-routing.md`](gym/measurements/2026-09-19-question-text-routing.md);
+the rows are in `crates/gym/results/routing-question-text-*.jsonl`.
+
+No optimizer was built. Three rewordings of the `routing` question were
+written by hand against the development partition — one changing the three
+criteria strings, one changing the instructions, one changing both — each
+freezing the option names and the question type. The best of the three was
+selected on development and committed before any calibration row existed, so
+the choice is on the record rather than in a paragraph.
+
+| Question set | Development, where it was written | Calibration, where it was not |
+| --- | --- | --- |
+| baseline | 0.875 | 0.975 |
+| criteria reworded, **selected** | **1.000** | 1.000 |
+| instructions reworded | 0.900 | 0.950 |
+| both reworded | 0.925 | 0.875 |
+
+**The selected candidate gains 0.025 accuracy on the held-out partition — one
+item in forty, against a 0.056 floor.** `decision-v1` reads it
+`unverifiable`. The other two candidates read `failed`. On development the
+same text fixed every error the baseline made, a gain of 0.125; the
+optimization set overstated the effect five times over.
+
+**Accuracy was not the whole panel, and the rest of it got worse.** ECE rose
+from 0.061 to 0.083, Brier from 0.019 to 0.031, log loss from 0.074 to 0.105,
+and the mean probability on the true class fell from 0.939 to 0.917. The
+Choice adapter's warning, repeating on a different lever: a change bought
+accuracy by making the door less sure.
+
+Five things the eleventh proposal has to argue with:
+
+1. **A hand-written reword that fixes every error where it was written gains
+   one item in forty where it was not.**
+2. **The criteria carry the effect, not the instructions** — and rewording
+   both is worse than rewording the criteria alone. That is the one finding
+   here worth reusing, and three hand-written candidates found it for 160
+   calls.
+3. **The candidate that would have shipped under a development-only report
+   loses 0.10 on calibration.** It gains 0.05 on development. That is
+   `dataset=examples, valset=examples` measured on our own suite.
+4. **A partition at 0.975 cannot express a measurable gain.** Its whole
+   headroom is 0.025, inside the floor before the experiment begins, and the
+   gate refuses to compute a standard error on one expected error. Measure a
+   baseline's headroom before writing a candidate.
+5. **Cost was never the obstacle.** 400 calls and a few minutes, on the tenth
+   try, for the first text result this workspace has ever finished.
+
+The two remaining doors are unmeasured. Kev and Lev were not asked, because
+the machine was busy driving the on-device model and a contended number is
+worth less than no number. So the transfer question — whether optimized
+question text is a property of the task or of the model — is still open, and
+it is now one command away rather than nine programs away.

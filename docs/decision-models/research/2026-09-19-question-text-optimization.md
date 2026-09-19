@@ -1,11 +1,19 @@
 # Is the question text a tunable parameter?
 
-**Status:** the lead is still open; the tool is settled. `jev-align` is real,
-competently built, and its launch claim is backed by no published evidence —
-while its author's own unpublished benchmark, written two days earlier, shows
-the technique *lowering* Jev's average accuracy. The idea remains worth
-testing. The tool is not worth adopting, and the experiment below is still
-unrun.
+**Status:** the experiment below has now been run, and it is negative. A
+hand-written reword of the `routing` question fixed every error on the
+partition it was written against and gained **one item in forty** on the
+partition it was not — 0.025 against a 0.056 floor — while ECE, Brier, and
+log loss all got worse. The record is
+[`gym/measurements/2026-09-19-question-text-routing.md`](../../gym/measurements/2026-09-19-question-text-routing.md),
+and the disposition it settles is in
+[`text-optimization.md`](../../text-optimization.md). The tool is still not
+worth adopting: `jev-align` is real and competently built, its launch claim
+is backed by no published evidence, and its author's own unpublished
+benchmark shows the technique *lowering* Jev's average accuracy. The open
+part of the lead is the transfer question — only hosted Jev was measured, so
+whether question text is a property of the task or of the model is still
+untested.
 
 ## What would change if it holds
 
@@ -200,7 +208,7 @@ adapter is. Two details are worth lifting: the **frozen component set**, so
 an optimizer cannot rename a class, and the **definition fingerprint**, so a
 later reader can tell which text produced which number.
 
-The experiment stays as specified above, with one number added. Our best
+The experiment stayed as specified above, with one number added. Our best
 measured non-text lever is the Choice adapter at **+13 points, 4.7 sigma**.
 That is the bar. And it comes with its own warning, which is exactly the trap
 this tool falls into wholesale: the adapter's +13 points of accuracy arrived
@@ -208,7 +216,9 @@ with *worse* log loss and *more* confident errors. **Whatever text
 optimization we measure gets reported on the full metric panel, not on
 accuracy alone.**
 
-One thing was already true and does not depend on any of this: we have never
-optimized our question text, and we have been comparing four doors on
-questions written once, by hand, without measurement. That remains a gap in
-our own work.
+One thing was already true and does not depend on any of this: we had never
+optimized our question text, and we had been comparing four doors on
+questions written once, by hand, without measurement. That gap is now closed
+for one family on one door, and the answer is that rewording the `routing`
+question moves the held-out number by less than the floor. It stays open for
+the other two families and the other three doors.
