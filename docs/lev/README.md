@@ -1,0 +1,94 @@
+# Lev
+
+**Status:** proposed. Nothing on this page is built. Lev is a third
+implementation of the System One contract this repository already speaks:
+the same `POST /v1/systemone` request and answer shapes that `crates/jev`
+sends to TypeSafe and that `crates/kev` is being built to serve locally,
+answered this time by Apple's on-device foundation model.
+[`roadmap.md`](roadmap.md) holds the proposed issue sequence for review.
+
+The name follows the pattern: Jev is the hosted model, Kev is the open
+reconstruction, Lev is the Apple one.
+
+## What it is
+
+One document (the *state*) plus a map of typed questions goes in, one typed
+answer per question comes out, and the code that asked owns the workflow.
+That contract does not care what produced the answer. Lev produces it with
+the model Apple ships in every recent Apple Silicon Mac, reached through the
+`FoundationModels` framework.
+
+Three properties make it worth building:
+
+- **The weights are already there.** Nothing downloads, nothing is pinned
+  to a license boundary this repository has to carry, and nothing competes
+  for memory beyond what the operating system already pays. A `kev-4b`
+  worker needs about 9.6 GB resident before it answers anything. A Lev
+  worker needs a Mac that is already running.
+- **The answer shape is guaranteed by the runtime, not by a prompt.**
+  Apple's guided generation constrains decoding to a schema, so a Choice
+  over an admitted option set cannot return an option that is not in the
+  set. Caller text cannot add one either. That is a stronger structural
+  guarantee than kev's delimiter hardening, which detects forgery rather
+  than preventing it.
+- **The marginal cost is zero.** No tokens are billed, nothing leaves the
+  machine, and the model is resident between requests. That is the right
+  economics for a judgment that runs in front of every metered agent turn.
+
+One property makes it hard, and the whole design turns on it:
+
+- **Apple returns no probabilities.** The framework exposes text and typed
+  structured values. It exposes no logits, no log-probabilities, and no
+  hidden states. Kev works because a pointer head reads the hidden state at
+  a chosen position and trains against outcomes. Nothing in Apple's public
+  surface permits that. Lev has to *derive* a distribution from behavior it
+  can observe, and then earn the right to call the result a probability by
+  measuring it. [`architecture.md`](architecture.md) is mostly about how.
+
+## Lev is not Jev, and it is not Kev either
+
+Kev is a laptop-scale reconstruction whose numbers come from a head trained
+with cross-entropy against labelled outcomes. Its probabilities are a
+learned predictive distribution, and the mechanism that produces them is
+measurable end to end. Lev's numbers cannot come from there. They come from
+an estimator over observable behavior plus a calibration map fitted on
+labelled data, and until that map is fitted for a question family, Lev
+refuses to report a probability at all.
+
+Expect Lev to be worse than kev at the judgment and better than kev at
+everything around it: availability, cost, privacy, and startup. Whether it
+is good enough for any particular workflow is a measurement, and no
+measurement exists yet.
+
+## The three implementations side by side
+
+| | Jev | Kev | Lev |
+| --- | --- | --- | --- |
+| Where it runs | TypeSafe's service | this machine, our code | this machine, Apple's runtime |
+| Weights | closed, hosted | open adapter and head on an open base | closed, on-device, shipped by the OS |
+| Readout | direct, trained against outcomes | pointer head, cross-entropy | none; estimated from behavior |
+| Question isolation | packed branches, measured | block-causal mask, measured | one session per question, by construction |
+| Cost per request | metered | our hardware | none |
+| Probability source | the model | the model | an estimator plus a fitted calibration map |
+| Shape guarantee | API validation | delimiter hardening, probed | constrained decoding, structural |
+| Status here | `crates/jev`, shipped | `crates/kev`, port in progress | proposed |
+
+## Documents here
+
+| Document | Holds |
+| --- | --- |
+| [`architecture.md`](architecture.md) | What Apple's framework gives and withholds, the three ways to derive a distribution from it, the design that follows, and the wire contract mapping. |
+| [`apple-fm-surface.md`](apple-fm-surface.md) | What this workspace already established about Apple FM across `openagents` and `psionic` history: the bridge contract, the router precedent, the adapter package format, and the typed error surface. |
+| [`calibration.md`](calibration.md) | The rule that no Lev probability gates an action before it is measured, the suites and gates that measure it, and the record a calibrated question family has to carry. |
+| [`mesh-plan.md`](mesh-plan.md) | How a Lev worker differs from a kev worker on the earn mesh: no artifact to verify, no packing win, and a verification floor that has to move from digests to behavior. |
+| [`roadmap.md`](roadmap.md) | The proposed issue sequence, the decisions the owner makes before it starts, and what each step has to prove. |
+
+## Related
+
+- `docs/jev/knowledge-base.md` — the System One contract, the design rules,
+  and the cookbook results. Lev speaks this contract.
+- `docs/kev/architecture.md` — the mechanism Lev cannot use, described
+  precisely enough to explain why.
+- `docs/kev/model-cards.md` — the numbers Lev is measured against.
+- `crates/jev` — the client that has to work against a Lev door with only a
+  `base_url` change.
