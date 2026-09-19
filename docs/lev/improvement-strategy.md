@@ -203,11 +203,31 @@ numbers, not just their accuracy. A model that reliably says "even odds" when
 it is about to be wrong is worth more to a workflow than a model that is two
 points more accurate.
 
+### What is already built
+
+Everything on either side of training, verified against live hardware:
+
+| Piece | State |
+| --- | --- |
+| Suite to Apple's JSON Lines format | `training/lev-adapter/convert.py` |
+| Python and Rust renderers agree | `check_parity.py`, 52 of 52 items |
+| Live base signature readable | `9799725`, via `compatibleAdapterIdentifiers` |
+| `.fmadapter` reader and writer | `crates/lev/src/adapter.rs`, 9 tests |
+| Apple's runtime loads a package we wrote | **verified** |
+| Serving through an adapter | `lev-serve --adapter`, pinned at startup |
+| Evaluation gate | `lev-eval`, base against adapted on one suite |
+
+The package this repository writes loads on the device and round-trips its
+metadata. A test asserts that *generating* with it fails, because its tensors
+are a junk vector — written as an assertion so that a future run which passes
+is a real signal that trained weights arrived.
+
 ### What stands in the way
 
 - **The toolkit is an external dependency and is not on this machine.**
-  It is distributed by Apple to developers, not from a package index. Nothing
-  in the adapter lane starts until it is obtained.
+  It is distributed to Apple Developer Program members who accept its terms,
+  not from a package index, so it needs an owner with credentials. The step
+  is in `NEEDS_OWNER.md` at the workspace root.
 - **Vendoring it into this repository is a licensing question**, not a
   convenience one. This repo is open source; Apple's toolkit is not
   redistributable on those terms. The correct structure is our training
@@ -257,8 +277,8 @@ beat the base model on items it was not trained on.
    change.
 2. L1 as an explicit fast path (lever 2) — one contract decision.
 3. Suite growth to 150–200 items per family (lever 5) — unlocks calibration.
-4. Adapter, once the toolkit is obtained — the only accuracy lever, and the
-   only route to a band signal.
+4. Adapter, once the toolkit is downloaded — the only accuracy lever, and the
+   only route to a band signal. Everything else in that lane is built.
 5. Permutation averaging (lever 4) — last, and only if its accuracy gain
    survives its latency cost.
 
