@@ -215,6 +215,13 @@ to read on its own: 11 of 29 ordered judgments right, below the 0.5b
 checkpoint it is meant to supersede, on the family whose answers this suite
 finds hardest.
 
+The `severity` column is an argmax column. `gym::eval::read_answer` scores a
+Score item by its highest-probability level rather than by the `score` field,
+so these numbers say which level the model put its mass on and say nothing
+about whether the weighted mean it reports lands there too. Those are
+different questions, and the second one belongs to
+[#9378](https://github.com/OpenAgentsInc/openagents/issues/9378).
+
 ## No kev door earns a calibration map here
 
 `gym eval --fit` fitted one map per family per door on the calibration
