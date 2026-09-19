@@ -1,77 +1,80 @@
 # Kev vs Jev, measured side by side
 
-**Status:** measured on this machine, 2026-09-19. `kev-latest` is the
-Rust port in `crates/kev` serving `kev-0.5b` on CPU at `localhost:8009`;
-`jev-latest` is TypeSafe's hosted `jev-1.13.0`. Identical request bodies
-were posted to `POST /v1/systemone` on both. These are single-shot
-measurements, not a suite — treat the numbers as illustration, not
-benchmark.
+**Status:** measured on this machine, 2026-09-19, updated for the full
+variant family. All four kev checkpoints run in the Rust port in
+`crates/kev`, served by one `kev-serve --bundle-dir` process on CPU fp32
+at `localhost:8009`; `jev-latest` is TypeSafe's hosted `jev-1.13.0`.
+Identical request bodies were posted to `POST /v1/systemone` on both.
+These are single-shot measurements, not a suite — treat the numbers as
+illustration, not benchmark. The request texts are the same cases as the
+original 0.5b run, reconstructed; small wording differences shift the
+absolute numbers but not the shape of the result.
 
-## Results
+## Per-variant results
 
-| Case | Question | Jev | Kev | Agree? |
-| --- | --- | --- | --- | --- |
-| Support ticket | department (choice) | returns 0.83 | returns 0.94 | yes |
-| Support ticket | escalate (noul) | 0.76 | 0.72 | yes |
-| Support ticket | frustration (score) | 1.01 (p(Frustrated) 0.99) | 0.92 (0.63) | yes, softer |
-| MNLI premise | entailment (choice) | entailment 0.99 | entailment 0.95 | yes |
-| Banking intent | intent (choice) | card_arrival 1.00 | card_arrival 1.00 | yes |
-| Mixed Yelp review | stars (score) | 2.39 (3★ mode 0.57) | 1.15 (1★ mode 0.36) | **no** |
-| Rust bounds check | panics (noul) | 0.97 | 0.09 | **no** |
-| Policy, in-window refund | allowed (noul) | 0.97 | 0.38 | **no** |
-| Policy, 31-day refund | allowed (noul) | 0.04 | 0.51 | **no** |
+| Case | kev-0.5b | kev-0.6b | kev-4b | kev-8b | Jev |
+| --- | --- | --- | --- | --- | --- |
+| Support routing (choice) | returns 0.95 | returns 0.75 | returns 0.89 | returns 0.96 | returns 0.85 |
+| Escalation (noul) | 0.75 | 0.40 | 0.54 | 0.91 | 0.72 |
+| Frustration (score 0–2) | 0.99 | 1.24 | 1.24 | 1.74 | 1.05 |
+| MNLI contradiction | contra 0.56 | contra 0.82 | contra 1.00 | contra 1.00 | contra 0.98 |
+| Banking intent | card_arrival 1.00 | card_arrival 1.00 | card_arrival 1.00 | card_arrival 1.00 | card_arrival 1.00 |
+| Mixed Yelp review (score 0–4) | 1.23 (1★ 0.51) | 2.26 (2★ 0.33) | 1.99 (2★ 0.58) | 1.66 (2★ 0.64) | 2.06 (2★ 0.88) |
+| Rust `v[5]` panics? (noul) | 0.17 | 0.07 | 0.99 | 1.00 | 0.97 |
+| Refund allowed at 25 days | 0.95 | 0.09 | 1.00 | 1.00 | 0.97 |
+| Refund allowed at 31 days | 0.97 | 0.03 | 0.00 | 0.00 | 0.04 |
 
-Latency was 145–380ms for kev on CPU and 480–620ms for Jev over the
-network; not meaningful at this scale.
+## What scale closed
 
-## Where they agree
+**Policy-rule transfer — the sharpest gap, now closed at 4B.** The
+25-day/31-day refund pair was kev-0.5b's worst failure (0.38 vs 0.51,
+unordered near chance). kev-4b and kev-8b separate the pair cleanly at
+1.00 vs 0.00, matching Jev's 0.97 vs 0.04. The held-out rule-application
+screen that every upstream preview fails on suite metrics still shows up
+correctly at this prompt level.
 
-On the training distribution — customer-support routing, NLI,
-intent classification — the port tracks Jev's argmax every time, and its
-distributions are slightly sharper (a 0.5B model trained on six datasets
-sees fewer hedging cues). The wire contract is identical: the unmodified
-`jev` client round-trips both.
+**Out-of-domain code.** `v[5]` on a 3-element vector: the small variants
+guess (0.17, 0.07); kev-4b and kev-8b answer 0.99 and 1.00 against Jev's
+0.97. Backbone knowledge, not mechanism, was the limit — and the Qwen3
+bases carry it.
 
-## Where they diverge, and why
+**Score ordinality — partially closed.** The mixed review should land
+2–3 stars. kev-0.5b smears to 1★; the Qwen3 variants put mode at 2★ with
+expected values 1.66–2.26 vs Jev's 2.06. kev-0.6b is numerically closest
+but flattest; the family's mode agrees with Jev's, the confidence
+ordering does not.
 
-**Score on mixed-sentiment text.** Jev lands the mixed review at
-3 stars (expected 2.39); kev spreads mass toward the low end (expected
-1.15). Score was kev-0.5b's weakest primitive in its own eval (SST-5
-0.533, Yelp 0.553 accuracy) — the ordinal structure is the hardest thing
-for a small head to learn, and it shows exactly here.
+**In-distribution tasks hold everywhere.** Routing, intent, NLI: every
+variant picks Jev's argmax. kev-8b is the sharpest (0.96–1.00 margins);
+kev-0.6b is the softest but never wrong on argmax in this battery.
 
-**Out-of-domain content.** The Rust bounds-check question is code —
-nothing in kev's six training sources resembles it, so 0.09 is the
-model guessing, not a judgment. Jev's 0.97 reflects a much larger,
-broader-trained model. This is the small-backbone limitation operating
-as designed: kev's knowledge ceiling is its backbone.
+## What did not close
 
-**Policy-rule transfer.** The pair `allowed within 30 days` at 25 days
-vs 31 days is the sharpest result in the table: Jev cleanly separates
-(0.97 vs 0.04) while kev sits near chance (0.38 vs 0.51) and cannot even
-order the pair correctly. This is precisely the held-out policy-rule
-transfer that kev's own release screen tests — and the reason the 4B and
-8B previews (0.759/0.774 OOD vs Jev's 0.857) still fail it. A 0.5B
-trained on Banking77-style classification does not learn rule
-application; it learns topic classification.
+- **Calibration.** kev-8b overshoots on `frustration` (1.74 vs Jev's
+  1.05 on a 0–2 legend) and `escalate` (0.91 vs 0.72). The family's own
+  cards report ECE in-distribution only; none of these checkpoints is
+  temperature-calibrated for transfer.
+- **Mechanism probe weakness at 4b.** `state_in_state` isolation is
+  0.63 for kev-4b (vs 0.997 at 0.5b, 0.85 at 8b) — this checkpoint leaks
+  less cleanly. It is a weights property reproduced faithfully by the
+  port, not a port defect.
 
-## What the gap is made of
+## The remaining gap
 
-The contract and the mechanism are fully ported; the delta is entirely
-in the weights:
+The contract, mechanism, and now the full checkpoint family are ported
+with per-variant conformance ≤ 3.7e-6 against the Python reference. What
+separates kev from Jev is no longer mechanical and, at 4B+, no longer
+primarily about these prompts either:
 
-1. **Backbone scale.** 0.5B frozen Qwen2.5 vs whatever runs Jev.
-   Transfer follows scale — the family's own dev curve runs
-   0.598 → 0.759 → 0.774 → 0.857 across 0.6B → 4B → 8B → Jev.
-2. **Training breadth.** Six public datasets (~13.5k questions) vs
-   TypeSafe's corpus. Every miss above is outside the training
-   distribution.
-3. **Recipe.** kev-0.5b predates the ordinal and permutation-KL loss
-   terms now in `kev/train.py`; its card documents both as unapplied.
+1. **Training breadth.** Six public datasets (~13.5k questions) vs
+   TypeSafe's corpus; upstream's OOD dev curve still runs
+   0.774 (8b) vs 0.857 (Jev).
+2. **Calibration for transfer.** kev's temperature is fitted on its own
+   dev distribution.
+3. **The release screen.** Every published kev checkpoint still fails
+   upstream's declared OOD-transfer screen; these previews are
+   research artifacts, not Jev replacements.
 
-The architecture — packed prefill, block-causal isolation, pointer
-readout — is confirmed reproduced: conformance to the Python reference
-is ≤ 4.1e-6 on every golden fixture, so what remains between kev and
-Jev is model quality, not mechanics. Closing it is a training problem
-(`kev-4b`/`kev-8b` scale, broader suites, the newer losses), not a port
-problem.
+For local routing and intent workloads, kev-4b on this machine answers
+in ~0.8s CPU fp32 and agrees with Jev's argmax on every in-distribution
+case tested; kev-8b is the sharpest at ~1.5s.

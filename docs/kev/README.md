@@ -1,11 +1,15 @@
 # Kev
 
-**Status:** ported. `kev` is Jared Palmer's open-source reconstruction of a
-Jev-style decision model, tracked in this workspace as `projects/repos/kev/`
-(manifest entry `jaredpalmer/kev` in `~/work/projects/manifest.txt`). The
-Rust port lives in `crates/kev` and answers `POST /v1/systemone` on CPU and
-Metal through `kev-serve`; [`port-roadmap.md`](port-roadmap.md) holds the
-issue sequence and the conformance measurements, and
+**Status:** ported, all four checkpoints. `kev` is Jared Palmer's
+open-source reconstruction of a Jev-style decision model, tracked in this
+workspace as `projects/repos/kev/` (manifest entry `jaredpalmer/kev` in
+`~/work/projects/manifest.txt`). The Rust port lives in `crates/kev` and
+serves every published variant — `kev-0.5b`, `kev-0.6b`, `kev-4b`,
+`kev-8b` — through `kev-serve` on CPU and Metal, with per-variant
+conformance fixtures pinning each checkpoint to the Python reference.
+[`port-roadmap.md`](port-roadmap.md) holds the issue sequence and the
+conformance measurements, [`jev-comparison.md`](jev-comparison.md) holds
+the per-variant side-by-side against hosted Jev, and
 [`mesh-plan.md`](mesh-plan.md) holds the fleet path that follows.
 
 ## What it is
@@ -49,13 +53,17 @@ Weights ship as a LoRA adapter (`adapter_model.safetensors`), a pointer head
 (`head.pt`), tokenizer files, and evaluation/provenance records — the base
 model downloads separately under its own license.
 
-| Checkpoint | Base | In-domain dev / locked test | Out-of-domain dev / locked test | Status |
+| Checkpoint | Base | In-domain dev / locked test | Out-of-domain dev / locked test | Port status |
 | --- | --- | --- | --- | --- |
-| `jaredpalmer/kev-0.5b` | Qwen2.5-0.5B | 0.712 / – | 0.575 / – | released v0.1.0 (GitHub release + Hub) |
-| `jaredpalmer/kev-0.6b` | Qwen3-0.6B-Base | 0.805 / 0.819 | 0.598 / 0.631 | preview |
-| `jaredpalmer/kev-4b` | Qwen3-4B-Base | 0.843 / 0.852 | 0.759 / 0.794 | preview; best accuracy per byte |
-| `jaredpalmer/kev-8b` | Qwen3-8B-Base | 0.869 / 0.869 | 0.774 / 0.799 | preview |
+| `jaredpalmer/kev-0.5b` | Qwen2.5-0.5B | 0.712 / – | 0.575 / – | served, conformant (4.1e-6) |
+| `jaredpalmer/kev-0.6b` | Qwen3-0.6B-Base | 0.805 / 0.819 | 0.598 / 0.631 | served, conformant (3.7e-6) |
+| `jaredpalmer/kev-4b` | Qwen3-4B-Base | 0.843 / 0.852 | 0.759 / 0.794 | served, conformant (2.6e-6) |
+| `jaredpalmer/kev-8b` | Qwen3-8B-Base | 0.869 / 0.869 | 0.774 / 0.799 | served, conformant (1.1e-6) |
 | Jev (hosted reference) | – | 0.845 / – | 0.857 / – | closed weight |
+
+Conformance numbers are the max absolute probability delta between this
+Rust port and the Python reference on the committed golden fixtures; the
+dev/test columns are upstream's suite scores and describe the weights.
 
 The three previews fail kev's own predeclared release screen (both siblings
 of a held-out policy pair correct ≥ 70%; best is 0.67). `kev-0.5b`'s full

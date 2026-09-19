@@ -1,11 +1,11 @@
 # Kev port roadmap
 
-**Status:** implemented. The kev mechanism is ported from the Python
-reference (`~/work/projects/repos/kev`, `jaredpalmer/kev`) into this
-repository as `crates/kev`, a Rust implementation on
-[candle](https://crates.io/crates/candle-core) with the TypeSafe
-`/v1/systemone` wire contract. Every issue in the sequence is closed; the
-measurements below are the recorded evidence.
+**Status:** implemented, all four checkpoints. The kev mechanism is
+ported from the Python reference (`~/work/projects/repos/kev`,
+`jaredpalmer/kev`) into this repository as `crates/kev`, a Rust
+implementation on [candle](https://crates.io/crates/candle-core) with the
+TypeSafe `/v1/systemone` wire contract. Every issue in both sequences is
+closed; the measurements below are the recorded evidence.
 
 The deprecated `psionic` repository informed earlier drafts of this plan.
 Nothing is ported from there — the port pulls from the kev reference only.
@@ -30,54 +30,80 @@ Steps 2–3 carry no weights and are exact-match tests. Step 4 is the first
 numerics-sensitive step; step 5 closes the correctness loop on CPU before
 any serving or backend work starts.
 
+## Multi-variant sequence
+
+Tracked by [#9356](https://github.com/OpenAgentsInc/openagents/issues/9356).
+Qwen3 support lands first — every variant after `kev-0.5b` sits on a
+Qwen3 base — then one issue per checkpoint, then bundle serving.
+
+| # | Issue | Pulls over | Proved by |
+| --- | --- | --- | --- |
+| 8 | [#9357](https://github.com/OpenAgentsInc/openagents/issues/9357) | Qwen3 layers: per-head q/k RMSNorm, no q/k/v bias, declared `head_dim`, sharded safetensors, `bf16` dtype select | `kev-0.5b` suite unchanged; `Qwen3-0.6B-Base` packed forward on CPU |
+| 9 | [#9358](https://github.com/OpenAgentsInc/openagents/issues/9358) | `kev-0.6b` artifacts + `fixtures/variants/kev-0.6b/` | Full battery on CPU; max delta 3.7e-6 |
+| 10 | [#9359](https://github.com/OpenAgentsInc/openagents/issues/9359) | `kev-4b` artifacts + fixtures | Full battery; max delta 2.6e-6 |
+| 11 | [#9360](https://github.com/OpenAgentsInc/openagents/issues/9360) | `kev-8b` artifacts + fixtures | Full battery; max delta 1.1e-6 |
+| 12 | [#9361](https://github.com/OpenAgentsInc/openagents/issues/9361) | `kev-serve --bundle-dir`: loads every variant under an artifacts root, routes on the request `model` field | Live: 4 variants in one process, `/v1/models` lists all, `kev-latest` → largest, unknown id → typed 422 |
+| 13 | [#9362](https://github.com/OpenAgentsInc/openagents/issues/9362) | Docs + per-variant Jev side-by-side | `jev-comparison.md` re-run for all four checkpoints |
+
 ## Artifact layout
 
-- `~/work/kev-artifacts/kev-0.5b/` — `adapter_model.safetensors`,
-  `head.safetensors` (converted from `head.pt`), tokenizer files,
-  `adapter_config.json`, `eval.json`.
-- `~/work/kev-artifacts/qwen2.5-0.5b/` — base `model.safetensors`,
-  `config.json`, tokenizer files.
-- `crates/kev/fixtures/manifest.json` — the sha256 of every file above.
+One directory per variant under `~/work/kev-artifacts/` holding
+`adapter_model.safetensors`, `head.safetensors` (converted from
+`head.pt`), `head_meta.json` (`base`, `head_dim`, `option_isolation`),
+tokenizer files, `adapter_config.json`, `eval.json`; one directory per
+base checkpoint (`qwen2.5-0.5b`, `qwen3-0.6b`, `qwen3-4b`, `qwen3-8b`)
+holding `config.json` plus the `model*.safetensors` shards. Symlinks into
+the HF hub cache work. Each variant's `fixtures/**/manifest.json` pins
+the artifact digests.
 
 ## Verification record
 
-Run from the workspace root. Tests that need weights read
-`KEV_ARTIFACT_DIR`/`KEV_BASE_DIR`, defaulting to
-`../../../kev-artifacts/kev-0.5b` and `qwen2.5-0.5b` beside the repository.
+Run from the workspace root. The harness iterates every committed
+fixture set (`fixtures/` for `kev-0.5b`, `fixtures/variants/<id>/` for
+the rest) and resolves artifacts by convention under
+`~/work/kev-artifacts/`. `KEV_VARIANT=<id>` selects one variant;
+`KEV_ARTIFACT_DIR`/`KEV_BASE_DIR` override its paths;
+`KEV_TEST_DEVICE=metal` runs on Metal.
 
 ```text
 cargo test -p kev --features serve --release
+KEV_VARIANT=kev-8b cargo test -p kev --features serve --release
 KEV_TEST_DEVICE=metal cargo test -p kev --features metal --test conformance --release
 cargo build -p kev --features serve,metal --release --bin kev-serve
 target/release/kev-serve --adapter-dir ~/work/kev-artifacts/kev-0.5b \
-    --base-dir ~/work/kev-artifacts/qwen2.5-0.5b --port 8009 [--device metal]
+    --base-dir ~/work/kev-artifacts/qwen2.5-0.5b --port 8009 [--device metal] [--dtype bf16]
+target/release/kev-serve --bundle-dir ~/work/kev-artifacts --port 8009
 ```
 
 Measured on this machine (Apple Silicon, fp32, candle 0.11):
 
-| Check | CPU | Metal | Reference |
-| --- | --- | --- | --- |
-| Golden probabilities, max abs delta | 4.1e-6 | 3.6e-6 | – |
-| Packed vs separate, max abs delta | 1.2e-6 | 7.2e-7 | 2.2e-6 |
-| Isolation, secret in sibling / absent / state | 0.056 / 0.056 / 0.997 | 0.056 / 0.056 / 0.997 | 0.056 / 0.056 / 0.997 |
-| Permutation argmax, four orders | `returns` ×4 | `returns` ×4 | `returns` ×4 |
-| Boundary forgery, option count | unchanged | unchanged | unchanged |
-| `/v1/systemone` latency, 79-token pack | 218 ms | 726 ms | – |
+| Check | kev-0.5b | kev-0.6b | kev-4b | kev-8b |
+| --- | --- | --- | --- | --- |
+| Golden probabilities, max abs delta | 4.1e-6 | 3.7e-6 | 2.6e-6 | 1.1e-6 |
+| Packed vs separate, max abs delta | 1.2e-6 | 1.0e-6 | 1.3e-6 | 4.8e-7 |
+| Isolation, sibling / absent / state | 0.056 / 0.056 / 0.997 | 0.003 / 0.003 / 0.982 | 0.047 / 0.047 / 0.635 | 0.061 / 0.061 / 0.851 |
+| Permutation argmax, four orders | `returns` ×4 | `returns` ×4 | `returns` ×4 | `returns` ×4 |
+| Boundary forgery, option count | unchanged | unchanged | unchanged | unchanged |
+| `/v1/systemone` latency, ~100-token pack, CPU | ~200 ms | ~150 ms | ~0.8 s | ~1.5 s |
 
-The Metal path is slower than CPU at this size — the fp32 matmuls are small
-and Metal pays dispatch plus the contiguous copies its batched matmul
-requires. Both backends answer identically within the fp32 band.
+Isolation values are the checkpoints' own numbers reproduced exactly —
+the port matches the reference to four decimals everywhere; kev-4b's
+weaker `state_in_state` (0.635) is a property of its weights. Metal was
+verified for `kev-0.5b` (3.6e-6 golden delta); larger variants run CPU
+fp32 by default and `bf16` via `--dtype` when memory or latency demands.
+The Metal path is slower than CPU at 0.5B — the fp32 matmuls are small
+and Metal pays dispatch plus contiguous copies.
 
-The reference's own held-out metrics for this artifact live in
+The reference's own held-out metrics for `kev-0.5b` live in
 `crates/kev/fixtures/eval.json` (0.799 accuracy, 0.065 ECE, 0.031 after
-temperature scaling). They describe the weights, not this port — the port's
-evidence is conformance to the reference, measured above.
+temperature scaling). They describe the weights, not this port — the
+port's evidence is conformance to the reference, measured above.
 
 ## What this sequence does not cover
 
 Fleet fan-out, earn admission, catalog rows, and the service door at
 `openagents.com` are the separate program in [`mesh-plan.md`](mesh-plan.md).
-This sequence ends at kev answering `/v1/systemone` on this machine from
-openagents code, with the mechanism probes passing — which it now does.
-Training, larger checkpoints, and the `option_isolation` serving mode are
-follow-on work.
+This sequence ends at every published kev checkpoint answering
+`/v1/systemone` on this machine from openagents code, with the mechanism
+probes passing — which they now do. Training new checkpoints and the
+`option_isolation` serving mode are follow-on work.
