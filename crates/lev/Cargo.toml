@@ -11,6 +11,7 @@ publish = false
 serve = ["dep:axum", "dep:tokio", "dep:tower-http"]
 
 [dependencies]
+jev = { path = "../jev" }
 indexmap = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -22,7 +23,6 @@ tokio = { version = "1", features = ["full"], optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dev-dependencies]
-jev = { path = "../jev" }
 tokio = { version = "1", features = ["full", "test-util"] }
 
 [[bin]]
@@ -33,6 +33,11 @@ required-features = ["serve"]
 [[bin]]
 name = "lev-measure"
 path = "src/bin/lev_measure.rs"
+
+[[bin]]
+name = "lev-compare"
+path = "src/bin/lev_compare.rs"
+required-features = ["serve"]
 
 [lints]
 workspace = true

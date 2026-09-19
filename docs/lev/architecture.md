@@ -218,10 +218,21 @@ answer was produced against.
 The state is data, never instruction. Apple's session splits developer
 instructions from the turn prompt and treats instructions as the higher
 authority, so **the question policy goes in the instructions and the state
-goes in the prompt, marked as data.** Putting caller-supplied state into the
-instructions would elevate whatever an attacker wrote into it. That choice
-also rules out priming one session with the state and reusing it, which is
-consistent with the isolation rule above.
+goes in the prompt.** Putting caller-supplied state into the instructions
+would elevate whatever an attacker wrote into it. That choice also rules out
+priming one session with the state and reusing it, which is consistent with
+the isolation rule above.
+
+What Lev cannot do is fence the state. The usual defense — wrap untrusted
+input in delimiters and tell the model to ignore instructions inside them —
+is refused by Apple's guardrails. Measured on one benign item at fixed seeds:
+`<state>` tags plus an ignore-instructions line refused on every draw, bare
+`<state>` tags with no such line still refused, a triple-quoted block
+refused, and a plain `STATE` label answered every time. The guardrail reads
+fencing as adversarial framing regardless of content, so the instructions
+boundary is the only marking Lev has. It is weaker than fencing, and this is
+the runtime forcing a tradeoff rather than anyone choosing one. See
+[`measurements/2026-09-19-comparison.md`](measurements/2026-09-19-comparison.md).
 
 Constrained decoding covers the failure kev hardens against by hand. Option
 text containing fake delimiters cannot add an option to a Lev question,

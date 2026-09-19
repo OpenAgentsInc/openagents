@@ -67,6 +67,8 @@ pub struct Raw {
     pub seeds: Vec<u64>,
     /// The certainty band, for L3.
     pub band: Option<String>,
+    /// Draws the runtime refused, usually on a guardrail.
+    pub refused: u64,
     /// Total time the calls took inside the helper.
     pub latency_ms: f64,
 }
@@ -92,6 +94,7 @@ pub fn l1(bridge: &mut Bridge, compiled: &Compiled) -> Result<Raw> {
         resolution: 1.0,
         seeds: Vec::new(),
         band: None,
+        refused: 0,
         latency_ms: outcome.latency_ms.unwrap_or_default(),
     })
 }
@@ -113,9 +116,25 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
     let mut seeds = Vec::with_capacity(n as usize);
     let mut latency = 0.0;
 
+    // A guardrail can fire on one draw and not another, so an ensemble of N
+    // draws is N chances to trip it. The comparison run caught this on a
+    // renewal question: seven draws answered and one came back unsafe. A
+    // single refusal must not lose the other seven, so a minority of refused
+    // draws is recorded and skipped, and only an ensemble that refuses
+    // outright refuses the question.
+    let mut refused = 0_u64;
+    let mut last: Option<Refusal> = None;
     for seed in 0..n {
         let call = Call::decide(compiled, Sampling::Random { seed, temperature: None });
-        let outcome = bridge.decide(&call)?;
+        let outcome = match bridge.decide(&call) {
+            Ok(outcome) => outcome,
+            Err(refusal) if refusal.code == RefusalCode::Guardrail => {
+                refused += 1;
+                last = Some(refusal);
+                continue;
+            }
+            Err(refusal) => return Err(refusal),
+        };
         let choice = outcome.choice.ok_or_else(|| {
             Refusal::new(RefusalCode::DecodingFailure, "the runtime selected no option")
         })?;
@@ -130,7 +149,15 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
         latency += outcome.latency_ms.unwrap_or_default();
     }
 
-    Ok(finish(Estimator::L2, counts, n, seeds, None, latency))
+    let drawn = n - refused;
+    if drawn == 0 {
+        return Err(last.unwrap_or_else(|| {
+            Refusal::new(RefusalCode::Guardrail, "every draw was refused")
+        }));
+    }
+    let mut raw = finish(Estimator::L2, counts, drawn, seeds, None, latency);
+    raw.refused = refused;
+    Ok(raw)
 }
 
 /// Runs one call that also selects an ordered certainty band.
@@ -177,6 +204,7 @@ fn finish(
         resolution: 1.0 / total,
         seeds,
         band,
+        refused: 0,
         latency_ms,
     }
 }

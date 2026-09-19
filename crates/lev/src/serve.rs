@@ -162,6 +162,7 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
                     "samples": door.samples,
                     "seeds": raw.seeds,
                     "resolution": raw.resolution,
+                    "refused_draws": raw.refused,
                     "latency_ms": raw.latency_ms,
                 }),
             );
