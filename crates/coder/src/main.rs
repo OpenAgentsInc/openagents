@@ -21,7 +21,8 @@ use std::io::{self, stdout};
 
 use coder::{Agent, Classified, Meta, Route, ShellEvent, Usage, Verdict};
 use coder_terminal::{
-    Composer, ComposerAction, Editor, Intensity, Ladder, frame_for, handle_key, wrap_rows,
+    Composer, ComposerAction, Editor, Intensity, Ladder, Marked, Marks, Rendered, frame_for,
+    handle_key, markdown, wrap_rows,
 };
 use std::io::Write;
 use std::time::Instant;
@@ -53,40 +54,48 @@ struct Line {
     /// codes, and judge lines. Filtering happens at draw time, so toggling
     /// verbose reveals and hides the detail retroactively.
     detail: bool,
+    /// Extra cells continuation rows indent past the prefix — a list
+    /// item's wraps sit under its text, not its marker.
+    hang: usize,
     prefix: &'static str,
-    text: String,
+    marked: Marked,
 }
 
-/// One drawn row — a wrapped segment of a [`Line`], prefix already placed.
+/// One drawn row — a wrapped segment of a [`Line`] as styled spans: the
+/// prefix or hanging indent leads, marked runs follow.
 struct Row {
     intensity: Intensity,
     loud: bool,
-    text: String,
+    spans: Vec<(String, Marks)>,
 }
 
-/// Wraps `text` so `prefix` plus each segment fits `width` cells, and
+/// Wraps `marked` so `prefix` plus each segment fits `width` cells, and
 /// pushes one [`Row`] per segment: the first carries `prefix`, the rest
-/// its width in spaces, so a wrapped line hangs under its own start.
+/// its width plus `hang` in spaces, so a wrapped line hangs under its own
+/// start.
 fn expand(
     rows: &mut Vec<Row>,
     intensity: Intensity,
     loud: bool,
     prefix: &str,
-    text: &str,
+    marked: &Marked,
+    hang: usize,
     width: usize,
 ) {
-    let indent = " ".repeat(prefix.chars().count());
+    let indent = " ".repeat(prefix.chars().count() + hang);
     let inner = width.saturating_sub(1 + indent.len()).max(1);
-    for (index, range) in wrap_rows(text, inner).iter().enumerate() {
-        let segment = &text[range.clone()];
+    for (index, range) in wrap_rows(&marked.text, inner).iter().enumerate() {
+        let lead = if index == 0 {
+            prefix.to_string()
+        } else {
+            indent.clone()
+        };
+        let mut spans = vec![(lead, Marks::default())];
+        spans.extend(marked.runs_in(range.clone()));
         rows.push(Row {
             intensity,
             loud,
-            text: if index == 0 {
-                format!("{prefix}{segment}")
-            } else {
-                format!("{indent}{segment}")
-            },
+            spans,
         });
     }
 }
@@ -133,8 +142,21 @@ impl App {
             intensity,
             loud: false,
             detail: false,
+            hang: 0,
             prefix,
-            text: text.into(),
+            marked: Marked::plain(text.into()),
+        });
+    }
+
+    /// A rendered markdown line of a finished reply.
+    fn push_rendered(&mut self, rendered: Rendered) {
+        self.lines.push(Line {
+            intensity: rendered.intensity,
+            loud: false,
+            detail: false,
+            hang: rendered.hang,
+            prefix: "  ",
+            marked: rendered.marked,
         });
     }
 
@@ -144,8 +166,9 @@ impl App {
             intensity: Intensity::Half,
             loud: false,
             detail: true,
+            hang: 0,
             prefix,
-            text: text.into(),
+            marked: Marked::plain(text.into()),
         });
     }
 
@@ -154,8 +177,9 @@ impl App {
             intensity: Intensity::Full,
             loud: true,
             detail: false,
+            hang: 0,
             prefix: "  ",
-            text: text.into(),
+            marked: Marked::plain(text.into()),
         });
     }
 
@@ -433,10 +457,10 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                     }
                     Work::Delta(delta) => app.pending.push_str(&delta),
                     Work::Finished(Ok((text, usage))) => {
-                        // A reply can carry newlines; each logical line is
-                        // its own scrollback row.
-                        for part in text.trim_end().split('\n') {
-                            app.push(Intensity::ThreeQuarters, "  ", part);
+                        // The reply lays out as markdown lines; each is a
+                        // scrollback row.
+                        for rendered in markdown::render(&text) {
+                            app.push_rendered(rendered);
                         }
                         app.pending.clear();
                         if let Some(usage) = usage {
@@ -539,18 +563,24 @@ fn draw(
                 line.intensity,
                 line.loud,
                 line.prefix,
-                &line.text,
+                &line.marked,
+                line.hang,
                 width,
             );
         }
-        if app.scroll == 0 && !app.pending.is_empty() {
-            for part in app.pending.split('\n') {
+        // The streaming reply renders live through the same markdown path —
+        // unless it is shaping up as a shell plan: a reply that opens as a
+        // JSON object or a code fence is the plan's wire format, and the
+        // $ command lines replace it when the proposals land.
+        if app.scroll == 0 && !app.pending.is_empty() && !planish(&app.pending) {
+            for rendered in markdown::render(&app.pending) {
                 expand(
                     &mut rows,
-                    Intensity::ThreeQuarters,
+                    rendered.intensity,
                     false,
                     "  ",
-                    part,
+                    &rendered.marked,
+                    rendered.hang,
                     width,
                 );
             }
@@ -558,15 +588,22 @@ fn draw(
         let end = rows.len().saturating_sub(app.scroll);
         let start = end.saturating_sub(shown);
         for (offset, row) in rows[start..end].iter().enumerate() {
-            let mut style = ladder.style(row.intensity);
-            if row.loud {
-                style = style.add_modifier(ratatui::style::Modifier::UNDERLINED);
-            }
-            buf.set_string(
+            let base = ladder.style(row.intensity);
+            let spans: Vec<ratatui::text::Span> = row
+                .spans
+                .iter()
+                .map(|(text, marks)| {
+                    ratatui::text::Span::styled(
+                        text.clone(),
+                        marked_style(base, ladder, marks, row.loud),
+                    )
+                })
+                .collect();
+            buf.set_line(
                 log_area.left() + 1,
                 log_area.top() + offset as u16,
-                &row.text,
-                style,
+                &ratatui::text::Line::from(spans),
+                log_area.width.saturating_sub(1),
             );
         }
 
@@ -574,4 +611,36 @@ fn draw(
         frame.set_cursor_position(caret);
     })?;
     Ok(())
+}
+
+/// The style one marked span draws at: `base` lifted by the span's marks.
+/// Code burns at full amber so it stands out of prose; bold, italic,
+/// strike, and links take their modifiers; `loud` underlines the row.
+fn marked_style(base: Style, ladder: &Ladder, marks: &Marks, loud: bool) -> Style {
+    let mut style = if marks.code {
+        ladder.style(Intensity::Full)
+    } else {
+        base
+    };
+    if marks.bold {
+        style = style.add_modifier(ratatui::style::Modifier::BOLD);
+    }
+    if marks.italic {
+        style = style.add_modifier(ratatui::style::Modifier::ITALIC);
+    }
+    if marks.strike {
+        style = style.add_modifier(ratatui::style::Modifier::CROSSED_OUT);
+    }
+    if marks.link.is_some() || marks.image.is_some() || loud {
+        style = style.add_modifier(ratatui::style::Modifier::UNDERLINED);
+    }
+    style
+}
+
+/// Whether the text streaming in is shaping up as a shell plan: the plan's
+/// wire format is a reply that opens as a JSON object or a code fence, so
+/// those hide while they stream — the `$` command lines replace them.
+fn planish(text: &str) -> bool {
+    let text = text.trim_start();
+    text.starts_with('{') || text.starts_with("```")
 }

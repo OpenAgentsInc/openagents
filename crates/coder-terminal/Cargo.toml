@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 crossterm = "0.29"
+pulldown-cmark = { version = "0.13.4", default-features = false }
 ratatui = "0.30"
 unicode-segmentation = "1"
 unicode-width = "0.2"

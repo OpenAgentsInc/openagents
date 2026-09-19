@@ -19,6 +19,7 @@ mod editor;
 mod intensity;
 mod keys;
 mod ladder;
+pub mod markdown;
 mod spinner;
 mod wrap;
 
@@ -27,6 +28,7 @@ pub use editor::{Editor, ROWS_MAX, ROWS_MIN, Window};
 pub use intensity::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
 pub use keys::{ComposerAction, handle_key};
 pub use ladder::{Colors, Ladder, drain_color};
+pub use markdown::{Marked, Marks, Rendered};
 pub use spinner::{
     CYCLE, FRAMES, FRAMES_ASCII, SPINNER_COUNT, SPINNER_FRAME, frame_at, frame_for,
     frame_for_ascii, spinner,
