@@ -206,6 +206,10 @@ pub fn score(observations: &[Observation]) -> Metrics {
     Metrics { accuracy, ece, brier, nll, confident_errors, items: observations.len() }
 }
 
+fn english() -> String {
+    "en".to_string()
+}
+
 /// What a calibrated question family carries.
 ///
 /// A family without one of these does not serve probabilities, and a record
@@ -219,6 +223,12 @@ pub struct Record {
     pub estimator: String,
     /// How many samples an L2 estimate drew.
     pub samples: u64,
+    /// The language the suite is written in. English, and only English —
+    /// every suite here is English and the maps are fitted on English items.
+    /// Recorded rather than implied so a later reader does not assume the
+    /// map covers input it never saw.
+    #[serde(default = "english")]
+    pub language: String,
     /// The suite the map was fitted and scored on.
     pub suite: String,
     /// The suite's content digest.
@@ -491,6 +501,7 @@ mod tests {
     fn a_record_refuses_a_host_it_was_not_fitted_on() {
         let record = Record {
             family: "routing".to_string(),
+            language: english(),
             estimator: "l2".to_string(),
             samples: 8,
             suite: "support-v1".to_string(),

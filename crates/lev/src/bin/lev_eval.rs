@@ -225,6 +225,7 @@ async fn main() {
                 if let Some(dir) = out.as_deref() {
                     let record = Record {
                         family: family.clone(),
+                        language: "en".to_string(),
                         estimator: "l2".to_string(),
                         samples: 8,
                         suite: suite.name.clone(),
