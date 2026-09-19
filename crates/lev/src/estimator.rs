@@ -167,11 +167,27 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
 /// the same estimate either way, which `tests/pool.rs` checks rather than
 /// assumes.
 pub fn l2_pool(pool: &Pool, compiled: &Compiled, n: u64) -> Result<Raw> {
+    l2_pool_with(pool, compiled, n, None)
+}
+
+/// Runs `n` seeded samples across a pool, optionally through an adapter.
+pub fn l2_pool_with(
+    pool: &Pool,
+    compiled: &Compiled,
+    n: u64,
+    adapter: Option<&str>,
+) -> Result<Raw> {
     if n == 0 {
         return Err(Refusal::new(RefusalCode::InvalidRequest, "an ensemble draws at least one sample"));
     }
     let calls: Vec<Call> = (0..n)
-        .map(|seed| Call::decide(compiled, Sampling::Random { seed, temperature: None }))
+        .map(|seed| {
+            let call = Call::decide(compiled, Sampling::Random { seed, temperature: None });
+            match adapter {
+                Some(path) => call.with_adapter(path),
+                None => call,
+            }
+        })
         .collect();
     let outcomes = pool.decide_all(&calls);
 

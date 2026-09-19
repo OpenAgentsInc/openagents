@@ -1,0 +1,8 @@
+# Apple's adapter training toolkit, fetched by the operator. It is not
+# redistributable on this repository's terms, so it stays out of git.
+toolkit/
+# Training inputs and outputs.
+data/
+runs/
+*.fmadapter/
+.venv/

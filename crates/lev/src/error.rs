@@ -112,7 +112,9 @@ impl Refusal {
             "decoding_failure" => RefusalCode::DecodingFailure,
             "rate_limited" | "concurrent_requests" => RefusalCode::Busy,
             "assets_unavailable" => RefusalCode::ModelUnavailable,
-            "adapter_not_found" | "adapter_incompatible" => RefusalCode::AdapterIncompatible,
+            "adapter_not_found" | "adapter_incompatible" | "adapter_invalid" => {
+                RefusalCode::AdapterIncompatible
+            }
             "invalid_request" | "unsupported_language_or_locale" => RefusalCode::InvalidRequest,
             _ => RefusalCode::BridgeError,
         };

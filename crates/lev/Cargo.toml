@@ -35,6 +35,14 @@ name = "lev-measure"
 path = "src/bin/lev_measure.rs"
 
 [[bin]]
+name = "lev-adapter-check"
+path = "src/bin/lev_adapter_check.rs"
+
+[[bin]]
+name = "lev-render"
+path = "src/bin/lev_render.rs"
+
+[[bin]]
 name = "lev-eval"
 path = "src/bin/lev_eval.rs"
 required-features = ["serve"]

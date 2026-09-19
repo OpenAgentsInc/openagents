@@ -12,6 +12,10 @@ func handle(_ request: Request) async -> Response {
         return await decide(request)
     case "generate":
         return await generate(request)
+    case "adapter_compat":
+        return adapterCompat(request)
+    case "adapter_load":
+        return adapterLoad(request)
     default:
         return Response.failure(
             id: request.id, code: "invalid_request",
@@ -19,18 +23,73 @@ func handle(_ request: Request) async -> Response {
     }
 }
 
-private func model(for request: Request) -> SystemLanguageModel {
-    let useCase: SystemLanguageModel.UseCase =
-        request.useCase == "content_tagging" ? .contentTagging : .general
+private func model(for request: Request) throws -> SystemLanguageModel {
     let guardrails: SystemLanguageModel.Guardrails =
         request.guardrails == "permissive_content_transformations"
         ? .permissiveContentTransformations : .default
+    // An adapted model replaces the use case rather than adding to it: the
+    // runtime takes an adapter or a use case, not both.
+    if let path = request.adapterPath {
+        let adapter = try SystemLanguageModel.Adapter(fileURL: URL(fileURLWithPath: path))
+        return SystemLanguageModel(adapter: adapter, guardrails: guardrails)
+    }
+    let useCase: SystemLanguageModel.UseCase =
+        request.useCase == "content_tagging" ? .contentTagging : .general
     return SystemLanguageModel(useCase: useCase, guardrails: guardrails)
+}
+
+/// Asks the running base which adapter identifiers it will accept.
+///
+/// This is the only way to learn the live base model signature from outside:
+/// the identifiers come back as `fmadapter-<name>-<signature prefix>`, so a
+/// package can be checked against the device before it is attached.
+private func adapterCompat(_ request: Request) -> Response {
+    let name = request.adapterName ?? "lev"
+    var response = Response(id: request.id, ok: true)
+    response.compatibleAdapters = SystemLanguageModel.Adapter.compatibleAdapterIdentifiers(name: name)
+    return response
+}
+
+/// Loads a package and reports what the runtime made of it.
+private func adapterLoad(_ request: Request) -> Response {
+    guard let path = request.adapterPath else {
+        return Response.failure(
+            id: request.id, code: "invalid_request", message: "adapter_load needs an adapterPath")
+    }
+    do {
+        let adapter = try SystemLanguageModel.Adapter(fileURL: URL(fileURLWithPath: path))
+        var response = Response(id: request.id, ok: true)
+        response.adapterMetadata = adapter.creatorDefinedMetadata.mapValues { "\($0)" }
+        return response
+    } catch {
+        return adapterFailure(request.id, error)
+    }
+}
+
+/// Maps the runtime's adapter asset errors onto stable codes.
+private func adapterFailure(_ id: String, _ error: Error) -> Response {
+    if let asset = error as? SystemLanguageModel.Adapter.AssetError {
+        let code: String
+        switch asset {
+        case .invalidAsset: code = "adapter_invalid"
+        case .invalidAdapterName: code = "adapter_not_found"
+        case .compatibleAdapterNotFound: code = "adapter_incompatible"
+        @unknown default: code = "adapter_invalid"
+        }
+        return Response.failure(id: id, code: code, message: "\(asset)")
+    }
+    return failure(id, error)
 }
 
 private func availability(_ request: Request) -> Response {
     var response = Response(id: request.id, ok: true)
-    switch model(for: request).availability {
+    let resolved: SystemLanguageModel
+    do {
+        resolved = try model(for: request)
+    } catch {
+        return adapterFailure(request.id, error)
+    }
+    switch resolved.availability {
     case .available:
         response.availability = AvailabilityBody(status: "available", reason: nil)
     case .unavailable(let reason):
@@ -48,8 +107,8 @@ private func availability(_ request: Request) -> Response {
     return response
 }
 
-private func session(for request: Request) -> LanguageModelSession {
-    LanguageModelSession(model: model(for: request), instructions: request.instructions ?? "")
+private func session(for request: Request) throws -> LanguageModelSession {
+    LanguageModelSession(model: try model(for: request), instructions: request.instructions ?? "")
 }
 
 private func options(for request: Request) -> GenerationOptions {
@@ -115,7 +174,7 @@ private func decide(_ request: Request) async -> Response {
         out.latencyMs = Date().timeIntervalSince(start) * 1000
         return out
     } catch {
-        return failure(request.id, error)
+        return adapterFailure(request.id, error)
     }
 }
 
@@ -130,7 +189,7 @@ private func generate(_ request: Request) async -> Response {
         out.latencyMs = Date().timeIntervalSince(start) * 1000
         return out
     } catch {
-        return failure(request.id, error)
+        return adapterFailure(request.id, error)
     }
 }
 

@@ -50,6 +50,8 @@ pub struct Call {
     #[serde(skip_serializing_if = "Option::is_none")]
     use_case: Option<&'static str>,
     sampling: Sampling,
+    #[serde(rename = "adapterPath", skip_serializing_if = "Option::is_none")]
+    adapter_path: Option<String>,
 }
 
 impl Call {
@@ -65,7 +67,19 @@ impl Call {
             band: None,
             use_case: Some("content_tagging"),
             sampling,
+            adapter_path: None,
         }
+    }
+
+    /// Attaches a `.fmadapter` package for this call.
+    ///
+    /// The runtime takes an adapter or a use case, not both, so attaching one
+    /// drops the content-tagging declaration.
+    #[must_use]
+    pub fn with_adapter(mut self, path: impl Into<String>) -> Self {
+        self.adapter_path = Some(path.into());
+        self.use_case = None;
+        self
     }
 
     /// Asks for an ordered certainty band alongside the choice.
@@ -115,6 +129,10 @@ struct Wire {
     band: Option<String>,
     #[serde(default, rename = "latencyMs")]
     latency_ms: Option<f64>,
+    #[serde(default, rename = "compatibleAdapters")]
+    compatible_adapters: Option<Vec<String>>,
+    #[serde(default, rename = "adapterMetadata")]
+    adapter_metadata: Option<std::collections::BTreeMap<String, String>>,
     #[serde(default)]
     error: Option<WireError>,
 }
@@ -179,6 +197,58 @@ impl Bridge {
         wire.availability.ok_or_else(|| {
             Refusal::new(RefusalCode::BridgeError, "the helper reported no availability")
         })
+    }
+
+    /// Asks the running base which adapter identifiers it accepts for a name.
+    ///
+    /// The identifiers come back as `fmadapter-<name>-<signature prefix>`, so
+    /// this is how the live base model signature is read from outside. A
+    /// package can then be checked against the device before it is attached.
+    pub fn compatible_adapters(&mut self, name: &str) -> Result<Vec<String>> {
+        #[derive(Serialize)]
+        struct Ask<'a> {
+            id: String,
+            op: &'static str,
+            #[serde(rename = "adapterName")]
+            adapter_name: &'a str,
+        }
+        let wire = self.exchange(&Ask { id: next_id(), op: "adapter_compat", adapter_name: name })?;
+        wire.compatible_adapters.ok_or_else(|| {
+            Refusal::new(RefusalCode::BridgeError, "the helper reported no adapter identifiers")
+        })
+    }
+
+    /// The base model signature prefix the device runs, read from the
+    /// identifiers it will accept.
+    pub fn base_signature_prefix(&mut self) -> Result<String> {
+        let identifiers = self.compatible_adapters("lev")?;
+        identifiers
+            .first()
+            .and_then(|id| id.rsplit('-').next())
+            .map(str::to_string)
+            .ok_or_else(|| {
+                Refusal::new(RefusalCode::BridgeError, "no identifier carried a signature prefix")
+            })
+    }
+
+    /// Asks the runtime to load a package, returning its producer metadata.
+    pub fn load_adapter(
+        &mut self,
+        path: &Path,
+    ) -> Result<std::collections::BTreeMap<String, String>> {
+        #[derive(Serialize)]
+        struct Ask {
+            id: String,
+            op: &'static str,
+            #[serde(rename = "adapterPath")]
+            adapter_path: String,
+        }
+        let wire = self.exchange(&Ask {
+            id: next_id(),
+            op: "adapter_load",
+            adapter_path: path.display().to_string(),
+        })?;
+        Ok(wire.adapter_metadata.unwrap_or_default())
     }
 
     /// Runs one decision call.

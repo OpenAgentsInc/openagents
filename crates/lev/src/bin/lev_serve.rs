@@ -21,10 +21,12 @@ async fn main() {
     let mut port = 11436_u16;
     let mut samples = DEFAULT_SAMPLES;
     let mut helpers = 4_usize;
+    let mut adapter: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--port" => port = args.next().and_then(|value| value.parse().ok()).unwrap_or(port),
+            "--adapter" => adapter = args.next(),
             "--helpers" => {
                 helpers = args.next().and_then(|value| value.parse().ok()).unwrap_or(helpers);
             }
@@ -45,7 +47,26 @@ async fn main() {
             std::process::exit(2);
         }
     };
-    let door = Arc::new(Door::new(pool, "lev-base", samples));
+    // Check the package before serving with it. A signature mismatch is a
+    // deployment error and the door should not start, rather than refusing
+    // every request at run time.
+    let mut door = Door::new(pool, if adapter.is_some() { "lev-adapted" } else { "lev-base" }, samples);
+    if let Some(path) = adapter {
+        match lev::adapter::Package::open(&path) {
+            Ok(package) => {
+                eprintln!(
+                    "lev-serve: adapter {} pinned to base {}",
+                    package.metadata.adapter_identifier, package.metadata.base_model_signature
+                );
+                door = door.with_adapter(path);
+            }
+            Err(refusal) => {
+                eprintln!("lev-serve: {}", refusal.message);
+                std::process::exit(2);
+            }
+        }
+    }
+    let door = Arc::new(door);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .expect("the port is free");

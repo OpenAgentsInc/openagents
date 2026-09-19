@@ -13,6 +13,10 @@ struct Request: Decodable {
     var guardrails: String?
     var sampling: Sampling?
     var maxTokens: Int?
+    /// A `.fmadapter` package to attach for this call.
+    var adapterPath: String?
+    /// A name to ask the runtime about, for `adapter_compat`.
+    var adapterName: String?
 }
 
 /// Sampling controls, mirroring the runtime's own validation rules: greedy
@@ -46,6 +50,10 @@ struct Response: Encodable {
     var latencyMs: Double?
     var promptTokens: Int?
     var responseTokens: Int?
+    /// Adapter identifiers the running base accepts for a given name.
+    var compatibleAdapters: [String]?
+    /// Producer metadata the loaded package carried.
+    var adapterMetadata: [String: String]?
     var error: ErrorBody?
 
     static func failure(id: String, code: String, message: String) -> Response {

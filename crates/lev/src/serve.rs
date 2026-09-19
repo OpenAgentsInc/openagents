@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 use crate::api::{MAX_CHOICE_OPTIONS, MAX_SCORE_LEVELS, SystemOneRequest, SystemOneResponse, Usage};
 use crate::bridge::Pool;
 use crate::error::{Refusal, RefusalCode};
-use crate::estimator::{Estimator, answer, l2_pool};
+use crate::estimator::{Estimator, answer, l2_pool_with};
 use crate::schema::compile;
 
 /// How many seeded samples one question draws by default.
@@ -37,13 +37,25 @@ pub struct Door {
     pool: Pool,
     model: String,
     samples: u64,
+    adapter: Option<String>,
 }
 
 impl Door {
     /// Builds a door over a pool of helper processes.
     #[must_use]
     pub fn new(pool: Pool, model: impl Into<String>, samples: u64) -> Self {
-        Self { pool, model: model.into(), samples: samples.max(1) }
+        Self { pool, model: model.into(), samples: samples.max(1), adapter: None }
+    }
+
+    /// Serves every call through a `.fmadapter` package.
+    ///
+    /// The package is checked and pinned before the door starts, not per
+    /// request: a signature mismatch is a deployment error, not a caller
+    /// error.
+    #[must_use]
+    pub fn with_adapter(mut self, path: impl Into<String>) -> Self {
+        self.adapter = Some(path.into());
+        self
     }
 
     /// How many helpers back this door.
@@ -101,6 +113,7 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
             "samples": door.samples,
             "pool_width": door.pool.width(),
             "resolution": 1.0 / door.samples as f64,
+            "adapter": door.adapter,
             "calibration": "none",
             "calibrated_families": [],
             "question_types": ["noul", "choice", "score"],
@@ -154,7 +167,7 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
     let mut answers = IndexMap::new();
     let mut estimates = IndexMap::new();
     for (id, question) in &compiled {
-        let raw = l2_pool(&door.pool, question, door.samples)
+        let raw = l2_pool_with(&door.pool, question, door.samples, door.adapter.as_deref())
             .map_err(|refusal| with_question(refusal, id))?;
         let typed = answer(question.kind, &raw.frequency, &question.legend)
             .map_err(|refusal| with_question(refusal, id))?;

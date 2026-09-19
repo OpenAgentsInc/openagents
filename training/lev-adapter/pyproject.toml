@@ -1,0 +1,12 @@
+[project]
+name = "lev-adapter"
+version = "0.1.0"
+description = "Trains a LoRA adapter for Apple's on-device foundation model from the Lev suite."
+requires-python = ">=3.11"
+# Apple's adapter training toolkit brings its own pinned torch and its own
+# base-model assets. It is not on a package index and is not vendored here;
+# see README.md. These are only what the conversion and checking steps need.
+dependencies = []
+
+[tool.uv]
+package = false

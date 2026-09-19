@@ -17,6 +17,7 @@
 //! See `docs/lev/` for the architecture, the measured behavior of the
 //! runtime, and the calibration rule.
 
+pub mod adapter;
 pub mod api;
 pub mod bridge;
 pub mod calibrate;
