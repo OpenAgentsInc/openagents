@@ -166,17 +166,21 @@ impl ResponsesDoor {
             "input": items,
             "stream": true,
             "store": false,
+            // No tools exist on this door; Gemini will still try to emit a
+            // function call when the instructions carry a JSON example, and
+            // the call dies as MALFORMED_FUNCTION_CALL. Forbid it outright.
+            "tool_choice": "none",
         })
     }
 }
 
-impl Generate for ResponsesDoor {
-    async fn generate<'a>(
-        &'a self,
-        instructions: &'a str,
-        input: &'a [Message],
-        sink: &'a mut (dyn FnMut(&str) + Send),
-        _meta: &'a mut (dyn FnMut(Meta) + Send),
+impl ResponsesDoor {
+    /// One streaming attempt: the request plus the SSE read.
+    async fn once(
+        &self,
+        instructions: &str,
+        input: &[Message],
+        sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         let response = self
             .http
@@ -243,6 +247,36 @@ impl Generate for ResponsesDoor {
             ));
         }
         Ok((text, usage))
+    }
+}
+
+impl Generate for ResponsesDoor {
+    async fn generate<'a>(
+        &'a self,
+        instructions: &'a str,
+        input: &'a [Message],
+        sink: &'a mut (dyn FnMut(&str) + Send),
+        _meta: &'a mut (dyn FnMut(Meta) + Send),
+    ) -> Result<(String, Option<Usage>), GenerateError> {
+        // A stream that fails before delivering any text is safe to redo —
+        // the user saw nothing and the request is idempotent. One retry
+        // covers transient upstream failures like a model-side malformed
+        // function call.
+        for attempt in 0..2 {
+            let mut delivered = false;
+            let result = {
+                let mut wrapped = |delta: &str| {
+                    delivered = true;
+                    sink(delta);
+                };
+                self.once(instructions, input, &mut wrapped).await
+            };
+            match result {
+                Err(GenerateError::Stream(_)) if !delivered && attempt == 0 => continue,
+                other => return other,
+            }
+        }
+        unreachable!()
     }
 }
 
@@ -356,6 +390,7 @@ mod tests {
         assert_eq!(body["instructions"], "sys");
         assert_eq!(body["stream"], true);
         assert_eq!(body["store"], false);
+        assert_eq!(body["tool_choice"], "none");
         assert_eq!(body["input"][0]["content"][0]["type"], "input_text");
         assert_eq!(body["input"][1]["content"][0]["type"], "output_text");
     }
