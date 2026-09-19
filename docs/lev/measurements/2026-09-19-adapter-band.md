@@ -143,3 +143,49 @@ count every wrong answer in that band as a confident error by definition.
 That is the measure behaving correctly rather than the model failing, but it
 means "confident errors" and "log loss" are now telling different stories and
 the threshold a caller picks matters more than either number alone.
+
+## Correction: two of the comparisons on this page are inside the noise floor
+
+Added after `docs/lev/measurements/2026-09-19-seed-variance.md` measured what
+this suite can actually detect.
+
+Eight seed blocks over the same 98 evaluation items, same door, nothing else
+changed, give an accuracy standard deviation of **0.0197**. Comparing two
+doors on one block each carries both blocks' noise, so a two-sigma
+difference needs **0.056 accuracy — 7.2% relative.** Below that, a
+comparison is reporting which seeds it drew.
+
+Against that floor:
+
+| Comparison | Difference | Sigma | Reading |
+| --- | --- | --- | --- |
+| Base against choice adapter | 0.130 | 4.7 | real |
+| Base against permutation adapter | 0.120 | 4.3 | real |
+| Choice against band adapter | 0.020 | 0.7 | **inside the noise** |
+| Choice against permutation adapter | 0.010 | 0.4 | **inside the noise** |
+| Band against permutation adapter | 0.010 | 0.4 | **inside the noise** |
+
+**The claim above that the band cost two points of accuracy does not hold.**
+It was written as "two points of accuracy and a little sharpness, given up
+for the band", and two points is 0.7 sigma. The honest statement is that the
+three adapters are indistinguishable from each other on accuracy at this
+suite size, and that all three are clearly better than the base.
+
+That also means the disposition drawn from it — prefer one adapter or the
+other depending on whether the caller reads the band — rested on a
+difference that is not there. The preference still holds, but for the other
+two reasons, which are not inside the floor:
+
+- **The band is monotone or it is not.** 0.64/0.82/0.95 against a constant
+  `likely` is a categorical difference, not a two-point one.
+- **Flip rate moved 0.120 to 0.040.** That is 6 flips against 2 on 50 items.
+  It has not been given its own noise measurement, and it should be: a count
+  that small has a wide interval, and the honest next step is to run the
+  permutation probe across seed blocks the way accuracy just was.
+
+One more thing worth recording. **Block 0, which every published Lev number
+on this page and its siblings rests on, drew 0.765 against an eight-block
+mean of 0.781.** Nothing about the conclusions changes — the differences
+that survive survive by four sigma — but the base model's headline number is
+a slightly unlucky draw, and it was presented as the number rather than as a
+draw.
