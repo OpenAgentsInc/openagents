@@ -1,121 +1,201 @@
-# Should a compiler write the adapter?
+# Compiled functions: settled enough to act on
 
-**Status:** open. Research in progress. This page records the claim, why it
-lands differently for us than the others reviewed this week, and the one
-question that decides whether it matters.
+**Status:** settled on what it is; **one experiment left**, and it is the
+cheapest thing on this page's whole reading list. ProgramAsWeights is real,
+technically interesting, and unusually honest about its own limits. It does
+not serve our contract. But it offers a one-hour, zero-dollar test of
+whether our selection guide is wrong at the root, and we should run it.
 
-## What would change if it holds
+## What it actually is
 
-Every selection guide in this directory roots on the same question: **do you
-have labelled outcomes?** Without them you cannot fine-tune and you cannot
-verify, so you take a general model and start collecting.
+A **hypernetwork**. Not an LLM writing a training config, not retrieval over
+pre-trained adapters. A trained 4B Qwen3 model takes a spec, runs **one
+forward pass**, and emits mixing coefficients over a shared learnable basis
+of 64 LoRA bases per module type. Rank 64, all seven projections, all layers,
+about 38.5M parameters injected into a frozen Qwen3-0.6B interpreter.
 
-ProgramAsWeights proposes a different root. Describe the function in English,
-**compile it once** into a task-specific LoRA adapter for a shared small
-base, and run it locally on a CPU with the network off.
+Alongside it, an untrained 4B model restates the spec as a "pseudo-program"
+that is **prepended to every call at run time**. Worth noting: a compiled
+function is not prompt-free at inference. It is a LoRA *and* a permanent
+200–500 token few-shot prompt inside a 2048-token context.
 
-If that works without labels, the root question changes and much of
-[`../choosing.md`](../choosing.md) is wrong. If it needs labels, it is a
-convenience over fine-tuning — possibly a very good one — and the tree
-stands.
+The artifact is a ZIP holding `meta.json`, `adapter.gguf`, and
+`prompt_template.txt`, about 22 MB, with the base model pinned by sha256 in
+the client. That is comparable to an `.fmadapter` package for inspectability
+and arguably better on base integrity. The asymmetry: **you cannot rebuild
+it.** Compilation is a hosted service with no self-host path and no published
+pricing.
 
-That is the whole investigation, and everything else is detail.
+## The labels question, which is the only one that mattered
 
-## The claim
+This page was opened because a compiler that turns English into a working
+adapter *without labels* would make [`../choosing.md`](../choosing.md) wrong
+at the root.
 
-> The task often stays fixed while the inputs keep changing. To me, this
-> points toward a separation between "compilation" and "inference". [...] My
-> bet is that we should train a larger model to do the first job by
-> generating a smaller model for the second. [...] The compiler takes an
-> English function description and generates a task-specific LoRA adapter for
-> a shared 0.6B model. The resulting function can run locally on a CPU and be
-> saved and composed with ordinary code.
+**The API takes one string.** The entire compile request body is
+`{"spec": spec, "public": public}`. So mechanically the claim is true.
 
-> Why do we want to use a billion-parameter model just to classify if an
-> email is urgent or not? And why would we want to send those inputs to an
-> API hosted by someone else?
+**Their own guidance immediately undoes it.** The hosted `AGENTS.md` leads
+its spec-writing section with:
 
-— Yuntian Deng. Code, weights, and paper published at
-[programasweights.com](https://programasweights.com).
+> **The #1 practice: iterate with test cases.** Do not accept low performance
+> on the first try. Build a test suite of input/output pairs, measure
+> accuracy, then iteratively adjust wording.
 
-## Why this one lands differently
+and
 
-Three external claims were reviewed this week and two were settled against.
-This one is worth more care, for reasons that are about our own position
-rather than about its marketing.
+> **Include examples from your actual data**: Examples outperform prose-only
+> descriptions.
 
-**The observation underneath it is correct, and it describes us exactly.**
-The task stays fixed while the inputs change. Our question set is written
-once and sent against many states; `support-v2` is 196 states against three
-fixed question families. Every door we run is doing the same fixed job
-repeatedly. If that structure has a compilation half, we are squarely in it.
+Every worked example in their docs embeds three or four input/output pairs
+inside the spec. So labels return at once — first as few-shot examples in the
+prompt, then as the test suite you iterate against. It is not labels versus
+no labels. It is **labels as a prompt rather than labels as a gradient**.
 
-**We have already done both halves by hand, so we can price the claim.** We
-trained a LoRA adapter for Apple's on-device model in **four minutes on 98
-labelled records** and gained 13 points of accuracy at 4.7 sigma. That is the
-baseline a compiler has to beat, and it is not a high bar in time — it is a
-high bar in *labels*. The interesting question is not whether a compiler is
-faster than four minutes. It is whether it needs the 98 records.
+**And the accurate tier manufactures them.** The second paper's compiler has
+GPT teachers generate **3,600 unique synthetic pairs**, replicated to 4,800,
+then runs 100 steps of ordinary LoRA fine-tuning warm-started from the
+hypernetwork's guess. That is not "no labels." That is a frontier model
+writing your labels.
 
-**The local, private, zero-marginal-cost argument is one we already made.**
-It is most of why [`../lev/README.md`](../lev/README.md) exists. We know what
-that path costs, because we paid it: Apple's runtime returns no logits, so
-Lev's probabilities are counted from seeded samples at a resolution of `1/N`,
-and its base certainty band was anti-informative until an adapter fixed it. A
-shared 0.6B base you control has none of those problems — you can read its
-distribution directly. On that axis the proposal is strictly better than Lev,
-and it is worth saying so.
+### So the root survives, and the reason is worth keeping
 
-## The questions that decide it
+PAW does not remove "do you have labelled outcomes?" It adds a **third
+branch**: *you have no labels and will accept a frontier model's guess at
+what your labels would be.*
 
-**Does it need labelled data, and how much?** Stated first because nothing
-else matters as much. A compiler that turns a description into a working
-adapter with no examples is a different category of thing from one that
-automates a fine-tune. Both are useful; only the first changes our tree.
+For a decision model whose labels encode a real outcome — which door actually
+worked, which ticket the customer was actually routed to — a teacher LLM
+cannot synthesize that. It can only synthesize its own prior. **Our 98
+records contain information gpt-5.5 does not have**, and that is the entire
+value of a labelled outcome.
 
-**What is "compile" doing mechanically?** A hypernetwork emitting LoRA
-weights directly, a meta-learned initialization, an LLM writing a training
-config and running an ordinary fine-tune, or retrieval over pre-trained
-adapters. The word covers all four and they are not close to equivalent.
+## It does not serve the contract
 
-**Compiled against fine-tuned, on the same task.** Beating a zero-shot base
-is a much weaker result than it sounds, and it is the comparison most likely
-to be the one published. The one we need is compiled against ordinary
-supervised fine-tuning with the same data.
+The **third** system reviewed this week presented as a general decision
+substrate while serving Choice alone. To its credit, PAW does not claim
+otherwise — it claims to be a fuzzy-function compiler, and Choice is an
+honest fit for that claim.
 
-**Does it serve more than Choice?** Two systems reviewed this week were
-described as decision models and served Choice alone. A Noul is a probability
-that a statement holds; a Score is a weighted position on an *ordered*
-rubric. Score is where most of the field falls away, structurally.
+Every function is `str -> str`. A live call returns:
 
-**Is the output calibrated, or merely normalized?** The repeated finding of
-this week is that numbers summing to one are not probabilities about the
-world. If a compiled adapter is trained on hard labels with no outcome
-supervision, it will be confident and it will not be calibrated — which is
-the failure mode every measurement here keeps pointing at.
+```json
+{"output":"immediate","tokens_generated":3,"latency_ms":75.3}
+```
 
-## What we would do about it
+A label. No option set in, no distribution out.
 
-If the labels answer is "few or none", the smallest experiment is already
-specified by machinery we have: compile a function for the `routing` family,
-serve it behind `POST /v1/systemone`, and score it on `support-v2` against
-Jev, Kev, Lev, and the logistic-regression baseline from
-[#9377](https://github.com/OpenAgentsInc/openagents/issues/9377). Judge it
-against the measured floor — 0.056 accuracy for a two-door comparison — on
-the full panel rather than on accuracy alone.
+- **Noul:** not served. There is no probability output at all.
+- **Score:** served only as a relabelled Choice, and **their own case study
+  documents the failure**. Attempt one was numeric 1–10 relevance scoring:
+  *"The model clustered everything at 8–10 [...] No discrimination."* Their
+  conclusion: *"Small models can't produce fine-grained numeric scores. They
+  don't have a calibrated sense of what 7 vs 8 means."* What worked was four
+  named categories mapped to integers **in Python**. The ordering lives in
+  the caller, not the model.
 
-That is a day, and it would be the first paired measurement of a compiled
-adapter against a trained one on a suite neither was built for.
+**Calibration is absent, not merely weak.** No ECE, no Brier, no reliability
+diagram in either paper; the word "calibrated" appears once, describing
+someone else's work. It does not clear the bar we set this week — it does not
+even produce numbers that sum to one.
 
-If the labels answer is "the usual amount", it is a tooling improvement over
-what we already do in four minutes, and the honest note is that we have the
-harder half — the labels — and the compiler solves the easier one.
+## The benchmark is not the comparison we needed
 
-## The part worth agreeing with regardless
+| Method | FuzzyBench exact match |
+| --- | --- |
+| gpt-oss-20B, prompted, local | **85.45%** |
+| **PAW on Qwen3-0.6B** | **73.78%** |
+| Qwen3-32B, prompted | 68.70% |
+| Qwen3-0.6B, prompted, same base | 9.84% |
+
+The abstract says PAW "matches direct prompting of Qwen3-32B," which is true
+and a carefully chosen comparator — **an open-weights model you could run
+locally beats it by 11.7 points, in the same table.**
+
+And the fine-tuning comparison is not per-task. PAW beating "full fine-tuning
+by 15.4 points" is against a single *multi-task* adapter trained on 10M
+examples and asked to handle **held-out specs unseen at training**. The paper
+says so itself. **It never compares a compiled adapter against ordinary
+fine-tuning on the target task with that task's own labels** — which is
+exactly the comparison our week sits on the other side of.
+
+The one independent replication is the most useful number found. An outside
+evaluator, 100 adversarial cases on a real classifier:
+
+| Variant | Accuracy | Median latency |
+| --- | --- | --- |
+| hypernetwork | 94% | 41 ms |
+| teacher-synthesis fine-tune | 97% | 38 ms |
+
+Their own reading: *"within noise at n=100 (McNemar p=0.51), so we do not
+claim finetuned beats standard."* **Our 0.056 floor would swallow that gap
+entirely.** The expensive path did not measurably beat the five-second one.
+
+Two claims that do not survive checking: *"compiler, interpreter, training
+pipeline, and web app are all open source"* — the training pipeline and web
+app are not in the public org, and the compiler weights carry no licence
+field. And *"runs on a CPU"* — **the word CPU does not appear in the paper at
+all**; every latency is Metal-accelerated Apple silicon, and the SDK frames
+CPU as the fallback for when GPU breaks.
+
+## Two things to borrow now, no dependency required
+
+**Semantic abstention beats confidence thresholding.** The independent
+evaluator found PAW adapters *confidently wrong* at 0.97–1.00 on their
+misses — thresholding on confidence failed outright. Adding an explicit
+`unsure` class to the spec worked: 98.9% on decided cases.
+
+That is a cheap, testable hypothesis about our own on-device adapter, and it
+bears directly on
+[#9383](https://github.com/OpenAgentsInc/openagents/issues/9383): it is
+evidence that abstention wants to be *an option the model can name* rather
+than a threshold the caller applies afterwards. It is also the same failure
+mode we measured — our own adapter got more confidently wrong as it got more
+accurate.
+
+**Ordered rubrics want named buckets, not numbers.** Their Attempt 1 → 3
+sequence is free evidence for a question we will face if Score is ever served
+by a small on-device model: a 0.6B model cannot hold a 1–10 ordinal but can
+hold four semantically anchored ordered categories. That predicts a rubric
+granularity ceiling, and it connects to
+[#9378](https://github.com/OpenAgentsInc/openagents/issues/9378).
+
+## The experiment, which we should run
+
+One hour, zero dollars, no new harness, restricted to Choice so no contract
+work is needed.
+
+1. Take the `routing` family, where we already have labelled data.
+2. Compile it twice on the free tier: once from **prose alone, zero labels**,
+   and once with four example pairs inline.
+3. Run both through the existing suite and gate against two baselines we
+   already have: our four-minute on-device LoRA trained on **98 real
+   labels**, and the on-device base prompted zero-shot.
+
+**The read is unambiguous in either direction**, which is what makes it worth
+doing:
+
+- **If the zero-label compile lands within 0.056 of our 98-record LoRA**,
+  then our 98 labels bought nothing a 4B hypernetwork could not infer from
+  prose, and `choosing.md` needs its third branch.
+- **If it does not**, we have a measured number for what real labelled
+  outcomes are worth on our task — which is precisely the quantity the PAW
+  paper never measures, and the guide's root stands with evidence under it.
+
+Do **not** run the teacher-synthesis tier yet. It needs a 40 GB accelerator
+and 3,600 frontier-model generations at an undisclosed cost, and the only
+independent measurement says the expensive path did not beat the cheap one
+outside noise.
+
+## The part worth agreeing with
 
 > I don't see why we are turning a classifier into another private API.
 
-That is the same argument this directory makes for Lev and for Kev, and it is
-the reason there are three doors behind one contract rather than one door.
-Whatever the measurement says about this particular compiler, the position is
-right.
+That is the argument this directory makes for Lev and for Kev, and it is why
+there are three doors behind one contract. On the local-and-private axis a
+shared small base you control is **strictly better than Lev**: you can read
+its distribution directly, where Apple's runtime returns no logits and forces
+us to count samples at `1/N` resolution.
+
+The irony is that PAW does not expose that distribution either. The advantage
+is available and unused.
