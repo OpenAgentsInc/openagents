@@ -1,13 +1,16 @@
 # Coder service: Nostr auth, free usage, and deployment
 
-Status: proposal. Nothing in this document is implemented in this
-repository yet. The server side describes work in the private `coder`
-repository, which stays private.
+Status: proposal. Revised for the relay backend: the terminal talks only
+Nostr to `wss://relay.openagents.com`, deployed from this repository's
+`crates/nostr-relay`. The earlier version of this document proposed a
+private HTTP service with NIP-98 headers; that direction is dropped. The
+extraction and deployment plan for the relay itself lives in
+[`relay-backend-plan.md`](relay-backend-plan.md).
 
 This document proposes how `crates/coder` in this repository works without
-user-supplied provider API keys: the terminal authenticates to a deployed
-Coder service with a Nostr key, and the service holds the provider
-credentials, applies quotas, and bills its own accounts.
+user-supplied provider API keys: the terminal connects to our relay with a
+Nostr key, and a fulfillment worker — itself a relay client — holds the
+provider credentials, applies quotas, and answers.
 
 ## Goals and non-goals
 
@@ -15,339 +18,265 @@ Goals:
 
 - A user with no API keys can run `cargo run -p coder` and hold a real
   conversation.
-- Authentication uses Nostr signed events (NIP-98 and NIP-42), not GitHub.
-- Anonymous usage is a first-class tier, controlled by the server: a small
-  free allowance per Nostr public key, rate-limited.
-- Users who authenticate to the service get a larger allowance under their
-  account.
+- Authentication is Nostr-native: a keypair on the device, NIP-42 AUTH on
+  the socket. No GitHub, no bearer tokens, no HTTP.
+- Anonymous usage is a first-class tier: a small free allowance per Nostr
+  public key, enforced server-side and rate-limited.
+- Users with accounts get a larger allowance under their `npub`.
 - Users who already hold a provider key can keep using it directly; that
   path is unchanged.
-- A local development server reproduces the production API so contributors
-  can run the full flow without production credentials.
+- A local relay plus a dev-mode worker reproduces the production flow so
+  contributors can run everything without production credentials.
 
 Non-goals:
 
-- Moving any part of the private backend into this repository.
+- Any private backend. The relay comes from the public `immortal`
+  repository (CC0) and deploys from this repo; the worker is plumbing
+  that can also live here.
 - GitHub or OAuth sign-in for the anonymous tier.
-- Paid billing in this repository. Accounts, ledgers, and grants are
-  server-side concerns; this document only specifies the client-visible
+- Paid billing in this repository. Quotas and usage records are
+  worker-side concerns; this document only specifies the client-visible
   surface.
-- Relaying or storing Nostr events. Every event is ephemeral
-  (`20000`–`29999` kinds) and travels only in HTTP headers.
+- Coder-specific relay features. The relay stays a general Nostr relay;
+  the product logic lives in event kinds and the worker.
 
 ## Architecture
 
 ```
-coder terminal (this repo)          Coder service (private repo)
-+------------------------+          +---------------------------------+
-| crates/coder           |  HTTPS   | admission: NIP-98 / NIP-42 /    |
-|   classify → generate  | -------> |   key / token                   |
-|   NIP-98 signer        |          | anonymous_people: npub → person |
-| key under ~/.openagents|          | quotas, ledger, free allowance  |
-+------------------------+          | door → Vercel AI Gateway → LLM  |
-                                    +---------------------------------+
+coder terminal                       relay.openagents.com
++------------------+   wss NIP-42   +-------------------------+
+| crates/coder     | -------------> | crates/nostr-relay      |
+|   keypair,       |  EVENT/REQ     |   store + policy + fanout|
+|   job events     |                +-------------------------+
++------------------+                         ^
+                                             | wss, same protocol
+                                    +-------------------------+
+                                    | fulfillment worker      |
+                                    | classify + generate     |
+                                    | provider keys = env     |
+                                    | quota ledger per npub   |
+                                    +-------------------------+
 ```
 
-The terminal never sees the provider key. The service terminates the
-client request, checks its credential, applies quota, and calls the door
-with credentials it owns.
+The terminal never sees a provider key and never sees a plain HTTP
+endpoint. The worker never sees the client's secret key — only its `npub`
+and the events it publishes.
 
 ## Caller classes
 
-The service distinguishes three caller classes, in this precedence order:
+Three tiers, all on the same socket:
 
 1. **Anonymous Nostr key.** The client generates a secp256k1 keypair on
-   first run, keeps the secret key on the device, and signs every request.
-   The server maps the public key (`npub`) onto an `anonymous_people` row
-   and its synthetic person and account. The account receives the service's
-   configured opening credit and per-minute free quota.
-2. **Authenticated account.** The client presents a kind-`27241` identity
-   token from a trusted issuer inside its request signature, or another
-   credential the service accepts (API key, session, grant). The caller's
-   own account pays, at the account's quota.
-3. **Own provider key.** The client bypasses the service entirely and
+   first run, keeps the secret key on the device, and answers the relay's
+   NIP-42 challenge. The `npub` is the account. The worker grants a small
+   configured free allowance per `npub` per window.
+2. **Authenticated account.** An `npub` the worker recognizes — linked
+   to an account through an attestation or a minted credential. The
+   account's quota applies. The mechanism for linking is an open
+   question; the identity on the wire is still only the key.
+3. **Own provider key.** The client bypasses the relay entirely and
    calls a door directly with `CODER_DOOR_KEY` or
    `CODER_AI_GATEWAY_KEY`, as the current `ResponsesDoor` does.
 
-Class 1 is the new work on both sides. Classes 2 and 3 exist today: the
-service's admission chain already tries session, API key, Nostr header,
-and token bearer in that order, and the client's env-var door already
-exists.
+Class 1 is the new work. Class 3 exists today.
 
 ## Client identity
 
-### Key custody
-
 - On first run, the terminal generates a keypair and writes it under
-  `~/.openagents/` (proposed: `identity.json`, mode `0600`), alongside the
-  existing session layout the private clients already use.
-- The `npub` is the user's identity on the wire and the handle the service
-  bills. The terminal displays it on request.
-- The secret key never leaves the device. The service stores only the
-  `npub` in `anonymous_people`.
-- Proposed, optional: derive the key from a BIP-39 mnemonic (NIP-06) so a
-  user can back up or move an identity by writing down words. The private
-  `coder-auth` crate already carries a NIP-06 module; this repository
-  would implement or vendor an equivalent derivation.
+  `~/.openagents/` (proposed: `identity.json`, mode `0600`).
+- The `npub` is the user's identity on the wire and the handle the
+  worker bills. The terminal displays it on request.
+- The secret key never leaves the device. Nothing server-side ever sees
+  or stores an `nsec`.
+- Optional: derive the key from a BIP-39 mnemonic (NIP-06) so a user can
+  back up or move an identity by writing down words.
 
-### Signing dependency
+The signing and protocol code comes from `crates/nostr` — the moved
+`immortal-core` domain, which carries NIP-01 events, BIP-340 Schnorr,
+NIP-19 `npub`/`nsec`, and NIP-44 encryption. The same crate serves the
+relay's verifier and the terminal's signer.
 
-The private repo signs with its `coder-auth` crate, which is not public.
-The cryptography underneath is the public `immortal-core` crate
-(`OpenAgentsInc/immortal`, CC0), which carries NIP-01 events, BIP-340
-Schnorr signing, and NIP-19 `npub`/`nsec` encoding. Proposed: add a small
-`auth` module in `crates/coder` that builds and signs the two event shapes
-below on `immortal-core` (or `secp256k1` + `sha2` + `base64` directly).
-This is roughly 150 lines, all of it specified here and in NIP-98.
+## Connection authentication: NIP-42
 
-## Request authentication: NIP-98
-
-Every HTTP request to the service carries a kind-`27235` event in its
-`Authorization` header:
-
-```
-Authorization: Nostr <base64url-or-base64(json event)>
-```
-
-The event:
+The relay implements NIP-42. On connect it sends an `AUTH` message with
+a challenge; the client answers with a kind-`22242` event whose tags
+name the relay URL and the challenge:
 
 ```jsonc
-{
-  "kind": 27235,
+["AUTH", {
+  "kind": 22242,
   "pubkey": "<caller x-only public key, hex>",
-  "created_at": 1760000000,           // within the server's skew window
+  "created_at": 1760000000,
   "tags": [
-    ["u", "https://<service>/v1/responses"],   // exact absolute URL
-    ["method", "POST"],                       // exact HTTP method
-    ["payload", "<sha256 hex of request body>"], // required on POST
-    ["token", "<base64 kind-27241 event>"]      // only when bound
+    ["relay", "wss://relay.openagents.com"],
+    ["challenge", "<challenge string from the relay>"]
   ],
   "content": "",
   "sig": "<BIP-340 schnorr signature>"
-}
+}]
 ```
 
-Verification rules, as the private `coder-auth` verifier implements them:
+The relay verifies the signature, the challenge, and the timestamp
+window (the moved implementation uses 600 s), then treats the socket as
+that `npub`. Every event the socket publishes is already signed, so
+per-message auth is unnecessary — unlike the HTTP design, there is no
+per-request signing at all.
 
-- Kind must be `27235`; `created_at` within the configured skew (60 s
-  today); `u` and `method` match the request exactly; `payload` matches
-  the body hash when present.
-- The event id is claimed in a nonce store until its window closes, so a
-  captured header replays at most zero more times per instance.
-- Identity resolution: a `token` tag carries a bound identity token and
-  must name the signing key as its subject; an event signed by a trusted
-  issuer resolves identity from its own tags; anything else is currently
-  refused as `Unknown`.
+## Requests and replies
 
-### Proposed server change: admit the bare key
+The job flow, NIP-90-shaped (kind family is an open question in the
+relay plan; the shape is what matters here):
 
-Today a validly signed request from an unknown key gets `Refusal::Unknown`.
-The anonymous tier requires one change in the private service: when a
-NIP-98 event verifies and resolves no identity, map `auth.pubkey` through
-`people::anonymous(npub)` and admit it as an anonymous caller. The
-plumbing exists — `anonymous_people` maps an `npub` to a person with a
-negative synthetic GitHub id and its own account — the forum delegation
-path already writes those rows. Admission policy (`Admits::Anyone`) and
-the chat surface already differ from run-ordering policy, so anonymous
-callers can reach generation without reaching the fleet.
+1. The terminal publishes a job-request event: kind `5xxx` or a private
+   kind, NIP-44-encrypted to the worker's `npub`, carrying the task and
+   transcript.
+2. The relay fans it out to the worker's subscription (and stores it if
+   the chosen kind is non-ephemeral).
+3. The worker publishes feedback events `e`-tagged to the request id:
+   `judgment` (the classify verdict), `partial` (stream deltas),
+   `status` (queued/processing/failed).
+4. It finishes with a result event carrying the final text and usage.
+5. The terminal subscribes `#e: [<request-id>]` before publishing, and
+   renders the same judgment line, streaming text, and token rail it
+   draws today.
 
-### Authenticated requests
-
-A user who holds an account presents its token bound to the same key:
-`POST /v1/token` on the service mints a kind-`27241` identity token
-(optionally bound with a `p` tag naming the caller key), and the client
-carries that token in the `token` tag of every request auth. Binding is
-what keeps a leaked token useless without the key. Unbound tokens also
-work as `Authorization: Bearer <base64 event>` for clients that sign
-nothing, at bearer-token risk.
-
-## WebSocket authentication: NIP-42
-
-The service's `/v1/responses` also answers a websocket upgrade for
-persistent sessions. Proposed client flow, matching the server's existing
-challenge path:
-
-1. Client sends a `challenge` frame on the open socket.
-2. Server answers `session.challenge` with a fresh nonce.
-3. Client signs a kind-`22242` event naming the challenge and the service
-   URL, and sends it as an `authorize` frame, with a `token` tag when the
-   key is account-bound.
-4. Server verifies signature, challenge, skew, and token, then sends
-   `session.authorized` naming the caller.
-
-For the anonymous tier the same extension applies: a verified kind-`22242`
-with no token maps the signing `npub` to `anonymous_people`. The initial
-client can ship POST-only; the socket is a later optimization and this
-document does not require it.
-
-## Free usage and quotas
-
-All quota decisions are server-side. The proposal wires existing knobs:
-
-- **Opening credit.** `CODER_BALANCE_CENTS` already grants credit on first
-  recognition. Anonymous npub-mapped accounts get a small configured
-  opening credit so a new user can have a real conversation.
-- **Rate limit.** The service already enforces a process-local rolling
-  quota of 20 free generations per account per minute. Anonymous callers
-  key on the synthetic account the npub maps to.
-- **Ledger.** Every generation already reads a balance and writes a ledger
-  row against the account; anonymous accounts behave identically.
-- **Abuse controls to add.** Per-IP request limits at the edge, a daily
-  cap per anonymous account, and a cap on anonymous account creation per
-  IP (the npub is free to mint, so the bound must live on IP, not key).
-  Sized so legitimate anonymous use is comfortable and farming the
-  opening credit is not.
-
-Exact numbers are operator configuration, not protocol. The service
-refuses with typed errors (`insufficient_credit`, `rate_limited`) that
-the client renders as plain text.
-
-## Endpoints the client uses
-
-| Endpoint | Method | Purpose |
-| --- | --- | --- |
-| `/v1/responses` | `POST` | One generation, SSE stream. The wire the client's `ResponsesDoor` already speaks. |
-| `/v1/responses` | `GET` (upgrade) | Persistent socket, later. |
-| `/v1/credit` | `GET` | Caller reads its own balance, for the token rail. |
-| `/v1/token` | `POST` | Mint an identity token (authenticated users). |
-| `/.well-known/coder-issuer` | `GET` | Publish the issuer `npub`, so a client can check a minted token's issuer. |
-| `/v1/models` | `GET` | Model catalog, if the client ever lists lanes. |
-
-The client needs no new wire format for generation: the service answers
-the same Open Responses `POST` the current `ResponsesDoor` sends to the
-Vercel gateway. Only the `Authorization` header changes.
-
-## Service discovery and client configuration
-
-Proposed environment and defaults, mirroring the private terminal's
-conventions:
-
-- `CODER_CLOUD` — service base URL. Default: the production deployment
-  (a dedicated host, for example `https://coder.openagents.com`; exact
-  host is an operator decision). Local dev: `http://127.0.0.1:4300`.
-- The client builds request URLs as `{CODER_CLOUD}/v1/responses` and
-  signs the exact absolute URL in the `u` tag, so a base-URL change needs
-  no other work — the signature binds the URL it was made for.
-- `CODER_DOOR_KEY` / `CODER_AI_GATEWAY_KEY` keep their current meaning
-  and take precedence when set: own-key callers skip the service.
+The worker discovers requests by subscribing to the job-request kind
+with its own `npub` in `#p`. The terminal discovers the worker's `npub`
+from configuration or the relay's NIP-11 document.
 
 ## Classify with no keys
 
 Classification is a second provider call today (`jev` → TypeSafe API,
-`TYPESAFE_API_KEY`). Proposed precedence in the client:
+`TYPESAFE_API_KEY`). Precedence in the client:
 
 1. `TYPESAFE_API_KEY` set → local classify through `jev`, unchanged.
-2. No key, service configured → `POST {CODER_CLOUD}/v1/classify` (new
-   endpoint), same NIP-98 auth, same quota accounting. The service runs
-   the question set with its own TypeSafe credential and answers the Jev
-   response shape.
-3. Neither → the current unrouted fallback (generate without judgment).
+2. No key → the worker classifies server-side with its own TypeSafe
+   credential and publishes the verdict as the first feedback event. No
+   separate endpoint; classify is a step in the same job.
+3. No key and no worker → the current unrouted fallback (generate
+   without judgment).
 
-The `/v1/classify` endpoint is server work in the private repo; the
-request and response mirror the Jev `/v1/answers` shape so `crates/coder`
-reuses its decode path. Treating classify as billable service work also
-keeps the question set on the server, where its tuning is not public.
+## Free usage and quotas
+
+All quota decisions are worker-side. The relay contributes transport
+limits only:
+
+- **Free allowance.** The worker keeps a ledger keyed by `npub` and
+  grants each new `npub` a configured allowance — enough for a real
+  conversation, small enough to limit farming.
+- **Rate limits.** The moved relay already rate-limits per pubkey and
+  per IP. The worker adds its own per-`npub` concurrency and daily caps.
+- **Abuse.** `npub`s are free to mint, so the allowance is small and the
+  defenses stack: per-IP socket/event rates at the relay, per-`npub`
+  caps at the worker, and optionally a NIP-13 proof-of-work `nonce`
+  requirement on anonymous job requests (weight is a tag the relay
+  already validates).
+- **Accounting.** One NIP-AM kind-`44200` turn-metric event per turn,
+  NIP-44-encrypted to the owner, gives durable per-turn token/cost
+  records the relay already stores and gates correctly.
+
+Exact numbers are operator configuration, not protocol. Over-quota
+requests get a typed `status`/`error` feedback event naming the reason
+(`quota_exhausted`, `rate_limited`), which the client renders as text.
+
+## Configuration
+
+- `CODER_RELAY` — relay URL. Default `wss://relay.openagents.com`;
+  local dev `ws://127.0.0.1:8080` (the moved relay's default port).
+- `CODER_WORKER` — the worker `npub` job requests are encrypted to, if
+  it is not advertised in NIP-11.
+- `CODER_DOOR_KEY` / `CODER_AI_GATEWAY_KEY` keep their current meaning
+  and take precedence when set: own-key callers skip the relay.
+- `TYPESAFE_API_KEY` keeps its current meaning for local classify.
 
 ## Errors and refusals
 
-The server already returns typed refusals; the client should render them
-verbatim plus a suggested action:
+There are no HTTP statuses on this path. Failures arrive as typed
+events or socket-level conditions:
 
-| Condition | Status | Client action |
+| Condition | Surface | Client action |
 | --- | --- | --- |
-| No credential | `401`, `sign_in_required` | Offer sign-in or own-key setup. |
-| Bad signature, stale `created_at`, URL/method/payload mismatch, replay | `401` + `WWW-Authenticate: Nostr`, typed `code` | Re-sign and retry once; then surface. |
-| Valid key, unknown identity | `401`, `unknown` today | With the anonymous change this becomes an anonymous admit. |
-| Quota or credit exhausted | `402`/`429`, typed | Show remaining-credit link or wait hint. |
-| Server store unavailable | `503` | Retry; never treat as revoked credential. |
+| NIP-42 answer invalid or missing | relay `CLOSED`/notice | Re-answer once, then surface. |
+| Job request rejected at ingest | relay `OK` false + reason | Show the reason verbatim. |
+| Worker offline | no feedback events within a deadline | Report worker unavailable; retry. |
+| Quota or rate exhausted | `status`/`error` feedback, typed | Show allowance hint or own-key pointer. |
+| Malformed result/feedback | unparseable event | Ignore the event; flag the turn failed. |
 
 An anonymous user who exhausts the allowance sees the refusal and a
 pointer to authenticate or set a provider key.
 
 ## Deployment
 
-Proposed: a new deployment of the existing service binary — no new server
-code beyond the anonymous-admission and `/v1/classify` changes:
+Two deploy units, both reachable only through the relay:
 
-- Dedicated host for this surface (for example `coder.openagents.com`),
-  so anonymous traffic and quotas are isolated from the current
-  `openagents.com` deployment's invite list.
-- Config: `CODER_ISSUER_NSEC`/`CODER_ISSUER_NPUBS` for minting and trust,
-  `CODER_BALANCE_CENTS` for the opening credit, `CODER_DOOR_*` for the
-  provider credentials, `CODER_MODEL` for the served lane.
-- Database: the existing schema already carries `anonymous_people`,
-  accounts, and the ledger; no new tables are required for this proposal.
-- Observability: count admissions, refusals by code, anonymous-account
-  creation rate, and quota exhaustion. Do not log prompts, signatures,
-  event ids beyond their nonce lifetime, or `nsec`s — the service never
-  sees a secret key by design.
+- **Relay** — `crates/nostr-relay` at `relay.openagents.com`, one binary
+  and one Postgres behind TLS termination. Config: database URL, public
+  relay URL, relay signer key (NIP-29/relay-signed kinds), management
+  pubkey, rate limits. No provider keys, no issuer keys, no billing
+  config — it is a general Nostr relay.
+- **Worker** — a second process with a private deployment holding
+  `CODER_DOOR_*` / `TYPESAFE_API_KEY` / `CODER_AI_GATEWAY_KEY` as env,
+  its quota config, and its own small store for the `npub` ledger. It
+  only needs outbound wss to the relay.
 
-## Local development server
+Observability without content: count connections, AUTH answers,
+job-request volume, quota refusals, and worker latency. Do not log
+prompts, ciphertext payloads, event ids beyond their window, or any
+secret — the worker sees plaintext (NIP-44 decrypts to it) and must not
+log it.
 
-Before the public deployment exists, a contributor or the operator runs
-the service locally in dev mode:
+## Local development
 
-- The private `coder-serve` binary runs on `127.0.0.1:4300` (the port the
-  private terminal already uses for local mode), with a dev issuer key, a
-  local database, and either a real door key or a stub door.
-- Dev mode should relax admission so a freshly generated client key is
-  admitted anonymously with generous credit — that is the feature under
-  test.
-- The terminal points at it with `CODER_CLOUD=http://127.0.0.1:4300`; no
+The whole loop runs on a laptop:
+
+- `cargo run -p nostr-relay` against a local Postgres gives the relay;
+  the worker runs against the same relay with a dev `npub`, a dev door
+  key or stub, and generous quota.
+- The terminal points at it with `CODER_RELAY=ws://127.0.0.1:8080`; no
   `CODER_DOOR_KEY` or `TYPESAFE_API_KEY` needed.
-- A dev instance must never hold production provider keys, production
-  issuer keys, or a production database, and must not mint tokens a
-  production instance would trust (a dev `CODER_ISSUER_NSEC` is not in
-  production's `CODER_ISSUER_NPUBS`).
+- A dev worker must never hold production provider keys or answer on
+  the production relay (its `npub` is not the configured worker there).
 
-Because `coder-serve` is private, this path serves developers with repo
-access today. If a fully public local mode is wanted later, the honest
-version is a thin public dev server in this repository that implements
-the same two endpoints against a caller-supplied key — listed as an open
-question, not assumed.
+Because both units live in this repository, local dev needs no private
+code at all — the first fully public path to a working terminal.
 
 ## Migration
 
-1. Add the `auth` module (key custody + NIP-98 signing) to `crates/coder`.
-2. Extend `ResponsesDoor` with a service mode: base URL + Nostr header
-   instead of a bearer key.
-3. Server: admit verified-but-unknown keys as anonymous callers; add
-   `/v1/classify`; deploy to the new host.
-4. Terminal: first-run key generation, `npub` display, `CODER_CLOUD`
-   wiring, refusal rendering.
-5. Existing env-key behavior stays as the own-key tier; `StubGenerate`
-   remains the last fallback.
+1. Extract `crates/nostr` + `crates/nostr-relay` per the relay plan;
+   deploy `relay.openagents.com` from this repo.
+2. Add key custody + NIP-42 to `crates/coder` on top of `crates/nostr`.
+3. Stand up the worker (kind subscription, classify, door, quota
+   ledger).
+4. Add `RelayDoor` beside `ResponsesDoor`: connect, AUTH, publish
+   encrypted job request, render feedback events.
+5. Env-key behavior stays as the own-key tier; `StubGenerate` remains
+   the last fallback.
 
 ## Open questions
 
-- **Production host name** for the new deployment, and whether it shares
-  the existing database or gets its own.
-- **Free-allowance size**: opening credit in cents, per-minute and
-  per-day caps for anonymous accounts.
-- **NIP-06 mnemonic** on first run: convenience and backup, or a file
-  key only? (The private crate already derives NIP-06 keys.)
-- **Bound vs bearer tokens** for the authenticated tier's default:
-  bound is safer, bearer is simpler for scripts.
-- **Public local dev server**: worth building a thin OSS server that
-  proxies `/v1/responses` and `/v1/classify` to a caller-supplied key, or
-  is dev-mode `coder-serve` enough?
-- **Classify placement**: server-side `/v1/classify` (proposed) vs. the
-  terminal embedding the question set and the service proxying Jev raw.
-- **WebSocket path**: adopt NIP-42 sessions now, or stay on per-request
-  NIP-98 until multiplexing matters?
-- **Account linking**: does an anonymous npub later merge into a GitHub
-  account (the `p`-tag binding suggests yes), and what happens to its
-  credit?
+- **Job kind family** — NIP-90 `5xxx/6xxx/7000` vs our own kinds; see
+  the relay plan.
+- **Persistence** — stored job events (free multi-device history) vs
+  ephemeral (no retention).
+- **Worker home** — `crates/coder-agent` here vs a binary in `crates/coder`
+  vs private repo.
+- **Account linking** — how an `npub` becomes a recognized account:
+  NIP-OA attestation, a minted credential, or a payment rail.
+- **Free-allowance size** — per-`npub` and per-IP numbers, PoW weight if
+  used.
+- **Worker discovery** — NIP-11 field, well-known document, or config.
+- **NIP-29 sessions** — whether conversations become group channels
+  later; affects kind design.
 
 ## References
 
-- NIP-98, HTTP auth: `~/work/immortal/nips/official/98.md`.
-- NIP-42, challenge auth: implemented in `crates/coder-auth/src/nip42.rs`
-  (private); the kind-`22242` shape is standard.
-- OpenAgents credential NIP draft (kinds `27240`–`27242`, tags):
-  `~/work/coder/crates/coder-auth/docs/events.md`, mirrored as
-  `~/work/immortal/nips/openagents/CA.md`.
-- Existing admission, anonymous-people, free-limit, and mint paths:
-  `~/work/coder/bins/coder-serve/src/` (`mcp/admission.rs`,
-  `people.rs`, `responses_endpoint/`, `mint.rs`, `handshake.rs`).
-- Public signing primitives: `~/work/immortal/crates/immortal-core`.
+- Relay move and deployment plan:
+  [`relay-backend-plan.md`](relay-backend-plan.md).
+- NIP-42 auth and relay behavior: `nips/official/42.md` (moved tree),
+  `~/work/immortal/crates/immortal-relay/src/gateway/auth.rs`.
+- NIP-44 encryption: `nips/official/44.md`,
+  `~/work/immortal/crates/immortal-core/src/nip44.rs`.
+- Job-request prior art: `nips/official/90.md` (NIP-90 DVM; marked
+  unrecommended upstream, shape still applies).
+- Buzz agent NIPs this design reuses: `nips/block/NIP-OA.md`,
+  `NIP-AM.md`, `NIP-AO.md`, `NIP-AE.md` (moved tree).
