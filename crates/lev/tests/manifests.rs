@@ -1,0 +1,111 @@
+//! The committed manifests, checked against the committed records.
+//!
+//! A manifest is a claim about files that live somewhere else: calibration
+//! records in this repository, and a package on one machine. The records are
+//! here, so this suite checks them on every run, and the fault it exists to
+//! catch is a record edited after a release was written — the artifact-shaped
+//! version of the stale map that survived two adapter runs.
+//!
+//! The package is out of git at 133 MB, so the artifact check runs only when
+//! the package is on the machine running the test.
+
+use std::path::{Path, PathBuf};
+
+use lev::manifest::{CONTRACT, MANIFEST_SCHEMA, Manifest};
+
+/// Every manifest in `crates/lev/manifests`, by path.
+fn committed() -> Vec<PathBuf> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests");
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .expect("the manifests directory")
+        .map(|entry| entry.expect("an entry").path())
+        .filter(|path| path.extension().and_then(|extension| extension.to_str()) == Some("json"))
+        .collect();
+    paths.sort();
+    assert!(!paths.is_empty(), "no manifest is committed");
+    paths
+}
+
+fn load(path: &Path) -> Manifest {
+    Manifest::load(path).unwrap_or_else(|fault| panic!("{}: {fault}", path.display()))
+}
+
+#[test]
+fn every_committed_manifest_loads_and_declares_this_build_of_the_contract() {
+    for path in committed() {
+        let manifest = load(&path);
+        assert_eq!(manifest.schema, MANIFEST_SCHEMA, "{}", path.display());
+        assert_eq!(manifest.interface.contract, CONTRACT, "{}", path.display());
+        assert!(!manifest.release().starts_with('@'), "{} has no name", path.display());
+        assert_eq!(
+            manifest.estimator.estimator, "l2",
+            "{} names an estimator this door does not run",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn every_eval_ref_matches_the_record_it_names() {
+    // The check that would have caught the stale map: a record edited, or
+    // refitted, or deleted, after the release that rests on it was written.
+    for path in committed() {
+        let manifest = load(&path);
+        manifest
+            .check_eval_refs()
+            .unwrap_or_else(|fault| panic!("{}: {fault}", path.display()));
+    }
+}
+
+#[test]
+fn an_adapted_release_admits_nothing_until_a_map_is_fitted_against_it() {
+    // Three adapters exist and every committed calibration map was fitted
+    // against the base model with no adapter attached. A map fitted on the
+    // base does not describe an adapted door, so no adapted release names one
+    // and none of them serves a probability. That is the rule working, not a
+    // gap in the files.
+    for path in committed() {
+        let manifest = load(&path);
+        if manifest.artifact.is_none() {
+            continue;
+        }
+        assert!(
+            manifest.eval_ref.is_empty(),
+            "{} names a measurement; check it was fitted against this adapter",
+            path.display()
+        );
+        assert!(
+            manifest.admitted_families().is_empty(),
+            "{} admits a family with no measurement",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn the_base_release_admits_exactly_the_families_its_records_admit() {
+    let manifest = load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests/lev-base-v1.json"));
+    assert_eq!(manifest.release(), "lev-base@1");
+    assert!(manifest.artifact.is_none(), "the operating system ships the base");
+    assert_eq!(manifest.admitted_families(), vec!["routing"]);
+    for family in ["severity", "urgency"] {
+        let refused = manifest.eval_ref(family).expect("the record is still named");
+        assert!(!refused.admitted, "{family} admitted");
+        assert!(refused.verdict.contains("unverifiable"), "{}", refused.verdict);
+    }
+}
+
+#[test]
+fn the_package_is_checked_when_it_is_on_this_machine() {
+    for path in committed() {
+        let manifest = load(&path);
+        let Some(artifact) = &manifest.artifact else { continue };
+        if !artifact.resolved_path().is_dir() {
+            eprintln!("{} is not on this machine; the artifact is not checked", artifact.path);
+            continue;
+        }
+        manifest
+            .check_artifact()
+            .unwrap_or_else(|fault| panic!("{}: {fault}", path.display()));
+    }
+}

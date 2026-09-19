@@ -1,0 +1,67 @@
+{
+  "schema": "openagents.lev.decision_model_manifest.v1",
+  "name": "lev-adapted",
+  "version": 2,
+  "description": "Support-desk judgments on support-v2, trained on the choice objective and the ordered certainty band.",
+  "created": "2026-09-19",
+  "artifact": {
+    "path": "~/code/lev-adapter-work/runs/lev-band/levband.fmadapter",
+    "format": "fmadapter",
+    "sha256": "7d8fbc41dfe21028c461305bc051a019f19a8bd7327e44787ac4a2630b754b4b",
+    "sizeBytes": 133312320,
+    "metadataSha256": "193062688f25ee26d3f81bc9df3097d58ba46ad58080170f32a15a0adb7ed5d7",
+    "loraRank": 32,
+    "adapterIdentifier": "fmadapter-levband-9799725"
+  },
+  "base": {
+    "signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+    "minOsBuild": "25E246",
+    "runtime": "Apple FoundationModels"
+  },
+  "interface": {
+    "contract": "openagents.systemone.v1",
+    "endpoint": "POST /v1/systemone",
+    "questions": {
+      "choice": {
+        "minCriteria": 2,
+        "maxCriteria": 255,
+        "answer": [
+          "choice",
+          "confidence",
+          "probabilities"
+        ]
+      },
+      "noul": {
+        "answer": [
+          "noul"
+        ]
+      },
+      "score": {
+        "minCriteria": 2,
+        "maxCriteria": 10,
+        "answer": [
+          "score",
+          "confidence",
+          "legend",
+          "probabilities"
+        ]
+      }
+    },
+    "extensions": [
+      "estimator",
+      "require_calibration",
+      "family"
+    ],
+    "families": [
+      "routing",
+      "severity",
+      "urgency"
+    ]
+  },
+  "estimator": {
+    "estimator": "l2",
+    "samples": 8,
+    "seed_base": 0
+  },
+  "evalRef": []
+}

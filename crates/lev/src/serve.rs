@@ -26,6 +26,14 @@
 //! record that does not match is refused by field — the operating system
 //! build, the base model signature, or the adapter — and the reason is
 //! published in `GET /v1/models` rather than logged and forgotten.
+//!
+//! **And unless the release names the map.** A door started with
+//! `--manifest` takes its model name, artifact, estimator, and sample count
+//! from one document, and serves only the records that document names, with
+//! the digest and verdict it recorded. A record that matches the runtime and
+//! is absent from the manifest does not serve: a family without a measured
+//! `evalRef` does not admit, and dropping a file into a directory is not a
+//! measurement. See [`crate::manifest`] and `docs/lev/manifest.md`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -39,13 +47,15 @@ use axum::routing::{get, post};
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 
-use gym::calibrate::{Mismatch, Record};
+use gym::calibrate::{EstimatorConfig, Mismatch, Record};
 use gym::row::DoorIdentity;
 
+use crate::adapter::Metadata;
 use crate::api::{MAX_CHOICE_OPTIONS, MAX_SCORE_LEVELS, SystemOneRequest, SystemOneResponse, Usage};
 use crate::bridge::Pool;
 use crate::error::{Refusal, RefusalCode};
 use crate::estimator::{Estimator, answer, l2_pool_with};
+use crate::manifest::{Fault, Manifest};
 use crate::schema::compile;
 
 /// How many seeded samples one question draws by default.
@@ -59,6 +69,61 @@ pub const DEFAULT_SAMPLES: u64 = 8;
 /// unnoticed — but it is a real part of the runtime and a record names it.
 pub const OS_BUILD_VAR: &str = "LEV_OS_BUILD";
 
+/// Why a record may not serve this door.
+///
+/// [`Mismatch`] answers for the runtime: the operating system build, the base
+/// model signature, the adapter. The rest answer for the manifest, which is
+/// the document that says which measurements a release rests on. Both halves
+/// name one field, because "the record does not match" is not an answer
+/// anybody can act on.
+#[derive(Debug, thiserror::Error)]
+pub enum Refused {
+    /// The record does not match the runtime.
+    #[error("{0}")]
+    Door(#[from] Mismatch),
+    /// The manifest does not name this measurement.
+    ///
+    /// The rule from `docs/kev/mesh-plan.md`, read from the serving side: a
+    /// family without a measured `evalRef` does not admit, so a record that
+    /// happens to be in the directory and is not in the document does not
+    /// serve. Dropping a file into a directory is not a measurement.
+    #[error(
+        "evalRef: {release} does not name a measurement for this family, and a family without \
+         one does not admit"
+    )]
+    Unnamed {
+        /// The release the door is serving.
+        release: String,
+    },
+    /// The record on disk is not the one the manifest recorded.
+    #[error("{release} recorded this measurement differently — {fault}")]
+    Changed {
+        /// The release the door is serving.
+        release: String,
+        /// The field that disagrees.
+        fault: Fault,
+    },
+    /// The map was fitted under a different estimator than the door runs.
+    ///
+    /// A map fitted on eight draws describes an eight-draw signal. Serving it
+    /// over sixteen rescales a distribution the map never saw.
+    #[error("estimator_config: the map was fitted with {fitted} and {release} serves {serving}")]
+    Estimator {
+        /// The release the door is serving.
+        release: String,
+        /// What the record was fitted with.
+        fitted: String,
+        /// What the manifest says this door runs.
+        serving: String,
+    },
+}
+
+/// One estimator configuration, in one line.
+fn estimator_line(config: &EstimatorConfig) -> String {
+    let EstimatorConfig { estimator, samples, seed_base } = config;
+    format!("{estimator} over {samples} draws from seed block {seed_base}")
+}
+
 /// What the door found in its calibration directory.
 ///
 /// Both halves are kept. A record that may serve is indexed by its family; a
@@ -69,7 +134,7 @@ pub const OS_BUILD_VAR: &str = "LEV_OS_BUILD";
 #[derive(Debug, Default)]
 pub struct Calibration {
     serving: BTreeMap<String, Record>,
-    refused: Vec<(String, Mismatch)>,
+    refused: Vec<(String, Refused)>,
     trouble: Option<String>,
 }
 
@@ -78,6 +143,22 @@ impl Calibration {
     /// ones it may not, with the field that refused each.
     #[must_use]
     pub fn load(dir: &Path, os_build: &str, identity: &DoorIdentity) -> Self {
+        Self::load_for(dir, os_build, identity, None)
+    }
+
+    /// The same, with the manifest that says which measurements this release
+    /// rests on.
+    ///
+    /// A record has to pass the runtime check and then be the record the
+    /// manifest names. Without a manifest only the runtime check runs, which
+    /// is the state every door was in before a release had a document.
+    #[must_use]
+    pub fn load_for(
+        dir: &Path,
+        os_build: &str,
+        identity: &DoorIdentity,
+        manifest: Option<&Manifest>,
+    ) -> Self {
         let mut calibration = Self::default();
         let records = match Record::load_dir(dir) {
             Ok(records) => records,
@@ -95,11 +176,15 @@ impl Calibration {
             } else {
                 record.family.clone()
             };
-            match record.serve_to(os_build, identity) {
+            if let Err(mismatch) = record.serve_to(os_build, identity) {
+                calibration.refused.push((named, mismatch.into()));
+                continue;
+            }
+            match against_manifest(&record, manifest) {
                 Ok(()) => {
                     calibration.serving.insert(record.family.clone(), record);
                 }
-                Err(mismatch) => calibration.refused.push((named, mismatch)),
+                Err(refused) => calibration.refused.push((named, refused)),
             }
         }
         calibration
@@ -119,12 +204,12 @@ impl Calibration {
 
     /// Why a record was refused, by the family or file it named.
     #[must_use]
-    pub fn refusal(&self, family: &str) -> Option<&Mismatch> {
+    pub fn refusal(&self, family: &str) -> Option<&Refused> {
         self.refused.iter().find(|(named, _)| named == family).map(|(_, reason)| reason)
     }
 
     /// Every record that may not serve, with the field that refused it.
-    pub fn refusals(&self) -> impl Iterator<Item = (&str, &Mismatch)> {
+    pub fn refusals(&self) -> impl Iterator<Item = (&str, &Refused)> {
         self.refused.iter().map(|(named, reason)| (named.as_str(), reason))
     }
 
@@ -142,6 +227,31 @@ impl Calibration {
     }
 }
 
+/// Whether the manifest names this record, and names it as it stands.
+///
+/// This is the third of the four checks that used to answer to nobody. It
+/// asks the document rather than the directory: the record has to be the
+/// measurement the release rests on, unchanged since the release was written,
+/// and fitted under the estimator the release serves.
+fn against_manifest(record: &Record, manifest: Option<&Manifest>) -> Result<(), Refused> {
+    let Some(manifest) = manifest else { return Ok(()) };
+    let release = manifest.release();
+    let Some(reference) = manifest.eval_ref(&record.family) else {
+        return Err(Refused::Unnamed { release });
+    };
+    reference
+        .matches(record)
+        .map_err(|fault| Refused::Changed { release: release.clone(), fault })?;
+    if record.estimator_config != manifest.estimator {
+        return Err(Refused::Estimator {
+            release,
+            fitted: estimator_line(&record.estimator_config),
+            serving: estimator_line(&manifest.estimator),
+        });
+    }
+    Ok(())
+}
+
 /// What the door serves.
 pub struct Door {
     pool: Pool,
@@ -149,6 +259,8 @@ pub struct Door {
     samples: u64,
     seed_base: u64,
     adapter: Option<String>,
+    pinned: Option<Metadata>,
+    manifest: Option<Manifest>,
     os_build: String,
     base_signature: String,
     calibration: Calibration,
@@ -170,22 +282,54 @@ impl Door {
             samples: samples.max(1),
             seed_base: 0,
             adapter: None,
+            pinned: None,
+            manifest: None,
             os_build: std::env::var(OS_BUILD_VAR).unwrap_or_default(),
             base_signature,
             calibration: Calibration::default(),
         }
     }
 
+    /// Serves the release a manifest describes.
+    ///
+    /// The manifest supplies the model name, the artifact, the estimator, and
+    /// the sample count, all of which used to be separate flags that nothing
+    /// compared. Check it with [`Manifest::check_artifact`] before calling
+    /// this: a door reads the document, and the caller decides whether a
+    /// document that does not check out is worth starting for.
+    ///
+    /// Call it before [`Door::with_calibration`].
+    #[must_use]
+    pub fn with_manifest(mut self, manifest: Manifest) -> Self {
+        self.model = manifest.name.clone();
+        self.samples = manifest.estimator.samples.max(1);
+        self.seed_base = manifest.estimator.seed_base;
+        if let Some(artifact) = &manifest.artifact {
+            self = self.with_adapter(artifact.resolved_path().display().to_string());
+        }
+        self.manifest = Some(manifest);
+        self
+    }
+
     /// Reads the calibration records in `dir` and keeps the ones that match
     /// this door.
     ///
-    /// Call it after [`Door::with_adapter`]: attaching an adapter changes the
-    /// door, and a map fitted against the base must not survive the change.
+    /// Call it after [`Door::with_adapter`] and [`Door::with_manifest`]:
+    /// attaching an adapter changes the door, a map fitted against the base
+    /// must not survive the change, and the manifest is what says which maps
+    /// this release rests on.
     #[must_use]
     pub fn with_calibration(mut self, dir: impl AsRef<Path>) -> Self {
         let identity = self.identity();
-        self.calibration = Calibration::load(dir.as_ref(), &self.os_build, &identity);
+        self.calibration =
+            Calibration::load_for(dir.as_ref(), &self.os_build, &identity, self.manifest.as_ref());
         self
+    }
+
+    /// The release this door serves, when it serves one.
+    #[must_use]
+    pub fn manifest(&self) -> Option<&Manifest> {
+        self.manifest.as_ref()
     }
 
     /// The operating system build this door reports, for a record to match.
@@ -198,11 +342,31 @@ impl Door {
     /// What this door is running, as far as it can be verified.
     #[must_use]
     pub fn identity(&self) -> DoorIdentity {
-        DoorIdentity::published(
-            self.model.clone(),
-            self.base_signature(),
-            self.adapter.clone().unwrap_or_default(),
-        )
+        DoorIdentity::published(self.model.clone(), self.base_signature(), self.adapter_id())
+    }
+
+    /// What this door calls the adapter it serves.
+    ///
+    /// The release from the manifest, when the release has an artifact —
+    /// `lev-adapted@2` names one of three packages that a filesystem path
+    /// could not, since the path is machine-local and the three differ only
+    /// by run directory. Without a manifest, the identifier the package
+    /// itself declares, which is at least portable. Never the path.
+    ///
+    /// Empty when no adapter is attached, including for a release that names
+    /// no artifact. The field says which adapter a record was fitted against,
+    /// and a door serving the base was fitted against none; the release it
+    /// runs under is published separately, as `manifest`.
+    #[must_use]
+    pub fn adapter_id(&self) -> String {
+        match &self.manifest {
+            Some(manifest) if manifest.artifact.is_some() => manifest.release(),
+            _ => self
+                .pinned
+                .as_ref()
+                .map(|metadata| metadata.adapter_identifier.clone())
+                .unwrap_or_default(),
+        }
     }
 
     /// What this door found in its calibration directory.
@@ -213,15 +377,15 @@ impl Door {
 
     /// The base signature this door is pinned to.
     ///
-    /// An attached package pins it exactly. With no adapter the runtime still
-    /// publishes the prefix it accepts adapters for, which is read once at
-    /// startup, so a base door is identifiable too.
+    /// An attached package pins it exactly, and the package is read once when
+    /// it is attached rather than on every call that asks. With no adapter
+    /// the runtime still publishes the prefix it accepts adapters for, which
+    /// is read once at startup, so a base door is identifiable too.
     #[must_use]
     pub fn base_signature(&self) -> String {
-        self.adapter
-            .as_deref()
-            .and_then(|path| crate::adapter::Package::open(path).ok())
-            .map(|package| package.metadata.base_model_signature)
+        self.pinned
+            .as_ref()
+            .map(|metadata| metadata.base_model_signature.clone())
             .unwrap_or_else(|| self.base_signature.clone())
     }
 
@@ -245,7 +409,9 @@ impl Door {
     /// error.
     #[must_use]
     pub fn with_adapter(mut self, path: impl Into<String>) -> Self {
-        self.adapter = Some(path.into());
+        let path = path.into();
+        self.pinned = crate::adapter::Package::open(&path).ok().map(|package| package.metadata);
+        self.adapter = Some(path);
         self
     }
 
@@ -253,6 +419,18 @@ impl Door {
     #[must_use]
     pub fn pool_width(&self) -> usize {
         self.pool.width()
+    }
+
+    /// How many seeded draws one estimate rests on.
+    #[must_use]
+    pub const fn samples(&self) -> u64 {
+        self.samples
+    }
+
+    /// The seed block every question draws from.
+    #[must_use]
+    pub const fn seed_base(&self) -> u64 {
+        self.seed_base
     }
 
     /// The router, ready to serve.
@@ -305,7 +483,21 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
             "seed_base": door.seed_base,
             "pool_width": door.pool.width(),
             "resolution": 1.0 / door.samples as f64,
-            "adapter": door.adapter,
+            // The release, not the path. A path is machine-local, and three
+            // adapters that differ only by run directory are three paths and
+            // one name. Every row and every record this door's answers
+            // produce carry this string.
+            "adapter": door.adapter_id(),
+            // The document the rest of this card is keyed off, when the door
+            // was started from one.
+            "manifest": door.manifest.as_ref().map(|manifest| json!({
+                "schema": manifest.schema,
+                "release": manifest.release(),
+                "version": manifest.version,
+                "artifact_sha256": manifest.artifact.as_ref().map(|artifact| &artifact.sha256),
+                "min_os_build": manifest.base.min_os_build,
+                "admitted_families": manifest.admitted_families(),
+            })),
             // The signature a calibration record has to match to serve here.
             "base_model_signature": door.base_signature(),
             "os_build": door.os_build,
@@ -437,7 +629,7 @@ fn uncalibrated_reason(calibration: &Calibration, family: &str) -> String {
         // The map exists and lost. Nothing about this door is wrong, and
         // telling a caller to refit it against this door would be advice to
         // repeat a measurement that already answered.
-        Some(Mismatch::NotAdmitted { verdict }) => {
+        Some(Refused::Door(Mismatch::NotAdmitted { verdict })) => {
             return format!(
                 "a calibration map for `{family}` was fitted and the gate refused it: {verdict}. \
                  See docs/lev/calibration.md."
@@ -571,7 +763,101 @@ mod tests {
         assert!(adapter.contains("fmadapter-lev-9799725"), "{adapter}");
 
         let refused = calibration.refusal("severity").expect("an unadmitted map is refused");
-        assert!(matches!(refused, Mismatch::NotAdmitted { .. }), "{refused}");
+        assert!(matches!(refused, Refused::Door(Mismatch::NotAdmitted { .. })), "{refused}");
+    }
+
+    /// A manifest naming the records in `dir` that `families` covers.
+    fn manifest(dir: &Path, families: &[&str]) -> Manifest {
+        let mut manifest = Manifest {
+            schema: crate::manifest::MANIFEST_SCHEMA.to_string(),
+            name: "lev-base".to_string(),
+            version: 1,
+            description: "a test release".to_string(),
+            created: "2026-09-19".to_string(),
+            artifact: None,
+            base: crate::manifest::Base {
+                signature: BASE.to_string(),
+                min_os_build: "25E246".to_string(),
+                runtime: "Apple FoundationModels".to_string(),
+            },
+            interface: crate::manifest::Interface::of_contract(Vec::new()),
+            estimator: EstimatorConfig::new("l2", 8, 0),
+            eval_ref: Vec::new(),
+            source: dir.to_path_buf(),
+        };
+        for family in families {
+            let path = dir.join(format!("{family}.json"));
+            let digest = crate::manifest::digest_of(&path).expect("the record hashes");
+            let text = std::fs::read_to_string(&path).expect("the record reads");
+            let record = Record::from_json(&text).expect("the record parses");
+            manifest.eval_ref.push(crate::manifest::EvalRef::of_record(
+                &record,
+                format!("{family}.json"),
+                digest,
+            ));
+        }
+        manifest
+    }
+
+    #[test]
+    fn a_record_the_release_does_not_name_does_not_serve() {
+        // Both records match the runtime exactly. The manifest names one of
+        // them, and only that one serves: a family without a measured
+        // `evalRef` does not admit, so dropping a file into the directory is
+        // not a measurement.
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let serving = DoorIdentity::published("lev-base", BASE, "");
+        write(dir.path(), &record("routing", serving.clone(), true));
+        write(dir.path(), &record("urgency", serving.clone(), true));
+
+        let loose = Calibration::load(dir.path(), "25E246", &serving);
+        assert_eq!(loose.families(), vec!["routing", "urgency"], "without a document, both serve");
+
+        let manifest = manifest(dir.path(), &["routing"]);
+        let held = Calibration::load_for(dir.path(), "25E246", &serving, Some(&manifest));
+        assert_eq!(held.families(), vec!["routing"]);
+        let refused = held.refusal("urgency").expect("the unnamed map is refused");
+        assert!(matches!(refused, Refused::Unnamed { .. }), "{refused}");
+        assert!(refused.to_string().contains("lev-base@1"), "{refused}");
+    }
+
+    #[test]
+    fn a_record_edited_after_the_release_was_written_does_not_serve() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let serving = DoorIdentity::published("lev-base", BASE, "");
+        write(dir.path(), &record("routing", serving.clone(), true));
+        let manifest = manifest(dir.path(), &["routing"]);
+
+        // Refitted in place: the file still parses, still says `admitted`,
+        // and now rests on a different suite. This is the shape of the fault
+        // that left a base map sitting beside two adapters.
+        let mut refitted = record("routing", serving.clone(), true);
+        refitted.suite_digest = "0000000000".to_string();
+        write(dir.path(), &refitted);
+
+        let held = Calibration::load_for(dir.path(), "25E246", &serving, Some(&manifest));
+        assert!(held.is_empty(), "an edited record served");
+        let refused = held.refusal("routing").expect("the edited map is refused");
+        assert!(matches!(refused, Refused::Changed { .. }), "{refused}");
+        assert!(refused.to_string().contains("suiteDigest"), "{refused}");
+    }
+
+    #[test]
+    fn a_map_fitted_under_another_estimator_does_not_serve() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let serving = DoorIdentity::published("lev-base", BASE, "");
+        let mut sixteen = record("routing", serving.clone(), true);
+        sixteen.estimator_config = EstimatorConfig::new("l2", 16, 0);
+        write(dir.path(), &sixteen);
+
+        // The manifest serves eight draws. A map fitted on sixteen describes
+        // a signal this door does not produce.
+        let manifest = manifest(dir.path(), &["routing"]);
+        let held = Calibration::load_for(dir.path(), "25E246", &serving, Some(&manifest));
+        assert!(held.is_empty(), "a map fitted elsewhere served");
+        let refused = held.refusal("routing").expect("the map is refused");
+        assert!(matches!(refused, Refused::Estimator { .. }), "{refused}");
+        assert!(refused.to_string().contains("16 draws"), "{refused}");
     }
 
     #[test]

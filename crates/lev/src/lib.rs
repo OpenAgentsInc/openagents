@@ -19,6 +19,14 @@
 //! `gym::calibrate::Record` to serve a fitted map and writes none of its
 //! own; the dependency runs one way.
 //!
+//! What a door serves is one document. [`manifest::Manifest`] names the
+//! release, the artifact and its digest, the base model it is pinned to, the
+//! contract shapes, the estimator, and the calibration records each admitted
+//! family rests on. Checking a package, pinning it at startup, admitting a
+//! family, and choosing an estimator were four decisions in three binaries
+//! that answered to each other; they answer to the manifest now. See
+//! `docs/lev/manifest.md`.
+//!
 //! See `docs/lev/` for the architecture, the measured behavior of the
 //! runtime, and the calibration rule.
 
@@ -27,6 +35,7 @@ pub mod api;
 pub mod bridge;
 pub mod error;
 pub mod estimator;
+pub mod manifest;
 pub mod render;
 pub mod schema;
 pub mod suite;
@@ -37,5 +46,6 @@ pub use api::{Answer, Extensions, NoulCriteria, Question, SystemOneRequest, Syst
 pub use bridge::{Availability, Bridge, Call, Outcome, Sampling};
 pub use estimator::{Estimator, Raw, confidence};
 pub use error::{Refusal, RefusalCode, Result};
+pub use manifest::{EvalRef, Manifest};
 pub use render::render;
 pub use schema::{BANDS, Compiled, Kind, compile};

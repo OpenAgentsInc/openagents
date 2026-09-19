@@ -95,6 +95,7 @@ measurement exists yet.
 | [`architecture.md`](architecture.md) | What Apple's framework gives and withholds, the three ways to derive a distribution from it, the design that follows, and the wire contract mapping. |
 | [`apple-fm-surface.md`](apple-fm-surface.md) | What this workspace already established about Apple FM across `openagents` and `psionic` history: the bridge contract, the router precedent, the adapter package format, and the typed error surface. |
 | [`calibration.md`](calibration.md) | The rule that no Lev probability gates an action before it is measured, the suites and gates that measure it, and the record a calibrated question family has to carry. |
+| [`manifest.md`](manifest.md) | The document a release is: artifact digest, base signature, contract shapes, estimator, and the calibration records each admitted family rests on. The four serving checks read it. |
 | [`mesh-plan.md`](mesh-plan.md) | How a Lev worker differs from a kev worker on the earn mesh: no artifact to verify, no packing win, and a verification floor that has to move from digests to behavior. |
 | [`../../training/lev-adapter/README.md`](../../training/lev-adapter/README.md) | The adapter lane: the full training process, what to train, and what counts as success. |
 | [`improvement-strategy.md`](improvement-strategy.md) | Where Lev loses, why each gap has a different cause, the engineering levers with measured returns, the adapter lane in full, and what not to bother trying. |

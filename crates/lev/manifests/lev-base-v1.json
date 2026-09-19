@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.lev.decision_model_manifest.v1",
+  "name": "lev-base",
+  "version": 1,
+  "description": "Apple on-device foundation model with no adapter attached, answering the System One contract.",
+  "created": "2026-09-19",
+  "base": {
+    "signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+    "minOsBuild": "25E246",
+    "runtime": "Apple FoundationModels"
+  },
+  "interface": {
+    "contract": "openagents.systemone.v1",
+    "endpoint": "POST /v1/systemone",
+    "questions": {
+      "choice": {
+        "minCriteria": 2,
+        "maxCriteria": 255,
+        "answer": [
+          "choice",
+          "confidence",
+          "probabilities"
+        ]
+      },
+      "noul": {
+        "answer": [
+          "noul"
+        ]
+      },
+      "score": {
+        "minCriteria": 2,
+        "maxCriteria": 10,
+        "answer": [
+          "score",
+          "confidence",
+          "legend",
+          "probabilities"
+        ]
+      }
+    },
+    "extensions": [
+      "estimator",
+      "require_calibration",
+      "family"
+    ],
+    "families": [
+      "routing",
+      "severity",
+      "urgency"
+    ]
+  },
+  "estimator": {
+    "estimator": "l2",
+    "samples": 8,
+    "seed_base": 0
+  },
+  "evalRef": [
+    {
+      "family": "routing",
+      "record": "../calibration/lev-base/routing.json",
+      "sha256": "862e150886da0bd09bfb9b2f8d62062844b60c7851021f6ecfa49985ae7c5d27",
+      "suite": "support-v2-three-way",
+      "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+      "partitionId": "calibration",
+      "gateId": "probability-v1",
+      "admitted": true,
+      "verdict": "passed: log loss 3.493 to 0.413, confident errors 5 to 0 over 40 items"
+    },
+    {
+      "family": "severity",
+      "record": "../calibration/lev-base/severity.json",
+      "sha256": "3b8b411f73142181249811f0ef2a271cd0e6e1844e73e70e64419e9c0081407d",
+      "suite": "support-v2-three-way",
+      "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+      "partitionId": "calibration",
+      "gateId": "probability-v1",
+      "admitted": false,
+      "verdict": "unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)"
+    },
+    {
+      "family": "urgency",
+      "record": "../calibration/lev-base/urgency.json",
+      "sha256": "f2b57db0405089ab243a12f3032da42fe49c2de6ca1c9aa48cee0d5bae5d7683",
+      "suite": "support-v2-three-way",
+      "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+      "partitionId": "calibration",
+      "gateId": "probability-v1",
+      "admitted": false,
+      "verdict": "unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)"
+    }
+  ]
+}

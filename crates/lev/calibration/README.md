@@ -13,6 +13,14 @@ judged it, by id and by digest. `gym::calibrate::Record::serve_to` checks
 every one of those against the door that is running and names the field that
 refuses.
 
+## Which records a door actually serves
+
+A record in this directory is a candidate, not a grant. A door started with
+`--manifest` serves only the records that release names in its `evalRef`,
+with the digest and verdict it recorded, so a record that appears here later
+or changes afterwards does not quietly start serving. See
+[`../manifests/README.md`](../manifests/README.md).
+
 ## Why the directory is per door
 
 Three doors scoring the same suite would otherwise overwrite each other's

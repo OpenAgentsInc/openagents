@@ -1,0 +1,67 @@
+{
+  "schema": "openagents.lev.decision_model_manifest.v1",
+  "name": "lev-adapted",
+  "version": 1,
+  "description": "Support-desk judgments on support-v2, trained on the choice objective alone.",
+  "created": "2026-09-19",
+  "artifact": {
+    "path": "~/code/lev-adapter-work/runs/lev-v1/lev.fmadapter",
+    "format": "fmadapter",
+    "sha256": "5668e4af683b66f458e8c87e6c79f12b36a53bc96a0c0643d079472846411a93",
+    "sizeBytes": 133312320,
+    "metadataSha256": "fc8334b161513dac16487d85c10ab2a1e333aee304af59c03d4e8ad66b03605e",
+    "loraRank": 32,
+    "adapterIdentifier": "fmadapter-lev-9799725"
+  },
+  "base": {
+    "signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+    "minOsBuild": "25E246",
+    "runtime": "Apple FoundationModels"
+  },
+  "interface": {
+    "contract": "openagents.systemone.v1",
+    "endpoint": "POST /v1/systemone",
+    "questions": {
+      "choice": {
+        "minCriteria": 2,
+        "maxCriteria": 255,
+        "answer": [
+          "choice",
+          "confidence",
+          "probabilities"
+        ]
+      },
+      "noul": {
+        "answer": [
+          "noul"
+        ]
+      },
+      "score": {
+        "minCriteria": 2,
+        "maxCriteria": 10,
+        "answer": [
+          "score",
+          "confidence",
+          "legend",
+          "probabilities"
+        ]
+      }
+    },
+    "extensions": [
+      "estimator",
+      "require_calibration",
+      "family"
+    ],
+    "families": [
+      "routing",
+      "severity",
+      "urgency"
+    ]
+  },
+  "estimator": {
+    "estimator": "l2",
+    "samples": 8,
+    "seed_base": 0
+  },
+  "evalRef": []
+}
