@@ -21,6 +21,9 @@
 //! - [`store`] — an append-only file whose rows carry a receipt chain, so a
 //!   worse result cannot be quietly removed and a better one cannot be
 //!   quietly inserted.
+//! - [`questions`] — the question text, held apart from the items and
+//!   carrying its own digest, so rewording a question produces a candidate
+//!   against the same items rather than a different suite.
 //! - [`gate`] — an acceptance rule that carries its own digest, so changing
 //!   the rule produces a new rule rather than new history.
 //! - [`ab`] — the loop that compares two doors over interleaved seed blocks,
@@ -39,6 +42,7 @@ pub mod ab;
 pub mod calibrate;
 pub mod eval;
 pub mod gate;
+pub mod questions;
 pub mod row;
 pub mod store;
 pub mod suite;

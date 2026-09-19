@@ -204,6 +204,11 @@ is a run that finishes and a number that survives a floor.
 the part nobody here has ever had, and it is what turns the tenth attempt
 from a tenth attempt into an experiment.
 
+**The seam is no longer the obstacle.** See
+[One structural obstacle](#one-structural-obstacle-invisible-until-you-try--now-closed),
+below: a reworded question is a candidate against the same items as of
+openagents#9386, and no existing digest moved to make it one.
+
 **The budget is no longer the obstacle either.** Every previous lane died
 partly on rollout cost — minutes to hours per trial in a container. Here a
 rollout is one door call. The routing family's development partition is 40
@@ -219,22 +224,58 @@ levels at an external tool's five-row minibatch. Having the floor does not
 make the experiment easy. It makes it honest, and it may make it come back
 negative, which on this evidence is the likely outcome.
 
-## One structural obstacle, invisible until you try
+## One structural obstacle, invisible until you try — now closed
 
-In `crates/gym/src/suite.rs`, `question` is a field of `Item`, and
-`compute_digest` hashes `self.items`. **Rewording a question changes the
+In `crates/gym/src/suite.rs`, `question` was a field of `Item`, and
+`compute_digest` hashes `self.items`. **Rewording a question changed the
 suite digest.** Every row pins `suite_digest`, by design, so that changing a
 rule produces new rules rather than new history.
 
-Under the current contract, a question-text variant is therefore **not a
-candidate door against a pinned suite — it is a different suite**, and the
-store will correctly refuse to compare across them.
+Under that contract, a question-text variant was **not a candidate door
+against a pinned suite — it was a different suite**, and the store correctly
+refused to compare across them. That is right, and it blocked the one
+experiment nine optimizer programs were built for.
 
-That seam has to be designed before any of this runs: either question text
-moves out of the digested item into a separately-digested question set that a
-run pins alongside the suite, or the store needs an explicit notion of
-same-items-different-question-text. A day of work, not a rebuild, and worth
-knowing before rather than after.
+openagents#9386 closed the seam the first of the two ways this section
+described: the question text moved out of the digested item into a
+separately-digested question set, and a run pins both.
+
+**A run now pins three digests.** The suite says what was asked about and
+what the answer is. The question set says how it was asked. The gate says
+what bar judged it. They are three files with three digests, and each row
+carries all three.
+
+- `crates/gym/src/questions.rs` holds a `QuestionSet`: one question per
+  family, with a digest over the questions and nothing else. Renaming a set
+  leaves its digest alone, for the same reason renaming a suite leaves the
+  suite's alone.
+- The sets live in `crates/gym/questions/`, as the gates live in
+  `crates/gym/gates/`. `support-v2-three-way-v1.json` is the text
+  `support-v2-three-way` already served, under a name a row can pin.
+- A suite manifest names its set in a `questions` field, outside the digest,
+  exactly as it names its gate. A row carries `question_set` and
+  `question_digest` beside `gate_id` and `gate_digest`.
+- `gym::store::admit_comparison` says what two sets of rows are. Same items
+  and same text is a door comparison. Same items and different text is a
+  **question-text comparison**. Different items is not a comparison, and it
+  is still refused — a test pins that, because separating the text out must
+  not buy a changed label past the rule the record exists to hold.
+
+**No digest moved.** `support-v2-three-way` is still
+`54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9` and
+`support-v2` is still
+`6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368`. The 196
+items keep their inline question text, which is where their digest already
+covers it; the committed set is the same text lifted out, and a test asserts
+the two agree. A migration that silently reissued digests would have
+invalidated the chain it was built to protect.
+
+**What the experiment does now.** Fork
+`crates/gym/questions/support-v2-three-way-v1.json` to a new id, reword the
+`routing` entry, and run `gym eval --questions <id>`. The rows land in the
+same store beside the baseline's, because the question digest is part of what
+identifies a trial, and `gym compare` reads the two as a question-text
+comparison over unchanged items.
 
 ## What to reuse rather than rebuild
 

@@ -190,6 +190,10 @@ pub struct Run {
     pub suite: String,
     /// The suite's content digest.
     pub suite_digest: String,
+    /// The question set the run served, by id.
+    pub question_set: Option<String>,
+    /// That set's content digest, which every row of the run pins.
+    pub question_digest: Option<String>,
     /// The door, by the name the run used for it.
     pub door: String,
     /// What that door is running, as far as it can be verified.
@@ -223,6 +227,8 @@ impl Run {
     ) -> Option<Row> {
         let mut row = Row::new(&self.suite, &self.suite_digest, &item.id, &self.door);
         row.recorded_at = self.recorded_at.clone();
+        row.question_set = self.question_set.clone();
+        row.question_digest = self.question_digest.clone();
         row.split = item.partition.as_str().to_string();
         row.family = item.family.clone();
         row.door_identity = self.door_identity.clone();
@@ -482,11 +488,11 @@ mod tests {
             family: "routing".to_string(),
             kind: "choice".to_string(),
             state: json!("a message"),
-            question: json!({
+            question: Some(json!({
                 "type": "choice",
                 "instructions": "Which team?",
                 "criteria": { "billing": "money", "technical": "bugs", "sales": "plans" },
-            }),
+            })),
             truth: truth.to_string(),
             partition: Partition::Development,
         }
@@ -496,6 +502,8 @@ mod tests {
         Run {
             suite: "support-v2-three-way".to_string(),
             suite_digest: "sha256:abc".to_string(),
+            question_set: Some("support-v2-three-way-v1".to_string()),
+            question_digest: Some("sha256:questions".to_string()),
             door: "lev".to_string(),
             door_identity: DoorIdentity::published("lev-base", "sig:base-1", ""),
             estimator: "l2".to_string(),
@@ -655,7 +663,7 @@ mod tests {
 
     #[test]
     fn only_a_choice_has_an_order_to_permute() {
-        let question = item("a", "billing").question;
+        let question = item("a", "billing").question.expect("the test item carries its text");
         assert_eq!(
             options_of(&question),
             Some(vec!["billing".to_string(), "technical".to_string(), "sales".to_string()])
@@ -666,7 +674,7 @@ mod tests {
 
     #[test]
     fn a_permutation_reorders_the_options_and_nothing_else() {
-        let question = item("a", "billing").question;
+        let question = item("a", "billing").question.expect("the test item carries its text");
         let order = reversed(3);
         assert_eq!(order, vec![2, 1, 0]);
         let backward = permuted(&question, &order).expect("a choice permutes");
@@ -685,6 +693,15 @@ mod tests {
             "each option kept its description"
         );
         assert_eq!(permuted(&question, &[0, 1]), None, "a short order is not a permutation");
+    }
+
+    #[test]
+    fn every_row_of_a_run_pins_the_question_set_it_served() {
+        let row = run()
+            .row(&item("a", "billing"), None, &answered("billing"), None)
+            .expect("an answered item produces a row");
+        assert_eq!(row.question_set.as_deref(), Some("support-v2-three-way-v1"));
+        assert_eq!(row.question_digest.as_deref(), Some("sha256:questions"));
     }
 
     #[test]

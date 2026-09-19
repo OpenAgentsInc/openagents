@@ -20,7 +20,10 @@
 //! - A gate and a suite were replaced in one commit, leaving their effects
 //!   inseparable. Every row pins [`Row::suite_digest`] and
 //!   [`Row::gate_digest`], so changing either produces new rules rather than
-//!   new history.
+//!   new history. [`Row::question_digest`] is the third of those, and it is
+//!   here for the opposite reason: without it, rewording a question was a
+//!   change to the suite, so a text variant could not be compared against
+//!   the items it left alone. See [`crate::questions`].
 //!
 //! Every unknown number is `null`. None of them is ever `0`, because zero is
 //! a measurement and `null` is the absence of one, and a run that confuses
@@ -296,6 +299,27 @@ pub struct Row {
     /// are comparable only if this matches, and pinning it is what stops a
     /// suite edit from reading as a model improvement.
     pub suite_digest: String,
+    /// The question set the door was served, by the id of a file in
+    /// `crates/gym/questions/`.
+    ///
+    /// `null` on a row written before openagents#9386, and on a run of a
+    /// suite whose items carry their question text inline: there the suite
+    /// digest already covers the text, because the text is in the items.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_set: Option<String>,
+    /// That set's content digest.
+    ///
+    /// The third digest a run pins, beside the suite's and the gate's. The
+    /// suite says what was asked about, this says how it was asked, and the
+    /// gate says what bar judged it. Two runs that share a suite digest and
+    /// differ here are a question-text comparison over unchanged items,
+    /// which is the comparison openagents#9386 exists to make expressible.
+    ///
+    /// `null` is unknown and never the authored text.
+    /// [`crate::store::admit_comparison`] refuses to compare a run that
+    /// records this against one that does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_digest: Option<String>,
     /// Which partition of the suite the item sits in.
     ///
     /// A number from the calibration split and a number from the locked set
@@ -418,6 +442,8 @@ impl Default for Row {
             recorded_at: String::new(),
             suite: String::new(),
             suite_digest: String::new(),
+            question_set: None,
+            question_digest: None,
             split: String::new(),
             family: String::new(),
             item_id: String::new(),
@@ -549,11 +575,13 @@ mod tests {
     use crate::SCHEMA_PREFIX;
 
     /// The field names in the order the schema fixes them.
-    const FIELDS: [&str; 24] = [
+    const FIELDS: [&str; 26] = [
         "schema",
         "recorded_at",
         "suite",
         "suite_digest",
+        "question_set",
+        "question_digest",
         "split",
         "family",
         "item_id",
@@ -587,6 +615,8 @@ mod tests {
         row.family = "sentiment".to_string();
         row.estimator = "l2".to_string();
         row.door_identity = DoorIdentity::published("lev", "sig:base-1", "band-v1");
+        row.question_set = Some("support-v2-three-way-v1".to_string());
+        row.question_digest = Some("sha256:questions".to_string());
         row.scored(distribution(&[("no", 0.25), ("yes", 0.75)]), true)
     }
 
@@ -872,6 +902,21 @@ mod tests {
             row.check(),
             Err(RowError::UnknownSchema { found: "openagents.bench_result.v3".to_string() })
         );
+    }
+
+    #[test]
+    fn a_row_that_pins_no_question_set_omits_both_fields() {
+        // Every row written before openagents#9386 is this shape, and the
+        // receipt chain over them has to keep verifying, so an absent
+        // question set writes nothing rather than a null.
+        let mut row = scored_row();
+        row.question_set = None;
+        row.question_digest = None;
+        let rendered = serde_json::to_string(&row).expect("a row serializes");
+        assert!(!rendered.contains("question_set"), "{rendered}");
+        assert!(!rendered.contains("question_digest"), "{rendered}");
+        let read: Row = serde_json::from_str(&rendered).expect("a row parses");
+        assert_eq!(read, row);
     }
 
     #[test]

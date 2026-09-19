@@ -36,6 +36,23 @@
 //! [`crate::row::SCHEMA`] rather than restating it, because two spellings of
 //! one schema is the same ambiguity the rest of this crate exists to remove.
 //!
+//! # What the rows may be read as
+//!
+//! The chain says the file was not edited. It does not say that two sets of
+//! rows in it are a comparison, and they often are not: rows pin the digest
+//! of what they were scored on, and a number taken across two suites is a
+//! number about neither. [`admit_comparison`] is that rule, and it answers
+//! with what the two sides are rather than only whether they pass — same
+//! items and same question text is a door comparison, same items and
+//! different text is a question-text comparison, and different items is not
+//! a comparison at all. [`crate::questions`] explains why the second of
+//! those had to become expressible.
+//!
+//! [`Comparison`] here is what two sets of rows are. [`crate::gate::Comparison`]
+//! is the scores of one, ready to be judged. They meet in the `gym compare`
+//! command, which asks this module what it is holding before it asks a gate
+//! what to think of it.
+//!
 //! # One writer at a time
 //!
 //! An append reads the head and then writes, so two writers running that
@@ -72,13 +89,21 @@ pub const RECEIPT_FIELD: &str = "receipt";
 pub const PREVIOUS_RECEIPT_FIELD: &str = "previous_receipt";
 
 /// The fields that together identify one trial. Re-scoring a run does not
-/// make it a second run, so a second row with the same values for all six is
-/// refused. This matters more here than it does in the reference
+/// make it a second run, so a second row with the same values for all seven
+/// is refused. This matters more here than it does in the reference
 /// implementation: the doors the Gym scores are near-deterministic, so
 /// without the rule, running the same command ten times yields ten identical
 /// rows that read as ten trials.
-pub const PERTURBATION_KEY_FIELDS: [&str; 6] = [
+///
+/// `question_digest` is one of them because the question text is a
+/// perturbation axis like the option order: the same items asked a reworded
+/// question are a different trial, not a repeat of the last one. A row that
+/// does not carry the field reads as null, so the rows written before
+/// [`crate::questions`] existed keep the key they always had relative to
+/// each other.
+pub const PERTURBATION_KEY_FIELDS: [&str; 7] = [
     "suite_digest",
+    "question_digest",
     "door_identity",
     "estimator",
     "seed_base",
@@ -222,6 +247,9 @@ pub enum StoreError {
 
     #[error("a row must serialize to a JSON object, but {detail}")]
     NotARow { detail: String },
+
+    #[error("these rows are not a comparison: {detail}")]
+    NotComparable { detail: String },
 }
 
 impl StoreError {
@@ -536,6 +564,127 @@ pub fn perturbation_key(row: &Value) -> String {
     format!("perturbation:{}", hex_digest(source.as_bytes()))
 }
 
+/// What two sets of rows may be read as, when they may be read as anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Comparison {
+    /// Same items, same question text. Whatever differs between the two
+    /// sides — the door, the adapter, the estimator — it is not what was
+    /// asked.
+    Doors,
+    /// Same items, different question text. A reworded question against the
+    /// items it left alone, which is a candidate rather than a second suite.
+    QuestionText,
+}
+
+impl Comparison {
+    /// A short name for the comparison, for a report line.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Doors => "doors",
+            Self::QuestionText => "question text",
+        }
+    }
+}
+
+/// Whether two sets of rows are a comparison, and which one.
+///
+/// This is the rule the whole record is built to hold. Rows pin the digest of
+/// what they were scored on, and a comparison across a changed suite is not a
+/// worse result — it is a number about two different things, reported as one.
+/// So it is refused rather than reported as drift, exactly as
+/// [`crate::suite::Suite::load`] refuses a tampered suite.
+///
+/// The question set is what makes that refusal survivable. Before
+/// [`crate::questions`], rewording a question changed the suite digest, so
+/// the one experiment `docs/text-optimization.md` asks for landed on the
+/// wrong side of this rule. A reword now changes `question_digest` and
+/// nothing else, and the two sides come back as [`Comparison::QuestionText`].
+///
+/// A side whose rows disagree with each other is refused before the two sides
+/// are compared at all: a side that scored two suites is not one side.
+///
+/// # Errors
+///
+/// Returns [`StoreError::NotComparable`] when a side is empty, when a side
+/// disagrees with itself, when the two sides pin different suite digests,
+/// when either side names no suite, or when one side records which question
+/// set it served and the other does not. The last is the `unknown is never
+/// zero` rule applied to text: an unrecorded question set is not the authored
+/// one.
+pub fn admit_comparison(left: &[Value], right: &[Value]) -> Result<Comparison, StoreError> {
+    let left_suite = agreed(left, "suite_digest", "first")?;
+    let right_suite = agreed(right, "suite_digest", "second")?;
+    let (Some(left_suite), Some(right_suite)) = (left_suite, right_suite) else {
+        return Err(StoreError::NotComparable {
+            detail: "a side names no suite, so it names no items either".to_string(),
+        });
+    };
+    if left_suite != right_suite {
+        return Err(StoreError::NotComparable {
+            detail: format!(
+                "the first side scored suite {} and the second scored {}, so the two sides did \
+                 not score the same items. A suite digest covers every label and every \
+                 partition assignment; two digests are two experiments, and one number over \
+                 both of them is a number about neither",
+                shorten_digest(left_suite),
+                shorten_digest(right_suite),
+            ),
+        });
+    }
+    let left_questions = agreed(left, "question_digest", "first")?;
+    let right_questions = agreed(right, "question_digest", "second")?;
+    match (left_questions, right_questions) {
+        (Some(left), Some(right)) if left != right => Ok(Comparison::QuestionText),
+        (Some(_), Some(_)) | (None, None) => Ok(Comparison::Doors),
+        _ => Err(StoreError::NotComparable {
+            detail: "one side records which question set it served and the other does not, so \
+                     there is no saying whether the two were asked the same thing; an \
+                     unrecorded question set is not the authored one"
+                .to_string(),
+        }),
+    }
+}
+
+/// One side's value for a field, when the side agrees with itself.
+fn agreed<'a>(rows: &'a [Value], field: &str, side: &str) -> Result<Option<&'a str>, StoreError> {
+    let mut seen: Option<Option<&str>> = None;
+    for row in rows {
+        let value = row.get(field).and_then(Value::as_str);
+        match seen {
+            None => seen = Some(value),
+            Some(held) if held == value => {}
+            Some(held) => {
+                return Err(StoreError::NotComparable {
+                    detail: format!(
+                        "the {side} side holds rows with {field} {} and rows with {}, so it is \
+                         not one side",
+                        name_or_unrecorded(held),
+                        name_or_unrecorded(value),
+                    ),
+                });
+            }
+        }
+    }
+    seen.ok_or_else(|| StoreError::NotComparable {
+        detail: format!("the {side} side holds no rows"),
+    })
+}
+
+fn name_or_unrecorded(value: Option<&str>) -> String {
+    value.map_or_else(|| "unrecorded".to_string(), shorten_digest)
+}
+
+/// Enough of a digest to tell two of them apart in a message.
+fn shorten_digest(digest: &str) -> String {
+    let head: String = digest.chars().take(16).collect();
+    if head.len() < digest.len() {
+        format!("{head}\u{2026}")
+    } else {
+        head
+    }
+}
+
 /// The receipt the next row must name, for rows that have already verified.
 fn head_of(rows: &[Value]) -> Option<String> {
     rows.last()
@@ -755,9 +904,9 @@ mod tests {
     use serde_json::json;
     use std::time::Duration;
 
-    /// One trial's fields, before the store seals them. The six perturbation
-    /// fields are all here, so two calls with the same `item` and `seed`
-    /// describe the same trial.
+    /// One trial's fields, before the store seals them. Every perturbation
+    /// field is here except `question_digest`, so two calls with the same
+    /// `item` and `seed` describe the same trial; `asked` adds the text.
     fn trial(item: &str, seed: u64) -> Map<String, Value> {
         let mut fields = Map::new();
         fields.insert("schema".into(), json!(crate::row::SCHEMA));
@@ -1307,6 +1456,118 @@ mod tests {
         );
     }
 
+    /// One row of a run, with the question set it served.
+    fn asked(item: &str, questions: Option<&str>) -> Map<String, Value> {
+        let mut fields = trial(item, 0);
+        if let Some(digest) = questions {
+            fields.insert("question_digest".into(), json!(digest));
+        }
+        fields
+    }
+
+    #[test]
+    fn two_runs_over_the_same_items_and_the_same_text_are_a_door_comparison() {
+        let control = [Value::Object(asked("q1", Some("questions:9745")))];
+        let candidate = [Value::Object(asked("q1", Some("questions:9745")))];
+        assert_eq!(
+            admit_comparison(&control, &candidate).expect("one suite, one text"),
+            Comparison::Doors
+        );
+    }
+
+    #[test]
+    fn two_runs_over_the_same_items_and_different_text_are_a_question_text_comparison() {
+        // The comparison openagents#9386 exists to make expressible. Before
+        // the question set, a reworded question changed the suite digest, so
+        // these two sides read as two suites and were refused.
+        let baseline = [Value::Object(asked("q1", Some("questions:9745")))];
+        let variant = [Value::Object(asked("q1", Some("questions:0f3c")))];
+        assert_eq!(
+            admit_comparison(&baseline, &variant).expect("one suite, two texts"),
+            Comparison::QuestionText
+        );
+        assert_eq!(Comparison::QuestionText.as_str(), "question text");
+    }
+
+    #[test]
+    fn two_runs_whose_items_differ_are_still_refused() {
+        // The failure this whole record is built to prevent, and the one the
+        // question set must not have bought its way past. Separating the text
+        // out did not make a changed label comparable; it made a changed
+        // question stop looking like one.
+        let ours = [Value::Object(asked("q1", Some("questions:9745")))];
+        let mut theirs = asked("q1", Some("questions:9745"));
+        theirs.insert("suite_digest".into(), json!("suite:0000"));
+        let theirs = [Value::Object(theirs)];
+        let refused = admit_comparison(&ours, &theirs).expect_err("two suites are two things");
+        assert!(matches!(refused, StoreError::NotComparable { .. }));
+        assert!(
+            refused.to_string().contains("did not score the same items"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_side_that_scored_two_suites_is_not_one_side() {
+        let mut second = asked("q2", Some("questions:9745"));
+        second.insert("suite_digest".into(), json!("suite:0000"));
+        let mixed = [
+            Value::Object(asked("q1", Some("questions:9745"))),
+            Value::Object(second),
+        ];
+        let candidate = [Value::Object(asked("q1", Some("questions:9745")))];
+        assert!(matches!(
+            admit_comparison(&mixed, &candidate),
+            Err(StoreError::NotComparable { .. })
+        ));
+    }
+
+    #[test]
+    fn a_run_that_does_not_say_what_it_asked_is_not_a_text_comparison() {
+        // Unknown is never zero, and an unrecorded question set is never the
+        // authored one. Two runs that both predate the field are still a door
+        // comparison, because there the text is inside the suite digest.
+        let recorded = [Value::Object(asked("q1", Some("questions:9745")))];
+        let silent = [Value::Object(asked("q1", None))];
+        assert!(matches!(
+            admit_comparison(&recorded, &silent),
+            Err(StoreError::NotComparable { .. })
+        ));
+        assert_eq!(
+            admit_comparison(&silent, &[Value::Object(asked("q1", None))])
+                .expect("two runs of the older shape"),
+            Comparison::Doors
+        );
+    }
+
+    #[test]
+    fn an_empty_side_is_not_a_comparison() {
+        let rows = [Value::Object(asked("q1", Some("questions:9745")))];
+        assert!(matches!(
+            admit_comparison(&rows, &[]),
+            Err(StoreError::NotComparable { .. })
+        ));
+    }
+
+    #[test]
+    fn a_reworded_question_is_a_second_trial_and_not_a_repeat() {
+        // The store keeps one row per perturbation, and the question text is
+        // a perturbation axis like the option order: the same door answering
+        // the same item under reworded text is a new measurement, not a
+        // re-scoring of the last one.
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let store = store_in(&directory);
+        store.append(&asked("q1", Some("questions:9745"))).expect("the baseline");
+        store.append(&asked("q1", Some("questions:0f3c"))).expect("the variant");
+        assert_eq!(store.rows().unwrap().len(), 2);
+
+        let repeat = store.append(&asked("q1", Some("questions:0f3c")));
+        assert!(matches!(
+            repeat,
+            Err(StoreError::DuplicatePerturbation { .. })
+        ));
+    }
+
     #[test]
     fn a_perturbation_key_ignores_the_order_of_a_nested_field() {
         let one = json!({
@@ -1339,6 +1600,14 @@ mod tests {
             perturbation_key(&one),
             perturbation_key(&elsewhere),
             "a different door is a different trial"
+        );
+
+        let mut reworded = one.clone();
+        reworded["question_digest"] = json!("questions:0f3c");
+        assert_ne!(
+            perturbation_key(&one),
+            perturbation_key(&reworded),
+            "a different question is a different trial"
         );
     }
 }

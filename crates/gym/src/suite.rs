@@ -44,11 +44,19 @@
 //!
 //! [`Suite::compute_digest`] hashes the items and nothing else, so it covers
 //! every label and every partition assignment and excludes `name`,
-//! `description`, `tier`, and `gate`. A changed label or a moved item is a
-//! different suite. Tightening a gate floor is not: the manifest names its
-//! gate by id, the rule itself lives in `crates/gym/gates/` with its own
-//! digest, and each result row pins the digest of the gate that judged it,
-//! so retuning a floor produces a new rule rather than new history.
+//! `description`, `tier`, `gate`, and `questions`. A changed label or a moved
+//! item is a different suite. Tightening a gate floor is not: the manifest
+//! names its gate by id, the rule itself lives in `crates/gym/gates/` with
+//! its own digest, and each result row pins the digest of the gate that
+//! judged it, so retuning a floor produces a new rule rather than new
+//! history.
+//!
+//! Rewording a question is not either, and that is newer. The question text
+//! used to be a field of [`Item`] and so inside this digest, which made a
+//! reworded question a different suite rather than a candidate against the
+//! same items — see [`crate::questions`], which owns the text now. The
+//! manifest names its question set by id for the same reason it names its
+//! gate by id, and each row pins the question digest it was served.
 //!
 //! A digest mismatch is refused outright rather than reported as drift. The
 //! reference implementation in `~/work/coder` reports drift, which is right
@@ -108,6 +116,24 @@ pub enum SuiteError {
         /// The partition with nothing in it.
         partition: Partition,
     },
+    /// Some items carry their question text and some do not.
+    #[error(
+        "{carried} of {total} items carry their own question text, and the rest take it \
+         from a question set; a suite carries its text on every item or on none of them, \
+         because a per-item override is the per-item question data a question set removes"
+    )]
+    MixedQuestions {
+        /// How many items carry inline text.
+        carried: usize,
+        /// How many items there are.
+        total: usize,
+    },
+    /// The suite has no question text anywhere: none inline, and none named.
+    #[error(
+        "the suite's items carry no question text and the manifest names no question set, \
+         so there is nothing to ask; name a set in `questions`"
+    )]
+    NoQuestions,
     /// Someone asked [`Suite::partition`] for the locked items.
     #[error(
         "the locked partition is not read through `partition`: spend it through a `LockedLedger`, which records the read"
@@ -200,7 +226,23 @@ pub struct Item {
     /// The document to judge.
     pub state: Value,
     /// The question to ask about it, in the shape the door reads.
-    pub question: Value,
+    ///
+    /// Absent when the suite names a [`crate::questions::QuestionSet`]
+    /// instead, which is what a suite written after openagents#9386 does:
+    /// 196 items shared exactly one question text per family, so the text
+    /// was stored 196 times and digested as if it were per-item data.
+    ///
+    /// Present on every item of `support-v2-three-way`, which predates that
+    /// change. Its text stays inline and inside its digest, because moving
+    /// it would reissue `54fbf4137c…` and invalidate every row that pins it.
+    /// [`crate::questions::QuestionSet::authored`] reads that text back out
+    /// under a name a row can pin.
+    ///
+    /// A suite carries its text inline on every item or on none of them.
+    /// [`Suite::load`] refuses a mixture, because a per-item override of a
+    /// set-provided question is the per-item question data the split removes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<Value>,
     /// The option key a knowledgeable person picks.
     pub truth: String,
     /// Which partition this item belongs to. Inside the digest.
@@ -238,6 +280,21 @@ pub struct Suite {
     /// read as drifted; each row pins its own `gate_digest` instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gate: Option<String>,
+    /// The question text a run of this suite serves, named by the id of a
+    /// file in `crates/gym/questions/`.
+    ///
+    /// Outside the digest, for the reason `gate` is: the digest covers what
+    /// was asked about and what the answer is, and rewording the question is
+    /// neither. A reword produces a new question set with its own digest,
+    /// which each row pins beside the suite's, so a question-text variant is
+    /// a candidate against unchanged items rather than a different suite.
+    ///
+    /// Absent when the items carry their own text, which is
+    /// `support-v2-three-way`'s older shape; the committed manifest names
+    /// `support-v2-three-way-v1`, the same text under an id, and a test
+    /// asserts the two agree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub questions: Option<String>,
     /// The items.
     pub items: Vec<Item>,
 }
@@ -276,6 +333,16 @@ impl Suite {
             if !suite.items.iter().any(|item| item.partition == partition) {
                 return Err(SuiteError::EmptyPartition { partition });
             }
+        }
+        let carried = suite.items.iter().filter(|item| item.question.is_some()).count();
+        if carried != 0 && carried != suite.items.len() {
+            return Err(SuiteError::MixedQuestions {
+                carried,
+                total: suite.items.len(),
+            });
+        }
+        if carried == 0 && suite.questions.is_none() {
+            return Err(SuiteError::NoQuestions);
         }
         Ok(suite)
     }
@@ -574,7 +641,7 @@ impl LockedLedger {
 }
 
 /// Serializes with object keys sorted, which is what the digest is over.
-fn canonicalize(value: &Value) -> String {
+pub(crate) fn canonicalize(value: &Value) -> String {
     match value {
         Value::Object(fields) => {
             let mut keys: Vec<&String> = fields.keys().collect();
@@ -762,6 +829,90 @@ mod tests {
     }
 
     #[test]
+    fn naming_a_question_set_leaves_the_digest_alone() {
+        // The promise this change is built on. `support-v2-three-way` gained
+        // a `questions` field on 2026-09-19, and every row and calibration
+        // record written that week pins 54fbf4137c…. If naming a question set
+        // moved the digest, the migration would have invalidated the chain it
+        // exists to protect.
+        assert!(
+            SUPPORT_V2_THREE_WAY.contains("\"questions\": \"support-v2-three-way-v1\""),
+            "the manifest names its question set"
+        );
+        let unnamed = SUPPORT_V2_THREE_WAY
+            .replace(" \"questions\": \"support-v2-three-way-v1\",\n", "");
+        assert_ne!(unnamed, SUPPORT_V2_THREE_WAY, "the field was in the file");
+        let without = Suite::load(&unnamed).expect("a suite may carry its text inline");
+        assert_eq!(without.questions, None);
+        assert_eq!(without.digest, suite().digest);
+        assert_eq!(
+            suite().digest,
+            "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9"
+        );
+    }
+
+    #[test]
+    fn rewording_a_question_in_the_set_does_not_touch_the_suite() {
+        // The seam openagents#9386 closed, stated as the suite sees it. The
+        // reword lives in a question set, the items do not move, and the
+        // digest every row pins does not move either — so the variant is a
+        // candidate against these items rather than a second suite.
+        let pinned = suite();
+        let authored = crate::questions::QuestionSet::authored(&pinned)
+            .expect("the items carry their own text");
+        let mut reworded = authored.clone();
+        reworded.questions.get_mut("routing").expect("routing")["instructions"] =
+            serde_json::json!("Which team handles this?");
+        assert_ne!(reworded.digest(), authored.digest(), "the reword is a new set");
+        assert_eq!(pinned.compute_digest().expect("a digest"), pinned.digest);
+        assert_eq!(
+            pinned.digest,
+            "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+            "the items did not move, so neither did what every row pins"
+        );
+    }
+
+    #[test]
+    fn a_suite_carries_its_question_text_on_every_item_or_on_none() {
+        // A per-item override of a set-provided question is the per-item
+        // question data the question set removes, so a mixture is refused
+        // rather than resolved.
+        let mut mixed = suite();
+        mixed.items[0].question = None;
+        let text = serde_json::to_string(&mixed).expect("a suite serializes");
+        assert!(
+            matches!(Suite::load(&text), Err(SuiteError::Tampered { .. })),
+            "dropping one item's text moves the digest, before anything else looks at it"
+        );
+
+        let mut none = suite();
+        for item in &mut none.items {
+            item.question = None;
+        }
+        none.digest = none.compute_digest().expect("a digest");
+        let text = serde_json::to_string(&none).expect("a suite serializes");
+        Suite::load(&text).expect("a suite whose text lives in a set loads");
+
+        none.questions = None;
+        none.digest = none.compute_digest().expect("a digest");
+        let text = serde_json::to_string(&none).expect("a suite serializes");
+        assert!(
+            matches!(Suite::load(&text), Err(SuiteError::NoQuestions)),
+            "a suite with no text anywhere asks nothing"
+        );
+
+        let mut half = none.clone();
+        half.questions = Some("support-v2-three-way-v1".to_string());
+        half.items[0].question = Some(serde_json::json!({ "type": "choice" }));
+        half.digest = half.compute_digest().expect("a digest");
+        let text = serde_json::to_string(&half).expect("a suite serializes");
+        assert!(matches!(
+            Suite::load(&text),
+            Err(SuiteError::MixedQuestions { carried: 1, total: 196 })
+        ));
+    }
+
+    #[test]
     fn renaming_the_suite_leaves_the_digest_alone() {
         let renamed = SUPPORT_V2_THREE_WAY.replace("support-v2-three-way", "support-v2-3");
         let under_another_name = Suite::load(&renamed).expect("a rename is not drift");
@@ -898,5 +1049,13 @@ mod tests {
             Suite::load(two_way),
             Err(SuiteError::Malformed(_))
         ));
+        // Its digest is pinned by rows and calibration records too, and it
+        // is a file this change does not touch.
+        assert!(
+            two_way.contains(
+                "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368"
+            ),
+            "support-v2 still records the digest its rows pin"
+        );
     }
 }

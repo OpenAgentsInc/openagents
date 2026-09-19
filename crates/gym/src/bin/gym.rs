@@ -19,6 +19,12 @@
 //!
 //! # what option order does to the answer
 //! cargo run -p gym --bin gym -- permute --door lev=http://127.0.0.1:11436
+//!
+//! # the same items under reworded question text
+//! cargo run -p gym --bin gym -- eval \
+//!     --door lev=http://127.0.0.1:11436 \
+//!     --questions support-v2-three-way-v2 \
+//!     --record results/support-v2-three-way.jsonl
 //! ```
 //!
 //! Hosted Jev reads `TYPESAFE_API_KEY` from the environment. Never pass a key
@@ -30,6 +36,7 @@ use std::time::Instant;
 use gym::calibrate::{EstimatorConfig, Metrics, Record};
 use gym::eval::{self, Disposition, Run};
 use gym::gate::{self, Gate};
+use gym::questions::QuestionSet;
 use gym::row::{DoorIdentity, Row};
 use gym::store::{Store, StoreError};
 use gym::suite::{Item, Partition, Suite};
@@ -78,6 +85,8 @@ struct Options {
     jev: bool,
     suite: Option<String>,
     gate: Option<String>,
+    /// The question set to serve, by id. Overrides the suite's own.
+    questions: Option<String>,
     store: Option<String>,
     record: Option<String>,
     records: Option<String>,
@@ -115,12 +124,13 @@ gym permute  measure how much option order moves the answer
   --jev               hosted Jev, from TYPESAFE_API_KEY
   --suite path        a suite file; the committed three-way suite by default
   --gate id           the acceptance rule; the suite's own by default
+  --questions id      the question set to serve; the suite's own by default
   --partition name    calibration or development; both by default
   --fit               fit one map per family and judge it
   --record path       append every row to this store
   --records dir       write one calibration record per family here
   --store path        the store `compare` reads
-  --baseline name     the door `compare` measures the others against";
+  --baseline name     the side `compare` measures the others against";
 
 fn run(outcome: Result<(), String>) {
     if let Err(trouble) = outcome {
@@ -145,6 +155,7 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             }
             "--suite" => options.suite = args.next(),
             "--gate" => options.gate = args.next(),
+            "--questions" => options.questions = args.next(),
             "--store" => options.store = args.next(),
             "--record" => options.record = args.next(),
             "--records" => options.records = args.next(),
@@ -173,6 +184,13 @@ fn load_gate(options: &Options, suite: &Suite) -> Result<Gate, String> {
         .or_else(|| suite.gate.clone())
         .unwrap_or_else(|| DEFAULT_GATE.to_string());
     gate::load(&id).map_err(|error| error.to_string())
+}
+
+/// The question set a run serves: `--questions`, else the suite's own field,
+/// else the text the items carry inline.
+fn load_questions(options: &Options, suite: &Suite) -> Result<QuestionSet, String> {
+    gym::questions::resolve(suite, options.questions.as_deref())
+        .map_err(|error| error.to_string())
 }
 
 /// Which partitions a run reads. The locked partition is never one of them:
@@ -268,9 +286,9 @@ async fn published_facts(client: &Client, unknown: Facts) -> Facts {
     }
 }
 
-/// How many options a Choice item serves.
-fn option_count(item: &Item) -> usize {
-    eval::options_of(&item.question).map(|options| options.len()).unwrap_or_default()
+/// How many options a Choice question serves.
+fn option_count(question: &Value) -> usize {
+    eval::options_of(question).map(|options| options.len()).unwrap_or_default()
 }
 
 fn question_for(question: &Value) -> Questions {
@@ -312,6 +330,7 @@ struct Pass {
 async fn eval_command(options: Options) -> Result<(), String> {
     let suite = load_suite(&options)?;
     let gate = load_gate(&options, &suite)?;
+    let questions = load_questions(&options, &suite)?;
     let wanted = partitions(&options)?;
     let items = items_of(&suite, &wanted)?;
     let doors = open_doors(&options)?;
@@ -329,13 +348,20 @@ async fn eval_command(options: Options) -> Result<(), String> {
     );
     println!("{}\n", suite.description);
     println!("Judged by `{}`, digest `{}`.\n", gate.id, gate.digest());
+    println!(
+        "Asked as `{}`, digest `{}`. The suite digest covers the items and the question set \
+         covers the text, so a reword is a candidate against these items rather than another \
+         suite.\n",
+        questions.id,
+        &questions.digest()[..16]
+    );
 
     for (name, client) in doors {
         let door = ask_door(name, client).await;
         println!("## {}\n", door.facts.name);
         report_identity(&door.facts);
 
-        let run = run_over(&suite, &gate, &door.facts);
+        let run = run_over(&suite, &gate, &questions, &door.facts);
 
         // Refuse a repeat before spending a door's time on it, rather than
         // after. The store refuses a duplicate row either way; doing it here
@@ -345,7 +371,7 @@ async fn eval_command(options: Options) -> Result<(), String> {
             refuse_repeat(&held, store, &run, &items, None)?;
         }
 
-        let pass = score_pass(&door, &run, &items, store.as_ref()).await?;
+        let pass = score_pass(&door, &run, &questions, &items, store.as_ref()).await?;
         if let Some(store) = &store {
             println!("Recorded {} rows in `{}`.\n", pass.rows.len(), store.path().display());
         }
@@ -361,10 +387,12 @@ async fn eval_command(options: Options) -> Result<(), String> {
 }
 
 /// What every row of one run shares.
-fn run_over(suite: &Suite, gate: &Gate, facts: &Facts) -> Run {
+fn run_over(suite: &Suite, gate: &Gate, questions: &QuestionSet, facts: &Facts) -> Run {
     Run {
         suite: suite.name.clone(),
         suite_digest: suite.digest.clone(),
+        question_set: Some(questions.id.clone()),
+        question_digest: Some(questions.digest()),
         door: facts.name.clone(),
         door_identity: facts.identity.clone(),
         estimator: facts.estimator.clone(),
@@ -406,13 +434,15 @@ fn report_identity(facts: &Facts) {
 async fn score_pass(
     door: &Door,
     run: &Run,
+    questions: &QuestionSet,
     items: &[&Item],
     store: Option<&Store>,
 ) -> Result<Pass, String> {
     let mut rows = Vec::with_capacity(items.len());
     let mut lost = 0;
     for item in items {
-        let (disposition, latency) = ask(&door.client, &item.state, &item.question).await;
+        let question = questions.ask(item).map_err(|error| error.to_string())?;
+        let (disposition, latency) = ask(&door.client, &item.state, question).await;
         match run.row(item, None, &disposition, latency) {
             Some(row) => {
                 if let Some(store) = store {
@@ -495,9 +525,10 @@ fn refuse_repeat(
         if held.row(&planned(run, item, permutation.clone())?).is_some() {
             return Err(format!(
                 "{} already records this perturbation for `{}` on item {}: same suite digest, \
-                 door identity, estimator, seed block, and option order. Re-scoring a run does \
-                 not make it a second run. Move the seed block with --seed-base on the door, or \
-                 record to another store.",
+                 question set, door identity, estimator, seed block, and option order. \
+                 Re-scoring a run does not make it a second run. Move the seed block with \
+                 --seed-base on the door, reword the question set with --questions, or record \
+                 to another store.",
                 store.path().display(),
                 run.door,
                 item.id
@@ -682,38 +713,42 @@ fn compare_command(options: &Options) -> Result<(), String> {
         rows.push(serde_json::from_value(value).map_err(|error| error.to_string())?);
     }
 
-    let mut doors: Vec<String> = Vec::new();
+    let mut sides: Vec<Side> = Vec::new();
     for row in &rows {
-        if !doors.contains(&row.door) {
-            doors.push(row.door.clone());
+        let side = Side::of(row);
+        if !sides.contains(&side) {
+            sides.push(side);
         }
     }
 
     println!(
         "# One contract, {} implementation{}\n",
-        doors.len(),
-        if doors.len() == 1 { "" } else { "s" }
+        sides.len(),
+        if sides.len() == 1 { "" } else { "s" }
     );
     println!(
-        "Read from `{path}`: {} rows over {} door{}. The chain verified, so no row was removed \
+        "Read from `{path}`: {} rows over {} side{}. The chain verified, so no row was removed \
          and none was inserted.\n",
         rows.len(),
-        doors.len(),
-        if doors.len() == 1 { "" } else { "s" }
+        sides.len(),
+        if sides.len() == 1 { "" } else { "s" }
     );
 
     println!(
-        "| Door | Identity | Accuracy | ECE | Brier | NLL | Confident errors | Scored | Refused \
+        "| Side | Identity | Accuracy | ECE | Brier | NLL | Confident errors | Scored | Refused \
          | Median latency |"
     );
     println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     let mut measured: BTreeMap<String, Metrics> = BTreeMap::new();
-    for door in &doors {
-        let inside: Vec<Row> = rows.iter().filter(|row| &row.door == door).cloned().collect();
+    let mut held: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+    for side in &sides {
+        let inside: Vec<Row> =
+            rows.iter().filter(|row| &Side::of(row) == side).cloned().collect();
         let metrics = gym::calibrate::score(&eval::observations(&inside));
         let refused = inside.iter().filter(|row| row.is_refused()).count();
         println!(
-            "| {door} | {} | {:.2} | {:.3} | {:.3} | {:.3} | {} | {} | {} | {} |",
+            "| {} | {} | {:.2} | {:.3} | {:.3} | {:.3} | {} | {} | {} | {} |",
+            side.label(),
             identity_of(&inside),
             metrics.accuracy,
             metrics.ece,
@@ -724,7 +759,8 @@ fn compare_command(options: &Options) -> Result<(), String> {
             refused,
             median_latency(&inside),
         );
-        measured.insert(door.clone(), metrics);
+        measured.insert(side.label(), metrics);
+        held.insert(side.label(), inside);
     }
     println!(
         "\nA refused item stays in the door's denominator and out of its numerator, so a door \
@@ -738,26 +774,45 @@ fn compare_command(options: &Options) -> Result<(), String> {
         println!("Refusals across every door: {}.\n", detail.join(", "));
     }
 
-    let baseline = options.baseline.clone().unwrap_or_else(|| doors[0].clone());
+    let labels: Vec<String> = sides.iter().map(Side::label).collect();
+    let baseline = match &options.baseline {
+        Some(named) => sides
+            .iter()
+            .find(|side| &side.door == named || &side.label() == named)
+            .map(Side::label)
+            .ok_or_else(|| format!("no rows for the baseline {named}"))?,
+        None => labels[0].clone(),
+    };
     let Some(before) = measured.get(&baseline) else {
-        return Err(format!("no rows for the baseline door {baseline}"));
+        return Err(format!("no rows for the baseline {baseline}"));
     };
     let gate = gate::load(options.gate.as_deref().unwrap_or("decision-v1"))
         .map_err(|error| error.to_string())?;
     println!("## Judged by `{}`, digest `{}`\n", gate.id, gate.digest());
-    if doors.len() < 2 {
+    if labels.len() < 2 {
         println!(
             "Only `{baseline}` has rows in this store, so there is nothing to compare it \
              against yet.\n"
         );
         return Ok(());
     }
-    println!("| Candidate | Against | Verdict | Deciding criterion |");
-    println!("| --- | --- | --- | --- |");
-    for door in doors.iter().filter(|door| *door != &baseline) {
-        let Some(after) = measured.get(door) else { continue };
+    println!("| Candidate | Against | Comparing | Verdict | Deciding criterion |");
+    println!("| --- | --- | --- | --- | --- |");
+    for label in labels.iter().filter(|label| *label != &baseline) {
+        let Some(after) = measured.get(label) else { continue };
+        // The store decides what these two sides are before the gate judges
+        // them. Two sides that did not score the same items are not a worse
+        // result; they are a number about two different things, and the
+        // refusal travels into the table rather than being swallowed.
+        let comparing = match admit(held.get(&baseline), held.get(label)) {
+            Ok(comparison) => comparison.as_str().to_string(),
+            Err(refusal) => {
+                println!("| {label} | {baseline} | refused | not a comparison | {refusal} |");
+                continue;
+            }
+        };
         let outcome = gate.judge(&gate::Comparison::new(
-            format!("{door} against {baseline}"),
+            format!("{label} against {baseline}"),
             before.scores(),
             after.scores(),
         ));
@@ -765,10 +820,58 @@ fn compare_command(options: &Options) -> Result<(), String> {
             .deciding()
             .map(|criterion| format!("{}: {}", criterion.name, criterion.detail))
             .unwrap_or_else(|| "nothing was judged".to_string());
-        println!("| {door} | {baseline} | {} | {deciding} |", outcome.verdict);
+        println!(
+            "| {label} | {baseline} | {comparing} | {} | {deciding} |",
+            outcome.verdict
+        );
     }
     println!();
     Ok(())
+}
+
+/// One side of a comparison: a door, and the question set it was asked.
+///
+/// The door alone is not enough once a question-text variant is expressible.
+/// The same door answering a reworded question is the candidate in that
+/// experiment, and folding its rows into the baseline's would average a
+/// comparison away.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Side {
+    door: String,
+    questions: Option<String>,
+}
+
+impl Side {
+    fn of(row: &Row) -> Self {
+        Self {
+            door: row.door.clone(),
+            questions: row.question_set.clone(),
+        }
+    }
+
+    fn label(&self) -> String {
+        match &self.questions {
+            Some(set) => format!("{} asked as {set}", self.door),
+            None => self.door.clone(),
+        }
+    }
+}
+
+/// Whether two sides are a comparison, asked of the store rather than
+/// decided here.
+fn admit(
+    baseline: Option<&Vec<Row>>,
+    candidate: Option<&Vec<Row>>,
+) -> Result<gym::store::Comparison, String> {
+    let values = |rows: Option<&Vec<Row>>| -> Vec<Value> {
+        rows.map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|row| serde_json::to_value(row).ok())
+            .collect()
+    };
+    gym::store::admit_comparison(&values(baseline), &values(candidate))
+        .map_err(|error| error.to_string())
 }
 
 /// What the rows say the door was running. Rows that disagree say so, rather
@@ -812,14 +915,18 @@ fn median_latency(rows: &[Row]) -> String {
 async fn permute_command(options: Options) -> Result<(), String> {
     let suite = load_suite(&options)?;
     let gate = load_gate(&options, &suite)?;
+    let questions = load_questions(&options, &suite)?;
     let wanted = partitions(&options)?;
     let items = items_of(&suite, &wanted)?;
     // Only a Choice has an order to permute. A Noul's two options and a
     // Score's ordered levels both carry meaning in their order.
-    let choices: Vec<&Item> = items
-        .into_iter()
-        .filter(|item| eval::options_of(&item.question).is_some())
-        .collect();
+    let mut choices: Vec<(&Item, &Value)> = Vec::new();
+    for item in items {
+        let question = questions.ask(item).map_err(|error| error.to_string())?;
+        if eval::options_of(question).is_some() {
+            choices.push((item, question));
+        }
+    }
     if choices.is_empty() {
         return Err("the suite holds no Choice items, so there is no order to permute".to_string());
     }
@@ -841,7 +948,7 @@ async fn permute_command(options: Options) -> Result<(), String> {
 
     for (name, client) in doors {
         let door = ask_door(name, client).await;
-        let run = run_over(&suite, &gate, &door.facts);
+        let run = run_over(&suite, &gate, &questions, &door.facts);
         // The reversed pass is what this command exists to measure, so that
         // is the pass a repeat is refused on, item by item, because each
         // item's order is its own. The forward pass is the same trial an
@@ -849,8 +956,8 @@ async fn permute_command(options: Options) -> Result<(), String> {
         // rather than asked again.
         let held = Held::read(store.as_ref())?;
         if let Some(store) = &store {
-            for item in &choices {
-                let order = eval::reversed(option_count(item));
+            for (item, question) in &choices {
+                let order = eval::reversed(option_count(question));
                 refuse_repeat(&held, store, &run, &[*item], Some(order))?;
             }
         }
@@ -860,9 +967,9 @@ async fn permute_command(options: Options) -> Result<(), String> {
         let mut reused = 0_usize;
         let mut trials = 0_usize;
         let mut flips = 0_usize;
-        for item in &choices {
-            let order = eval::reversed(option_count(item));
-            let Some(backward) = eval::permuted(&item.question, &order) else { continue };
+        for (item, question) in &choices {
+            let order = eval::reversed(option_count(question));
+            let Some(backward) = eval::permuted(question, &order) else { continue };
 
             let recorded = held.row(&planned(&run, item, None)?).cloned();
             let forward_answer = match recorded.as_ref().and_then(recorded_answer) {
@@ -872,7 +979,7 @@ async fn permute_command(options: Options) -> Result<(), String> {
                     answer
                 }
                 None => {
-                    let (answer, latency) = ask(&door.client, &item.state, &item.question).await;
+                    let (answer, latency) = ask(&door.client, &item.state, question).await;
                     if let Some(row) = run.row(item, None, &answer, latency) {
                         if let Some(store) = &store {
                             append(store, &row)?;
@@ -930,6 +1037,7 @@ async fn permute_command(options: Options) -> Result<(), String> {
 fn fit_command(options: &Options) -> Result<(), String> {
     let suite = load_suite(options)?;
     let gate = load_gate(options, &suite)?;
+    let questions = load_questions(options, &suite)?;
     let path = options
         .store
         .as_deref()
@@ -937,14 +1045,15 @@ fn fit_command(options: &Options) -> Result<(), String> {
     let rows = read_rows(path)?;
     let scored: Vec<Row> = rows
         .iter()
-        .filter(|row| row.suite_digest == suite.digest)
+        .filter(|row| row.suite_digest == suite.digest && asked_as(row, &suite, &questions))
         .cloned()
         .collect();
     if scored.is_empty() {
         return Err(format!(
-            "{path} holds no rows for `{}` at digest {}",
+            "{path} holds no rows for `{}` at digest {} asked as `{}`",
             suite.name,
-            &suite.digest[..16]
+            &suite.digest[..16],
+            questions.id
         ));
     }
 
@@ -979,6 +1088,26 @@ fn fit_command(options: &Options) -> Result<(), String> {
         println!();
     }
     Ok(())
+}
+
+/// Whether a recorded row was served the question set a run is reading.
+///
+/// A store can hold a baseline and a reworded variant side by side, and
+/// pooling them would fit one table on two readings of every item. So a row
+/// counts when it pins this set's digest.
+///
+/// A row that pins no set at all counts only when the set in force is the
+/// suite's own authored text. Those rows predate `question_digest`, and they
+/// were served the text their suite digest already covers; they were not
+/// served a variant, and reading them as one would be inventing a
+/// measurement.
+fn asked_as(row: &Row, suite: &Suite, questions: &QuestionSet) -> bool {
+    match &row.question_digest {
+        Some(digest) => digest == &questions.digest(),
+        None => QuestionSet::authored(suite)
+            .map(|authored| authored.digest() == questions.digest())
+            .unwrap_or(false),
+    }
 }
 
 /// Every row in a store, verified and typed.

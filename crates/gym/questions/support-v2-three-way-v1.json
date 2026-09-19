@@ -1,0 +1,38 @@
+{
+  "$comment": [
+    "The text support-v2-three-way's items carry inline, lifted out of them and given a name a row can pin. The suite predates crates/gym/src/questions.rs, so its items still hold their own copy and its digest still covers them; this file is the same text under an id, and a test asserts the two agree.",
+    "A reword is a new file with a new id, not an edit to this one. The digest covers the questions and nothing else, so a reworded set is a different question set against the same suite, which is the comparison openagents#9386 exists to make expressible.",
+    "The routing question is the one docs/text-optimization.md names: one six-word sentence and three criteria strings, never measured."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "support-v2-three-way-v1",
+  "suite": "support-v2-three-way",
+  "questions": {
+    "routing": {
+      "type": "choice",
+      "instructions": "Which team should handle this message?",
+      "criteria": {
+        "billing": "Charges, invoices, refunds, and payment problems",
+        "technical": "Bugs, crashes, outages, and performance",
+        "sales": "Quotes, plans, upgrades, renewals, and pricing"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "How severe is the reported issue?",
+      "criteria": [
+        "Cosmetic; the product still works",
+        "Impaired; there is a workaround",
+        "Blocking; there is no workaround"
+      ]
+    },
+    "urgency": {
+      "type": "noul",
+      "instructions": "Does this need urgent attention today?",
+      "criteria": {
+        "true": "Something is broken, blocked, or unsafe right now",
+        "false": "It can wait for the normal queue"
+      }
+    }
+  }
+}
