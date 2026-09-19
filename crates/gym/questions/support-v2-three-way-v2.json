@@ -1,0 +1,39 @@
+{
+  "$comment": [
+    "A reword of support-v2-three-way-v1's routing question, written by hand against the routing family's development partition and against nothing else. The calibration partition scores it; the locked partition is not read.",
+    "This candidate changes the three criteria descriptions and leaves the instructions word for word. Its pair, support-v2-three-way-v3, changes the instructions and leaves the criteria alone, and support-v2-three-way-v4 changes both. Three candidates over two fields say which field carries an effect, if either does.",
+    "What it adds is the labelling rule the suite's items follow and the v1 text never states: a broken thing is technical even when it is an invoice or a checkout page, and a limit a larger plan would lift is sales even when it reads as slowness.",
+    "The option names billing, technical, and sales are frozen, as is the question type. Renaming an option changes the answer space rather than the question, and a candidate that returns different keys is not answering the same question."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "support-v2-three-way-v2",
+  "suite": "support-v2-three-way",
+  "questions": {
+    "routing": {
+      "type": "choice",
+      "instructions": "Which team should handle this message?",
+      "criteria": {
+        "billing": "Money already charged, owed, credited, or refunded: invoices and what is on them, payments, discounts, trials, and access lost over any of those",
+        "technical": "Something does not work as designed: bugs, errors, crashes, outages, corrupt files, and slowness, including when it happens on an invoice, a payment page, or an upgrade button",
+        "sales": "Buying or changing what they have: quotes, plans, seats, upgrades, renewals, pricing, add-ons, and a plan limit a larger plan would lift"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "How severe is the reported issue?",
+      "criteria": [
+        "Cosmetic; the product still works",
+        "Impaired; there is a workaround",
+        "Blocking; there is no workaround"
+      ]
+    },
+    "urgency": {
+      "type": "noul",
+      "instructions": "Does this need urgent attention today?",
+      "criteria": {
+        "true": "Something is broken, blocked, or unsafe right now",
+        "false": "It can wait for the normal queue"
+      }
+    }
+  }
+}

@@ -101,6 +101,8 @@ struct Options {
     baseline: Option<String>,
     partition: Option<String>,
     blocks: Option<usize>,
+    /// The one family to ask. Every family the suite holds by default.
+    family: Option<String>,
 }
 
 fn main() {
@@ -136,6 +138,7 @@ gym latency  measure how much wall clock moves when nothing else does
   --gate id           the acceptance rule; the suite's own by default
   --questions id      the question set to serve; the suite's own by default
   --partition name    calibration or development; both by default
+  --family name       the one family to ask; every family by default
   --fit               fit one map per family and judge it
   --record path       append every row to this store
   --records dir       write one calibration record per family here
@@ -173,6 +176,7 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--baseline" => options.baseline = args.next(),
             "--partition" => options.partition = args.next(),
             "--blocks" => options.blocks = args.next().and_then(|n| n.parse().ok()),
+            "--family" => options.family = args.next(),
             other => eprintln!("unknown flag {other}"),
         }
     }
@@ -219,10 +223,36 @@ fn partitions(options: &Options) -> Result<Vec<Partition>, String> {
     }
 }
 
-fn items_of<'a>(suite: &'a Suite, wanted: &[Partition]) -> Result<Vec<&'a Item>, String> {
+/// The items a run asks: the wanted partitions, narrowed to one family when
+/// `--family` names one.
+///
+/// A suite holds three families and a question set holds one question per
+/// family, so a reword touches one family and leaves the others word for
+/// word. Asking the untouched ones anyway costs door calls and then averages
+/// the change it was measuring against items that could not have moved. A
+/// family that the suite does not hold is an error rather than an empty run,
+/// because a typo that scores nothing reads as a door that answered nothing.
+fn items_of<'a>(
+    suite: &'a Suite,
+    wanted: &[Partition],
+    family: Option<&str>,
+) -> Result<Vec<&'a Item>, String> {
+    if let Some(named) = family {
+        let held = suite.families();
+        if !held.iter().any(|family| family == named) {
+            return Err(format!(
+                "`{}` holds no {named} family; it holds {}",
+                suite.name,
+                held.join(", ")
+            ));
+        }
+    }
     let mut items = Vec::new();
     for partition in wanted {
         items.extend(suite.partition(*partition).map_err(|error| error.to_string())?);
+    }
+    if let Some(named) = family {
+        items.retain(|item: &&Item| item.family == named);
     }
     Ok(items)
 }
@@ -344,7 +374,7 @@ async fn eval_command(options: Options) -> Result<(), String> {
     let gate = load_gate(&options, &suite)?;
     let questions = load_questions(&options, &suite)?;
     let wanted = partitions(&options)?;
-    let items = items_of(&suite, &wanted)?;
+    let items = items_of(&suite, &wanted, options.family.as_deref())?;
     let doors = open_doors(&options)?;
     let store = options.record.as_deref().map(Store::at);
 
@@ -929,7 +959,7 @@ async fn permute_command(options: Options) -> Result<(), String> {
     let gate = load_gate(&options, &suite)?;
     let questions = load_questions(&options, &suite)?;
     let wanted = partitions(&options)?;
-    let items = items_of(&suite, &wanted)?;
+    let items = items_of(&suite, &wanted, options.family.as_deref())?;
     // Only a Choice has an order to permute. A Noul's two options and a
     // Score's ordered levels both carry meaning in their order.
     let mut choices: Vec<(&Item, &Value)> = Vec::new();
@@ -1152,7 +1182,7 @@ async fn latency_command(options: Options) -> Result<(), String> {
     let suite = load_suite(&options)?;
     let questions = load_questions(&options, &suite)?;
     let wanted = partitions(&options)?;
-    let items = items_of(&suite, &wanted)?;
+    let items = items_of(&suite, &wanted, options.family.as_deref())?;
     let doors = open_doors(&options)?;
     let blocks = options.blocks.unwrap_or(DEFAULT_BLOCKS);
     if blocks < 2 {

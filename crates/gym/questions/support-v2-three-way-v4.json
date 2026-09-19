@@ -1,0 +1,38 @@
+{
+  "$comment": [
+    "A reword of support-v2-three-way-v1's routing question, written by hand against the routing family's development partition and against nothing else. The calibration partition scores it; the locked partition is not read.",
+    "This candidate is support-v2-three-way-v3's instructions with support-v2-three-way-v2's criteria: the most text the experiment writes, and the cell that says whether the two halves add up, cancel, or do nothing.",
+    "The option names billing, technical, and sales are frozen, as is the question type."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "support-v2-three-way-v4",
+  "suite": "support-v2-three-way",
+  "questions": {
+    "routing": {
+      "type": "choice",
+      "instructions": "Which team should handle this message? Route on what has to be done about it rather than on the subject it mentions: something that is broken is technical even on an invoice or a payment page, and a limit a larger plan would lift is sales even when it reads as slowness.",
+      "criteria": {
+        "billing": "Money already charged, owed, credited, or refunded: invoices and what is on them, payments, discounts, trials, and access lost over any of those",
+        "technical": "Something does not work as designed: bugs, errors, crashes, outages, corrupt files, and slowness, including when it happens on an invoice, a payment page, or an upgrade button",
+        "sales": "Buying or changing what they have: quotes, plans, seats, upgrades, renewals, pricing, add-ons, and a plan limit a larger plan would lift"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "How severe is the reported issue?",
+      "criteria": [
+        "Cosmetic; the product still works",
+        "Impaired; there is a workaround",
+        "Blocking; there is no workaround"
+      ]
+    },
+    "urgency": {
+      "type": "noul",
+      "instructions": "Does this need urgent attention today?",
+      "criteria": {
+        "true": "Something is broken, blocked, or unsafe right now",
+        "false": "It can wait for the normal queue"
+      }
+    }
+  }
+}

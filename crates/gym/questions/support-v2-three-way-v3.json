@@ -1,0 +1,38 @@
+{
+  "$comment": [
+    "A reword of support-v2-three-way-v1's routing question, written by hand against the routing family's development partition and against nothing else. The calibration partition scores it; the locked partition is not read.",
+    "This candidate changes the instructions and leaves the three criteria descriptions word for word, which is the other half of the pair support-v2-three-way-v2 opens. It carries the same labelling rule in the instruction slot rather than in the answer space, so the two together say which field a caller should spend words on.",
+    "The option names billing, technical, and sales are frozen, as is the question type."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "support-v2-three-way-v3",
+  "suite": "support-v2-three-way",
+  "questions": {
+    "routing": {
+      "type": "choice",
+      "instructions": "Which team should handle this message? Route on what has to be done about it rather than on the subject it mentions: something that is broken is technical even on an invoice or a payment page, and a limit a larger plan would lift is sales even when it reads as slowness.",
+      "criteria": {
+        "billing": "Charges, invoices, refunds, and payment problems",
+        "technical": "Bugs, crashes, outages, and performance",
+        "sales": "Quotes, plans, upgrades, renewals, and pricing"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "How severe is the reported issue?",
+      "criteria": [
+        "Cosmetic; the product still works",
+        "Impaired; there is a workaround",
+        "Blocking; there is no workaround"
+      ]
+    },
+    "urgency": {
+      "type": "noul",
+      "instructions": "Does this need urgent attention today?",
+      "criteria": {
+        "true": "Something is broken, blocked, or unsafe right now",
+        "false": "It can wait for the normal queue"
+      }
+    }
+  }
+}

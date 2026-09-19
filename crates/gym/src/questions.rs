@@ -536,6 +536,63 @@ mod tests {
         );
     }
 
+    /// The ids of the hand-written candidates the routing experiment scores.
+    const CANDIDATES: [&str; 3] = [
+        "support-v2-three-way-v2",
+        "support-v2-three-way-v3",
+        "support-v2-three-way-v4",
+    ];
+
+    #[test]
+    fn the_routing_candidates_reword_one_family_and_freeze_the_answer_space() {
+        // The experiment `docs/text-optimization.md` asks for. What makes a
+        // reword a candidate rather than a second suite is that it changes
+        // the text and nothing else, so this pins the nothing else: the two
+        // untouched families word for word, the question type, and the
+        // option names. An option name is answer-space identity, and a
+        // candidate that hands back other keys is answering another
+        // question rather than answering this one better.
+        let suite = suite();
+        let baseline = load("support-v2-three-way-v1").expect("the committed set loads");
+        let options = |question: &Value| -> Vec<String> {
+            question["criteria"]
+                .as_object()
+                .expect("a choice question names its options")
+                .keys()
+                .cloned()
+                .collect()
+        };
+        for id in CANDIDATES {
+            let candidate = load(id).expect("the candidate loads");
+            assert!(candidate.covers(&suite), "{id} covers every family");
+            assert_ne!(candidate.digest(), baseline.digest(), "{id} is a reword");
+            for family in ["severity", "urgency"] {
+                assert_eq!(
+                    candidate.questions[family], baseline.questions[family],
+                    "{id} leaves {family} word for word"
+                );
+            }
+            let before = &baseline.questions["routing"];
+            let after = &candidate.questions["routing"];
+            assert_ne!(after, before, "{id} rewords routing");
+            assert_eq!(after["type"], before["type"], "{id} keeps the question type");
+            assert_eq!(options(after), options(before), "{id} freezes the option names");
+        }
+    }
+
+    #[test]
+    fn each_routing_candidate_is_its_own_text() {
+        // Three candidates over two fields only say which field carries an
+        // effect while the three are three. Two that collapsed to one text
+        // would land in the store as one side and read as a repeat.
+        let mut digests: Vec<String> = Vec::new();
+        for id in CANDIDATES {
+            let digest = load(id).expect("the candidate loads").digest();
+            assert!(!digests.contains(&digest), "{id} repeats another candidate's text");
+            digests.push(digest);
+        }
+    }
+
     #[test]
     fn rewording_a_question_moves_the_question_digest_and_nothing_else() {
         let suite = suite();
