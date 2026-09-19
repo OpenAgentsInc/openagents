@@ -1,7 +1,11 @@
 # Is the question text a tunable parameter?
 
-**Status:** open. Research in progress; this page records the claim and what
-would have to be true for it to change what we build.
+**Status:** the lead is still open; the tool is settled. `jev-align` is real,
+competently built, and its launch claim is backed by no published evidence —
+while its author's own unpublished benchmark, written two days earlier, shows
+the technique *lowering* Jev's average accuracy. The idea remains worth
+testing. The tool is not worth adopting, and the experiment below is still
+unrun.
 
 ## What would change if it holds
 
@@ -107,14 +111,104 @@ The smallest honest experiment:
 5. Spend the locked partition only if steps 3 and 4 say there is something
    worth confirming.
 
-## Where this page goes next
+## What the tool actually does
 
-Research is under way on what `jev-align` actually optimizes, what it
-measures, and whether its evidence is a committed evaluation or a README
-example. When it returns, this page either becomes a finding or is closed
-with the reason.
+Read at `49753df`. It optimizes the `instructions` string and the `criteria`
+descriptions, and **freezes the option names** — a round-trip check rejects
+any candidate whose key set differs, so an optimizer cannot silently rename a
+class or change the task type. That constraint is well judged and worth
+copying.
 
-One thing is already clear and does not depend on the research: **we have
-never optimized our question text, and we have been comparing four doors on
-questions written once, by hand, without measurement.** That is a gap in our
-own work regardless of whether this particular tool is any good.
+It depends on published GEPA rather than vendoring it, uses both halves of
+the method, and persists carefully: atomic writes, an append-only label log,
+a rewind facility, and a sha256 fingerprint over candidate plus backend
+stamped onto every captured production prediction. That fingerprint is the
+second thing worth copying.
+
+Its backend abstraction is one method — `evaluate_many(candidate, stories)` —
+and it already runs identical candidates against three different endpoints.
+**A Kev or Lev adapter would be about sixty lines.**
+
+## Why we should not adopt it
+
+**Its validation set is its training set.** In the optimizer:
+
+```python
+dataset=examples,
+valset=examples,
+```
+
+The number shown to the user as "the score" is computed on the very labels
+the reflection was driven by. The optional holdout is off by default, and
+when on it reserves `max(1, round(batch_size * 0.2))` rows — **one row per
+round at the default batch of five**. There is no cross-validation, no
+significance test, and nothing in the codebase computes a standard error.
+
+The single honest sentence about this is in `AGENTS.md`, the file aimed at
+coding agents rather than at users:
+
+> Do not treat a higher training score as automatic approval. The score uses
+> accumulated labels and is not a held-out generalization estimate.
+
+**Each reflective mutation is driven by a fixed five-row minibatch** that is
+cached and reused for every proposal in a round. A five-row F1 moves in
+increments of 0.1 to 0.2. Our own measured floor says a two-door comparison
+on this suite needs 0.056 accuracy to clear two sigma; essentially every move
+at that resolution is inside our noise.
+
+**And it is expensive in a way the README does not state:** roughly 2,300 Jev
+calls in the first round and 1,300 in later ones, to buy five new labels. The
+pool sweeps sit outside the metric budget, so the `--max-metric-calls` flag
+does not bound spend.
+
+## The finding that matters
+
+Two days before launching a CLI premised on Jev needing calibration, the same
+author opened a still-unmerged pull request against GEPA containing a case
+study with an addendum on Jev:
+
+| | |
+| --- | --- |
+| Zero-shot accuracy | **80%** |
+| Average post-optimization accuracy | **77%** |
+| Best single transferred prompt | 86.7% |
+
+Their own note adds that Jev *"had the best zero-shot performance across the
+models benchmarked."*
+
+**On their own data, GEPA-transferred prompts moved Jev from 80% to 77% on
+average**, and only a cherry-picked best-of-eleven beat zero-shot — on the
+model they rank as least in need of calibration. The benchmark is weak in its
+own right (n=30, one case is 3.3 points, self-graded against private
+criteria), but it is the only evidence either way, and it points against the
+pitch.
+
+That is also the one existing datapoint on the transfer question this page
+opened with: a prompt optimized against other models and transferred to Jev
+**lost** three points. Evidence against free transfer, from the tool's
+authors.
+
+## What we do instead
+
+The idea survives the tool. Question text is the only lever available on a
+closed hosted model, and we have never pulled it.
+
+The right shape is not to adopt the CLI but to make question text a candidate
+the Gym already judges — `crates/gym/src/ab.rs` models a door as anything
+answering the contract, so a text variant is a candidate exactly as an
+adapter is. Two details are worth lifting: the **frozen component set**, so
+an optimizer cannot rename a class, and the **definition fingerprint**, so a
+later reader can tell which text produced which number.
+
+The experiment stays as specified above, with one number added. Our best
+measured non-text lever is the Choice adapter at **+13 points, 4.7 sigma**.
+That is the bar. And it comes with its own warning, which is exactly the trap
+this tool falls into wholesale: the adapter's +13 points of accuracy arrived
+with *worse* log loss and *more* confident errors. **Whatever text
+optimization we measure gets reported on the full metric panel, not on
+accuracy alone.**
+
+One thing was already true and does not depend on any of this: we have never
+optimized our question text, and we have been comparing four doors on
+questions written once, by hand, without measurement. That remains a gap in
+our own work.
