@@ -170,7 +170,7 @@ Accuracy over blocks: 0.781, standard deviation 0.0197, range 0.745 to 0.796, sp
 ## Seed base 0 still reproduces the record
 
 Before the sweep, a door at seed base 0 was scored against `support-v2`
-through `lev-eval`, the same path that produced
+through `lev-eval`, now `gym eval`, the same path that produced
 [`2026-09-19-suite-v2-scores.md`](2026-09-19-suite-v2-scores.md):
 
 | Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |

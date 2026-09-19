@@ -384,6 +384,17 @@ impl Pool {
         self.helpers.len()
     }
 
+    /// Asks the first helper for the base model signature prefix the device
+    /// runs.
+    ///
+    /// This is how a door with no adapter attached can still say what it is
+    /// running, which is what a calibration record has to match before it may
+    /// serve.
+    pub fn base_signature_prefix(&self) -> Result<String> {
+        let mut helper = self.helpers[0].lock().expect("a helper lock is not poisoned");
+        helper.base_signature_prefix()
+    }
+
     /// Asks the first helper whether the runtime will answer.
     pub fn availability(&self) -> Result<Availability> {
         let mut helper = self.helpers[0].lock().expect("a helper lock is not poisoned");

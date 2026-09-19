@@ -39,19 +39,16 @@ from build_support_v2 import build as build_two_way
 # One turn of the round robin, applied within each family.
 CYCLE = ["calibration", "calibration", "development", "development", "locked"]
 
-# The admission gate from `docs/lev/calibration.md`, carried in the manifest
-# and deliberately outside the digest. Tightening a floor must not make
-# historical runs read as drifted; each row pins the gate it was judged
-# against by that gate's own digest instead.
-GATE = {
-    "name": "calibration-admission-v1",
-    "source": "docs/lev/calibration.md",
-    "conditions": {
-        "ece_falls_by_at_least": 0.1,
-        "nll_rises_by_at_most": 0.0,
-        "brier_rises_by_at_most": 0.1,
-    },
-}
+# The acceptance rule a run of this suite is normally judged by, named by id
+# and not restated here. The rule itself lives in `crates/gym/gates/`, where
+# it carries its own digest; a manifest that repeats the thresholds is a
+# second rule with the same job and different numbers, which is what this
+# file held until 2026-09-19.
+#
+# The reference is deliberately outside the suite digest. Tightening a floor
+# must not make historical runs read as drifted; each row pins the gate it
+# was judged against by that gate's own digest instead.
+GATE = "probability-v1"
 
 
 def build():

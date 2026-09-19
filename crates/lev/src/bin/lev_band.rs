@@ -18,7 +18,8 @@ use std::collections::BTreeMap;
 
 use lev::api::{Extensions, SystemOneRequest};
 use lev::bridge::{Bridge, Call, Pool, Sampling};
-use lev::calibrate::{Map, Observation, admit, score};
+use gym::calibrate::{Map, Observation, score};
+use gym::gate;
 use lev::schema::{BANDS, compile};
 use lev::suite::Suite;
 
@@ -172,9 +173,29 @@ fn main() {
         );
     }
 
-    let (ok, why) = admit(score(&raw_scores), score(&conditioned), fit_on.len());
-    println!("\nBand-conditioned map against the raw signal: {why}");
-    println!("Admitted: {ok}");
+    // Judged by the committed rule rather than by constants in this file, so
+    // the verdict names the rule that produced it and moves when the rule
+    // does.
+    let rule = gate::load("probability-v1").expect("the committed gate loads");
+    let outcome = rule.judge(
+        &gate::Comparison::new(
+            "band-conditioned against raw",
+            score(&raw_scores).scores(),
+            score(&conditioned).scores(),
+        )
+        .fitted_on(fit_on.len()),
+    );
+    println!("\n### Band-conditioned map against the raw signal\n");
+    println!("Judged by `{}`, digest `{}`.\n", rule.id, rule.digest());
+    println!("| Criterion | Rank | Verdict | Detail |");
+    println!("| --- | --- | --- | --- |");
+    for criterion in &outcome.criteria {
+        println!(
+            "| `{}` | {} | {} | {} |",
+            criterion.name, criterion.rank, criterion.verdict, criterion.detail
+        );
+    }
+    println!("\nVerdict: {}.", outcome.verdict);
     println!(
         "\nBands with their own table: {:?}",
         banded_map.by_band.keys().collect::<Vec<_>>()

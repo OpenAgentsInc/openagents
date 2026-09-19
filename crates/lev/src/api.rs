@@ -45,13 +45,22 @@ pub struct Extensions {
     /// Refuse rather than return a number no fitted calibration map backs.
     #[serde(default)]
     pub require_calibration: bool,
+    /// The question family this request belongs to.
+    ///
+    /// A calibration map is fitted per family, and the contract carries a
+    /// state and a question with nothing in either that says which family
+    /// they are. Naming it is how a caller reaches a fitted map; a request
+    /// that names none is answered with the raw signal, and is refused when
+    /// it also sets `require_calibration`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
 }
 
 impl Extensions {
     /// Whether the caller asked for nothing.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
-        !self.estimator && !self.require_calibration
+        !self.estimator && !self.require_calibration && self.family.is_none()
     }
 }
 

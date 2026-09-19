@@ -104,7 +104,8 @@ python3 training/lev-adapter/toolkit.py
 #    way. Only the training split is augmented.
 #
 #    --band trains the certainty field, labelled from the base model's own
-#    measured outcomes. Produce those first with `lev-eval --dump`.
+#    measured outcomes. Produce those first with `gym eval --record`, which
+#    writes one row per item with its distribution and its verdict.
 cd training/lev-adapter
 python3 convert.py --out data/ --permutations 3 \
     --band --base-rates runs/base-rates.json
@@ -123,9 +124,10 @@ python3 export.py --run runs/lev-v1 --out runs/lev-v1/lev.fmadapter
 # 5. Serve through it and score it against the base on the same suite.
 cargo run -p lev --features serve --bin lev-serve -- --port 11437 \
     --adapter training/lev-adapter/runs/lev-v1/lev.fmadapter
-cargo run -p lev --features serve --bin lev-eval -- \
+cargo run -p gym --bin gym -- eval \
     --door lev-base=http://127.0.0.1:11436 \
-    --door lev-adapted=http://127.0.0.1:11437 --fit
+    --door lev-adapted=http://127.0.0.1:11437 --fit \
+    --record results/support-v2-three-way.jsonl
 ```
 
 ## What to train

@@ -6,7 +6,8 @@ the ordered `certainty` band, labelled from the base model's own measured
 outcomes rather than from an opinion.
 
 Produced by `lev-band` and `lev-eval` against live hardware, evaluation split
-only.
+only. `lev-eval` is now `gym eval`; `lev-band` stayed in `crates/lev`, because
+the band is Apple's constrained enum and no other door has one.
 
 ## The band, before and after
 

@@ -215,7 +215,7 @@ Everything on either side of training, verified against live hardware:
 | `.fmadapter` reader and writer | `crates/lev/src/adapter.rs`, 9 tests |
 | Apple's runtime loads a package we wrote | **verified** |
 | Serving through an adapter | `lev-serve --adapter`, pinned at startup |
-| Evaluation gate | `lev-eval`, base against adapted on one suite |
+| Evaluation gate | `gym eval`, base against adapted on one suite |
 
 The package this repository writes loads on the device and round-trips its
 metadata. A test asserts that *generating* with it fails, because its tensors
@@ -250,7 +250,7 @@ beat the base model on items it was not trained on.
 - Band signal: the certainty field must *vary*, and its bins must separate
   correct from incorrect at a rate better than chance.
 - A calibration map fitted on the adapted model that passes
-  `calibrate::admit` — which the base model's never has.
+  `crates/gym/gates/probability-v1.json` — which the base model's never has.
 - Order sensitivity re-measured, since fine-tuning often reduces it.
 
 ## What not to do

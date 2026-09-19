@@ -9,11 +9,40 @@
 //! bin, so a thin bin is visible instead of smoothed over. Temperature
 //! scaling, which is what kev uses, does not apply: there are no logits to
 //! scale.
+//!
+//! # Why this is in the Gym
+//!
+//! It was `crates/lev/src/calibrate.rs`, and nothing in it is Apple's. A
+//! reliability table over labelled outcomes fits any door that answers
+//! `POST /v1/systemone`, and the records it writes were already being written
+//! for kev. What is Apple's — the constrained certainty band, the runtime
+//! probe — stayed behind in `crates/lev`.
+//!
+//! # What a record has to be able to say
+//!
+//! [`Record`] carries the provenance a served probability rests on, because
+//! the committed maps this module inherited could not. They named an
+//! operating system build, which is identical for every door on one machine,
+//! and so they sat on disk through two adapter changes that altered which
+//! question families are admitted at all. A record now names the door, what
+//! that door was running, the suite partition it was fitted on, the estimator
+//! block it drew, the gate that judged it, and any locked-partition read it
+//! rests on. [`Record::serve_to`] checks the record against the door that is
+//! actually running and names the field that does not match.
+//!
+//! The verdict is not computed here. `admit`, the three-condition function
+//! this module used to carry, is now [`crate::gate`], where a rule has a
+//! digest and a candidate can be the better decision and the worse
+//! probability at once.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+
+use crate::gate::Scores;
+use crate::row::DoorIdentity;
 
 /// One observation: what the estimator reported for the winning option, and
 /// whether that option turned out to be right.
@@ -303,28 +332,112 @@ pub fn score(observations: &[Observation]) -> Metrics {
     Metrics { accuracy, ece, brier, nll, confident_errors, items: observations.len() }
 }
 
+impl Metrics {
+    /// The same numbers in the shape a gate judges.
+    ///
+    /// Every field a gate reads is optional there and measured here, so the
+    /// conversion fills each one. A measure that was never taken never
+    /// reaches this type: it is absent from the set of observations, and the
+    /// items count says how many there were.
+    #[must_use]
+    pub const fn scores(&self) -> Scores {
+        Scores {
+            items: self.items,
+            accuracy: Some(self.accuracy),
+            ece: Some(self.ece),
+            brier: Some(self.brier),
+            nll: Some(self.nll),
+            confident_errors: Some(self.confident_errors),
+        }
+    }
+}
+
 fn english() -> String {
     "en".to_string()
 }
 
-/// What a door was running when a map was fitted against it.
+/// The schema tag a calibration record carries.
+pub const RECORD_SCHEMA: &str = "openagents.gym.calibration_record.v1";
+
+/// Which estimator drew the raw signal, and from where.
+///
+/// The seed block is part of this because the doors here reproduce exactly:
+/// `l2` over block 0 and `l2` over block 3 are two trials of the same items,
+/// and a record that names only the estimator cannot say which one it saw.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DoorIdentity {
-    /// The model id the door reports.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub model: String,
-    /// The base model signature, where the runtime exposes one.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub base_model_signature: String,
-    /// The adapter package identifier, when a door serves one.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub adapter: String,
-    /// Whether any of the above can actually be checked.
-    ///
-    /// False for a hosted closed model. That is the `unknown is not zero`
-    /// rule applied to identity: do not synthesise a digest for something
-    /// that does not publish one.
-    pub verified: bool,
+pub struct EstimatorConfig {
+    /// The estimator's label, such as `l2`.
+    pub estimator: String,
+    /// How many draws one estimate rests on.
+    pub samples: u64,
+    /// The seed block the draws came from. Block 0 is the default.
+    #[serde(default)]
+    pub seed_base: u64,
+}
+
+impl EstimatorConfig {
+    /// A configuration naming the estimator, its draws, and its seed block.
+    #[must_use]
+    pub fn new(estimator: impl Into<String>, samples: u64, seed_base: u64) -> Self {
+        Self { estimator: estimator.into(), samples, seed_base }
+    }
+}
+
+/// Why a record may not serve the door that is running.
+///
+/// Each value names one field, because "the record does not match" is not an
+/// answer a person can act on. A door that refuses says which of these it
+/// found.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum Mismatch {
+    /// The document is tagged as something other than a calibration record.
+    #[error("the record is tagged {found}, not {RECORD_SCHEMA}")]
+    Schema {
+        /// The tag the file carried.
+        found: String,
+    },
+    /// The gate refused this map, so there is nothing to serve.
+    #[error("the record was not admitted: {verdict}")]
+    NotAdmitted {
+        /// The verdict the gate recorded.
+        verdict: String,
+    },
+    /// The operating system build has moved.
+    #[error("os_build: the map was fitted on {fitted} and this door runs {serving}")]
+    OsBuild {
+        /// The build the map was fitted on.
+        fitted: String,
+        /// The build the door reports.
+        serving: String,
+    },
+    /// The record cannot name what it was fitted against.
+    #[error(
+        "door_identity.verified: the record names no base model signature, so there is nothing \
+         to match it against"
+    )]
+    RecordUnverifiable,
+    /// The door cannot say what it is running.
+    #[error(
+        "door_identity.verified: this door publishes no base model signature, so no record can \
+         be checked against it"
+    )]
+    DoorUnverifiable,
+    /// The base model underneath has changed.
+    #[error("base_model_signature: the map was fitted against {fitted} and this door runs {serving}")]
+    BaseModelSignature {
+        /// The signature the map was fitted against.
+        fitted: String,
+        /// The signature the door reports.
+        serving: String,
+    },
+    /// The adapter has changed, which changes the door.
+    #[error("adapter: the map was fitted against {fitted} and this door serves {serving}")]
+    Adapter {
+        /// The adapter the map was fitted against, or `none`.
+        fitted: String,
+        /// The adapter the door serves, or `none`.
+        serving: String,
+    },
 }
 
 /// What a calibrated question family carries.
@@ -334,12 +447,15 @@ pub struct DoorIdentity {
 /// either.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Record {
+    /// What this document is. Always [`RECORD_SCHEMA`] for a record this
+    /// crate wrote, and written into the file rather than inferred from its
+    /// path, so a record that escapes its directory still says what it is.
+    #[serde(default = "record_schema")]
+    pub schema: String,
     /// The question family this map covers.
     pub family: String,
-    /// Which estimator produced the raw signal.
-    pub estimator: String,
-    /// How many samples an L2 estimate drew.
-    pub samples: u64,
+    /// Which estimator produced the raw signal, and from which seed block.
+    pub estimator_config: EstimatorConfig,
     /// The language the suite is written in. English, and only English —
     /// every suite here is English and the maps are fitted on English items.
     /// Recorded rather than implied so a later reader does not assume the
@@ -350,6 +466,14 @@ pub struct Record {
     pub suite: String,
     /// The suite's content digest.
     pub suite_digest: String,
+    /// The partition the map was fitted on.
+    ///
+    /// A map fitted on the calibration partition and a map fitted on the
+    /// development partition are different claims, and a record that names
+    /// only the suite cannot tell them apart. The digest pins the items; this
+    /// pins which of them were spent on the fit.
+    #[serde(default)]
+    pub partition_id: String,
     /// The operating system build the runtime reported.
     pub os_build: String,
     /// Which door produced the observations.
@@ -368,6 +492,23 @@ pub struct Record {
     /// and the fields stay empty rather than being invented.
     #[serde(default)]
     pub door_identity: DoorIdentity,
+    /// The acceptance rule that judged this map.
+    ///
+    /// A record whose verdict names no rule is a claim about a candidate that
+    /// nobody can re-run, which is the fault `crate::gate` exists to stop.
+    #[serde(default)]
+    pub gate_id: Option<String>,
+    /// That rule's content digest, so retuning a floor produces a new rule
+    /// rather than rewriting this verdict's meaning.
+    #[serde(default)]
+    pub gate_digest: Option<String>,
+    /// The locked-partition reads this record rests on, by their subjects.
+    ///
+    /// Empty for a map fitted and scored on the open partitions, which is the
+    /// normal case. A record that spent the held-out set says so here, and
+    /// the claim is checkable against the ledger the read was written to.
+    #[serde(default)]
+    pub locked_reads: Vec<String>,
     /// The day it was fitted.
     pub fitted: String,
     /// The map.
@@ -382,114 +523,117 @@ pub struct Record {
     pub verdict: String,
 }
 
+fn record_schema() -> String {
+    RECORD_SCHEMA.to_string()
+}
+
 impl Record {
-    /// Whether this record may be served against the given host and door.
+    /// Reads a record from JSON.
     ///
-    /// `calibration.md`'s fifth gate says the base model signature the map
-    /// was fitted against must match the one serving. That gate was written
-    /// down before the field existed, so it was unimplementable; it is
-    /// implementable now.
-    #[must_use]
-    pub fn valid_for(&self, os_build: &str, identity: &DoorIdentity) -> bool {
-        if !self.admitted || self.os_build != os_build {
-            return false;
+    /// # Errors
+    ///
+    /// Returns what `serde_json` reports when the document is not a record.
+    pub fn from_json(source: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(source)
+    }
+
+    /// Reads every record in a directory, ordered by file name.
+    ///
+    /// A file that does not parse is an error rather than a skip. A serving
+    /// door that silently drops an unreadable record serves the families it
+    /// happened to understand and says nothing about the rest.
+    ///
+    /// # Errors
+    ///
+    /// Returns the path and the reason for the first file that cannot be read
+    /// or does not parse. A directory that does not exist reads as no
+    /// records, because holding no calibration is a normal state.
+    pub fn load_dir(dir: &Path) -> Result<Vec<(PathBuf, Self)>, String> {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(format!("{}: {error}", dir.display())),
+        };
+        let mut paths = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|error| format!("{}: {error}", dir.display()))?;
+            let path = entry.path();
+            if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+                paths.push(path);
+            }
+        }
+        paths.sort();
+        let mut records = Vec::with_capacity(paths.len());
+        for path in paths {
+            let text = std::fs::read_to_string(&path)
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            let record =
+                Self::from_json(&text).map_err(|error| format!("{}: {error}", path.display()))?;
+            records.push((path, record));
+        }
+        Ok(records)
+    }
+
+    /// Whether this record may serve the door that is running, and which
+    /// field says no.
+    ///
+    /// `docs/lev/calibration.md`'s fifth gate says the base model signature
+    /// the map was fitted against must match the one serving. That gate was
+    /// written down before the field existed, so it was unimplementable; it
+    /// is implementable now, and this is it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`Mismatch`] found, which names the field.
+    pub fn serve_to(&self, os_build: &str, identity: &DoorIdentity) -> Result<(), Mismatch> {
+        if self.schema != RECORD_SCHEMA {
+            return Err(Mismatch::Schema { found: self.schema.clone() });
+        }
+        if !self.admitted {
+            return Err(Mismatch::NotAdmitted { verdict: self.verdict.clone() });
+        }
+        if self.os_build != os_build {
+            return Err(Mismatch::OsBuild {
+                fitted: name_or_none(&self.os_build),
+                serving: name_or_none(os_build),
+            });
         }
         // An unverifiable door cannot match: there is nothing to compare.
-        if !self.door_identity.verified || !identity.verified {
-            return false;
+        // Refusing here is what keeps a hosted door, which publishes a name
+        // and no signature, from picking up a map fitted on something else
+        // that happens to carry the same name.
+        if !self.door_identity.verified {
+            return Err(Mismatch::RecordUnverifiable);
         }
-        self.door_identity.base_model_signature == identity.base_model_signature
-            && self.door_identity.adapter == identity.adapter
+        if !identity.verified {
+            return Err(Mismatch::DoorUnverifiable);
+        }
+        if self.door_identity.base_model_signature != identity.base_model_signature {
+            return Err(Mismatch::BaseModelSignature {
+                fitted: name_or_none(&self.door_identity.base_model_signature),
+                serving: name_or_none(&identity.base_model_signature),
+            });
+        }
+        if self.door_identity.adapter != identity.adapter {
+            return Err(Mismatch::Adapter {
+                fitted: name_or_none(&self.door_identity.adapter),
+                serving: name_or_none(&identity.adapter),
+            });
+        }
+        Ok(())
+    }
+
+    /// Whether this record may be served against the given host and door.
+    #[must_use]
+    pub fn valid_for(&self, os_build: &str, identity: &DoorIdentity) -> bool {
+        self.serve_to(os_build, identity).is_ok()
     }
 }
 
-/// Decides whether a fitted map earned the right to serve.
-///
-/// A map is not admitted because it exists. It is admitted because it beat
-/// the raw signal on items it was not fitted on.
-///
-/// The three conditions, and why each one:
-///
-/// - **ECE falls by at least a tenth.** Calibration is what a calibration
-///   map is for, and ECE measures it directly. A marginal move is binning
-///   noise, not an improvement.
-/// - **NLL does not rise.** Log loss is strictly proper and punishes
-///   confident errors hardest, so a map that buys calibration by hedging
-///   everything into the middle fails here.
-/// - **Brier rises by no more than a tenth.** Brier is calibration and
-///   refinement together. A binned map cannot improve refinement — it is
-///   monotone in the raw signal and leaves the argmax alone — so it can only
-///   lose a little to binning. Requiring no loss at all rejects maps that cut
-///   ECE several-fold, which is the wrong trade; requiring the loss stay
-///   small keeps a map from destroying sharpness to flatter its ECE.
-///
-/// The Brier tolerance was widened from zero after the first run on a
-/// 196-item suite, where maps cutting ECE from 0.157 to 0.005 were refused
-/// over a Brier move of 0.02. The test below pins that case so the reasoning
-/// does not get lost.
-#[must_use]
-pub fn admit(raw: Metrics, calibrated: Metrics, fitted_on: usize) -> (bool, String) {
-    const MIN_FITTED: usize = 8;
-    /// The relative ECE reduction a map has to earn.
-    const ECE_MARGIN: f64 = 0.10;
-    /// How much Brier may degrade to buy that reduction.
-    const BRIER_TOLERANCE: f64 = 0.10;
-
-    if fitted_on < MIN_FITTED {
-        return (
-            false,
-            format!("refused: fitted on {fitted_on} items, below the floor of {MIN_FITTED}"),
-        );
-    }
-    if calibrated.items < MIN_FITTED {
-        return (
-            false,
-            format!("refused: scored on {} items, too few to judge", calibrated.items),
-        );
-    }
-    if calibrated.ece > raw.ece * (1.0 - ECE_MARGIN) {
-        return (
-            false,
-            format!(
-                "refused: ECE {:.3} to {:.3}, short of the {:.0}% reduction a map has to earn",
-                raw.ece,
-                calibrated.ece,
-                ECE_MARGIN * 100.0
-            ),
-        );
-    }
-    if calibrated.nll > raw.nll {
-        return (
-            false,
-            format!(
-                "refused: ECE improved {:.3} to {:.3} but log loss rose {:.3} to {:.3}, so the \
-                 map bought calibration by hedging",
-                raw.ece, calibrated.ece, raw.nll, calibrated.nll
-            ),
-        );
-    }
-    if calibrated.brier > raw.brier * (1.0 + BRIER_TOLERANCE) {
-        return (
-            false,
-            format!(
-                "refused: ECE improved {:.3} to {:.3} but Brier rose {:.3} to {:.3}, past the \
-                 {:.0}% the binning is allowed to cost",
-                raw.ece,
-                calibrated.ece,
-                raw.brier,
-                calibrated.brier,
-                BRIER_TOLERANCE * 100.0
-            ),
-        );
-    }
-    (
-        true,
-        format!(
-            "admitted: ECE {:.3} to {:.3}, log loss {:.3} to {:.3}, Brier {:.3} to {:.3} on \
-             held-out items",
-            raw.ece, calibrated.ece, raw.nll, calibrated.nll, raw.brier, calibrated.brier
-        ),
-    )
+/// An empty field reads as `none` rather than as an empty string, so a
+/// refusal message says what it means.
+fn name_or_none(value: &str) -> String {
+    if value.is_empty() { "none".to_string() } else { value.to_string() }
 }
 
 #[cfg(test)]
@@ -585,62 +729,6 @@ mod tests {
     }
 
     #[test]
-    fn a_map_that_makes_calibration_worse_is_not_admitted() {
-        let raw = Metrics { ece: 0.031, brier: 0.012, nll: 0.1, items: 12, ..Metrics::default() };
-        let worse = Metrics { ece: 0.113, brier: 0.013, nll: 0.1, items: 12, ..Metrics::default() };
-        let (admitted, why) = admit(raw, worse, 12);
-        assert!(!admitted, "{why}");
-        assert!(why.contains("short of"));
-    }
-
-    #[test]
-    fn a_map_that_helps_on_held_out_items_is_admitted() {
-        let raw = Metrics { ece: 0.219, brier: 0.215, nll: 0.6, items: 12, ..Metrics::default() };
-        let better = Metrics { ece: 0.132, brier: 0.184, nll: 0.5, items: 12, ..Metrics::default() };
-        let (admitted, why) = admit(raw, better, 12);
-        assert!(admitted, "{why}");
-    }
-
-    #[test]
-    fn a_large_calibration_gain_survives_a_small_brier_cost() {
-        // The case that widened the tolerance: measured on kev's urgency
-        // family, 196-item suite. A zero-tolerance gate refused this.
-        let raw = Metrics { ece: 0.157, brier: 0.199, nll: 0.6, items: 30, ..Metrics::default() };
-        let mapped = Metrics { ece: 0.005, brier: 0.210, nll: 0.58, items: 30, ..Metrics::default() };
-        let (admitted, why) = admit(raw, mapped, 30);
-        assert!(admitted, "{why}");
-    }
-
-    #[test]
-    fn a_map_that_hedges_everything_into_the_middle_is_refused() {
-        // Flat probabilities score a fine ECE and a terrible log loss. That
-        // is the failure the NLL condition exists to catch.
-        let raw = Metrics { ece: 0.200, brier: 0.150, nll: 0.40, items: 30, ..Metrics::default() };
-        let hedged = Metrics { ece: 0.010, brier: 0.155, nll: 0.90, items: 30, ..Metrics::default() };
-        let (admitted, why) = admit(raw, hedged, 30);
-        assert!(!admitted, "{why}");
-        assert!(why.contains("hedging"));
-    }
-
-    #[test]
-    fn a_map_that_destroys_sharpness_is_refused() {
-        let raw = Metrics { ece: 0.200, brier: 0.100, nll: 0.40, items: 30, ..Metrics::default() };
-        let blunt = Metrics { ece: 0.010, brier: 0.180, nll: 0.39, items: 30, ..Metrics::default() };
-        let (admitted, why) = admit(raw, blunt, 30);
-        assert!(!admitted, "{why}");
-        assert!(why.contains("Brier rose"));
-    }
-
-    #[test]
-    fn a_map_fitted_on_too_little_is_refused_whatever_it_scores() {
-        let raw = Metrics { ece: 0.5, brier: 0.5, items: 12, ..Metrics::default() };
-        let better = Metrics { ece: 0.0, brier: 0.0, items: 12, ..Metrics::default() };
-        let (admitted, why) = admit(raw, better, 4);
-        assert!(!admitted, "{why}");
-        assert!(why.contains("below the floor"));
-    }
-
-    #[test]
     fn the_bin_count_follows_the_evidence() {
         let few = Map::fit_auto(&observations(&[(1.0, true); 10]));
         assert_eq!(few.bins.len(), 2, "ten items do not support a fine table");
@@ -695,47 +783,162 @@ mod tests {
         assert!((map.apply_banded(1.0, None) - map.apply(1.0)).abs() < 1e-12);
     }
 
-    #[test]
-    fn a_record_refuses_a_host_it_was_not_fitted_on() {
-        let record = Record {
+    fn record() -> Record {
+        Record {
+            schema: RECORD_SCHEMA.to_string(),
             family: "routing".to_string(),
             language: english(),
-            estimator: "l2".to_string(),
-            samples: 8,
-            suite: "support-v1".to_string(),
+            estimator_config: EstimatorConfig::new("l2", 8, 0),
+            suite: "support-v2-three-way".to_string(),
             suite_digest: "abc".to_string(),
+            partition_id: "calibration".to_string(),
             os_build: "25E246".to_string(),
             door: "lev-base".to_string(),
-            door_identity: DoorIdentity {
-                model: "lev-base".to_string(),
-                base_model_signature: "9799725ff8e851184037110b422d891ad3b92ec1".to_string(),
-                adapter: String::new(),
-                verified: true,
-            },
+            door_identity: DoorIdentity::published(
+                "lev-base",
+                "9799725ff8e851184037110b422d891ad3b92ec1",
+                "",
+            ),
+            gate_id: Some("probability-v1".to_string()),
+            gate_digest: Some("gate:abc".to_string()),
+            locked_reads: Vec::new(),
             fitted: "2026-09-19".to_string(),
             map: Map::fit(&observations(&[(1.0, true)]), 2),
             raw_metrics: Metrics::default(),
             calibrated_metrics: Metrics::default(),
             admitted: true,
             verdict: "admitted: test".to_string(),
-        };
+        }
+    }
+
+    #[test]
+    fn a_record_refuses_a_host_it_was_not_fitted_on() {
+        let record = record();
         let same = record.door_identity.clone();
         assert!(record.valid_for("25E246", &same));
-        assert!(!record.valid_for("25F100", &same));
 
-        // An adapter changes the door, and a map fitted on the base must not
-        // serve it. This is the drift that actually happened.
+        let moved = record.serve_to("25F100", &same).expect_err("a new build is a new host");
+        assert!(matches!(moved, Mismatch::OsBuild { .. }), "{moved}");
+        assert!(moved.to_string().starts_with("os_build:"), "{moved}");
+    }
+
+    #[test]
+    fn a_base_fitted_record_refuses_an_adapted_door_and_names_the_field() {
+        // The drift that actually happened: two adapters landed and the
+        // committed maps, which could name only an operating system build,
+        // went on matching.
+        let record = record();
         let adapted = DoorIdentity {
             adapter: "fmadapter-lev-9799725".to_string(),
-            ..same.clone()
+            ..record.door_identity.clone()
         };
+        let refused = record.serve_to("25E246", &adapted).expect_err("an adapter is a new door");
+        assert_eq!(
+            refused,
+            Mismatch::Adapter {
+                fitted: "none".to_string(),
+                serving: "fmadapter-lev-9799725".to_string(),
+            }
+        );
+        assert!(refused.to_string().starts_with("adapter:"), "{refused}");
+
+        let rebased = DoorIdentity::published("lev-base", "a-later-base", "");
+        let refused = record.serve_to("25E246", &rebased).expect_err("a new base is a new door");
+        assert!(refused.to_string().starts_with("base_model_signature:"), "{refused}");
+    }
+
+    #[test]
+    fn nothing_verifiable_serves_nothing() {
+        let record = record();
+        // A hosted door publishes a name and no signature, so no record may
+        // claim it. Matching on the name alone is how a map fitted against
+        // one model serves another that reused the label.
+        let hosted = DoorIdentity::hosted("jev-latest");
+        assert_eq!(record.serve_to("25E246", &hosted), Err(Mismatch::DoorUnverifiable));
+
+        // And a record that cannot say what it was fitted against never
+        // serves, whatever door asks. This is what the three committed maps
+        // were: an operating system build, and nothing else.
+        let unattributable = Record { door_identity: DoorIdentity::default(), ..record.clone() };
+        assert_eq!(
+            unattributable.serve_to("25E246", &record.door_identity),
+            Err(Mismatch::RecordUnverifiable)
+        );
+    }
+
+    #[test]
+    fn a_refused_map_does_not_serve_and_says_the_verdict() {
+        let refused = Record {
+            admitted: false,
+            verdict: "refused: Brier rose".to_string(),
+            ..record()
+        };
+        let identity = refused.door_identity.clone();
+        assert_eq!(
+            refused.serve_to("25E246", &identity),
+            Err(Mismatch::NotAdmitted { verdict: "refused: Brier rose".to_string() })
+        );
+    }
+
+    #[test]
+    fn a_record_round_trips_and_carries_its_provenance() {
+        let record = record();
+        let rendered = serde_json::to_string(&record).expect("a record serializes");
+        for field in [
+            "schema",
+            "estimator_config",
+            "partition_id",
+            "gate_id",
+            "gate_digest",
+            "locked_reads",
+            "door",
+            "door_identity",
+        ] {
+            assert!(rendered.contains(field), "{field} is recorded: {rendered}");
+        }
+        let read = Record::from_json(&rendered).expect("a record parses");
+        assert_eq!(read, record);
+        assert_eq!(read.estimator_config.seed_base, 0, "the seed block travels with the record");
+    }
+
+    #[test]
+    fn a_document_tagged_as_something_else_does_not_serve() {
+        let mislabelled = Record { schema: "openagents.lev.calibration.v1".to_string(), ..record() };
+        let identity = mislabelled.door_identity.clone();
+        assert!(matches!(
+            mislabelled.serve_to("25E246", &identity),
+            Err(Mismatch::Schema { .. })
+        ));
+    }
+
+    #[test]
+    fn a_directory_of_records_reads_in_order_and_an_absent_one_reads_as_none() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
         assert!(
-            !record.valid_for("25E246", &adapted),
-            "a base-fitted map served an adapted door"
+            Record::load_dir(&dir.path().join("nothing-here")).expect("an absent directory").is_empty(),
+            "holding no calibration is a normal state, not an error"
         );
 
-        // A hosted door publishes nothing to verify, so nothing matches it.
-        let hosted = DoorIdentity { model: "jev-latest".to_string(), verified: false, ..Default::default() };
-        assert!(!record.valid_for("25E246", &hosted));
+        let record = record();
+        let text = serde_json::to_string_pretty(&record).expect("a record serializes");
+        std::fs::write(dir.path().join("routing.json"), &text).expect("the record writes");
+        std::fs::write(dir.path().join("notes.txt"), "not a record").expect("the note writes");
+        let loaded = Record::load_dir(dir.path()).expect("the directory reads");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].1, record);
+
+        std::fs::write(dir.path().join("broken.json"), "{").expect("the broken file writes");
+        let error = Record::load_dir(dir.path()).expect_err("a record that does not parse is an error");
+        assert!(error.contains("broken.json"), "the error names the file: {error}");
+    }
+
+    #[test]
+    fn metrics_convert_to_the_shape_a_gate_judges() {
+        let metrics = score(&observations(&[(0.9, true), (0.9, false)]));
+        let scores = metrics.scores();
+        assert_eq!(scores.items, 2);
+        assert_eq!(scores.accuracy, Some(0.5));
+        assert_eq!(scores.confident_errors, Some(1));
+        assert_eq!(scores.nll, Some(metrics.nll));
     }
 }

@@ -18,6 +18,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 thiserror = "2"
+# The `gym` binary asks doors over HTTP through the `jev` client, which is
+# async. The library itself starts no runtime.
+tokio = { version = "1", features = ["macros", "rt"] }
 
 # The terminal's design system — the amber ladder, the hairline frame, and
 # the rails — is `coder-terminal`'s, not a second copy of it.

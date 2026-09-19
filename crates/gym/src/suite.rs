@@ -45,10 +45,10 @@
 //! [`Suite::compute_digest`] hashes the items and nothing else, so it covers
 //! every label and every partition assignment and excludes `name`,
 //! `description`, `tier`, and `gate`. A changed label or a moved item is a
-//! different suite. Tightening a gate floor is not: the gate is carried in
-//! the manifest for convenience, and each result row pins the digest of the
-//! gate that judged it, so retuning a floor produces a new rule rather than
-//! new history.
+//! different suite. Tightening a gate floor is not: the manifest names its
+//! gate by id, the rule itself lives in `crates/gym/gates/` with its own
+//! digest, and each result row pins the digest of the gate that judged it,
+//! so retuning a floor produces a new rule rather than new history.
 //!
 //! A digest mismatch is refused outright rather than reported as drift. The
 //! reference implementation in `~/work/coder` reports drift, which is right
@@ -224,12 +224,20 @@ pub struct Suite {
     /// published score, however completely it runs. Outside the digest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
-    /// The acceptance rule a run of this suite is normally judged by,
-    /// carried verbatim and not interpreted here. Outside the digest, so
-    /// tightening a floor does not make historical runs read as drifted;
-    /// each row pins its own `gate_digest` instead.
+    /// The acceptance rule a run of this suite is normally judged by, named
+    /// by the id of a file in `crates/gym/gates/`.
+    ///
+    /// An id and not a block of thresholds. This field held an inline rule
+    /// called `calibration-admission-v1` until 2026-09-19, with numbers that
+    /// had already been superseded by `probability-v1`, and nothing said
+    /// which of the two a run had used. A name can be resolved to one rule
+    /// with one digest; a restatement is a second rule wearing the suite's
+    /// name.
+    ///
+    /// Outside the digest, so retuning a floor does not make historical runs
+    /// read as drifted; each row pins its own `gate_digest` instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gate: Option<Value>,
+    pub gate: Option<String>,
     /// The items.
     pub items: Vec<Item>,
 }
@@ -617,7 +625,7 @@ mod tests {
         assert_eq!(suite.name, "support-v2-three-way");
         assert_eq!(suite.items.len(), 196);
         assert_eq!(suite.tier.as_deref(), Some("scored"));
-        assert!(suite.gate.is_some(), "the manifest carries its gate");
+        assert_eq!(suite.gate.as_deref(), Some("probability-v1"));
     }
 
     #[test]
@@ -715,14 +723,42 @@ mod tests {
     }
 
     #[test]
-    fn tightening_the_gate_leaves_the_digest_alone() {
-        let tightened = SUPPORT_V2_THREE_WAY.replace(
-            "\"brier_rises_by_at_most\": 0.1",
-            "\"brier_rises_by_at_most\": 0.05",
+    fn the_manifest_names_its_gate_and_does_not_restate_it() {
+        let suite = suite();
+        assert_eq!(suite.gate.as_deref(), Some("probability-v1"));
+        crate::gate::load(suite.gate.as_deref().expect("the manifest names a gate"))
+            .expect("the named gate is a committed rule");
+        assert!(
+            !SUPPORT_V2_THREE_WAY.contains("calibration-admission-v1"),
+            "the superseded inline rule is gone from the manifest"
         );
-        assert_ne!(tightened, SUPPORT_V2_THREE_WAY, "the gate was in the file");
-        let retuned = Suite::load(&tightened).expect("a retuned gate is not drift");
-        assert_eq!(retuned.digest, suite().digest);
+        assert!(
+            !SUPPORT_V2_THREE_WAY.contains("brier_rises_by_at_most"),
+            "a threshold in the manifest is a second rule with the same job"
+        );
+    }
+
+    #[test]
+    fn pointing_the_gate_elsewhere_leaves_the_digest_alone() {
+        // The digest covers the items, so which rule judges them is outside
+        // it. That is what lets this change land without moving
+        // 54fbf4137c…, and the assertion below is the promise.
+        let repointed =
+            SUPPORT_V2_THREE_WAY.replace("\"gate\": \"probability-v1\"", "\"gate\": \"decision-v1\"");
+        assert_ne!(repointed, SUPPORT_V2_THREE_WAY, "the gate was in the file");
+        let judged_by_another = Suite::load(&repointed).expect("a repointed gate is not drift");
+        assert_eq!(judged_by_another.gate.as_deref(), Some("decision-v1"));
+        assert_eq!(judged_by_another.digest, suite().digest);
+    }
+
+    #[test]
+    fn the_committed_digest_did_not_move_when_the_gate_became_a_reference() {
+        // Recorded literally, because a test that recomputes the digest from
+        // the file it is checking cannot catch the file changing.
+        assert_eq!(
+            suite().digest,
+            "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9"
+        );
     }
 
     #[test]

@@ -8,8 +8,9 @@
 //!
 //! # Why a gate is a file
 //!
-//! The rule this module replaces is `crates/lev/src/calibrate.rs::admit`,
-//! where the thresholds are constants in a function body. One of them, a
+//! The rule this module replaces is `calibrate::admit`, which lived in
+//! `crates/lev/src/calibrate.rs` and is now deleted, and where the
+//! thresholds were constants in a function body. One of them, a
 //! Brier tolerance, was widened from zero to a tenth after a run refused
 //! maps that cut ECE from 0.157 to 0.005. The argument for widening is in
 //! `docs/lev/calibration.md` and holds: a binned monotone map leaves the

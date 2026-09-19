@@ -32,7 +32,9 @@
 //! For the same reason [`KNOWN_ROW_SCHEMAS`] lists schema strings rather than
 //! types. A store holds what earlier versions of this program wrote, and a
 //! reader has to be able to refuse a row it does not understand without
-//! linking against the code that wrote it.
+//! linking against the code that wrote it. The list names
+//! [`crate::row::SCHEMA`] rather than restating it, because two spellings of
+//! one schema is the same ambiguity the rest of this crate exists to remove.
 //!
 //! # One writer at a time
 //!
@@ -51,13 +53,17 @@ use std::fs;
 use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 
-/// The schema of a row this store writes.
-pub const EVAL_ROW_SCHEMA: &str = "openagents.gym.eval_row.v1";
-
 /// The schemas this store reads. A row carrying anything else is a hard
 /// error, because a reader that skips what it does not understand reports a
 /// denominator it cannot account for.
-pub const KNOWN_ROW_SCHEMAS: &[&str] = &[EVAL_ROW_SCHEMA];
+///
+/// The entries are schema strings, not types. A store holds what earlier
+/// versions of this program wrote, and this list is what lets a reader refuse
+/// a row it does not understand without linking against the code that wrote
+/// it. `crate::row::SCHEMA` is a `&str` for the same reason, and naming it
+/// here keeps one declaration of the string while leaving the allowlist a
+/// list of names.
+pub const KNOWN_ROW_SCHEMAS: &[&str] = &[crate::row::SCHEMA];
 
 /// The field holding a row's own receipt.
 pub const RECEIPT_FIELD: &str = "receipt";
@@ -554,12 +560,40 @@ fn seal_fields(mut fields: Map<String, Value>, previous: Option<&str>) -> Value 
             None => Value::Null,
         },
     );
+    let mut fields = as_read_back(fields);
     let unsealed = Value::Object(fields.clone());
     fields.insert(
         RECEIPT_FIELD.to_string(),
         Value::String(receipt_of(&unsealed)),
     );
     Value::Object(fields)
+}
+
+/// A row's fields as a reader will parse them back.
+///
+/// A receipt is a promise about what is in the file, so it is taken over what
+/// comes back out of the file rather than over what the writer was holding.
+/// The two are not always the same number. `serde_json` writes an `f64`
+/// exactly and parses one approximately, so a latency measured as
+/// 1474.8615419999999 milliseconds is written with all of those digits and
+/// read back as 1474.861542 — a different double, a different digest, and a
+/// chain that breaks on the first verification with nobody having touched the
+/// file.
+///
+/// That is a real failure and it happened on the first live run to record a
+/// measured float. Normalizing here costs one round trip per append and makes
+/// the chain a property of the file rather than of the process that wrote it.
+/// A row is sealed over the value it will read back as; where that differs
+/// from the value in memory, the file and the receipt agree with each other
+/// and the last digit of a microsecond is the price.
+fn as_read_back(fields: Map<String, Value>) -> Map<String, Value> {
+    let Ok(rendered) = serde_json::to_string(&Value::Object(fields.clone())) else {
+        return fields;
+    };
+    match serde_json::from_str::<Value>(&rendered) {
+        Ok(Value::Object(parsed)) => parsed,
+        _ => fields,
+    }
 }
 
 fn refuse_duplicate(rows: &[Value], candidate: &Value) -> Result<(), StoreError> {
@@ -726,7 +760,7 @@ mod tests {
     /// describe the same trial.
     fn trial(item: &str, seed: u64) -> Map<String, Value> {
         let mut fields = Map::new();
-        fields.insert("schema".into(), json!(EVAL_ROW_SCHEMA));
+        fields.insert("schema".into(), json!(crate::row::SCHEMA));
         fields.insert("recorded_at".into(), json!("2026-09-19T12:00:00Z"));
         fields.insert("suite".into(), json!("routing"));
         fields.insert("suite_digest".into(), json!("suite:6f1c"));
@@ -1075,8 +1109,55 @@ mod tests {
         );
         let message = error.to_string();
         assert!(message.contains("openagents.gym.eval_row.v0"), "{message}");
-        assert!(message.contains(EVAL_ROW_SCHEMA), "{message}");
+        assert!(message.contains(crate::row::SCHEMA), "{message}");
         assert!(message.contains("archive"), "{message}");
+    }
+
+    #[test]
+    fn a_measured_float_that_does_not_round_trip_still_verifies() {
+        // The value is from the first live run to record one: a single
+        // call's latency, in milliseconds. `serde_json` writes it as
+        // 1474.8615419999999 and parses that back as 1474.861542, which is a
+        // different double. A receipt taken over the written value failed on
+        // the next append, reporting a row nobody had touched as edited.
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let mut fields = trial("routing/010", 0);
+        fields.insert("latency_ms".into(), json!(1474.8615419999999_f64));
+        store.append(&fields).unwrap();
+        store.append(&trial("routing/011", 0)).unwrap();
+
+        match verify_chain(&store.rows().unwrap()) {
+            ChainVerdict::Ok { rows, .. } => assert_eq!(rows, 2),
+            broken => panic!("the chain broke on a float nobody edited: {broken:?}"),
+        }
+
+        // The number on disk is the one the receipt covers, and it is within
+        // a microsecond of the measurement.
+        let recorded = store.rows().unwrap()[0]["latency_ms"].as_f64().unwrap();
+        assert!((recorded - 1474.861542).abs() < 1e-6, "{recorded}");
+    }
+
+    #[test]
+    fn the_allowlist_names_schemas_rather_than_types() {
+        // One declaration of the string, and it is still a string: a reader
+        // checks a name it read off disk, and never has to deserialize a row
+        // into the type that wrote it to find out whether it may.
+        assert_eq!(KNOWN_ROW_SCHEMAS, &[crate::row::SCHEMA]);
+        assert!(known_row_schema("openagents.gym.eval_row.v1"));
+        assert!(!known_row_schema("openagents.gym.eval_row.v2"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        // A row this store never wrote, carrying fields it does not know,
+        // reads back because its schema is on the list.
+        let foreign = json!({
+            "schema": crate::row::SCHEMA,
+            "item_id": "q1",
+            "a_field_from_a_later_version": 7,
+        });
+        store.append(&foreign).unwrap();
+        assert_eq!(store.rows().unwrap().len(), 1);
     }
 
     #[test]

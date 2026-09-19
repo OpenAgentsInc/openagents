@@ -14,13 +14,17 @@
 //! calibration map against labelled outcomes. Without a fitted map for the
 //! question family in hand, a Lev door refuses rather than reporting a number.
 //!
+//! Fitting that map, scoring a door against a suite, and deciding whether a
+//! map earned the right to serve are the Gym's, in `crates/gym`. Lev reads
+//! `gym::calibrate::Record` to serve a fitted map and writes none of its
+//! own; the dependency runs one way.
+//!
 //! See `docs/lev/` for the architecture, the measured behavior of the
 //! runtime, and the calibration rule.
 
 pub mod adapter;
 pub mod api;
 pub mod bridge;
-pub mod calibrate;
 pub mod error;
 pub mod estimator;
 pub mod render;
@@ -30,7 +34,6 @@ pub mod suite;
 pub mod serve;
 
 pub use api::{Answer, Extensions, NoulCriteria, Question, SystemOneRequest, SystemOneResponse, Usage};
-pub use calibrate::{Map, Metrics, Observation, Record};
 pub use bridge::{Availability, Bridge, Call, Outcome, Sampling};
 pub use estimator::{Estimator, Raw, confidence};
 pub use error::{Refusal, RefusalCode, Result};

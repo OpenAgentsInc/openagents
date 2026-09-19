@@ -2,7 +2,9 @@
 
 **Status:** the disposition #9354 asked for, written against measured
 numbers. Everything here comes from `docs/lev/measurements/`, produced by
-`lev-eval` and `lev-compare` against live doors on one machine.
+`lev-eval` and `lev-compare` against live doors on one machine. Both
+commands are now `gym eval` and `gym compare`; the numbers below are the ones
+they produced under their old names.
 
 ## The four-way table
 
@@ -67,6 +69,11 @@ Refused:
 
 ## Why no calibration map is admitted
 
+**Superseded on 2026-09-19.** One is: `routing` on the three-way suite, fitted
+on 40 items and served by a Lev door. See
+[`measurements/2026-09-19-three-way-first-rows.md`](measurements/2026-09-19-three-way-first-rows.md).
+The section below records why none was, on the 52-item suite.
+
 The machinery is built and works: a binned reliability table with Jeffreys
 smoothing, a per-family fit on the calibration split, scoring on the
 evaluation split, and a record per family with its verdict. What it produced:
@@ -77,7 +84,8 @@ evaluation split, and a record per family with its verdict. What it produced:
 | `severity` | 6 | 0.188 | 0.132 | refused; fitted on 6 items, below the floor of 8 |
 | `urgency` | 8 | 0.219 | 0.201 | refused; Brier got worse |
 
-The gate in `calibrate::admit` requires a map to beat the raw signal on items
+The gate, now `crates/gym/gates/probability-v1.json` and then
+`calibrate::admit`, requires a map to beat the raw signal on items
 it was not fitted on. None does, at this suite size. That is the correct
 outcome rather than a disappointing one: fitting a five-bin table on a dozen
 items is how a good signal gets made worse, which `routing` demonstrates by

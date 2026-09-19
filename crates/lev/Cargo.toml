@@ -11,6 +11,10 @@ publish = false
 serve = ["dep:axum", "dep:tokio", "dep:tower-http"]
 
 [dependencies]
+# The measurement side — the reliability table, the acceptance rules, the
+# suites, and the result store — is the Gym's. Lev answers the contract; it
+# does not score it, and the dependency runs one way and never back.
+gym = { path = "../gym" }
 jev = { path = "../jev" }
 indexmap = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
@@ -23,6 +27,7 @@ tokio = { version = "1", features = ["full"], optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 
 [[bin]]
@@ -39,10 +44,6 @@ name = "lev-band"
 path = "src/bin/lev_band.rs"
 
 [[bin]]
-name = "lev-permute"
-path = "src/bin/lev_permute.rs"
-
-[[bin]]
 name = "lev-adapter-check"
 path = "src/bin/lev_adapter_check.rs"
 
@@ -53,16 +54,6 @@ path = "src/bin/lev_seed_sweep.rs"
 [[bin]]
 name = "lev-render"
 path = "src/bin/lev_render.rs"
-
-[[bin]]
-name = "lev-eval"
-path = "src/bin/lev_eval.rs"
-required-features = ["serve"]
-
-[[bin]]
-name = "lev-compare"
-path = "src/bin/lev_compare.rs"
-required-features = ["serve"]
 
 [lints]
 workspace = true

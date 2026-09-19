@@ -285,7 +285,7 @@ def main():
     parser.add_argument(
         "--base-rates",
         help="JSON map of item id to the base model's measured outcome, for band labels; "
-        "produced by `lev-eval --dump`",
+        "read from the rows `gym eval --record` writes",
     )
     args = parser.parse_args()
 

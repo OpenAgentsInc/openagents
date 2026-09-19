@@ -26,12 +26,18 @@
 //! - [`ab`] — the loop that compares two doors over interleaved seed blocks,
 //!   screens the result, and confirms the win on blocks nobody has drawn.
 //! - [`views`] — rendering where unknown reads as unknown and never as zero.
+//! - [`calibrate`] — the reliability table that turns a raw signal into a
+//!   probability, and the record that says what it was fitted against.
+//! - [`eval`] — one run over a suite: what a door's answer becomes, and what
+//!   a table of rows says afterwards.
 //!
 //! What it deliberately does not own: how any model answers. The Gym scores
 //! what comes back from `POST /v1/systemone` and knows nothing else about
 //! the door.
 
 pub mod ab;
+pub mod calibrate;
+pub mod eval;
 pub mod gate;
 pub mod row;
 pub mod store;
