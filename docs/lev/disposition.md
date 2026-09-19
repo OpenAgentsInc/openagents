@@ -88,18 +88,36 @@ useful sanity check that the gate is not simply impossible to pass.
 
 ## How to make Lev better, in order of expected return
 
-### 1. Cut latency by running samples concurrently
+### 1. Sample concurrently — done, and it returns less than it should
 
-Lev's 2.1 s is eight sequential calls at about 260 ms. The helper is a single
-child process with a line protocol, so the samples serialize. Running a pool
-of `k` helpers and drawing `N/k` samples each is a straight division: four
-helpers puts an eight-sample estimate near 600 ms. Nothing about the design
-prevents it — the sessions are already independent by construction, which is
-the same property that gives question isolation.
+**Built.** `bridge::Pool` runs `k` helpers and `estimator::l2_pool` spreads
+the draws over them. Sessions are already independent by construction, which
+is the same property that gives question isolation, so the pool changes the
+wall clock and not the answer — `tests/pool.rs` checks that the same seeds
+produce the same distribution rather than assuming it.
 
-This is the cheapest large win available and it needs no model work.
+Measured, eight samples on one question:
+
+| Helpers | Wall clock |
+| --- | --- |
+| 1 | 2,365 ms |
+| 4 | 1,560 ms |
+
+A pool of four returns about 1.5x, not 4x, and the shortfall is the
+interesting part. The helper processes are genuinely concurrent, so the
+serialization that remains is inside Apple's runtime: the on-device model is
+one shared resource and four callers queue for it. **Concurrency is bounded
+by the device, not by the bridge**, which caps what this lever can ever
+return and moves the remaining latency work to drawing fewer samples rather
+than drawing them faster.
+
+End to end on the eight-item comparison, a pooled door runs 1,615 ms against
+2,082 ms serial, with hosted Jev at 219 ms.
 
 ### 2. Serve L1 by default and L2 only on request
+
+Now the largest remaining latency lever, given that concurrency is capped by
+the device.
 
 Greedy decoding is deterministic and costs one call. A caller that wants a
 typed choice and no distribution can have it at ~300 ms. The contract makes

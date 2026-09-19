@@ -13,7 +13,7 @@
 //! caller that will not accept an uncalibrated number sends
 //! `extensions.require_calibration` and gets a typed refusal instead.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
@@ -24,9 +24,9 @@ use indexmap::IndexMap;
 use serde_json::{Value, json};
 
 use crate::api::{MAX_CHOICE_OPTIONS, MAX_SCORE_LEVELS, SystemOneRequest, SystemOneResponse, Usage};
-use crate::bridge::Bridge;
+use crate::bridge::Pool;
 use crate::error::{Refusal, RefusalCode};
-use crate::estimator::{Estimator, answer, l2};
+use crate::estimator::{Estimator, answer, l2_pool};
 use crate::schema::compile;
 
 /// How many seeded samples one question draws by default.
@@ -34,16 +34,22 @@ pub const DEFAULT_SAMPLES: u64 = 8;
 
 /// What the door serves.
 pub struct Door {
-    bridge: Mutex<Bridge>,
+    pool: Pool,
     model: String,
     samples: u64,
 }
 
 impl Door {
-    /// Builds a door over one helper process.
+    /// Builds a door over a pool of helper processes.
     #[must_use]
-    pub fn new(bridge: Bridge, model: impl Into<String>, samples: u64) -> Self {
-        Self { bridge: Mutex::new(bridge), model: model.into(), samples: samples.max(1) }
+    pub fn new(pool: Pool, model: impl Into<String>, samples: u64) -> Self {
+        Self { pool, model: model.into(), samples: samples.max(1) }
+    }
+
+    /// How many helpers back this door.
+    #[must_use]
+    pub fn pool_width(&self) -> usize {
+        self.pool.width()
     }
 
     /// The router, ready to serve.
@@ -75,10 +81,7 @@ impl IntoResponse for Wire {
 }
 
 async fn models(State(door): State<Arc<Door>>) -> Response {
-    let availability = {
-        let mut bridge = door.bridge.lock().expect("the bridge lock is not poisoned");
-        bridge.availability()
-    };
+    let availability = door.pool.availability();
     let (status, reason) = match availability {
         Ok(availability) => (availability.status, availability.reason),
         Err(refusal) => ("unknown".to_string(), Some(refusal.message)),
@@ -96,6 +99,7 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
             "unavailable_reason": reason,
             "estimator": Estimator::L2.label(),
             "samples": door.samples,
+            "pool_width": door.pool.width(),
             "resolution": 1.0 / door.samples as f64,
             "calibration": "none",
             "calibrated_families": [],
@@ -135,9 +139,7 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
     }
 
     let compiled = compile(request)?;
-    let mut bridge = door.bridge.lock().expect("the bridge lock is not poisoned");
-
-    let availability = bridge.availability()?;
+    let availability = door.pool.availability()?;
     if !availability.is_available() {
         return Err(Refusal::new(
             RefusalCode::ModelUnavailable,
@@ -152,7 +154,7 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
     let mut answers = IndexMap::new();
     let mut estimates = IndexMap::new();
     for (id, question) in &compiled {
-        let raw = l2(&mut bridge, question, door.samples)
+        let raw = l2_pool(&door.pool, question, door.samples)
             .map_err(|refusal| with_question(refusal, id))?;
         let typed = answer(question.kind, &raw.frequency, &question.legend)
             .map_err(|refusal| with_question(refusal, id))?;
@@ -163,6 +165,7 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
                 json!({
                     "estimator": raw.estimator.label(),
                     "samples": door.samples,
+            "pool_width": door.pool.width(),
                     "seeds": raw.seeds,
                     "resolution": raw.resolution,
                     "refused_draws": raw.refused,

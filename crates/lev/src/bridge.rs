@@ -281,3 +281,81 @@ fn verify_signature(path: &Path) -> Result<()> {
         ),
     ))
 }
+
+/// A pool of helper processes.
+///
+/// One helper answers one call at a time, because the line protocol is a
+/// request and a response on one pair of pipes. An `N`-sample ensemble
+/// through a single helper therefore serializes, which is where Lev's
+/// latency went: eight samples at about 260 ms each is a little over two
+/// seconds.
+///
+/// Sessions are already independent — that is what gives question isolation
+/// — so nothing about a sample depends on the helper that drew it. Spreading
+/// the draws over `k` helpers divides the wall clock by `k`.
+pub struct Pool {
+    helpers: Vec<std::sync::Mutex<Bridge>>,
+}
+
+impl Pool {
+    /// Starts `size` helpers from the discovered path.
+    pub fn discover(size: usize) -> Result<Self> {
+        let path = helper_path()?;
+        let mut helpers = Vec::with_capacity(size.max(1));
+        for _ in 0..size.max(1) {
+            helpers.push(std::sync::Mutex::new(Bridge::start(&path)?));
+        }
+        Ok(Self { helpers })
+    }
+
+    /// How many helpers the pool holds.
+    #[must_use]
+    pub fn width(&self) -> usize {
+        self.helpers.len()
+    }
+
+    /// Asks the first helper whether the runtime will answer.
+    pub fn availability(&self) -> Result<Availability> {
+        let mut helper = self.helpers[0].lock().expect("a helper lock is not poisoned");
+        helper.availability()
+    }
+
+    /// Runs `calls` across the pool, preserving input order.
+    ///
+    /// A call that the runtime refuses comes back as its refusal rather than
+    /// failing the batch, so a caller can decide what a partial result means.
+    pub fn decide_all(&self, calls: &[Call]) -> Vec<Result<Outcome>> {
+        let mut results: Vec<Option<Result<Outcome>>> = (0..calls.len()).map(|_| None).collect();
+        let width = self.helpers.len();
+        std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for (lane, helper) in self.helpers.iter().enumerate() {
+                let slice: Vec<(usize, &Call)> = calls
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| index % width == lane)
+                    .collect();
+                handles.push(scope.spawn(move || {
+                    let mut helper = helper.lock().expect("a helper lock is not poisoned");
+                    slice
+                        .into_iter()
+                        .map(|(index, call)| (index, helper.decide(call)))
+                        .collect::<Vec<_>>()
+                }));
+            }
+            for handle in handles {
+                for (index, outcome) in handle.join().expect("a lane finished") {
+                    results[index] = Some(outcome);
+                }
+            }
+        });
+        results
+            .into_iter()
+            .map(|slot| {
+                slot.unwrap_or_else(|| {
+                    Err(Refusal::new(RefusalCode::BridgeError, "a lane dropped a call"))
+                })
+            })
+            .collect()
+    }
+}

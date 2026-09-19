@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use jev::{Choice, Client, Config, Noul, Questions, Score, SystemOneRequest};
-use lev::bridge::Bridge;
+use lev::bridge::{Bridge, Pool};
 use lev::serve::Door;
 
 /// Starts a door on an ephemeral port, or says why it could not.
@@ -32,7 +32,9 @@ async fn door() -> Option<String> {
         }
     }
 
-    let door = Arc::new(Door::new(bridge, "lev-base", 4));
+    drop(bridge);
+    let pool = Pool::discover(2).ok()?;
+    let door = Arc::new(Door::new(pool, "lev-base", 4));
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.ok()?;
     let port = listener.local_addr().ok()?.port();
     tokio::spawn(async move {

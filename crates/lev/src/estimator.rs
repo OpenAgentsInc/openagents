@@ -21,7 +21,7 @@
 use indexmap::IndexMap;
 
 use crate::api::{Answer, MAX_SCORE_LEVELS};
-use crate::bridge::{Bridge, Call, Sampling};
+use crate::bridge::{Bridge, Call, Pool, Sampling};
 use crate::error::{Refusal, RefusalCode, Result};
 use crate::schema::{BANDS, Compiled, Kind};
 use serde_json::Value;
@@ -154,6 +154,64 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
         return Err(last.unwrap_or_else(|| {
             Refusal::new(RefusalCode::Guardrail, "every draw was refused")
         }));
+    }
+    let mut raw = finish(Estimator::L2, counts, drawn, seeds, None, latency);
+    raw.refused = refused;
+    Ok(raw)
+}
+
+/// Runs `n` seeded samples across a pool of helpers.
+///
+/// Identical to [`l2`] in what it computes and in the seeds it records; the
+/// only difference is that the draws run concurrently. The same seeds produce
+/// the same estimate either way, which `tests/pool.rs` checks rather than
+/// assumes.
+pub fn l2_pool(pool: &Pool, compiled: &Compiled, n: u64) -> Result<Raw> {
+    if n == 0 {
+        return Err(Refusal::new(RefusalCode::InvalidRequest, "an ensemble draws at least one sample"));
+    }
+    let calls: Vec<Call> = (0..n)
+        .map(|seed| Call::decide(compiled, Sampling::Random { seed, temperature: None }))
+        .collect();
+    let outcomes = pool.decide_all(&calls);
+
+    let mut counts: IndexMap<String, u64> =
+        compiled.options.iter().map(|option| (option.clone(), 0)).collect();
+    let mut seeds = Vec::new();
+    let mut latency = 0.0_f64;
+    let mut refused = 0_u64;
+    let mut last: Option<Refusal> = None;
+
+    for (seed, outcome) in outcomes.into_iter().enumerate() {
+        match outcome {
+            Ok(outcome) => {
+                let choice = outcome.choice.ok_or_else(|| {
+                    Refusal::new(RefusalCode::DecodingFailure, "the runtime selected no option")
+                })?;
+                let slot = counts.get_mut(&choice).ok_or_else(|| {
+                    Refusal::new(
+                        RefusalCode::DecodingFailure,
+                        format!("the runtime selected '{choice}', which is not an admitted option"),
+                    )
+                })?;
+                *slot += 1;
+                seeds.push(seed as u64);
+                // The lanes overlap, so this sums helper time rather than
+                // wall clock. Wall clock is what the caller measures.
+                latency += outcome.latency_ms.unwrap_or_default();
+            }
+            Err(refusal) if refusal.code == RefusalCode::Guardrail => {
+                refused += 1;
+                last = Some(refusal);
+            }
+            Err(refusal) => return Err(refusal),
+        }
+    }
+
+    let drawn = n - refused;
+    if drawn == 0 {
+        return Err(last
+            .unwrap_or_else(|| Refusal::new(RefusalCode::Guardrail, "every draw was refused")));
     }
     let mut raw = finish(Estimator::L2, counts, drawn, seeds, None, latency);
     raw.refused = refused;
