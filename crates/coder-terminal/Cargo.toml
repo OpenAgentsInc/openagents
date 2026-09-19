@@ -1,0 +1,16 @@
+[package]
+name = "coder-terminal"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "The Coder terminal: one amber ladder, a framed composer, and the shell they draw."
+publish = false
+
+[dependencies]
+crossterm = "0.29"
+ratatui = "0.30"
+unicode-segmentation = "1"
+unicode-width = "0.2"
+
+[lints]
+workspace = true
