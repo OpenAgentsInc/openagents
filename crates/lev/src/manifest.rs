@@ -29,6 +29,11 @@
 //!   record carries them, so the two can be compared field for field.
 //! - [`EvalRef`] — the committed calibration records this model was measured
 //!   against, each with the record's own `admitted` flag and verdict.
+//! - [`crate::policy::SnapshotRef`] — the canonical service whose snapshot
+//!   says whether this release may still serve, where the door keeps its
+//!   copy, and the longest the release accepts running on one. Required: a
+//!   release that could decline to name a policy source would escape
+//!   revocation by leaving a field out.
 //!
 //! # The admission rule
 //!
@@ -38,14 +43,12 @@
 //! entry the gate refused, serves no probability. Nothing defaults to
 //! admitted, and an empty `evalRef` list admits nothing at all.
 //!
-//! # Where the next two issues attach
+//! # Where the last issue attaches
 //!
 //! A behavioral admission floor (#9389) is a stricter reading of
 //! [`Manifest::admits`]: the same document, with the isolation probe's result
-//! joining the calibration record in `evalRef`. Revocation (#9390) is a
-//! freshness window and a revoked flag on the release named by
-//! [`Manifest::release`]. Neither is implemented here, and neither needs the
-//! schema reshaped to land.
+//! joining the calibration record in `evalRef`. It does not need the schema
+//! reshaped to land.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -490,6 +493,14 @@ pub struct Manifest {
     pub artifact: Option<Artifact>,
     /// What it sits on.
     pub base: Base,
+    /// What keeps it serving, and what can stop it.
+    ///
+    /// Load time pins [`Base::signature`] and refuses to start on a
+    /// mismatch, which protects a door that restarts. This field is the other
+    /// half: the service a running door asks, and the window after which a
+    /// door that cannot ask stops on its own. See [`crate::policy`].
+    #[serde(default)]
+    pub policy_snapshot: crate::policy::SnapshotRef,
     /// The contract it answers.
     pub interface: Interface,
     /// Which estimator draws the raw signal, with how many draws, from which
@@ -579,6 +590,20 @@ impl Manifest {
         format!("{}@{}", self.name, self.version)
     }
 
+    /// The policy governing this release, reading the machine's clock.
+    ///
+    /// A door holds one of these and asks it on every question, which is how
+    /// a revocation reaches a door that is already running.
+    #[must_use]
+    pub fn policy(&self) -> crate::policy::Policy {
+        crate::policy::Policy::for_release(
+            &self.policy_snapshot,
+            self.beside(),
+            self.release(),
+            self.base.signature.clone(),
+        )
+    }
+
     /// Whether this model may serve a probability for `family`.
     ///
     /// The rule `docs/kev/mesh-plan.md` set for decision-model artifacts: a
@@ -623,6 +648,19 @@ impl Manifest {
         }
         if self.estimator.estimator.trim().is_empty() {
             return Err(Fault::Blank { field: "estimator.estimator" });
+        }
+        // A release with no policy source is a release nothing can revoke,
+        // which is the deleted cache again under a tidier name. The window is
+        // checked here too, because a release that accepts an unbounded one
+        // has a freshness rule only on paper.
+        if self.policy_snapshot.source.trim().is_empty() {
+            return Err(Fault::Blank { field: "policySnapshot.source" });
+        }
+        if self.policy_snapshot.cache.trim().is_empty() {
+            return Err(Fault::Blank { field: "policySnapshot.cache" });
+        }
+        if self.policy_snapshot.freshness_window_seconds == 0 {
+            return Err(Fault::Blank { field: "policySnapshot.freshnessWindowSeconds" });
         }
         self.interface.check()
     }
@@ -755,6 +793,7 @@ mod tests {
                 min_os_build: "25E246".to_string(),
                 runtime: "Apple FoundationModels".to_string(),
             },
+            policy_snapshot: crate::policy::SnapshotRef::published(),
             interface: Interface::of_contract(vec!["routing".to_string()]),
             estimator: EstimatorConfig::new("l2", 8, 0),
             eval_ref: Vec::new(),

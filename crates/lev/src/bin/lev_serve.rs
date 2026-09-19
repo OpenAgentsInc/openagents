@@ -20,11 +20,23 @@
 //! and `--seed-base` flags still start a door for an unreleased run, and that
 //! door admits nothing: a family without a measured `evalRef` does not admit,
 //! and without a manifest there is no `evalRef` to have.
+//!
+//! A door started from a manifest also runs under the release's policy
+//! snapshot. It fetches one at startup, refetches every `--policy-refresh`
+//! (15 minutes by default, `off` to stop), and asks the cached snapshot on
+//! every question. Two consequences are the point of the mechanism: a
+//! revocation published while this door is running stops it without a
+//! restart, and a door that stops reaching the service stops serving its
+//! release once the cached snapshot passes its freshness window. Unlike the
+//! checks above, a stale or revoked policy does not stop the door from
+//! starting — the door starts, says so, and refuses, because "refuse while
+//! running" is exactly the case a startup check cannot cover.
 
 use std::sync::Arc;
 
 use lev::bridge::Pool;
 use lev::manifest::Manifest;
+use lev::policy::Policy;
 use lev::serve::{DEFAULT_SAMPLES, Door};
 
 #[tokio::main]
@@ -36,6 +48,7 @@ async fn main() {
     let mut adapter: Option<String> = None;
     let mut calibration: Option<String> = None;
     let mut manifest: Option<String> = None;
+    let mut refresh = Some(15 * 60_u64);
     let mut loose = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -54,6 +67,24 @@ async fn main() {
             // which measurements the release rests on, and a record that does
             // not match is reported with the field that refused it.
             "--calibration" => calibration = args.next(),
+            // How often this door refetches the policy snapshot that decides
+            // whether its release may still serve. `off` leaves the cache to
+            // whatever else fetches it, and the door still goes stale on
+            // schedule, because that guarantee is the client's and not the
+            // fetcher's.
+            "--policy-refresh" => {
+                refresh = match args.next().as_deref() {
+                    Some("off") => None,
+                    Some(value) => match lev::policy::duration(value) {
+                        Some(seconds) if seconds > 0 => Some(seconds),
+                        _ => {
+                            eprintln!("--policy-refresh takes off, or a duration such as 15m");
+                            std::process::exit(2);
+                        }
+                    },
+                    None => refresh,
+                };
+            }
             "--helpers" => {
                 helpers = args.next().and_then(|value| value.parse().ok()).unwrap_or(helpers);
             }
@@ -146,6 +177,18 @@ async fn main() {
             eprintln!("lev-serve: {named} refused — {reason}");
         }
     }
+    // The policy, before the port is bound: one fetch, then whatever the
+    // cache says. A door that cannot reach the service starts anyway and
+    // refuses, which is the state its refusals describe.
+    if let Some(policy) = door.policy() {
+        announce(policy);
+        if let Some(every) = refresh {
+            tokio::spawn(refresher(policy.clone(), every));
+        } else {
+            eprintln!("lev-serve: policy refresh is off; this door serves until its snapshot goes stale");
+        }
+    }
+
     let samples = door.samples();
     let seed_base = door.seed_base();
     let door = Arc::new(door);
@@ -158,6 +201,65 @@ async fn main() {
         door.pool_width()
     );
     axum::serve(listener, door.router()).await.expect("the server runs");
+}
+
+/// Fetches the snapshot and says where this door stands.
+fn announce(policy: &Policy) {
+    match policy.fetch() {
+        Ok(digest) => eprintln!(
+            "lev-serve: policy {} from {} ({})",
+            &digest[..16],
+            policy.source().display(),
+            policy.cache().display()
+        ),
+        Err(trouble) => eprintln!("lev-serve: the policy did not fetch — {trouble}"),
+    }
+    let report = policy.report();
+    for revocation in &report.revoked {
+        eprintln!(
+            "lev-serve: {} is revoked for {} — {}",
+            policy.release(),
+            revocation.scope(),
+            revocation.reason
+        );
+    }
+    match policy.admits("") {
+        Ok(()) => eprintln!(
+            "lev-serve: {} serves for another {} seconds unless the snapshot is refreshed",
+            policy.release(),
+            report.expires_in_seconds
+        ),
+        Err(refusal) => {
+            eprintln!("lev-serve: {}", refusal.message);
+            eprintln!("lev-serve: starting anyway, and refusing every question, so the reason is on the wire");
+        }
+    }
+}
+
+/// Refetches the snapshot forever.
+///
+/// A fetch that fails changes nothing: the door keeps the snapshot it last
+/// confirmed and goes stale on its own clock. That is what makes the window a
+/// guarantee rather than a request.
+async fn refresher(policy: Policy, every: u64) {
+    let mut ticks = tokio::time::interval(std::time::Duration::from_secs(every));
+    ticks.tick().await;
+    loop {
+        ticks.tick().await;
+        let before = policy.standing().label();
+        match policy.fetch() {
+            Ok(_) => {
+                let after = policy.standing().label();
+                if before != after {
+                    eprintln!("lev-serve: policy {before} -> {after}");
+                    if let Err(refusal) = policy.admits("") {
+                        eprintln!("lev-serve: {}", refusal.message);
+                    }
+                }
+            }
+            Err(trouble) => eprintln!("lev-serve: the policy did not refresh — {trouble}"),
+        }
+    }
 }
 
 /// Reads a manifest and checks every claim it makes, or exits.

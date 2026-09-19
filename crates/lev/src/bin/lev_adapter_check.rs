@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 use lev::adapter::{METADATA_FILE, Package, WEIGHTS_FILE};
 use lev::bridge::Bridge;
 use lev::manifest::{Artifact, Base, EvalRef, Interface, MANIFEST_SCHEMA, Manifest, digest_of};
+use lev::policy::{DEFAULT_WINDOW_SECONDS, SnapshotRef};
 
 use gym::calibrate::{EstimatorConfig, Record};
 
@@ -63,14 +64,21 @@ struct Options {
     seed_base: u64,
     calibration: Option<String>,
     base: String,
+    policy_source: String,
+    policy_cache: String,
+    window: u64,
 }
 
 impl Options {
     fn read(arguments: &[String]) -> Self {
+        let published = SnapshotRef::published();
         let mut options = Self {
             estimator: "l2".to_string(),
             samples: 8,
             os_build: std::env::var("LEV_OS_BUILD").unwrap_or_default(),
+            policy_source: published.source,
+            policy_cache: published.cache,
+            window: published.freshness_window_seconds,
             ..Self::default()
         };
         let mut arguments = arguments.iter();
@@ -90,6 +98,11 @@ impl Options {
                 "--seed-base" => options.seed_base = value().parse().unwrap_or(options.seed_base),
                 "--calibration" => options.calibration = Some(value()),
                 "--base" => options.base = value(),
+                "--policy-source" => options.policy_source = value(),
+                "--policy-cache" => options.policy_cache = value(),
+                "--window" => {
+                    options.window = value().parse().unwrap_or(options.window);
+                }
                 other => {
                     eprintln!("unknown flag {other}");
                     std::process::exit(2);
@@ -192,6 +205,29 @@ fn check_manifest(path: &Path) {
         "admits       {}",
         if admitted.is_empty() { "nothing".to_string() } else { admitted.join(", ") }
     );
+
+    // A release that checks out and is revoked is still refused, so the
+    // policy standing belongs beside the rest rather than in another tool.
+    //
+    // A revocation fails this check and a stale or absent cache does not.
+    // Being revoked is a fact about the release, which is what this tool
+    // reads; a cache nobody has fetched on this machine is a fact about the
+    // machine, and `lev-policy show` is the command that exits on it.
+    let policy = manifest.policy();
+    let report = policy.report();
+    println!("policy       {} ({})", report.standing.label(), report.source);
+    if !report.revoked.is_empty() {
+        for revocation in &report.revoked {
+            eprintln!("revoked      REFUSED: {} — {}", revocation.scope(), revocation.reason);
+        }
+        std::process::exit(1);
+    }
+    match policy.admits("") {
+        Ok(()) => {
+            println!("serves       yes, for another {} seconds", report.expires_in_seconds);
+        }
+        Err(refusal) => println!("serves       not from this machine yet — {}", refusal.message),
+    }
     check_device(&signature);
 }
 
@@ -255,6 +291,15 @@ fn emit(package: Option<Package>, release: &str, options: &Options) {
             signature,
             min_os_build: options.os_build.clone(),
             runtime: "Apple FoundationModels".to_string(),
+        },
+        policy_snapshot: SnapshotRef {
+            source: options.policy_source.clone(),
+            cache: options.policy_cache.clone(),
+            freshness_window_seconds: if options.window == 0 {
+                DEFAULT_WINDOW_SECONDS
+            } else {
+                options.window
+            },
         },
         interface: Interface::of_contract(options.families.clone()),
         estimator: EstimatorConfig::new(&options.estimator, options.samples, options.seed_base),

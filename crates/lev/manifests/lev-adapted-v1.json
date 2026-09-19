@@ -18,6 +18,11 @@
     "minOsBuild": "25E246",
     "runtime": "Apple FoundationModels"
   },
+  "policySnapshot": {
+    "source": "../policy/current.json",
+    "cache": "~/.lev/policy/current.json",
+    "freshnessWindowSeconds": 86400
+  },
   "interface": {
     "contract": "openagents.systemone.v1",
     "endpoint": "POST /v1/systemone",

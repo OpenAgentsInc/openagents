@@ -19,6 +19,17 @@ pub enum RefusalCode {
     /// No fitted calibration map covers this question family, and the caller
     /// asked for probabilities.
     Uncalibrated,
+    /// The service withdrew this release, or this family of it.
+    ///
+    /// Permanent as far as a caller is concerned. A revoked release does not
+    /// come back, because the thing it was measured against is gone.
+    Revoked,
+    /// The door cannot confirm that its release is still allowed to serve.
+    ///
+    /// Its cached policy snapshot is older than the freshness window, or
+    /// absent, or not a snapshot. Temporary: a door that fetches a current
+    /// snapshot serves again.
+    PolicyStale,
     /// The state and the question exceed the runtime's context window.
     BranchTooLong,
     /// Apple's guardrails blocked generation, or the model refused.
@@ -42,10 +53,11 @@ impl RefusalCode {
         match self {
             Self::InvalidRequest | Self::TooManyOptions => 422,
             Self::Uncalibrated | Self::AdapterIncompatible => 409,
+            Self::Revoked => 410,
             Self::BranchTooLong => 413,
             Self::Guardrail => 451,
             Self::Busy => 429,
-            Self::ModelUnavailable => 503,
+            Self::ModelUnavailable | Self::PolicyStale => 503,
             Self::UnsupportedGuide | Self::DecodingFailure | Self::BridgeError => 500,
         }
     }
@@ -58,6 +70,8 @@ impl RefusalCode {
             Self::TooManyOptions => "too_many_options",
             Self::ModelUnavailable => "model_unavailable",
             Self::Uncalibrated => "uncalibrated",
+            Self::Revoked => "revoked",
+            Self::PolicyStale => "policy_stale",
             Self::BranchTooLong => "branch_too_long",
             Self::Guardrail => "guardrail",
             Self::UnsupportedGuide => "unsupported_guide",

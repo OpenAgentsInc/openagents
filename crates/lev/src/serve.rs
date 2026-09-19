@@ -34,6 +34,14 @@
 //! is absent from the manifest does not serve: a family without a measured
 //! `evalRef` does not admit, and dropping a file into a directory is not a
 //! measurement. See [`crate::manifest`] and `docs/lev/manifest.md`.
+//!
+//! **And unless the service still allows it.** Everything above is decided
+//! when the door starts. A door started from a manifest also holds a
+//! [`crate::policy::Policy`] and asks it on every question, so a revocation
+//! published while the door is running stops it without a restart — and a
+//! door whose cached policy snapshot has gone past its freshness window stops
+//! serving its managed release whether or not it ever hears from the service
+//! again. See [`crate::policy`] and `docs/lev/revocation.md`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -56,6 +64,7 @@ use crate::bridge::Pool;
 use crate::error::{Refusal, RefusalCode};
 use crate::estimator::{Estimator, answer, l2_pool_with};
 use crate::manifest::{Fault, Manifest};
+use crate::policy::{Clock, Policy};
 use crate::schema::compile;
 
 /// How many seeded samples one question draws by default.
@@ -261,6 +270,7 @@ pub struct Door {
     adapter: Option<String>,
     pinned: Option<Metadata>,
     manifest: Option<Manifest>,
+    policy: Option<Policy>,
     os_build: String,
     base_signature: String,
     calibration: Calibration,
@@ -284,6 +294,7 @@ impl Door {
             adapter: None,
             pinned: None,
             manifest: None,
+            policy: None,
             os_build: std::env::var(OS_BUILD_VAR).unwrap_or_default(),
             base_signature,
             calibration: Calibration::default(),
@@ -307,8 +318,44 @@ impl Door {
         if let Some(artifact) = &manifest.artifact {
             self = self.with_adapter(artifact.resolved_path().display().to_string());
         }
+        // A manifest is what makes a release managed, so it is also what puts
+        // the door under a policy. There is no flag for running a released
+        // model without one: that would be the deleted cache again, spelled
+        // as an omission.
+        self.policy = Some(manifest.policy());
         self.manifest = Some(manifest);
         self
+    }
+
+    /// Reads the clock this door judges its policy snapshot against.
+    ///
+    /// The machine's clock unless something says otherwise. A fixed clock is
+    /// how the freshness window is tested against a door that is already
+    /// running, since the guarantee is about a day passing.
+    #[must_use]
+    pub fn with_clock(mut self, clock: Clock) -> Self {
+        self.policy = self.policy.map(|policy| policy.with_clock(clock));
+        self
+    }
+
+    /// The policy this door asks before it answers, when it serves a release.
+    #[must_use]
+    pub fn policy(&self) -> Option<&Policy> {
+        self.policy.as_ref()
+    }
+
+    /// The families this door will answer for right now.
+    ///
+    /// Read from the policy rather than from the calibration directory, and
+    /// therefore not fixed at startup: it is empty for a door whose snapshot
+    /// has gone stale, and it drops a family the service revoked.
+    #[must_use]
+    pub fn serving(&self) -> Vec<&str> {
+        let held = self.calibration.families();
+        match &self.policy {
+            Some(policy) => policy.serving(&held),
+            None => held,
+        }
     }
 
     /// Reads the calibration records in `dir` and keeps the ones that match
@@ -501,9 +548,47 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
             // The signature a calibration record has to match to serve here.
             "base_model_signature": door.base_signature(),
             "os_build": door.os_build,
+            // What the service says about this release, read now rather than
+            // at startup. `state` is the field that changes under a running
+            // door: `current` becomes `revoked` when the service withdraws
+            // the release, and `stale` when the cached snapshot outlives its
+            // window with nothing to replace it.
+            "policy": door.policy.as_ref().map(|policy| {
+                let report = policy.report();
+                json!({
+                    // The release-wide standing, except that a revocation in
+                    // force over one family still reads `revoked`: a card
+                    // saying `current` beside a family this door refuses
+                    // would be true of the release and misleading about the
+                    // door. `detail` is empty in that case, because the
+                    // release itself still serves.
+                    "state": if report.standing.serves() && !report.revoked.is_empty() {
+                        "revoked"
+                    } else {
+                        report.standing.label()
+                    },
+                    "detail": policy.admits("").err().map(|refusal| refusal.message),
+                    "source": report.source,
+                    "cache": report.cache,
+                    "issued": report.issued,
+                    "freshness_window_seconds": report.window_seconds,
+                    "expires_in_seconds": report.expires_in_seconds,
+                    "snapshot_sha256": report.sha256,
+                    "revoked": report.revoked.iter().map(|revocation| json!({
+                        "release": revocation.release,
+                        "base_signature": revocation.base_signature,
+                        "families": revocation.scope(),
+                        "effective": revocation.effective,
+                        "reason": revocation.reason,
+                    })).collect::<Vec<Value>>(),
+                })
+            }),
             // Read from the records this door actually opened, not declared.
             "calibration": if door.calibration.is_empty() { "none" } else { "fitted" },
             "calibrated_families": door.calibration.families(),
+            // The families this door will answer for right now, which is the
+            // calibrated set less whatever the policy has taken away.
+            "serving": door.serving(),
             // Every record that did not survive the check, with the field
             // that refused it. A door holding maps it may not serve says so.
             "calibration_refused": door
@@ -543,6 +628,13 @@ async fn system_one(State(door): State<Arc<Door>>, body: String) -> Response {
 
 fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Result<SystemOneResponse> {
     let family = request.extensions.family.as_deref().unwrap_or_default();
+    // First, and before the runtime is consulted. A revoked release must
+    // refuse for the reason it was revoked rather than for whatever the
+    // device happens to say, and a door whose policy has gone stale must
+    // refuse even when everything else about it is in order.
+    if let Some(policy) = &door.policy {
+        policy.admits(family)?;
+    }
     let fitted = if family.is_empty() { None } else { door.calibration.record(family) };
     if fitted.is_none() && request.extensions.require_calibration {
         return Err(Refusal::new(
@@ -780,6 +872,7 @@ mod tests {
                 min_os_build: "25E246".to_string(),
                 runtime: "Apple FoundationModels".to_string(),
             },
+            policy_snapshot: crate::policy::SnapshotRef::default(),
             interface: crate::manifest::Interface::of_contract(Vec::new()),
             estimator: EstimatorConfig::new("l2", 8, 0),
             eval_ref: Vec::new(),

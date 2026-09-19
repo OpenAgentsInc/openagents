@@ -368,6 +368,19 @@ pub struct Pool {
 }
 
 impl Pool {
+    /// A pool with no helpers.
+    ///
+    /// A door over one answers no question and says `model_unavailable`,
+    /// which is what makes it useful: a check that must hold whether or not
+    /// the device is reachable can be exercised against a door that certainly
+    /// cannot reach it. A revocation is such a check — a withdrawn release
+    /// has to refuse for the reason it was withdrawn, not for whatever the
+    /// runtime happens to report.
+    #[must_use]
+    pub fn none() -> Self {
+        Self { helpers: Vec::new() }
+    }
+
     /// Starts `size` helpers from the discovered path.
     pub fn discover(size: usize) -> Result<Self> {
         let path = helper_path()?;
@@ -391,14 +404,22 @@ impl Pool {
     /// running, which is what a calibration record has to match before it may
     /// serve.
     pub fn base_signature_prefix(&self) -> Result<String> {
-        let mut helper = self.helpers[0].lock().expect("a helper lock is not poisoned");
+        let mut helper = self.first()?;
         helper.base_signature_prefix()
     }
 
     /// Asks the first helper whether the runtime will answer.
     pub fn availability(&self) -> Result<Availability> {
-        let mut helper = self.helpers[0].lock().expect("a helper lock is not poisoned");
+        let mut helper = self.first()?;
         helper.availability()
+    }
+
+    /// The first helper, or the refusal an empty pool answers with.
+    fn first(&self) -> Result<std::sync::MutexGuard<'_, Bridge>> {
+        let helper = self.helpers.first().ok_or_else(|| {
+            Refusal::new(RefusalCode::ModelUnavailable, "this door holds no helper")
+        })?;
+        Ok(helper.lock().expect("a helper lock is not poisoned"))
     }
 
     /// Runs `calls` across the pool, preserving input order.

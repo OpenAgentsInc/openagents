@@ -27,6 +27,16 @@
 //! that answered to each other; they answer to the manifest now. See
 //! `docs/lev/manifest.md`.
 //!
+//! And what a door may keep serving is a second document. Pinning happens at
+//! load time, so it protects a door that restarts and does nothing for one
+//! already running. [`policy`] is the other half: a snapshot a canonical
+//! service publishes, a freshness window after which a door that cannot
+//! reach that service stops serving its managed release, and revocations
+//! aimed at a release or at a base model signature. The operating system
+//! replacing the base is a standing revocation event, and the window is what
+//! bounds how long a door can go on serving through one. See
+//! `docs/lev/revocation.md`.
+//!
 //! See `docs/lev/` for the architecture, the measured behavior of the
 //! runtime, and the calibration rule.
 
@@ -36,6 +46,7 @@ pub mod bridge;
 pub mod error;
 pub mod estimator;
 pub mod manifest;
+pub mod policy;
 pub mod render;
 pub mod schema;
 pub mod suite;
@@ -47,5 +58,6 @@ pub use bridge::{Availability, Bridge, Call, Outcome, Sampling};
 pub use estimator::{Estimator, Raw, confidence};
 pub use error::{Refusal, RefusalCode, Result};
 pub use manifest::{EvalRef, Manifest};
+pub use policy::{Clock, Policy, Revocation, Snapshot, Standing};
 pub use render::render;
 pub use schema::{BANDS, Compiled, Kind, compile};

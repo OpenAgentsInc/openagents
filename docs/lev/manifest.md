@@ -38,6 +38,7 @@ identity to record.
 | `interface` | The System One question types with their bounds, the answer fields each returns, the response extensions, and the families this model was trained and measured on. |
 | `estimator` | Which estimator draws the raw signal, over how many draws, from which seed block. |
 | `evalRef` | One entry per measured family: the committed calibration record, its digest, its suite and partition, the gate that judged it, its `admitted` flag, and its verdict. |
+| `policySnapshot` | The canonical service whose snapshot says whether this release may still serve, where the door keeps its copy, and the longest window the release accepts. Required. |
 
 Two of those are worth their own paragraph.
 
@@ -71,7 +72,7 @@ decision-model artifacts and set the rule that **a row without a measured
   serves does not serve either. A map fitted on eight draws describes an
   eight-draw signal.
 
-All four adapted releases therefore admit nothing today, because every
+All three adapted releases therefore admit nothing today, because every
 committed map was fitted against the base model with no adapter attached.
 `lev-base@1` admits `routing` and names the refusals for `severity` and
 `urgency` with the gate's own words.
@@ -106,20 +107,35 @@ have.
 every committed record on each run, and checks the artifact when the package
 is on the machine.
 
-## Where the next two issues attach
+## The policy it runs under
 
-- A **behavioral admission floor** (#9389) is a stricter reading of the same
-  rule: digest, then base signature, then the isolation probe, then a
-  per-family admitted record, with anything short of that serving the typed
-  answer and refusing `uncalibrated`. The probe's result joins the
-  calibration record in `evalRef`; the document does not need reshaping.
-- **Revocation** (#9390) is a freshness window and a revoked flag on the
-  release. The base-signature treadmill is a standing revocation event — an
-  operating system update replaces the base and invalidates every adapter and
-  every map fitted against it — and `base.signature` is the field a
-  revocation would name.
+Every check above is decided when the door starts, which protects a door that
+restarts and does nothing for one already running. `policySnapshot` is the
+other half, built in #9390 and described in
+[`revocation.md`](revocation.md): a snapshot a canonical service publishes, a
+door that reads its cached copy on every question, and a freshness window
+after which a door that cannot reach the service stops serving its managed
+release. **The maximum enforcement delay for a revocation is the window.**
 
-Neither is built here.
+The block is required rather than optional. A release that could decline to
+name a policy source would escape revocation by leaving a field out, which is
+the deleted cache again under a tidier name, so `Manifest::load` refuses a
+document without one.
+
+`base.signature` is the field the treadmill revokes. One entry naming the old
+signature stops every release fitted against it, which is how the event
+arrives: nobody lists the affected releases, because the operating system
+update did not either.
+
+## Where the last issue attaches
+
+A **behavioral admission floor** (#9389) is a stricter reading of the same
+rule: digest, then base signature, then the isolation probe, then a
+per-family admitted record, with anything short of that serving the typed
+answer and refusing `uncalibrated`. The probe's result joins the calibration
+record in `evalRef`; the document does not need reshaping.
+
+It is not built here.
 
 ## What is deliberately absent
 

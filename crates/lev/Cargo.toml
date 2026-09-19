@@ -16,6 +16,10 @@ serve = ["dep:axum", "dep:tokio", "dep:tower-http"]
 # does not score it, and the dependency runs one way and never back.
 gym = { path = "../gym" }
 jev = { path = "../jev" }
+# The policy snapshot dates itself, and an HTTP date is a timestamp a person
+# can read and a parser cannot misread. One small crate already in the tree.
+httpdate = "1"
+
 indexmap = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -27,6 +31,7 @@ tokio = { version = "1", features = ["full"], optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 
@@ -46,6 +51,10 @@ path = "src/bin/lev_band.rs"
 [[bin]]
 name = "lev-adapter-check"
 path = "src/bin/lev_adapter_check.rs"
+
+[[bin]]
+name = "lev-policy"
+path = "src/bin/lev_policy.rs"
 
 [[bin]]
 name = "lev-seed-sweep"

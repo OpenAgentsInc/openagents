@@ -9,6 +9,13 @@ System One input and output shapes, the estimator and its sample count, and
 the committed calibration records each admitted family rests on. Without it,
 those four checks lived in three binaries and answered to each other.
 
+It also names the policy snapshot the release runs under, in
+`policySnapshot`. Every check above is decided when the door starts;
+`policySnapshot` is what a running door asks, and the window in it is what
+stops a door that stops reaching the service. See
+[`../policy/README.md`](../policy/README.md) and
+[`../../docs/lev/revocation.md`](../../docs/lev/revocation.md).
+
 ## The releases here
 
 | File | Release | Artifact | Admits |
@@ -41,6 +48,18 @@ admitted at all, and the manifest is what makes that impossible to repeat:
 the record is named, digested, and checked on every start and on every
 `cargo test -p lev`.
 
+## Every release names a policy, and it is not optional
+
+All four point at [`../policy/current.json`](../policy/README.md), cache
+their copy at `~/.lev/policy/current.json`, and accept a window of no more
+than 24 hours. A release that could decline to name a policy source would
+escape revocation by leaving a field out, so `Manifest::load` refuses a
+document without the block and names the blank field.
+
+The cache lives outside this repository on purpose. A cache is a client's
+copy of somebody else's document, and a committed copy is one that stops
+being fetched.
+
 ## The artifact is not in git
 
 A `.fmadapter` package is 133 MB, which is why `artifact.path` is a
@@ -70,6 +89,8 @@ Run it from this directory: the `evalRef` paths are written as passed and
 resolve against the manifest's own location, so the document works wherever
 the repository is checked out. A release with no artifact — a base model the
 operating system ships — takes `--base <signature>` and no package path.
+The `policySnapshot` block is written with the published defaults, and
+`--policy-source`, `--policy-cache`, and `--window` change them.
 
 Then check it:
 

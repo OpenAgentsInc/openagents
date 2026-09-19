@@ -46,6 +46,33 @@ fn every_committed_manifest_loads_and_declares_this_build_of_the_contract() {
 }
 
 #[test]
+fn every_committed_manifest_names_a_policy_snapshot_it_can_resolve() {
+    // A release that named no policy source would be a release nothing can
+    // revoke, so the field is required and `Manifest::load` has already
+    // refused a document without it by the time this runs. What is left to
+    // check is that the path resolves to the snapshot this repository
+    // publishes rather than to nothing.
+    for path in committed() {
+        let manifest = load(&path);
+        let policy = manifest.policy();
+        assert!(
+            policy.source().exists(),
+            "{} points at {}, which is not there",
+            path.display(),
+            policy.source().display()
+        );
+        lev::policy::read(policy.source())
+            .unwrap_or_else(|trouble| panic!("{}: {trouble}", policy.source().display()));
+        assert!(
+            manifest.policy_snapshot.freshness_window_seconds
+                <= lev::policy::DEFAULT_WINDOW_SECONDS,
+            "{} accepts a window longer than the published one",
+            path.display()
+        );
+    }
+}
+
+#[test]
 fn every_eval_ref_matches_the_record_it_names() {
     // The check that would have caught the stale map: a record edited, or
     // refitted, or deleted, after the release that rests on it was written.
