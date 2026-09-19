@@ -10,17 +10,31 @@ use std::env;
 
 use jev::SystemOneRequest;
 
-use crate::classify::{Judgment, Route, judgment_of, questions, route, state_of};
+use crate::classify::{
+    Judgment, Route, ShellRoute, judgment_of, questions, route, shell_questions, shell_verdict_of,
+    state_of,
+};
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::repo::Repo;
+use crate::shell::{self, Outcome, ShellEvent};
 
 /// The instructions Generate hears for a plain answer.
 pub const INSTRUCTIONS: &str = "You are Coder, an assistant that lives in a terminal. \
     Answer directly and tersely. Plain prose, short paragraphs, no headers. \
-    If the conversation needs code, say what you would change in words. \
-    The REPO CONTEXT block describes the repository the user is working in: \
-    answer project questions from it and name real paths, and if the context \
-    does not cover the question, say so rather than guessing.";
+    You can run shell commands on the user's machine: when a request needs \
+    the repository inspected, code searched, tests run, or anything checked \
+    on disk, do not answer from memory — emit a command plan instead of \
+    prose. A plan is the whole reply as one JSON object, nothing before or \
+    after: {\"v\":1,\"commands\":[{\"command\":\"git grep -rn foo .\",\"why\":\"find foo\"}]}. \
+    At most 10 commands; prefer read-only ones unless the task asks for a \
+    change. After they run you receive their output; then plan again or \
+    answer. The REPO CONTEXT block describes the repository the user is \
+    working in: answer project questions from it and name real paths, and \
+    if the context does not cover the question, say so rather than guessing.";
+
+/// The instructions for the turn's last word: the loop is done, prose only.
+const FINAL_SUFFIX: &str = " The command loop is finished — do not emit a \
+    plan; answer with what you have.";
 
 /// The instructions for a clarifying turn: the router marked the request
 /// ambiguous, so the whole reply is the question.
@@ -144,22 +158,15 @@ impl Agent {
     /// Generates the reply the route asks for and folds it into the
     /// transcript as the assistant side. `clarify` swaps the instructions
     /// for the one-question variant. `sink` receives text deltas as they
-    /// stream.
+    /// stream. One generation, no shell loop — [`Agent::turn`] is the
+    /// full round.
     pub async fn reply(
         &mut self,
         clarify: bool,
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
-        let mut instructions = if clarify {
-            format!("{INSTRUCTIONS}{CLARIFY_SUFFIX}")
-        } else {
-            INSTRUCTIONS.to_string()
-        };
-        if let Some(repo) = &self.repo {
-            instructions.push_str("\n\n");
-            instructions.push_str(&repo.context_for(&self.task));
-        }
+        let instructions = self.instructions(clarify, false);
         let (text, usage) = self
             .generate
             .generate(&instructions, &self.transcript, sink, meta)
@@ -169,6 +176,112 @@ impl Agent {
             text: text.clone(),
         });
         Ok((text, usage))
+    }
+
+    /// A whole turn: generate, run any plan the reply carries, judge the
+    /// round, and go again until the model answers in prose or the round
+    /// cap lands. `shell` hears each proposal, outcome, and verdict as it
+    /// happens so the terminal can draw the loop.
+    pub async fn turn(
+        &mut self,
+        clarify: bool,
+        sink: &mut (dyn FnMut(&str) + Send),
+        meta: &mut (dyn FnMut(Meta) + Send),
+        shell: &mut (dyn FnMut(ShellEvent) + Send),
+    ) -> Result<(String, Option<Usage>), GenerateError> {
+        let mut total: Option<Usage> = None;
+        let mut rounds = 0usize;
+        let mut final_only = false;
+        loop {
+            let instructions = self.instructions(clarify, final_only);
+            let (text, usage) = self
+                .generate
+                .generate(&instructions, &self.transcript, sink, meta)
+                .await?;
+            if let Some(usage) = usage {
+                let entry = total.get_or_insert(Usage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                });
+                entry.input_tokens += usage.input_tokens;
+                entry.output_tokens += usage.output_tokens;
+            }
+            let proposals = if final_only {
+                None
+            } else {
+                shell::parse_plan(&text)
+            };
+            let Some(proposals) = proposals else {
+                self.transcript.push(Message {
+                    role: Role::Assistant,
+                    text: text.clone(),
+                });
+                return Ok((text, total));
+            };
+            rounds += 1;
+            self.transcript.push(Message {
+                role: Role::Assistant,
+                text,
+            });
+            let mut outcomes: Vec<Outcome> = Vec::new();
+            for proposal in proposals.into_iter().take(shell::COMMANDS_MAX) {
+                shell(ShellEvent::Proposed(proposal.clone()));
+                let outcome = shell::run(&proposal).await;
+                shell(ShellEvent::Ran(outcome.clone()));
+                outcomes.push(outcome);
+            }
+            let route = self.judge(&outcomes, shell).await;
+            self.transcript.push(Message {
+                role: Role::User,
+                text: shell::transcript_of(&outcomes),
+            });
+            if route == ShellRoute::Stop || rounds >= shell::ROUNDS_MAX {
+                final_only = true;
+            }
+        }
+    }
+
+    /// The instructions for one generation: the base text, the clarify or
+    /// final suffix, and the repo context block.
+    fn instructions(&self, clarify: bool, final_only: bool) -> String {
+        let mut instructions = if clarify {
+            format!("{INSTRUCTIONS}{CLARIFY_SUFFIX}")
+        } else {
+            INSTRUCTIONS.to_string()
+        };
+        if final_only {
+            instructions.push_str(FINAL_SUFFIX);
+        }
+        if let Some(repo) = &self.repo {
+            instructions.push_str("\n\n");
+            instructions.push_str(&repo.context_for(&self.task));
+        }
+        instructions
+    }
+
+    /// The judge's read on a round of outcomes: `Pass` without a
+    /// classifier, the verdict's route otherwise, with the display line
+    /// reported to `shell` either way.
+    async fn judge(
+        &self,
+        outcomes: &[Outcome],
+        shell: &mut (dyn FnMut(ShellEvent) + Send),
+    ) -> ShellRoute {
+        let Some(classify) = &self.classify else {
+            return ShellRoute::Pass;
+        };
+        let state = shell::state_of(&self.task, outcomes);
+        match classify
+            .system_one(SystemOneRequest::new(state, shell_questions()))
+            .await
+        {
+            Ok(response) => {
+                let verdict = shell_verdict_of(&response);
+                shell(ShellEvent::Verdict(verdict.line()));
+                verdict.route()
+            }
+            Err(_) => ShellRoute::Pass,
+        }
     }
 }
 

@@ -16,7 +16,7 @@
 
 use std::io::{self, stdout};
 
-use coder::{Agent, Classified, Meta, Route, Usage, Verdict};
+use coder::{Agent, Classified, Meta, Route, ShellEvent, Usage, Verdict};
 use coder_terminal::{
     Composer, ComposerAction, Editor, Intensity, Ladder, frame_for, handle_key, wrap_rows,
 };
@@ -90,6 +90,8 @@ enum Work {
     Classified(Classified),
     /// A remote worker's judgment feedback line (NIP-CJ), drawn dim.
     Judgment(String),
+    /// A shell-loop event: a proposal, an outcome, or the judge's verdict.
+    Shell(ShellEvent),
     /// A reply delta streamed in.
     Delta(String),
     /// The turn ended; the reply text and usage are final.
@@ -212,8 +214,9 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
         Route::Respond | Route::Clarify => {
             let tx = work.clone();
             let meta_tx = work.clone();
+            let shell_tx = work.clone();
             agent
-                .reply(
+                .turn(
                     route == Route::Clarify,
                     &mut |delta| {
                         let _ = tx.try_send(Work::Delta(delta.to_string()));
@@ -221,6 +224,9 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
                     &mut |meta| {
                         let Meta::Judgment(line) = meta;
                         let _ = meta_tx.try_send(Work::Judgment(line));
+                    },
+                    &mut |event| {
+                        let _ = shell_tx.try_send(Work::Shell(event));
                     },
                 )
                 .await
@@ -345,6 +351,29 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                     }
                     Work::Judgment(line) => {
                         app.push(Intensity::Half, "  ", format!("classify → {line}"));
+                    }
+                    Work::Shell(event) => {
+                        // The plan's JSON streamed into pending; the $ lines
+                        // replace it.
+                        app.pending.clear();
+                        match event {
+                            ShellEvent::Proposed(proposal) => {
+                                app.push(
+                                    Intensity::Half,
+                                    "  ",
+                                    format!("$ {}", proposal.command),
+                                );
+                                if !proposal.why.is_empty() {
+                                    app.push(Intensity::Half, "    ", proposal.why);
+                                }
+                            }
+                            ShellEvent::Ran(outcome) => {
+                                app.push(Intensity::Half, "    ", outcome.line());
+                            }
+                            ShellEvent::Verdict(line) => {
+                                app.push(Intensity::Half, "  ", format!("shell → {line}"));
+                            }
+                        }
                     }
                     Work::Delta(delta) => app.pending.push_str(&delta),
                     Work::Finished(Ok((text, usage))) => {

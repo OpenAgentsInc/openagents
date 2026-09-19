@@ -228,6 +228,126 @@ pub fn route(judgment: &Judgment) -> Route {
     }
 }
 
+/// Where the judge sends a round of shell outcomes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShellRoute {
+    /// Hand the outputs to the model; the loop continues.
+    Pass,
+    /// A command failed or missed; the model corrects and tries again.
+    Retry,
+    /// Stop running commands: damage, a stuck loop, or nothing to learn.
+    Stop,
+}
+
+/// What the judge read of a shell round.
+#[derive(Clone, Debug)]
+pub struct ShellVerdict {
+    /// The `outcome` choice and its confidence.
+    pub outcome: Option<jev::ChoiceAnswer>,
+    /// The `useful` Noul probability.
+    pub useful: Option<f64>,
+    /// The `damage` Noul probability.
+    pub damage: Option<f64>,
+}
+
+impl ShellVerdict {
+    /// The route the verdict means: `damage` forces `Stop` whatever the
+    /// choice says; a missing or unlisted choice means `Pass`, the least
+    /// forceful reading.
+    pub fn route(&self) -> ShellRoute {
+        if self.damage.is_some_and(|damage| damage >= 0.7) {
+            return ShellRoute::Stop;
+        }
+        match self.outcome.as_ref().map(|outcome| outcome.choice.as_str()) {
+            Some("retry") => ShellRoute::Retry,
+            Some("stop") => ShellRoute::Stop,
+            _ => ShellRoute::Pass,
+        }
+    }
+
+    /// The display line: `pass 0.91 · useful 0.8 · damage 0.0`.
+    pub fn line(&self) -> String {
+        let route = match self.route() {
+            ShellRoute::Pass => "pass",
+            ShellRoute::Retry => "retry",
+            ShellRoute::Stop => "stop",
+        };
+        let confidence = self
+            .outcome
+            .as_ref()
+            .map_or(0.0, |outcome| outcome.confidence);
+        format!(
+            "{route} {confidence:.2} · useful {:.1} · damage {:.1}",
+            self.useful.unwrap_or(0.0),
+            self.damage.unwrap_or(0.0),
+        )
+    }
+}
+
+/// The questions for a round of shell outcomes: where the loop goes, and
+/// whether the outputs helped or harmed.
+pub fn shell_questions() -> Questions {
+    Questions::new()
+        .with(
+            "outcome",
+            Choice::new(
+                "These shell commands ran for the user's task. What should the agent do next?",
+                IndexMap::from([
+                    (
+                        "pass".to_string(),
+                        Some(Entry::from(
+                            "Hand the outputs to the model — they answer the task or move it forward",
+                        )),
+                    ),
+                    (
+                        "retry".to_string(),
+                        Some(Entry::from(
+                            "A command failed or missed the point — the model should correct the approach and try again",
+                        )),
+                    ),
+                    (
+                        "stop".to_string(),
+                        Some(Entry::from(
+                            "Stop running commands — the outputs show damage, a stuck loop, or nothing left to learn",
+                        )),
+                    ),
+                ]),
+            ),
+        )
+        .with(
+            "useful",
+            Noul::new("Do the outputs help answer the user's request?"),
+        )
+        .with(
+            "damage",
+            Noul::new(
+                "Does any output suggest the commands harmed the user's files, state, or secrets?",
+            ),
+        )
+}
+
+/// Reads a response into a [`ShellVerdict`].
+pub fn shell_verdict_of(response: &SystemOneResponse) -> ShellVerdict {
+    let outcome = response
+        .answers
+        .get("outcome")
+        .and_then(|answer| match answer {
+            Answer::Choice(choice) => Some(choice.clone()),
+            _ => None,
+        });
+    let noul = |id| {
+        response.answers.get(id).and_then(|answer| match answer {
+            Answer::Noul(noul) => Some(noul.noul),
+            _ => None,
+        })
+    };
+    ShellVerdict {
+        outcome,
+        useful: noul("useful"),
+        damage: noul("damage"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

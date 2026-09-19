@@ -16,6 +16,7 @@ pub mod classify;
 pub mod generate;
 pub mod relay;
 pub mod repo;
+pub mod shell;
 
 pub use agent::{Agent, Classified, Verdict};
 pub use classify::{Action, Judgment, Route, route, state_of};
@@ -24,3 +25,4 @@ pub use generate::{
 };
 pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
+pub use shell::{Outcome, Proposal, ShellEvent, Status};
