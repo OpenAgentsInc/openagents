@@ -95,6 +95,7 @@ revision.
 | [`model-cards.md`](model-cards.md) | `kev-0.5b` in detail — data, recipe, metrics, mechanism tests, limitations — plus the preview family and the research findings behind it. |
 | [`port-roadmap.md`](port-roadmap.md) | The in-progress port of the mechanism into `crates/kev`: what gets pulled over in what order, and the issue that tracks each step. |
 | [`mesh-plan.md`](mesh-plan.md) | The proposed path to serving and training decision models on the earn mesh: Pylon manifests, a psionic decision-model lane, the fleet `systemone` work shape, and the TypeSafe-compatible fan-out API. |
+| [`jev-comparison.md`](jev-comparison.md) | Side-by-side answers from the local port and hosted Jev on identical requests, with the divergence analysis: where the port tracks Jev and where the weights' limits show. |
 
 ## Licensing
 
