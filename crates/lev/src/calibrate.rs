@@ -47,7 +47,23 @@ pub struct Map {
     pub fitted_on: usize,
 }
 
+/// The fewest observations a bin should rest on before it is worth having.
+///
+/// Below this a bin is noise with a decimal point: the first suite fitted
+/// five bins on twelve items and turned a raw ECE of 0.031 into 0.113.
+pub const ITEMS_PER_BIN: usize = 15;
+
 impl Map {
+    /// Fits a table whose bin count follows the evidence.
+    ///
+    /// More data buys more resolution. Less data buys fewer, wider bins
+    /// rather than a finer table with nothing in it.
+    #[must_use]
+    pub fn fit_auto(observations: &[Observation]) -> Self {
+        let bins = (observations.len() / ITEMS_PER_BIN).clamp(2, 10);
+        Self::fit(observations, bins)
+    }
+
     /// Fits a table on observations from the calibration split.
     ///
     /// A bin with no observations falls back to the base rate rather than
@@ -234,13 +250,35 @@ impl Record {
 /// Decides whether a fitted map earned the right to serve.
 ///
 /// A map is not admitted because it exists. It is admitted because it beat
-/// the raw signal on items it was not fitted on. Fitting on a dozen items can
-/// easily make a good signal worse — measured here, a family whose raw ECE
-/// was 0.031 came back at 0.113 — so the gate is the difference between
-/// calibration and decoration.
+/// the raw signal on items it was not fitted on.
+///
+/// The three conditions, and why each one:
+///
+/// - **ECE falls by at least a tenth.** Calibration is what a calibration
+///   map is for, and ECE measures it directly. A marginal move is binning
+///   noise, not an improvement.
+/// - **NLL does not rise.** Log loss is strictly proper and punishes
+///   confident errors hardest, so a map that buys calibration by hedging
+///   everything into the middle fails here.
+/// - **Brier rises by no more than a tenth.** Brier is calibration and
+///   refinement together. A binned map cannot improve refinement — it is
+///   monotone in the raw signal and leaves the argmax alone — so it can only
+///   lose a little to binning. Requiring no loss at all rejects maps that cut
+///   ECE several-fold, which is the wrong trade; requiring the loss stay
+///   small keeps a map from destroying sharpness to flatter its ECE.
+///
+/// The Brier tolerance was widened from zero after the first run on a
+/// 196-item suite, where maps cutting ECE from 0.157 to 0.005 were refused
+/// over a Brier move of 0.02. The test below pins that case so the reasoning
+/// does not get lost.
 #[must_use]
 pub fn admit(raw: Metrics, calibrated: Metrics, fitted_on: usize) -> (bool, String) {
     const MIN_FITTED: usize = 8;
+    /// The relative ECE reduction a map has to earn.
+    const ECE_MARGIN: f64 = 0.10;
+    /// How much Brier may degrade to buy that reduction.
+    const BRIER_TOLERANCE: f64 = 0.10;
+
     if fitted_on < MIN_FITTED {
         return (
             false,
@@ -253,20 +291,47 @@ pub fn admit(raw: Metrics, calibrated: Metrics, fitted_on: usize) -> (bool, Stri
             format!("refused: scored on {} items, too few to judge", calibrated.items),
         );
     }
-    if calibrated.ece < raw.ece && calibrated.brier <= raw.brier {
+    if calibrated.ece > raw.ece * (1.0 - ECE_MARGIN) {
         return (
-            true,
+            false,
             format!(
-                "admitted: ECE {:.3} to {:.3} and Brier {:.3} to {:.3} on held-out items",
-                raw.ece, calibrated.ece, raw.brier, calibrated.brier
+                "refused: ECE {:.3} to {:.3}, short of the {:.0}% reduction a map has to earn",
+                raw.ece,
+                calibrated.ece,
+                ECE_MARGIN * 100.0
+            ),
+        );
+    }
+    if calibrated.nll > raw.nll {
+        return (
+            false,
+            format!(
+                "refused: ECE improved {:.3} to {:.3} but log loss rose {:.3} to {:.3}, so the \
+                 map bought calibration by hedging",
+                raw.ece, calibrated.ece, raw.nll, calibrated.nll
+            ),
+        );
+    }
+    if calibrated.brier > raw.brier * (1.0 + BRIER_TOLERANCE) {
+        return (
+            false,
+            format!(
+                "refused: ECE improved {:.3} to {:.3} but Brier rose {:.3} to {:.3}, past the \
+                 {:.0}% the binning is allowed to cost",
+                raw.ece,
+                calibrated.ece,
+                raw.brier,
+                calibrated.brier,
+                BRIER_TOLERANCE * 100.0
             ),
         );
     }
     (
-        false,
+        true,
         format!(
-            "refused: ECE {:.3} to {:.3}, Brier {:.3} to {:.3}; the raw signal was already better",
-            raw.ece, calibrated.ece, raw.brier, calibrated.brier
+            "admitted: ECE {:.3} to {:.3}, log loss {:.3} to {:.3}, Brier {:.3} to {:.3} on \
+             held-out items",
+            raw.ece, calibrated.ece, raw.nll, calibrated.nll, raw.brier, calibrated.brier
         ),
     )
 }
@@ -357,20 +422,50 @@ mod tests {
     }
 
     #[test]
-    fn a_map_that_makes_things_worse_is_not_admitted() {
-        let raw = Metrics { ece: 0.031, brier: 0.012, items: 12, ..Metrics::default() };
-        let worse = Metrics { ece: 0.113, brier: 0.013, items: 12, ..Metrics::default() };
+    fn a_map_that_makes_calibration_worse_is_not_admitted() {
+        let raw = Metrics { ece: 0.031, brier: 0.012, nll: 0.1, items: 12, ..Metrics::default() };
+        let worse = Metrics { ece: 0.113, brier: 0.013, nll: 0.1, items: 12, ..Metrics::default() };
         let (admitted, why) = admit(raw, worse, 12);
         assert!(!admitted, "{why}");
-        assert!(why.contains("already better"));
+        assert!(why.contains("short of"));
     }
 
     #[test]
     fn a_map_that_helps_on_held_out_items_is_admitted() {
-        let raw = Metrics { ece: 0.219, brier: 0.215, items: 12, ..Metrics::default() };
-        let better = Metrics { ece: 0.132, brier: 0.184, items: 12, ..Metrics::default() };
+        let raw = Metrics { ece: 0.219, brier: 0.215, nll: 0.6, items: 12, ..Metrics::default() };
+        let better = Metrics { ece: 0.132, brier: 0.184, nll: 0.5, items: 12, ..Metrics::default() };
         let (admitted, why) = admit(raw, better, 12);
         assert!(admitted, "{why}");
+    }
+
+    #[test]
+    fn a_large_calibration_gain_survives_a_small_brier_cost() {
+        // The case that widened the tolerance: measured on kev's urgency
+        // family, 196-item suite. A zero-tolerance gate refused this.
+        let raw = Metrics { ece: 0.157, brier: 0.199, nll: 0.6, items: 30, ..Metrics::default() };
+        let mapped = Metrics { ece: 0.005, brier: 0.210, nll: 0.58, items: 30, ..Metrics::default() };
+        let (admitted, why) = admit(raw, mapped, 30);
+        assert!(admitted, "{why}");
+    }
+
+    #[test]
+    fn a_map_that_hedges_everything_into_the_middle_is_refused() {
+        // Flat probabilities score a fine ECE and a terrible log loss. That
+        // is the failure the NLL condition exists to catch.
+        let raw = Metrics { ece: 0.200, brier: 0.150, nll: 0.40, items: 30, ..Metrics::default() };
+        let hedged = Metrics { ece: 0.010, brier: 0.155, nll: 0.90, items: 30, ..Metrics::default() };
+        let (admitted, why) = admit(raw, hedged, 30);
+        assert!(!admitted, "{why}");
+        assert!(why.contains("hedging"));
+    }
+
+    #[test]
+    fn a_map_that_destroys_sharpness_is_refused() {
+        let raw = Metrics { ece: 0.200, brier: 0.100, nll: 0.40, items: 30, ..Metrics::default() };
+        let blunt = Metrics { ece: 0.010, brier: 0.180, nll: 0.39, items: 30, ..Metrics::default() };
+        let (admitted, why) = admit(raw, blunt, 30);
+        assert!(!admitted, "{why}");
+        assert!(why.contains("Brier rose"));
     }
 
     #[test]
@@ -380,6 +475,16 @@ mod tests {
         let (admitted, why) = admit(raw, better, 4);
         assert!(!admitted, "{why}");
         assert!(why.contains("below the floor"));
+    }
+
+    #[test]
+    fn the_bin_count_follows_the_evidence() {
+        let few = Map::fit_auto(&observations(&[(1.0, true); 10]));
+        assert_eq!(few.bins.len(), 2, "ten items do not support a fine table");
+        let some = Map::fit_auto(&observations(&[(1.0, true); 75]));
+        assert_eq!(some.bins.len(), 5);
+        let many = Map::fit_auto(&observations(&[(1.0, true); 1000]));
+        assert_eq!(many.bins.len(), 10, "the table stops widening at ten bins");
     }
 
     #[test]

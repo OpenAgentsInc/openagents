@@ -15,7 +15,7 @@ use jev::{Answer, Client, Config, Questions, SystemOneRequest};
 use lev::calibrate::{Map, Observation, Record, admit, score};
 use lev::suite::{Item, Suite};
 
-const SUITE: &str = include_str!("../../suites/support-v1.json");
+const SUITE: &str = include_str!("../../suites/support-v2.json");
 
 /// What one item produced on one door.
 struct Scored {
@@ -97,11 +97,13 @@ async fn main() {
     let mut doors: Vec<(String, Client)> = Vec::new();
     let mut fit = false;
     let mut out: Option<String> = None;
+    let mut dump: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--fit" => fit = true,
             "--out" => out = args.next(),
+            "--dump" => dump = args.next(),
             "--jev" => match Client::from_env() {
                 Ok(client) => doors.push(("jev (hosted)".to_string(), client)),
                 Err(error) => eprintln!("skipping hosted Jev: {error}"),
@@ -153,6 +155,29 @@ async fn main() {
             .map(|s| Observation { raw: s.raw_top, correct: s.correct })
             .collect();
 
+        // Per-item observations, so a change to the gate can be re-scored
+        // without asking the models again.
+        if let Some(path) = dump.as_deref() {
+            let rows: Vec<serde_json::Value> = scored
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "door": name,
+                        "family": s.family,
+                        "split": s.split,
+                        "raw_top": s.raw_top,
+                        "correct": s.correct,
+                        "distribution": s.distribution,
+                    })
+                })
+                .collect();
+            let file = format!("{path}/{}.json", name.replace([' ', '(', ')'], "_"));
+            let _ = std::fs::create_dir_all(path);
+            if let Ok(text) = serde_json::to_string_pretty(&rows) {
+                let _ = std::fs::write(&file, text + "\n");
+            }
+        }
+
         println!("| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |");
         println!("| --- | --- | --- | --- | --- | --- | --- |");
         println!("{}", row("evaluation, raw", score(&evaluation)));
@@ -172,7 +197,7 @@ async fn main() {
                     .filter(|s| s.family == family && s.split == "calibration")
                     .map(|s| Observation { raw: s.raw_top, correct: s.correct })
                     .collect();
-                let map = Map::fit(&fit_on, 5);
+                let map = Map::fit_auto(&fit_on);
                 let raw_family: Vec<Observation> = scored
                     .iter()
                     .filter(|s| s.family == family && s.split == "evaluation")
@@ -231,12 +256,14 @@ async fn main() {
                 }
             }
             println!("{}", row("evaluation, admitted maps only", score(&calibrated)));
-            println!("\n| Family | Fitted on | Raw ECE | Mapped ECE | Raw Brier | Mapped Brier | Accuracy | Verdict |");
-            println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
+            println!(
+                "\n| Family | Fitted on | Raw ECE | Mapped ECE | Raw NLL | Mapped NLL | Raw Brier | Mapped Brier | Accuracy | Verdict |"
+            );
+            println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
             for (family, (raw, mapped, fitted_on, _, verdict)) in &per_family {
                 println!(
-                    "| `{family}` | {fitted_on} | {:.3} | {:.3} | {:.3} | {:.3} | {:.2} | {verdict} |",
-                    raw.ece, mapped.ece, raw.brier, mapped.brier, raw.accuracy
+                    "| `{family}` | {fitted_on} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3} | {:.2} | {verdict} |",
+                    raw.ece, mapped.ece, raw.nll, mapped.nll, raw.brier, mapped.brier, raw.accuracy
                 );
             }
         }

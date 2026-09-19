@@ -46,7 +46,7 @@ def main():
         row = json.loads(line)
         reference[row["id"]] = row
 
-    suite = json.loads((REPO / "crates/lev/suites/support-v1.json").read_text())
+    suite = json.loads((REPO / "crates/lev/suites/support-v2.json").read_text())
     failures = []
     for item in suite["items"]:
         rust = reference.get(item["id"])

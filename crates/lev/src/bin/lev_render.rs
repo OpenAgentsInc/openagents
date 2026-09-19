@@ -10,7 +10,7 @@ use lev::api::{Extensions, SystemOneRequest};
 use lev::schema::compile;
 use lev::suite::Suite;
 
-const SUITE: &str = include_str!("../../suites/support-v1.json");
+const SUITE: &str = include_str!("../../suites/support-v2.json");
 
 fn main() {
     let suite = Suite::load(SUITE).expect("the shipped suite loads");

@@ -113,13 +113,13 @@ fn canonicalize(value: &Value) -> String {
 mod tests {
     use super::*;
 
-    const SUITE: &str = include_str!("../suites/support-v1.json");
+    const SUITE: &str = include_str!("../suites/support-v2.json");
 
     #[test]
     fn the_shipped_suite_loads_and_its_digest_matches() {
         let suite = Suite::load(SUITE).expect("the suite loads");
-        assert_eq!(suite.name, "support-v1");
-        assert_eq!(suite.items.len(), 52);
+        assert_eq!(suite.name, "support-v2");
+        assert_eq!(suite.items.len(), 196);
     }
 
     #[test]
@@ -127,8 +127,9 @@ mod tests {
         let suite = Suite::load(SUITE).expect("the suite loads");
         let calibration = suite.split("calibration").count();
         let evaluation = suite.split("evaluation").count();
-        assert!(calibration > 20, "calibration split holds {calibration}");
-        assert!(evaluation > 20, "evaluation split holds {evaluation}");
+        // Enough per family to fit a table that is worth fitting.
+        assert!(calibration >= 90, "calibration split holds {calibration}");
+        assert!(evaluation >= 90, "evaluation split holds {evaluation}");
         assert_eq!(calibration + evaluation, suite.items.len());
     }
 
@@ -155,7 +156,7 @@ mod tests {
 
     #[test]
     fn a_tampered_suite_is_refused() {
-        let tampered = SUITE.replace("support-v1", "support-v1 ").replacen(
+        let tampered = SUITE.replace("support-v2", "support-v2 ").replacen(
             "\"truth\": \"billing\"",
             "\"truth\": \"sales\"",
             1,

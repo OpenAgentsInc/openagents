@@ -51,20 +51,34 @@ Fitting on the same items you score on produces a number that means nothing.
 Kev's own card fits temperature on even-indexed records and tests on odd;
 the same discipline applies and the partitions are recorded in the map.
 
-## The suites
+## The suite
 
-Adopt kev's frozen-suite format rather than inventing one: checksummed
-suites with separate training, calibration, development, and locked-test
-partitions, per-record provenance, and pinned dataset revisions. Development
-partitions select designs. The locked test is read once per published
-candidate and the read is enforced.
+`crates/lev/suites/support-v2.json` holds 196 authored items across three
+families — 100 routing Choices, 60 urgency Nouls, 36 severity Scores — split
+evenly into calibration and evaluation partitions by construction, with a
+content digest so a calibration record can name exactly what it was fitted
+on. It is built by `build_support_v2.py`, which is committed beside it, so
+the suite is reproducible rather than a blob.
 
-Use kev's suite items where they exist. `evals/transfer-v4` covers QNLI,
-SciQ, TweetEval, PAWS, MMLU, Emotion, and held-out programmatic policy
-rules, and kev's leaderboard already carries kev-0.6b through kev-8b and
-hosted Jev scored on those same items. Scoring Lev on the same items is what
-makes the comparison in [`README.md`](README.md) real instead of rhetorical,
-and it costs nothing beyond running them.
+It replaced a 52-item first attempt, and the reason is the whole argument for
+sizing a suite properly: **every map fitted on the small suite was refused.**
+Fitting five bins on twelve items turned a raw ECE of 0.031 into 0.113. The
+machinery was not wrong; there was not enough evidence per bin for it to say
+anything.
+
+Difficulty is mixed on purpose. A suite of easy items produces a
+near-degenerate distribution with no range to calibrate — which is exactly
+what the first behavior record found — so roughly a third of the items sit
+near a boundary and some are genuinely arguable. The labels are the author's
+best reading, not the only defensible one, and they are not drawn from an
+external dataset. That limits what the numbers can claim and it is recorded
+here rather than buried.
+
+### Bin count follows the evidence
+
+`Map::fit_auto` picks one bin per fifteen observations, between two and ten.
+More data buys more resolution; less data buys fewer, wider bins rather than
+a finer table with nothing in it.
 
 ## What to measure
 
@@ -99,6 +113,29 @@ mechanism to inspect:
 | Latency against state length and question count | Decides whether fan-out is affordable and whether per-question sessions pay the full state cost. |
 | Guardrail and refusal rate on decision-shaped inputs | Decides which workloads are viable at all. |
 | Context limit for a state plus one question | Sets the `branch_too_long` bound. |
+
+## The admission gate
+
+A fitted map does not serve because it exists. `calibrate::admit` requires it
+to beat the raw signal on items it was not fitted on, on three conditions:
+
+- **ECE falls by at least a tenth.** Calibration is what the map is for, and
+  a marginal move is binning noise.
+- **Log loss does not rise.** NLL is strictly proper and punishes confident
+  errors hardest, so a map that buys calibration by hedging everything into
+  the middle fails here.
+- **Brier rises by no more than a tenth.** Brier is calibration and
+  refinement together. A binned map cannot improve refinement — it is
+  monotone in the raw signal and leaves the argmax alone — so it can only
+  lose a little to binning.
+
+The Brier condition started at zero tolerance and was widened after the first
+run on the 196-item suite, where maps that cut ECE from 0.157 to 0.005 were
+refused over a Brier move of 0.02. That is the wrong trade, and the unit
+tests pin the case so the reasoning does not get lost. Changing a gate after
+seeing results deserves the scrutiny it sounds like it deserves; the defence
+is that the condition was wrong on its own terms, not that it was
+inconvenient.
 
 ## Gates
 

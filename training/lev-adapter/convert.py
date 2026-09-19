@@ -24,7 +24,7 @@ import pathlib
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-SUITE = REPO / "crates" / "lev" / "suites" / "support-v1.json"
+SUITE = REPO / "crates" / "lev" / "suites" / "support-v2.json"
 
 BANDS = [
     "almost certainly not",
