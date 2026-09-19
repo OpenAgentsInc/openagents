@@ -1,0 +1,3291 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "support-v2-three-way",
+ "created": "2026-09-19",
+ "description": "The 196 items of support-v2, repartitioned three ways: calibration fits a map, development chooses between maps, and locked is read once and recorded. The items and their labels are unchanged from support-v2; only the partition field differs, so this file carries its own digest and its own name.",
+ "tier": "scored",
+ "gate": {
+  "name": "calibration-admission-v1",
+  "source": "docs/lev/calibration.md",
+  "conditions": {
+   "ece_falls_by_at_least": 0.1,
+   "nll_rises_by_at_most": 0.0,
+   "brier_rises_by_at_most": 0.1
+  }
+ },
+ "items": [
+  {
+   "id": "routing/000",
+   "family": "routing",
+   "kind": "choice",
+   "state": "I was charged twice for the same order and want one refunded.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/001",
+   "family": "routing",
+   "kind": "choice",
+   "state": "My invoice shows tax for a state we do not operate in.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/002",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The card on file expired and the payment bounced.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/003",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can you refund the prorated amount from last month?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/004",
+   "family": "routing",
+   "kind": "choice",
+   "state": "I see a charge from you that I do not recognize at all.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/005",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Please send a copy of the receipt for the March payment.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/006",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We were billed in dollars but our contract says euros.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/007",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The annual charge hit a month earlier than I expected.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/008",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our purchase order number is missing from the invoice.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/009",
+   "family": "routing",
+   "kind": "choice",
+   "state": "I cancelled in June and was charged again in July.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/010",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The refund you issued never arrived on my statement.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/011",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can you switch us from monthly to annual billing?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/012",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We need invoices sent to accounts payable, not to me.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/013",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The discount code was applied to the wrong line item.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/014",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Why does this month's invoice include a setup fee again?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/015",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our bank flagged your charge as international and blocked it.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/016",
+   "family": "routing",
+   "kind": "choice",
+   "state": "I need a VAT receipt for the last three payments.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/017",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The invoice total does not match the sum of its lines.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/018",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We paid by wire two weeks ago and it still shows unpaid.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/019",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Please remove the saved card from our account.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/020",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The app crashes every time I open the settings screen.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/021",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Exports have been timing out since yesterday afternoon.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/022",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Two-factor codes are arriving ten minutes late.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/023",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The dashboard shows stale numbers until I hard refresh.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/024",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our webhook endpoint stopped receiving events on Tuesday.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/025",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Search returns nothing for terms that clearly exist.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/026",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Uploads over about ten megabytes fail with a generic error.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/027",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The mobile app shows a blank screen after the splash.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/028",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Sorting a table by date puts December before January.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/029",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The API returns 502 roughly one request in twenty.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/030",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Session cookies expire after a minute instead of a day.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/031",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Attachments download with the wrong file extension.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/032",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The editor loses my cursor position after every save.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/033",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Notifications fire twice for the same event.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/034",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Dark mode leaves several labels unreadable.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/035",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The integration with our calendar duplicates every meeting.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/036",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Pasting from Word inserts invisible characters.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/037",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The report builder hangs when I add a fourth filter.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/038",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our SSO login loops back to the sign-in page.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/039",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Timestamps display in UTC despite the timezone setting.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/040",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can you send me a quote for 50 seats on the enterprise plan?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/041",
+   "family": "routing",
+   "kind": "choice",
+   "state": "What is the difference between the team and business tiers?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/042",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We want to add ten seats before the quarter closes.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/043",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Do you offer nonprofit pricing?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/044",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our renewal is coming up and I want to compare tiers.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/045",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Is there a discount for paying annually instead of monthly?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/046",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can we pilot the enterprise features for a month?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/047",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Who would we talk to about a multi-year agreement?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/048",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Does the higher tier include the audit log?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/049",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We are evaluating you against a competitor and need a comparison.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/050",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can you hold our current price through next year?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/051",
+   "family": "routing",
+   "kind": "choice",
+   "state": "What does support look like on the business plan?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/052",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We need a security review before we can purchase.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/053",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Is there a volume break above a hundred seats?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/054",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can we pay by invoice instead of card if we go annual?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/055",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Do you have a reseller programme?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/056",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We want to downgrade at renewal rather than cancel.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/057",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Does the enterprise tier come with a dedicated contact?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/058",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can you quote us with and without the analytics add-on?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/059",
+   "family": "routing",
+   "kind": "choice",
+   "state": "What happens to our data limits if we move up a tier?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/060",
+   "family": "routing",
+   "kind": "choice",
+   "state": "My card was declined when the plan tried to upgrade itself.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/061",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We added seats last month and the invoice does not match the quote.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/062",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Everything feels slower since the update, but it might be my laptop.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/063",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The upgrade button does nothing when I click it.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/064",
+   "family": "routing",
+   "kind": "choice",
+   "state": "I want to cancel because the sync keeps failing.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/065",
+   "family": "routing",
+   "kind": "choice",
+   "state": "You charged me for a feature that has been broken all month.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/066",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We are over our seat limit and cannot add anyone.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/067",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The trial ended early and now we are locked out.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/068",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our admin left and nobody can access the billing portal.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/069",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The plan comparison page will not load, so I cannot choose.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/070",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We want more storage; is that a plan change or a setting?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/071",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The usage meter says we are at 120% but the dashboard says 60%.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/072",
+   "family": "routing",
+   "kind": "choice",
+   "state": "I was promised a discount on a call and it is not on the invoice.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/073",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can you tell me why our bill doubled this month?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/074",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The enterprise trial has a bug that blocks our evaluation.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/075",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We need to move three seats from one workspace to another.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/076",
+   "family": "routing",
+   "kind": "choice",
+   "state": "An old employee is still being billed as an active seat.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/077",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The API rate limit on our plan is too low for our load.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/078",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Exports are slow and we think a higher tier would fix it.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/079",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our invoice lists a seat count we never agreed to.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/080",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The renewal quote arrived but the link to accept it is broken.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/081",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Do we lose our history if we downgrade?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/082",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The payment page throws an error when I enter a new card.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/083",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We were told the migration was included and now it is billed.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/084",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our seats show as unused but everyone is logged in.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/085",
+   "family": "routing",
+   "kind": "choice",
+   "state": "I would like a refund because the outage cost us a day.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/086",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can we get the audit log without moving to enterprise?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/087",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The invoice pdf is corrupted and will not open.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/088",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We are being charged for a workspace we deleted.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/089",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Single sign-on is listed on our plan but not enabled.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/090",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our contract renews automatically and we want to stop that.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/091",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Two of our users cannot be invited; the limit seems wrong.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/092",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Is the data residency option a paid add-on?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/093",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The credit from last month was never applied.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "development"
+  },
+  {
+   "id": "routing/094",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We want to consolidate two accounts into one subscription.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "locked"
+  },
+  {
+   "id": "routing/095",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Password reset emails never arrive for our domain.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/096",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Can you explain the overage line on this invoice?",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "calibration"
+  },
+  {
+   "id": "routing/097",
+   "family": "routing",
+   "kind": "choice",
+   "state": "The feature we bought for is not in our plan after all.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "sales",
+   "partition": "development"
+  },
+  {
+   "id": "routing/098",
+   "family": "routing",
+   "kind": "choice",
+   "state": "Our webhook secret rotated on its own and broke the integration.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "technical",
+   "partition": "development"
+  },
+  {
+   "id": "routing/099",
+   "family": "routing",
+   "kind": "choice",
+   "state": "We need a W-9 before we can pay this invoice.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which team should handle this message?",
+    "criteria": {
+     "billing": "Charges, invoices, refunds, and payment problems",
+     "technical": "Bugs, crashes, outages, and performance",
+     "sales": "Quotes, plans, upgrades, renewals, and pricing"
+    }
+   },
+   "truth": "billing",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/000",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The production site has been down for twenty minutes.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/001",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Customer data appears to be visible to the wrong account.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/002",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "All payments are failing at checkout right now.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/003",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "We cannot log in and a board demo starts in an hour.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/004",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Our webhook has been silently dropping events since Friday.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/005",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "A user reports seeing another user's invoice.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/006",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "One of our five integrations disconnected overnight.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/007",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "We are seeing intermittent 500s on about a tenth of requests.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/008",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The API has been returning 401 for every key since the deploy.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/009",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Our nightly export has failed three nights running.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/010",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Someone deleted the production workspace by accident.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/011",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Two-factor is rejecting valid codes for the whole team.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/012",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Search has been returning empty results company-wide since noon.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/013",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The audit log stopped recording changes yesterday.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/014",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "A customer's card was charged five times in one minute.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/015",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Our admin account appears to have been accessed from abroad.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/016",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Uploads are corrupting files rather than failing outright.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/017",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The status page says operational but nothing is working.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/018",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Sync has been silently dropping records for an unknown period.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/019",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "We are locked out of the billing portal and renewal is today.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/020",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The export finished but the column order changed.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/021",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Could you add a dark mode at some point?",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/022",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The help article for billing has a broken link.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/023",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "I would like to rename our workspace.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/024",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The tooltip on the settings page has a typo.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/025",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "When is the next release planned?",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/026",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Sync is slow but it does eventually complete.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/027",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The mobile app logs me out every few days.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/028",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Can you add CSV as an export format?",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/029",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The onboarding checklist still shows a step we finished.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/030",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Our logo looks slightly stretched in the header.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/031",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Is there a keyboard shortcut for the search box?",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/032",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The docs describe an option that seems to have moved.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/033",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Could the date picker default to this month?",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/034",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "We would like an extra admin seat next quarter.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/035",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The email footer still lists last year's address.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/036",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "A column header is truncated on narrow screens.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/037",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Can we get a monthly usage summary by email?",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/038",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The empty state illustration does not match our theme.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/039",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "I noticed a spelling mistake in the welcome email.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/040",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "One user cannot log in; everyone else is fine.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/041",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Reports are running about three times slower than usual.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/042",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "A scheduled job ran twice and sent duplicate emails to customers.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/043",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Our test environment is down; production is unaffected.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/044",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The billing page shows an error but charges are going through.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/045",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "A third of our webhooks are arriving late by several hours.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/046",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "We cannot add new users, but existing ones work.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/047",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "An integration token expires tomorrow and we cannot rotate it.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/048",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Customers see a stale price on the public pricing page.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/049",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The mobile app crashes on one older phone model.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/050",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Exports contain a column of nulls that used to hold data.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/051",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Our staging database was restored over with production data.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/052",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The search index is a day behind.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/053",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Permissions changes are taking an hour to take effect.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/054",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "A customer says they were billed after cancelling.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "locked"
+  },
+  {
+   "id": "urgency/055",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Attachments over a certain size silently fail to save.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/056",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "The dashboard loads slowly during our morning peak.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "calibration"
+  },
+  {
+   "id": "urgency/057",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "We received a security questionnaire due end of week.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "no",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/058",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "Our SSL certificate expires in three days.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "development"
+  },
+  {
+   "id": "urgency/059",
+   "family": "urgency",
+   "kind": "noul",
+   "state": "A report shows numbers that contradict the dashboard.",
+   "question": {
+    "type": "noul",
+    "instructions": "Does this need urgent attention today?",
+    "criteria": {
+     "true": "Something is broken, blocked, or unsafe right now",
+     "false": "It can wait for the normal queue"
+    }
+   },
+   "truth": "yes",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/000",
+   "family": "severity",
+   "kind": "score",
+   "state": "A label is misaligned by two pixels on the settings page.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/001",
+   "family": "severity",
+   "kind": "score",
+   "state": "The footer year still says last year.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/002",
+   "family": "severity",
+   "kind": "score",
+   "state": "A tooltip renders below the button instead of above it.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "development"
+  },
+  {
+   "id": "severity/003",
+   "family": "severity",
+   "kind": "score",
+   "state": "The loading spinner keeps spinning after content appears.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "development"
+  },
+  {
+   "id": "severity/004",
+   "family": "severity",
+   "kind": "score",
+   "state": "Our logo is slightly blurry on high-resolution screens.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/005",
+   "family": "severity",
+   "kind": "score",
+   "state": "The empty state text has a double space.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/006",
+   "family": "severity",
+   "kind": "score",
+   "state": "A button's hover colour does not match the design.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/007",
+   "family": "severity",
+   "kind": "score",
+   "state": "The page title is capitalised inconsistently.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "development"
+  },
+  {
+   "id": "severity/008",
+   "family": "severity",
+   "kind": "score",
+   "state": "An icon is a shade off from the rest of the toolbar.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "development"
+  },
+  {
+   "id": "severity/009",
+   "family": "severity",
+   "kind": "score",
+   "state": "The success message disappears a little too quickly.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/010",
+   "family": "severity",
+   "kind": "score",
+   "state": "Table rows lose their zebra striping when filtered.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/011",
+   "family": "severity",
+   "kind": "score",
+   "state": "The favicon is the old one.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "0",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/012",
+   "family": "severity",
+   "kind": "score",
+   "state": "Exports fail in Safari but work in Chrome.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "development"
+  },
+  {
+   "id": "severity/013",
+   "family": "severity",
+   "kind": "score",
+   "state": "Bulk edit fails over 500 rows; smaller batches work.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "development"
+  },
+  {
+   "id": "severity/014",
+   "family": "severity",
+   "kind": "score",
+   "state": "The search filter resets when you page back, so you re-enter it.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/015",
+   "family": "severity",
+   "kind": "score",
+   "state": "Notifications arrive late but they do arrive.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/016",
+   "family": "severity",
+   "kind": "score",
+   "state": "The mobile app needs a restart once a day to sync.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/017",
+   "family": "severity",
+   "kind": "score",
+   "state": "Sorting by one column is wrong; the others are fine.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "development"
+  },
+  {
+   "id": "severity/018",
+   "family": "severity",
+   "kind": "score",
+   "state": "Keyboard navigation skips the second menu, which is reachable by mouse.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "development"
+  },
+  {
+   "id": "severity/019",
+   "family": "severity",
+   "kind": "score",
+   "state": "Attachments must be renamed before they upload successfully.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/020",
+   "family": "severity",
+   "kind": "score",
+   "state": "The API works but the SDK needs a manual retry.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/021",
+   "family": "severity",
+   "kind": "score",
+   "state": "Two-factor works by app but not by SMS.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/022",
+   "family": "severity",
+   "kind": "score",
+   "state": "Reports render but take four minutes instead of ten seconds.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "development"
+  },
+  {
+   "id": "severity/023",
+   "family": "severity",
+   "kind": "score",
+   "state": "One integration must be reconnected each week.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "1",
+   "partition": "development"
+  },
+  {
+   "id": "severity/024",
+   "family": "severity",
+   "kind": "score",
+   "state": "Nobody on the team can log in at all.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/025",
+   "family": "severity",
+   "kind": "score",
+   "state": "Saving a document silently discards the changes.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/026",
+   "family": "severity",
+   "kind": "score",
+   "state": "The API returns 500 for every request.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/027",
+   "family": "severity",
+   "kind": "score",
+   "state": "Payments cannot be completed by any customer.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "development"
+  },
+  {
+   "id": "severity/028",
+   "family": "severity",
+   "kind": "score",
+   "state": "The database is refusing writes.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "development"
+  },
+  {
+   "id": "severity/029",
+   "family": "severity",
+   "kind": "score",
+   "state": "All exports produce empty files.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/030",
+   "family": "severity",
+   "kind": "score",
+   "state": "The service is unreachable from every region.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/031",
+   "family": "severity",
+   "kind": "score",
+   "state": "Data from one customer is appearing in another's account.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "calibration"
+  },
+  {
+   "id": "severity/032",
+   "family": "severity",
+   "kind": "score",
+   "state": "Every scheduled job has stopped running.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "development"
+  },
+  {
+   "id": "severity/033",
+   "family": "severity",
+   "kind": "score",
+   "state": "The mobile app crashes on launch for all users.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "development"
+  },
+  {
+   "id": "severity/034",
+   "family": "severity",
+   "kind": "score",
+   "state": "Authentication accepts any password.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "locked"
+  },
+  {
+   "id": "severity/035",
+   "family": "severity",
+   "kind": "score",
+   "state": "The most recent deploy deleted user records.",
+   "question": {
+    "type": "score",
+    "instructions": "How severe is the reported issue?",
+    "criteria": [
+     "Cosmetic; the product still works",
+     "Impaired; there is a workaround",
+     "Blocking; there is no workaround"
+    ]
+   },
+   "truth": "2",
+   "partition": "calibration"
+  }
+ ],
+ "digest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9"
+}
