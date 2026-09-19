@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev-bridge'
+relocations:     []
+...

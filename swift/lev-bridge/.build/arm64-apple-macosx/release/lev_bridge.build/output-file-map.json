@@ -1,0 +1,25 @@
+{
+  "": {
+    "dependencies": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/lev_bridge.d",
+    "object": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/lev_bridge.o",
+    "swift-dependencies": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/primary.swiftdeps"
+  },
+  "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/Sources/lev-bridge/Handler.swift": {
+    "object": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Handler.swift.o",
+    "swiftmodule": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Handler~partial.swiftmodule",
+    "swift-dependencies": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Handler.swiftdeps",
+    "diagnostics": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Handler.dia"
+  },
+  "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/Sources/lev-bridge/Protocol.swift": {
+    "object": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Protocol.swift.o",
+    "swiftmodule": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Protocol~partial.swiftmodule",
+    "swift-dependencies": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Protocol.swiftdeps",
+    "diagnostics": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/Protocol.dia"
+  },
+  "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/Sources/lev-bridge/main.swift": {
+    "object": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/main.swift.o",
+    "swiftmodule": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/main~partial.swiftmodule",
+    "swift-dependencies": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/main.swiftdeps",
+    "diagnostics": "/private/tmp/claude-501/-Users-christopherdavid-work-openagents/1d845d65-5a85-4235-b191-6174259455f8/scratchpad/lev-worktree/swift/lev-bridge/.build/arm64-apple-macosx/release/lev_bridge.build/main.dia"
+  }
+}
