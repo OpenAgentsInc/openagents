@@ -1,0 +1,26 @@
+{
+  "$comment": [
+    "Answers one question: should this candidate answer the question instead of the baseline? It reads accuracy and nothing else.",
+    "A candidate can pass here and fail probability-v1 at the same time, and that is the measured situation on 2026-09-19. The choice adapter won 13 points of accuracy on support-v2 while log loss rose from 1.952 to 2.323 and confident errors went from six to eight. docs/lev/measurements/2026-09-19-adapter-v1.md concludes in prose what crates/lev/src/calibrate.rs::admit cannot express with one verdict: ship the adapter for the decision, not yet for the probability.",
+    "The effect size is not stored here. It is a multiple of the standard error of the measured accuracies, computed per comparison, so a thin split raises its own bar instead of being waved through by a constant that suited a bigger one.",
+    "What that standard error does not cover is trial-to-trial variance. crates/lev/src/estimator.rs draws seeds 0..n and reproduces exactly, so running the same comparison again returns the same numbers and there is no spread to average over. openagents#9370 makes the seed base a parameter and measures that spread, and that measurement is what an absolute gain floor should be derived from. Until it lands, no such floor is invented: the gap is recorded in variance_basis and pending_measurement, both inside the digest, so filling it produces decision-v2 rather than rewriting decision-v1's history."
+  ],
+  "schema": "openagents.gym.gate.v1",
+  "id": "decision-v1",
+  "question": "Should this candidate answer the question instead of the baseline?",
+  "rule": {
+    "decides": "decision",
+    "min_items": {
+      "value": 10,
+      "basis": "derived",
+      "why": "The normal approximation behind the standard error needs about five expected outcomes on each side, and ten items is the smallest count that can reach that. The gate repeats the check against the measured accuracies, so a split of ten items at 0.9 is still unverifiable."
+    },
+    "gain_standard_errors": {
+      "value": 2.0,
+      "basis": "convention",
+      "why": "Two standard errors is the conventional 95% interval. It is a convention and not a measurement of this suite, which is why it is labelled one: the standard error it scales is computed from the comparison, and the trial-to-trial term it is missing is openagents#9370."
+    },
+    "variance_basis": "item_sampling",
+    "pending_measurement": "openagents#9370 measures the suite's trial-to-trial resampling variance. The standard error here covers item sampling only, and it is unpaired, which overstates the noise between two doors answering the same items."
+  }
+}
