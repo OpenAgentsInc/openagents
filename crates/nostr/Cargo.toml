@@ -1,0 +1,23 @@
+[package]
+name = "nostr"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Pure Nostr protocol and verification primitives"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+# The relay enables `server` for the signer internals it needs.
+server = []
+
+# Dependency allowlist carried over from immortal-core: secp256k1, sha2,
+# serde, serde_json.
+[dependencies]
+secp256k1 = { version = "0.31.1", features = ["recovery"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"

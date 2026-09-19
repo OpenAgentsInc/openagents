@@ -1,0 +1,44 @@
+//! Nostr protocol primitives.
+//!
+//! These types implement the pinned NIP specifications in `nips/`. They do
+//! not perform storage or network I/O, which keeps protocol decisions
+//! deterministic and fixture-testable.
+
+mod agent;
+mod block;
+mod deletion;
+mod error;
+mod event;
+mod expanded;
+mod filter;
+mod hex;
+mod replacement;
+mod timestamp;
+
+pub use agent::{
+    AGENT_OBSERVER_KIND, AGENT_TURN_METRIC_KIND, AgentObserverDirection, AgentObserverRoute,
+    OwnerAttestation, agent_observer_route, agent_turn_metric_owner, validate_nip44_v2_content,
+    verify_agent_auth_attestation, verify_owner_attestation, verify_owner_binding,
+};
+pub use block::{
+    AGENT_ENGRAM_KIND, AGENT_PERSONA_KIND, BLOCK_GLOBAL_ONLY_KINDS, DM_HIDE_KIND, DM_OPEN_KIND,
+    DM_VISIBILITY_KIND, EVENT_REMINDER_KIND, IDENTITY_ARCHIVE_LIST_KIND,
+    IDENTITY_ARCHIVE_REQUEST_KIND, IDENTITY_ARCHIVED_KIND, IDENTITY_UNARCHIVE_REQUEST_KIND,
+    IDENTITY_UNARCHIVED_KIND, IdentityArchiveRequest, MAX_REMINDER_HORIZON_SECONDS, PROJECT_KIND,
+    PUSH_LEASE_KIND, READ_STATE_KIND, RELAY_ONLY_BLOCK_KINDS, TEAM_CATALOG_KIND,
+    THREAD_SUMMARY_KIND, WINDOW_BOUNDS_KIND, WORKSPACE_PROFILE_KIND, dm_visibility_channel,
+    parse_identity_archive_request, validate_block_ingest, workspace_icon,
+};
+pub use deletion::{DeletionRequest, DeletionTombstone};
+pub use error::DomainError;
+pub use event::{EXTENDED_INDEXED_TAG_NAMES, Event, Tag, is_indexed_tag_name};
+pub use expanded::{
+    GroupAction, GroupMetadata, HttpAuth, RelaySigner, parse_http_authorization,
+    parse_http_authorization_hash,
+};
+pub use filter::{Filter, matches_any, search_terms};
+pub use replacement::{
+    EventClass, ReplacementAddress, ReplacementDecision, compare_replacement,
+    compare_replacement_order,
+};
+pub use timestamp::TimestampPolicy;

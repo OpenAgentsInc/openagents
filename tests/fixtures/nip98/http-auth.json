@@ -1,0 +1,7 @@
+{
+  "source": "Written for Immortal from pinned nips/official/98.md and 86.md",
+  "kind": 27235,
+  "window_seconds": 60,
+  "required_tags": ["u", "method", "payload"],
+  "management_content_type": "application/nostr+json+rpc"
+}

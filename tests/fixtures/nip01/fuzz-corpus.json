@@ -1,0 +1,41 @@
+{
+  "schema": "openagents.nostr-relay.deterministic-fuzz.v1",
+  "seed": "9e3779b97f4a7c15",
+  "wire_iterations": 20000,
+  "filter_iterations": 20000,
+  "maximum_wire_bytes": 131072,
+  "wire_seeds": [
+    "[\"REQ\",\"sub\",{}]",
+    "[\"REQ\",\"sub\",{\"ids\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],\"authors\":[\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],\"kinds\":[1],\"#e\":[\"root\"],\"since\":1,\"until\":2,\"limit\":10,\"search\":\"alpha\"}]",
+    "[\"COUNT\",\"count\",{\"kinds\":[1],\"limit\":100}]",
+    "[\"CLOSE\",\"sub\"]",
+    "[\"EVENT\",{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"pubkey\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"created_at\":1,\"kind\":1,\"tags\":[[\"e\",\"root\"]],\"content\":\"{escaped} \\\"text\\\"\",\"sig\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"}]",
+    "[\"AUTH\",{\"id\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"pubkey\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"created_at\":2,\"kind\":22242,\"tags\":[],\"content\":\"challenge\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}]",
+    "[\"EVENT\",{\"id\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"created_at\":3,\"kind\":39604,\"tags\":[[\"d\",\"3333333333333333333333333333333333333333333333333333333333333333\"]],\"content\":\"opaque\",\"sig\":\"44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444\"}]",
+    "{}",
+    "[\"REQ\",\"\",{}]",
+    "[\"UNKNOWN\",{\"nested\":[[[]]],\"string\":\"} ] \\\\\\\"\"}]",
+    "[\"EVENT\",{\"kind\":39604,\"kind\":1}]",
+    "["
+  ],
+  "filter_seeds": [
+    "{}",
+    "{\"ids\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}",
+    "{\"authors\":[\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],\"kinds\":[1,7],\"#e\":[\"root\"]}",
+    "{\"since\":10,\"until\":20,\"limit\":0,\"search\":\"alpha extension:value\"}",
+    "{\"ids\":[],\"#p\":[]}",
+    "{\"unknown\":true}",
+    "{\"ids\":[\"short\"]}",
+    "[]",
+    "{"
+  ],
+  "expected": {
+    "wire_accepted": 2922,
+    "wire_rejected": 17078,
+    "wire_maximum_observed_bytes": 3825,
+    "accepted_verbs": ["AUTH", "CLOSE", "COUNT", "EVENT", "REQ"],
+    "structured_filter_matches": 1320,
+    "structured_filter_valid": 18332,
+    "raw_filters_parsed": 2710
+  }
+}

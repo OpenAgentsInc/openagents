@@ -1,0 +1,10 @@
+{
+  "source": "Written for Immortal from pinned nips/official/50.md",
+  "content": "The best Nostr apps are small and resilient",
+  "cases": [
+    {"search": "best nostr", "matches": true, "valid": true},
+    {"search": "resilient domain:example.com", "matches": true, "valid": true},
+    {"search": "missing", "matches": false, "valid": true},
+    {"search": "domain:example.com", "matches": false, "valid": false}
+  ]
+}

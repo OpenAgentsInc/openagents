@@ -1,0 +1,10 @@
+{
+  "source": "Written for Immortal from pinned nips/official/65.md",
+  "cases": [
+    {"name": "read and write relays", "kind": 10002, "tags": [["r", "wss://read.example", "read"], ["r", "wss://write.example", "write"]], "valid": true},
+    {"name": "unmarked relay is both", "kind": 10002, "tags": [["r", "wss://both.example"]], "valid": true},
+    {"name": "relay list is required", "kind": 10002, "tags": [], "valid": false},
+    {"name": "invalid marker", "kind": 10002, "tags": [["r", "wss://relay.example", "both"]], "valid": false},
+    {"name": "invalid scheme", "kind": 10002, "tags": [["r", "https://relay.example"]], "valid": false}
+  ]
+}

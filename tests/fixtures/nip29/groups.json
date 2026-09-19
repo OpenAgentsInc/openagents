@@ -1,0 +1,12 @@
+{
+  "source": "Written for Immortal from pinned nips/official/29.md",
+  "cases": [
+    {"name": "put user", "kind": 9000, "tags": [["h", "group"], ["p", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "admin"]], "action": "put-user"},
+    {"name": "remove user", "kind": 9001, "tags": [["h", "group"], ["p", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]], "action": "remove-user"},
+    {"name": "edit metadata", "kind": 9002, "tags": [["h", "group"], ["name", "Fixture"], ["closed"], ["supported_kinds", "1", "9"]], "action": "edit-metadata"},
+    {"name": "create invite", "kind": 9009, "tags": [["h", "group"], ["code", "fixture-code"]], "action": "create-invite"},
+    {"name": "update pins", "kind": 9010, "tags": [["h", "group"], ["e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]], "action": "update-pins"},
+    {"name": "join", "kind": 9021, "tags": [["h", "group"]], "action": "join"},
+    {"name": "leave", "kind": 9022, "tags": [["h", "group"]], "action": "leave"}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "openagents.nostr-relay.soak-plan.v1",
+  "qualification_seconds": 3600,
+  "minimum_evidence_seconds": 1800,
+  "notification_storm_events": 4096,
+  "notification_publishers": 4,
+  "replacement_events_per_cycle": 8,
+  "connections_per_relay_per_cycle": 8,
+  "sample_every_cycles": 10,
+  "maximum_total_rss_growth_bytes": 134217728,
+  "maximum_database_growth_bytes_per_admission": 65536,
+  "maximum_postgres_connections": 16
+}

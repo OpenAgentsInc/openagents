@@ -1,0 +1,68 @@
+[Unit]
+Description=OpenAgents Nostr relay
+Documentation=https://github.com/OpenAgentsInc/nostr-relay/tree/main/docs/deployment
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=nostr-relay
+Group=nostr-relay
+EnvironmentFile=/etc/nostr-relay/nostr-relay.env
+ExecStartPre=/usr/bin/test -x /opt/nostr-relay/current/nostr-relay
+ExecStart=/opt/nostr-relay/current/nostr-relay
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+KillSignal=SIGTERM
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nostr-relay
+
+# The canonical unit can bind only its localhost HTTP/WebSocket port and
+# connect to localhost Postgres. Cloud deployments use their platform unit.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+SocketBindAllow=tcp:8080
+
+# Blossom bytes use this private state directory; Postgres owns their
+# visibility, ownership, quotas, and authorization state.
+StateDirectory=nostr-relay
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/nostr-relay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

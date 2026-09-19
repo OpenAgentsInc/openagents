@@ -1,0 +1,45 @@
+{
+  "source": "Pinned NIP-01 replacement ordering",
+  "cases": [
+    {
+      "name": "newer timestamp replaces",
+      "current_created_at": 100,
+      "current_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidate_created_at": 101,
+      "candidate_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expected": "replace"
+    },
+    {
+      "name": "older timestamp loses",
+      "current_created_at": 100,
+      "current_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidate_created_at": 99,
+      "candidate_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": "keep"
+    },
+    {
+      "name": "lower id wins equal timestamp",
+      "current_created_at": 100,
+      "current_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidate_created_at": 100,
+      "candidate_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": "replace"
+    },
+    {
+      "name": "higher id loses equal timestamp",
+      "current_created_at": 100,
+      "current_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidate_created_at": 100,
+      "candidate_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expected": "keep"
+    },
+    {
+      "name": "same id is duplicate",
+      "current_created_at": 100,
+      "current_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidate_created_at": 100,
+      "candidate_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "expected": "duplicate"
+    }
+  ]
+}

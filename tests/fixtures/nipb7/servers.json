@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {
+      "name": "ordered Blossom server list",
+      "kind": 10063,
+      "tags": [
+        ["server", "https://blossom.example"],
+        ["server", "https://backup.example"]
+      ],
+      "valid": true
+    },
+    {
+      "name": "server list cannot be empty",
+      "kind": 10063,
+      "tags": [],
+      "valid": false
+    },
+    {
+      "name": "server URL is HTTP not WebSocket",
+      "kind": 10063,
+      "tags": [["server", "wss://relay.example"]],
+      "valid": false
+    },
+    {
+      "name": "server URL requires an authority",
+      "kind": 10063,
+      "tags": [["server", "https://"]],
+      "valid": false
+    }
+  ]
+}

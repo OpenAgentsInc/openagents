@@ -1,0 +1,15 @@
+{
+  "source": "Written for Immortal from pinned nips/official/01.md",
+  "valid": [
+    ["REQ", "sub", {"kinds": [1]}],
+    ["CLOSE", "sub"],
+    ["COUNT", "count", {"kinds": [1]}]
+  ],
+  "invalid": [
+    {"message": {}, "reason": "array"},
+    {"message": ["REQ", "sub"], "reason": "filter"},
+    {"message": ["REQ", "sub", {"unknown": true}], "reason": "unsupported"},
+    {"message": ["CLOSE", "sub", "extra"], "reason": "exactly"},
+    {"message": ["COUNT", "sub"], "reason": "filter"}
+  ]
+}

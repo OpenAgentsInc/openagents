@@ -1,0 +1,41 @@
+{
+  "source": "Adapted from nostr-rs-relay b5c1f642e4, src/subscription.rs, MIT; exact matching per current NIP-01",
+  "event": {
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "created_at": 150,
+    "kind": 1,
+    "tags": [
+      ["e", "first", "not-indexed"],
+      ["e", "second"],
+      ["p", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],
+      ["alt", "not-a-single-letter-tag"],
+      ["E", "uppercase-key"]
+    ],
+    "content": "fixture",
+    "sig": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "cases": [
+    { "name": "empty", "filter": {}, "matches": true, "valid": true },
+    { "name": "exact id", "filter": { "ids": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] }, "matches": true, "valid": true },
+    { "name": "different id", "filter": { "ids": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"] }, "matches": false, "valid": true },
+    { "name": "id prefix removed", "filter": { "ids": ["aaaaaaaa"] }, "matches": false, "valid": false },
+    { "name": "exact author", "filter": { "authors": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"] }, "matches": true, "valid": true },
+    { "name": "author prefix removed", "filter": { "authors": ["bbbbbbbb"] }, "matches": false, "valid": false },
+    { "name": "one kind", "filter": { "kinds": [1, 7] }, "matches": true, "valid": true },
+    { "name": "wrong kind", "filter": { "kinds": [0, 7] }, "matches": false, "valid": true },
+    { "name": "inclusive since", "filter": { "since": 150 }, "matches": true, "valid": true },
+    { "name": "after since", "filter": { "since": 151 }, "matches": false, "valid": true },
+    { "name": "inclusive until", "filter": { "until": 150 }, "matches": true, "valid": true },
+    { "name": "before until", "filter": { "until": 149 }, "matches": false, "valid": true },
+    { "name": "first indexed value", "filter": { "#e": ["first"] }, "matches": true, "valid": true },
+    { "name": "later indexed tag", "filter": { "#e": ["second"] }, "matches": true, "valid": true },
+    { "name": "third tag element not indexed", "filter": { "#e": ["not-indexed"] }, "matches": false, "valid": true },
+    { "name": "multiple tag fields are anded", "filter": { "#e": ["first"], "#p": ["cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"] }, "matches": true, "valid": true },
+    { "name": "one tag field misses", "filter": { "#e": ["first"], "#p": ["wrong"] }, "matches": false, "valid": true },
+    { "name": "uppercase single letter", "filter": { "#E": ["uppercase-key"] }, "matches": true, "valid": true },
+    { "name": "empty ids match nothing", "filter": { "ids": [] }, "matches": false, "valid": true },
+    { "name": "empty tag values match nothing", "filter": { "#e": [] }, "matches": false, "valid": true },
+    { "name": "limit does not change live matching", "filter": { "limit": 0 }, "matches": true, "valid": true }
+  ]
+}

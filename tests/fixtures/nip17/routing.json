@@ -1,0 +1,10 @@
+{
+  "source": "Written for Immortal from pinned nips/official/17.md",
+  "cases": [
+    {"name": "one gift-wrap recipient", "kind": 1059, "tags": [["p", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]], "valid": true},
+    {"name": "gift wrap without recipient", "kind": 1059, "tags": [], "valid": false},
+    {"name": "gift wrap with multiple recipients", "kind": 1059, "tags": [["p", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"], ["p", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]], "valid": false},
+    {"name": "DM inbox relay list", "kind": 10050, "tags": [["relay", "wss://inbox.example.com"], ["relay", "ws://private.example.test"]], "valid": true},
+    {"name": "DM inbox list requires websocket URL", "kind": 10050, "tags": [["relay", "https://inbox.example.com"]], "valid": false}
+  ]
+}

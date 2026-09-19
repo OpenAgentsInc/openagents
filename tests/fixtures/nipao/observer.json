@@ -1,0 +1,11 @@
+{
+  "source": "Block NIP-AO and Buzz observer handler at commit 027a74a61c8643a1d1086d3e8307fad89d7735f7",
+  "cases": [
+    { "name": "agent telemetry", "sender": "agent", "recipient": "owner", "agent": "agent", "frame": "telemetry", "content": "nip44", "duplicate_p": false, "outcome": "telemetry" },
+    { "name": "owner control", "sender": "owner", "recipient": "agent", "agent": "agent", "frame": "control", "content": "nip44", "duplicate_p": false, "outcome": "control" },
+    { "name": "unknown frame drops", "sender": "agent", "recipient": "owner", "agent": "agent", "frame": "future-frame", "content": "nip44", "duplicate_p": false, "outcome": "drop" },
+    { "name": "wrong direction", "sender": "agent", "recipient": "agent", "agent": "agent", "frame": "telemetry", "content": "nip44", "duplicate_p": false, "outcome": "reject" },
+    { "name": "duplicate recipient", "sender": "agent", "recipient": "owner", "agent": "agent", "frame": "telemetry", "content": "nip44", "duplicate_p": true, "outcome": "reject" },
+    { "name": "plaintext", "sender": "agent", "recipient": "owner", "agent": "agent", "frame": "telemetry", "content": "plaintext", "duplicate_p": false, "outcome": "reject" }
+  ]
+}

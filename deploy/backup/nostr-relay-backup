@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+backup_dir=/var/backups/nostr-relay
+retention_days=14
+stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
+destination="${backup_dir}/nostr-relay-${stamp}.dump"
+temporary="${destination}.tmp"
+media_root="${NOSTR_RELAY_MEDIA_ROOT:-/var/lib/nostr-relay/media}"
+media_destination="${backup_dir}/nostr-relay-media-${stamp}.tar"
+media_temporary="${media_destination}.tmp"
+
+cleanup() {
+    if test -n "${temporary}"; then
+        rm -f -- "${temporary}"
+    fi
+    if test -n "${media_temporary}"; then
+        rm -f -- "${media_temporary}"
+    fi
+}
+trap cleanup EXIT HUP INT TERM
+
+umask 077
+test -d "${backup_dir}"
+pg_dump --dbname=nostr_relay --format=custom --no-owner --no-acl \
+    --file="${temporary}"
+chmod 0600 "${temporary}"
+mv -- "${temporary}" "${destination}"
+temporary=
+
+if test -d "${media_root}"; then
+    tar --create --file="${media_temporary}" --directory="${media_root}" .
+    chmod 0600 "${media_temporary}"
+    mv -- "${media_temporary}" "${media_destination}"
+    media_temporary=
+fi
+
+find "${backup_dir}" -type f \( -name 'nostr-relay-*.dump' -o -name 'nostr-relay-media-*.tar' \) \
+    -mtime "+${retention_days}" -delete

@@ -1,0 +1,28 @@
+{
+  "source": "Pinned NIP-09 deletion ownership, address cutoff, and deletion-before-event rules",
+  "request": {
+    "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "created_at": 100,
+    "kind": 5,
+    "tags": [
+      ["e", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      ["e", "malformed"],
+      ["a", "30000:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:topic"],
+      ["a", "30000:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:not-owned"],
+      ["k", "1"],
+      ["k", "30000"]
+    ],
+    "content": "remove these",
+    "sig": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  "cases": [
+    { "name": "event arrives after deletion", "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "created_at": 200, "kind": 1, "tags": [], "deleted": true },
+    { "name": "same id but another author", "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "pubkey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "created_at": 90, "kind": 1, "tags": [], "deleted": false },
+    { "name": "deletion request cannot be deleted", "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "created_at": 90, "kind": 5, "tags": [], "deleted": false },
+    { "name": "address version at cutoff", "id": "1111111111111111111111111111111111111111111111111111111111111111", "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "created_at": 100, "kind": 30000, "tags": [["d", "topic"]], "deleted": true },
+    { "name": "address version after cutoff", "id": "2222222222222222222222222222222222222222222222222222222222222222", "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "created_at": 101, "kind": 30000, "tags": [["d", "topic"]], "deleted": false },
+    { "name": "different address", "id": "3333333333333333333333333333333333333333333333333333333333333333", "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "created_at": 99, "kind": 30000, "tags": [["d", "other"]], "deleted": false },
+    { "name": "unowned address ignored", "id": "4444444444444444444444444444444444444444444444444444444444444444", "pubkey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "created_at": 99, "kind": 30000, "tags": [["d", "not-owned"]], "deleted": false }
+  ]
+}

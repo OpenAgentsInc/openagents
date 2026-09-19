@@ -1,0 +1,67 @@
+{
+  "schema": "openagents.nostr-relay.signed-event-import.v1",
+  "maximum_line_bytes": 131072,
+  "known_jsonl_events": [
+    {
+      "id": "1384757da583e6129ce831c3d7afc775a33a090578f888dd0d010328ad047d0c",
+      "pubkey": "bbbd9711d357df4f4e498841fd796535c95c8e751fa35355008a911c41265fca",
+      "created_at": 1612650459,
+      "kind": 1,
+      "tags": [],
+      "content": "hello world",
+      "sig": "59d0cc47ab566e81f72fe5f430bcfb9b3c688cb0093d1e6daa49201c00d28ecc3651468b7938642869ed98c0f1b262998e49a05a6ed056c0d92b193f4e93bc21"
+    },
+    {
+      "id": "1384757da583e6129ce831c3d7afc775a33a090578f888dd0d010328ad047d0c",
+      "pubkey": "bbbd9711d357df4f4e498841fd796535c95c8e751fa35355008a911c41265fca",
+      "created_at": 1612650459,
+      "kind": 1,
+      "tags": [],
+      "content": "hello world",
+      "sig": "59d0cc47ab566e81f72fe5f430bcfb9b3c688cb0093d1e6daa49201c00d28ecc3651468b7938642869ed98c0f1b262998e49a05a6ed056c0d92b193f4e93bc21"
+    }
+  ],
+  "known_report": {
+    "input_lines": 2,
+    "stored": 1,
+    "duplicate": 1,
+    "already_removed": 0,
+    "ephemeral": 0,
+    "expired": 0
+  },
+  "ordered_replay": [
+    "regular",
+    "regular-duplicate",
+    "replaceable-old",
+    "replaceable-new",
+    "deletion",
+    "ephemeral",
+    "expired"
+  ],
+  "first_report": {
+    "input_lines": 7,
+    "stored": 4,
+    "duplicate": 1,
+    "already_removed": 0,
+    "ephemeral": 1,
+    "expired": 1
+  },
+  "replay_report": {
+    "input_lines": 7,
+    "stored": 0,
+    "duplicate": 2,
+    "already_removed": 3,
+    "ephemeral": 1,
+    "expired": 1
+  },
+  "invalid_lines": [
+    {
+      "name": "unknown event member",
+      "raw": "{\"id\":\"1384757da583e6129ce831c3d7afc775a33a090578f888dd0d010328ad047d0c\",\"pubkey\":\"bbbd9711d357df4f4e498841fd796535c95c8e751fa35355008a911c41265fca\",\"created_at\":1612650459,\"kind\":1,\"tags\":[],\"content\":\"hello world\",\"sig\":\"59d0cc47ab566e81f72fe5f430bcfb9b3c688cb0093d1e6daa49201c00d28ecc3651468b7938642869ed98c0f1b262998e49a05a6ed056c0d92b193f4e93bc21\",\"extra\":true}"
+    },
+    {
+      "name": "duplicate event member",
+      "raw": "{\"id\":\"1384757da583e6129ce831c3d7afc775a33a090578f888dd0d010328ad047d0c\",\"pubkey\":\"bbbd9711d357df4f4e498841fd796535c95c8e751fa35355008a911c41265fca\",\"created_at\":1612650459,\"kind\":1,\"kind\":2,\"tags\":[],\"content\":\"hello world\",\"sig\":\"59d0cc47ab566e81f72fe5f430bcfb9b3c688cb0093d1e6daa49201c00d28ecc3651468b7938642869ed98c0f1b262998e49a05a6ed056c0d92b193f4e93bc21\"}"
+    }
+  ]
+}

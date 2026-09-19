@@ -1,0 +1,24 @@
+{
+ "sources": [
+  {
+   "name": "official",
+   "repo": "https://github.com/nostr-protocol/nips",
+   "subdir": ".",
+   "branch": "master",
+   "commit": "c53877571f96eb423661fc23c620d629d37b8f19",
+   "tree_url": "https://github.com/nostr-protocol/nips/tree/c53877571f96eb423661fc23c620d629d37b8f19",
+   "synced_at": "2026-08-05T02:27:50Z",
+   "files": 99
+  },
+  {
+   "name": "block",
+   "repo": "https://github.com/block/buzz",
+   "subdir": "docs/nips",
+   "branch": "main",
+   "commit": "8342dfcc5890b81a269a8ec3db73a8a56f76ce79",
+   "tree_url": "https://github.com/block/buzz/tree/8342dfcc5890b81a269a8ec3db73a8a56f76ce79/docs/nips",
+   "synced_at": "2026-08-05T02:27:53Z",
+   "files": 15
+  }
+ ]
+}

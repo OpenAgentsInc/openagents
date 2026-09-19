@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Immortal PostgreSQL and media backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+Unit=nostr-relay-backup.service
+
+[Install]
+WantedBy=timers.target

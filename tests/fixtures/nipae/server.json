@@ -1,0 +1,1 @@
+{"valid":{"d":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","owner_secret":3},"invalid":["missing-d","duplicate-p","plaintext"]}

@@ -1,0 +1,28 @@
+[package]
+name = "nostr-relay"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "A hardened Nostr relay. One binary, one Postgres. Nothing else."
+publish = false
+
+[lib]
+name = "nostr_relay"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nostr-relay"
+path = "src/main.rs"
+
+# Dependency allowlist carried over from immortal-relay: tokio,
+# tokio-tungstenite, tokio-postgres, secp256k1, sha2, serde, serde_json,
+# plus the workspace nostr crate.
+[dependencies]
+nostr = { path = "../nostr" }
+secp256k1 = { version = "0.31.1", features = ["recovery"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-postgres = "0.7.18"
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }

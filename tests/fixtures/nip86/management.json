@@ -1,0 +1,27 @@
+{
+  "source": "Written for Immortal from pinned nips/official/86.md",
+  "valid": [
+    {"method": "banpubkey", "params": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "fixture"]},
+    {"method": "unbanpubkey", "params": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]},
+    {"method": "listbannedpubkeys", "params": []},
+    {"method": "allowpubkey", "params": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]},
+    {"method": "unallowpubkey", "params": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", null]},
+    {"method": "listallowedpubkeys", "params": []},
+    {"method": "allowkind", "params": [1]},
+    {"method": "disallowkind", "params": [1]},
+    {"method": "listallowedkinds", "params": []},
+    {"method": "creategroup", "params": ["fixture", "Fixture", "", "", false, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", [1, 9]]},
+    {"method": "deletegroup", "params": ["fixture"]},
+    {"method": "listgroups", "params": []},
+    {"method": "putgroupuser", "params": ["fixture", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", ["admin"]]},
+    {"method": "removegroupuser", "params": ["fixture", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]}
+  ],
+  "invalid": [
+    {"method": "banpubkey", "params": []},
+    {"method": "banpubkey", "params": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "reason", "extra"]},
+    {"method": "allowkind", "params": [1, 2]},
+    {"method": "listallowedkinds", "params": [1]},
+    {"method": "creategroup", "params": ["fixture"]},
+    {"method": "unknown", "params": []}
+  ]
+}

@@ -1,0 +1,1 @@
+{"valid_members":["30617:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:repo","30617:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:org:repo"],"reject_rules":["d-cardinality","d-empty","member-cap","member-tag-arity","member-coordinate-malformed","member-duplicate","metadata-cardinality","metadata-length"]}

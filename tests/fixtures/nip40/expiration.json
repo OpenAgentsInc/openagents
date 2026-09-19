@@ -1,0 +1,13 @@
+{
+  "source": "Pinned NIP-40 expiration timestamp parsing",
+  "cases": [
+    { "name": "absent", "tags": [], "expiration": null },
+    { "name": "future", "tags": [["expiration", "200"]], "expiration": 200 },
+    { "name": "zero", "tags": [["expiration", "0"]], "expiration": 0 },
+    { "name": "first occurrence wins", "tags": [["expiration", "10"], ["expiration", "20"]], "expiration": 10 },
+    { "name": "missing value ignored", "tags": [["expiration"]], "expiration": null },
+    { "name": "negative ignored", "tags": [["expiration", "-1"]], "expiration": null },
+    { "name": "fractional ignored", "tags": [["expiration", "23.5"]], "expiration": null },
+    { "name": "overflow ignored", "tags": [["expiration", "18446744073709551616"]], "expiration": null }
+  ]
+}

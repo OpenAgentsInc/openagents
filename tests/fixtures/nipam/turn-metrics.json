@@ -1,0 +1,12 @@
+{
+  "source": "Block NIP-AM and Buzz ingest handler at commit 027a74a61c8643a1d1086d3e8307fad89d7735f7",
+  "cases": [
+    { "name": "canonical", "p_tags": 1, "agent_tags": 1, "agent_matches": true, "has_h": false, "content": "nip44", "valid": true },
+    { "name": "missing owner", "p_tags": 0, "agent_tags": 1, "agent_matches": true, "has_h": false, "content": "nip44", "valid": false },
+    { "name": "duplicate owner", "p_tags": 2, "agent_tags": 1, "agent_matches": true, "has_h": false, "content": "nip44", "valid": false },
+    { "name": "missing agent", "p_tags": 1, "agent_tags": 0, "agent_matches": true, "has_h": false, "content": "nip44", "valid": false },
+    { "name": "agent mismatch", "p_tags": 1, "agent_tags": 1, "agent_matches": false, "has_h": false, "content": "nip44", "valid": false },
+    { "name": "channel leaks", "p_tags": 1, "agent_tags": 1, "agent_matches": true, "has_h": true, "content": "nip44", "valid": false },
+    { "name": "plaintext", "p_tags": 1, "agent_tags": 1, "agent_matches": true, "has_h": false, "content": "plaintext", "valid": false }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "source": "Written for Immortal from pinned nips/official/11.md",
+  "name": "fixture relay",
+  "description": "fixture description",
+  "contact": "mailto:operator@example.com",
+  "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "supported_nips": [
+    1,
+    9,
+    11,
+    40,
+    45,
+    50,
+    65,
+    94,
+    17,
+    42,
+    59,
+    70
+  ],
+  "supported_extensions": [
+    "nip-aa",
+    "nip-ae",
+    "nip-am",
+    "nip-ao",
+    "nip-ap",
+    "nip-er",
+    "nip-mp",
+    "nip-oa",
+    "nip-rs"
+  ],
+  "max_message_length": 4096,
+  "max_subscriptions": 4,
+  "max_limit": 20,
+  "max_event_tags": 12,
+  "auth_required": true,
+  "created_at_upper_limit": 300,
+  "created_at_lower_limit": 3600
+}

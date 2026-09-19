@@ -1,0 +1,124 @@
+{
+  "schema": "openagents.nostr-relay.admission-state-model.v1",
+  "bounded_model": {
+    "actions": [
+      "admit-regular",
+      "admit-ephemeral",
+      "admit-replaceable-old",
+      "admit-replaceable-new",
+      "admit-replaceable-tie-lower",
+      "delete-regular-owner",
+      "delete-regular-other",
+      "delete-address-through-old",
+      "delete-deletion-request",
+      "restart"
+    ],
+    "maximum_sequence_length": 5,
+    "histories_checked": 111111
+  },
+  "counterexamples": [
+    {
+      "name": "timestamp ties choose the lexically lowest event id",
+      "history": ["admit-replaceable-new", "admit-replaceable-tie-lower"],
+      "outcomes": ["stored", "stored"],
+      "final_state": {
+        "visible_events": ["replaceable-tie-lower"],
+        "replacement_heads": ["10000:alice:->replaceable-tie-lower"],
+        "tombstones": [],
+        "durable_ingests": 2,
+        "ephemeral_deliveries": 0
+      }
+    },
+    {
+      "name": "an owner deletion arriving first blocks the target",
+      "history": ["delete-regular-owner", "admit-regular"],
+      "outcomes": ["stored", "deleted"],
+      "final_state": {
+        "visible_events": ["delete-regular-owner"],
+        "replacement_heads": [],
+        "tombstones": ["event:regular:alice"],
+        "durable_ingests": 1,
+        "ephemeral_deliveries": 0
+      }
+    },
+    {
+      "name": "a different author cannot delete the target",
+      "history": ["delete-regular-other", "admit-regular"],
+      "outcomes": ["stored", "stored"],
+      "final_state": {
+        "visible_events": ["delete-regular-other", "regular"],
+        "replacement_heads": [],
+        "tombstones": ["event:regular:bob"],
+        "durable_ingests": 2,
+        "ephemeral_deliveries": 0
+      }
+    },
+    {
+      "name": "ephemeral replay fans out twice and never becomes durable",
+      "history": ["admit-ephemeral", "admit-ephemeral"],
+      "outcomes": ["ephemeral", "ephemeral"],
+      "final_state": {
+        "visible_events": [],
+        "replacement_heads": [],
+        "tombstones": [],
+        "durable_ingests": 0,
+        "ephemeral_deliveries": 2
+      }
+    },
+    {
+      "name": "an address deletion blocks old versions but permits a newer version",
+      "history": [
+        "delete-address-through-old",
+        "admit-replaceable-old",
+        "admit-replaceable-new"
+      ],
+      "outcomes": ["stored", "deleted", "stored"],
+      "final_state": {
+        "visible_events": ["delete-address-through-old", "replaceable-new"],
+        "replacement_heads": ["10000:alice:->replaceable-new"],
+        "tombstones": ["address:10000:alice::15"],
+        "durable_ingests": 2,
+        "ephemeral_deliveries": 0
+      }
+    },
+    {
+      "name": "a deletion request cannot delete another deletion request",
+      "history": ["delete-regular-owner", "delete-deletion-request"],
+      "outcomes": ["stored", "stored"],
+      "final_state": {
+        "visible_events": ["delete-deletion-request", "delete-regular-owner"],
+        "replacement_heads": [],
+        "tombstones": [
+          "event:delete-regular-owner:alice",
+          "event:regular:alice"
+        ],
+        "durable_ingests": 2,
+        "ephemeral_deliveries": 0
+      }
+    },
+    {
+      "name": "a stale replacement cannot displace the current head",
+      "history": ["admit-replaceable-new", "admit-replaceable-old"],
+      "outcomes": ["stored", "superseded"],
+      "final_state": {
+        "visible_events": ["replaceable-new"],
+        "replacement_heads": ["10000:alice:->replaceable-new"],
+        "tombstones": [],
+        "durable_ingests": 1,
+        "ephemeral_deliveries": 0
+      }
+    },
+    {
+      "name": "restart preserves duplicate detection",
+      "history": ["admit-regular", "restart", "admit-regular"],
+      "outcomes": ["stored", "restarted", "duplicate"],
+      "final_state": {
+        "visible_events": ["regular"],
+        "replacement_heads": [],
+        "tombstones": [],
+        "durable_ingests": 1,
+        "ephemeral_deliveries": 0
+      }
+    }
+  ]
+}

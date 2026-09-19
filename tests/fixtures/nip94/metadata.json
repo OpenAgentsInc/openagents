@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "name": "complete file metadata",
+      "kind": 1063,
+      "tags": [
+        ["url", "https://media.example/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg"],
+        ["m", "image/jpeg"],
+        ["x", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        ["size", "3"]
+      ],
+      "valid": true
+    },
+    {
+      "name": "missing content hash",
+      "kind": 1063,
+      "tags": [
+        ["url", "https://media.example/file.jpg"],
+        ["m", "image/jpeg"]
+      ],
+      "valid": false
+    },
+    {
+      "name": "MIME type must be lowercase",
+      "kind": 1063,
+      "tags": [
+        ["url", "https://media.example/file.jpg"],
+        ["m", "image/JPEG"],
+        ["x", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+      ],
+      "valid": false
+    },
+    {
+      "name": "URL requires an HTTP authority",
+      "kind": 1063,
+      "tags": [
+        ["url", "https://"],
+        ["m", "application/octet-stream"],
+        ["x", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+      ],
+      "valid": false
+    },
+    {
+      "name": "size must be unsigned",
+      "kind": 1063,
+      "tags": [
+        ["url", "https://media.example/file.bin"],
+        ["m", "application/octet-stream"],
+        ["x", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        ["size", "-1"]
+      ],
+      "valid": false
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "schema": "openagents.nostr-relay.nip11-parity-configuration.v1",
+  "configured_supported_nips": [11, 1, 50],
+  "expected": {
+    "name": "incumbent-compatible",
+    "description": "Migration shadow",
+    "contact": "ops@example.com",
+    "pubkey": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "supported_nips": [11, 1, 50],
+    "limitation": {
+      "max_message_length": 65536,
+      "max_subscriptions": 12,
+      "max_limit": 250,
+      "max_subid_length": 64,
+      "max_event_tags": 48,
+      "auth_required": false,
+      "restricted_writes": true,
+      "created_at_upper_limit": 120,
+      "created_at_lower_limit": 7200,
+      "default_limit": 250,
+      "max_not_before_delta": 31536000,
+      "due_delivery_mode": "lazy"
+    }
+  },
+  "invalid_supported_nips": [
+    {
+      "name": "duplicate",
+      "values": [1, 11, 11]
+    },
+    {
+      "name": "inactive conditional NIP",
+      "values": [1, 42]
+    },
+    {
+      "name": "unsupported NIP",
+      "values": [1, 999]
+    }
+  ]
+}

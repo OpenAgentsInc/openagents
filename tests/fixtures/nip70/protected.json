@@ -1,0 +1,8 @@
+{
+  "source": "Written for Immortal from pinned nips/official/70.md",
+  "cases": [
+    {"name": "exact protected tag", "tags": [["-"]], "protected": true},
+    {"name": "dash tag with value is not protected", "tags": [["-", "value"]], "protected": false},
+    {"name": "ordinary event", "tags": [], "protected": false}
+  ]
+}

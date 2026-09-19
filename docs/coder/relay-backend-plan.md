@@ -141,11 +141,11 @@ implements them.
 | --- | --- |
 | crates `immortal-core`, `immortal-relay` | `nostr`, `nostr-relay` |
 | binary `immortal` | `nostr-relay` |
-| `IMMORTAL_*` env vars | `NOSTR_RELAY_*` (e.g. `NOSTR_RELAY_DATABASE_URL`, `NOSTR_RELAY_RELAY_URL`, `NOSTR_RELAY_RELAY_SECRET_KEY`, `NOSTR_RELAY_MANAGEMENT_PUBKEY`) |
+| `IMMORTAL_*` env vars | `NOSTR_RELAY_*` (e.g. `DATABASE_URL` stays, `NOSTR_RELAY_URL`, `NOSTR_RELAY_SECRET_KEY`, `NOSTR_RELAY_MANAGEMENT_PUBKEY`) |
 | `LISTEN`/`NOTIFY` channels `immortal_event`, `immortal_ephemeral` | `nostr_event`, `nostr_ephemeral` |
 | NIP-11 `name`/`software` | `nostr-relay` identity |
 
-`IMMORTAL_RELAY_SECRET_KEY` is the relay signer key (NIP-29 group metadata,
+`NOSTR_RELAY_SECRET_KEY` is the relay signer key (NIP-29 group metadata,
 relay-signed projections); it moves to the renamed env unchanged in
 meaning.
 

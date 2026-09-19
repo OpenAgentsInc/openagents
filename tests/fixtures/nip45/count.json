@@ -1,0 +1,11 @@
+{
+  "source": "Written for Immortal from pinned nips/official/45.md",
+  "valid": [
+    ["COUNT", "notes", {"kinds": [1]}],
+    ["COUNT", "combined", {"kinds": [1]}, {"kinds": [7]}]
+  ],
+  "invalid": [
+    ["COUNT", "missing-filter"],
+    ["COUNT", "bad-filter", {"unknown": true}]
+  ]
+}
