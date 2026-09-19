@@ -19,7 +19,9 @@ The answer, measured on eight doors:
   weighted mean disagrees with the level the door picked.
 - **Lev's ordering is sound**, on all three Lev doors reached, even though its
   levels are stringified indices in a constrained schema. Its errors cluster
-  next to the truth far above chance, and no distribution is bimodal.
+  next to the truth far above chance, and no distribution is bimodal. Its own
+  mean and argmax disagree on 10 of 96 items, but seven of those are exact
+  ties on an 8-sample grid rather than troughs.
 - **`kev-0.5b`'s ordering is weak, and its weighted mean is not usable.**
   Twenty-six of 60 ramp distributions are bimodal. On 28 of 96 items the mean
   lands in a trough. On 47 of 96 — **half the probe** — the number a caller
@@ -196,6 +198,31 @@ level with the least support of the three.
 Twenty-six of 60 ramp distributions are bimodal under the stated rule, and 28
 of 96 items overall put the mean in a trough. For comparison, hosted Jev and
 two of three Lev doors produce zero of each.
+
+## Lev's disagreements are ties, not troughs
+
+`lev-base` reports a mean that disagrees with its own argmax on 10 of 96
+items, which is not zero and should not be read as the same failure as kev's.
+Seven of the ten are exact ties on the sampling grid: with 8 samples a
+probability is a multiple of 0.125, and a 4–4 split gives two levels 0.5 each
+and a mean exactly between them. On `ramp/search-box/3` the distribution is
+`0, 0, 0.5, 0.5, 0` and the score is 2.50. Nothing is in a trough; the model
+is evenly divided, and the mean says so more faithfully than either argmax
+does.
+
+The other three are genuine: on `severity/007` the distribution is
+`0.5, 0.375, 0.125` and the score is 0.62, which rounds to a level carrying
+0.375 rather than the 0.5 the door picked. That is the mean and the mode
+parting company on a skew, and it is the harm the weighted mean is capable of
+on a door whose ordering is otherwise sound.
+
+**A tie also makes "the argmax" a convention rather than a fact.** Nine
+`lev-base` items have a tied maximum. `analyze.py` takes the first of them,
+and `lev_eval`'s `max_by` takes the last, which moves `lev-base`'s accuracy
+between 0.750 and 0.729. That spread is inside the 0.056 floor and changes
+nothing here, but the accuracy column for a Lev door is a convention-dependent
+number and this record should not pretend otherwise. No kev door and not Jev
+has more than one tied item, and none of their accuracies move at all.
 
 ## What this means for each door
 
