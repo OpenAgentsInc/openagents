@@ -307,6 +307,26 @@ fn english() -> String {
     "en".to_string()
 }
 
+/// What a door was running when a map was fitted against it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoorIdentity {
+    /// The model id the door reports.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+    /// The base model signature, where the runtime exposes one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub base_model_signature: String,
+    /// The adapter package identifier, when a door serves one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub adapter: String,
+    /// Whether any of the above can actually be checked.
+    ///
+    /// False for a hosted closed model. That is the `unknown is not zero`
+    /// rule applied to identity: do not synthesise a digest for something
+    /// that does not publish one.
+    pub verified: bool,
+}
+
 /// What a calibrated question family carries.
 ///
 /// A family without one of these does not serve probabilities, and a record
@@ -332,6 +352,22 @@ pub struct Record {
     pub suite_digest: String,
     /// The operating system build the runtime reported.
     pub os_build: String,
+    /// Which door produced the observations.
+    ///
+    /// Without this a record is unattributable, and an unattributable
+    /// calibration map is worse than none: the committed records were fitted
+    /// against the base model and stayed on disk while two adapters changed
+    /// which families are admitted at all. `os_build` is identical across
+    /// every door on one machine, so it could not reveal the drift.
+    #[serde(default)]
+    pub door: String,
+    /// What the door was running, as far as it can be verified.
+    ///
+    /// For an on-device door this is the base model signature plus the
+    /// adapter package digest. For a hosted door there is nothing to verify
+    /// and the fields stay empty rather than being invented.
+    #[serde(default)]
+    pub door_identity: DoorIdentity,
     /// The day it was fitted.
     pub fitted: String,
     /// The map.
@@ -347,10 +383,23 @@ pub struct Record {
 }
 
 impl Record {
-    /// Whether this record may be served against the given host.
+    /// Whether this record may be served against the given host and door.
+    ///
+    /// `calibration.md`'s fifth gate says the base model signature the map
+    /// was fitted against must match the one serving. That gate was written
+    /// down before the field existed, so it was unimplementable; it is
+    /// implementable now.
     #[must_use]
-    pub fn valid_for(&self, os_build: &str) -> bool {
-        self.admitted && self.os_build == os_build
+    pub fn valid_for(&self, os_build: &str, identity: &DoorIdentity) -> bool {
+        if !self.admitted || self.os_build != os_build {
+            return false;
+        }
+        // An unverifiable door cannot match: there is nothing to compare.
+        if !self.door_identity.verified || !identity.verified {
+            return false;
+        }
+        self.door_identity.base_model_signature == identity.base_model_signature
+            && self.door_identity.adapter == identity.adapter
     }
 }
 
@@ -656,6 +705,13 @@ mod tests {
             suite: "support-v1".to_string(),
             suite_digest: "abc".to_string(),
             os_build: "25E246".to_string(),
+            door: "lev-base".to_string(),
+            door_identity: DoorIdentity {
+                model: "lev-base".to_string(),
+                base_model_signature: "9799725ff8e851184037110b422d891ad3b92ec1".to_string(),
+                adapter: String::new(),
+                verified: true,
+            },
             fitted: "2026-09-19".to_string(),
             map: Map::fit(&observations(&[(1.0, true)]), 2),
             raw_metrics: Metrics::default(),
@@ -663,7 +719,23 @@ mod tests {
             admitted: true,
             verdict: "admitted: test".to_string(),
         };
-        assert!(record.valid_for("25E246"));
-        assert!(!record.valid_for("25F100"));
+        let same = record.door_identity.clone();
+        assert!(record.valid_for("25E246", &same));
+        assert!(!record.valid_for("25F100", &same));
+
+        // An adapter changes the door, and a map fitted on the base must not
+        // serve it. This is the drift that actually happened.
+        let adapted = DoorIdentity {
+            adapter: "fmadapter-lev-9799725".to_string(),
+            ..same.clone()
+        };
+        assert!(
+            !record.valid_for("25E246", &adapted),
+            "a base-fitted map served an adapted door"
+        );
+
+        // A hosted door publishes nothing to verify, so nothing matches it.
+        let hosted = DoorIdentity { model: "jev-latest".to_string(), verified: false, ..Default::default() };
+        assert!(!record.valid_for("25E246", &hosted));
     }
 }

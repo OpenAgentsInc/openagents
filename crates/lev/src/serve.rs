@@ -92,6 +92,19 @@ impl IntoResponse for Wire {
     }
 }
 
+/// The base signature this door is pinned to, read from its adapter package.
+///
+/// A door with no adapter reports nothing: the runtime exposes its signature
+/// only through the adapter-compatibility call, and inventing one here would
+/// let a record claim a match it never checked.
+fn base_signature(door: &Door) -> String {
+    door.adapter
+        .as_deref()
+        .and_then(|path| crate::adapter::Package::open(path).ok())
+        .map(|package| package.metadata.base_model_signature)
+        .unwrap_or_default()
+}
+
 async fn models(State(door): State<Arc<Door>>) -> Response {
     let availability = door.pool.availability();
     let (status, reason) = match availability {
@@ -114,6 +127,8 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
             "pool_width": door.pool.width(),
             "resolution": 1.0 / door.samples as f64,
             "adapter": door.adapter,
+            // The signature a calibration record has to match to serve here.
+            "base_model_signature": base_signature(&door),
             "calibration": "none",
             "calibrated_families": [],
             "question_types": ["noul", "choice", "score"],

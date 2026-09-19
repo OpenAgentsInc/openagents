@@ -12,10 +12,27 @@ use std::collections::BTreeMap;
 
 use indexmap::IndexMap;
 use jev::{Answer, Client, Config, Questions, SystemOneRequest};
-use lev::calibrate::{Map, Observation, Record, admit, score};
+use lev::calibrate::{DoorIdentity, Map, Observation, Record, admit, score};
 use lev::suite::{Item, Suite};
 
 const SUITE: &str = include_str!("../../suites/support-v2.json");
+
+/// Why an item produced no score.
+///
+/// The distinction matters and collapsing it flatters a door. A guardrail
+/// refusal is a real property of the model — it declined to judge — and it
+/// belongs in the record with its own outcome. A connection reset is a
+/// property of the harness and leaves the record set entirely. Returning
+/// `None` for both, which this binary used to do, means a door whose
+/// guardrails fire on the hard items quietly scores better.
+enum Outcome {
+    /// The door answered.
+    Scored(Box<Scored>),
+    /// The door refused, with its typed reason.
+    Refused(String),
+    /// The harness failed. Not the door's fault and not its credit.
+    Infra(String),
+}
 
 /// What one item produced on one door.
 struct Scored {
@@ -35,19 +52,41 @@ fn question_for(item: &Item) -> Questions {
     Questions::new().with("q", raw)
 }
 
-async fn run_item(client: &Client, item: &Item) -> Option<Scored> {
-    let request = SystemOneRequest::new(
-        serde_json::to_value(&item.state).ok()?,
-        question_for(item),
-    );
+async fn run_item(client: &Client, item: &Item) -> Outcome {
+    let Ok(state) = serde_json::to_value(&item.state) else {
+        return Outcome::Infra("the item's state did not encode".to_string());
+    };
+    let request = SystemOneRequest::new(state, question_for(item));
     let response = match client.system_one(request).await {
         Ok(response) => response,
         Err(error) => {
-            eprintln!("{}: {error}", item.id);
-            return None;
+            // A 4xx that names a refusal code is the door declining to
+            // judge. Anything else is the harness.
+            let text = error.to_string();
+            return if let jev::Error::Api(api) = &error {
+                let body = format!("{:?}", api.body);
+                let code = [
+                    "guardrail",
+                    "uncalibrated",
+                    "branch_too_long",
+                    "too_many_options",
+                    "unsupported_guide",
+                    "model_unavailable",
+                ]
+                .into_iter()
+                .find(|code| body.contains(code));
+                match code {
+                    Some(code) => Outcome::Refused(code.to_string()),
+                    None => Outcome::Infra(text),
+                }
+            } else {
+                Outcome::Infra(text)
+            };
         }
     };
-    let answer = response.answers.get("q")?;
+    let Some(answer) = response.answers.get("q") else {
+        return Outcome::Infra("the door answered without the question".to_string());
+    };
     let (chosen, distribution) = match answer {
         Answer::Noul(noul) => {
             let yes = noul.noul;
@@ -72,14 +111,43 @@ async fn run_item(client: &Client, item: &Item) -> Option<Scored> {
         }
     };
     let raw_top = distribution.values().copied().fold(0.0_f64, f64::max);
-    Some(Scored {
+    Outcome::Scored(Box::new(Scored {
         id: item.id.clone(),
         family: item.family.clone(),
         split: item.split.clone(),
         raw_top,
         correct: chosen == item.truth,
         distribution,
-    })
+    }))
+}
+
+/// Reads `GET /v1/models` as raw JSON.
+///
+/// `jev::ModelCard` carries only name, description, and release date, and
+/// drops the adapter and base signature a Lev door already publishes.
+async fn door_identity(name: &str, client: &Client) -> DoorIdentity {
+    let Ok(response) = client.models().list_raw(jev::ListOptions::default()).await else {
+        return DoorIdentity { model: name.to_string(), verified: false, ..Default::default() };
+    };
+    let Ok(body) = serde_json::from_slice::<serde_json::Value>(&response.bytes) else {
+        return DoorIdentity { model: name.to_string(), verified: false, ..Default::default() };
+    };
+    let first = body.get("models").and_then(|models| models.get(0));
+    let text = |key: &str| {
+        first
+            .and_then(|model| model.get(key))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let signature = text("base_model_signature");
+    let adapter = text("adapter");
+    DoorIdentity {
+        model: if text("name").is_empty() { name.to_string() } else { text("name") },
+        verified: !signature.is_empty(),
+        base_model_signature: signature,
+        adapter,
+    }
 }
 
 fn row(label: &str, metrics: lev::calibrate::Metrics) -> String {
@@ -143,18 +211,58 @@ async fn main() {
 
     for (name, client) in &doors {
         println!("## {name}\n");
+        // Ask the door what it is, so a record is attributable. A door that
+        // publishes nothing verifiable is recorded as such rather than
+        // credited with an identity it did not give.
+        let identity = door_identity(name, client).await;
+        if identity.verified {
+            println!(
+                "Identity: base `{}`{}.\n",
+                identity.base_model_signature,
+                if identity.adapter.is_empty() {
+                    String::new()
+                } else {
+                    format!(", adapter `{}`", identity.adapter)
+                }
+            );
+        } else {
+            println!("Identity: not verifiable for this door.\n");
+        }
         let mut scored = Vec::new();
+        let mut refusals: BTreeMap<String, usize> = BTreeMap::new();
+        let mut infra = 0_usize;
         for item in &suite.items {
-            if let Some(result) = run_item(client, item).await {
-                scored.push(result);
+            match run_item(client, item).await {
+                Outcome::Scored(result) => scored.push(*result),
+                Outcome::Refused(code) => {
+                    *refusals.entry(code).or_insert(0) += 1;
+                }
+                Outcome::Infra(reason) => {
+                    infra += 1;
+                    eprintln!("{}: {reason}", item.id);
+                }
             }
+        }
+
+        // Say what did not get scored, and why. A shrinking Items column with
+        // no explanation is how a door gets credit for declining.
+        let refused: usize = refusals.values().sum();
+        println!(
+            "{} of {} items scored; {refused} refused by the door, {infra} lost to the harness.\n",
+            scored.len(),
+            suite.items.len()
+        );
+        if !refusals.is_empty() {
+            let detail: Vec<String> =
+                refusals.iter().map(|(code, count)| format!("`{code}` x{count}")).collect();
+            println!("Door refusals: {}.\n", detail.join(", "));
         }
 
         // Overall, on the evaluation split, before any map.
         let evaluation: Vec<Observation> = scored
             .iter()
             .filter(|s| s.split == "evaluation")
-            .map(|s| Observation { raw: s.raw_top, correct: s.correct })
+            .map(|s| Observation::new(s.raw_top, s.correct))
             .collect();
 
         // Per-item observations, so a change to the gate can be re-scored
@@ -198,24 +306,25 @@ async fn main() {
                 let fit_on: Vec<Observation> = scored
                     .iter()
                     .filter(|s| s.family == family && s.split == "calibration")
-                    .map(|s| Observation { raw: s.raw_top, correct: s.correct })
+                    .map(|s| Observation::new(s.raw_top, s.correct))
                     .collect();
                 let map = Map::fit_auto(&fit_on);
                 let raw_family: Vec<Observation> = scored
                     .iter()
                     .filter(|s| s.family == family && s.split == "evaluation")
-                    .map(|s| Observation { raw: s.raw_top, correct: s.correct })
+                    .map(|s| Observation::new(s.raw_top, s.correct))
                     .collect();
                 let mapped: Vec<Observation> = scored
                     .iter()
                     .filter(|s| s.family == family && s.split == "evaluation")
-                    .map(|s| Observation {
-                        raw: map
-                            .apply_distribution(&s.distribution)
-                            .values()
-                            .copied()
-                            .fold(0.0_f64, f64::max),
-                        correct: s.correct,
+                    .map(|s| {
+                        Observation::new(
+                            map.apply_distribution(&s.distribution)
+                                .values()
+                                .copied()
+                                .fold(0.0_f64, f64::max),
+                            s.correct,
+                        )
                     })
                     .collect();
                 let raw_metrics = score(&raw_family);
@@ -234,6 +343,8 @@ async fn main() {
                         suite: suite.name.clone(),
                         suite_digest: suite.digest.clone(),
                         os_build: std::env::var("LEV_OS_BUILD").unwrap_or_else(|_| "25E246".to_string()),
+                        door: name.clone(),
+                        door_identity: identity.clone(),
                         fitted: "2026-09-19".to_string(),
                         map: map.clone(),
                         raw_metrics,
