@@ -191,7 +191,7 @@ Our own evidence, with its intervals, on Banking77:
 
 | | Accuracy | Task records | Note |
 | --- | --- | --- | --- |
-| kev-0.5b | 0.860 | 1,500 | **150 held-out items**; standard error ≈ 0.028 |
+| kev-0.5b | 0.860 | 1,500 | **150 held-out items**; standard error ≈ 0.028. The *smallest* of four checkpoints — see below |
 | A fine-tuned encoder classifier | 0.9075 | 10,003 | self-reported, no published artifact |
 | Frozen embeddings + logistic regression | 0.933 | 10,003 | independent |
 | Supervised state of the art | ~0.94 | 10,003 | |
@@ -220,11 +220,11 @@ published row:
 | frozen `all-mpnet-base-v2` | 0.900 | 0.042 | 0.073 | Choice only |
 | frozen `all-MiniLM-L6-v2` | 0.860 | 0.049 | 0.113 | Choice only |
 | Lev, calibrated | 0.820 | 0.054 | **0.024** | all three |
-| kev-0.5b | 0.780 | 0.059 | 0.120 | all three |
+| kev-0.5b (smallest of four) | 0.780 | 0.059 | 0.120 | all three |
 | TF-IDF + logistic regression | 0.580 | 0.070 | 0.231 | Choice only |
 | most common label | 0.280 | 0.063 | — | — |
 
-Three qualifications, and they matter as much as the ranking.
+Four qualifications, and they matter as much as the ranking.
 
 **The interval is wider than the floor suggests.** Our 0.056 figure covers
 seed resampling on 98 items; `routing` is 50. Ask for two *unpaired* sigma on
@@ -245,6 +245,28 @@ scores 0.580, six floors below. So the cheap baseline is cheap at *fit* time
 and still rests on a 109M-parameter model someone else trained. It is a good
 deal, not a free one, and the distinction matters when the constraint is what
 runs on the device rather than what costs money to train.
+
+**And the Kev row above is the weakest of four checkpoints, which costs this
+comparison most of its force.** `kev-0.5b` is the smallest published
+checkpoint, and it is the only one we had measured when this table was
+written. On the 157 items of `support-v2-three-way`, `kev-8b` scores **0.879
+with an ECE of 0.044** — leading every column of the panel, including hosted
+Jev's calibration. Against `kev-8b` on shared items the baseline's margin
+falls from about +0.140 to roughly **+0.045, which is below the floor.**
+
+So the honest statement is narrower than the one this section opened with:
+**frozen embeddings plus logistic regression beats the models we happened to
+have running, not the best model we own.** It is still the right first thing
+to try, for the reasons above, and it is no longer evidence that a trained
+decision model is not worth the trouble.
+
+The same measurement retired a comparison that had been published here: *Lev
+beats kev-4b outright* is withdrawn at 0.038 against a 0.056 floor, paired
+*p* = 0.41. It also found that `kev-4b` — the checkpoint its own card
+recommends for serving — **is not competitive with anything, including
+`kev-0.5b`** (+0.032, *p* = 0.55). The capacity step that pays on our
+workload is 4B to 8B, not 0.6B to 4B. A card's serving recommendation is a
+claim about the author's workload, not yours.
 
 ## What the general model is actually for
 
