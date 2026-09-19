@@ -20,6 +20,9 @@ use coder::{Agent, Classified, Meta, Route, Usage, Verdict};
 use coder_terminal::{
     Composer, ComposerAction, Editor, Intensity, Ladder, frame_for, handle_key, wrap_rows,
 };
+use std::io::Write;
+
+use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -162,17 +165,32 @@ impl App {
     }
 }
 
+/// OSC 12 paints the terminal's hardware cursor the ladder's full amber;
+/// OSC 112 hands the terminal's own color back on exit.
+const CURSOR_COLOR_SET: &str = "\x1b]12;#FFB000\x07";
+const CURSOR_COLOR_RESET: &str = "\x1b]112\x07";
+
 #[tokio::main]
 async fn main() -> io::Result<()> {
     enable_raw_mode()?;
     let mut out = stdout();
-    execute!(out, EnterAlternateScreen)?;
+    execute!(out, EnterAlternateScreen, SetCursorStyle::BlinkingBlock)?;
+    out.write_all(CURSOR_COLOR_SET.as_bytes())?;
+    out.flush()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
 
     let result = run(&mut terminal).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        SetCursorStyle::DefaultUserShape
+    )?;
+    terminal
+        .backend_mut()
+        .write_all(CURSOR_COLOR_RESET.as_bytes())?;
+    terminal.backend_mut().flush()?;
     terminal.show_cursor()?;
     result
 }
