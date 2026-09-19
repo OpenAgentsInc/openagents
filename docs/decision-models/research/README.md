@@ -1,0 +1,16 @@
+# Research
+
+Leads worth following, and what would have to be true for each to matter.
+
+A page belongs here when it is a question rather than a finding. When a lead
+is settled it moves: into an implementation's directory if it changes what we
+build, into [`../others/`](../others/) if it is a reading of someone else's
+work, or into a measurement record if it produced numbers.
+
+Each page should open by saying what would change if the lead holds. A lead
+that would change nothing is not worth the reading time, and saying so is a
+result.
+
+| Lead | Question | State |
+| --- | --- | --- |
+| [`2026-09-19-inference-side-scoring.md`](2026-09-19-inference-side-scoring.md) | Does an inference engine's scoring endpoint turn any open model into a decision model, without training a readout? | open |
