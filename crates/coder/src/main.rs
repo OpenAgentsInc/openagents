@@ -3,7 +3,10 @@
 //!
 //! `Enter` submits, `Alt-Enter`/`Ctrl-J` puts a newline in the draft,
 //! `Up`/`Down` walk wrapped rows then history, `PageUp`/`PageDown` walk the
-//! scrollback, `Ctrl-C` or an empty `Ctrl-D` quits. The env reads
+//! scrollback, `Ctrl-C` or an empty `Ctrl-D` quits. `Alt-V` or the
+//! `/verbose` command toggles the detail lines — classify verdicts,
+//! command whys, exit codes, shell judgments — off by default, so a turn
+//! shows only what ran and what answered. The env reads
 //! `TYPESAFE_API_KEY` for Classify and `CODER_DOOR_KEY` (or
 //! `CODER_AI_GATEWAY_KEY`), `CODER_DOOR_URL`, and `CODER_MODEL` for
 //! Generate; with no key set, `CODER_WORKER` + `CODER_RELAY` route the
@@ -46,6 +49,10 @@ struct Line {
     intensity: Intensity,
     /// `true` draws the line underlined — errors only.
     loud: bool,
+    /// `true` draws the line only in verbose mode — verdicts, whys, exit
+    /// codes, and judge lines. Filtering happens at draw time, so toggling
+    /// verbose reveals and hides the detail retroactively.
+    detail: bool,
     prefix: &'static str,
     text: String,
 }
@@ -115,6 +122,9 @@ struct App {
     tick: u64,
     /// When the turn in flight started, for the status rail's stopwatch.
     busy_since: Option<Instant>,
+    /// Draw detail lines (verdicts, whys, exit codes, judge lines) —
+    /// toggled by `⌥V` or `/verbose`, off by default.
+    verbose: bool,
 }
 
 impl App {
@@ -122,6 +132,18 @@ impl App {
         self.lines.push(Line {
             intensity,
             loud: false,
+            detail: false,
+            prefix,
+            text: text.into(),
+        });
+    }
+
+    /// A detail line: drawn only while verbose mode is on.
+    fn push_detail(&mut self, prefix: &'static str, text: impl Into<String>) {
+        self.lines.push(Line {
+            intensity: Intensity::Half,
+            loud: false,
+            detail: true,
             prefix,
             text: text.into(),
         });
@@ -131,13 +153,14 @@ impl App {
         self.lines.push(Line {
             intensity: Intensity::Full,
             loud: true,
+            detail: false,
             prefix: "  ",
             text: text.into(),
         });
     }
 
     /// The dim lines a verdict earns in the transcript: the route and the
-    /// numbers behind it.
+    /// numbers behind it. Both are detail — verbose mode only.
     fn show_verdict(&mut self, verdict: &Verdict) {
         let route = match &verdict.route {
             Route::Respond => "respond".to_string(),
@@ -145,7 +168,7 @@ impl App {
             Route::End => "end".to_string(),
             Route::Halt(why) => format!("halt — {why}"),
         };
-        self.push(Intensity::Half, "  ", format!("classify → {route}"));
+        self.push_detail("  ", format!("classify → {route}"));
         let mut detail = String::new();
         if let Some(action) = &verdict.judgment.action {
             let mut pairs: Vec<String> = action
@@ -166,7 +189,19 @@ impl App {
         if let Some(code) = verdict.judgment.needs_code {
             detail.push_str(&format!(" · code {code:.2}"));
         }
-        self.push(Intensity::Half, "    ", detail);
+        self.push_detail("    ", detail);
+    }
+
+    /// Flips verbose mode and says so. The scroll offset resets because
+    /// the visible row count changes with the filter.
+    fn toggle_verbose(&mut self) {
+        self.verbose = !self.verbose;
+        self.scroll = 0;
+        self.push(
+            Intensity::Half,
+            "  ",
+            format!("verbose {}", if self.verbose { "on" } else { "off" }),
+        );
     }
 }
 
@@ -254,6 +289,7 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
         scroll: 0,
         tick: 0,
         busy_since: None,
+        verbose: false,
     };
 
     let (tx, mut rx) = mpsc::channel::<Work>(256);
@@ -310,12 +346,32 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                                     && app.editor.is_empty() => break,
                             KeyCode::PageUp => app.scroll = (app.scroll + 10).min(app.lines.len()),
                             KeyCode::PageDown => app.scroll = app.scroll.saturating_sub(10),
+                            KeyCode::Char('v')
+                                if key.modifiers.contains(KeyModifiers::ALT) =>
+                            {
+                                app.toggle_verbose();
+                            }
                             _ => {
                                 let width = terminal.size()?.width as usize;
                                 if let ComposerAction::Submitted(draft) =
                                     handle_key(&mut app.editor, width, &key)
                                 {
                                     if draft.is_empty() {
+                                        continue;
+                                    }
+                                    // Slash commands act on the terminal
+                                    // itself; they never reach the agent.
+                                    if let Some(command) = draft.strip_prefix('/') {
+                                        match command.trim() {
+                                            "verbose" | "v" => app.toggle_verbose(),
+                                            other => app.push(
+                                                Intensity::Half,
+                                                "  ",
+                                                format!(
+                                                    "unknown command /{other} — /verbose toggles detail"
+                                                ),
+                                            ),
+                                        }
                                         continue;
                                     }
                                     app.scroll = 0;
@@ -346,11 +402,11 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                         };
                     }
                     Work::Classified(Classified::Skipped(note)) => {
-                        app.push(Intensity::Half, "  ", note);
+                        app.push_detail("  ", note);
                         app.status = "generating".to_string();
                     }
                     Work::Judgment(line) => {
-                        app.push(Intensity::Half, "  ", format!("classify → {line}"));
+                        app.push_detail("  ", format!("classify → {line}"));
                     }
                     Work::Shell(event) => {
                         // The plan's JSON streamed into pending; the $ lines
@@ -364,14 +420,14 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                                     format!("$ {}", proposal.command),
                                 );
                                 if !proposal.why.is_empty() {
-                                    app.push(Intensity::Half, "    ", proposal.why);
+                                    app.push_detail("    ", proposal.why);
                                 }
                             }
                             ShellEvent::Ran(outcome) => {
-                                app.push(Intensity::Half, "    ", outcome.line());
+                                app.push_detail("    ", outcome.line());
                             }
                             ShellEvent::Verdict(line) => {
-                                app.push(Intensity::Half, "  ", format!("shell → {line}"));
+                                app.push_detail("  ", format!("shell → {line}"));
                             }
                         }
                     }
@@ -449,6 +505,11 @@ fn draw(
         } else {
             app.status.clone()
         };
+        let status = if app.verbose {
+            format!("{status} · v")
+        } else {
+            status
+        };
         let mut composer = Composer::new(&mut app.editor, *ladder)
             .prompt(prompt)
             .status(&status)
@@ -472,7 +533,7 @@ fn draw(
         let shown = log_area.height as usize;
         let width = usize::from(area.width);
         let mut rows: Vec<Row> = Vec::new();
-        for line in &app.lines {
+        for line in app.lines.iter().filter(|line| app.verbose || !line.detail) {
             expand(
                 &mut rows,
                 line.intensity,
