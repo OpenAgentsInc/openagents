@@ -14,3 +14,4 @@ result.
 | Lead | Question | State |
 | --- | --- | --- |
 | [`2026-09-19-inference-side-scoring.md`](2026-09-19-inference-side-scoring.md) | Does an inference engine's scoring endpoint turn any open model into a decision model, without training a readout? | open |
+| [`2026-09-19-question-text-optimization.md`](2026-09-19-question-text-optimization.md) | Is the question text a tunable parameter, and does a gain found on one door transfer to the others? | open |
