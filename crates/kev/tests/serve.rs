@@ -41,6 +41,10 @@ fn state() -> Option<&'static Arc<ServeState>> {
                     model_id: "kev-latest".to_string(),
                     run: adapter.display().to_string(),
                     base: "Qwen/Qwen2.5-0.5B".to_string(),
+                    // A literal rather than the artifact's own revision:
+                    // `kev-0.5b` names none, and the check below is that the
+                    // listing publishes what the variant carries.
+                    base_revision: "test-only-base-revision".to_string(),
                     lora: lora.r,
                 }],
                 default: 0,
@@ -147,6 +151,29 @@ async fn models_lists_kev() {
         assert_eq!(cards[0].name, "kev-latest");
         assert!(!cards[0].description.is_empty());
     });
+}
+
+/// A row that cannot name the checkpoint it measured is not evidence, and
+/// the Gym reads the checkpoint from this field. `jev::ModelCard` drops it,
+/// so the listing is read as raw JSON here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn models_publish_the_base_model_signature() {
+    let Some(url) = serve().await else {
+        eprintln!("skipping: no artifact bundle");
+        return;
+    };
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(format!("{url}/v1/models"))
+        .send()
+        .await
+        .expect("send")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        body["models"][0]["base_model_signature"],
+        serde_json::json!("test-only-base-revision")
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

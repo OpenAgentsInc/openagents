@@ -2,7 +2,7 @@
 
 The same eight items and the same four-option Choice, sent by the same `crates/jev` client to every door. A `*` marks a wrong answer.
 
-| Item | Truth | jev (hosted) | kev | lev |
+| Item | Truth | jev (hosted) | kev-0.5b | lev |
 | --- | --- | --- | --- | --- |
 | `easy/charge` | `billing` | `billing` | `other*` | `billing` |
 | `easy/crash` | `technical` | `technical` | `other*` | `technical` |
@@ -16,7 +16,7 @@ The same eight items and the same four-option Choice, sent by the same `crates/j
 | Door | Correct | Mean confidence | Confident errors | Mean latency |
 | --- | --- | --- | --- | --- |
 | jev (hosted) | 8 of 8 | 0.95 | 0 | 247 ms |
-| kev | 1 of 8 | 0.81 | 4 | 182 ms |
+| kev-0.5b | 1 of 8 | 0.81 | 4 | 182 ms |
 | lev | 7 of 8 | 0.94 | 1 | 2082 ms |
 
 Confident errors count answers that were wrong at a confidence of 0.9 or above. Read Lev's confidence column knowing what it is: a statistic over seeded samples, not a calibrated probability. See `docs/lev/measurements/`.
@@ -40,7 +40,7 @@ which is a defensible reading of an item written to be ambiguous. Its mean
 confidence of 0.94 is not a calibrated probability, and the single confident
 error is the reason that distinction matters.
 
-**Kev, 1 of 8.** It answered `other` on every item except the one whose
+**kev-0.5b, 1 of 8.** It answered `other` on every item except the one whose
 answer is `other`. That is the signature of a readout that is not reading —
 a constant or near-constant argmax rather than a wrong-but-varying one — and
 it does not match the 0.94 accuracy `kev-0.5b`'s own card reports for a

@@ -16,6 +16,15 @@ Scored on 52 authored items, evaluation split, one `crates/jev` client:
 | kev-4b | 0.77 | 0.188 | 0.149 | 0.464 | ~1 s |
 | lev (N=8, 4 helpers) | 0.85 | 0.087 | 0.127 | 0.361 | ~1,600 ms |
 
+The two Kev rows are 26-item scores on the two smallest published
+checkpoints, and they are the wrong ones to plan against. On 157 items
+`kev-8b` scores 0.879 with an ECE of 0.044 and a Brier of 0.086, ahead of
+Lev on every column of this table except latency, by a margin the suite can
+resolve on none of them. See
+[`../kev/measurements/2026-09-19-variant-scores.md`](../kev/measurements/2026-09-19-variant-scores.md).
+It does not change the three gaps below, all of which are measured against
+hosted Jev.
+
 Three gaps, and they have different causes, so they need different fixes:
 
 1. **Sharpness.** Brier 0.127 against Jev's 0.026. Lev's numbers are vague.

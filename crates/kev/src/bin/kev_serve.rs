@@ -140,11 +140,14 @@ fn load_variant(
     eprintln!("kev-serve: loading {id}: {} + {}", base_dir.display(), adapter_dir.display());
     let model = DecisionModel::load_with_dtype(base_dir, adapter_dir, device.clone(), dtype)
         .map_err(|e| format!("{id}: {e}"))?;
+    let base_revision =
+        meta["base_revision"].as_str().map(str::to_string).unwrap_or_default();
     Ok(Variant {
         model,
         model_id: id.to_string(),
         run: adapter_dir.display().to_string(),
         base: base_id,
+        base_revision,
         lora: lora_rank(adapter_dir),
     })
 }

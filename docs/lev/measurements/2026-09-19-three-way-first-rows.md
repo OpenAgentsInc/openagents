@@ -5,6 +5,12 @@ repository whose result is a file rather than a table in a document: 157 rows
 in `crates/gym/results/support-v2-three-way.jsonl`, receipt-chained, one row
 per item.
 
+That store has since grown. Four Kev doors appended 157 rows each on the same
+day, so the file now holds 785 rows over five doors; see
+[`../../kev/measurements/2026-09-19-variant-scores.md`](../../kev/measurements/2026-09-19-variant-scores.md).
+The rows described below are unchanged, which is the property the chain
+exists to give.
+
 ```text
 ./scripts/build-lev-bridge.sh
 cargo run -p lev --features serve --release --bin lev-serve -- --port 11448

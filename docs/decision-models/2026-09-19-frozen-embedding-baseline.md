@@ -12,10 +12,16 @@ the measurement instead, because the measurement is what decides whether the
 door is worth building. If frozen embeddings plus logistic regression does not
 beat what we have on our own suite, no door is needed and that is the result.
 
-**It beats Lev and Kev on the one family it can serve, by more than the floor
-the issue names. It does not beat hosted Jev. It refuses half the suite. And
-the single largest influence on its accuracy is which encoder you downloaded,
-not anything about the method.**
+**It beats Lev and `kev-0.5b` on the one family it can serve, by more than the
+floor the issue names. It does not beat hosted Jev. It refuses half the suite.
+And the single largest influence on its accuracy is which encoder you
+downloaded, not anything about the method.**
+
+The Kev half of that sentence needs its checkpoint named, and the naming
+costs it most of its force: `kev-0.5b` is the smallest of four published
+checkpoints, and against `kev-8b` the baseline's margin on `routing` falls
+below the floor. See
+[the correction below](#judged-against-the-measured-floor).
 
 ## What this measures
 
@@ -223,6 +229,19 @@ comparisons were withdrawn this week for not clearing it.
 
 By the criterion issue #9377 asks for, the baseline beats both of our own
 doors and is indistinguishable from hosted Jev.
+
+**"Both of our own doors" means Lev and `kev-0.5b`, and `kev-0.5b` is the
+smallest of four Kev checkpoints.** On 2026-09-19 all four were scored on
+these items, recorded in
+[`../kev/measurements/2026-09-19-variant-scores.md`](../kev/measurements/2026-09-19-variant-scores.md).
+Forty of the fifty `routing` items above stayed open under the three-way
+partitioning, and on those forty `kev-0.5b` scores 0.800 while `kev-8b`
+scores 0.875. Against `kev-8b`, `bge`'s margin is roughly +0.045 rather than
++0.140 — 0.8 floors, which does not clear. The item sets are close but not
+identical, so treat that as a caution against the claim rather than a
+measurement replacing it: the baseline's win over Kev is established against
+the checkpoint nobody recommends serving, and is not established against the
+best one.
 
 ### The floor is not the whole interval, and it matters here
 

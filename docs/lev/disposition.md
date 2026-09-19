@@ -8,6 +8,15 @@ they produced under their old names.
 
 ## The four-way table
 
+**Superseded on 2026-09-19 for every Kev row.** The table below scored two
+Kev checkpoints on 26 evaluation items, which cannot separate two doors at
+this suite's noise floor, and the two checkpoints it left out are the two
+that matter. All four Kev checkpoints are now scored on 157 items of
+`support-v2-three-way`, recorded as rows, in
+[`../kev/measurements/2026-09-19-variant-scores.md`](../kev/measurements/2026-09-19-variant-scores.md).
+Read that record for any claim about Kev. The table here stays because the
+Lev and Jev rows are still the ones this page's disposition rests on.
+
 52 authored items in `crates/lev/suites/support-v1.json` — 24 routing
 Choices, 16 urgency Nouls, 12 severity Scores — split evenly into
 calibration and evaluation partitions by construction. Scored on the
@@ -34,12 +43,44 @@ with a high Brier means Lev's numbers are honestly vague: it hedges, and the
 hedging happens to match how often it is right. Jev's higher ECE comes from
 being confidently right, which is a better failure mode to have.
 
-**Lev beats kev-4b outright on this suite** — more accurate, better
-calibrated, fewer confident errors — and beats kev-0.5b on calibration while
-trailing it on accuracy. On out-of-domain support text, a model with no
-task-specific training is competitive with a small one that has some. That
-is a statement about the suite being outside kev's training distribution,
-not about Apple's model being better than kev's method.
+**"Lev beats kev-4b outright on this suite" — withdrawn on 2026-09-19.** The
+claim rested on 0.85 against 0.77 over 26 items, a difference the suite
+cannot resolve. On 157 items of `support-v2-three-way` the two doors are
+0.783 and 0.745, a difference of 0.038 against a floor of 0.056, and a
+paired test over the items only one of them answered correctly puts it at
+*p* = 0.41. Lev and `kev-4b` are indistinguishable on our own suite.
+
+What survives the withdrawal is the weaker reading the claim was reaching
+for: on out-of-domain support text a model with no task-specific training
+stays level with a small one that has some. It does not stay level with a
+large one.
+
+## The best Kev, which is not the one this page measured
+
+| Door | Accuracy | ECE | Brier | NLL | Confident errors |
+| --- | --- | --- | --- | --- | --- |
+| `kev-8b` | **0.879** | **0.044** | **0.086** | **0.279** | **1** |
+| `lev-base` | 0.783 | 0.107 | 0.161 | 2.353 | 12 |
+| `kev-4b` | 0.745 | 0.081 | 0.148 | 0.592 | 5 |
+| `kev-0.5b` | 0.713 | 0.074 | 0.186 | 0.548 | 3 |
+| `kev-0.6b` | 0.675 | 0.141 | 0.181 | 0.522 | 4 |
+
+157 items of `support-v2-three-way` at digest `54fbf4137c3de538`, both open
+partitions pooled, every row in
+`crates/gym/results/support-v2-three-way.jsonl`. Hosted Jev has no rows on
+this suite; the record named above says why and what follows from it.
+
+`kev-8b` beats `kev-0.5b` by 0.166, three times the floor. It leads
+`lev-base` by 0.096, which is 1.7 floors and therefore not established by
+this suite, and it leads on every other column of the panel as well, where
+no floor has been measured at all.
+
+The consequence for this page is narrower than the numbers look. The Kev
+door Lev gets compared against is a choice, that choice has been the
+smallest checkpoint, and against the largest one Lev leads nothing. What Lev
+is admitted and refused for below does not change, because none of it rests
+on beating Kev. Latency is the axis that might still favor the small doors,
+and the run that produced these rows was too contended to measure it.
 
 ## Where Lev should be used today
 

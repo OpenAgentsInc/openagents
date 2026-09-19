@@ -152,9 +152,17 @@ H100 time):
 ## Practical reading for the mesh plan
 
 - `kev-0.5b` proves the mechanism and costs nothing to serve — it is the
-  right conformance target for a Rust port.
+  right conformance target for a Rust port. It is not a reading of what Kev
+  can do, and using it as one is the error
+  [`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md)
+  corrects.
 - `kev-4b` is the serving sweet spot the upstream README recommends: best
-  accuracy per byte, ~1 s in bf16 on a 32 GB Mac.
+  accuracy per byte, ~1 s in bf16 on a 32 GB Mac. **Our own suite does not
+  reproduce that recommendation.** On 157 support items `kev-4b` scores
+  0.745 against `kev-0.5b`'s 0.713, a difference of 0.6 noise floors, while
+  `kev-8b` scores 0.879. On these items the capacity step that pays is 4B to
+  8B, not 0.6B to 4B. The card's out-of-domain table has the opposite shape,
+  so treat the sweet spot as workload-dependent and measure it per workload.
 - None of these checkpoints is production-calibrated. Out-of-domain ECE is
   ~0.1, and temperature fitted in-domain does not transfer. Any deployment
   needs per-workflow measurement before a probability gates an action —

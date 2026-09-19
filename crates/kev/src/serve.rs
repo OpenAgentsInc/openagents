@@ -40,6 +40,14 @@ pub struct Variant {
     pub run: String,
     /// The base model id the listing reports.
     pub base: String,
+    /// The base checkpoint revision the artifact was trained against, when
+    /// `head_meta.json` names one.
+    ///
+    /// This is what `/v1/models` publishes as `base_model_signature`, and it
+    /// is the field a recorded result row uses to say which checkpoint
+    /// answered. An artifact that names no revision publishes an empty
+    /// string rather than a signature nobody can check.
+    pub base_revision: String,
     /// The adapter rank `/api/info` reports.
     pub lora: usize,
 }
@@ -137,6 +145,7 @@ async fn models(State(state): State<Arc<ServeState>>) -> Json<Value> {
                 "name": v.model_id,
                 "description": format!("kev decision model on {}, served by the openagents Rust port", v.base),
                 "release_date": "2026-09-19",
+                "base_model_signature": v.base_revision,
                 "aliases": if i == state.default { state.aliases.clone() } else { Vec::<String>::new() },
                 "run": v.run,
                 "base": v.base,
@@ -158,6 +167,7 @@ async fn info(State(state): State<Arc<ServeState>>) -> Json<Value> {
                 "model_id": v.model_id,
                 "run": v.run,
                 "base": v.base,
+                "base_revision": v.base_revision,
                 "lora": v.lora,
                 "option_isolation": v.model.option_isolation,
             }))

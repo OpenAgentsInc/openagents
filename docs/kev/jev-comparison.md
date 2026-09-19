@@ -75,6 +75,11 @@ primarily about these prompts either:
    upstream's declared OOD-transfer screen; these previews are
    research artifacts, not Jev replacements.
 
-For local routing and intent workloads, kev-4b on this machine answers
-in ~0.8s CPU fp32 and agrees with Jev's argmax on every in-distribution
-case tested; kev-8b is the sharpest at ~1.5s.
+For local routing and intent workloads, kev-4b on this machine agrees with
+Jev's argmax on every in-distribution case tested, and kev-8b is the
+sharpest. The ~0.8 s and ~1.5 s figures this page used to quote came from
+these nine short requests. A suite item carries a full support message and a
+full option set and costs more;
+[`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md)
+records what 157 of them cost, and also why that run cannot yet settle a
+latency comparison between the variants.

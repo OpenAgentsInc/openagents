@@ -16,7 +16,11 @@ client:
 | lev (Apple, N=8) | 0.85 | **0.087** | 0.127 | ~1,600 ms |
 
 Lev has the lowest calibration error and the second-worst Brier, which is
-what honestly vague numbers look like. [`disposition.md`](disposition.md) is
+what honestly vague numbers look like. The Kev rows are the two smallest of
+four published checkpoints on 26 evaluation items; on 157 items of
+`support-v2-three-way`, `kev-8b` scores 0.879 with an ECE of 0.044 and Lev
+0.783, so read this table as Lev against small Kev. See
+[`../kev/measurements/2026-09-19-variant-scores.md`](../kev/measurements/2026-09-19-variant-scores.md). [`disposition.md`](disposition.md) is
 where to start: what Lev is admitted for, what it is refused for, and the
 ranked list of what would improve it.
 
@@ -71,7 +75,9 @@ labelled data, and until that map is fitted for a question family, Lev
 refuses to report a probability at all.
 
 Expect Lev to be worse than kev at the judgment and better than kev at
-everything around it: availability, cost, privacy, and startup. Whether it
+everything around it: availability, cost, privacy, and startup. Which kev
+decides how much worse: Lev and `kev-0.5b` are 0.070 apart on our suite,
+which the suite cannot resolve, while `kev-8b` is 0.096 ahead of Lev. Whether it
 is good enough for any particular workflow is a measurement, and no
 measurement exists yet.
 

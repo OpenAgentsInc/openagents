@@ -9,8 +9,9 @@ serves every published variant — `kev-0.5b`, `kev-0.6b`, `kev-4b`,
 conformance fixtures pinning each checkpoint to the Python reference.
 [`port-roadmap.md`](port-roadmap.md) holds the issue sequence and the
 conformance measurements, [`jev-comparison.md`](jev-comparison.md) holds
-the per-variant side-by-side against hosted Jev, and
-[`mesh-plan.md`](mesh-plan.md) holds the fleet path that follows.
+the per-variant side-by-side against hosted Jev,
+[`measurements/`](measurements/) holds what each checkpoint scores on our own
+suite, and [`mesh-plan.md`](mesh-plan.md) holds the fleet path that follows.
 
 ## What it is
 
@@ -44,6 +45,14 @@ Kev is not Jev. It is a laptop-scale research prototype that shows the
 mechanism works; on out-of-domain suites it trails the hosted Jev by
 8–26 points depending on checkpoint size. [`model-cards.md`](model-cards.md)
 holds the numbers.
+
+Which checkpoint you mean decides most of that sentence. On our own
+`support-v2-three-way` suite the four checkpoints run from 0.675 to 0.879
+accuracy, a spread three times the difference between most doors this
+repository argues about, and the best of them wins the whole panel. Name the
+checkpoint in any comparison;
+[`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md)
+has the scores.
 
 ## Checkpoints
 
@@ -104,6 +113,7 @@ revision.
 | [`port-roadmap.md`](port-roadmap.md) | The in-progress port of the mechanism into `crates/kev`: what gets pulled over in what order, and the issue that tracks each step. |
 | [`mesh-plan.md`](mesh-plan.md) | The proposed path to serving and training decision models on the earn mesh: Pylon manifests, a psionic decision-model lane, the fleet `systemone` work shape, and the TypeSafe-compatible fan-out API. |
 | [`jev-comparison.md`](jev-comparison.md) | Side-by-side answers from the local port and hosted Jev on identical requests, with the divergence analysis: where the port tracks Jev and where the weights' limits show. |
+| [`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md) | All four checkpoints scored on `support-v2-three-way` through the Gym: the panel, what clears the suite's noise floor, why no calibration map is admitted, and why the latency column settles nothing yet. |
 
 ## Licensing
 

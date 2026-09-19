@@ -19,6 +19,12 @@ Support-desk judgments authored in this repository. Three families with difficul
 
 ## kev-0.5b
 
+This is the smallest of kev's four published checkpoints and the one its own
+card says not to serve. It is the only Kev door this run asked. All four are
+scored on the same items in
+[`../../kev/measurements/2026-09-19-variant-scores.md`](../../kev/measurements/2026-09-19-variant-scores.md),
+where `kev-8b` reaches 0.879.
+
 | Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
 | --- | --- | --- | --- | --- | --- | --- |
 | evaluation, raw | 0.72 | 0.092 | 0.188 | 0.561 | 2 | 98 |
@@ -86,6 +92,11 @@ up where ECE cannot see it. The fix is more items, which is the same fix
 scored 0.85 and kev-0.5b 0.88. On 196 items with a third of them near a
 boundary, Lev is 0.77 and kev-0.5b 0.72, against hosted Jev's 0.94. The
 earlier numbers were compressed by easy items.
+
+That separation is between Lev and the *smallest* Kev checkpoint, and it does
+not survive being asked of the others: on the three-way partitioning of these
+same items, `kev-8b` scores 0.879 and Lev 0.783. Nothing about Lev's number
+changes; the Kev column was reporting one checkpoint out of four.
 
 **Hosted Jev's maps are all refused**, and that is a compliment to Jev rather
 than a failure of the gate: at a raw ECE of 0.078 there is not a tenth of
