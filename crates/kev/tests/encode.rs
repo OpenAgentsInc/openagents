@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use kev::{Encoding, Record, SPECIAL, branch_mask, encode, user_tokens};
+use kev::{Record, SPECIAL, branch_mask, encode, user_tokens};
 use serde_json::Value;
 use tokenizers::Tokenizer;
 

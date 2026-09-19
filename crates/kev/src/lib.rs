@@ -21,6 +21,8 @@ pub mod head;
 pub mod lora;
 pub mod model;
 pub mod render;
+#[cfg(feature = "serve")]
+pub mod serve;
 
 pub use api::{
     Answer, ChoiceAnswer, Meta, NoulAnswer, Question, Record, RecordQuestion, ScoreAnswer,
