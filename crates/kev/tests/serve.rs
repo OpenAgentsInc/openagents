@@ -29,7 +29,7 @@ fn state() -> Option<&'static Arc<ServeState>> {
     STATE
         .get_or_init(|| {
             let adapter = dir("KEV_ARTIFACT_DIR", "../../../kev-artifacts/kev-0.5b")?;
-            let base = dir("KEV_BASE_DIR", "../../../kev-artifacts/qwen25-0.5b")?;
+            let base = dir("KEV_BASE_DIR", "../../../kev-artifacts/qwen2.5-0.5b")?;
             let lora: LoraConfig = serde_json::from_str(
                 &std::fs::read_to_string(adapter.join("adapter_config.json")).ok()?,
             )

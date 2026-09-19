@@ -1,13 +1,19 @@
-//! The Qwen2 backbone the decision model runs once per packed request.
+//! The Qwen backbone the decision model runs once per packed request.
 //!
-//! This is the `.model` half of `Qwen2ForCausalLM` — embeddings, the decoder
-//! layers, the final norm — with two changes from the generation path: the
-//! caller supplies position ids (each question branch restarts after the
-//! state) and an additive attention mask (the block-causal branch mask), and
-//! there is no vocabulary head because the model never generates text.
+//! This is the `.model` half of `Qwen2ForCausalLM` / `Qwen3ForCausalLM` —
+//! embeddings, the decoder layers, the final norm — with two changes from
+//! the generation path: the caller supplies position ids (each question
+//! branch restarts after the state) and an additive attention mask (the
+//! block-causal branch mask), and there is no vocabulary head because the
+//! model never generates text.
 //!
-//! Weights load from safetensors and are cast to `f32` for parity with the
-//! reference, which serves fp32 on CPU and MPS.
+//! Qwen3 differs from Qwen2 by declaring `head_dim`, dropping q/k/v
+//! biases, and applying a per-head RMSNorm to q and k before rotary;
+//! `Config` carries the differences and `load` reads them from the
+//! checkpoint rather than hard-coding either family.
+//!
+//! Weights load from safetensors into the caller's dtype: `f32` for
+//! conformance, `bf16` when serving a large backbone.
 
 use std::path::Path;
 
@@ -19,6 +25,9 @@ use crate::error::{Error, Result};
 /// The fields of `config.json` the forward pass reads.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
+    /// The HF architecture the checkpoint declares; dispatch happens on it.
+    #[serde(default)]
+    pub architectures: Vec<String>,
     /// Embedding width.
     pub hidden_size: usize,
     /// SwiGLU intermediate width.
@@ -29,6 +38,13 @@ pub struct Config {
     pub num_attention_heads: usize,
     /// Key/value head count; queries are grouped when it is smaller.
     pub num_key_value_heads: usize,
+    /// Query head width. Qwen3 declares it; Qwen2 derives it.
+    #[serde(default)]
+    pub head_dim: Option<usize>,
+    /// Whether q/k/v projections carry biases. Absent means the Qwen2
+    /// convention, which is biased.
+    #[serde(default)]
+    pub attention_bias: Option<bool>,
     /// RMSNorm epsilon.
     pub rms_norm_eps: f64,
     /// Rotary base.
@@ -40,10 +56,27 @@ pub struct Config {
 }
 
 impl Config {
-    /// Query head width: `hidden_size / num_attention_heads`.
+    /// Query head width: the declared `head_dim` when present (Qwen3), else
+    /// `hidden_size / num_attention_heads` (Qwen2).
     #[must_use]
     pub fn head_dim(&self) -> usize {
-        self.hidden_size / self.num_attention_heads
+        self.head_dim
+            .unwrap_or(self.hidden_size / self.num_attention_heads)
+    }
+
+    /// Whether q/k/v projections carry biases (Qwen2 yes, Qwen3 no).
+    #[must_use]
+    pub fn attention_bias(&self) -> bool {
+        self.attention_bias.unwrap_or(true)
+    }
+
+    /// Whether the architecture applies per-head RMSNorm to q and k before
+    /// rotary (Qwen3 does, Qwen2 does not).
+    #[must_use]
+    pub fn qk_norm(&self) -> bool {
+        self.architectures
+            .iter()
+            .any(|a| a == "Qwen3ForCausalLM")
     }
 }
 
@@ -100,8 +133,16 @@ impl Rotary {
         let head_dim = x.dim(x.rank() - 1)?;
         let half = head_dim / 2;
         let pos_t = Tensor::from_vec(pos.to_vec(), pos.len(), x.device())?;
-        let cos = self.cos.index_select(&pos_t, 0)?.unsqueeze(1)?; // [len, 1, half]
-        let sin = self.sin.index_select(&pos_t, 0)?.unsqueeze(1)?;
+        let cos = self
+            .cos
+            .index_select(&pos_t, 0)?
+            .unsqueeze(1)?
+            .to_dtype(x.dtype())?; // [len, 1, half]
+        let sin = self
+            .sin
+            .index_select(&pos_t, 0)?
+            .unsqueeze(1)?
+            .to_dtype(x.dtype())?;
         let x1 = x.narrow(x.rank() - 1, 0, half)?;
         let x2 = x.narrow(x.rank() - 1, half, half)?;
         let rot1 = (x1.broadcast_mul(&cos)? - x2.broadcast_mul(&sin)?)?;
@@ -115,6 +156,11 @@ struct Attention {
     k_proj: Linear,
     v_proj: Linear,
     o_proj: Linear,
+    /// Per-head RMSNorm on queries before rotary; Qwen3 only.
+    q_norm: Option<Tensor>,
+    /// Per-head RMSNorm on keys before rotary; Qwen3 only.
+    k_norm: Option<Tensor>,
+    rms_eps: f64,
     n_heads: usize,
     n_kv_heads: usize,
     head_dim: usize,
@@ -129,11 +175,20 @@ impl Attention {
         mask: &Tensor,
     ) -> CandleResult<Tensor> {
         let len = x.dim(0)?;
-        let q = self.q_proj.forward(x)?.reshape((len, self.n_heads, self.head_dim))?;
-        let k = self
+        let mut q = self
+            .q_proj
+            .forward(x)?
+            .reshape((len, self.n_heads, self.head_dim))?;
+        let mut k = self
             .k_proj
             .forward(x)?
             .reshape((len, self.n_kv_heads, self.head_dim))?;
+        if let (Some(qn), Some(kn)) = (&self.q_norm, &self.k_norm) {
+            q = rms_norm(&q, qn, self.rms_eps)?;
+            k = rms_norm(&k, kn, self.rms_eps)?;
+        }
+        let q = q;
+        let k = k;
         let v = self
             .v_proj
             .forward(x)?
@@ -190,24 +245,19 @@ struct Layer {
     post_attention_layernorm: Tensor,
 }
 
-/// The Qwen2 decoder trunk: embeddings in, last hidden state out.
-pub struct Qwen2 {
+/// The decoder trunk: embeddings in, last hidden state out.
+pub struct Backbone {
     config: Config,
     embed: Tensor,
     layers: Vec<Layer>,
     norm: Tensor,
     device: Device,
+    dtype: DType,
 }
 
 fn take(map: &mut std::collections::HashMap<String, Tensor>, name: &str) -> Result<Tensor> {
     map.remove(name)
         .ok_or_else(|| Error::Artifact(format!("missing tensor {name}")))
-}
-
-fn load_safetensors(path: &Path, device: &Device) -> Result<std::collections::HashMap<String, Tensor>> {
-    let tensors = candle_core::safetensors::load(path, device)
-        .map_err(|e| Error::Artifact(format!("load {}: {e}", path.display())))?;
-    Ok(tensors)
 }
 
 fn linear(
@@ -224,35 +274,69 @@ fn linear(
     Ok(Linear { weight, bias })
 }
 
-impl Qwen2 {
-    /// Load `config.json` and `model.safetensors` from `dir`, cast to `f32`.
+impl Backbone {
+    /// Load `config.json` and every `*.safetensors` shard in `dir`, cast to
+    /// `dtype`.
+    ///
+    /// `dtype` is the compute dtype: `F32` for fixture conformance, `BF16`
+    /// when serving a large backbone (third-decimal drift, the same caveat
+    /// the reference attaches to `KEV_DTYPE`).
     ///
     /// # Errors
     ///
     /// Returns [`Error::Artifact`] when a file or tensor is missing or malformed.
-    pub fn load(dir: &Path, device: &Device) -> Result<Self> {
+    pub fn load(dir: &Path, device: &Device, dtype: DType) -> Result<Self> {
         let config: Config = serde_json::from_str(
             &std::fs::read_to_string(dir.join("config.json"))
                 .map_err(|e| Error::Artifact(format!("read config.json: {e}")))?,
         )?;
-        let mut tensors = load_safetensors(&dir.join("model.safetensors"), device)?
-            .into_iter()
-            .map(|(k, v)| {
-                let name = k.strip_prefix("model.").unwrap_or(&k).to_string();
-                Ok((name, v.to_dtype(DType::F32)?))
+        let mut shard_paths: Vec<_> = std::fs::read_dir(dir)
+            .map_err(|e| Error::Artifact(format!("read_dir {}: {e}", dir.display())))?
+            .filter_map(std::result::Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension().is_some_and(|x| x == "safetensors")
+                    && p.file_name().is_some_and(|n| {
+                        n.to_string_lossy().starts_with("model")
+                    })
             })
-            .collect::<CandleResult<std::collections::HashMap<_, _>>>()?;
+            .collect();
+        shard_paths.sort();
+        if shard_paths.is_empty() {
+            return Err(Error::Artifact(format!(
+                "no model safetensors in {}",
+                dir.display()
+            )));
+        }
+        let mut tensors = std::collections::HashMap::new();
+        for path in &shard_paths {
+            for (k, v) in candle_core::safetensors::load(path, device)
+                .map_err(|e| Error::Artifact(format!("load {}: {e}", path.display())))?
+            {
+                let name = k.strip_prefix("model.").unwrap_or(&k).to_string();
+                tensors.insert(name, v.to_dtype(dtype)?);
+            }
+        }
         let embed = take(&mut tensors, "embed_tokens.weight")?;
         let norm = take(&mut tensors, "norm.weight")?;
+        let attn_bias = config.attention_bias();
+        let qk_norm = config.qk_norm();
         let mut layers = Vec::with_capacity(config.num_hidden_layers);
         for i in 0..config.num_hidden_layers {
             let p = format!("layers.{i}");
             layers.push(Layer {
                 attn: Attention {
-                    q_proj: linear(&mut tensors, &format!("{p}.self_attn.q_proj"), true)?,
-                    k_proj: linear(&mut tensors, &format!("{p}.self_attn.k_proj"), true)?,
-                    v_proj: linear(&mut tensors, &format!("{p}.self_attn.v_proj"), true)?,
+                    q_proj: linear(&mut tensors, &format!("{p}.self_attn.q_proj"), attn_bias)?,
+                    k_proj: linear(&mut tensors, &format!("{p}.self_attn.k_proj"), attn_bias)?,
+                    v_proj: linear(&mut tensors, &format!("{p}.self_attn.v_proj"), attn_bias)?,
                     o_proj: linear(&mut tensors, &format!("{p}.self_attn.o_proj"), false)?,
+                    q_norm: qk_norm
+                        .then(|| take(&mut tensors, &format!("{p}.self_attn.q_norm.weight")))
+                        .transpose()?,
+                    k_norm: qk_norm
+                        .then(|| take(&mut tensors, &format!("{p}.self_attn.k_norm.weight")))
+                        .transpose()?,
+                    rms_eps: config.rms_norm_eps,
                     n_heads: config.num_attention_heads,
                     n_kv_heads: config.num_key_value_heads,
                     head_dim: config.head_dim(),
@@ -275,7 +359,14 @@ impl Qwen2 {
             layers,
             norm,
             device: device.clone(),
+            dtype,
         })
+    }
+
+    /// The compute dtype the weights were loaded in.
+    #[must_use]
+    pub fn dtype(&self) -> DType {
+        self.dtype
     }
 
     /// The loaded configuration.

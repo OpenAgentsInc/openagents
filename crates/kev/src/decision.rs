@@ -11,14 +11,23 @@ use crate::encode::{Encoding, branch_mask, encode};
 use crate::error::{Error, Result};
 use crate::head::PointerHead;
 use crate::lora::apply_lora;
-use crate::model::Qwen2;
+use crate::model::Backbone;
 
 use indexmap::IndexMap;
 
+/// The `head_meta.json` fields the loader reads; the generator writes one
+/// beside `head.safetensors` from the reference's `head.pt` metadata.
+#[derive(Debug, serde::Deserialize)]
+struct HeadMeta {
+    /// Whether the checkpoint was trained with every option span isolated.
+    #[serde(default)]
+    option_isolation: bool,
+}
+
 /// Backbone plus LoRA adapter plus pointer head, on one device.
 pub struct DecisionModel {
-    /// The Qwen2 trunk, adapter merged in.
-    pub backbone: Qwen2,
+    /// The decoder trunk, adapter merged in.
+    pub backbone: Backbone,
     /// The pointer readout.
     pub head: PointerHead,
     /// The artifact bundle's tokenizer.
@@ -30,25 +39,46 @@ pub struct DecisionModel {
 }
 
 impl DecisionModel {
-    /// Load the bundle: `base_dir` holds the Qwen2 checkpoint, `adapter_dir`
-    /// holds `adapter_config.json` + `adapter_model.safetensors` +
-    /// `head.safetensors` + `tokenizer.json`.
+    /// Load the bundle in `f32`: `base_dir` holds the backbone checkpoint,
+    /// `adapter_dir` holds `adapter_config.json` +
+    /// `adapter_model.safetensors` + `head.safetensors` + `tokenizer.json`.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Artifact`] or [`Error::Tokenize`] for missing or
     /// malformed files.
     pub fn load(base_dir: &Path, adapter_dir: &Path, device: Device) -> Result<Self> {
-        let mut backbone = Qwen2::load(base_dir, &device)?;
+        Self::load_with_dtype(base_dir, adapter_dir, device, DType::F32)
+    }
+
+    /// Load the bundle with an explicit compute dtype.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Artifact`] or [`Error::Tokenize`] for missing or
+    /// malformed files.
+    pub fn load_with_dtype(
+        base_dir: &Path,
+        adapter_dir: &Path,
+        device: Device,
+        dtype: DType,
+    ) -> Result<Self> {
+        let mut backbone = Backbone::load(base_dir, &device, dtype)?;
         apply_lora(&mut backbone, adapter_dir, &device)?;
         let head = PointerHead::load(adapter_dir, &device)?;
         let tokenizer = Tokenizer::from_file(adapter_dir.join("tokenizer.json"))
             .map_err(|e| Error::Tokenize(e.to_string()))?;
+        let option_isolation = match std::fs::read_to_string(adapter_dir.join("head_meta.json")) {
+            Ok(text) => serde_json::from_str::<HeadMeta>(&text)
+                .map_err(|e| Error::Artifact(format!("head_meta.json: {e}")))?
+                .option_isolation,
+            Err(_) => false,
+        };
         Ok(Self {
             backbone,
             head,
             tokenizer,
-            option_isolation: false,
+            option_isolation,
             device,
         })
     }
@@ -81,7 +111,8 @@ impl DecisionModel {
             .iter()
             .flat_map(|row| row.iter().map(|yes| if *yes { 0.0 } else { f32::MIN }))
             .collect();
-        Ok(Tensor::from_vec(flat, (len, len), &self.device)?)
+        Ok(Tensor::from_vec(flat, (len, len), &self.device)?
+            .to_dtype(self.backbone.dtype())?)
     }
 
     /// One option distribution per question for a packed encoding.

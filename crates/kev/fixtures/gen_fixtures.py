@@ -309,6 +309,8 @@ def main():
     meta = torch.load(f"{args.run}/head.pt", map_location="cpu", weights_only=False)
     head_path = os.path.join(args.artifacts, "head.safetensors")
     save_file(meta["head"], head_path)
+    head_meta = {k: v for k, v in meta.items() if k != "head"}
+    dump(os.path.join(args.artifacts, "head_meta.json"), head_meta)
     for f in ("tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "merges.txt", "vocab.json", "adapter_config.json", "adapter_model.safetensors", "eval.json"):
         src = os.path.join(args.run, f)
         if os.path.exists(src):
@@ -320,7 +322,7 @@ def main():
             artifact_files[f] = {"sha256": sha256(p), "bytes": os.path.getsize(p)}
     manifest["artifact_dir"] = os.path.abspath(args.artifacts)
     manifest["files"] = artifact_files
-    manifest["head_meta"] = {k: v for k, v in meta.items() if k != "head"}
+    manifest["head_meta"] = head_meta
     dump(f"{args.out}/manifest.json", manifest)
     print("wrote fixtures to", args.out, "and artifacts to", args.artifacts)
 

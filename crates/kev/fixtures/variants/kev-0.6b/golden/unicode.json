@@ -1,0 +1,23 @@
+{
+  "probs": [
+    [
+      0.3353378474712372,
+      0.045079462230205536,
+      0.6195826530456543
+    ]
+  ],
+  "answers": {
+    "lang": {
+      "type": "choice",
+      "choice": "mixed",
+      "confidence": 0.43,
+      "probabilities": {
+        "english": 0.34,
+        "french": 0.05,
+        "mixed": 0.62
+      }
+    }
+  },
+  "tokens": 43,
+  "output_tokens": 56
+}

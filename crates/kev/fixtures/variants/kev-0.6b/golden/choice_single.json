@@ -1,0 +1,19 @@
+{
+  "probs": [
+    [
+      1.0
+    ]
+  ],
+  "answers": {
+    "only": {
+      "type": "choice",
+      "choice": "sole",
+      "confidence": 1.0,
+      "probabilities": {
+        "sole": 1.0
+      }
+    }
+  },
+  "tokens": 18,
+  "output_tokens": 35
+}

@@ -36,5 +36,5 @@ pub use encode::{
 pub use error::{Error, MAX_OPTIONS, Result};
 pub use head::PointerHead;
 pub use lora::{LoraConfig, apply_lora};
-pub use model::{Config, Linear, Qwen2};
+pub use model::{Backbone, Config, Linear};
 pub use render::{option_text, render, sanitize};

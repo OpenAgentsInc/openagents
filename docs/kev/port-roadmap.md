@@ -35,7 +35,7 @@ any serving or backend work starts.
 - `~/work/kev-artifacts/kev-0.5b/` — `adapter_model.safetensors`,
   `head.safetensors` (converted from `head.pt`), tokenizer files,
   `adapter_config.json`, `eval.json`.
-- `~/work/kev-artifacts/qwen25-0.5b/` — base `model.safetensors`,
+- `~/work/kev-artifacts/qwen2.5-0.5b/` — base `model.safetensors`,
   `config.json`, tokenizer files.
 - `crates/kev/fixtures/manifest.json` — the sha256 of every file above.
 
@@ -43,14 +43,14 @@ any serving or backend work starts.
 
 Run from the workspace root. Tests that need weights read
 `KEV_ARTIFACT_DIR`/`KEV_BASE_DIR`, defaulting to
-`../../../kev-artifacts/kev-0.5b` and `qwen25-0.5b` beside the repository.
+`../../../kev-artifacts/kev-0.5b` and `qwen2.5-0.5b` beside the repository.
 
 ```text
 cargo test -p kev --features serve --release
 KEV_TEST_DEVICE=metal cargo test -p kev --features metal --test conformance --release
 cargo build -p kev --features serve,metal --release --bin kev-serve
 target/release/kev-serve --adapter-dir ~/work/kev-artifacts/kev-0.5b \
-    --base-dir ~/work/kev-artifacts/qwen25-0.5b --port 8009 [--device metal]
+    --base-dir ~/work/kev-artifacts/qwen2.5-0.5b --port 8009 [--device metal]
 ```
 
 Measured on this machine (Apple Silicon, fp32, candle 0.11):

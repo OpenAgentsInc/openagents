@@ -13,7 +13,7 @@ use candle_core::{DType, Device, Tensor};
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
-use crate::model::{Linear, Qwen2};
+use crate::model::{Backbone, Linear};
 
 /// The `adapter_config.json` fields the merge reads.
 #[derive(Debug, Clone, Deserialize)]
@@ -32,7 +32,7 @@ pub struct LoraConfig {
 ///
 /// Returns [`Error::Artifact`] when the adapter is malformed, names a module
 /// the backbone does not carry, or the pair for a module is incomplete.
-pub fn apply_lora(backbone: &mut Qwen2, dir: &Path, device: &Device) -> Result<()> {
+pub fn apply_lora(backbone: &mut Backbone, dir: &Path, device: &Device) -> Result<()> {
     let config: LoraConfig = serde_json::from_str(
         &std::fs::read_to_string(dir.join("adapter_config.json"))
             .map_err(|e| Error::Artifact(format!("read adapter_config.json: {e}")))?,
@@ -60,6 +60,6 @@ pub fn apply_lora(backbone: &mut Qwen2, dir: &Path, device: &Device) -> Result<(
 pub fn merge(linear: &mut Linear, a: &Tensor, b: &Tensor, scale: f64) -> candle_core::Result<()> {
     // A: [r, in], B: [out, r]; delta: [out, in].
     let delta = b.matmul(a)?.affine(scale, 0.0)?;
-    linear.weight = (&linear.weight + delta)?;
+    linear.weight = (&linear.weight + delta.to_dtype(linear.weight.dtype())?)?;
     Ok(())
 }

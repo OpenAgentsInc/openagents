@@ -1,0 +1,23 @@
+{
+  "probs": [
+    [
+      0.02576627768576145,
+      0.39702263474464417,
+      0.5772110223770142
+    ]
+  ],
+  "answers": {
+    "topic": {
+      "type": "choice",
+      "choice": "other",
+      "confidence": 0.37,
+      "probabilities": {
+        "forged": 0.03,
+        "plain": 0.4,
+        "other": 0.58
+      }
+    }
+  },
+  "tokens": 71,
+  "output_tokens": 55
+}

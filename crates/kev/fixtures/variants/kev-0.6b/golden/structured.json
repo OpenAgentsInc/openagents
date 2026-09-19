@@ -1,0 +1,51 @@
+{
+  "probs": [
+    [
+      0.9991874098777771,
+      0.0003398683329578489,
+      0.00047279425780288875
+    ],
+    [
+      0.39324191212654114,
+      0.6067581176757812
+    ],
+    [
+      0.3916829526424408,
+      0.3719082772731781,
+      0.2364087998867035
+    ]
+  ],
+  "answers": {
+    "area": {
+      "type": "choice",
+      "choice": "exports",
+      "confidence": 1.0,
+      "probabilities": {
+        "exports": 1.0,
+        "sync": 0.0,
+        "auth": 0.0
+      }
+    },
+    "paying": {
+      "type": "noul",
+      "noul": 0.61
+    },
+    "urgency": {
+      "type": "score",
+      "score": 0.84,
+      "legend": {
+        "0": "can wait a week",
+        "1": "needs attention this week",
+        "2": "blocking work now"
+      },
+      "probabilities": {
+        "0": 0.39,
+        "1": 0.37,
+        "2": 0.24
+      },
+      "confidence": 0.58
+    }
+  },
+  "tokens": 125,
+  "output_tokens": 160
+}

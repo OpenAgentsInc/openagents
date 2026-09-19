@@ -1,0 +1,73 @@
+{
+  "question": "department",
+  "runs": [
+    {
+      "order": [
+        "returns",
+        "shipping",
+        "billing"
+      ],
+      "probs_by_position": [
+        0.7519077658653259,
+        0.10966702550649643,
+        0.13842518627643585
+      ],
+      "probs_by_key": {
+        "returns": 0.7519077658653259,
+        "shipping": 0.10966702550649643,
+        "billing": 0.13842518627643585
+      }
+    },
+    {
+      "order": [
+        "returns",
+        "billing",
+        "shipping"
+      ],
+      "probs_by_position": [
+        0.7251525521278381,
+        0.1414746642112732,
+        0.13337281346321106
+      ],
+      "probs_by_key": {
+        "returns": 0.7251525521278381,
+        "billing": 0.1414746642112732,
+        "shipping": 0.13337281346321106
+      }
+    },
+    {
+      "order": [
+        "billing",
+        "shipping",
+        "returns"
+      ],
+      "probs_by_position": [
+        0.12450354546308517,
+        0.07849933207035065,
+        0.7969970703125
+      ],
+      "probs_by_key": {
+        "billing": 0.12450354546308517,
+        "shipping": 0.07849933207035065,
+        "returns": 0.7969970703125
+      }
+    },
+    {
+      "order": [
+        "returns",
+        "shipping",
+        "billing"
+      ],
+      "probs_by_position": [
+        0.7519077658653259,
+        0.10966702550649643,
+        0.13842518627643585
+      ],
+      "probs_by_key": {
+        "returns": 0.7519077658653259,
+        "shipping": 0.10966702550649643,
+        "billing": 0.13842518627643585
+      }
+    }
+  ]
+}
