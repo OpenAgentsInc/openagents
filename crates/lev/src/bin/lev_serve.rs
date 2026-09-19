@@ -20,6 +20,7 @@ use lev::serve::{DEFAULT_SAMPLES, Door};
 async fn main() {
     let mut port = 11436_u16;
     let mut samples = DEFAULT_SAMPLES;
+    let mut seed_base = 0_u64;
     let mut helpers = 4_usize;
     let mut adapter: Option<String> = None;
     let mut args = std::env::args().skip(1);
@@ -32,6 +33,12 @@ async fn main() {
             }
             "--samples" => {
                 samples = args.next().and_then(|value| value.parse().ok()).unwrap_or(samples);
+            }
+            // Block 0 is the default and reproduces the recorded numbers.
+            // Another block answers with seeds this door has not drawn, which
+            // is what a confirmation run needs.
+            "--seed-base" => {
+                seed_base = args.next().and_then(|value| value.parse().ok()).unwrap_or(seed_base);
             }
             other => {
                 eprintln!("unknown flag {other}");
@@ -50,7 +57,8 @@ async fn main() {
     // Check the package before serving with it. A signature mismatch is a
     // deployment error and the door should not start, rather than refusing
     // every request at run time.
-    let mut door = Door::new(pool, if adapter.is_some() { "lev-adapted" } else { "lev-base" }, samples);
+    let model = if adapter.is_some() { "lev-adapted" } else { "lev-base" };
+    let mut door = Door::new(pool, model, samples).with_seed_base(seed_base);
     if let Some(path) = adapter {
         match lev::adapter::Package::open(&path) {
             Ok(package) => {
@@ -71,7 +79,8 @@ async fn main() {
         .await
         .expect("the port is free");
     eprintln!(
-        "lev-serve on http://127.0.0.1:{port}, {samples} samples per question across {} helpers",
+        "lev-serve on http://127.0.0.1:{port}, {samples} samples per question from seed block \
+         {seed_base} across {} helpers",
         door.pool_width()
     );
     axum::serve(listener, door.router()).await.expect("the server runs");

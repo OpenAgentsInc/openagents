@@ -37,6 +37,7 @@ pub struct Door {
     pool: Pool,
     model: String,
     samples: u64,
+    seed_base: u64,
     adapter: Option<String>,
 }
 
@@ -44,7 +45,20 @@ impl Door {
     /// Builds a door over a pool of helper processes.
     #[must_use]
     pub fn new(pool: Pool, model: impl Into<String>, samples: u64) -> Self {
-        Self { pool, model: model.into(), samples: samples.max(1), adapter: None }
+        Self { pool, model: model.into(), samples: samples.max(1), seed_base: 0, adapter: None }
+    }
+
+    /// Draws every question from a different block of seeds.
+    ///
+    /// Block 0 is the default and reproduces the recorded numbers. A door
+    /// asked for another block answers the same questions with seeds it has
+    /// not drawn before, which is the only honest way to get a fresh trial
+    /// out of a runtime whose seeds reproduce exactly. A caller comparing two
+    /// doors should move this together with nothing else.
+    #[must_use]
+    pub fn with_seed_base(mut self, seed_base: u64) -> Self {
+        self.seed_base = seed_base;
+        self
     }
 
     /// Serves every call through a `.fmadapter` package.
@@ -124,6 +138,7 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
             "unavailable_reason": reason,
             "estimator": Estimator::L2.label(),
             "samples": door.samples,
+            "seed_base": door.seed_base,
             "pool_width": door.pool.width(),
             "resolution": 1.0 / door.samples as f64,
             "adapter": door.adapter,
@@ -182,8 +197,14 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
     let mut answers = IndexMap::new();
     let mut estimates = IndexMap::new();
     for (id, question) in &compiled {
-        let raw = l2_pool_with(&door.pool, question, door.samples, door.adapter.as_deref())
-            .map_err(|refusal| with_question(refusal, id))?;
+        let raw = l2_pool_with(
+            &door.pool,
+            question,
+            door.samples,
+            door.seed_base,
+            door.adapter.as_deref(),
+        )
+        .map_err(|refusal| with_question(refusal, id))?;
         let typed = answer(question.kind, &raw.frequency, &question.legend)
             .map_err(|refusal| with_question(refusal, id))?;
         answers.insert(id.clone(), typed);
@@ -193,7 +214,8 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
                 json!({
                     "estimator": raw.estimator.label(),
                     "samples": door.samples,
-            "pool_width": door.pool.width(),
+                    "pool_width": door.pool.width(),
+                    "seed_base": raw.seed_base,
                     "seeds": raw.seeds,
                     "resolution": raw.resolution,
                     "refused_draws": raw.refused,

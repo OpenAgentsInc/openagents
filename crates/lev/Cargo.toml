@@ -47,6 +47,10 @@ name = "lev-adapter-check"
 path = "src/bin/lev_adapter_check.rs"
 
 [[bin]]
+name = "lev-seed-sweep"
+path = "src/bin/lev_seed_sweep.rs"
+
+[[bin]]
 name = "lev-render"
 path = "src/bin/lev_render.rs"
 

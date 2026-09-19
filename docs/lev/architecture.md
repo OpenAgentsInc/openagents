@@ -68,6 +68,16 @@ temperature and `N` distinct seeds. The empirical frequency over the option
 set is a distribution.
 
 - It is reproducible, because the seeds are recorded.
+- The seeds are a *block*, not a constant. Block `b` draws
+  `b * N .. b * N + N`, so two blocks never share a seed, and block 0 draws
+  the seeds every recorded number was produced with. The block exists
+  because reproducibility has a cost: a seed reproduces its sample exactly,
+  so rerunning the same seeds is not a second trial, and a comparison that
+  reran them would be calling one measurement two pieces of evidence. A
+  fresh trial is a block nobody has drawn yet. Eight blocks over one suite
+  move accuracy by 2 points and the raw top share by 3, which is the floor
+  under any comparison on this door:
+  [`measurements/2026-09-19-seed-variance.md`](measurements/2026-09-19-seed-variance.md).
 - Its resolution is `1/N`. At `N = 16` the finest distinction the estimator
   can draw is 0.0625, which is coarser than the two decimal places the
   System One contract reports. Either the door reports at the estimator's

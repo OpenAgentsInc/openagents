@@ -124,7 +124,7 @@ fn main() {
             extensions: Extensions::default(),
         };
         let Ok(compiled) = compile(&request) else { continue };
-        let Ok(raw) = l2_pool_adapted(&pool, &compiled["q"], 8, adapter.as_deref()) else {
+        let Ok(raw) = l2_pool_adapted(&pool, &compiled["q"], 8, 0, adapter.as_deref()) else {
             continue;
         };
         // One extra greedy call for the band.
@@ -186,7 +186,8 @@ fn l2_pool_adapted(
     pool: &Pool,
     compiled: &lev::schema::Compiled,
     n: u64,
+    seed_base: u64,
     adapter: Option<&str>,
 ) -> lev::error::Result<lev::estimator::Raw> {
-    lev::estimator::l2_pool_with(pool, compiled, n, adapter)
+    lev::estimator::l2_pool_with(pool, compiled, n, seed_base, adapter)
 }
