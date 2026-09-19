@@ -12,3 +12,14 @@
 //! Conformance fixtures under `fixtures/` are generated from the Python
 //! reference by `fixtures/gen_fixtures.py`; see `docs/kev/` for the
 //! architecture, the measurements, and the port roadmap.
+
+pub mod api;
+pub mod error;
+pub mod render;
+
+pub use api::{
+    Answer, ChoiceAnswer, Meta, NoulAnswer, Question, Record, RecordQuestion, ScoreAnswer,
+    SystemOneRequest, choice_confidence, r2, score_confidence, to_answers, to_record,
+};
+pub use error::{Error, MAX_OPTIONS, Result};
+pub use render::{option_text, render, sanitize};
