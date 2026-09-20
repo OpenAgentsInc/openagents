@@ -1,0 +1,781 @@
+{
+ "schema": "openagents.gym.second_annotation.v1",
+ "suite": "support-v2-three-way",
+ "suite_digest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+ "created": "2026-09-20",
+ "issue": "openagents#9381",
+ "annotator": "A Devin session (an automated coding agent), not a person. The first annotator wrote every stored label; this file records one independent second reading. It says whether the labels are reproducible by a careful reader who did not write them, and nothing about whether they are correct.",
+ "procedure": [
+  "Sample 100 item ids from the calibration and development partitions, stratified by family in the suite's proportions (routing 51, urgency 31, severity 18), with Python's `random.Random(9381)`, then shuffle. The locked partition was not read.",
+  "Write each item's state, question instructions, and criteria to a file with the `truth` field removed, and label every item from that file alone.",
+  "Compare against the stored labels only after all 100 labels were written. No label was changed after the comparison.",
+  "Cohen's kappa per family, over the labels each family uses. `agreement_wilson_95` is a Wilson score interval for the observed agreement, so the ceiling's own uncertainty is beside it: 18 severity items agreeing on all 18 does not establish agreement near 1.0."
+ ],
+ "reading": "Observed agreement is the ceiling a perfect door could reach on that family if the second reader's labels were the truth. Put it beside every accuracy figure for the family. It is a sample estimate from 100 items and one second reader; the intervals say how loose it is.",
+ "families": {
+  "routing": {
+   "items": 51,
+   "agreements": 50,
+   "observed_agreement": 0.9804,
+   "chance_agreement": 0.3345,
+   "cohens_kappa": 0.9705,
+   "agreement_wilson_95": [
+    0.897,
+    0.9965
+   ]
+  },
+  "urgency": {
+   "items": 31,
+   "agreements": 29,
+   "observed_agreement": 0.9355,
+   "chance_agreement": 0.5047,
+   "cohens_kappa": 0.8697,
+   "agreement_wilson_95": [
+    0.7928,
+    0.9821
+   ]
+  },
+  "severity": {
+   "items": 18,
+   "agreements": 18,
+   "observed_agreement": 1.0,
+   "chance_agreement": 0.3395,
+   "cohens_kappa": 1.0,
+   "agreement_wilson_95": [
+    0.8241,
+    1.0
+   ]
+  }
+ },
+ "disagreements": [
+  {
+   "id": "routing/067",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "sales",
+   "agree": false,
+   "note": "A trial is a plan state, so the second reader sent the lockout to the team that owns plans; the stored label reads a lockout after a trial as an account and payment matter. The criteria name neither trials nor account access, so the item sits between two teams."
+  },
+  {
+   "id": "urgency/058",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "no",
+   "agree": false,
+   "note": "The rule says `right now`, and a certificate that expires in three days is not broken yet, so the second reader labelled it `no`; the stored label reads a fixed deadline inside the queue's turnaround as urgent. The rule does not say how an imminent failure counts."
+  },
+  {
+   "id": "urgency/043",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "yes",
+   "agree": false,
+   "note": "The rule says `broken, blocked, or unsafe right now`, and a down test environment blocks the team that uses it, so the second reader labelled it `yes`; the stored label weighs the absence of production impact. The rule does not say whose breakage counts."
+  }
+ ],
+ "labels": [
+  {
+   "id": "routing/023",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "routing/070",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "urgency/007",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "severity/010",
+   "family": "severity",
+   "partition": "calibration",
+   "stored": "0",
+   "second": "0"
+  },
+  {
+   "id": "routing/010",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "urgency/036",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "routing/047",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/005",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "urgency/045",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "urgency/016",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/086",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "severity/013",
+   "family": "severity",
+   "partition": "development",
+   "stored": "1",
+   "second": "1"
+  },
+  {
+   "id": "routing/003",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "routing/066",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/036",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "severity/005",
+   "family": "severity",
+   "partition": "calibration",
+   "stored": "0",
+   "second": "0"
+  },
+  {
+   "id": "routing/002",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "routing/026",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "severity/027",
+   "family": "severity",
+   "partition": "development",
+   "stored": "2",
+   "second": "2"
+  },
+  {
+   "id": "routing/000",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "urgency/011",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/097",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/095",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "routing/050",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "severity/012",
+   "family": "severity",
+   "partition": "development",
+   "stored": "1",
+   "second": "1"
+  },
+  {
+   "id": "routing/006",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "routing/093",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "urgency/032",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "severity/017",
+   "family": "severity",
+   "partition": "development",
+   "stored": "1",
+   "second": "1"
+  },
+  {
+   "id": "urgency/000",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/092",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/067",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "sales"
+  },
+  {
+   "id": "routing/032",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "routing/053",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "severity/002",
+   "family": "severity",
+   "partition": "development",
+   "stored": "0",
+   "second": "0"
+  },
+  {
+   "id": "routing/025",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "severity/018",
+   "family": "severity",
+   "partition": "development",
+   "stored": "1",
+   "second": "1"
+  },
+  {
+   "id": "routing/017",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "routing/082",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "routing/071",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "urgency/056",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "routing/038",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "routing/013",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "urgency/042",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/027",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "urgency/026",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "urgency/048",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/083",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "severity/008",
+   "family": "severity",
+   "partition": "development",
+   "stored": "0",
+   "second": "0"
+  },
+  {
+   "id": "routing/068",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "routing/030",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "urgency/030",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "severity/020",
+   "family": "severity",
+   "partition": "calibration",
+   "stored": "1",
+   "second": "1"
+  },
+  {
+   "id": "urgency/002",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "urgency/053",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "routing/028",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "routing/060",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "severity/033",
+   "family": "severity",
+   "partition": "development",
+   "stored": "2",
+   "second": "2"
+  },
+  {
+   "id": "severity/011",
+   "family": "severity",
+   "partition": "calibration",
+   "stored": "0",
+   "second": "0"
+  },
+  {
+   "id": "urgency/020",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "urgency/058",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "no"
+  },
+  {
+   "id": "routing/072",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "urgency/043",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "yes"
+  },
+  {
+   "id": "severity/015",
+   "family": "severity",
+   "partition": "calibration",
+   "stored": "1",
+   "second": "1"
+  },
+  {
+   "id": "routing/098",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "urgency/050",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "urgency/057",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "routing/052",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/016",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "severity/001",
+   "family": "severity",
+   "partition": "calibration",
+   "stored": "0",
+   "second": "0"
+  },
+  {
+   "id": "urgency/051",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/057",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/055",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/035",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "urgency/017",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "urgency/022",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "routing/081",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/048",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "urgency/003",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/041",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "urgency/040",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "severity/032",
+   "family": "severity",
+   "partition": "development",
+   "stored": "2",
+   "second": "2"
+  },
+  {
+   "id": "urgency/021",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "urgency/001",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/008",
+   "family": "routing",
+   "partition": "development",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "routing/085",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "billing",
+   "second": "billing"
+  },
+  {
+   "id": "routing/042",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/077",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "severity/023",
+   "family": "severity",
+   "partition": "development",
+   "stored": "1",
+   "second": "1"
+  },
+  {
+   "id": "routing/058",
+   "family": "routing",
+   "partition": "development",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "urgency/033",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "routing/020",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "urgency/012",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "severity/035",
+   "family": "severity",
+   "partition": "calibration",
+   "stored": "2",
+   "second": "2"
+  },
+  {
+   "id": "urgency/005",
+   "family": "urgency",
+   "partition": "calibration",
+   "stored": "yes",
+   "second": "yes"
+  },
+  {
+   "id": "routing/090",
+   "family": "routing",
+   "partition": "calibration",
+   "stored": "sales",
+   "second": "sales"
+  },
+  {
+   "id": "routing/022",
+   "family": "routing",
+   "partition": "development",
+   "stored": "technical",
+   "second": "technical"
+  },
+  {
+   "id": "urgency/038",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "no",
+   "second": "no"
+  },
+  {
+   "id": "severity/028",
+   "family": "severity",
+   "partition": "development",
+   "stored": "2",
+   "second": "2"
+  },
+  {
+   "id": "urgency/008",
+   "family": "urgency",
+   "partition": "development",
+   "stored": "yes",
+   "second": "yes"
+  }
+ ]
+}

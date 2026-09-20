@@ -2,7 +2,7 @@
  "schema": "openagents.gym.suite.v1",
  "name": "support-v2-three-way",
  "created": "2026-09-19",
- "description": "The 196 items of support-v2, repartitioned three ways: calibration fits a map, development chooses between maps, and locked is read once and recorded. The items and their labels are unchanged from support-v2; only the partition field differs, so this file carries its own digest and its own name.",
+ "description": "The 196 items of support-v2, repartitioned three ways: calibration fits a map, development chooses between maps, and locked is read once and recorded. The items and their labels are unchanged from support-v2; only the partition field differs, so this file carries its own digest and its own name. A 100-item sample was relabelled by an independent second reader on 2026-09-20 (support-v2-three-way-second-annotator.json); the items the two readers split on are listed under `disputes` rather than relabelled.",
  "tier": "scored",
  "gate": "probability-v2",
  "questions": "support-v2-three-way-v1",
@@ -12,6 +12,28 @@
   "through": "training/lev-adapter/convert.py, which trained every Lev adapter from the support-v2 calibration split before this suite locked 20 of those 98 items; fixed forward on 2026-09-20 (openagents#9399)",
   "successor": "support-v2-unseen"
  },
+ "disputes": {
+  "source": "support-v2-three-way-second-annotator.json",
+  "reading": "Items an independent second reader labelled differently. The stored label stands and the digest is unchanged; a disputed item is either badly written or genuinely arguable, and either way a door's error on it is not distinguishable from the label's. Outside the digest, because it describes the labels rather than changing them.",
+  "items": [
+   {
+    "id": "routing/067",
+    "stored": "billing",
+    "second": "sales"
+   },
+   {
+    "id": "urgency/058",
+    "stored": "yes",
+    "second": "no"
+   },
+   {
+    "id": "urgency/043",
+    "stored": "no",
+    "second": "yes"
+   }
+  ]
+ },
+ "digest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
  "items": [
   {
    "id": "routing/000",
@@ -3285,6 +3307,5 @@
    "truth": "2",
    "partition": "calibration"
   }
- ],
- "digest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9"
+ ]
 }
