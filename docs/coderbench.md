@@ -101,6 +101,44 @@ the other cases that must not grade clean.
 run that ran past its timeout from grading clean because the trace it left
 holds the expected names.
 
+## Tuning: the noise floor first
+
+Use `coderbench tune` when you need to compare repeated episodes rather than
+one episode against a golden:
+
+```sh
+coderbench tune <TASK> [--against <TRACE|DIR>]... [--trace <TRACE|DIR>]... \
+  [--runs N] [--repository DIR] [--coder PATH] [--timeout SECS] [--out DIR]
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--against <TRACE|DIR>` | Adds baseline traces. Repeat the flag for more files or directories. |
+| `--trace <TRACE|DIR>` | Adds recorded candidate traces. Repeat the flag. Nothing runs live. |
+| `--runs N` | Runs the candidate `N` times when `--trace` is absent. The default is `8`. |
+| `--repository <DIR>` | The checkout for live runs. |
+| `--coder <PATH>` | The `coder` binary for live runs. |
+| `--timeout <SECS>` | The timeout for each live run. |
+| `--out <DIR>` | The directory for live traces. |
+
+The command reports the noise floor before it reports a comparison. It
+measures the episode's fault count, steps, seconds, and verified delegations
+across the series. A *persistent* fault appears in every run. An
+*intermittent* fault appears in some runs, so its frequency is part of the
+report. Delegation call IDs change between runs, so the report keys
+delegation faults by their one-based slot.
+
+The verdict comes from `decision-v1` over the series' pass rate. Eight runs on
+either side are below the gate's ten-item floor, so that comparison is
+`unverifiable` by design. The standard error needs at least five passes and
+five non-passes on each side. `coderbench tune` does not write a threshold of
+its own.
+
+Recorded-trace series can compare path faults and trace measurements, but
+they cannot observe the exit code or workspace writes. A live series records
+both facts for every run. No live series has been recorded yet; the first one
+goes here with its command.
+
 ### Observe workspace contents independently
 
 `run` uses bounded `coder-boundary` snapshots of the repository before and

@@ -11,6 +11,7 @@ one [ATIF](../atif) trace.
 ```sh
 coderbench run devin-fan-out-six            # run Coder, capture, judge
 coderbench diff devin-fan-out-six trace.jsonl   # judge a trace you have
+coderbench tune devin-fan-out-six --trace trace.jsonl --against baseline/
 ```
 
 `run` refuses before it starts Coder when the machine does not hold what
