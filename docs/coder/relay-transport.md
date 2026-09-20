@@ -441,8 +441,12 @@ tagged to the worker, every result is tagged to its request and to the
 Coder identity, and every event's content is NIP-44 ciphertext: an answer
 of `5` is 220 bytes on the wire. The six request IDs are the six `job`
 lines in the worker's log and the six `relayed.request` values in the
-trace. No kind `27000` events appear because the executor door produces
-its answer in one piece; the trace records `"feedback": 0` for each.
+trace. That run recorded `"feedback": 0` for each: the executor door
+produced its answer in one piece and nothing crossed before it. A worker
+at or after the fix for the deployed run-8 fault (below) publishes one
+kind `27000` `status: processing` as it admits a delegation, so the
+terminal's 30-second contact wait ends at admission rather than at the
+executor's result, and the trace records `"feedback": 1`.
 
 **Worker-side bound.** The same run with the worker started as
 `CODER_WORKER_JOBS=2`: two jobs admitted and answered, four `declined:

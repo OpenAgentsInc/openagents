@@ -785,6 +785,19 @@ impl Job {
                         "job {label} delegated: {} task, {minutes} min",
                         if writes { "writing" } else { "reading" }
                     );
+                    // An executor answers in one piece, so without this the
+                    // terminal hears nothing until the result. Its contact
+                    // wait is shorter than many executor turns, and a
+                    // silent turn past it reads as an absent worker.
+                    publish(
+                        FEEDBACK_KIND,
+                        json!({
+                            "v": version,
+                            "type": "status",
+                            "status": "processing",
+                        }),
+                    )
+                    .map_err(GenerateError::Stream)?;
                     executor
                         .delegate(prompt, writes, minutes)
                         .await
