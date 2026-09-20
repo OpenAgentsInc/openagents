@@ -1,0 +1,32 @@
+{
+  "$comment": [
+    "The two questions of coder-turns-v1 that a decision reads: classify::route reads `action`, and ShellVerdict::route reads the round's choice, named `shell_outcome` here. Their text is word for word the v1 text, so a row recorded under this set answers the same question as a v1 row and differs only in what else was asked beside it.",
+    "The other five v1 questions are not here on purpose. docs/decision-models/2026-09-20-coder-question-baselines.md measures each against the constant that would replace it on real turns: `damage` is `no` on 55 of 55 rounds, and `needs_code`, `risk`, `progress`, and `useful` are consumed by no decision and score below or level with their majority class. A question nothing reads is a request cost and a privacy cost and buys nothing this suite can measure.",
+    "`risk` is retired rather than reworded. The record proposes the distinction a replacement would have to name, reversible against irreversible and inside the repository against outside it, and the label rule it needs, and it stays out of this set until a harvested suite labels it, because a question chosen by reading is how v1 was chosen.",
+    "This is the set classify.rs should send. Until crates/coder/tests/suite_questions.rs is repointed at it, production still sends coder-turns-v1, and the test that pins production to the file pins it to v1."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "coder-turns-v2",
+  "suite": "coder-turns-v2",
+  "questions": {
+    "action": {
+      "criteria": {
+        "clarify": "Ask one short clarifying question — the request is ambiguous and a wrong answer wastes the turn",
+        "end_conversation": "The user is done: a goodbye, a thanks, or an explicit quit",
+        "none": "No listed step fits: the state does not support a next action",
+        "respond": "Answer the user's message directly — the intent is clear and no code is needed yet"
+      },
+      "instructions": "Based on the conversation so far, what is the single next best step?",
+      "type": "choice"
+    },
+    "shell_outcome": {
+      "criteria": {
+        "pass": "Hand the outputs to the model — they answer the task or move it forward",
+        "retry": "A command failed or missed the point — the model should correct the approach and try again",
+        "stop": "Stop running commands — the outputs show damage, a stuck loop, or nothing left to learn"
+      },
+      "instructions": "These shell commands ran for the user's task. What should the agent do next?",
+      "type": "choice"
+    }
+  }
+}
