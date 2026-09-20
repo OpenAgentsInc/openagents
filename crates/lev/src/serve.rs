@@ -62,7 +62,7 @@ use crate::adapter::Metadata;
 use crate::api::{MAX_CHOICE_OPTIONS, MAX_SCORE_LEVELS, SystemOneRequest, SystemOneResponse, Usage};
 use crate::bridge::Pool;
 use crate::error::{Refusal, RefusalCode};
-use crate::estimator::{Estimator, answer, l2_pool_with};
+use crate::estimator::{Estimator, answer, argmax, l2_pool_with};
 use crate::manifest::{Fault, Manifest};
 use crate::policy::{Clock, Policy};
 use crate::schema::compile;
@@ -672,11 +672,17 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
         // than to the answer keeps one code path: a Noul, a Choice, and a
         // Score all carry a distribution, and only one of them is rescaled
         // correctly by hand.
+        //
+        // The option the door answers with is read from the raw distribution
+        // first, because a map calibrates a fixed answer rather than picking
+        // a new one and a rescale can leave that answer below a runner-up.
+        // `crates/gym/src/calibrate.rs` carries the contract.
+        let selected = argmax(&raw.frequency).map_err(|refusal| with_question(refusal, id))?;
         let distribution = match fitted {
             Some(record) => record.map.apply_distribution(&raw.frequency),
             None => raw.frequency.clone(),
         };
-        let typed = answer(question.kind, &distribution, &question.legend)
+        let typed = answer(question.kind, &distribution, &question.legend, &selected)
             .map_err(|refusal| with_question(refusal, id))?;
         answers.insert(id.clone(), typed);
         if request.extensions.estimator {

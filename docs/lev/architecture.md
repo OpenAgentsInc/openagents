@@ -210,12 +210,21 @@ question types map onto guided generation:
 | Question type | Schema | Answer derived from the distribution |
 | --- | --- | --- |
 | `noul` | a two-value enum, `no` and `yes`, with the criteria text as the value descriptions | `noul = p(yes)` |
-| `choice` | one enum value per criteria key, described by `name` or `name: description` | `choice = argmax`, `probabilities` by option key, `confidence = (p_max − 1/K) / (1 − 1/K)` |
+| `choice` | one enum value per criteria key, described by `name` or `name: description` | `choice = argmax` of the **raw** estimator distribution, `probabilities` by option key, `confidence = (p_choice − 1/K) / (1 − 1/K)`, floored at zero |
 | `score` | one enum value per ordered level description | `score = Σ k · p[k]`, `legend` maps indices to level text, `probabilities` by index |
 
 That table is deliberately identical to kev's. Two implementations of one
 contract should agree on what a question means even when they disagree on
 how to answer it.
+
+The two "raw" qualifications on the `choice` row are the one place the
+implementations can come apart, and only when a calibration map is serving.
+A map rescales the probability of the answer the estimator chose and never
+picks a different one, so a rescale that leaves a runner-up holding the
+larger share changes the number beside the answer rather than the answer.
+kev applies no map, so its argmax is always the raw one.
+[`../gym/measurements/2026-09-19-calibration-and-the-argmax.md`](../gym/measurements/2026-09-19-calibration-and-the-argmax.md)
+carries the contract and the enumeration behind it.
 
 Question ids stay caller-side and never reach the model, the same as both
 other implementations. Structured `state`, `instructions`, and criteria

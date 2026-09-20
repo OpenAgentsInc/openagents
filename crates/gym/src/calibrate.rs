@@ -34,6 +34,41 @@
 //! this module used to carry, is now [`crate::gate`], where a rule has a
 //! digest and a candidate can be the better decision and the worse
 //! probability at once.
+//!
+//! # A map calibrates a fixed answer, and does not choose a new one
+//!
+//! [`Map::apply_distribution`] gives the selected option its calibrated
+//! probability and shares what is left among the rest. It does **not**
+//! guarantee that the selected option still holds the largest number
+//! afterwards, and two documents on `main` disagreed about that until
+//! openagents#9438 enumerated it. The rescaled distribution's own argmax
+//! moves to the runner-up exactly when the calibrated probability falls
+//! below `m / (m + rest)`, where `m` is the largest losing share and `rest`
+//! is all of them together. Because `m` never exceeds `rest`, that threshold
+//! never exceeds one half: a map that reads every signal at or above 0.5
+//! cannot move an argmax whatever the distribution looks like, and a map
+//! with a bin below 0.5 can. [`Map::fit`] produces such a bin whenever fewer
+//! than half the observations in it were right.
+//!
+//! The contract this repository holds is that **the selected option is the
+//! estimator's argmax and a map never replaces it**. A map is fitted on
+//! [`Observation`]s whose `correct` means "the estimator's choice was the
+//! labelled answer", so `fitted` estimates how often that choice is right
+//! and estimates nothing about which other option would be right instead.
+//! The remainder is spread in the estimator's own proportions, which is a
+//! display convention rather than a fitted quantity, and reading a new
+//! answer out of it reads a prediction from a number nobody fitted.
+//!
+//! So every consumer of a rescaled distribution reads the selected option
+//! from [`selected`] rather than from the rescaled distribution's argmax.
+//! A calibrated probability below one half is not a different answer; it is
+//! the same answer, reported as more likely wrong than right, which is what
+//! a caller's refusal threshold is for.
+//!
+//! The other contract — letting the predictor change and recomputing
+//! correctness — is not available over the committed store.
+//! [`crate::row::Row`] carries `correct` and no label, so nothing in a row
+//! can say whether the runner-up was the answer.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -211,11 +246,11 @@ impl Map {
         raw: &IndexMap<String, f64>,
         band: Option<&str>,
     ) -> IndexMap<String, f64> {
-        let Some((winner, top)) = raw.iter().max_by(|a, b| a.1.total_cmp(b.1)) else {
+        let Some((winner, top)) = selected(raw) else {
             return raw.clone();
         };
-        let winner = winner.clone();
-        let calibrated = self.apply_banded(*top, band).clamp(0.0, 1.0);
+        let winner = winner.to_string();
+        let calibrated = self.apply_banded(top, band).clamp(0.0, 1.0);
         rescale(raw, &winner, calibrated)
     }
 
@@ -230,18 +265,42 @@ impl Map {
         self.base_rate
     }
 
-    /// Rescales a whole distribution so the winner carries its calibrated
-    /// probability and the rest share what is left, in their observed
-    /// proportions.
+    /// Rescales a whole distribution so the selected option carries its
+    /// calibrated probability and the rest share what is left, in their
+    /// observed proportions.
+    ///
+    /// The selected option is [`selected`]'s, and it is unchanged by this
+    /// call. It is not always the largest number in what comes back: a
+    /// calibrated probability below `m / (m + rest)` leaves a runner-up
+    /// above it. Read the answer from [`selected`] on the raw distribution,
+    /// never from the argmax of this one. The module documentation carries
+    /// the reasoning.
     #[must_use]
     pub fn apply_distribution(&self, raw: &IndexMap<String, f64>) -> IndexMap<String, f64> {
-        let Some((winner, top)) = raw.iter().max_by(|a, b| a.1.total_cmp(b.1)) else {
+        let Some((winner, top)) = selected(raw) else {
             return raw.clone();
         };
-        let winner = winner.clone();
-        let calibrated = self.apply(*top).clamp(0.0, 1.0);
+        let winner = winner.to_string();
+        let calibrated = self.apply(top).clamp(0.0, 1.0);
         rescale(raw, &winner, calibrated)
     }
+}
+
+/// The option a distribution selects, and the frequency it carries.
+///
+/// This is the estimator's argmax, it is what an [`Observation`]'s `correct`
+/// refers to, and it is what a door answers with. A map rescales its
+/// probability and never replaces it, so this reads the raw distribution
+/// rather than a rescaled one.
+///
+/// Equal leaders resolve to the last of them, which is the option the
+/// estimator listed last rather than one the numbers chose. `None` for an
+/// empty distribution, which is not an answer.
+#[must_use]
+pub fn selected(raw: &IndexMap<String, f64>) -> Option<(&str, f64)> {
+    raw.iter()
+        .max_by(|left, right| left.1.total_cmp(right.1))
+        .map(|(option, top)| (option.as_str(), *top))
 }
 
 /// Gives the winner its calibrated probability and shares what is left among

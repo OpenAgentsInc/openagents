@@ -156,8 +156,14 @@ recorded. The conditions it inherited:
   the middle fails here.
 - **Brier rises by no more than a tenth.** Brier is calibration and
   refinement together. A binned map cannot improve refinement — it is
-  monotone in the raw signal and leaves the argmax alone — so it can only
-  lose a little to binning.
+  monotone in the raw signal, so it cannot re-rank items by confidence — and
+  the answer it scores is fixed, so it can only lose a little to binning.
+
+The second clause used to read "and leaves the argmax alone", which is false
+about the rescaled distribution and true about the answer. The two came apart
+in openagents#9438, and
+[`../gym/measurements/2026-09-19-calibration-and-the-argmax.md`](../gym/measurements/2026-09-19-calibration-and-the-argmax.md)
+carries the contract, the enumeration, and what the gate can and cannot see.
 
 The Brier condition started at zero tolerance and was widened after the first
 run on the 196-item suite, where maps that cut ECE from 0.157 to 0.005 were

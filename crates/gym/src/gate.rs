@@ -13,9 +13,26 @@
 //! thresholds were constants in a function body. One of them, a
 //! Brier tolerance, was widened from zero to a tenth after a run refused
 //! maps that cut ECE from 0.157 to 0.005. The argument for widening is in
-//! `docs/lev/calibration.md` and holds: a binned monotone map leaves the
-//! argmax alone, so it cannot improve refinement and can only lose to
-//! binning, and demanding zero loss rejects real calibration.
+//! `docs/lev/calibration.md` and holds: a binned map is monotone in the raw
+//! signal, so it cannot re-rank items by confidence, it cannot improve
+//! refinement, and it can only lose to binning, and demanding zero loss
+//! rejects real calibration.
+//!
+//! # What this rule cannot see
+//!
+//! A [`Comparison`] carries scores and an item count. Nothing in it
+//! describes the map, so no criterion here reads a fitted table, and
+//! `accuracy_does_not_fall` cannot move: the contract in
+//! [`crate::calibrate`] fixes the answer a map rescales, so the answer's
+//! outcome is the same on both sides by construction. That makes the
+//! accuracy criterion a guard against a candidate *door*, which is the other
+//! thing this rule judges, and vacuous against a candidate map.
+//!
+//! It also means this gate is not what stands between the repository and a
+//! map whose rescale leaves a runner-up holding the larger share. Nothing
+//! committed does that — openagents#9438 enumerated every record against
+//! every row — and the guarantee rests on the consumers naming the selected
+//! option rather than on a verdict here.
 //!
 //! What does not hold is the record. Nothing anywhere says which rule
 //! produced which verdict, so the change is a claim in a commit message.

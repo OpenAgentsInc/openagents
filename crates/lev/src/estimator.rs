@@ -331,15 +331,42 @@ pub fn confidence(probabilities: &IndexMap<String, f64>) -> f64 {
     ((top - uniform) / (1.0 - uniform)).clamp(0.0, 1.0)
 }
 
+/// The same sharpness, read on a named option rather than on the leader.
+///
+/// A calibration map can leave the option the estimator selected holding
+/// less than a runner-up, so "how far the leader stands above uniform" and
+/// "how far the answer stands above uniform" are two numbers. A door reports
+/// the second, and it floors at zero rather than going negative: an answer
+/// below uniform carries no confidence, and there is no such thing as less
+/// than none.
+#[must_use]
+pub fn confidence_in(probabilities: &IndexMap<String, f64>, option: &str) -> f64 {
+    let k = probabilities.len();
+    if k < 2 {
+        return 0.0;
+    }
+    let held = probabilities.get(option).copied().unwrap_or(0.0);
+    let uniform = 1.0 / k as f64;
+    ((held - uniform) / (1.0 - uniform)).clamp(0.0, 1.0)
+}
+
 /// Builds the contract answer from a calibrated distribution.
 ///
 /// The distribution that arrives here has already been through a calibration
 /// map. The derivations are identical to kev's, because two implementations
 /// of one contract should agree on what a question means.
+///
+/// `selected` is the option the estimator chose, read from the **raw**
+/// distribution before any map touched it. A map calibrates how sure a door
+/// is about a fixed answer and never picks a different one, and a rescale
+/// can leave the selected option below a runner-up, so this is passed in
+/// rather than re-derived here. `crates/gym/src/calibrate.rs` carries the
+/// contract.
 pub fn answer(
     kind: Kind,
     probabilities: &IndexMap<String, f64>,
     legend: &IndexMap<String, Value>,
+    selected: &str,
 ) -> Result<Answer> {
     match kind {
         Kind::Noul => {
@@ -349,10 +376,15 @@ pub fn answer(
             Ok(Answer::Noul { noul: yes })
         }
         Kind::Choice => {
-            let choice = argmax(probabilities)?;
+            if !probabilities.contains_key(selected) {
+                return Err(Refusal::new(
+                    RefusalCode::DecodingFailure,
+                    format!("the distribution names no '{selected}'"),
+                ));
+            }
             Ok(Answer::Choice {
-                choice,
-                confidence: confidence(probabilities),
+                choice: selected.to_string(),
+                confidence: confidence_in(probabilities, selected),
                 probabilities: probabilities.clone(),
             })
         }
@@ -383,7 +415,17 @@ pub fn answer(
     }
 }
 
-fn argmax(probabilities: &IndexMap<String, f64>) -> Result<String> {
+/// The option a distribution selects: its argmax, with equal leaders
+/// resolving to the last of them.
+///
+/// This is `gym::calibrate::selected` on the serving side, and the two agree
+/// by construction. A door reads it from the raw estimator distribution.
+///
+/// # Errors
+///
+/// Returns a decoding refusal for an empty distribution, which is not an
+/// answer.
+pub fn argmax(probabilities: &IndexMap<String, f64>) -> Result<String> {
     probabilities
         .iter()
         .max_by(|left, right| left.1.total_cmp(right.1))
@@ -415,7 +457,8 @@ mod tests {
 
     #[test]
     fn a_noul_answer_is_the_probability_of_yes() {
-        let answer = answer(Kind::Noul, &distribution(&[("no", 0.08), ("yes", 0.92)]), &IndexMap::new()).unwrap();
+        let probabilities = distribution(&[("no", 0.08), ("yes", 0.92)]);
+        let answer = answer(Kind::Noul, &probabilities, &IndexMap::new(), "yes").unwrap();
         assert_eq!(answer, Answer::Noul { noul: 0.92 });
     }
 
@@ -426,22 +469,58 @@ mod tests {
         legend.insert("0".to_string(), json!("Calm"));
         legend.insert("1".to_string(), json!("Frustrated"));
         legend.insert("2".to_string(), json!("Very angry"));
-        let Answer::Score { score, .. } = answer(Kind::Score, &probabilities, &legend).unwrap() else {
+        let Answer::Score { score, .. } =
+            answer(Kind::Score, &probabilities, &legend, "2").unwrap()
+        else {
             panic!("expected a Score");
         };
         assert!((score - 1.6).abs() < 1e-12);
     }
 
     #[test]
-    fn a_choice_answer_takes_the_leader() {
+    fn a_choice_answer_takes_the_selected_option() {
         let probabilities = distribution(&[("billing", 0.08), ("technical", 0.85), ("sales", 0.07)]);
+        let selected = argmax(&probabilities).unwrap();
         let Answer::Choice { choice, confidence, .. } =
-            answer(Kind::Choice, &probabilities, &IndexMap::new()).unwrap()
+            answer(Kind::Choice, &probabilities, &IndexMap::new(), &selected).unwrap()
         else {
             panic!("expected a Choice");
         };
         assert_eq!(choice, "technical");
         assert!(confidence > 0.7);
+    }
+
+    #[test]
+    fn a_map_that_sinks_the_selected_option_does_not_change_the_answer() {
+        // The contract in `gym::calibrate`: a map calibrates how sure a door
+        // is about a fixed answer and never picks a different one. The
+        // estimator chose `yes` at 0.8; a map reading that signal at 0.25
+        // leaves `no` holding the larger share of the rescaled distribution,
+        // and the door still answers `yes` — at a confidence of zero, which
+        // is what a caller's refusal threshold reads.
+        let raw = distribution(&[("yes", 0.8), ("no", 0.2)]);
+        let selected = argmax(&raw).unwrap();
+        assert_eq!(selected, "yes");
+
+        let map = gym::calibrate::Map::fit(&[gym::calibrate::Observation::new(0.8, false)], 1);
+        let rescaled = map.apply_distribution(&raw);
+        assert!(rescaled["no"] > rescaled["yes"], "{rescaled:?}");
+
+        let Answer::Choice { choice, confidence, .. } =
+            answer(Kind::Choice, &rescaled, &IndexMap::new(), &selected).unwrap()
+        else {
+            panic!("expected a Choice");
+        };
+        assert_eq!(choice, "yes", "the map rescaled the answer rather than replacing it");
+        assert!((confidence - 0.0).abs() < 1e-12, "confidence was {confidence}");
+    }
+
+    #[test]
+    fn a_choice_for_an_option_the_distribution_does_not_name_refuses() {
+        let probabilities = distribution(&[("billing", 0.6), ("sales", 0.4)]);
+        let refused = answer(Kind::Choice, &probabilities, &IndexMap::new(), "technical")
+            .expect_err("an option nothing scored is not an answer");
+        assert_eq!(refused.code, RefusalCode::DecodingFailure);
     }
 
     #[test]

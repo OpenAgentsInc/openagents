@@ -326,11 +326,24 @@ calibration map, so this signal is uncalibrated by construction. That bounds
 what 0.17 means. It cannot be the explanation, and fitting a map cannot be
 the repair, for a reason that is structural rather than empirical:
 
-`Map::apply_distribution` in `crates/gym/src/calibrate.rs` takes the winning
-option and rescales *its* probability. The winner does not change. And
-`eval::mapped_observations` scores a mapped row with the `correct` flag the
-raw answer produced. A calibration map in this harness moves ECE, Brier, and
-log loss, and moves accuracy by exactly zero.
+`Map::apply_distribution` in `crates/gym/src/calibrate.rs` takes the option
+the estimator selected and rescales *its* probability. The selected option
+does not change, and `eval::mapped_observations` scores a mapped row with the
+`correct` flag the raw answer produced. A calibration map in this harness
+moves ECE, Brier, and log loss, and moves accuracy by exactly zero.
+
+**Corrected on 2026-09-19.** This paragraph originally read "the winner does
+not change", which claimed something stronger and false: the rescaled
+distribution's own argmax moves to the runner-up whenever the calibrated
+probability falls below the runner-up's share of the redistributed
+remainder, which is possible below one half and impossible at or above it.
+The conclusion above survives, and the reason it survives is the contract
+rather than the arithmetic — a map calibrates a fixed answer and never picks
+a different one, so the answer's outcome cannot move and accuracy through a
+map is the raw accuracy. openagents#9438 enumerated both questions, corrected
+the consumers that were reading the rescaled argmax, and recorded the result
+in
+[`../gym/measurements/2026-09-19-calibration-and-the-argmax.md`](../gym/measurements/2026-09-19-calibration-and-the-argmax.md).
 
 A map corrects how sure a door is. Every failure above is a door being sure of
 the wrong thing, and no reliability table repairs that.

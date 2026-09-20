@@ -271,15 +271,25 @@ pub fn observations(rows: &[Row]) -> Vec<Observation> {
 }
 
 /// The same observations with a map applied to each distribution.
+///
+/// The probability is the selected option's, and the selected option is the
+/// raw estimator's argmax — the one [`Row::correct`] is about. It is not the
+/// largest number in the rescaled distribution, which is a different
+/// quantity whenever a map reads a signal below one half: there a runner-up
+/// ends up above the selected option, and pairing its probability with the
+/// selected option's outcome records a wrong answer at a confidence the door
+/// never claimed for it. `crates/gym/src/calibrate.rs` carries the contract
+/// and openagents#9438 the enumeration.
 #[must_use]
 pub fn mapped_observations(rows: &[Row], map: &Map) -> Vec<Observation> {
     rows.iter()
         .filter(|row| row.is_scored())
         .filter_map(|row| {
             let distribution = row.distribution.as_ref()?;
+            let (selected, _) = crate::calibrate::selected(distribution)?;
             let mapped = map.apply_distribution(distribution);
-            let top = mapped.values().copied().reduce(f64::max)?;
-            Some(Observation::new(top, row.correct.unwrap_or(false)))
+            let probability = mapped.get(selected).copied()?;
+            Some(Observation::new(probability, row.correct.unwrap_or(false)))
         })
         .collect()
 }
