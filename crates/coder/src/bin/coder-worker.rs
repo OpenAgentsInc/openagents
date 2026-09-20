@@ -62,8 +62,10 @@
 //! `delegation` object (`writes`, `minutes`) is one bounded task from a
 //! fan-out on the terminal's side; an executor door runs it under its own
 //! approval and boundary with those bounds, and a model door refuses a
-//! writing one rather than answering an edit with prose. Read
-//! [`docs/coder/worker-executor.md`] for that path.
+//! writing one rather than answering an edit with prose. The worker holds
+//! the bound itself too: a run still unanswered thirty seconds past its
+//! stated minutes is refused `timed_out`, so no request is left without
+//! an answer. Read [`docs/coder/worker-executor.md`] for that path.
 //!
 //! Read [`docs/coder/relay-transport.md`] for the proof this binary was
 //! written to make possible.
@@ -103,6 +105,14 @@ const RECONNECT_FLOOR: Duration = Duration::from_secs(1);
 
 /// The longest wait between reconnect attempts.
 const RECONNECT_CEILING: Duration = Duration::from_secs(60);
+
+/// How long past a delegation's stated minutes the worker keeps waiting.
+///
+/// The executor ends the run at the bound and reports that with a code;
+/// this is the margin for it to do so. A run still silent after it is
+/// refused `timed_out` by the worker itself, so the customer hears from
+/// someone either way.
+const DELEGATION_GRACE: Duration = Duration::from_secs(30);
 
 const USAGE: &str = "\
 coder-worker — answer NIP-CJ job requests from a relay.
@@ -428,6 +438,7 @@ impl Worker<'_> {
                         allow: self.options.allow.clone(),
                         publish: self.outgoing.clone(),
                         permit,
+                        grace: DELEGATION_GRACE,
                     };
                     self.tasks.spawn(async move { job.answer(&request).await });
                 }
@@ -466,6 +477,9 @@ struct Job {
     /// A slot under the concurrency bound, or `None` when every slot was
     /// taken at admission and the job is refused `busy`.
     permit: Option<OwnedSemaphorePermit>,
+    /// How long past a delegation's stated minutes to wait before
+    /// refusing it `timed_out`.
+    grace: Duration,
 }
 
 impl Job {
@@ -584,36 +598,66 @@ impl Job {
         // so the bounds it states are applied here, under this worker's
         // approval. A worker with no executor door cannot hold them and
         // says so rather than answering a writing task with prose.
-        let answered = match (&payload["delegation"], &*self.door) {
-            (Value::Object(delegation), Door::Executor(executor)) => {
-                let writes = delegation["writes"].as_bool().unwrap_or(false);
-                let minutes = delegation["minutes"].as_u64().unwrap_or(0);
-                let prompt = payload["task"].as_str().unwrap_or_default();
-                eprintln!(
-                    "job {label} delegated: {} task, {minutes} min",
-                    if writes { "writing" } else { "reading" }
-                );
-                executor
-                    .delegate(prompt, writes, minutes)
-                    .await
-                    .map(|text| (text, None))
+        let minutes = payload["delegation"]["minutes"].as_u64();
+        let answering = async {
+            match (&payload["delegation"], &*self.door) {
+                (Value::Object(delegation), Door::Executor(executor)) => {
+                    let writes = delegation["writes"].as_bool().unwrap_or(false);
+                    let minutes = minutes.unwrap_or(0);
+                    let prompt = payload["task"].as_str().unwrap_or_default();
+                    eprintln!(
+                        "job {label} delegated: {} task, {minutes} min",
+                        if writes { "writing" } else { "reading" }
+                    );
+                    executor
+                        .delegate(prompt, writes, minutes)
+                        .await
+                        .map(|text| (text, None))
+                }
+                (Value::Object(delegation), _) if delegation["writes"].as_bool() == Some(true) => {
+                    Err(GenerateError::Refused {
+                        code: "internal".to_string(),
+                        message: format!(
+                            "this worker answers through {}, which cannot run a writing task; \
+                             it needs an executor door",
+                            self.door.name()
+                        ),
+                    })
+                }
+                _ => {
+                    let instructions = payload["instructions"].as_str().unwrap_or_default();
+                    let input = transcript(&payload);
+                    self.generate(version, instructions, &input, &publish).await
+                }
             }
-            (Value::Object(delegation), _) if delegation["writes"].as_bool() == Some(true) => {
-                return refuse(
-                    version,
-                    "internal",
-                    format!(
-                        "this worker answers through {}, which cannot run a writing task; \
-                         it needs an executor door",
-                        self.door.name()
-                    ),
-                );
+        };
+        // The stated minutes bound the executor; the worker waits that long
+        // plus a grace for the executor's own report, then stops waiting
+        // and says so. Dropping the run ends the executor's process group,
+        // and the customer holds a typed answer rather than a silence it
+        // cannot tell from a worker that went away.
+        let answered = match minutes {
+            Some(minutes) => {
+                let bound = Duration::from_secs(minutes.saturating_mul(60)) + self.grace;
+                match tokio::time::timeout(bound, answering).await {
+                    Ok(answered) => answered,
+                    Err(_) => {
+                        eprintln!(
+                            "job {label} timed out after {} ms",
+                            started.elapsed().as_millis()
+                        );
+                        return refuse(
+                            version,
+                            "timed_out",
+                            format!(
+                                "the job ran past its {minutes} minute bound and this worker \
+                                 stopped waiting for it"
+                            ),
+                        );
+                    }
+                }
             }
-            _ => {
-                let instructions = payload["instructions"].as_str().unwrap_or_default();
-                let input = transcript(&payload);
-                self.generate(version, instructions, &input, &publish).await
-            }
+            None => answering.await,
         };
 
         match answered {
@@ -782,6 +826,23 @@ mod tests {
         allow: Option<Vec<String>>,
         admitted: bool,
     ) -> Value {
+        response_through(
+            Door::Stub(StubGenerate::default()),
+            payload,
+            decline,
+            allow,
+            admitted,
+        )
+        .await
+    }
+
+    async fn response_through(
+        door: Door,
+        payload: Value,
+        decline: Option<&str>,
+        allow: Option<Vec<String>>,
+        admitted: bool,
+    ) -> Value {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let (worker, client, conversation) = identities();
             let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
@@ -796,11 +857,12 @@ mod tests {
             let permit = admitted.then(|| slots.clone().try_acquire_owned().unwrap());
             let job = Job {
                 identity: Arc::new(worker),
-                door: Arc::new(Door::Stub(StubGenerate::default())),
+                door: Arc::new(door),
                 decline: decline.map(str::to_owned),
                 allow,
                 publish,
                 permit,
+                grace: Duration::from_millis(200),
             };
             job.answer(&request).await.unwrap();
             let value = frames.recv().await.unwrap();
@@ -812,6 +874,41 @@ mod tests {
         })
         .await
         .expect("the local worker response must finish")
+    }
+
+    /// A door that never answers: a relay door pointed at a listener that
+    /// accepts the connection and then says nothing, with the connect
+    /// bound set far past the test.
+    fn silent_door() -> (Door, std::net::TcpListener) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let (worker, client, _) = identities();
+        let public = XOnlyPublicKey::from_byte_array(parse_hex(worker.pubkey()).unwrap()).unwrap();
+        let door =
+            coder::relay::RelayDoor::new(url, public, client).connecting(Duration::from_secs(3600));
+        (Door::Relay(Box::new(door)), listener)
+    }
+
+    /// A delegation whose run outlasts its stated minutes plus the grace
+    /// is refused `timed_out` rather than left unanswered.
+    #[tokio::test]
+    async fn a_delegation_that_outruns_its_minutes_is_refused_timed_out() {
+        let (door, _listener) = silent_door();
+        let refused = response_through(
+            door,
+            json!({"v":2,"task":"hello","delegation":{"writes":false,"minutes":0}}),
+            None,
+            None,
+            true,
+        )
+        .await;
+        assert_eq!(refused["type"], "status");
+        assert_eq!(refused["status"], "error");
+        assert_eq!(refused["code"], "timed_out");
+        assert!(
+            refused["message"].as_str().unwrap().contains("0 minute"),
+            "{refused}"
+        );
     }
 
     #[tokio::test]
