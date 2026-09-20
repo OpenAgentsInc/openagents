@@ -22,7 +22,7 @@
 use std::io::Write;
 
 use coder::turn::{self, Completion, Event, Failure};
-use coder::{Agent, ShellEvent};
+use coder::{Agent, Route, ShellEvent};
 use serde_json::json;
 
 use crate::cli::Print;
@@ -72,10 +72,10 @@ pub async fn print(options: Print) -> u8 {
     // something on the machine should say so even when nobody is watching
     // a terminal. Deltas are dropped: the reply lands whole below, and a
     // plan streaming to standard output would corrupt it.
-    let mut events = |event: Event| {
-        if let Event::Shell(ShellEvent::Proposed(proposal)) = event {
-            eprintln!("$ {}", proposal.command);
-        }
+    let mut events = |event: Event| match event {
+        Event::Shell(ShellEvent::Proposed(proposal)) => eprintln!("$ {}", proposal.command),
+        Event::Program(slug) => eprintln!("program → {slug}"),
+        _ => {}
     };
     let finished = turn::run(&mut agent, options.prompt.clone(), &mut events).await;
     agent.finish_trace();
@@ -97,7 +97,8 @@ pub async fn print(options: Print) -> u8 {
                     "reply": finished.reply,
                     "trace": trace,
                     "outcome": finished.completion.word(),
-                    "route": finished.route.word(),
+                    "route": finished.route.as_ref().map(Route::word),
+                    "program": finished.program.as_ref().and_then(|run| run.program.clone()),
                     "usage": usage,
                     "error": Option::<String>::None,
                     "cause": Option::<String>::None,
@@ -126,6 +127,7 @@ fn fail(options: &Print, trace: Option<&str>, why: &Failure) -> u8 {
             "trace": trace,
             "outcome": "failed",
             "route": Option::<String>::None,
+            "program": Option::<String>::None,
             "usage": Option::<String>::None,
             "error": why.reason,
             "cause": why.cause,

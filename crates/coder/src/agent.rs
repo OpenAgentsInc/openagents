@@ -21,6 +21,7 @@ use crate::classify::{
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::permit::Permit;
 use crate::repo::Repo;
+use crate::runtime::{Inputs, Run, Runtime, Selected};
 use crate::shell::{self, Outcome, Reply, ShellEvent};
 use crate::survey::Survey;
 use crate::trace::{Recorder, answers_value};
@@ -183,6 +184,15 @@ impl Agent {
         self
     }
 
+    /// The survey this agent uses, for a caller that already read one.
+    ///
+    /// A test drives a machine it built rather than the one it runs on,
+    /// and handing the survey over is how it says which machine that is.
+    pub fn with_survey(mut self, survey: Survey) -> Self {
+        self.survey = Some(survey);
+        self
+    }
+
     /// What this machine can reach and what it could run, read once and
     /// recorded to the trace the first time anything asks.
     ///
@@ -205,6 +215,56 @@ impl Agent {
         self.survey
             .as_ref()
             .expect("the survey was read a moment ago")
+    }
+
+    /// Whether this turn asks for a program to run, and what running it
+    /// did.
+    ///
+    /// `None` is the ordinary turn, and it is nearly every turn: the
+    /// selection question answered `none`, or there was no way to ask it.
+    /// The caller then does what it has always done, and nothing about the
+    /// turn changes.
+    ///
+    /// The door is the classifier's, so a machine with no
+    /// `TYPESAFE_API_KEY` asks nothing, probes nothing, and answers
+    /// exactly as before. `selected` hears the program's slug before it
+    /// runs, because a fan-out takes minutes and a terminal that said
+    /// nothing until it finished would look wedged.
+    ///
+    /// A refusal from selection is a note in the trace rather than a
+    /// failure. A door that would not answer should cost a turn its
+    /// program, not its reply.
+    pub async fn program(&mut self, selected: &mut (dyn FnMut(&str) + Send)) -> Option<Run> {
+        let door = self.classify.clone()?;
+        let repository = self.repo.as_ref().map(|repo| repo.root().to_path_buf());
+        let survey = self.survey().clone();
+        let runtime = Runtime::using(survey, repository.as_deref()).asking(Some(door));
+        let slug = match runtime.select(&self.task, self.trace.as_mut()).await {
+            Ok(Selected::Program(slug)) => slug,
+            Ok(Selected::None) => return None,
+            Err(refused) => {
+                if let Some(trace) = &mut self.trace {
+                    trace.note(&format!("no program selected: {refused}"));
+                }
+                return None;
+            }
+        };
+        let program = runtime.survey().programs.get(&slug)?.clone();
+        selected(&slug);
+        // Which executor does the work is the survey's answer: the first
+        // capability that is a route here. A machine with none still runs
+        // the program, and the `delegate` step refuses by name rather than
+        // by silence.
+        let survey = runtime.survey();
+        let executor = survey
+            .options()
+            .first()
+            .copied()
+            .or_else(|| survey.capabilities.first())
+            .map(|found| found.capability().to_string())
+            .unwrap_or_default();
+        let inputs = Inputs::read(&self.task, &executor);
+        Some(runtime.run(&program, &inputs, self.trace.as_mut()).await)
     }
 
     /// Where this session is being recorded, when it is.

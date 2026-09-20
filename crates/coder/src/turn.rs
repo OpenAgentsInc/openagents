@@ -8,10 +8,32 @@
 //! the turn lives here and both callers call [`run`].
 //!
 //! What a caller supplies is where the events go. [`Event`] is the same
-//! sequence in both modes: the classify verdict, any judgment line the
-//! door emits, each shell proposal and outcome, and the reply's deltas as
-//! they stream. The terminal draws them; `--print` writes the ones that
-//! belong on standard error and keeps standard output for the reply.
+//! sequence in both modes: the program a turn selected when it selected
+//! one, the classify verdict, any judgment line the door emits, each shell
+//! proposal and outcome, and the reply's deltas as they stream. The
+//! terminal draws them; `--print` writes the ones that belong on standard
+//! error and keeps standard output for the reply.
+//!
+//! # Two things a turn can be
+//!
+//! A turn either **runs a program** or **answers**, and the first question
+//! it asks is which. [`crate::runtime`] runs a program's steps from the
+//! program; this is the path from an operator's sentence to it, and it is
+//! one question: which program does this request ask for, from the ones
+//! this host would run, or **none**.
+//!
+//! Almost every turn answers `none`, and that is the point of the option
+//! rather than an argument against the question. A question that can only
+//! name programs has to name one, and a forced choice is how "what does
+//! `ROUNDS_MAX` do" becomes a fan-out. On `none` the turn proceeds exactly
+//! as it did before this existed: same classify, same route, same reply.
+//!
+//! The two errors here are not the same size. A missed program is a turn
+//! that answers normally, which costs an operator one retry. A program
+//! selected for a request that did not ask for one starts subprocesses
+//! nobody asked for. `docs/decision-models/2026-09-19-program-selection.md`
+//! measures them apart, against the baseline of answering `none` every
+//! time.
 
 use std::sync::Mutex;
 
@@ -19,10 +41,14 @@ use crate::agent::{Agent, Classified};
 use crate::classify::Route;
 use crate::generate::{Meta, Usage};
 use crate::permit::Permit;
+use crate::runtime::Run;
 use crate::shell::ShellEvent;
 
 /// What a turn reports while it runs.
 pub enum Event {
+    /// A program was selected, by slug. The turn runs it instead of
+    /// answering.
+    Program(String),
     /// Classify finished; the verdict, or the note saying why it did not
     /// run.
     Classified(Classified),
@@ -109,14 +135,20 @@ pub struct Finished {
     pub reply: String,
     /// What the turn cost, when the door reports it.
     pub usage: Option<Usage>,
-    /// Where Classify sent the turn.
-    pub route: Route,
+    /// Where Classify sent the turn, and `None` when the turn ran a
+    /// program instead. A turn that runs a program takes no classify
+    /// route, and reporting one it did not take would put a route in the
+    /// record that nothing chose.
+    pub route: Option<Route>,
+    /// The program the turn ran, when it ran one.
+    pub program: Option<Run>,
     /// Whether the agent answered or declined.
     pub completion: Completion,
 }
 
-/// Runs one turn: fold the draft in, classify it, and answer on the route
-/// Classify chose. `event` hears each phase as it happens.
+/// Runs one turn: fold the draft in, ask whether it is a program request,
+/// and either run the program or classify and answer on the route Classify
+/// chose. `event` hears each phase as it happens.
 ///
 /// This is also where the host decides what the turn may do to the
 /// machine. [`Permit::for_route`] reads the route and the operator's
@@ -134,6 +166,15 @@ pub async fn run(
     event: &mut (dyn FnMut(Event) + Send),
 ) -> Result<Finished, Failure> {
     agent.push_user(&draft);
+    // A program request is a different turn, so it is asked first and it
+    // is one question. `none` — nearly every turn — falls straight
+    // through to the turn that was here before.
+    let program = agent
+        .program(&mut |slug| event(Event::Program(slug.to_string())))
+        .await;
+    if let Some(run) = program {
+        return Ok(ran(run));
+    }
     let classified = agent.classify().await;
     event(Event::Classified(classified.clone()));
     let route = match classified {
@@ -198,9 +239,29 @@ pub async fn run(
     result.map(|(reply, usage)| Finished {
         reply,
         usage,
-        route,
+        route: Some(route),
+        program: None,
         completion,
     })
+}
+
+/// The turn a program run comes to.
+///
+/// A program that finished answered, and one that stopped declined: the
+/// run did what it was asked and the answer is that it would not go on.
+/// That is the same distinction `Halt` draws, and a caller reading the
+/// exit code should not have to read the summary to tell them apart.
+fn ran(run: Run) -> Finished {
+    Finished {
+        reply: run.summary(),
+        usage: None,
+        route: None,
+        completion: match run.finished() {
+            true => Completion::Answered,
+            false => Completion::Declined,
+        },
+        program: Some(run),
+    }
 }
 
 #[cfg(test)]
@@ -225,7 +286,38 @@ mod tests {
 
         assert!(skipped);
         assert_eq!(finished.reply, streamed);
-        assert_eq!(finished.route, Route::Respond);
+        assert_eq!(finished.route, Some(Route::Respond));
         assert_eq!(finished.completion, Completion::Answered);
+        assert!(
+            finished.program.is_none(),
+            "a machine with no decision door selects nothing and answers as it always has"
+        );
+    }
+
+    /// With no decision door the turn asks no selection question at all:
+    /// no probe, no call, nothing to report. The ordinary path is the one
+    /// a regression here would break, so it is tested rather than assumed.
+    #[tokio::test]
+    async fn a_turn_without_a_door_never_reaches_selection() {
+        let mut agent = Agent::new(None, Door::Stub(StubGenerate::default()));
+        let mut programs = Vec::new();
+        let finished = run(
+            &mut agent,
+            "Delegate six instances of Devin, one for each of these six read-only questions.\n\
+             - How many crates are there?\n\
+             - What does ROUNDS_MAX do?"
+                .to_string(),
+            &mut |event| {
+                if let Event::Program(slug) = event {
+                    programs.push(slug);
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(programs.is_empty(), "nothing was selected: {programs:?}");
+        assert_eq!(finished.completion, Completion::Answered);
+        assert!(finished.program.is_none());
     }
 }

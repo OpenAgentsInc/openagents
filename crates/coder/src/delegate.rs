@@ -275,18 +275,33 @@ pub struct Task {
 }
 
 impl Task {
+    /// One bounded piece of work, stated in words, saying nothing about
+    /// which file it reads.
+    ///
+    /// The shape an operator's own list gives: a line of the request is a
+    /// task, and the line does not have to name a path. A task that names
+    /// the file it reads says so through [`Task::reading`].
+    #[must_use]
+    pub fn asking(prompt: &str) -> Self {
+        Task {
+            prompt: prompt.to_string(),
+            purpose: "Do one item of the work the request lists.".to_string(),
+            reads: None,
+            expected: None,
+            bounds: Bounds::minutes(5),
+            isolation: Isolation::Directory,
+            writes: false,
+        }
+    }
+
     /// A read-only question about one file, which is the shape the first
     /// task fans out six of.
     #[must_use]
     pub fn reading(prompt: &str, reads: &str) -> Self {
         Task {
-            prompt: prompt.to_string(),
             purpose: format!("Read {reads} and answer one question."),
             reads: Some(reads.to_string()),
-            expected: None,
-            bounds: Bounds::minutes(5),
-            isolation: Isolation::Directory,
-            writes: false,
+            ..Task::asking(prompt)
         }
     }
 

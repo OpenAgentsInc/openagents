@@ -75,6 +75,14 @@ pub const PROGRAM_CALL: &str = "program";
 /// The question set that picks a program.
 pub const PROGRAM_QUESTION: &str = "openagents.program.v1";
 
+/// The option that says the request asks for no program at all.
+///
+/// The wording behind it lives in the question set, beside the wording of
+/// every other option. This is only the slug the host reads the answer
+/// back by. A program resolved under this slug would be unreachable, which
+/// is why [`crate::program::Program::load`] refuses one.
+pub const NO_PROGRAM: &str = "none";
+
 /// The schema a recorded runtime step carries in its `extra`.
 pub const STEP_SCHEMA: &str = "openagents.program-step.v1";
 
@@ -228,6 +236,34 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
     }
 }
 
+/// What the selection question answered.
+///
+/// Two answers rather than one and an error, because "this is not a
+/// program request" is the common case and reading it as a failure would
+/// put the ordinary turn on the error path.
+///
+/// Named apart from [`source::Selection`], which is what a `query` step's
+/// lookup selected. This one is which program runs at all.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Selected {
+    /// The request asks for no program. The caller answers it the way it
+    /// always has.
+    None,
+    /// The request asks for this program, by slug.
+    Program(String),
+}
+
+impl Selected {
+    /// The program this answer names, when it names one.
+    #[must_use]
+    pub fn program(&self) -> Option<&str> {
+        match self {
+            Selected::None => None,
+            Selected::Program(slug) => Some(slug),
+        }
+    }
+}
+
 /// What a run was given: the operator's sentence, the work, and which
 /// capability is to do it.
 #[derive(Clone, Debug)]
@@ -240,6 +276,33 @@ pub struct Inputs {
     pub tasks: Vec<Task>,
     /// The capability slug a `delegate` step hands work to.
     pub executor: String,
+}
+
+impl Inputs {
+    /// What a run gets from the operator's sentence.
+    ///
+    /// The work is the list the sentence carries: one task per bulleted or
+    /// numbered line, in the order it was written. A sentence carrying no
+    /// list supplies no work, and a `query` step reading the request then
+    /// refuses rather than inventing any — a fan-out over work nobody
+    /// named is the failure this whole path is bounded against.
+    ///
+    /// Reading a list is deterministic parsing of a bounded field, which
+    /// `AGENTS.md` allows **after** the semantic route is chosen: the
+    /// program was selected by a decision model before anything here runs,
+    /// and what is read is the shape of a line rather than its meaning.
+    ///
+    /// This is what the `request` source answers with. A `query` step that
+    /// names another source reads that instead, and the sentence supplies
+    /// nothing — see [`crate::source`].
+    #[must_use]
+    pub fn read(request: &str, executor: &str) -> Self {
+        Inputs {
+            request: request.to_string(),
+            tasks: listed(request),
+            executor: executor.to_string(),
+        }
+    }
 }
 
 /// One step, as the run reports it.
@@ -349,8 +412,19 @@ impl Runtime {
     /// so through [`Host`] rather than by pretending.
     #[must_use]
     pub fn open(repository: Option<&Path>, workspace: &Path) -> Self {
+        Self::using(Survey::read(repository, workspace), repository)
+    }
+
+    /// A runtime over a survey the caller already read.
+    ///
+    /// The probe spawns a process per declared capability, so a caller
+    /// holding a survey hands it over rather than paying for a second one.
+    /// A conversation reads its survey once and runs every turn's
+    /// selection against it.
+    #[must_use]
+    pub fn using(survey: Survey, repository: Option<&Path>) -> Self {
         Runtime {
-            survey: Survey::read(repository, workspace),
+            survey,
             questions: questions::Registry::open(&questions::search(repository)),
             door: jev::Client::from_env().ok(),
             repository: repository.map(Path::to_path_buf),
@@ -609,34 +683,56 @@ impl Runtime {
             .find(|step| step.kind == Kind::Delegate)
     }
 
+    /// The programs this host would offer a request, each with the
+    /// summary that describes it.
+    ///
+    /// The ones it resolved **and would admit**. A program this host
+    /// refuses at admission is not a route: offering it puts an option on
+    /// the question whose only possible outcome is a refusal, and a
+    /// shorter option set is the same answer the capability probe gives
+    /// for an executor that is not here. `run-suite` names a check this
+    /// host does not run and `review-changes` names a question set it has
+    /// no wording for, so a machine carrying all four programs offers two.
+    #[must_use]
+    pub fn selectable(&self) -> Vec<(String, String)> {
+        self.survey
+            .programs
+            .programs()
+            .iter()
+            .filter(|program| self.admit(program).is_ok())
+            .map(|program| (program.slug.clone(), program.summary.clone()))
+            .collect()
+    }
+
     /// Asks which program a request wants, from the ones this host
-    /// resolved.
+    /// would run, or none.
     ///
     /// The option set is built from the registry rather than written down,
     /// so an operator whose machine resolved three programs is offered
     /// three. A choice naming nothing the registry holds is refused rather
     /// than guessed at.
     ///
+    /// [`Selected::None`] is an answer and not an error. Almost every
+    /// request asks for no program, and the option that says so is on the
+    /// question rather than in a floor a caller applies to the confidence
+    /// afterwards: a model that can only name programs has to name one.
+    ///
     /// # Errors
     ///
-    /// Returns why no program was selected.
+    /// Returns why the question could not be asked or its answer could not
+    /// be read. A host with no programs, no wording, or no door refuses
+    /// here, and a caller that meant to run a turn runs it unchanged.
     pub async fn select(
         &self,
         request: &str,
         trace: Option<&mut Recorder>,
-    ) -> Result<String, Refused> {
-        let options: Vec<(String, String)> = self
-            .survey
-            .programs
-            .programs()
-            .iter()
-            .map(|program| (program.slug.clone(), program.summary.clone()))
-            .collect();
+    ) -> Result<Selected, Refused> {
+        let options = self.selectable();
         if options.is_empty() {
             return Err(Refused::at(
                 "",
                 "no_programs",
-                "this host resolved no programs, so there is none to select",
+                "this host would run none of the programs it resolved, so there is none to select",
             ));
         }
         let set = self.questions.get(PROGRAM_QUESTION).ok_or_else(|| {
@@ -653,7 +749,7 @@ impl Runtime {
                 &json!({ "request": request }),
                 &Fill::Options(options),
                 trace,
-                |choice| format!("run program {choice}"),
+                |read| format!("program {read}"),
             )
             .await
             .map_err(|reason| Refused::at("", "door_unavailable", reason))?;
@@ -671,8 +767,11 @@ impl Runtime {
                     "the door named no program, and this host will not pick one for it",
                 )
             })?;
+        if choice == NO_PROGRAM {
+            return Ok(Selected::None);
+        }
         match self.survey.programs.get(&choice).is_some() {
-            true => Ok(choice),
+            true => Ok(Selected::Program(choice)),
             false => Err(Refused::at(
                 "",
                 "no_program_chosen",
@@ -753,9 +852,24 @@ impl Runtime {
     }
 
     /// Selects the program a request asks for and runs it.
+    ///
+    /// A request that asks for no program stops here, reported the way any
+    /// other run that did nothing is. A caller that has an ordinary turn to
+    /// fall back on wants [`Runtime::select`] instead, so it can tell
+    /// `none` from a refusal.
     pub async fn apply(&self, inputs: &Inputs, mut trace: Option<&mut Recorder>) -> Run {
         let slug = match self.select(&inputs.request, trace.as_deref_mut()).await {
-            Ok(slug) => slug,
+            Ok(Selected::Program(slug)) => slug,
+            Ok(Selected::None) => {
+                return Run {
+                    stopped: Some(Refused::at(
+                        "",
+                        "no_program_asked",
+                        "the request asks for no program",
+                    )),
+                    ..Run::default()
+                };
+            }
             Err(refused) => {
                 return Run {
                     stopped: Some(refused),
@@ -1118,6 +1232,18 @@ impl Runtime {
         run: &mut Run,
         trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
+        // A step that hands over nothing did not run: it reported "0 of 0
+        // answered" and the program carried on. That is the shape a
+        // wrongly selected program takes when the request listed no work,
+        // and reporting it as a step that ran is how a turn answers with a
+        // summary of nothing.
+        if selection.is_empty() {
+            return Err(Refused::at(
+                &step.name,
+                "no_tasks",
+                "there is no work to hand over, and a delegation of nothing is not a delegation",
+            ));
+        }
         let Some(executor) = self.survey.executor(&inputs.executor) else {
             let state = self
                 .survey
@@ -1276,6 +1402,41 @@ impl Runtime {
     }
 }
 
+/// The work a request lists, one task per list item.
+///
+/// A line counts when it opens with a list marker: `-`, `*`, `•`, `1.`, or
+/// `1)`. Everything else is prose around the list — the sentence that asks
+/// for the fan-out, a closing remark — and none of it becomes work.
+fn listed(request: &str) -> Vec<Task> {
+    request.lines().filter_map(item).map(Task::asking).collect()
+}
+
+/// The text of one list item, or `None` when the line is not one.
+fn item(line: &str) -> Option<&str> {
+    let line = line.trim();
+    let rest = match line.strip_prefix(['-', '*', '•']) {
+        Some(rest) => rest,
+        None => {
+            // A number, then the punctuation that ends it. Three digits is
+            // room for more items than any bound here admits.
+            let digits = line.len() - line.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            if digits == 0 || digits > 3 {
+                return None;
+            }
+            line[digits..].strip_prefix(['.', ')'])?
+        }
+    };
+    // The marker has to be a marker rather than the start of a word:
+    // `*args` is prose and `- do the thing` is an item.
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    match rest.trim() {
+        "" => None,
+        text => Some(text),
+    }
+}
+
 /// The state a plan question reads: named fields rather than a sentence,
 /// so a question can point at the tasks directly.
 ///
@@ -1365,5 +1526,67 @@ fn read_of(response: &jev::SystemOneResponse, gate: &str) -> String {
         Some(Answer::Noul(noul)) => format!("{gate} {:.2}", noul.noul),
         Some(Answer::Score(score)) => format!("{gate} {:.2}", score.score),
         None => format!("{} answers", response.answers.len()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The work is the list the sentence carries, in the order it was
+    /// written, and the prose around it is not work.
+    #[test]
+    fn a_request_supplies_its_task_list() {
+        let inputs = Inputs::read(
+            "Delegate six instances of Devin, one for each of these read-only questions.\n\
+             \n\
+             1. How many crates are in this workspace?\n\
+             2) What does ROUNDS_MAX do?\n\
+             - Which kinds does NIP-PRG define?\n\
+             * How many estimators does lev have?\n\
+             \n\
+             Report back when they are all in.",
+            "devin-local",
+        );
+
+        assert_eq!(inputs.tasks.len(), 4, "four items, not six lines of prose");
+        assert_eq!(
+            inputs.tasks[0].prompt,
+            "How many crates are in this workspace?"
+        );
+        assert_eq!(inputs.tasks[3].prompt, "How many estimators does lev have?");
+        assert_eq!(inputs.executor, "devin-local");
+        assert!(
+            inputs.tasks.iter().all(|task| !task.writes),
+            "a listed task reads unless something else says otherwise"
+        );
+    }
+
+    /// A sentence with no list supplies no work. The `query` step refuses
+    /// rather than inventing any, which is what keeps a wrongly selected
+    /// program from fanning out over something nobody named.
+    #[test]
+    fn a_request_with_no_list_supplies_no_work() {
+        for request in [
+            "What does ROUNDS_MAX do?",
+            "Delegate six instances of Devin.",
+            "*args is how Python spells it",
+            "2026 was the year",
+            "-",
+        ] {
+            let inputs = Inputs::read(request, "devin-local");
+            assert!(inputs.tasks.is_empty(), "{request:?} listed no work");
+        }
+    }
+
+    /// The selection is a slug or nothing, and a caller can ask which
+    /// without matching on prose.
+    #[test]
+    fn a_selection_names_a_program_or_none() {
+        assert_eq!(Selected::None.program(), None);
+        assert_eq!(
+            Selected::Program("delegate-fan-out".to_string()).program(),
+            Some("delegate-fan-out")
+        );
     }
 }

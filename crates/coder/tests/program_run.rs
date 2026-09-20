@@ -24,7 +24,8 @@ use coder::questions;
 use coder::runtime::{Host, Inputs, Runtime};
 use coder::survey::Survey;
 use coder::trace::Recorder;
-use coder::{Delegation, Task};
+use coder::turn::{self, Completion, Event};
+use coder::{Agent, Delegation, Door, Repo, Route, StubGenerate, Task};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -164,6 +165,13 @@ fn manifest(root: &Path) -> String {
 /// than corrected, because the program must not depend on it and the test
 /// is where that is shown.
 async fn door() -> String {
+    door_choosing("delegate-fan-out").await
+}
+
+/// The same door, answering the selection question with a program of the
+/// caller's choosing — `none` included, which is what almost every turn
+/// gets.
+async fn door_choosing(program: &'static str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address: SocketAddr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -195,7 +203,7 @@ async fn door() -> String {
                         continue;
                     }
                     let asked: Value = serde_json::from_str(body).unwrap_or(Value::Null);
-                    let reply = answers(&asked).to_string();
+                    let reply = answers(&asked, program).to_string();
                     let _ = socket
                         .write_all(
                             format!(
@@ -217,7 +225,7 @@ async fn door() -> String {
 
 /// What the stub door answers, read off the question ids the request
 /// carries.
-fn answers(asked: &Value) -> Value {
+fn answers(asked: &Value, program: &str) -> Value {
     let questions = asked.get("questions").and_then(Value::as_object);
     let asked_about = |id: &str| questions.is_some_and(|questions| questions.contains_key(id));
     if asked_about("program") {
@@ -225,7 +233,7 @@ fn answers(asked: &Value) -> Value {
             "model": "kev-latest",
             "answers": {"program": {
                 "type": "choice",
-                "choice": "delegate-fan-out",
+                "choice": program,
                 "confidence": 0.83,
                 "probabilities": {
                     "delegate-fan-out": 0.87,
@@ -234,6 +242,24 @@ fn answers(asked: &Value) -> Value {
                     "run-suite": 0.0
                 }
             }}
+        });
+    }
+    // Classify's own questions, for the turns that reach it: a program
+    // request never does, and every other turn does.
+    if asked_about("action") {
+        return json!({
+            "model": "kev-latest",
+            "answers": {
+                "action": {
+                    "type": "choice",
+                    "choice": "respond",
+                    "confidence": 0.9,
+                    "probabilities": {"respond": 0.9, "clarify": 0.06, "end": 0.02, "none": 0.02}
+                },
+                "needs_code": {"type": "noul", "noul": 0.2},
+                "risk": {"type": "score", "score": 0.0, "confidence": 0.9, "legend": {}},
+                "progress": {"type": "score", "score": 1.0, "confidence": 0.8, "legend": {}}
+            }
         });
     }
     if asked_about("independent") {
@@ -1081,6 +1107,147 @@ async fn an_answer_below_the_floor_stops_the_program() {
     assert_eq!(stopped.step, "independence");
     assert_eq!(stopped.code, "below_floor");
     assert!(run.delegations.is_empty());
+}
+
+/// The sentence an operator types for a fan-out: the request, and the
+/// work it carries, one item per line.
+fn sentence() -> String {
+    let mut request = String::from(
+        "Delegate six instances of Devin, one for each of these six read-only questions.\n",
+    );
+    for (prompt, _, _) in QUESTIONS {
+        request.push_str(&format!(
+            "- {prompt} Answer with the value and nothing else.\n"
+        ));
+    }
+    request
+}
+
+/// An agent over the scratch machine, asking a door that selects
+/// `program`, and generating from the stub.
+async fn agent(root: &Path, program: &'static str) -> Agent {
+    let client = jev::Client::new(
+        jev::Config::new()
+            .api_key("ts-test-key")
+            .base_url(door_choosing(program).await)
+            .default_model("kev-latest"),
+    )
+    .expect("the stub door builds a client");
+    Agent::new(Some(client), Door::Stub(StubGenerate::default()))
+        .with_repo(Repo::discover(root))
+        .with_survey(Survey::read(Some(root), root))
+}
+
+/// The operator's sentence reaches the runtime, through the turn the
+/// terminal and `coder --print` both run.
+///
+/// This is the seam the whole path was missing: everything under it was
+/// exercised by the tests above and by nothing a person typed.
+#[tokio::test]
+async fn a_sentence_runs_the_program_through_a_turn() {
+    let machine = machine();
+    let root = machine.path();
+    let mut agent = agent(root, "delegate-fan-out").await;
+
+    let mut selected: Vec<String> = Vec::new();
+    let finished = turn::run(&mut agent, sentence(), &mut |event| {
+        if let Event::Program(slug) = event {
+            selected.push(slug);
+        }
+    })
+    .await
+    .expect("the turn finished");
+
+    assert_eq!(selected, ["delegate-fan-out"], "the terminal was told");
+    let run = finished.program.expect("the turn ran a program");
+    assert_eq!(run.program.as_deref(), Some("delegate-fan-out"));
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert_eq!(
+        run.step_names(),
+        ["select", "independence", "admit", "fan_out", "accept"]
+    );
+    assert_eq!(run.delegations.len(), 6, "one per item of the list");
+    assert_eq!(finished.reply, run.summary());
+    assert_eq!(finished.completion, Completion::Answered);
+    assert_eq!(
+        finished.route, None,
+        "a turn that ran a program took no classify route, and says so"
+    );
+}
+
+/// `none` is the answer almost every turn gets, and on `none` the turn is
+/// the turn it was before any of this existed: classified, routed,
+/// answered by Generate.
+#[tokio::test]
+async fn a_turn_that_asks_for_no_program_is_unchanged() {
+    let machine = machine();
+    let root = machine.path();
+    let mut agent = agent(root, "none").await;
+
+    let mut selected: Vec<String> = Vec::new();
+    let mut streamed = String::new();
+    let finished = turn::run(
+        &mut agent,
+        "What does ROUNDS_MAX do?".to_string(),
+        &mut |event| match event {
+            Event::Program(slug) => selected.push(slug),
+            Event::Delta(delta) => streamed.push_str(&delta),
+            _ => {}
+        },
+    )
+    .await
+    .expect("the turn finished");
+
+    assert!(selected.is_empty(), "nothing was selected: {selected:?}");
+    assert!(finished.program.is_none());
+    assert_eq!(finished.route, Some(Route::Respond));
+    assert_eq!(finished.completion, Completion::Answered);
+    assert_eq!(
+        finished.reply, streamed,
+        "Generate answered, as it always has"
+    );
+}
+
+/// A program selected for a request that carries no work stops at the
+/// lookup, and nothing is delegated.
+///
+/// This is the structural half of the false-positive bound: the wrong
+/// program on an ordinary turn costs a reply, not six subprocesses,
+/// because the fan-out runs over the work the request lists and an
+/// ordinary turn lists none.
+#[tokio::test]
+async fn a_program_chosen_for_a_request_with_no_work_delegates_nothing() {
+    // Both shapes a wrong selection takes: the program that looks the work
+    // up first, and the one that hands it straight over. Hosted Jev picked
+    // the second one for two of thirty-one real turns, so this is the case
+    // the measurement found rather than one imagined for a test.
+    for (program, step) in [
+        ("delegate-fan-out", "select"),
+        ("answer-question", "answer"),
+    ] {
+        let machine = machine();
+        let root = machine.path();
+        let mut agent = agent(root, program).await;
+
+        let finished = turn::run(
+            &mut agent,
+            "What does ROUNDS_MAX do?".to_string(),
+            &mut |_| {},
+        )
+        .await
+        .expect("the turn finished");
+
+        let run = finished.program.expect("the door named a program");
+        let stopped = run.stopped.expect("there was no work to do");
+        assert_eq!(stopped.step, step, "{program} stopped at the wrong step");
+        assert_eq!(stopped.code, "no_tasks");
+        assert!(run.delegations.is_empty(), "nothing was spawned");
+        assert_eq!(
+            finished.completion,
+            Completion::Declined,
+            "a run that stopped declined, and the exit code says so"
+        );
+    }
 }
 
 /// The live check: the repository's own program, its own capability

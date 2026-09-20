@@ -179,6 +179,16 @@ impl Program {
         if !is_slug(&self.slug) {
             return Err(format!("slug {:?} is not a program slug", self.slug));
         }
+        // The selection question answers `none` when a request asks for no
+        // program, so a program under that slug could be chosen and never
+        // reached. Refusing the file is better than resolving a program
+        // nothing can select.
+        if self.slug == crate::runtime::NO_PROGRAM {
+            return Err(format!(
+                "slug {:?} is the answer that means no program, so a program under it could never be selected",
+                self.slug
+            ));
+        }
         if self.steps.is_empty() {
             return Err("a program with no steps describes no work".to_string());
         }

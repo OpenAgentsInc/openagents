@@ -48,6 +48,7 @@ No answer becomes context for another.
 | How any of these numbers were produced | [`lev/measurements/`](lev/measurements/) |
 | Whether a Score's ordering means anything, door by door | [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) |
 | What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
+| What the newest production question costs, and what it buys | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) |
 
 ## The rule this directory keeps
 
@@ -74,6 +75,7 @@ that compares them lives here, so it does not have to be written three times.
 | [`2026-09-19-frozen-embedding-baseline.md`](2026-09-19-frozen-embedding-baseline.md) | What frozen sentence embeddings plus logistic regression do against the doors we trained: it beats Lev and Kev on the one family it can serve, loses to hosted Jev, and refuses half the suite. |
 | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) | `crates/coder`'s own question set, scored on real turns from recorded sessions rather than on authored support-desk items: what the workload looks like, what each question is worth against a constant, which door can afford ten-kilobyte states, and the four thresholds checked. |
 | [`2026-09-19-restatement-and-polarity.md`](2026-09-19-restatement-and-polarity.md) | Whether a door can repeat a fact its state asserts, on four doors over a factorial panel: hosted Jev answers all 128, `kev-4b` gives a proposition and its negation the same probability, and every local door passes delegation plans that collide. Also why the recorded call in `devin-fan-out-six` does not replay. |
+| [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) | The question every turn now asks — which program, or none. Its baseline and headroom before its accuracy, its false positives and false negatives counted apart because they cost different amounts, and where the error mass sits. |
 
 ## Other implementations
 

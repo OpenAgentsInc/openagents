@@ -78,7 +78,12 @@ uses, and marks which are implemented and which are only specified.
   `program`, `questions`, and `source` read `capabilities/`, `programs/`,
   `questions/`, and `sources/`, so what a machine can reach is probed
   rather than hardcoded, and `runtime` runs a program's steps from the
-  program. `docs/programs.md` covers all five. The crate's second binary,
+  program. The turn reaches it by asking which program a request wants, or
+  **none**, which is nearly every turn and leaves the turn unchanged;
+  `docs/decision-models/2026-09-19-program-selection.md` is that question's
+  baseline, headroom, and error rates, counted apart because a missed
+  program costs a retry and a spurious one runs a program nobody asked for.
+  `docs/programs.md` covers all five. The crate's second binary,
   `coder-worker`, is the other end of the relay door: it answers NIP-CJ
   job requests from a relay through an Open Responses door.
   `docs/coder/relay-transport.md` is the measured proof that the two ends

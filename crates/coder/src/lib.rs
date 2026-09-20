@@ -64,7 +64,7 @@ pub use permit::Permit;
 pub use program::Program;
 pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
-pub use runtime::{Enforcement, Host, Inputs, Refused, Run, Runtime};
+pub use runtime::{Enforcement, Host, Inputs, Refused, Run, Runtime, Selected};
 pub use shell::{NotAPlan, Outcome, Plan, Proposal, Reply, ShellEvent, Status};
 pub use source::{Selection, Work};
 pub use survey::Survey;

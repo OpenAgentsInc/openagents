@@ -123,9 +123,12 @@ A set fills in exactly two things at run time, and both are bounded fields
 chosen after the route was:
 
 - A Choice question declaring `"options": "supplied"` takes its options
-  from the run. The program-selection question's options are the programs
-  this host resolved, which is how an operator without an executor gets a
-  shorter option set rather than a broken one.
+  from the run, beside any it declares itself. The program-selection
+  question's options are the programs this host would admit, which is how
+  an operator without an executor gets a shorter option set rather than a
+  broken one, plus the `none` the file declares. An option whose wording is
+  the same on every host belongs in the set, where the digest covers it;
+  only the slugs and summaries come from the run.
 - A set declaring `per_requirement` is a template. The host asks it once
   per requirement and writes the requirement's name into the instructions,
   because a set of identical questions under different identifiers gives a
@@ -298,6 +301,18 @@ a delegation request" would join them: nearly always no, and a question that
 is nearly always the same answer is a latency cost with a false-positive
 risk.
 
+The turn asks one anyway, because nothing else reaches the runtime from an
+operator's sentence, and it does join them — measured rather than assumed in
+[`decision-models/2026-09-19-program-selection.md`](decision-models/2026-09-19-program-selection.md).
+On 32 real turns the constant scores 0.969 and hosted Jev scores 0.938,
+which is the warning above coming true. What the measurement adds is the
+shape of the error: **no program request was missed**, three ordinary turns
+in 35 were answered with a program, every one of those involved
+`answer-question` rather than `delegate-fan-out`, and none of them ran
+anything, because a program cannot fan out over work the request did not
+name. Read that report before changing the question, the option set, or the
+programs' summaries.
+
 Nor is keyword matching available, and not only because `AGENTS.md` forbids
 it for intent routing. The reference's own capability search ranks a query
 against a name and description by bag-of-words overlap — the one place a
@@ -344,6 +359,13 @@ consequence instead of where it is 39-to-1 constant.
 
 **None of these is "should I delegate?"** The operator said to delegate. The
 engine's job is admission and safety.
+
+The one question that *is* asked before the operator's sentence is read as
+work — which program, or none — is the one the turn needs to reach a program
+at all, and it is measured with the same suspicion:
+[the program-selection report](decision-models/2026-09-19-program-selection.md)
+publishes its baseline and headroom before its accuracy, and counts the two
+errors apart.
 
 ## The honest risk
 
@@ -423,10 +445,10 @@ refusals, and each one stops the rest.
 
 | Kind | What the runtime does |
 | --- | --- |
-| `query` | Resolves the source the step names, orders the answer, enforces the order the work declares, and holds it to `max_results` — truncating or refusing, as `on_overflow` says. A step naming no source reads the work the request carried. |
+| `query` | Resolves the source the step names, orders the answer, enforces the order the work declares, and holds it to `max_results` — truncating or refusing, as `on_overflow` says. A step naming no source reads the work the request carried, which for a turn is the list the operator's sentence writes out. |
 | `decide` | Puts the named question set to a decision door and records `openagents.decision-call.v1`, with the set's identifier and digest beside the answer. |
 | `check` | Runs the admission test the `refuse_on` bound names. |
-| `delegate` | Hands the work to the executor the capability probe resolved, at the width, isolation, and wall bound the step states. |
+| `delegate` | Hands the work to the executor the capability probe resolved, at the width, isolation, and wall bound the step states. A step with nothing to hand over refuses rather than reporting that none of nothing answered. |
 
 ### Admission has three answers, not two
 
@@ -472,13 +494,36 @@ seconds summed, and was also six of six with no faults: the wall clock is
 the slowest delegate and the executor is not fast twice in a row. Run it
 yourself with the command in `crates/coder/tests/program_run.rs`.
 
+### How a sentence reaches it
+
+`coder::turn::run` asks the selection question before it classifies. A
+program answer runs the program; `none` falls straight through to the turn
+that was there before. Three rules hold the path together:
+
+- **The option set is the programs this host would admit.** `Runtime::admit`
+  already refuses a program whose bounds or steps this host cannot keep, so
+  offering one as an option would put a choice on the question whose only
+  outcome is a refusal. On this repository that leaves `delegate-fan-out`
+  and `answer-question`; `run-suite` names a check this host does not run
+  and `review-changes` names a question set it has no wording for.
+- **The work the request carries is the list the sentence writes out.** One
+  task per bulleted or numbered line, in the order written. That is what the
+  `request` source reads, and a `query` step naming a file source reads a
+  burndown instead. Reading a list is deterministic parsing of a bounded
+  field, which is allowed once the semantic route has been chosen — and the
+  route was chosen by a decision model one step earlier.
+- **A step with nothing to work on refuses.** A lookup that found no work
+  and a `delegate` step with nothing to hand over both stop the program.
+  That is what bounds a wrong selection: an ordinary turn writes out no
+  list, so a program chosen for one declines instead of running.
+
+Three live episodes have taken the path from a sentence, the first in 25.6
+seconds: six delegations, six correct answers, and nothing on the path that
+`coderbench run devin-fan-out-six` calls a fault. What the grade still
+cannot see is in [`coderbench.md`](coderbench.md).
+
 ### What the runtime does not do yet
 
-- **Reach itself from an operator's sentence.** The call site is still a
-  caller in Rust. The `select` step can now find work — it resolves a named
-  source, orders it, bounds it, and records what it dropped — so what is
-  left is the turn calling the runtime rather than the runtime having
-  nothing to look work up in.
 - **Read a source that is not a file.** Both sources are reads. An
   executable source is where a lookup would reach a tracker directly, and it
   waits on the trust boundary and subprocess bounds in
@@ -500,9 +545,8 @@ yourself with the command in `crates/coder/tests/program_run.rs`.
    conflicted. This is harvestable from history: pairs of issues that were
    worked in parallel, and whether their branches collided.
 4. **The program, as a host-driven call site**, with every step recorded in
-   the trace. **The runtime is landed** — see [The runtime](#the-runtime) —
-   and what remains is reaching it from the operator's request rather than
-   from a caller in Rust.
+   the trace. **Landed**, and reached from the operator's sentence — see
+   [How a sentence reaches it](#how-a-sentence-reaches-it).
    [#9400](https://github.com/OpenAgentsInc/openagents/issues/9400) puts
    decision calls in ATIF's `extra`, which is where the evidence for step 3
    comes from next time.

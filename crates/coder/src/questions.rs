@@ -17,9 +17,14 @@
 //! Two things, and nothing else:
 //!
 //! - A Choice question declaring `"options": "supplied"` gets its options
-//!   from the run. The program-selection question's options are the
-//!   programs this host resolved, which is how an operator without an
-//!   executor gets a shorter option set rather than a broken one.
+//!   from the run, **beside the ones it declares itself**. The
+//!   program-selection question's options are the programs this host would
+//!   admit, which is how an operator without an executor gets a shorter
+//!   option set rather than a broken one, plus the `none` the file
+//!   declares, which is the answer almost every turn has. An option whose
+//!   wording is the same on every host belongs in the set, where it is
+//!   digested with the rest of the wording; only the slugs and summaries
+//!   the host resolved come from the run.
 //! - A set declaring `per_requirement` is a template: the host makes one
 //!   question per requirement and writes the requirement's name into the
 //!   instructions, because a set of identical questions asked under
@@ -144,6 +149,14 @@ impl Set {
             {
                 return Err(format!(
                     "question {id:?} asks for {options:?} options, and this host supplies only {SUPPLIED:?}"
+                ));
+            }
+            if question
+                .get("criteria")
+                .is_some_and(|criteria| !criteria.is_object())
+            {
+                return Err(format!(
+                    "question {id:?} declares criteria that are not an option set, and the run's options would replace them"
                 ));
             }
         }
@@ -360,6 +373,12 @@ pub fn is_question_id(id: &str) -> bool {
 }
 
 /// One question with whatever the run supplies written in.
+///
+/// The criteria the question declares stay, and the run's options join
+/// them. A declared option is one whose wording is the same on every host
+/// — `none` on the program-selection question — so it belongs in the set
+/// and inside the set's digest rather than in whichever caller happened to
+/// build the option list.
 fn filled(id: &str, question: &Value, fill: &Fill) -> Result<Value, String> {
     let Some(SUPPLIED) = question.get("options").and_then(Value::as_str) else {
         return Ok(question.clone());
@@ -374,15 +393,15 @@ fn filled(id: &str, question: &Value, fill: &Fill) -> Result<Value, String> {
     }
     let mut body = question.as_object().cloned().unwrap_or_default();
     body.remove("options");
-    body.insert(
-        "criteria".to_string(),
-        Value::Object(
-            options
-                .iter()
-                .map(|(name, description)| (name.clone(), json!(description)))
-                .collect::<Map<String, Value>>(),
-        ),
-    );
+    let mut criteria: Map<String, Value> = body
+        .get("criteria")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for (name, description) in options {
+        criteria.insert(name.clone(), json!(description));
+    }
+    body.insert("criteria".to_string(), Value::Object(criteria));
     Ok(Value::Object(body))
 }
 
@@ -469,6 +488,10 @@ mod tests {
             body.get("options").is_none(),
             "the marker does not go on the wire"
         );
+        assert!(
+            body["criteria"]["none"].is_string(),
+            "the option the set declares survives the run's fill: {body}"
+        );
 
         // A run with nothing to offer asks nothing rather than asking an
         // empty choice, which a door cannot answer.
@@ -536,6 +559,10 @@ mod tests {
             (
                 r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"choice","options":"fetched"}}}"#,
                 "supplies only",
+            ),
+            (
+                r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"choice","options":"supplied","criteria":["none"]}}}"#,
+                "not an option set",
             ),
         ] {
             let set: Set = serde_json::from_str(body).unwrap();

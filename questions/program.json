@@ -2,13 +2,16 @@
   "v": 1,
   "id": "openagents.program.v1",
   "name": "Which program applies",
-  "summary": "Picks the program a request asks for, from the ones this host resolved.",
+  "summary": "Picks the program a request asks this host to run, from the ones it resolved, or none.",
   "gate": "program",
   "questions": {
     "program": {
       "type": "choice",
-      "instructions": "Which program does this request ask for?",
-      "options": "supplied"
+      "instructions": "Which program does this request ask this machine to run? Almost every request asks for none: a question to answer, an instruction to follow, a remark to reply to. Answer none unless the request asks for the work one of the other options describes.",
+      "options": "supplied",
+      "criteria": {
+        "none": "This request asks for no program. It is an ordinary turn - a question, an instruction, or a remark - and the agent answers it itself."
+      }
     }
   }
 }

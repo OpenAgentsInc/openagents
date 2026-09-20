@@ -1,0 +1,113 @@
+{
+  "$comment": [
+    "The labels for program-selection-v1, written before any door was asked and committed so they can be argued with. Every label here is a reading, so every item carries label_source `author`.",
+    "The rule: a request is labelled with a program when it asks this machine to run that program's work, and `none` otherwise. `delegate-fan-out` is a request to hand several pieces of work to other sessions at once. `answer-question` is a request to hand one question about the repository to an executor. Everything else is `none`, including questions the agent answers itself, instructions it carries out itself, work it does in a worktree of its own, and remarks about delegation that do not ask for any.",
+    "`turn/…` items are real turns, taken from coder-turns-v1's `action` family, which harvested them from coding-agent sessions on this repository. Their ids and partitions are the ones that suite gave them, its locked partition included: the split is inherited rather than rolled again, and the locked items are labelled here and scored by nothing. A label is not a spend; asking a door is.",
+    "`authored/…` items are written, not harvested. They exist because real traffic holds almost no program requests, so nothing else would say whether the question recognises one when it sees one. They are evidence about recognition and not about prevalence, and the report keeps the two apart.",
+    "Two labels sit on the same gap and both read `none`: turn/1d845d65#23 (`task to subagent maybe`) and turn/9b37638d#9 (`have a subagent add support for glm 5.3 flash`). Each hands one implementation task to another session, and this host has no program for that — `answer-question` answers a question and writes nothing. `none` is the only truthful answer while that is so, and a door that answers `answer-question` is reading the request rather than misreading it."
+  ],
+  "labels": {
+    "turn/1c164c1c#0": "none",
+    "turn/1d845d65#0": "none",
+    "turn/1d845d65#1": "none",
+    "turn/1d845d65#10": "none",
+    "turn/1d845d65#12": "none",
+    "turn/1d845d65#13": "none",
+    "turn/1d845d65#14": "none",
+    "turn/1d845d65#16": "delegate-fan-out",
+    "turn/1d845d65#17": "none",
+    "turn/1d845d65#18": "none",
+    "turn/1d845d65#19": "none",
+    "turn/1d845d65#20": "none",
+    "turn/1d845d65#21": "none",
+    "turn/1d845d65#22": "none",
+    "turn/1d845d65#23": "none",
+    "turn/1d845d65#24": "none",
+    "turn/1d845d65#25": "none",
+    "turn/1d845d65#26": "none",
+    "turn/1d845d65#27": "none",
+    "turn/1d845d65#28": "none",
+    "turn/1d845d65#3": "none",
+    "turn/1d845d65#4": "none",
+    "turn/1d845d65#5": "none",
+    "turn/1d845d65#6": "none",
+    "turn/1d845d65#7": "none",
+    "turn/1d845d65#8": "none",
+    "turn/1d845d65#9": "none",
+    "turn/5a07e23a#0": "none",
+    "turn/5a07e23a#1": "none",
+    "turn/9b37638d#0": "none",
+    "turn/9b37638d#18": "none",
+    "turn/9b37638d#20": "none",
+    "turn/9b37638d#23": "none",
+    "turn/9b37638d#25": "none",
+    "turn/9b37638d#27": "none",
+    "turn/9b37638d#3": "delegate-fan-out",
+    "turn/9b37638d#4": "none",
+    "turn/9b37638d#7": "none",
+    "turn/9b37638d#8": "none",
+    "turn/9b37638d#9": "none"
+  },
+  "authored": [
+    {
+      "id": "authored/fan-out-six-questions",
+      "truth": "delegate-fan-out",
+      "request": "Delegate six instances of Devin, one for each of these six read-only questions.\n- How many `pub struct` declarations are in crates/atif/src/document.rs?\n- What are the three partition names in the Partition enum in crates/gym/src/suite.rs?\n- What are the variant names of the Estimator enum in crates/lev/src/estimator.rs?\n- How many distinct kev checkpoints are named in docs/kev/model-cards.md?\n- Which single Nostr event kind number does nips/openagents/NIP-PRG.md define?\n- What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs?"
+    },
+    {
+      "id": "authored/fan-out-top-issues",
+      "truth": "delegate-fan-out",
+      "request": "take the top six open issues and hand each one to its own agent, six at once"
+    },
+    {
+      "id": "authored/fan-out-listed-work",
+      "truth": "delegate-fan-out",
+      "request": "fan these out to separate sessions, one each:\n- update the readme\n- fix the clippy warnings in crates/gym\n- bump the jev version"
+    },
+    {
+      "id": "authored/fan-out-per-crate",
+      "truth": "delegate-fan-out",
+      "request": "spin up a session per crate and have each one report what its tests actually cover"
+    },
+    {
+      "id": "authored/fan-out-max-parallel",
+      "truth": "delegate-fan-out",
+      "request": "delegate all of those to subagents in parallel, max parallelization"
+    },
+    {
+      "id": "authored/answer-one-file",
+      "truth": "answer-question",
+      "request": "have an agent read crates/gym/src/suite.rs and tell me what the partitions are"
+    },
+    {
+      "id": "authored/answer-one-question",
+      "truth": "answer-question",
+      "request": "hand this one question to Devin: how many pub structs are in crates/atif/src/document.rs"
+    },
+    {
+      "id": "authored/answer-rounds-max",
+      "truth": "answer-question",
+      "request": "get a delegate to answer what ROUNDS_MAX is set to"
+    },
+    {
+      "id": "authored/about-the-program",
+      "truth": "none",
+      "request": "what does the delegate-fan-out program do?"
+    },
+    {
+      "id": "authored/do-it-yourself",
+      "truth": "none",
+      "request": "don't delegate this, do it yourself: add the gym alias to ~/.zshrc"
+    },
+    {
+      "id": "authored/about-the-last-run",
+      "truth": "none",
+      "request": "how many delegations did the last fan-out start, and how many answered?"
+    },
+    {
+      "id": "authored/ordinary-question",
+      "truth": "none",
+      "request": "What does ROUNDS_MAX do?"
+    }
+  ]
+}

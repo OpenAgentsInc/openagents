@@ -306,6 +306,58 @@ runs. The task manifest gained `requires.capabilities_refuse` for it, and a
 manifest under NIP-CAP should say what its executor declines as well as what
 it cannot enforce.
 
+## The first run Coder drove
+
+On 2026-09-19 the episode ran from a sentence for the first time.
+`coderbench run devin-fan-out-six` drove `coder -p` against a checkout at
+the pinned base, and the turn — not a shell script — probed the machine,
+read the registry, asked which program the request wanted, and ran it. The
+first run, step by step:
+
+| Step | What it did |
+| --- | --- |
+| `program` | `delegate-fan-out` at 0.96, with `none` at 0.02 |
+| `task_select` | 6 of 6 tasks, read from the list the request carries |
+| `independence` | `independent` 0.95, clearing the 0.7 floor |
+| `admit` | `minutes` kept by `devin-local`, the rest by the host |
+| `fan_out` | 6 of 6 answered at a width of 6 |
+| `accept` | 6 answers, one per requirement |
+
+It ran three times: 25.6 seconds, then 52.9 after the host's execution
+permit landed, then 214.0 against 932.6 seconds of summed agent time on a
+machine running several agents at once. The wall clock is the slowest
+delegate and the executor is not fast twice in a row. All three took the
+same path and answered all six questions the same way — `5`, the three
+partition names, `L1, L2, L3`, `4`, `30182`, `3`.
+
+**Nothing on the path is a fault.** Every decision the task names was asked
+and held its predicate, every check ran, the workspace is unchanged, and the
+session ended `answered`.
+
+The grade is `unverifiable`, and the reason is worth reading rather than
+working around. [#9418](https://github.com/OpenAgentsInc/openagents/issues/9418)
+made a delegation count only when the trace says it completed, says it was
+correct, and holds an answer somebody checked. **A task read out of an
+operator's sentence carries no expected answer**, so `Delegation::correct`
+is `None` and six delegations record nothing either way. The six answers
+were right; nothing in the run establishes that, which is exactly what the
+grade says.
+
+So the observed golden still needs one thing, and it belongs to
+[#9412](https://github.com/OpenAgentsInc/openagents/issues/9412): where the
+expected answers come from when the request does not carry them. The
+program already asks — the `accept` step puts one Noul per requirement to a
+decision door and got 0.74 to 0.83 — and the grader reads `correct` rather
+than that answer. Either the manifest checks the recorded outputs itself or
+the acceptance decision becomes the evidence; the two are different claims
+and the golden should say which one it rests on.
+
+One smaller thing changed with this run: the task's sentence now carries its
+six questions. The `select` step names the `request` source, and the request
+carries the list the sentence writes out — a task manifest that wants its
+work found instead can name a file source. The staged golden's directive is
+the older one-line version.
+
 ## What is not tested yet
 
 The six tasks are independent **by construction** — each reads a different

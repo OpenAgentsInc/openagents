@@ -100,6 +100,7 @@ object:
   "trace": "/Users/you/.openagents/traces/20260919T142233Z-4f1a9c02.atif.jsonl",
   "outcome": "answered",
   "route": "respond",
+  "program": null,
   "usage": { "input_tokens": 812, "output_tokens": 24 },
   "error": null,
   "cause": null,
@@ -110,6 +111,14 @@ object:
 The keys are always present. `reply`, `route`, and `usage` are null when
 the turn did not finish; `error`, `cause`, and `refusal` are null when it
 did. A script parses one thing.
+
+`program` is the slug of the program the turn ran, and null on an ordinary
+turn — which is nearly every turn. A turn that runs a program takes no
+classify route, so `route` is null there and the two fields are never both
+set. The reply is the run's summary: which steps ran, how many delegations
+answered, and where it stopped if it stopped. Progress goes to standard
+error as `program → <slug>`, printed when the program is selected rather
+than when it finishes, because a fan-out takes minutes.
 
 ## Why a turn did not finish
 
@@ -162,7 +171,7 @@ put the plan's JSON in the middle of the answer.
 | --- | --- |
 | `0` | The turn finished and the agent answered. |
 | `1` | The turn did not finish. The door failed, or a named trace could not be opened. |
-| `2` | The turn finished and the router declined it — Classify halted, and the answer is that there is no confident next step. |
+| `2` | The turn finished and declined it — Classify halted, or a program the turn ran stopped at a step that refused. Either way the answer is that there is no confident next step. |
 | `64` | The command line was wrong. |
 
 Declining is not failing. A turn that ran correctly and concluded it has no
@@ -186,7 +195,8 @@ success.
 ## One turn, in one place
 
 Headless mode is not a second agent loop. Both modes call
-`coder::turn::run`, which classifies, routes, answers, and records; the
+`coder::turn::run`, which asks which program the request wants, runs it or
+classifies, routes, answers, and records; the
 terminal turns its events into scrollback lines and `--print` turns them
 into standard error. A turn written twice is two turns that drift, and the
 drift would be invisible: an episode judged from a headless run would be

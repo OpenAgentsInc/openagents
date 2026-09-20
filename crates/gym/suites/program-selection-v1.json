@@ -1,0 +1,641 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "program-selection-v1",
+ "created": "2026-09-19",
+ "description": "Requests, asked which program they want, in the state shape coder::runtime::select sends: one field, the operator's sentence. `turn/…` items are real turns, reused from coder-turns-v1's `action` family, partitions and all; `authored/…` items are written, because real traffic holds almost no program requests and nothing harvested would say whether the question recognises one. Every label is a reading and says so. The two sources are never pooled without saying which is which, and the false-positive and false-negative rates are reported apart: a missed program costs a retry and a spurious one runs a program nobody asked for.",
+ "tier": "scored",
+ "gate": "probability-v1",
+ "questions": "program-selection-v1",
+ "sampling": {
+  "turns": 40,
+  "authored": 12,
+  "locked": 8
+ },
+ "items": [
+  {
+   "id": "turn/1c164c1c#0",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "look at 01a04b8e-6bdd-7f93-b3ab-e6996bc3187a , ~/.grok session, most recent messages, i need u to continue it"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#0",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "Read AGENTS.md then everything in docs/ and crates/ about jev and kev, and all open issues, summarize here"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#1",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "Look deeply through the commit history of this repo, and ~/work/psionic, for everything about Apple FM --- we are going to define a \"Lev\" (AppleV get it) similar to Kev but using Apple FM. Go look thoroughly then create new docs alongside the Jev/Kev docs for Lev defining all this, and proposed issues in a roadmap doc I can review, commit alla nd push. Do this on fresh worktree off remote main to not interfere with other agent doing the open issues"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#10",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": " i have no new agreements to sign. i see no download link at all. maybe because i already downloaded it, look elsewhere on this computer now"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#12",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "we don't care about non-english. not a priority. maybe WAY later. measure english only, disregard the rest"
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#13",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "issue 9363 \"\n\n<pasted_content id=\"ec0e\">\nThe known weak point\n</pasted_content id=\"ec0e\">\n\n\" part is stale"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#14",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "ok, keep going, keep updating that issue w comments"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#16",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "Build the Gym. Make issues for the issues and do them. I want a ratatui TUI for the Gym just like the Coder Terminal. Prepare to move all this optimization work of Jev/Kev/Lev into the gym ASAP, make issues for all of it and then delegate it all, max parallelization."
+   },
+   "truth": "delegate-fan-out",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#17",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "look in ~/.zshrc note how coderdev starts coder, add alias for 'gym' booting that in dev similarly"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#18",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "keep going"
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#19",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "organize all docs re jev kev lev into a new folder docs/classifiers/ or name u choose, move all docs in to that. then make a new research folder for stuff to look into, one being htis post - \n\n<pasted_content id=\"ec0e\">\nyou can make any open source model behave like jev with just a bit of inference engineering.  \n\nit's shockingly easy. to prove it, we built a new endpoint we're calling deepseek-v4.1-flash-jev. see the demo below. here's how it's done:\n\nsglang (an inference engine) offers a scoring endpoint in addition to the normal generation one. in scoring mode, given an input & set of possible answers, it forces the model to produce probabilities for each one. example:\n\n> input: what is most common letter in abcccde?\n> possible answers: a, b, c\n> output: (c, 0.9), (b, 0.0.5), (a, 0.05)\n\ngetting the above behavior instead of streamed output is as simple as using sglang's /v1/score endpoint instead of /generate. there's just one other trick required.\n\nfor deepseek, you have to add a closing think tag before the response. this forces a direct answer instead of  a reasoning trace. if you want reasoning, you can do that too, but imo that makes things too slow to be worth it.\n\ndsv4.1 flash is not as good as jev, but if we had enough spare compute to experiment with this same approach for a larger model then i think the decision quality would be at least as good, if not better.\n\nalso, somewhat unrelated, i think decision-making models kill all prospecting & sourcing work. i would have absolutely killed to have jev or similar when i was recruiting \n@mintlify\n. absolutely incredible.\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://github.com/skeptrunedev/jev-recruiter\n</pasted_content id=\"ec0e\">\n\n - look thru that, see what should inform our stuff - updat eall docs and push"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#20",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "another for this - \n\n<pasted_content id=\"ec0e\">\nhttps://x.com/JoshKuechly/status/2101156721074774115\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\n\nJσsh\n@JoshKuechly\nJev is great at zero-shot classification, but specialist classifiers will dominate commercial use cases. \n\n@trycua\n  tuned a tiny model that scored 99.7% on their form-filling eval.  Hosted Jev scored 83.6%.  \n\nI tuned GLiNER 2.5 on a task in 51 minutes yesterday and it crushes Jev.  And it's local.  And 8.8x faster:\n\nYou too can do this.  Linked post in comments.\n</pasted_content id=\"ec0e\">\n\n -  - - \n\n<pasted_content id=\"ec0e\">\nJev from \n@typesafeai\n is great, but way overhyped.  \n\nI fine-tuned an open-weight model on my Mac that beats Jev by almost 10pp, and is 8x faster.\n\nIt took less than an hour and runs on my local CPU.  Yes, it's task-specific.  Meaning it doesn't beat Jev on every task.  But that's ok:\n\nJev is pretty good at zero-shot general classification, but a quick fine-tuning run allows GLiNER 2.5 (open weights, built by \n@fastinoAI\n) to beat it on a specific task as a specialized classifier.\n\nIn this experiment, I tested default GLiNER 2.5 vs Jev vs Fine-tuned GLiNER 2.5 on the Banking77 benchmark from \n@huggingface\n.  \n\nDefault GLiNER 2.5 trailed Jev by ~9pp, despite being 10x faster. \n\nAfter fine-tuning GLiNER 2.5 on ~10k training samples (this took about 51 minutes on my M4 Max), I retested.\n\nFine-tuned GLiNER 2.5 gained ~18pp of classifying accuracy on the task, beating Jev by ~9pp. \n\nI'm betting that while Jev thrives as an easy plug-and-play endpoint for non-recurring classification tasks, most teams shipping to production will just take a little bit of time of front to fine-tune open-weight classifiers for tasks.  \n\nIf you can spend an hour fine-tuning to get:\n- 8-10x speed boost\n- 10pt accuracy lift\n- AND it can run locally on your hardware?  \n\nThat seems like a no-brainer.  \n\nSo yes, \n@rileybrown\n, it seems like you can fine-tune  your own \"jev\" on your data :)\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://x.com/JoshKuechly/status/2100709039613100112\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://github.com/fastino-ai/GLiNER2#-training-custom-models\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://huggingface.co/fastino/gliner2.5-base-v1\n</pasted_content id=\"ec0e\">\n"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#21",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "what do u think about this - [Image #4] [Image #5]"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#22",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "sure write it"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#23",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "look deeply thru ~/work/psionic and ~/work/coder and this repo's commit history for everything mentioning DSPy/GEPA and make a doc in docs/ about it and what we might want to do with it in what we're doing now, Gym etc  - and push - task to subagent maybe"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#24",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "consider our Gym and Jev/Kev/Lev stuff holistically and tell me what are the next, highest-impact things we hsuold do that we havent already planned to do"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#25",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "thanks, open github issues for all of those things"
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#26",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "i want to see if that programs as weight arguments is similar to the plugin system we've designed, look thru ~/work/coder on that"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#27",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "tell me the status of all open issues"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#28",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "you"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#3",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "allow maximum work. get it all to full PARITY NOW. CONTINUE,"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#4",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "go"
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#5",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "\n\n<pasted_content id=\"ec0e\">\nDo the adapter issue now. Set up the full testing environment.\n\nI know that their framework is Python only, I don't care. Get that in this repo in the appropriate place. Get it working, train an adapter, get to showing an improvement over the base model, and document the full process, and then close the outstanding issues.\n</pasted_content id=\"ec0e\">\n"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#6",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "doit now"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#7",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "\n\n<pasted_content id=\"ec0e\">\nWhere do I download the training toolkit?\n</pasted_content id=\"ec0e\">\n"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#8",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "\n\n<pasted_content id=\"ec0e\">\nI logged into that website. Now, where the hell do I go? And what do I do?\n</pasted_content id=\"ec0e\">\n"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/1d845d65#9",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "\n\n<pasted_content id=\"ec0e\">\nNothing is clickable in that toolkit table.\n</pasted_content id=\"ec0e\">\n"
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/5a07e23a#0",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "Read ~/.codex convo codex://threads/019efbcb-9de7-71a2-bd1c-73d678e80a4c just the most recent so u see how to transcribe. in ~/Downloads/Coder Cloud Launch, Dollar An Hour Agents.mp4 i want u to do a good HD video for X frmo that, starting from 0:54 seconds in to the end."
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/5a07e23a#1",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "yes 276.md, title Coder Cloud, push to forge and github"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#0",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "Read docs/coder/autoimprove.md and everything in this repo and ~/work/openagents.com, summarize here"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#18",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "give me a msg for that agent doing those, proceed on allf ronts just dont touch those issues"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#20",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "confirm Flash and Free (no Auto or Pro) for first versions, yes"
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#23",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "update the handoff doc with al lthat, yes wait for current deploy to finish and ill have the next agent do the deploy. ensure it knows EVERYTHING about the process to manage it, and the single-target and 7-target binary deploys - and push"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#25",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "weatch its change first"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#27",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "ensure handoff / runbook docs are fully updfated then stop"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#3",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "ok please work on all of those, starting w 116 and 118 to subagents and then max parallelization"
+   },
+   "truth": "delegate-fan-out",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#4",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "yes commit and push to main thx"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#7",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "we removed loadseed from these versions, delete that stuff"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#8",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "wrap up work on the open opteimizer issues, like finish up current issues, dont start new subagents or issues unless youre fnishing current work, dont start new issues"
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "turn/9b37638d#9",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "i need you to have a subagent add support for glm 5.3 flash - we sohuld have z.ai stuff already in openrouter or vercel gateway --- > ## Documentation Index\n> Fetch the complete documentation index at: https://docs.z.ai/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# GLM-5.3-Flash\n\n<Tip>\n  GLM-5.3-Flash is now fully available on the [GLM Coding Plan](https://z.ai/subscribe). With native multimodal capabilities and 3× the quota, it delivers a smoother and more cost-effective coding experience.\n</Tip>\n\n## Model Overview\n\nGLM-5.3-Flash is the first native multimodal model in the GLM-5 series, delivering stronger intelligence than GLM-5.2 while maintaining an exceptionally cost-efficient architecture.\n\n* **Highly Efficient Hybrid Architecture**\n\nGLM-5.3-Flash has 320B total parameters, with 18B activated parameters. It is the first open-source frontier model to adopt a hybrid architecture combining sparse attention and linear attention. This architecture significantly reduces computational and serving costs while maintaining precise long-context capabilities. Compared with GLM-5.3, it reduces attention computation and KV cache size by 3.01× and 4.44×, respectively.\n\n* **Native Multimodal Visual Coding**\n\nVisual capabilities are natively integrated into the coding loop, enabling the model to actively observe interfaces, rendered results, and interaction feedback, and continuously test and improve its work accordingly. From frontend development and game creation to Blender 3D scenes and real-world environment operation driven by BUA and CUA, the model can seamlessly coordinate tasks across code, browsers, and graphical user interfaces.\n\n* **A Professional Work Partner Beyond Coding**\n\nGLM-5.3-Flash further extends its capabilities to a wide range of professional workflows, including Office tasks, financial research, and professional document processing. It can autonomously break down complex objectives, invoke the appropriate tools, and review and optimize its outputs, completing end-to-end workflows from research and analysis and model building to delivering finished PPTX, PDF, DOCX, and XLSX files.\n\n[↗ blog](https://z.ai/blog/glm-5.3-flash)\n\n## How to Use\n\n#### **Model API**\n\n**Model Code**：`glm-5.3-flash`\\\n**API Documentation**：[Chat Completion API](https://docs.z.ai/api-reference/introduction)\\\n**Parameter Settings**：Text parameters are consistent with GLM-5.3, with support for a 1M-token context window.\\\n**Image Parameters**：Add a content block with `type: image_url` to` messages[].content[]`, and pass the image URL (recommended) or a Base64 Data URL through `image_url.url`. Multiple images can be added by including multiple `image_url` content blocks.\\\n**Recommended Settings**： `temperature: 1`, `top_p: 0.95`, and `reasoning_effort: max`. `thinking.type` only supports `enabled`; we recommend setting `thinking.clear_thinking: false`. For streaming requests, we recommend enabling both stream: true and `tool_stream: true`.\n\n#### **GLM Coding Plan**\n\nNow fully available, GLM-5.3-Flash can be used with your preferred tools, with 3× the available quota compared with GLM-5.3.\\\nThe new GLM Coding Plan adopts a points-based quota system with transparent usage limits. Model calls made during off-peak hours, including all day on weekends, consume only 50% of the standard points.\\\nSubscribe now: [Personal Plan](https://z.ai/subscribe?plantype=individual)、[Team Plan.](https://z.ai/subscribe?plantype=team)。\n -- go try to get this working with coder i want to see glm 5.3 flash added as the default model"
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/fan-out-six-questions",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "Delegate six instances of Devin, one for each of these six read-only questions.\n- How many `pub struct` declarations are in crates/atif/src/document.rs?\n- What are the three partition names in the Partition enum in crates/gym/src/suite.rs?\n- What are the variant names of the Estimator enum in crates/lev/src/estimator.rs?\n- How many distinct kev checkpoints are named in docs/kev/model-cards.md?\n- Which single Nostr event kind number does nips/openagents/NIP-PRG.md define?\n- What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs?"
+   },
+   "truth": "delegate-fan-out",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/fan-out-top-issues",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "take the top six open issues and hand each one to its own agent, six at once"
+   },
+   "truth": "delegate-fan-out",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/fan-out-listed-work",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "fan these out to separate sessions, one each:\n- update the readme\n- fix the clippy warnings in crates/gym\n- bump the jev version"
+   },
+   "truth": "delegate-fan-out",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/fan-out-per-crate",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "spin up a session per crate and have each one report what its tests actually cover"
+   },
+   "truth": "delegate-fan-out",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/fan-out-max-parallel",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "delegate all of those to subagents in parallel, max parallelization"
+   },
+   "truth": "delegate-fan-out",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/answer-one-file",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "have an agent read crates/gym/src/suite.rs and tell me what the partitions are"
+   },
+   "truth": "answer-question",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/answer-one-question",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "hand this one question to Devin: how many pub structs are in crates/atif/src/document.rs"
+   },
+   "truth": "answer-question",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/answer-rounds-max",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "get a delegate to answer what ROUNDS_MAX is set to"
+   },
+   "truth": "answer-question",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/about-the-program",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "what does the delegate-fan-out program do?"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/do-it-yourself",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "don't delegate this, do it yourself: add the gym alias to ~/.zshrc"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/about-the-last-run",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "how many delegations did the last fan-out start, and how many answered?"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  },
+  {
+   "id": "authored/ordinary-question",
+   "family": "program",
+   "kind": "choice",
+   "state": {
+    "request": "What does ROUNDS_MAX do?"
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+  }
+ ],
+ "digest": "7b66bc4ce8336de2092cb03b92242ac47d5073fb6d86dd4573f1bb98ea3c8a17"
+}

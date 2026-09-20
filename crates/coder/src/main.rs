@@ -135,6 +135,8 @@ enum Work {
     Shell(ShellEvent),
     /// A reply delta streamed in.
     Delta(String),
+    /// A program was selected; the turn runs it instead of answering.
+    Program(String),
     /// The turn ended; the reply text and usage are final.
     Finished(Result<(String, Option<Usage>), String>),
 }
@@ -321,6 +323,7 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
             TurnEvent::Judgment(line) => Work::Judgment(line),
             TurnEvent::Shell(shell) => Work::Shell(shell),
             TurnEvent::Delta(delta) => Work::Delta(delta),
+            TurnEvent::Program(slug) => Work::Program(slug),
         };
         let _ = sender.try_send(work);
     })
@@ -497,6 +500,10 @@ async fn run(
                                 app.push_detail("  ", format!("shell → {line}"));
                             }
                         }
+                    }
+                    Work::Program(slug) => {
+                        app.push_detail("  ", format!("program → {slug}"));
+                        app.status = format!("running {slug}");
                     }
                     Work::Delta(delta) => app.pending.push_str(&delta),
                     Work::Finished(Ok((text, usage))) => {
