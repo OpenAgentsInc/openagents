@@ -190,10 +190,14 @@ which vulnerability it is.** There is no premature `done` to catch, no loop
 to break, and no round to save.
 
 **A completion gate does not help, because the agent's answer passes its own
-check.** This is the shape of failure our own measurements keep producing:
-the adapter that got more accurate and more confidently wrong; the specialist
-that emitted a default answer on 36 of 41 out-of-catalogue items at mean
-confidence 0.974; the compiled adapters wrong at 0.97 to 1.00.
+check.** This is the shape of failure our own measurements keep producing: the
+specialist that emitted a default answer on 36 of 41 out-of-catalogue items
+at mean confidence 0.974, and the compiled adapters wrong at 0.97 to 1.00.
+
+Our own adapter is no longer an example of it. That claim rested on
+confident errors rising from one to nine, and #9376 has since measured the
+count's own spread: it runs 6, 6, 10, 4, 4, 10, 6, 4 on an **unchanged**
+door. The rise was inside the noise.
 
 There is one hypothesis worth stating and not believing yet: that a
 *verifier* question — *does the reported CWE match the code path shown?* —
