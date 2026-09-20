@@ -18,6 +18,7 @@ use std::sync::Mutex;
 use crate::agent::{Agent, Classified};
 use crate::classify::Route;
 use crate::generate::{Meta, Usage};
+use crate::permit::Permit;
 use crate::shell::ShellEvent;
 
 /// What a turn reports while it runs.
@@ -117,6 +118,12 @@ pub struct Finished {
 /// Runs one turn: fold the draft in, classify it, and answer on the route
 /// Classify chose. `event` hears each phase as it happens.
 ///
+/// This is also where the host decides what the turn may do to the
+/// machine. [`Permit::for_route`] reads the route and the operator's
+/// setting into one execution intent, and nothing the model writes
+/// afterward widens it. Both the terminal and `--print` call this
+/// function, so both get the same answer to that question.
+///
 /// # Errors
 ///
 /// Returns the [`Failure`] the door failed with. The turn did not finish,
@@ -148,6 +155,7 @@ pub async fn run(
             agent
                 .turn(
                     route == Route::Clarify,
+                    Permit::for_route(&route),
                     &mut |delta| {
                         if let Ok(mut sink) = sink.lock() {
                             sink(Event::Delta(delta.to_string()));

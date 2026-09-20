@@ -1,12 +1,14 @@
 # The shell loop
 
-How a Coder turn touches its environment: the model proposes commands,
-the terminal runs them, Classify judges the round, and the model reads
-the outputs. Classify and Generate decide together what a command means —
-the same two-stage split as the turn itself, applied one level down.
+How a Coder turn touches its environment: the host decides whether this
+turn runs commands, the model proposes some, the terminal runs them,
+Classify judges the round, and the model reads the outputs. Classify and
+Generate decide together what a command means — the same two-stage split
+as the turn itself, applied one level down. What neither of them decides
+is whether anything runs at all.
 
-Status: implemented in `crates/coder` (`shell.rs`, `agent.rs::turn`,
-`classify.rs` shell questions).
+Status: implemented in `crates/coder` (`permit.rs`, `shell.rs`,
+`agent.rs::turn`, `classify.rs` shell questions).
 
 ## Why a loop, not a tool call
 
@@ -34,14 +36,50 @@ and nothing else:
 }
 ```
 
+- The whole reply is the plan: one JSON object, or one fenced
+  ```` ```json ```` block and nothing else, for models that insist on
+  decorating. A sentence before or after the fence makes the reply prose
+  whatever the fence holds, which is what makes an example an example.
+- `v` says which schema the reply speaks, and this host runs version `1`.
+  A reply that asks for commands under another version, or under none, is
+  refused rather than read as far as it happens to parse.
 - `commands` carries 1–10 entries; each has a `command` (`sh -c` text)
-  and a `why` the terminal displays and the judge reads.
-- A fenced ```` ```json ```` block parses the same way, for models that
-  insist on decorating.
-- Anything that does not parse as a plan is prose: the reply is the
+  and a `why` the terminal displays and the judge reads. An entry the
+  host cannot read whole refuses the plan it belongs to, and so does an
+  eleventh command: a truncated plan is a plan nobody wrote.
+- Anything that does not ask for commands is prose: the reply is the
   answer, the turn ends.
+- A refused plan is also the answer. The user reads what the model wrote,
+  and the trace records why none of it ran.
 - The instructions forbid decorating a plan with prose and forbid an
   empty plan — "no commands needed" is expressed by answering in text.
+
+## Execution intent
+
+A plan says what the model wants to run. Whether this turn runs anything
+is the host's to say, and the host says it before the turn generates a
+word. `Permit::for_route` builds that answer out of two things:
+
+- **The route.** Only `respond` carries execution. A turn the router sent
+  to clarification asks one question, and `end` and `halt` run nothing
+  either. Clarification changes the prompt; separately, and for its own
+  reason, it changes what the host permits. A valid plan that arrives on
+  a clarifying turn is an answer that looks like a plan.
+- **The operator.** `CODER_SHELL=off` — or `no`, `false`, `none`, `0` —
+  withdraws execution from every turn on this host.
+
+A permit narrows and never widens. Spending the round cap or drawing a
+`stop` verdict withdraws it for the rest of the turn, and `Agent::turn`
+withdraws it again for a clarifying turn whatever its caller passed.
+`shell::run` reads it once more before it spawns anything, so reaching a
+shell takes a permit rather than a `Proposal`. Nothing in a reply grants
+one: not a confident classification, not an instruction the model was
+given, and not the model's own account of what it is about to do. The
+deny list below is the second question — whether this command is the kind
+that ends a machine — and it is never the first.
+
+The terminal and `coder --print` both run `turn::run`, so both get the
+same answer to that question.
 
 ## Execution
 
@@ -61,7 +99,9 @@ prompt), `rm -rf` of root or home, `mkfs`, `dd of=/dev`, fork bombs,
 `shutdown`/`reboot`/`halt`, `| sh`-style pipe-to-shell, keychain reads,
 device writes, recursive `chmod`/`chown` from `/`. A denied command never
 spawns; its outcome is `denied: <reason>` and the judge sees it like any
-other result — the model learns what was refused and why.
+other result — the model learns what was refused and why. A proposal that
+reaches the runner on a turn that runs nothing never spawns either, and
+its outcome reads `refused: this turn does not run commands`.
 
 ## The judgment
 
@@ -90,13 +130,15 @@ if every judgment says `pass`.
 draft
   → classify (action/needs_code/risk/progress)          ← Jev, turn level
   → respond route
+  → permit (route + operator: does this turn run commands?)  ← the host
   → loop:
       generate (instructions + repo card + sniff)
-        ├─ prose  → done: answer streams to the user
-        └─ plan   → run commands (bounded, deny-listed)
-                  → judge the round                      ← Jev, round level
-                  → outcomes fold into the transcript
-      (final round forces prose: "answer with what you have")
+        ├─ prose    → done: answer streams to the user
+        ├─ refused  → done: the reply is the answer, the trace says why
+        └─ plan     → run commands (permitted, bounded, deny-listed)
+                    → judge the round                    ← Jev, round level
+                    → outcomes fold into the transcript
+      (a spent permit forces prose: "answer with what you have")
 ```
 
 The transcript records plans as assistant turns and outcomes as a user
@@ -134,6 +176,9 @@ already carry everything the terminal needs to draw.
 
 ## Failure shape
 
+- Reply asks for commands the host cannot read — an unsupported version,
+  an entry missing its text or its reason, an eleventh command → nothing
+  runs, the reply is the answer, and the trace records the sentence.
 - Command fails to spawn → `failed: <io error>`, judged like an exit.
 - Timeout → `timed out`, output empty; the judge usually retries once
   or passes.

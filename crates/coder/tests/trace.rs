@@ -12,7 +12,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use coder::generate::{Door, StubGenerate};
-use coder::{Agent, Outcome, Proposal, Recorder, Status};
+use coder::{Agent, Outcome, Permit, Proposal, Recorder, Status};
 
 /// Names the directory a child process records into. Set means "you are the
 /// child"; unset means "you are the test".
@@ -37,7 +37,13 @@ async fn a_conversation_records_itself_as_it_runs() {
     let skipped = agent.classify().await;
     assert!(matches!(skipped, coder::Classified::Skipped(_)));
     let (answer, _) = agent
-        .turn(false, &mut |_| {}, &mut |_| {}, &mut |_| {})
+        .turn(
+            false,
+            Permit::executing(),
+            &mut |_| {},
+            &mut |_| {},
+            &mut |_| {},
+        )
         .await
         .unwrap();
 

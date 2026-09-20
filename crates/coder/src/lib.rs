@@ -13,6 +13,9 @@
 //!   elect; the call site is the operator's sentence.
 //! - [`agent`] holds the conversation: the transcript, the state Classify
 //!   reads, and the routing table that turns answers into the next step.
+//! - [`permit`] is what the host permits one turn to do. A reply is the
+//!   model's; whether anything in it runs is not, and a permit is the
+//!   host's answer, built before the turn generates a word.
 //! - [`trace`] writes the conversation down: every turn, every command, and
 //!   every decision call, appended to an ATIF session log on local disk as
 //!   it happens.
@@ -35,6 +38,7 @@ pub mod capability;
 pub mod classify;
 pub mod delegate;
 pub mod generate;
+pub mod permit;
 pub mod program;
 pub mod questions;
 pub mod relay;
@@ -52,11 +56,12 @@ pub use delegate::{Bounds, Delegation, Delegator, Executor, Isolation, Task};
 pub use generate::{
     Door, Generate, GenerateError, Message, Meta, ResponsesDoor, Role, StubGenerate, Usage,
 };
+pub use permit::Permit;
 pub use program::Program;
 pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
 pub use runtime::{Enforcement, Host, Inputs, Refused, Run, Runtime};
-pub use shell::{Outcome, Proposal, ShellEvent, Status};
+pub use shell::{NotAPlan, Outcome, Plan, Proposal, Reply, ShellEvent, Status};
 pub use survey::Survey;
 pub use trace::Recorder;
 pub use turn::{Completion, Event, Failure, Finished};

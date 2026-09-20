@@ -63,7 +63,12 @@ uses, and marks which are implemented and which are only specified.
   `generate` answers through an Open Responses door, and the `coder`
   binary draws the conversation in the terminal or, with `-p`, runs one
   turn from a script. Both modes run the same turn, `coder::turn::run`;
-  keep it that way. `docs/coder/headless.md` covers the headless flags and
+  keep it that way. `permit` is the host's answer to whether a turn runs
+  commands at all, built from the route and the operator's setting before
+  anything generates and narrowing from there; a reply becomes an
+  executable plan only under a permit that runs one, so keep execution
+  policy there rather than in what the model is told.
+  `docs/coder/headless.md` covers the headless flags and
   the exit codes. Every conversation records itself to
   `~/.openagents/traces/` as it runs; `docs/coder/traces.md` covers the
   location, the opt-out, and what a trace holds. `delegate` hands a

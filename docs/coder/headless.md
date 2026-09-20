@@ -38,6 +38,11 @@ The environment picks the door exactly as it does in the terminal:
 with `CODER_RELAY` routes the turn through the relay, and with none of
 them set the stub door answers.
 
+The environment also says what a turn may do to the machine, again
+exactly as in the terminal: `CODER_SHELL=off` withdraws execution, and a
+headless turn then answers without running a command whatever its reply
+asks for. See [the shell loop](shell-loop.md#execution-intent).
+
 ## What lands where
 
 **Standard output** is the reply and nothing else, or, with `--json`, one

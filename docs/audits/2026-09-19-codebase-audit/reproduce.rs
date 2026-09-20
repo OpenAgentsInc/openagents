@@ -34,19 +34,81 @@ async fn main() {
     let plan = "Here is an example; do not run it.\n```json\n{\"commands\":[{\"command\":\"printf harmless\"}]}\n```\nThat is the format.";
     println!(
         "embedded_example_is_plan={}",
-        coder::shell::parse_plan(plan).is_some()
+        matches!(
+            coder::Reply::read(plan, coder::Permit::executing()),
+            coder::Reply::Plan(_)
+        )
     );
 
+    // A complete plan under the supported schema, so what these three
+    // probes vary is the permit rather than the wording.
+    let writes = |marker: &std::path::Path| {
+        json!({"v":1,"commands":[{
+            "command": format!("printf harmless > '{}'", marker.display()),
+            "why": "write a harmless marker",
+        }]})
+        .to_string()
+    };
+
     let marker = dir.path().join("clarify");
-    let mut agent = coder::Agent::new(None, coder::Door::Stub(coder::StubGenerate {
-        line: json!({"v":1,"commands":[{"command":format!("printf harmless > '{}'", marker.display())}]}).to_string(),
-    }));
+    let mut agent = coder::Agent::new(
+        None,
+        coder::Door::Stub(coder::StubGenerate {
+            line: writes(&marker),
+        }),
+    );
     agent.push_user("Ask a clarifying question");
     agent
-        .turn(true, &mut |_| {}, &mut |_| {}, &mut |_| {})
+        .turn(
+            true,
+            coder::Permit::executing(),
+            &mut |_| {},
+            &mut |_| {},
+            &mut |_| {},
+        )
         .await
         .unwrap();
     println!("clarify_executed_command={}", marker.exists());
+
+    let marker = dir.path().join("withdrawn");
+    let mut agent = coder::Agent::new(
+        None,
+        coder::Door::Stub(coder::StubGenerate {
+            line: writes(&marker),
+        }),
+    );
+    agent.push_user("Read the repository");
+    agent
+        .turn(
+            false,
+            coder::Permit::answering(),
+            &mut |_| {},
+            &mut |_| {},
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+    println!("unpermitted_turn_executed_command={}", marker.exists());
+
+    let marker = dir.path().join("permitted");
+    let mut agent = coder::Agent::new(
+        None,
+        coder::Door::Stub(coder::StubGenerate {
+            line: writes(&marker),
+        }),
+    );
+    agent.push_user("Write the marker");
+    agent
+        .turn(
+            false,
+            coder::Permit::executing(),
+            &mut |_| {},
+            &mut |_| {},
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+    println!("permitted_turn_executed_command={}", marker.exists());
 
     let task =
         coderbench::Task::load(&root.join("crates/coderbench/tasks/devin-fan-out-six/task.json"))
@@ -247,7 +309,7 @@ async fn main() {
         command: format!("sleep 16; printf harmless > '{}'", marker.display()),
         why: "isolated timeout probe".into(),
     };
-    let outcome = coder::shell::run(&proposal).await;
+    let outcome = coder::shell::run(&proposal, coder::Permit::executing()).await;
     tokio::time::sleep(Duration::from_secs(2)).await;
     println!(
         "shell_status={} wrote_after_timeout={}",

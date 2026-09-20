@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use coder::generate::{Door, Generate, Message, Meta, Role};
 use coder::relay::{Identity, RelayDoor};
-use coder::{Agent, Recorder};
+use coder::{Agent, Permit, Recorder};
 use futures_util::{SinkExt, StreamExt};
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::nip44;
@@ -448,7 +448,13 @@ async fn a_relay_trace_names_the_model_the_worker_used() {
 
     agent.push_user("say hi in one word");
     let (reply, _) = agent
-        .turn(false, &mut |_| {}, &mut |_| {}, &mut |_| {})
+        .turn(
+            false,
+            Permit::executing(),
+            &mut |_| {},
+            &mut |_| {},
+            &mut |_| {},
+        )
         .await
         .expect("the worker answered");
     agent.finish_trace();

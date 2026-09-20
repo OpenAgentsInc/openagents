@@ -19,8 +19,9 @@ use crate::classify::{
     state_of,
 };
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
+use crate::permit::Permit;
 use crate::repo::Repo;
-use crate::shell::{self, Outcome, ShellEvent};
+use crate::shell::{self, Outcome, Reply, ShellEvent};
 use crate::survey::Survey;
 use crate::trace::{Recorder, answers_value};
 
@@ -385,21 +386,38 @@ impl Agent {
         Ok((text, usage))
     }
 
-    /// A whole turn: generate, run any plan the reply carries, judge the
-    /// round, and go again until the model answers in prose or the round
-    /// cap lands. `shell` hears each proposal, outcome, and verdict as it
-    /// happens so the terminal can draw the loop.
+    /// A whole turn: generate, run a plan when this turn is permitted to
+    /// and the reply carries a supported one, judge the round, and go
+    /// again until the model answers in prose or the permit runs out.
+    /// `shell` hears each proposal, outcome, and verdict as it happens so
+    /// the terminal can draw the loop.
+    ///
+    /// `clarify` shapes the prompt and `permit` says what the host
+    /// allows. They are two arguments because they are two decisions: a
+    /// clarifying turn asks one question, and the reason it runs nothing
+    /// is the permit, not the wording. A caller that asks for
+    /// clarification and hands over an executing permit does not get one
+    /// — this withdraws it — but [`crate::permit::Permit::for_route`] is
+    /// where the host makes that call.
     pub async fn turn(
         &mut self,
         clarify: bool,
+        permit: Permit,
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
         shell: &mut (dyn FnMut(ShellEvent) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         let mut total: Option<Usage> = None;
         let mut rounds = 0usize;
-        let mut final_only = false;
+        let mut permit = match clarify {
+            true => permit.withdrawn(),
+            false => permit,
+        };
         loop {
+            // A turn that runs nothing is on its last word, so it is told
+            // so — except while clarifying, where the one question it is
+            // asking for is the whole instruction.
+            let final_only = !permit.executes() && !clarify;
             let instructions = self.instructions(clarify, final_only);
             if let Some(trace) = &mut self.trace {
                 trace.instructions(&instructions);
@@ -427,17 +445,24 @@ impl Agent {
                 entry.input_tokens += usage.input_tokens;
                 entry.output_tokens += usage.output_tokens;
             }
-            let proposals = if final_only {
-                None
-            } else {
-                shell::parse_plan(&text)
-            };
-            let Some(proposals) = proposals else {
-                self.transcript.push(Message {
-                    role: Role::Assistant,
-                    text: text.clone(),
-                });
-                return Ok((text, total));
+            // What the reply is, is the host's read of it under this
+            // turn's permit. A reply that asked for commands the host
+            // will not run ends the turn as the answer it also is, and
+            // the trace says why nothing ran.
+            let plan = match Reply::read(&text, permit) {
+                Reply::Plan(plan) => plan,
+                reply => {
+                    if let Reply::Refused { why, .. } = &reply
+                        && let Some(trace) = &mut self.trace
+                    {
+                        trace.note(&format!("the host ran none of this reply: {why}"));
+                    }
+                    self.transcript.push(Message {
+                        role: Role::Assistant,
+                        text: text.clone(),
+                    });
+                    return Ok((text, total));
+                }
             };
             rounds += 1;
             self.transcript.push(Message {
@@ -445,9 +470,9 @@ impl Agent {
                 text,
             });
             let mut outcomes: Vec<Outcome> = Vec::new();
-            for proposal in proposals.into_iter().take(shell::COMMANDS_MAX) {
+            for proposal in plan.proposals {
                 shell(ShellEvent::Proposed(proposal.clone()));
-                let outcome = shell::run(&proposal).await;
+                let outcome = shell::run(&proposal, permit).await;
                 if let Some(trace) = &mut self.trace {
                     trace.command(&outcome);
                 }
@@ -459,8 +484,8 @@ impl Agent {
                 role: Role::User,
                 text: shell::transcript_of(&outcomes),
             });
-            if route == ShellRoute::Stop || rounds >= shell::ROUNDS_MAX {
-                final_only = true;
+            if route == ShellRoute::Stop || rounds >= permit.rounds() {
+                permit = permit.withdrawn();
             }
         }
     }
@@ -574,6 +599,125 @@ impl Answered {
 mod tests {
     use super::*;
     use crate::generate::StubGenerate;
+
+    /// An agent whose door answers with `line`, every time.
+    fn saying(line: String) -> Agent {
+        Agent::new(None, Door::Stub(StubGenerate { line }))
+    }
+
+    /// A plan that writes `marker`, which is how a test tells whether
+    /// anything ran.
+    fn plan_writing(marker: &Path) -> String {
+        serde_json::json!({
+            "v": 1,
+            "commands": [{
+                "command": format!("printf harmless > '{}'", marker.display()),
+                "why": "write a marker",
+            }],
+        })
+        .to_string()
+    }
+
+    /// The audit's A01 case. The router asked for a clarifying question,
+    /// the door answered with a valid plan anyway, and the file it would
+    /// have written is not there. The caller even handed over a permit
+    /// that runs commands; clarification withdraws it.
+    #[tokio::test]
+    async fn a_clarifying_turn_runs_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("clarify");
+        let plan = plan_writing(&marker);
+        let mut agent = saying(plan.clone());
+        agent.push_user("Ask a clarifying question");
+        let (reply, _) = agent
+            .turn(
+                true,
+                Permit::executing(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_| {},
+            )
+            .await
+            .unwrap();
+        assert!(!marker.exists(), "a clarifying turn ran a command");
+        assert_eq!(reply, plan, "the reply is the answer it also was");
+    }
+
+    /// The operator's permit is the host's, so a turn that carries no
+    /// execution runs nothing however it was routed.
+    #[tokio::test]
+    async fn an_answering_permit_runs_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("answering");
+        let mut agent = saying(plan_writing(&marker));
+        agent.push_user("read the repository");
+        agent
+            .turn(
+                false,
+                Permit::answering(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_| {},
+            )
+            .await
+            .unwrap();
+        assert!(!marker.exists(), "a turn with no permit ran a command");
+    }
+
+    /// The audit's other A01 case, at the turn level: a reply that quotes
+    /// a plan as an example runs nothing, on a turn that would have run a
+    /// real one.
+    #[tokio::test]
+    async fn a_quoted_example_runs_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("example");
+        let example = format!(
+            "Here is an example; do not run it.\n```json\n{}\n```\nThat is the format.",
+            plan_writing(&marker)
+        );
+        let mut agent = saying(example.clone());
+        agent.push_user("what does a plan look like");
+        let (reply, _) = agent
+            .turn(
+                false,
+                Permit::executing(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_| {},
+            )
+            .await
+            .unwrap();
+        assert!(!marker.exists(), "a quoted example ran");
+        assert_eq!(reply, example);
+    }
+
+    /// Closing the door on examples does not close it on work: a
+    /// supported plan on a permitted turn still runs, and the loop still
+    /// stops when the permit's rounds are spent.
+    #[tokio::test]
+    async fn a_permitted_plan_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("permitted");
+        let mut agent = saying(plan_writing(&marker));
+        agent.push_user("write the marker");
+        let mut ran = 0usize;
+        agent
+            .turn(
+                false,
+                Permit::executing(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| {
+                    if matches!(event, ShellEvent::Ran(_)) {
+                        ran += 1;
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        assert!(marker.exists(), "a permitted plan did not run");
+        assert_eq!(ran, Permit::executing().rounds());
+    }
 
     #[tokio::test]
     async fn classify_without_a_key_skips_with_a_note() {
