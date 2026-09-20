@@ -30,8 +30,12 @@ fn the_golden_reads_back_as_atif() {
         15,
         "every step of the path is recorded"
     );
-    assert_eq!(recording.unreadable_lines, 0, "the golden is whole");
-    assert!(recording.ended(), "the golden closed itself");
+    assert!(
+        recording.whole(),
+        "the golden is whole: {:?}",
+        recording.faults
+    );
+    atif::log::read_whole(&path).expect("the golden reads as evidence");
     let document = recording.document();
     assert!(document.get("steps").is_some(), "the document renders");
 }

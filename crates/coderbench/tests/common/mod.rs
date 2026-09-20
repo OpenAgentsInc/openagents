@@ -52,8 +52,8 @@ pub fn authored_text() -> String {
             }
             serde_json::to_string(&record).unwrap_or_else(|_| line.to_string())
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|line| line + "\n")
+        .collect()
 }
 
 /// The authored trace observed the way `run` judges one, with the two

@@ -41,10 +41,11 @@ fn task_without_expectations() -> Task {
 
 /// Writes a changed golden and reads it back the way a run would, with the
 /// two facts only a driver sees supplied: the turn answered, and the
-/// checkout is unchanged. What is left wrong is what the case changed.
+/// checkout is unchanged. What is left wrong is what the case changed. A
+/// writer ends every line, so the text is given its last newline here.
 fn observed(directory: &Path, name: &str, text: &str) -> Observed {
     let path: PathBuf = directory.join(format!("{name}.atif.jsonl"));
-    std::fs::write(&path, text).unwrap();
+    std::fs::write(&path, format!("{}\n", text.trim_end_matches('\n'))).unwrap();
     let mut run = observe(&path).expect("the changed golden still reads");
     run.ending = Ending::Answered;
     run.workspace = Some(Workspace::default());

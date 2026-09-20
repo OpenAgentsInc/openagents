@@ -124,6 +124,22 @@ document says `interrupted` rather than pretending the session finished.
 `crates/coder/tests/trace.rs` kills a session outright and reads back
 what survived.
 
+There are two readers. `atif::log::read` recovers: it splits the file into
+lines as bytes before decoding any of them, so a final record torn inside a
+multibyte character costs that record and nothing before it, and every line
+that did not read is a `Fault` on the recording with its line number and
+kind (`torn`, `not_utf8`, `not_json`, `unknown_record`, `bad_step`,
+`repeated_session`, `repeated_end`, `after_end`, and so on). The document
+carries them under `extra.faults`. `atif::log::read_whole` is the reader
+for evidence: it refuses a log with any fault or with no end record, so a
+recovered prefix cannot pass as a complete session. CoderBench marks a
+trace with faults or without an ending unverifiable, never a pass.
+
+The lifecycle a log holds to is one `session` record first, then steps,
+then at most one `end` record last. The writer refuses to append a step
+after `finish`, and the reader treats a record after the end, a second
+header, or a second ending as a fault while the first stands.
+
 ### Nothing in the trace is capped
 
 `crates/coder/src/shell.rs` keeps at most `OUTPUT_MAX` (16 KiB) of a
