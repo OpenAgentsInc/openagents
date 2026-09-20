@@ -650,3 +650,26 @@ fn writes_are_judged_against_the_workspace() {
         }]
     );
 }
+
+/// A claimed write cannot satisfy a required write when independent evidence
+/// says the workspace did not change.
+#[test]
+fn a_self_reported_write_cannot_satisfy_the_required_write_count() {
+    let mut task = task();
+    task.grade.writes_expected = 1;
+    let mut run = authored_run();
+    run.writes = vec!["claimed.txt".to_string()];
+    run.workspace = Some(Workspace::default());
+    let judgment = task.judge(&run);
+    assert_eq!(judgment.verdict, Verdict::Failed);
+    assert!(judgment.faults.contains(&Fault::WriteCount {
+        expected: 1,
+        found: 0
+    }));
+
+    // An unrelated claimed path cannot inflate the observed count either.
+    run.workspace = Some(Workspace {
+        changed: vec!["actual.txt".to_string()],
+    });
+    assert_eq!(task.judge(&run).verdict, Verdict::Passed);
+}

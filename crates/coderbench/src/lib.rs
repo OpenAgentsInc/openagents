@@ -213,9 +213,9 @@ pub struct Grade {
     /// one that recorded nothing either way is [`Verdict::Unverifiable`].
     #[serde(default)]
     pub expects: Vec<ExpectedAnswer>,
-    /// How many files the run is expected to write. Zero for a read-only
-    /// task, and a run that writes one has left the path whatever else it
-    /// got right.
+    /// How many distinct workspace paths the run is expected to change.
+    /// This includes directory and metadata changes; a rename names both
+    /// its source and destination. Zero describes a read-only task.
     ///
     /// Judged against the workspace rather than against what the run said
     /// about itself. Absent `wrote` metadata is unknown, not proof.
@@ -797,6 +797,60 @@ pub struct Workspace {
     pub changed: Vec<String>,
 }
 
+impl Workspace {
+    /// Compares independent filesystem observations of the whole workspace.
+    ///
+    /// This includes ignored files and changes to files that were already dirty.
+    /// It does not use Git's status codes or the delegate's account of its writes.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the comparison is unverifiable when either observation is
+    /// incomplete or the roots differ. A partial reading cannot establish a
+    /// clean workspace.
+    pub fn between(
+        before: &coder_boundary::snapshot::Snapshot,
+        after: &coder_boundary::snapshot::Snapshot,
+    ) -> Result<Self, String> {
+        use coder_boundary::snapshot::{Change, Verdict, compare};
+        let changes = match compare(before, after) {
+            Verdict::Clean => return Ok(Self::default()),
+            Verdict::Changed(changes) => changes,
+            Verdict::Unverifiable(reason) => return Err(reason),
+        };
+        let mut paths = BTreeSet::new();
+        for change in changes {
+            match change {
+                Change::Created { path }
+                | Change::Removed { path }
+                | Change::Modified { path }
+                | Change::Retyped { path } => {
+                    paths.insert(path);
+                }
+                Change::Renamed { from, to, .. } => {
+                    paths.insert(from);
+                    paths.insert(to);
+                }
+            }
+        }
+        Ok(Self {
+            changed: paths
+                .into_iter()
+                .map(|path| {
+                    if path.as_os_str().is_empty() {
+                        ".".to_string()
+                    } else {
+                        // Debug escapes non-UTF-8 names instead of collapsing distinct
+                        // byte strings to the same replacement character.
+                        path.to_str()
+                            .map_or_else(|| format!("{:?}", path.as_os_str()), str::to_string)
+                    }
+                })
+                .collect(),
+        })
+    }
+}
+
 /// The word a call's outcome reads as in a fault.
 fn outcome_word(outcome: Outcome) -> String {
     match outcome {
@@ -1169,11 +1223,16 @@ impl Task {
             for path in wrote {
                 faults.push(Fault::UnexpectedWrite { path });
             }
-        } else if run.workspace.is_some() && wrote.len() != self.grade.writes_expected {
-            faults.push(Fault::WriteCount {
-                expected: self.grade.writes_expected,
-                found: wrote.len(),
-            });
+        } else if let Some(workspace) = &run.workspace {
+            // A reported write can contradict a read-only task, but it cannot
+            // supply positive evidence that a required change occurred.
+            let observed = workspace.changed.iter().collect::<BTreeSet<_>>().len();
+            if observed != self.grade.writes_expected {
+                faults.push(Fault::WriteCount {
+                    expected: self.grade.writes_expected,
+                    found: observed,
+                });
+            }
         }
     }
 

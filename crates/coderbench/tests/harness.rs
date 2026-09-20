@@ -415,12 +415,17 @@ fn a_write_nobody_reported_is_still_a_write() {
 /// A directory the workspace reading cannot read leaves the write question
 /// open. That is exit 4, not exit 0: nobody showed the run wrote nothing.
 #[test]
-fn a_workspace_nobody_could_read_is_not_a_pass() {
+fn a_workspace_removed_during_the_run_is_not_a_pass() {
     let directory = tempfile::tempdir().unwrap();
     let elsewhere = directory.path().join("not-a-checkout");
     std::fs::create_dir(&elsewhere).unwrap();
     let task = task_with(directory.path(), r#"{}"#, "unreadable");
-    let coder = fake_coder(directory.path(), &golden(), 0);
+    let coder = fake_coder_that(
+        directory.path(),
+        &golden(),
+        0,
+        &format!("cd /; rmdir '{}'", elsewhere.display()),
+    );
     let trace = directory.path().join("run.atif.jsonl");
 
     let output = coderbench(&[
@@ -501,4 +506,55 @@ fn a_wrong_command_line_takes_the_usage_code() {
     let output = coderbench(&["run"]);
     assert_eq!(output.status.code(), Some(64), "{}", said(&output));
     assert!(said(&output).contains("run needs a task"));
+}
+
+/// Git status stays identical across both of these writes. The harness must
+/// inspect contents, including ignored files, to detect them.
+#[test]
+fn writes_to_already_dirty_and_ignored_files_are_observed() {
+    for name in ["README.md", "ignored.txt"] {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = repository(directory.path());
+        std::fs::write(repository.join(".gitignore"), "ignored.txt\n").unwrap();
+        std::fs::write(repository.join(name), "before\n").unwrap();
+        let status = || {
+            let output = Command::new("git")
+                .args(["status", "--porcelain=v1", "--untracked-files=all"])
+                .current_dir(&repository)
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            output.stdout
+        };
+        let before = status();
+        let task = task_with(directory.path(), r#"{}"#, "dirty-write");
+        let coder = fake_coder_that(
+            directory.path(),
+            &golden(),
+            0,
+            &format!("printf after > '{name}'"),
+        );
+        let trace = directory.path().join("run.atif.jsonl");
+        let output = coderbench(&[
+            "run",
+            &task.display().to_string(),
+            "--repository",
+            &repository.display().to_string(),
+            "--coder",
+            &coder.display().to_string(),
+            "--trace",
+            &trace.display().to_string(),
+        ]);
+        assert_eq!(
+            before,
+            status(),
+            "Git status alone cannot detect this write"
+        );
+        let report = said(&output);
+        assert_eq!(output.status.code(), Some(1), "{report}");
+        assert!(
+            report.contains(&format!("wrote {name}, expected no writes")),
+            "{report}"
+        );
+    }
 }

@@ -1,9 +1,10 @@
 # Execution boundary and workspace snapshots
 
 Issue: [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427).
-Status: the component is implemented in `crates/coder-boundary`. Coder
-and CoderBench integration, capability trust, and observed Devin runs remain
-required before #9427 can close.
+Status: the component is implemented in `crates/coder-boundary`, shared
+capability trust has landed, and CoderBench compares independent workspace
+snapshots. Coder's delegation boundary and admission integration, followed by
+observed Devin runs, remain required before #9427 can close.
 
 ## What this is
 
@@ -191,7 +192,10 @@ cargo +1.97.1 check --locked -p coder-boundary --target x86_64-unknown-linux-gnu
 
 - Coder still runs delegates under subprocess time and output bounds,
   without this filesystem boundary. Integration must hold `Boundary` through
-  `Job::run_holding` and record independently observed workspace changes.
+  `Job::run_holding`. CoderBench now independently observes the repository's
+  contents before and after execution, including already dirty and ignored
+  files. Partial observations remain unverifiable, and self-reported writes
+  cannot satisfy a positive required write count.
 - The Devin adapter's writable state goes through `Spec::writable` —
   there is no hardcoded `HOME` grant, and what the adapter actually
   needs must come from an explicit host approval, not a manifest claim.

@@ -25,6 +25,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use coder_boundary::snapshot::Snapshot;
 use coderbench::drive::{self, Outcome};
 use coderbench::preflight;
 use coderbench::{Observed, Task, Verdict, Workspace, load_task, observe};
@@ -247,7 +248,7 @@ fn run(options: &Options) -> u8 {
     // What the checkout looks like before the run, so what it looks like
     // afterwards means something. A task that forbids writes is graded
     // against this rather than against what the run says about itself.
-    let before = preflight::worktree(&repository);
+    let before = Snapshot::observe(&repository);
 
     let ran = match drive::coder(&binary, &repository, &task.request, &trace, timeout) {
         Ok(ran) => ran,
@@ -279,13 +280,13 @@ fn run(options: &Options) -> u8 {
     // run that timed out with the expected names in its partial trace is
     // not a clean run.
     run.ending = ran.outcome.into();
-    run.workspace = match (before, preflight::worktree(&repository)) {
-        (Ok(before), Ok(after)) => Some(Workspace {
-            changed: preflight::changed(&before, &after),
-        }),
-        // Neither reading is a list of writes on its own, so one of them
-        // failing leaves the question open rather than answered.
-        _ => None,
+    let after = Snapshot::observe(&repository);
+    run.workspace = match Workspace::between(&before, &after) {
+        Ok(workspace) => Some(workspace),
+        Err(reason) => {
+            println!("  workspace observation is unverifiable: {reason}");
+            None
+        }
     };
     report(&task, &run, &ran.trace)
 }

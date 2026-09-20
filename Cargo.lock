@@ -486,6 +486,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "capability",
+ "coder-boundary",
  "gym",
  "serde",
  "serde_json",

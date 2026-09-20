@@ -100,6 +100,23 @@ the other cases that must not grade clean.
 run that ran past its timeout from grading clean because the trace it left
 holds the expected names.
 
+### Observe workspace contents independently
+
+`run` uses bounded `coder-boundary` snapshots of the repository before and
+after execution. The comparison sees changes to already dirty files and
+ignored files, unlike a comparison of `git status` output. Creation, deletion,
+renames, retypes, and metadata changes count. `grade.writes_expected` counts
+distinct changed paths; a rename includes both its old and new path. A claimed
+write cannot satisfy that count without independent observation.
+
+The whole repository directory is observed, including Git metadata and build
+products. Use a dedicated checkout, keep trace and build output outside it,
+and prepare host-owned directories before measuring a read-only run. The
+observer cannot attribute concurrent changes to a particular process. Its
+bounds are 200,000 entries and 4 GiB of file contents per snapshot; an incomplete
+or unreadable snapshot makes write evidence unverifiable. No ignore rule can
+make an unobserved path count as clean.
+
 ### A task can own the expected answers
 
 `grade.expects` holds the answers the task itself checked, one `{prompt,

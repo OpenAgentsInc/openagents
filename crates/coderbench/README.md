@@ -20,6 +20,21 @@ to judge, and `4` when the evidence a judgment needs is missing.
 [`../../docs/coderbench.md`](../../docs/coderbench.md) has the flags and
 the reasoning.
 
+Workspace observation uses `coder-boundary` content snapshots, not a change in
+`git status`. A second edit to an already dirty file, an ignored file, a rename,
+a deletion, or a metadata change is still observed. Required write counts use
+these independently observed paths; a delegate's claimed writes cannot satisfy
+a positive count. Claimed writes still contradict a task that requires none.
+
+The snapshots include the whole repository directory, including Git metadata
+and build products. They do not attribute changes to a particular process or
+hide host bookkeeping. Use a dedicated checkout, keep benchmark traces and
+build output outside it, and prepare host-owned directories before measuring a
+read-only episode. Each observation is bounded to 200,000 entries and 4 GiB of
+hashed contents. An unreadable, changed-during-read, removed, or over-limit tree
+leaves the write evidence unverifiable. A readable directory does not need Git
+metadata to be observed; Git-specific task prerequisites are checked separately.
+
 ## A grade answers with three values
 
 `failed` beats `unverifiable` beats `passed`, which is `crates/gym`'s
