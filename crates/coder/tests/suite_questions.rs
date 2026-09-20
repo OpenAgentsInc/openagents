@@ -1,4 +1,4 @@
-//! The `coder-turns-v1` question set is the text this crate actually sends.
+//! The `coder-turns-v2` question set is the text this crate sends.
 //!
 //! `classify.rs` says the question set and the thresholds that read it live
 //! in one module so they review together. A suite scored against a copy of
@@ -11,6 +11,9 @@
 //! question set is regenerated, and regenerating it under the same id is
 //! wrong: a reword is a new set with a new id, so every row recorded under
 //! the old text stays comparable with the items it was asked about.
+//! `coder-turns-v1` is that older set: its five retired questions are no
+//! longer sent, and its file and rows stay as the measurement that retired
+//! them (`docs/decision-models/2026-09-20-coder-question-baselines.md`).
 //!
 //! To print the set for the generator:
 //!
@@ -156,7 +159,7 @@ fn the_selection_question_offers_none_and_the_resolved_programs() {
 
 /// The committed question set, as a map of family to question body.
 fn committed() -> BTreeMap<String, Value> {
-    let text = std::fs::read_to_string(gym("questions/coder-turns-v1.json"))
+    let text = std::fs::read_to_string(gym("questions/coder-turns-v2.json"))
         .expect("the coder question set is committed");
     let set: Value = serde_json::from_str(&text).expect("the question set parses");
     serde_json::from_value(set["questions"].clone()).expect("the set holds a map of questions")
@@ -167,17 +170,44 @@ fn the_question_set_is_the_production_text() {
     assert_eq!(
         committed(),
         wire_questions(),
-        "crates/gym/questions/coder-turns-v1.json no longer matches what classify.rs sends; \
+        "crates/gym/questions/coder-turns-v2.json no longer matches what classify.rs sends; \
          a reword is a new question set with a new id, not an edit to this one"
     );
 }
 
+/// The five `coder-turns-v1` families the baselines record retired are
+/// not on the wire, and the two it kept are word for word the v1 text, so
+/// a v2 row answers the same question as a v1 row on the same item.
+#[test]
+fn the_retired_v1_questions_are_not_sent() {
+    let text = std::fs::read_to_string(gym("questions/coder-turns-v1.json"))
+        .expect("the v1 question set is retained");
+    let v1: Value = serde_json::from_str(&text).expect("the v1 question set parses");
+    let v1: BTreeMap<String, Value> =
+        serde_json::from_value(v1["questions"].clone()).expect("the set holds a map of questions");
+    let wire = wire_questions();
+    for retired in ["damage", "needs_code", "progress", "risk", "useful"] {
+        assert!(v1.contains_key(retired), "{retired} was a v1 question");
+        assert!(
+            !wire.contains_key(retired),
+            "{retired} is retired and still sent"
+        );
+    }
+    for kept in ["action", "shell_outcome"] {
+        assert_eq!(
+            wire[kept], v1[kept],
+            "{kept} was reworded; that is a new set"
+        );
+    }
+    assert_eq!(wire.len(), 2);
+}
+
 #[test]
 fn the_suite_names_that_set_and_carries_no_text_of_its_own() {
-    let text = std::fs::read_to_string(gym("suites/coder-turns-v1.json"))
+    let text = std::fs::read_to_string(gym("suites/coder-turns-v2.json"))
         .expect("the coder suite is committed");
     let suite: Value = serde_json::from_str(&text).expect("the coder suite parses");
-    assert_eq!(suite["questions"], "coder-turns-v1");
+    assert_eq!(suite["questions"], "coder-turns-v2");
     let items = suite["items"].as_array().expect("the suite has items");
     assert!(!items.is_empty(), "the suite has no items");
     let set = committed();
