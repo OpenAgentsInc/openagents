@@ -8,6 +8,9 @@
 //!   speaks Open Responses to a model door. The trait is the public
 //!   contract; which door and which credentials back it is configuration,
 //!   not code.
+//! - [`delegate`] hands one bounded task to one executor and runs six of
+//!   them at once under a stated bound. It is not a tool the model may
+//!   elect; the call site is the operator's sentence.
 //! - [`agent`] holds the conversation: the transcript, the state Classify
 //!   reads, and the routing table that turns answers into the next step.
 //! - [`trace`] writes the conversation down: every turn, every command, and
@@ -19,6 +22,7 @@
 
 pub mod agent;
 pub mod classify;
+pub mod delegate;
 pub mod generate;
 pub mod relay;
 pub mod repo;
@@ -28,6 +32,7 @@ pub mod turn;
 
 pub use agent::{Agent, Classified, Verdict};
 pub use classify::{Action, Judgment, Route, route, state_of};
+pub use delegate::{Bounds, Delegation, Delegator, Executor, Isolation, Task};
 pub use generate::{
     Door, Generate, GenerateError, Message, Meta, ResponsesDoor, Role, StubGenerate, Usage,
 };

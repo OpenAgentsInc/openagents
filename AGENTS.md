@@ -66,7 +66,10 @@ uses, and marks which are implemented and which are only specified.
   keep it that way. `docs/coder/headless.md` covers the headless flags and
   the exit codes. Every conversation records itself to
   `~/.openagents/traces/` as it runs; `docs/coder/traces.md` covers the
-  location, the opt-out, and what a trace holds.
+  location, the opt-out, and what a trace holds. `delegate` hands a
+  bounded task to an executor and runs a fan-out of them under a stated
+  bound; read `docs/coder/delegate.md` before changing it, and do not
+  offer delegation to the model as a tool it may elect.
 - `crates/lev` — the same contract answered by Apple's on-device foundation
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
   helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests

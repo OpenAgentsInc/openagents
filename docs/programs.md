@@ -194,6 +194,11 @@ Two steps are deterministic and two are decisions, which is the right ratio:
 the program is mostly mechanism, and the decision model is asked only where
 a judgment is genuinely required.
 
+The `fan_out` step is the one `crates/coder` implements today:
+[`coder/delegate.md`](coder/delegate.md) covers what it records, how it is
+bounded, and why a refusal, a timeout, and a failure are three outcomes.
+Nothing yet reaches it from an operator's sentence.
+
 Bounds are enforced, not declared. `concurrent_max` bounds the fan-out,
 `isolation: worktree` gives each session its own branch so a collision is
 recoverable, and the `minutes` bound comes from the manifest's `enforces`

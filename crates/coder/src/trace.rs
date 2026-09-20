@@ -40,6 +40,7 @@ use indexmap::IndexMap;
 use jev::Answer;
 use serde_json::{Map, Value, json};
 
+use crate::delegate::{self, Delegation};
 use crate::generate::Usage;
 use crate::shell::{self, Outcome, Status};
 
@@ -51,6 +52,17 @@ pub const SWITCH_ENV: &str = "CODER_TRACE";
 
 /// The schema a recorded shell call carries in its `extra`.
 pub const SHELL_CALL_SCHEMA: &str = "openagents.shell-call.v1";
+
+/// The schema a recorded delegation carries in its `extra`.
+pub const DELEGATE_CALL_SCHEMA: &str = "openagents.delegate-call.v1";
+
+/// The name a delegation records itself under. A reader counts the
+/// delegations of an episode by this name, so it is fixed rather than
+/// derived from the capability that took the work.
+pub const DELEGATE_CALL: &str = "delegate";
+
+/// How much of a prompt the step's line shows.
+const PROMPT_HEAD: usize = 60;
 
 /// The kind a system step carries when it holds the instructions a
 /// generation was given.
@@ -252,6 +264,80 @@ impl Recorder {
             extra,
         };
         self.write(Step::called(call));
+    }
+
+    /// One delegated session and everything that came back from it.
+    ///
+    /// The call is named `delegate` and its arguments are the four fields
+    /// a delegation is made of — which executor, which checkout shape,
+    /// which prompt, and under which bounds — so an episode's delegations
+    /// read back the way the `devin-fan-out-six` golden records them.
+    ///
+    /// The `extra` says what the host knows on top of that: which
+    /// capability answered, which binary it resolved to, how wide the
+    /// fan-out was allowed to run, what the delegate read, what it was
+    /// expected to answer, whether it did, and whether it wrote. `status`
+    /// keeps a refusal, a timeout, and a failure apart, which the ATIF
+    /// outcome alone cannot: a refusal is the executor's own answer and
+    /// records as `cancelled`, and the other two record as `failed`.
+    pub fn delegation(&mut self, delegation: &Delegation) {
+        let task = &delegation.task;
+        let mut extra = Map::new();
+        extra.insert("schema".to_string(), json!(DELEGATE_CALL_SCHEMA));
+        extra.insert("capability".to_string(), json!(delegation.capability));
+        extra.insert("status".to_string(), json!(delegation.status.to_string()));
+        match &delegation.status {
+            delegate::Status::Refused(code) => {
+                extra.insert("refusal".to_string(), json!(code));
+            }
+            delegate::Status::Failed(code) => {
+                extra.insert("exit_code".to_string(), json!(code));
+            }
+            _ => {}
+        }
+        extra.insert(
+            "executor_path".to_string(),
+            json!(delegation.binary.display().to_string()),
+        );
+        extra.insert(
+            "workdir".to_string(),
+            json!(delegation.workdir.display().to_string()),
+        );
+        extra.insert(
+            "concurrent_max".to_string(),
+            json!(delegation.concurrent_max),
+        );
+        if let Some(reads) = &task.reads {
+            extra.insert("reads".to_string(), json!(reads));
+        }
+        if let Some(expected) = &task.expected {
+            extra.insert("expected".to_string(), json!(expected));
+        }
+        if let Some(correct) = delegation.correct() {
+            extra.insert("correct".to_string(), json!(correct));
+        }
+        // Null rather than absent, and null rather than false: a delegate
+        // that wrote would name the path here, and nothing today can,
+        // because a task that writes is refused until it can be isolated.
+        extra.insert("wrote".to_string(), Value::Null);
+        let call = Call {
+            id: self.next_call_id(),
+            name: DELEGATE_CALL.to_string(),
+            arguments: json!({
+                "agent": delegation.capability,
+                "isolation": task.isolation.word(),
+                "prompt": task.prompt,
+                "bounds": task.bounds.declared(),
+            }),
+            output: delegation.recorded_output(),
+            outcome: delegation.outcome(),
+            milliseconds: delegation.elapsed.as_millis() as u64,
+            purpose: (!task.purpose.is_empty()).then(|| task.purpose.clone()),
+            extra,
+        };
+        let mut step = Step::called(call);
+        step.message = format!("Delegated: {}", task.head(PROMPT_HEAD));
+        self.write(step);
     }
 
     /// One question put to a decision model, and what it answered.

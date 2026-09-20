@@ -426,6 +426,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "coder-terminal",
+ "coderbench",
  "crossterm",
  "futures-util",
  "indexmap",

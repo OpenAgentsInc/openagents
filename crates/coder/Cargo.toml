@@ -23,6 +23,7 @@ secp256k1 = { version = "0.31.1", features = ["rand"] }
 nostr = { version = "0.1.0", path = "../nostr" }
 
 [dev-dependencies]
+coderbench = { path = "../coderbench" }
 tempfile = "3"
 
 [lints]
