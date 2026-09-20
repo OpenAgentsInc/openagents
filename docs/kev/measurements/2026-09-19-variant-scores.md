@@ -301,7 +301,13 @@ judged comparison and costs about fifteen minutes of CPU.
 **No latency question is settled.** The section above says why: the four
 passes ran on a machine carrying nine concurrent agents, and the numbers are
 recorded as observed rather than as a measurement of the checkpoints. The
-accuracy panel stands; the time column waits for a quiet machine.
+accuracy panel stands; the time column waits for a quiet machine. A quiet
+Linux box without the Kev weights re-timed the one door it could reach:
+hosted Jev at a 98.5 ms median over eight blocks, 3.4% relative spread, and
+a second pass on which the paired test against `kev-8b` reads *p* = 0.077
+rather than 0.035 because one near-tie item moved. The run, its conditions,
+and what it leaves open are in
+[`../../gym/measurements/2026-09-20-hosted-jev-quiet-latency.md`](../../gym/measurements/2026-09-20-hosted-jev-quiet-latency.md).
 
 The rest of the limits are the ones every run here carries. The locked
 partition is unread. The labels are the author's. Every door ran once on one
