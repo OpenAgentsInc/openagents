@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Build the coder binary from this checkout, then run it from the caller's
+# directory with the caller's arguments.
+#
+# The build uses the toolchain that rust-toolchain.toml pins and Cargo's own
+# freshness check, so unchanged source reuses the executable and dirty edits
+# are compiled in. A failed build stops the launch; the old executable never
+# runs by mistake.
+#
+# Environment:
+#   CARGO_TARGET_DIR   Where Cargo writes the build; default target/ in the
+#                      checkout. Honored for both the build and the launch.
+#   CODERDEV_ENV_FILE  Optional file of KEY=VALUE lines to load before the
+#                      binary starts. It is sourced in this process only, so
+#                      nothing reaches the parent shell, and nothing is printed.
+#   CODERDEV_CARGO     Cargo command to run; default cargo. Tests point this at
+#                      a stub.
+#
+# Diagnostics go to standard error as one line: the source revision, whether
+# the tree is dirty, and the executable path. A timestamp is not provenance;
+# the revision line is.
+set -euo pipefail
+
+source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+launch_dir="$PWD"
+cargo="${CODERDEV_CARGO:-cargo}"
+target_dir="${CARGO_TARGET_DIR:-${source_dir}/target}"
+case "$target_dir" in
+  /*) ;;
+  *) target_dir="${launch_dir}/${target_dir}" ;;
+esac
+export CARGO_TARGET_DIR="$target_dir"
+
+revision="$(git -C "$source_dir" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+dirty=clean
+if test -n "$(git -C "$source_dir" status --porcelain --untracked-files=no 2>/dev/null)"; then
+  dirty=dirty
+fi
+
+# Build from the source tree; the subshell keeps the launch directory intact.
+(cd "$source_dir" && "$cargo" build --quiet -p coder --bin coder) || {
+  echo "coderdev: build failed; not running the previous executable" >&2
+  exit 1
+}
+
+binary="${target_dir}/debug/coder"
+test -x "$binary" || {
+  echo "coderdev: build produced no executable at ${binary}" >&2
+  exit 1
+}
+echo "coderdev: coder ${revision} (${dirty}) ${binary}" >&2
+
+if test -n "${CODERDEV_ENV_FILE:-}"; then
+  test -r "$CODERDEV_ENV_FILE" || {
+    echo "coderdev: cannot read CODERDEV_ENV_FILE=${CODERDEV_ENV_FILE}" >&2
+    exit 1
+  }
+  set -a
+  # shellcheck disable=SC1090
+  . "$CODERDEV_ENV_FILE"
+  set +a
+fi
+
+cd "$launch_dir"
+exec "$binary" "$@"

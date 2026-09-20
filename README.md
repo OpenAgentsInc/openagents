@@ -102,6 +102,23 @@ cargo run -p coder -- -p "count the crates"         # one turn, from a script
 cargo run -p coder -- -p --json --trace one.jsonl "count the crates"
 ```
 
+To run the terminal from another project's directory, use the launcher:
+
+```bash
+alias coderdev=~/work/openagents/scripts/coderdev   # then `coderdev` anywhere
+CODERDEV_ENV_FILE=~/.config/openagents/coder.env coderdev -p "count the crates"
+```
+
+`scripts/coderdev` builds `coder` with the pinned toolchain first, so an
+edit in the source tree is in the binary that runs and a build that fails
+stops the launch instead of running the previous executable. It keeps the
+directory you launched from, forwards arguments unchanged, honors
+`CARGO_TARGET_DIR`, and writes one line to standard error naming the source
+revision, whether the tree was dirty, and the executable it ran. Keys in
+`CODERDEV_ENV_FILE` load into the child process only. Reload your shell,
+or `source` the file that defines the alias, after changing it.
+`./scripts/test-coderdev.sh` exercises the launcher against a stub Cargo.
+
 `-p` runs one turn without a terminal, writes the reply to standard
 output, and exits 0 for an answer, 2 for a declined turn, and 1 for one
 that did not finish. `docs/coder/headless.md` has the flags and the JSON
