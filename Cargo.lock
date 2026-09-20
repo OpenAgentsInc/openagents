@@ -477,6 +477,7 @@ dependencies = [
  "crossterm",
  "pulldown-cmark",
  "ratatui",
+ "tokio",
  "unicode-segmentation",
  "unicode-width",
 ]

@@ -15,24 +15,39 @@
 //!   history.
 //! - [`Composer`] draws the framed input box into a ratatui buffer, and
 //!   [`handle_key`] maps terminal key events onto the editor.
+//!
+//! Around that core sit the pieces a long-running shell needs to stay
+//! honest with the terminal and the transcript:
+//!
+//! - [`Guard`] holds the terminal in the shell's mode and hands it back on
+//!   every exit path, panics included.
+//! - [`events`] carries a working task's reports to the draw loop on two
+//!   lanes, so a command outcome is never dropped for a burst of text.
+//! - [`Scrollback`] bounds the transcript and wraps each line once per
+//!   width.
 
 mod composer;
 mod editor;
+pub mod events;
+pub mod guard;
 pub mod hairline;
 mod intensity;
 mod keys;
 mod ladder;
 pub mod markdown;
+mod scrollback;
 mod spinner;
 mod wrap;
 
 pub use composer::{CARET, Composer, GUTTER, PROMPT};
 pub use editor::{Editor, ROWS_MAX, ROWS_MIN, Window};
+pub use guard::{FULL_SCREEN, Guard, Step};
 pub use hairline::{frame, rail};
 pub use intensity::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
 pub use keys::{ComposerAction, handle_key};
 pub use ladder::{Colorless, Colors, Ladder, drain_color, rgb};
 pub use markdown::{Marked, Marks, Rendered};
+pub use scrollback::{LINES_MAX, Scrollback};
 pub use spinner::{
     CYCLE, FRAMES, FRAMES_ASCII, SPINNER_COUNT, SPINNER_FRAME, frame_at, frame_for,
     frame_for_ascii, spinner,

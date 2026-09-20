@@ -180,6 +180,25 @@ mod tests {
     }
 
     #[test]
+    fn wide_characters_wrap_by_cells_not_code_points() {
+        // Three wide characters are six cells: two fit in five, the third
+        // wraps rather than overflowing the row.
+        assert_eq!(rows_of("日本語", 5), ["日本", "語"]);
+    }
+
+    #[test]
+    fn a_grapheme_cluster_never_splits_at_a_wrap() {
+        let flag = "\u{1F1EF}\u{1F1F5}"; // regional indicators J + P
+        let text = format!("ab{flag}cd");
+        let rows = rows_of(&text, 3);
+        assert!(
+            rows.iter()
+                .all(|row| !row.contains('\u{1F1EF}') || row.contains('\u{1F1F5}'))
+        );
+        assert_eq!(rows.concat(), text);
+    }
+
+    #[test]
     fn byte_at_column_walks_graphemes() {
         let text = "héllo";
         let rows = wrap_rows(text, 20);

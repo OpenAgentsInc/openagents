@@ -514,4 +514,61 @@ mod tests {
         let (row, column) = editor.caret_row_column(10);
         assert_eq!((row, column), (1, 0));
     }
+
+    #[test]
+    fn a_combining_accent_edits_as_one_grapheme() {
+        // "e" + U+0301 combining acute, then "x".
+        let mut editor = Editor::new();
+        editor.insert_str("e\u{301}x");
+        assert!(editor.left());
+        assert_eq!(editor.caret(), 3);
+        editor.backspace();
+        assert_eq!(editor.text(), "x");
+        assert_eq!(editor.caret(), 0);
+    }
+
+    #[test]
+    fn a_zwj_emoji_sequence_is_one_step_and_one_delete() {
+        // Family emoji: four code points joined by U+200D.
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        let mut editor = Editor::new();
+        editor.insert_str(family);
+        editor.insert_str("!");
+        editor.home();
+        assert!(editor.right());
+        assert_eq!(editor.caret(), family.len());
+        editor.home();
+        editor.delete();
+        assert_eq!(editor.text(), "!");
+    }
+
+    #[test]
+    fn wide_characters_count_two_cells_toward_the_caret_column() {
+        let mut editor = Editor::new();
+        editor.insert_str("日本語");
+        editor.left();
+        let (row, column) = editor.caret_row_column(40);
+        assert_eq!((row, column), (0, 4));
+        editor.backspace();
+        assert_eq!(editor.text(), "日語");
+    }
+
+    #[test]
+    fn a_resize_reflows_the_draft_and_keeps_the_caret_in_view() {
+        let mut editor = Editor::new();
+        editor.insert_str("one two three four five six seven eight nine ten");
+        let wide = editor.window(80);
+        assert_eq!(wide.rows.len(), 1);
+        assert_eq!(wide.scroll, 0);
+        let narrow = editor.window(6);
+        assert!(narrow.rows.len() > ROWS_MAX);
+        let caret_row = row_of(&narrow.rows, editor.caret());
+        assert!(caret_row >= narrow.scroll && caret_row < narrow.scroll + narrow.visible);
+        // Widening again drops the scroll back to the top row.
+        editor.home();
+        editor.set_caret(0);
+        let wide = editor.window(80);
+        assert_eq!(wide.rows.len(), 1);
+        assert_eq!(wide.scroll, 0);
+    }
 }
