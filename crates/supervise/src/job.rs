@@ -96,13 +96,24 @@ impl Job {
     /// still terminates the tree and reaps the direct child — the caller
     /// just never learns what it said.
     pub async fn run(self) -> Ended {
+        self.run_holding(()).await
+    }
+
+    /// Keeps a resource alive until the child is reaped and output cleanup
+    /// ends, even if the caller cancels the returned future. A worktree
+    /// guard uses this to outlive every process that can write into it.
+    pub async fn run_holding<T: Send + 'static>(self, resource: T) -> Ended {
         let started = Instant::now();
         // The supervisor runs in a task of its own so that cleanup survives
         // a caller that walks away. `held` is the only live end of the
         // channel: dropping this future closes it, which is the same signal
         // to the supervisor as an expired deadline.
         let (held, dropped) = oneshot::channel::<()>();
-        let supervisor = tokio::spawn(supervise(self, dropped));
+        let supervisor = tokio::spawn(async move {
+            let ended = supervise(self, dropped).await;
+            drop(resource);
+            ended
+        });
         let ended = match supervisor.await {
             Ok(ended) => ended,
             Err(error) => Ended {

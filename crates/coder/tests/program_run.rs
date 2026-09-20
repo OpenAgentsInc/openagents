@@ -380,7 +380,7 @@ async fn the_first_program_runs_from_its_definition() {
         "the order is the program's, not the code's"
     );
     assert_eq!(run.delegations.len(), 6);
-    assert_eq!(run.correct(), (6, 6), "{}", run.summary());
+    assert_eq!(run.correct(), (6, 6), "{}\n{:#?}", run.summary(), run.delegations);
 
     // The bounds came off the program. Six at once, one checkout each,
     // five minutes — no, sixty: the step says sixty.

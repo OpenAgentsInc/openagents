@@ -52,6 +52,7 @@ pub mod source;
 pub mod survey;
 pub mod trace;
 pub mod turn;
+mod worktree;
 
 pub use agent::{Agent, Classified, Verdict};
 pub use capability::{Found, Manifest, Presence};

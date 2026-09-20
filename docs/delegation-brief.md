@@ -225,7 +225,23 @@ test and a recording of something else doing what it should do.
 - **Credentials:** hosted Jev is `set -a; . ~/work/.secrets/typesafe.env; set +a`, and a local door key is at `~/work/.secrets/coder-local-door.env`. Both are machine-local and gitignored; never print either. `crates/jev`'s `Config` reads the process environment and loads **no** dotenv, so exporting first is required, and a missing key and a missing `model` field in the body produce different errors.
 - **Local doors:** `~/work/kev-artifacts/` holds four kev checkpoints and their bases. `kev-serve` takes about 45 seconds to load on CPU and answers in roughly 2 seconds.
 - **Devin:** at `~/.local/bin/devin`, **not on a spawned subshell's `PATH`**. It also refuses a workspace it does not trust, including a git worktree under `/private/tmp` — which is where agent worktrees live, so live delegation from one is refused.
-- **One flake is explained, one is not.** `delegate::tests::the_fan_out_is_concurrent_under_its_bound` was asserting a fixed 1.5-second ceiling, so under a busy suite it failed **about the machine rather than about concurrency**; #9416 changed it to compare wall clock against summed delegation time. The other is now **reproducible and is a real bug**: `the_first_program_runs_from_its_definition` **loses a delegation about one run in four** under parallel `cargo test`, and it reproduces at `1f78b260e2` without any of today's later changes. A fan-out that silently drops one of six under load is exactly the defect an unattended burndown would hide, and #9418 already found one of that shape — two concurrent `drive::output` calls reading the same nanosecond, sharing a temp filename, and deleting each other's file, which reads as a command that answered with nothing. **Chase this before the first unattended run.**
+- **The missing-delegation failure is a worktree race.** Repeated tests at
+  `1f78b260e2` captured a failed `git worktree add` reading a sibling's
+  `.git/worktrees/<id>/commondir` while that sibling was removed. The missing
+  answer was a checkout-creation failure, separate from CoderBench's fixed
+  temporary-output filename collision. #9442 adds a lock in the Git common
+  directory for creation/removal across Coder processes and linked checkouts,
+  while delegated work stays concurrent. Cancellation now keeps the checkout
+  alive until the supervisor reaps the executor. See
+  [worktree coordination](coder/delegate.md#coordinate-checkout-creation-and-cleanup).
+  The earlier concurrency test's fixed 1.5-second ceiling was separately
+  replaced by a comparison against summed delegation time in #9416.
+- **Use a separate Cargo target directory per worktree.** During this handoff,
+  sharing a target between the historical reproduction and current source
+  reused a stale path-dependency artifact. The isolated verification target
+  rebuilt correctly. A shared target's result is not acceptance evidence for
+  a different source snapshot.
+
 
 ## The audit
 

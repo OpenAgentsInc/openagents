@@ -36,6 +36,10 @@ that future, which closes the channel, which terminates the tree exactly as
 an expired deadline does. The caller does not learn what the job said,
 because it stopped waiting; the machine does not keep the process.
 
+`Job::run_holding` also retains a resource until process and output cleanup
+finish. Delegation uses it for the checkout guard: cancelling the caller cannot
+remove a checkout while the supervisor is still terminating its writer.
+
 A job that exits on its own is the same contract read the other way.
 Whatever is still in the group is a descendant that outlived the job it
 belongs to, so the group is killed there too — without a grace period, since

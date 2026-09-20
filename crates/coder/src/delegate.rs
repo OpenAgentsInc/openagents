@@ -55,14 +55,15 @@
 //! directory.
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use futures_util::stream;
 use serde_json::{Value, json};
 use supervise::{Ending, Job, Limits};
-use tokio::process::Command;
+
+pub use crate::worktree::Worktree;
 
 /// The most delegations one fan-out runs at once, unless a caller says
 /// otherwise. Six is the width the first recorded episode ran at.
@@ -594,9 +595,8 @@ impl Delegator {
             .arg(&task.prompt)
             .in_directory(&workdir)
             .bounded(Limits::within(task.bounds.wall()).keeping(OUTPUT_MAX))
-            .run()
+            .run_holding(checkout.hold())
             .await;
-        let elapsed = started.elapsed();
         let said = Reported {
             status: Status::Answered,
             output: ended.stdout.marked(),
@@ -626,15 +626,24 @@ impl Delegator {
             // the executor, and nothing about it is the executor's answer.
             Ending::Failed(why) => Reported::of(Status::Harness(why.clone())).detailing(why),
         };
-        drop(checkout);
-        self.ended(task, reported, elapsed, workdir)
+        let reported = match checkout.close().await {
+            Ok(()) => reported,
+            Err(error) => Reported {
+                status: Status::Harness(error.clone()),
+                detail: format!("{}\n{error}", reported.detail),
+                ..reported
+            },
+        };
+        self.ended(task, reported, started.elapsed(), workdir)
     }
 
     /// The checkout one task runs in.
     async fn checkout(&self, task: &Task) -> Result<Checkout, String> {
         match (task.isolation, &self.repository) {
             (Isolation::Worktree, Some(repository)) => {
-                Worktree::add(repository).await.map(Checkout::Own)
+                Worktree::add(repository)
+                    .await
+                    .map(|worktree| Checkout::Own(Arc::new(worktree)))
             }
             _ => Ok(Checkout::Shared),
         }
@@ -714,95 +723,34 @@ enum Checkout {
     /// Correct for a delegate that only reads.
     Shared,
     /// A checkout of this delegation's own, removed when it ends.
-    Own(Worktree),
+    Own(Arc<Worktree>),
 }
 
 impl Checkout {
+    fn hold(&self) -> Option<Arc<Worktree>> {
+        match self {
+            Checkout::Shared => None,
+            Checkout::Own(worktree) => Some(Arc::clone(worktree)),
+        }
+    }
+
+    async fn close(self) -> Result<(), String> {
+        match self {
+            Checkout::Shared => Ok(()),
+            Checkout::Own(worktree) => Arc::try_unwrap(worktree)
+                .map_err(|_| "the executor still holds its worktree".to_string())?
+                .close()
+                .await,
+        }
+    }
+
     /// The directory the executor runs in.
     fn path<'a>(&'a self, shared: &'a Path) -> &'a Path {
         match self {
             Checkout::Shared => shared,
-            Checkout::Own(worktree) => &worktree.path,
+            Checkout::Own(worktree) => worktree.path(),
         }
     }
-}
-
-/// One checkout made for one delegation, removed when it is dropped.
-///
-/// The removal is in `Drop` rather than after the wait, because a
-/// delegation that timed out, failed, or panicked leaves a checkout behind
-/// just as surely as one that answered, and six of those per fan-out is a
-/// repository nobody can work in.
-#[derive(Debug)]
-pub struct Worktree {
-    repository: PathBuf,
-    path: PathBuf,
-}
-
-impl Worktree {
-    /// Makes a detached checkout of `repository` at its current `HEAD`.
-    ///
-    /// # Errors
-    ///
-    /// Returns a sentence naming why the checkout was not made.
-    async fn add(repository: &Path) -> Result<Self, String> {
-        let path = repository.join(WORKTREE_DIR).join(unique_name());
-        let done = Command::new("git")
-            .arg("-C")
-            .arg(repository)
-            .args(["worktree", "add", "--detach"])
-            .arg(&path)
-            .arg("HEAD")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .map_err(|error| format!("cannot make a worktree: {error}"))?;
-        if !done.status.success() {
-            return Err(format!(
-                "cannot make a worktree in {}: {}",
-                path.display(),
-                String::from_utf8_lossy(&done.stderr).trim()
-            ));
-        }
-        Ok(Worktree {
-            repository: repository.to_path_buf(),
-            path,
-        })
-    }
-
-    /// The checkout this delegation ran in.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for Worktree {
-    fn drop(&mut self) {
-        let _ = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&self.repository)
-            .args(["worktree", "remove", "--force"])
-            .arg(&self.path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-}
-
-/// A name no other worktree of this repository holds: the process, and a
-/// count within it.
-fn unique_name() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(1);
-    format!(
-        "{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    )
 }
 
 /// The first `max` characters of a string, cut on a character boundary.
@@ -1163,7 +1111,7 @@ mod tests {
         assert!(
             delegation
                 .workdir
-                .starts_with(repository.path().join(WORKTREE_DIR)),
+                .starts_with(repository.path().canonicalize().unwrap().join(WORKTREE_DIR)),
             "the checkout sits under the repository, which is the directory an \
              executor has been told to trust: {}",
             delegation.workdir.display()

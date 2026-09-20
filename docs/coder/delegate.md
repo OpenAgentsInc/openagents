@@ -171,6 +171,26 @@ Worktrees separate edits. They do not prohibit writes, and a recorded call
 still says `wrote: null` rather than claiming a check nobody runs.
 Observing what a delegate actually changed is separate work.
 
+### Coordinate checkout creation and cleanup
+
+Creating and removing worktrees changes shared Git metadata. These operations
+must not overlap: a parallel program test reproduced `git worktree add` reading
+a sibling's `commondir` while that sibling was removed, leaving only five of six
+delegations answered. This is tracked in #9442.
+
+Coder now serializes these operations with `coder-worktrees.lock` in the common
+Git directory. Linked checkouts and separate Coder processes use the same lock.
+The lock is advisory; external tools must cooperate with it for the same
+guarantee. Delegated work stays concurrent because it runs outside the lock.
+
+Lock acquisition and each Git subprocess have a 30-second bound. Git output is
+capped at 64 KiB per stream. Coder reserves a new directory atomically, so a
+recycled process identifier cannot make cleanup remove an earlier checkout.
+Normal completion awaits cleanup and reports a cleanup failure with its path.
+On cancellation, the supervisor retains the checkout until the child is reaped;
+a background cleanup transaction then removes it. Abrupt process termination
+can still leave a checkout for the operator to inspect and remove.
+
 ## Running the live check
 
 The delegation tests run against a stub executor, so `cargo test -p coder`
