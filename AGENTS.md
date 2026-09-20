@@ -27,7 +27,7 @@ fixture, or an issue.
 
 ## Skills
 
-Two skills are vendored under `.agents/skills/`. Read and apply them:
+Three skills are vendored under `.agents/skills/`. Read and apply them:
 
 - `.agents/skills/google-developer-style/SKILL.md` — every piece of prose in
   this repository follows the Google Developer Documentation Style Guide:
@@ -37,6 +37,11 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
 - `.agents/skills/typesafe-ai/SKILL.md` — read it before you write a Jev
   question set, a threshold, or a client call. The Rust SDK lives in
   `crates/jev`.
+- `.agents/skills/nostr/SKILL.md` — read it before you touch `nips/`,
+  `crates/nostr`, `crates/nostr-relay`, the Coder relay door, or
+  `coder-worker`, and before you debug a relay handoff. It maps the three
+  NIP lanes, the NIP-01/42/44 flow, and how a NIP-CJ job travels from
+  `coder` to a worker.
 
 [`docs/glossary.md`](docs/glossary.md) defines the terms this repository
 uses, and marks which are implemented and which are only specified.
