@@ -125,6 +125,10 @@ cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ./scripts/test-postgres.sh
+./scripts/check-dependencies.sh
 ```
+
+Read [the dependency policy](docs/dependencies.md) for the advisory exception,
+source and license checks, and the unresolved repository license conflict.
 
 CC0-1.0. The repository contract is `AGENTS.md`.

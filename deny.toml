@@ -1,0 +1,39 @@
+# Manual release checks are documented in docs/dependencies.md.
+[graph]
+all-features = true
+exclude-dev = false
+
+[advisories]
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+maximum-db-staleness = "P7D"
+unused-ignored-advisory = "deny"
+ignore = [
+    # Owner: OpenAgents Kev maintainers. Review by 2026-10-20.
+    # Only this maintenance advisory is accepted; no vulnerability is waived.
+    { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15 is unmaintained; Candle/GEMM/Pulp and tokenizers still require it. No numeric-stack replacement is approved. Review by 2026-10-20; see docs/dependencies.md." },
+]
+
+[licenses]
+confidence-threshold = 0.95
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+# Workspace licensing is a separate release check. Do not exclude unpublished
+# roots from the graph: their third-party dependencies still need review.
+[licenses.private]
+ignore = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
