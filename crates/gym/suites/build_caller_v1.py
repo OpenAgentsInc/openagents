@@ -310,6 +310,14 @@ def build(args):
         "family": sum(1 for key in keying.values() if key == "family"),
         "item": sum(1 for key in keying.values() if key == "item"),
     }
+    agreement = {}
+    for pair in args.agreement or []:
+        if "=" not in pair:
+            raise SystemExit(f"--agreement takes FAMILY=CEILING, got {pair!r}")
+        family, ceiling = pair.split("=", 1)
+        if family not in keying:
+            raise SystemExit(f"--agreement names {family!r}, which is not a family")
+        agreement[family] = ceiling
     suite = {
         "schema": SCHEMA,
         "name": args.name,
@@ -342,6 +350,10 @@ def build(args):
                 f"random.Random({SEED}).shuffle, "
                 "40% calibration / 40% development / 20% locked"
             ),
+            # The agreement ceiling a family's labels rest on, when the
+            # caller states one. `gym report` prints it beside the family's
+            # scores so a number is never read without the bar above it.
+            "agreement": agreement,
         },
         "digest": digest,
         "items": items,
@@ -390,6 +402,16 @@ def main():
         help="a description to use instead of the generated one",
     )
     parser.add_argument("--gate", default=GATE, help="the gate id the suite names")
+    parser.add_argument(
+        "--agreement",
+        action="append",
+        default=None,
+        metavar="FAMILY=CEILING",
+        help=(
+            "the agreement ceiling a family's labels rest on, e.g. "
+            "routing=0.91; repeatable, and the family must exist"
+        ),
+    )
     root = Path(__file__).resolve().parents[3]
     parser.add_argument(
         "--suite-out", default=None, type=Path, help="where the suite is written"

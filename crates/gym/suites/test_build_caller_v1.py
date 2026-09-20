@@ -63,6 +63,7 @@ class Args:
         self.created = "2026-09-20"
         self.description = None
         self.gate = "probability-v2"
+        self.agreement = None
 
 
 class BuildTests(unittest.TestCase):
@@ -207,6 +208,28 @@ class BuildTests(unittest.TestCase):
         first = suite["items"][0]
         self.assertEqual(first["id"], "acme-9001")
         self.assertEqual(first["label_rule"], "the account owner confirmed it")
+
+    def test_agreement_lands_in_provenance_and_validates(self):
+        self.write(self.sample())
+        args = Args(self.input)
+        args.agreement = ["routing=0.91", "severity=0.80"]
+        suite, _, _ = builder.build(args)
+        self.assertEqual(
+            suite["provenance"]["agreement"],
+            {"routing": "0.91", "severity": "0.80"},
+        )
+        # A ceiling is provenance, not an item: the digest does not move.
+        args.agreement = None
+        bare, _, _ = builder.build(args)
+        self.assertEqual(bare["digest"], suite["digest"])
+        self.assertEqual(bare["provenance"]["agreement"], {})
+        # A family the suite does not hold cannot claim a ceiling.
+        args.agreement = ["billing=0.99"]
+        with self.assertRaisesRegex(SystemExit, "not a family"):
+            builder.build(args)
+        args.agreement = ["noequals"]
+        with self.assertRaisesRegex(SystemExit, "FAMILY=CEILING"):
+            builder.build(args)
 
 
 if __name__ == "__main__":

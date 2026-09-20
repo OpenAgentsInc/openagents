@@ -209,17 +209,18 @@ ones come first. Nothing later depends on a public endpoint existing.
 
 ### Phase 0 — measurement as a service (no new infrastructure)
 
-1. **Caller-suite intake** (openagents#9464). A builder in the `build_external_*.py` pattern
-   that takes a caller's labelled data (JSONL of `state` + label + family)
-   and emits a digested gym suite: `label_source` naming the caller,
-   calibration and development partitions open, locked spent once. Done when
-   a caller's file round-trips through `Suite::load` and the digest is
-   reproducible.
-2. **The measured report** (openagents#9465). `gym eval` of a caller's suite against named
-   doors, packaged as a retained store plus a rendered record — the shape of
-   `docs/gym/measurements/` — that a caller can verify: digest the suite,
-   walk the receipt chain, read the gate. Done when one real caller suite
-   produces a record with ceilings beside scores.
+1. **Caller-suite intake** (openagents#9464, landed). `build_caller_v1.py`
+   takes a caller's labelled data (JSONL of `family`, `kind`, `state`,
+   `truth`, and `question`) and emits a digested gym suite and question
+   set: `label_source` naming the caller, a `label_rule` per item, a
+   `--agreement` ceiling per family, and paraphrase groups held in one
+   partition. A caller's file round-trips through `Suite::load` and the
+   digest is reproducible.
+2. **The measured report** (openagents#9465, landed). `gym report` renders a
+   store of rows as a standalone record — digests, chain head, per-door
+   and per-family tables, refusals counted, ceilings beside scores — and
+   `gym verify` walks the receipt chain. `docs/gym/measured-records.md`
+   is the caller-facing flow.
 
 Phase 0 is the product's smallest shippable unit: "we measured your labels
 against these doors and here is the receipt chain" needs no accounts, no

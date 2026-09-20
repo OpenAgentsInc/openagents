@@ -46,7 +46,7 @@ use gym::questions::QuestionSet;
 use gym::regress;
 use gym::row::{DoorIdentity, Row};
 use gym::spread::{Draws, Spread, ece_frozen, mean_signal, stratified_bootstrap};
-use gym::store::{Store, StoreError};
+use gym::store::{ChainVerdict, Store, StoreError, verify_chain};
 use gym::suite::{Item, Partition, Suite};
 use jev::{Client, Config, Questions, SystemOneRequest};
 use serde_json::Value;
@@ -118,6 +118,8 @@ struct Options {
     timeout: Option<u64>,
     /// The draws `spread` reads.
     draws: Option<String>,
+    /// Where `report` writes the record; stdout by default.
+    out: Option<String>,
 }
 
 fn main() {
@@ -134,6 +136,8 @@ fn main() {
         "permute" if options.store.is_some() => run(flips_command(&options)),
         "permute" => run(permute_command(options)),
         "latency" => run(latency_command(options)),
+        "report" => run(report_command(&options)),
+        "verify" => run(verify_command(&options)),
         "regress" => run(regress_command(&options)),
         "" | "help" | "--help" | "-h" => {
             println!("{USAGE}");
@@ -154,6 +158,8 @@ gym spread   measure how far each metric moves across seed blocks
 gym permute  measure how much option order moves the answer, or read it back
              from a store with --store
 gym latency  measure how much wall clock moves when nothing else does
+gym report   render a measured record from recorded rows
+gym verify   walk a store's receipt chain and say where it breaks
 gym regress  compare a door with its own last recorded run
 
   --door name=url     a door to ask; repeatable
@@ -174,6 +180,7 @@ gym regress  compare a door with its own last recorded run
   --items path        narrow eval or a recorded view to these item ids
   --from path         a store `merge` folds into `--store`; repeatable
   --blocks n          how many passes `latency` makes; 8 by default
+  --out path          the file `report` writes; stdout by default
   --timeout seconds   how long one call to a `--door` may take; the client's
                       ten seconds by default, and worth raising on a busy
                       machine, because a timeout loses the item entirely
@@ -216,6 +223,7 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--family" => options.family = args.next(),
             "--items" => options.items = args.next(),
             "--from" => options.from.extend(args.next()),
+            "--out" => options.out = args.next(),
             "--timeout" => options.timeout = args.next().and_then(|value| value.parse().ok()),
             other => eprintln!("unknown flag {other}"),
         }
@@ -1227,6 +1235,354 @@ fn compare_command(options: &Options) -> Result<(), String> {
     }
     println!();
     Ok(())
+}
+
+/// The record a store of rows reads as, rendered for whoever holds it.
+///
+/// `eval` reports while the run is warm; this renders the same evidence
+/// later, from the receipt-chained rows alone, so a caller who only ever
+/// sees the store can read the measurement and walk the chain that carries
+/// it. `--suite` is enrichment, not evidence: with the suite file the
+/// record can name each family's label rule and the agreement ceiling its
+/// labels rest on; without it the record says what the rows say and no
+/// more.
+fn report_command(options: &Options) -> Result<(), String> {
+    let path = options
+        .store
+        .as_deref()
+        .ok_or_else(|| "report reads recorded rows; pass --store path".to_string())?;
+    let values = Store::at(path).rows().map_err(|error| error.to_string())?;
+    let head = match verify_chain(&values) {
+        ChainVerdict::Ok { head, .. } => head,
+        ChainVerdict::Broken { detail, .. } => return Err(detail),
+    };
+    let rows: Vec<Row> = values
+        .into_iter()
+        .map(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
+        .collect::<Result<_, _>>()?;
+    if rows.is_empty() {
+        return Err(format!("{path} holds no rows"));
+    }
+
+    // A suite file whose digest no row pins is a different suite, and
+    // lending its provenance to these rows would mislabel the record.
+    let provenance = match options.suite.as_deref() {
+        Some(file) => {
+            let suite = Suite::load_file(file).map_err(|error| error.to_string())?;
+            if !rows.iter().any(|row| row.suite_digest == suite.digest) {
+                return Err(format!(
+                    "{file} digests to {}, which no row in this store names",
+                    suite.digest
+                ));
+            }
+            let text = std::fs::read_to_string(file).map_err(|error| format!("{file}: {error}"))?;
+            let value: Value =
+                serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?;
+            Some((suite, value.get("provenance").cloned()))
+        }
+        None => None,
+    };
+
+    let mut record = format!("# `{}` — the measured record\n\n", rows[0].suite);
+    record.push_str(&format!(
+        "Store `{path}` holds {held} rows; the receipt chain verifies{head}.\n",
+        held = rows.len(),
+        head = match &head {
+            Some(head) => format!(" to head `{head}`"),
+            None => String::new(),
+        },
+    ));
+    let first = rows.iter().map(|row| &row.recorded_at).min().unwrap();
+    let last = rows.iter().map(|row| &row.recorded_at).max().unwrap();
+    record.push_str(&format!("Recorded {first} through {last}.\n\n"));
+    record.push_str(
+        "A row the harness never wrote is not here: items lost to timeouts or dead \
+         doors leave no row, so the counts below are over what the chain carries, \
+         and a refused item counts against the door that refused it.\n\n",
+    );
+
+    for (suite, digest) in suite_groups(&rows) {
+        let inside: Vec<Row> = rows
+            .iter()
+            .filter(|row| row.suite == suite && row.suite_digest == digest)
+            .cloned()
+            .collect();
+        record.push_str(&suite_section(
+            &suite,
+            &digest,
+            &inside,
+            provenance.as_ref(),
+        ));
+    }
+
+    record.push_str(
+        "## Checking this record\n\nEvery row pins the suite digest, the question-set digest, \
+         and the gate digest, and carries a receipt over its contents chained to the row \
+         before it. Every store-reading command walks that chain and refuses a broken one; \
+         `gym verify --store` walks it without rendering the tables. The suite digests \
+         itself on load, and the named gate lives in `crates/gym/gates/`.\n",
+    );
+
+    match options.out.as_deref() {
+        Some(file) => {
+            std::fs::write(file, &record).map_err(|error| format!("{file}: {error}"))?;
+            println!("Wrote `{file}`.");
+        }
+        None => println!("{record}"),
+    }
+    Ok(())
+}
+
+/// The suites a store's rows name, in first-seen order: a store can hold
+/// rows from more than one run.
+fn suite_groups(rows: &[Row]) -> Vec<(String, String)> {
+    let mut groups: Vec<(String, String)> = Vec::new();
+    for row in rows {
+        let group = (row.suite.clone(), row.suite_digest.clone());
+        if !groups.contains(&group) {
+            groups.push(group);
+        }
+    }
+    groups
+}
+
+/// One suite's section of the record: the digests it pins, then a table
+/// per door it was asked of.
+fn suite_section(
+    suite: &str,
+    digest: &str,
+    rows: &[Row],
+    provenance: Option<&(Suite, Option<Value>)>,
+) -> String {
+    let mut section = String::new();
+    let pinned = rows.iter().find_map(|row| {
+        row.question_set.as_ref().map(|id| {
+            format!(
+                "`{id}` — digest `{}`",
+                row.question_digest.as_deref().unwrap_or("?")
+            )
+        })
+    });
+    section.push_str(&format!("Suite `{suite}` — digest `{digest}`.\n"));
+    match pinned {
+        Some(pinned) => section.push_str(&format!("Question set {pinned}.\n")),
+        None => {
+            section.push_str("Question text is inline in the items; the suite digest covers it.\n")
+        }
+    }
+    if let Some(id) = rows.iter().find_map(|row| row.gate_id.clone()) {
+        let gate_digest = rows
+            .iter()
+            .find_map(|row| row.gate_digest.clone())
+            .unwrap_or_else(|| "?".to_string());
+        section.push_str(&format!("Gate `{id}` — digest `{gate_digest}`.\n"));
+    }
+    section.push('\n');
+
+    for door in doors_of(rows) {
+        let asked: Vec<Row> = rows
+            .iter()
+            .filter(|row| row.door == door)
+            .cloned()
+            .collect();
+        section.push_str(&format!("## `{door}`\n\n"));
+        section.push_str(&format!("Identity: {}.\n\n", identity_of(&asked)));
+        let scored = asked.iter().filter(|row| row.is_scored()).count();
+        let refused = asked.iter().filter(|row| row.is_refused()).count();
+        section.push_str(&format!(
+            "{} items recorded: {scored} scored, {refused} refused by the door.\n",
+            asked.len(),
+        ));
+        let refusals = eval::refusals(&asked);
+        if !refusals.is_empty() {
+            let detail: Vec<String> = refusals
+                .iter()
+                .map(|(code, count)| format!("`{code}` x{count}"))
+                .collect();
+            section.push_str(&format!("Door refusals: {}.\n", detail.join(", ")));
+        }
+        section.push_str(&format!("Median latency {}.\n\n", median_latency(&asked)));
+
+        section.push_str("| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |\n");
+        section.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
+        for split in splits_of(&asked) {
+            let inside: Vec<Row> = asked
+                .iter()
+                .filter(|row| row.split == split)
+                .cloned()
+                .collect();
+            let metrics = score(&eval::observations(&inside));
+            section.push_str(&metrics_row(&split, metrics));
+            section.push('\n');
+        }
+        section.push('\n');
+
+        let ceilings = ceilings_of(rows, provenance);
+        let ruled = ruled_families(&asked, provenance);
+        section.push_str(
+            "| Family | Accuracy | ECE | Brier | NLL | Confident errors | Items | Ceiling |\n",
+        );
+        section.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+        for family in eval::families(&asked) {
+            let inside: Vec<Row> = asked
+                .iter()
+                .filter(|row| row.family == family)
+                .cloned()
+                .collect();
+            let metrics = score(&eval::observations(&inside));
+            let ceiling = ceilings
+                .get(&family)
+                .map(String::as_str)
+                .unwrap_or("unstated");
+            section.push_str(&format!(
+                "| `{family}` | {:.2} | {:.3} | {:.3} | {:.3} | {} | {} | {ceiling} |\n",
+                metrics.accuracy,
+                metrics.ece,
+                metrics.brier,
+                metrics.nll,
+                metrics.confident_errors,
+                metrics.items,
+            ));
+        }
+        section.push('\n');
+        if !ruled.is_empty() {
+            section.push_str("Label evidence:\n\n");
+            for (family, source, rule) in &ruled {
+                let rule = match rule {
+                    Some(rule) => format!(" — rule \"{rule}\""),
+                    None => String::new(),
+                };
+                section.push_str(&format!("- `{family}` — {source}{rule}\n"));
+            }
+            section.push('\n');
+        }
+    }
+    section
+}
+
+/// The doors a suite's rows name, in first-seen order.
+fn doors_of(rows: &[Row]) -> Vec<String> {
+    let mut doors: Vec<String> = Vec::new();
+    for row in rows {
+        if !doors.contains(&row.door) {
+            doors.push(row.door.clone());
+        }
+    }
+    doors
+}
+
+/// The splits a door's rows name, partitions in suite order first and any
+/// other split names after.
+fn splits_of(rows: &[Row]) -> Vec<String> {
+    let mut splits: Vec<String> = Vec::new();
+    for partition in Partition::ALL {
+        let name = partition.as_str().to_string();
+        if rows.iter().any(|row| row.split == name) && !splits.contains(&name) {
+            splits.push(name);
+        }
+    }
+    for row in rows {
+        if !splits.contains(&row.split) {
+            splits.push(row.split.clone());
+        }
+    }
+    splits
+}
+
+/// The agreement ceiling each family's labels rest on, from the suite's
+/// provenance: `provenance.agreement.<family>`, which the caller-suite
+/// builder writes when a caller states one. A suite that publishes no
+/// ceiling reports "unstated" rather than a borrowed number.
+fn ceilings_of(
+    rows: &[Row],
+    provenance: Option<&(Suite, Option<Value>)>,
+) -> BTreeMap<String, String> {
+    let mut ceilings = BTreeMap::new();
+    let Some((suite, Some(provenance))) = provenance else {
+        return ceilings;
+    };
+    if suite.digest
+        != rows
+            .first()
+            .map(|row| row.suite_digest.as_str())
+            .unwrap_or("")
+    {
+        return ceilings;
+    }
+    if let Some(agreement) = provenance.get("agreement").and_then(Value::as_object) {
+        for (family, ceiling) in agreement {
+            let text = ceiling
+                .as_str()
+                .map(str::to_string)
+                .or_else(|| ceiling.as_f64().map(|n| format!("{n:.3}")));
+            if let Some(text) = text {
+                ceilings.insert(family.clone(), text);
+            }
+        }
+    }
+    ceilings
+}
+
+/// Per family, the label evidence the rows carry and the rule the suite
+/// states it by: `(<family>, <sources>, <rule>)`.
+fn ruled_families(
+    rows: &[Row],
+    provenance: Option<&(Suite, Option<Value>)>,
+) -> Vec<(String, String, Option<String>)> {
+    let mut ruled = Vec::new();
+    for family in eval::families(rows) {
+        let sources = evidence_of(
+            &rows
+                .iter()
+                .filter(|row| row.family == family)
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        let rule = provenance.and_then(|(suite, _)| {
+            if suite.digest != rows.first()?.suite_digest.as_str() {
+                return None;
+            }
+            suite
+                .items
+                .iter()
+                .filter(|item| item.family == family)
+                .filter_map(|item| item.label_rule.clone())
+                .next()
+        });
+        ruled.push((family, sources.join(", "), rule));
+    }
+    ruled
+}
+
+/// Whether a store's receipt chain holds, said plainly.
+///
+/// Every command that reads a store verifies the chain before it reads;
+/// `verify` exists so the check is the point, not a side effect of a
+/// table.
+fn verify_command(options: &Options) -> Result<(), String> {
+    let path = options
+        .store
+        .as_deref()
+        .ok_or_else(|| "verify reads recorded rows; pass --store path".to_string())?;
+    let rows = Store::at(path).rows().map_err(|error| error.to_string())?;
+    match verify_chain(&rows) {
+        ChainVerdict::Ok { rows, head } => {
+            let head = head.as_deref().unwrap_or("none");
+            println!("`{path}`: {rows} rows, chain intact, head `{head}`.");
+            Ok(())
+        }
+        ChainVerdict::Broken {
+            index,
+            fault,
+            detail,
+        } => {
+            eprintln!(
+                "`{path}`: chain broken at row {index} ({}).",
+                fault.as_str()
+            );
+            Err(detail)
+        }
+    }
 }
 
 /// One side of a comparison: a door, and the question set it was asked.
@@ -2589,5 +2945,110 @@ mod tests {
             ..Row::default()
         };
         assert_eq!(chosen_of(&row), None);
+    }
+
+    /// One recorded row of the shape `eval` writes.
+    fn recorded(family: &str, item: &str, correct: bool) -> Row {
+        Row {
+            recorded_at: "2026-09-20T00:00:00Z".to_string(),
+            suite: "caller-v1".to_string(),
+            suite_digest: "suite-digest".to_string(),
+            question_set: Some("caller-v1".to_string()),
+            question_digest: Some("question-digest".to_string()),
+            split: "development".to_string(),
+            family: family.to_string(),
+            item_id: item.to_string(),
+            door: "stub".to_string(),
+            gate_id: Some("probability-v2".to_string()),
+            gate_digest: Some("gate-digest".to_string()),
+            answered: true,
+            distribution: Some(
+                [("yes".to_string(), 0.9), ("no".to_string(), 0.1)]
+                    .into_iter()
+                    .collect(),
+            ),
+            selected: Some("yes".to_string()),
+            correct: Some(correct),
+            ..Row::default()
+        }
+    }
+
+    /// `report` renders the record a store carries, digests and all, and
+    /// `verify` walks the same chain.
+    #[test]
+    fn report_renders_a_store_as_a_record() {
+        let dir = std::env::temp_dir().join(format!("gym-report-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = dir.join("store.jsonl");
+        let chain = Store::at(store.to_str().unwrap());
+        chain
+            .append(&recorded("routing", "routing/001", true))
+            .unwrap();
+        chain
+            .append(&recorded("routing", "routing/002", false))
+            .unwrap();
+        chain
+            .append(
+                &recorded("severity", "severity/001", false)
+                    .refused(gym::row::RefusalCode::Guardrail),
+            )
+            .unwrap();
+
+        let out = dir.join("record.md");
+        report_command(&Options {
+            store: Some(store.to_str().unwrap().to_string()),
+            out: Some(out.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        let record = std::fs::read_to_string(&out).unwrap();
+        for expected in [
+            "caller-v1",
+            "suite-digest",
+            "question-digest",
+            "gate-digest",
+            "receipt chain verifies",
+            "`routing`",
+            "`severity`",
+            "1 refused by the door",
+            "guardrail",
+            "Checking this record",
+        ] {
+            assert!(record.contains(expected), "the record misses {expected}");
+        }
+        verify_command(&Options {
+            store: Some(store.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An edited row breaks the chain, and `verify` says so.
+    #[test]
+    fn verify_names_a_broken_chain() {
+        let dir = std::env::temp_dir().join(format!("gym-verify-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = dir.join("store.jsonl");
+        let chain = Store::at(store.to_str().unwrap());
+        chain
+            .append(&recorded("routing", "routing/001", true))
+            .unwrap();
+        chain
+            .append(&recorded("routing", "routing/002", false))
+            .unwrap();
+        let text = std::fs::read_to_string(&store).unwrap();
+        std::fs::write(
+            &store,
+            text.replacen("\"correct\":true", "\"correct\":false", 1),
+        )
+        .unwrap();
+        let trouble = verify_command(&Options {
+            store: Some(store.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap_err();
+        assert!(trouble.contains("edited"), "{trouble}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
