@@ -788,8 +788,7 @@ fn the_delimiter_floor_is_refused_before_encoding() {
 
 #[test]
 fn every_advertised_alias_resolves() {
-    let rig = rig();
-    let state = rig.state;
+    let state = &rig().state;
     assert!(state.aliases.iter().any(|a| a == jev::defaults::MODEL));
     for model in ["jev-latest", "", "kev-latest"] {
         assert_eq!(
