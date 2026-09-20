@@ -67,18 +67,20 @@ The sentence-driven path has run, but #9427 remains a prerequisite to unattended
 work. Shared capability trust landed in `4010baadbc`; the filesystem boundary
 and independent snapshots landed as a component in `b14cfedb83`. CoderBench
 now observes filesystem snapshots independently (`54d33bec05`, with distinct
-escaped path labels in `1aca30819a`). Runtime integration, actual adapter
-verification, and the observed graded golden remain required. Check current issue and worktree state before starting
+escaped path labels in `1aca30819a`). Runtime integration landed in `693e9d10ee`, with filesystem enforcement,
+dispatch-time approval revalidation, and retained writing worktrees. Actual
+adapter verification and the observed graded golden remain required. Check current issue and worktree state before starting
 another implementation of these pieces.
 
 ### 2. [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427), held on purpose
 
-Read-only is still not enforced by the integrated delegation path at
-`4010baadbc`. The earlier conflict with #9416 is resolved. Wire the landed
-boundary into delegation, keep its resources alive through process cleanup,
-retain writing worktrees for review, and verify the integrated path against
-CoderBench's independent workspace observation. Manifest approval permits a probe; it does not establish
-that the executor enforces its declared bounds.
+The integrated path at `693e9d10ee` enforces filesystem writes through the
+host boundary, holds resources through process cleanup, and retains writing
+worktrees for review. Local process tests cover protected writes, cancellation,
+changed approvals, and writable aliases of approval metadata. Verify the actual
+Devin adapter and the integrated run against CoderBench's independent workspace
+observation before closing this issue. Manifest approval permits a probe; it
+does not establish that the executor enforces its declared bounds.
 
 Note `shell::run` gained a `Permit` parameter from #9415 and the bounded
 form is now `run_within(proposal, permit, wall)`.
