@@ -1,0 +1,30 @@
+{
+  "schema": "openagents.coderbench.task.v1",
+  "id": "devin-fan-out-six",
+  "family": "delegation",
+  "request": "Delegate six instances of Devin, one for each of these six read-only questions.",
+  "requires": {
+    "capabilities": [
+      "devin-local"
+    ],
+    "repository": "https://github.com/OpenAgentsInc/openagents.git"
+  },
+  "grade": {
+    "kind": "path",
+    "program": "delegate-fan-out",
+    "delegations": 6,
+    "delegations_correct": 6,
+    "writes_expected": 0,
+    "decisions": [
+      "program",
+      "independence"
+    ],
+    "checks": [
+      "admission_check",
+      "capability_probe",
+      "program_registry"
+    ]
+  },
+  "timeout_secs": 300,
+  "notes": "The subject under test is the delegation path, not the work. Each delegate answers one read-only question about a different file, so the six are independent by construction and the independence decision has a known answer. The grade separates decisions from checks: program and independence go to a decision model, while capability probing, program resolution, and bounds admission are deterministic and must not be asked of a model."
+}
