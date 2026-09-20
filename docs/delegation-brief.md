@@ -286,8 +286,8 @@ Canonical aliases share a lock, torn records fail closed, and overrides retain
 their provenance. Main passed 245 Gym library tests and six ledger integration
 tests; the full Gym suite and strict Clippy passed in the implementation
 worktree. See [the ledger contract](gym/ledger.md) for local-filesystem and
-Unix durability assumptions. This does not resolve #9399's contaminated
-training partition.
+Unix durability assumptions. This does not resolve #9399's training-data
+contamination of the locked partition.
 
 A09's UTF-8 half is fixed for the direct door as a
 side effect of bounding it — the old loop ran `String::from_utf8_lossy` per
