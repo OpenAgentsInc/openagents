@@ -120,11 +120,12 @@ that compares them lives here, so it does not have to be written three times.
 | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) | The question every turn now asks — which program, or none. Its baseline and headroom before its accuracy, its false positives and false negatives counted apart because they cost different amounts, and where the error mass sits. |
 | [`2026-09-20-program-selection-local-doors.md`](2026-09-20-program-selection-local-doors.md) | The same 44 program-selection items asked of `kev-0.5b`, `kev-0.6b`, and `kev-4b` beside hosted Jev, in one store: accuracy, missed and spurious programs counted apart, and latency across eight blocks. `kev-4b` sits inside the accuracy floor but misses four of nine program requests; the small Kevs are below it; no local door suffices yet. |
 
-## Other implementations
+## Other projects
 
 | Document | Holds |
 | --- | --- |
 | [`others/2026-09-19-laya.md`](others/2026-09-19-laya.md) | Laya, an open 421M decision model targeting this contract: what it is, why its benchmark table does not support what it is used for, and the two things worth taking from it. |
+| [`others/2026-09-20-jevbench.md`](others/2026-09-20-jevbench.md) | JevBench, an independent benchmark for this contract: what it is, the 231 public items vendored as `external-jevbench-v1`, and why no run of it can produce their composite score. |
 
 ## Open questions
 
