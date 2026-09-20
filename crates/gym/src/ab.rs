@@ -62,8 +62,14 @@
 //! blocks over the same 98 evaluation items, with the door, the items, the
 //! machine, and the estimator all held fixed. The accuracy of that unchanged
 //! door ran from 0.745 to 0.796, a standard deviation of **0.0197**. Only the
-//! seeds differed. That is this suite's noise floor on the seed axis, and it
-//! is the only floor this module has.
+//! seeds differed. That is this suite's noise floor on the seed axis for
+//! accuracy.
+//!
+//! `docs/lev/measurements/2026-09-19-calibration-variance.md` did the same
+//! for ECE, Brier, and log loss, on the base door and on the band adapter,
+//! from recorded draws rather than from a second run of the hardware. Every
+//! floor in [`Rule::v2`] comes from one of those two runs, and each bound's
+//! `why` names which.
 //!
 //! A comparison carries both sides' noise. With `b` blocks behind the
 //! baseline and `c` behind the candidate, the standard deviation of the
@@ -81,32 +87,56 @@
 //! Effect sizes here are multiples of the measured block-to-block standard
 //! deviation of the metric being gated.
 //!
+//! # Three of these floors are not the same kind of number as the first
+//!
+//! The accuracy floor is the spread of an average over items. The
+//! calibration floors are not, and reading them as if they were would be a
+//! mistake this module's own documentation would be responsible for.
+//!
+//! - **The raw log loss is mostly a clamp.** [`crate::calibrate::score`]
+//!   floors a probability at `1e-12`, so an item the door got wrong while
+//!   reporting 1.000 contributes 27.63 to the sum, which is 0.28 of a
+//!   98-item mean. On the base door's block 0 that clamp is **87% of the
+//!   whole log loss**. An L2 estimate over eight samples reports a multiple
+//!   of an eighth and nothing between, so the raw log loss moves in steps as
+//!   items cross 1.000, and its block spread is the spread of a count
+//!   wearing a decimal point. A map moves values off 1.000 and the step
+//!   disappears, which is why a mapped log loss is a far steadier number
+//!   than a raw one.
+//! - **Log loss and confident errors read the same items.** A confident
+//!   error is an item wrong at 0.9 or above, and the only value an
+//!   eight-sample estimate can report at or above 0.9 is 1.000. So on the
+//!   raw signal [`Metric::ConfidentErrors`] and [`Metric::Nll`] are the same
+//!   six items counted two ways. They separate once a map is serving.
+//! - **An ECE floor is a per-family number.** [`pool`] leaves a pooled ECE
+//!   unknown whenever more than one family is pooled, because a suite's ECE
+//!   is not the item-weighted mean of its families'. The only ECE a round
+//!   ever reads is one family's, so the floor is the noisiest family's
+//!   spread rather than the suite's. That makes the bar conservative for a
+//!   win on any family, and permissive for the guard on the quiet ones —
+//!   which guards them at all, where before it did not.
+//!
 //! # What this module refuses to choose
 //!
 //! [`crate::gate`] sets the precedent: a rule records `pending_measurement`
 //! inside its digest rather than picking a number nobody measured. The same
-//! applies here, and there are four gaps.
+//! applies here, and three gaps are left.
 //!
-//! - **ECE, Brier, and log loss have no measured block-to-block spread.** The
-//!   seed sweep measured accuracy and the mean top share and nothing else.
-//!   Their floors are [`Basis::Unmeasured`], so a win on them reports
-//!   `unverifiable` and can never earn a keep. A 10% relative move in ECE on
-//!   50 items is well inside binning noise, and inventing a floor for it
-//!   would be worse than admitting there is none.
-//! - **The flip rate has no floor and is carrying a headline.** Order
-//!   sensitivity falling from 0.120 to 0.040 is 6 flips against 2 on 50
-//!   items, and openagents#9375 measures how wide that interval is. It is not
-//!   a metric here because it is not in [`Scores`]; it is named in
+//! - **The flip rate has a floor now and is still not gateable.**
+//!   openagents#9375 measured it, and every published two-door flip-rate
+//!   difference turned out to be inside it. It is still not a metric here,
+//!   because it is not in [`Scores`]; it is named in
 //!   [`Rule::pending_measurements`], inside the digest, so the gap travels
 //!   with the rule.
-//! - **No family has its own floor.** The same run reports 5 of 50 `routing`
-//!   items changing answer across blocks against 12 of 18 `severity` items,
-//!   so the families plainly do not share one spread, and nothing measured
-//!   what each one's is. The family guard multiplies the suite floor, which
+//! - **No family has its own floor on accuracy, Brier, or log loss.** The
+//!   calibration run reports a per-family spread for each of them and they
+//!   differ by several times, but one bound is carried per metric and the
+//!   suite's is the one carried. The family guard multiplies it, which
 //!   understates `severity`'s noise and so refuses candidates a per-family
 //!   floor might admit. For a guard, over-refusing is the safe direction. The
 //!   substitution is written into the bound's own `why` and into every detail
-//!   line the guard produces.
+//!   line the guard produces. ECE is the exception and takes the noisiest
+//!   family's number, because a pooled ECE does not exist to take.
 //! - **The median has no floor either.** The median of three to eight blocks
 //!   has no measured spread, so the median criterion asks only that the
 //!   median move the same way as the mean. It sets no size.
@@ -421,30 +451,17 @@ pub struct Rule {
 
 impl Rule {
     /// The committed rule, derived from
-    /// `docs/lev/measurements/2026-09-19-seed-variance.md`.
+    /// `docs/lev/measurements/2026-09-19-seed-variance.md` and
+    /// `docs/lev/measurements/2026-09-19-calibration-variance.md`.
     ///
     /// Read [Where the numbers come from](index.html#where-the-numbers-come-from)
     /// for each derivation, and
     /// [What this module refuses to choose](index.html#what-this-module-refuses-to-choose)
-    /// for the four gaps this rule declines to fill.
+    /// for the three gaps this rule declines to fill.
     #[must_use]
-    pub fn v1() -> Self {
-        let unmeasured = |metric: Metric| MetricFloor {
-            metric,
-            block_sigma: Bound {
-                value: None,
-                basis: Basis::Unmeasured,
-                why: format!(
-                    "The seed sweep in docs/lev/measurements/2026-09-19-seed-variance.md \
-                     measured accuracy and the mean top share. Nothing has measured the \
-                     block-to-block spread of {metric} on this suite, so a win on it is \
-                     unverifiable rather than earned. A 10% relative move in {metric} on 50 \
-                     items is well inside the noise of the binning that produces it."
-                ),
-            },
-        };
+    pub fn v2() -> Self {
         Self {
-            id: "ab-v1".into(),
+            id: "ab-v2".into(),
             question: "Should this candidate replace the baseline, on a win that repeats on \
                        seed blocks nobody has drawn?"
                 .into(),
@@ -458,13 +475,63 @@ impl Rule {
                               with the door, the items, and the machine held fixed, gave \
                               accuracies from 0.745 to 0.796: a standard deviation of 0.0197. \
                               docs/lev/measurements/2026-09-19-seed-variance.md. Only the seeds \
-                              differed, so this is the suite's own floor on the seed axis."
+                              differed, so this is the suite's own floor on the seed axis. \
+                              openagents#9376 drew those same eight blocks again through a \
+                              different collection path and recovered the same 0.0197, which \
+                              checks the path rather than the number."
                             .into(),
                     },
                 },
-                unmeasured(Metric::Ece),
-                unmeasured(Metric::Brier),
-                unmeasured(Metric::Nll),
+                MetricFloor {
+                    metric: Metric::Ece,
+                    block_sigma: Bound {
+                        value: Some(0.0266),
+                        basis: Basis::Derived,
+                        why: "The same eight blocks gave ECEs from 0.097 to 0.166: a standard \
+                              deviation of 0.0266. \
+                              docs/lev/measurements/2026-09-19-calibration-variance.md, \
+                              openagents#9376. This is the live ten-bin ECE, which is what a \
+                              gate compares. With bin membership frozen the same blocks give \
+                              0.0179, so a third of the movement is items crossing a bin edge \
+                              and the rest is the values. A round only ever reads one family's \
+                              ECE, because a suite's is not the item-weighted mean of its \
+                              families', and the families' own spreads run 0.0136, 0.0393, and \
+                              0.1061 around this number: the guard over-refuses on severity and \
+                              slightly under-refuses on routing."
+                            .into(),
+                    },
+                },
+                MetricFloor {
+                    metric: Metric::Brier,
+                    block_sigma: Bound {
+                        value: Some(0.0119),
+                        basis: Basis::Derived,
+                        why: "The same eight blocks gave Briers from 0.150 to 0.182: a standard \
+                              deviation of 0.0119. \
+                              docs/lev/measurements/2026-09-19-calibration-variance.md, \
+                              openagents#9376. Brier is a mean over items, so the suite figure \
+                              is exactly what item weighting recovers, and every family's own \
+                              spread is larger than it."
+                            .into(),
+                    },
+                },
+                MetricFloor {
+                    metric: Metric::Nll,
+                    block_sigma: Bound {
+                        value: Some(0.6428),
+                        basis: Basis::Derived,
+                        why: "The same eight blocks gave log losses from 1.436 to 3.019: a \
+                              standard deviation of 0.6428, a third of the mean. \
+                              docs/lev/measurements/2026-09-19-calibration-variance.md, \
+                              openagents#9376. It is that wide because 87% of a raw log loss \
+                              here is the 1e-12 clamp on items the door got wrong at 1.000, \
+                              and the count of those ran 6, 6, 10, 4, 4, 10, 6, 4. A mapped log \
+                              loss moves values off 1.000 and is a far steadier number — 0.018 \
+                              against 0.643 on the same blocks — so this floor is conservative \
+                              for a comparison between two served maps."
+                            .into(),
+                    },
+                },
             ],
             effect_size_sigmas: Bound {
                 value: Some(2.0),
@@ -503,37 +570,41 @@ impl Rule {
             requeue_limit: 1,
             covers: "Seed resampling: the spread you would see if only the seed block changed."
                 .into(),
-            does_not_cover: "Item sampling. The blocks hold the item set fixed, and the \
-                             binomial standard error of an accuracy near 0.78 on 98 items is \
-                             about 0.042, roughly twice the seed noise. A win that survives a \
-                             fresh block has been shown to be more than a lucky draw; it has \
-                             not been shown to generalize to items this suite does not contain."
+            does_not_cover: "Item sampling, which is the larger half everywhere and is very \
+                             much the larger half on the calibration metrics. The blocks hold \
+                             the item set fixed: the binomial standard error of an accuracy \
+                             near 0.78 on 98 items is about 0.042, roughly twice the seed \
+                             noise, and the bootstrap intervals in \
+                             docs/lev/measurements/2026-09-19-calibration-variance.md are \
+                             several times the block spread on ECE and Brier, because the \
+                             estimator reproduces across seed blocks far more closely than a \
+                             suite reproduces across item sets. A win that clears a floor here \
+                             has been shown not to be the seeds. That is all it has been shown \
+                             to be."
                 .into(),
             pending_measurements: vec![
                 Pending {
-                    quantity: "the block-to-block spread of ECE, Brier, and log loss".into(),
-                    issue: "openagents#9370 measured accuracy and the mean top share only".into(),
-                    why: "Their floors stay unmeasured, so a win on them reports unverifiable \
-                          and can never earn a keep."
-                        .into(),
-                },
-                Pending {
-                    quantity: "the noise floor of the flip rate".into(),
+                    quantity: "a flip rate among the measures this rule reads".into(),
                     issue: "openagents#9375".into(),
-                    why: "Order sensitivity falling from 0.120 to 0.040 is 6 flips against 2 on \
-                          50 items, and nothing has said how wide that interval is. The flip \
-                          rate is not a metric here, because it is not in the scores this rule \
-                          reads; the gap is recorded so it travels with the rule."
+                    why: "Order sensitivity has a measured floor now — \
+                          docs/lev/measurements/2026-09-19-flip-rate-variance.md, where every \
+                          published two-door flip-rate difference turned out to be inside it. \
+                          The rule still cannot gate on it, because a flip rate is not one of \
+                          the measures a cell reports; the gap is recorded so it travels with \
+                          the rule."
                         .into(),
                 },
                 Pending {
-                    quantity: "a per-family block-to-block spread".into(),
-                    issue: "openagents#9370 reports per-family item movement, not per-family \
-                            accuracy spread"
+                    quantity: "a per-family floor carried per family".into(),
+                    issue: "openagents#9376 measured the per-family spread of every metric; \
+                            this rule carries one bound per metric and cannot hold four"
                         .into(),
-                    why: "The family guard multiplies the suite floor instead, which \
-                          over-refuses on the noisier families. No per-family number is \
-                          invented."
+                    why: "The family guard multiplies the suite figure for accuracy, Brier, \
+                          and log loss, which over-refuses on the noisier families, and the \
+                          noisiest family's figure for ECE, which under-refuses on the quiet \
+                          ones. Both substitutions are named in the bound's own why. No \
+                          per-family number is invented, and none is discarded: they are in \
+                          the measurement record."
                         .into(),
                 },
                 Pending {
@@ -2059,7 +2130,7 @@ mod tests {
             control: "lev-base".into(),
             candidate: "lev-band-v1".into(),
             recorded_at: "2026-09-19T12:00:00Z".into(),
-            rule: Rule::v1(),
+            rule: Rule::v2(),
         }
     }
 
@@ -2086,7 +2157,7 @@ mod tests {
 
     #[test]
     fn the_committed_rule_validates_and_carries_a_digest() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         rule.validate().expect("the committed rule is coherent");
         assert!(rule.digest().starts_with("gate:"));
         assert_eq!(rule.digest().len(), 69);
@@ -2102,7 +2173,7 @@ mod tests {
         // over 98 unchanged items gave an accuracy standard deviation of
         // 0.0197, so a two-door comparison at one block a side needs 0.056 to
         // clear two sigma. Every number here comes from that run.
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         assert_eq!(rule.block_sigma(Metric::Accuracy), Some(0.0197));
 
         let one = rule
@@ -2125,37 +2196,89 @@ mod tests {
     }
 
     #[test]
-    fn a_metric_with_no_measured_spread_can_never_earn_a_win() {
-        let rule = Rule::v1();
-        for metric in [Metric::Ece, Metric::Brier, Metric::Nll] {
-            assert_eq!(
-                rule.block_sigma(metric),
-                None,
-                "{metric} has no measured floor"
-            );
-            assert_eq!(rule.effect_size(metric, 8, 8), None);
-        }
-        let floors: Vec<&MetricFloor> = rule
-            .metric_order
-            .iter()
-            .filter(|floor| floor.block_sigma.basis == Basis::Unmeasured)
-            .collect();
-        assert_eq!(
-            floors.len(),
-            3,
-            "three of the four ordered metrics have no floor"
-        );
-        for floor in floors {
-            assert!(floor.block_sigma.value.is_none());
+    fn the_calibration_floors_are_the_measured_block_spreads() {
+        // docs/lev/measurements/2026-09-19-calibration-variance.md: eight
+        // disjoint blocks over the same 98 evaluation items, base door.
+        // Every number here is from that run's suite-level table.
+        let rule = Rule::v2();
+        assert_eq!(rule.block_sigma(Metric::Ece), Some(0.0266));
+        assert_eq!(rule.block_sigma(Metric::Brier), Some(0.0119));
+        assert_eq!(rule.block_sigma(Metric::Nll), Some(0.6428));
+
+        // What a two-door comparison at one block a side has to clear.
+        for (metric, bound) in [
+            (Metric::Ece, 0.0752),
+            (Metric::Brier, 0.0337),
+            (Metric::Nll, 1.8181),
+        ] {
+            let measured = rule
+                .effect_size(metric, 1, 1)
+                .unwrap_or_else(|| panic!("{metric} has a bound"));
             assert!(
-                floor.block_sigma.why.contains("9370") || floor.block_sigma.why.contains("seed")
+                (measured - bound).abs() < 0.0005,
+                "{metric}: {measured} against {bound}"
+            );
+        }
+
+        // The log-loss floor is a third of the mean it gates, because 87% of
+        // a raw log loss here is the clamp on items answered wrongly at
+        // 1.000 and the count of those ran 6, 6, 10, 4, 4, 10, 6, 4.
+        let clamp = -f64::ln(1e-12);
+        assert!((clamp - 27.63).abs() < 0.01, "{clamp}");
+        let per_item = clamp / 98.0;
+        assert!((per_item - 0.282).abs() < 0.001, "{per_item}");
+    }
+
+    #[test]
+    fn every_ordered_metric_carries_a_measured_floor() {
+        let rule = Rule::v2();
+        for floor in &rule.metric_order {
+            let metric = floor.metric;
+            assert_eq!(
+                floor.block_sigma.basis,
+                Basis::Derived,
+                "{metric} carries a measurement rather than a convention"
+            );
+            let sigma = rule
+                .block_sigma(metric)
+                .unwrap_or_else(|| panic!("{metric} has a measured floor"));
+            assert!(sigma > 0.0, "{metric} floor is {sigma}");
+            assert!(
+                rule.effect_size(metric, 1, 1).is_some(),
+                "{metric} can earn a win"
+            );
+            assert!(
+                floor.block_sigma.why.contains("docs/lev/measurements/"),
+                "{metric} names the run it came from: {}",
+                floor.block_sigma.why
             );
         }
     }
 
     #[test]
+    fn an_unmeasured_floor_still_refuses_to_earn_a_win() {
+        // Nothing in the committed rule is unmeasured any more, so the
+        // mechanism that made openagents#9372's four metrics unverifiable is
+        // exercised on a rule built for the purpose. It is the behaviour a
+        // future metric added before its measurement will meet.
+        let mut rule = Rule::v2();
+        for floor in &mut rule.metric_order {
+            if floor.metric == Metric::Brier {
+                floor.block_sigma = Bound {
+                    value: None,
+                    basis: Basis::Unmeasured,
+                    why: "Nothing has measured this.".into(),
+                };
+            }
+        }
+        assert_eq!(rule.block_sigma(Metric::Brier), None);
+        assert_eq!(rule.effect_size(Metric::Brier, 8, 8), None);
+        assert_eq!(rule.family_allowance(Metric::Brier, 8, 8), None);
+    }
+
+    #[test]
     fn the_rule_names_the_measurements_it_refuses_to_invent() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let quantities: Vec<&str> = rule
             .pending_measurements
             .iter()
@@ -2181,7 +2304,7 @@ mod tests {
         assert_eq!(flip.issue, "openagents#9375");
 
         // The gap is inside the digest, so filling it produces ab-v2 rather
-        // than rewriting ab-v1's history.
+        // than rewriting ab-v2's history.
         let mut filled = rule.clone();
         filled.pending_measurements.clear();
         assert_ne!(rule.digest(), filled.digest());
@@ -2189,7 +2312,7 @@ mod tests {
 
     #[test]
     fn changing_a_threshold_or_its_provenance_produces_a_new_rule() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let before = rule.digest();
 
         let mut widened = rule.clone();
@@ -2211,7 +2334,7 @@ mod tests {
 
     #[test]
     fn a_rule_that_lets_confident_errors_earn_a_win_is_refused() {
-        let mut rule = Rule::v1();
+        let mut rule = Rule::v2();
         rule.metric_order.push(MetricFloor {
             metric: Metric::ConfidentErrors,
             block_sigma: Bound {
@@ -2277,15 +2400,15 @@ mod tests {
         // The rule travels inside the evidence: its id, its digest, the
         // metric order, and every threshold in force.
         assert_eq!(evidence.schema, SCHEMA);
-        assert_eq!(evidence.rule_digest, Rule::v1().digest());
-        assert_eq!(evidence.rule, Rule::v1());
-        assert_eq!(evidence.metric_order, Rule::v1().metrics());
+        assert_eq!(evidence.rule_digest, Rule::v2().digest());
+        assert_eq!(evidence.rule, Rule::v2());
+        assert_eq!(evidence.metric_order, Rule::v2().metrics());
         let confirmation = evidence
             .confirmation
             .as_ref()
             .expect("the win was confirmed");
         for stage in [&evidence.screening, confirmation] {
-            assert_eq!(stage.outcome.gate_id, "ab-v1");
+            assert_eq!(stage.outcome.gate_id, "ab-v2");
             assert_eq!(stage.outcome.gate_digest, evidence.rule_digest);
             assert_eq!(stage.outcome.verdict, Verdict::Passed);
         }
@@ -2337,33 +2460,23 @@ mod tests {
             win.detail
         );
         assert!(
-            win.detail.contains("has no measured block-to-block spread"),
-            "the reader is told which metrics have no floor: {}",
+            win.detail.contains("computed inside bins"),
+            "the reader is told why ece could not be read at the suite level: {}",
+            win.detail
+        );
+        assert!(
+            win.detail.contains("brier") && win.detail.contains("nll"),
+            "every ordered metric reports what it did against its own bound: {}",
             win.detail
         );
     }
 
     #[test]
     fn a_win_on_one_metric_confirmed_on_a_different_one_is_reverted() {
-        // A rule with two measured floors, so the substitution is
-        // expressible. The committed rule has one, which the test above
-        // pins; this one exists to exercise the anti-fishing criterion.
-        let mut rule = Rule::v1();
-        for floor in &mut rule.metric_order {
-            if floor.metric == Metric::Brier {
-                floor.block_sigma = Bound {
-                    value: Some(0.010),
-                    basis: Basis::Tuned,
-                    why: "A hypothetical floor, used by one test to exercise the rule that a \
-                          confirmation may not substitute a metric. Nothing has measured this."
-                        .into(),
-                };
-            }
-        }
-        let experiment = Experiment {
-            rule,
-            ..experiment()
-        };
+        // Every ordered metric carries a measured floor, so the substitution
+        // is expressible against the committed rule rather than a
+        // hypothetical one.
+        let experiment = experiment();
         let screening = plan(&[0, 1, 2]);
         let evidence = experiment.run(&screening, &screening.confirmation(), |cell| {
             let accuracy = match (cell.side, cell.phase) {
@@ -2548,7 +2661,7 @@ mod tests {
     #[test]
     fn a_harness_failure_requeues_once_and_never_enters_the_comparison() {
         let mut failed = 0;
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let plan = plan(&[0, 1, 2]);
         let round = Round::run(&plan, &rule, |cell| {
             if cell.index == 3 && cell.attempt == 1 {
@@ -2596,7 +2709,7 @@ mod tests {
 
     #[test]
     fn a_cell_that_fails_twice_leaves_the_round_undecided() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let plan = plan(&[0, 1, 2]);
         let round = Round::run(&plan, &rule, |cell| {
             if cell.family == "severity" && cell.block == 1 && cell.side == Side::Candidate {
@@ -2635,7 +2748,7 @@ mod tests {
         // The refusing door keeps the item in its denominator, so its
         // accuracy falls. The round compares it as it stands rather than
         // dropping the item, and the record says how many it declined.
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let plan = plan(&[0, 1, 2]);
         let round = Round::run(&plan, &rule, |cell| {
             let items = items_of(&cell.family);
@@ -2690,7 +2803,7 @@ mod tests {
 
     #[test]
     fn a_confirmation_that_redraws_a_screening_block_is_refused() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let bench = Bench::flat(0.78, 0.86);
         let screening_plan = plan(&[0, 1, 2]);
         let screening = Round::run(&screening_plan, &rule, |cell| bench.attempt(cell));
@@ -2725,7 +2838,7 @@ mod tests {
 
     #[test]
     fn a_confirmation_over_different_families_is_not_the_same_experiment() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let bench = Bench::flat(0.78, 0.86);
         let screening = Round::run(&plan(&[0, 1, 2]), &rule, |cell| bench.attempt(cell));
         let narrowed = Plan::new(Phase::Confirmation, ["routing"], [3, 4, 5]);
@@ -2771,7 +2884,7 @@ mod tests {
     fn a_pooled_ece_is_unknown_rather_than_an_item_weighted_invention() {
         // ECE is computed inside bins, so the suite's ECE is not the
         // item-weighted mean of its families'. A family keeps its own.
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let round = Round::run(&plan(&[0, 1, 2]), &rule, |cell| {
             scored(items_of(&cell.family), 0.80, 1)
         });
@@ -2800,7 +2913,7 @@ mod tests {
 
     #[test]
     fn an_unmeasured_metric_leaves_the_round_undecided_rather_than_passing_by_default() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let round = Round::run(&plan(&[0, 1, 2]), &rule, |cell| Attempt::Scored {
             scores: Scores {
                 items: items_of(&cell.family),
@@ -2826,7 +2939,7 @@ mod tests {
 
     #[test]
     fn unknown_confident_errors_are_unverifiable_and_never_zero() {
-        let rule = Rule::v1();
+        let rule = Rule::v2();
         let round = Round::run(&plan(&[0, 1, 2]), &rule, |cell| Attempt::Scored {
             scores: Scores {
                 items: items_of(&cell.family),

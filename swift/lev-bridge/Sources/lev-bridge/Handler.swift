@@ -23,15 +23,36 @@ func handle(_ request: Request) async -> Response {
     }
 }
 
+/// One adapted model per package, kept for the life of the process.
+///
+/// `SystemLanguageModel.Adapter(fileURL:)` reads the package off disk, and
+/// on this machine that read costs about ten seconds — an order of magnitude
+/// more than the decision it precedes. A sweep that asks one adapted door a
+/// few thousand questions paid it a few thousand times, which was the
+/// difference between a measurement that takes an hour and one that takes
+/// most of a day.
+///
+/// The package is a file and the model built from it is immutable, so the
+/// second request naming the same package is given the first request's
+/// model. Nothing about isolation changes: a session is still built per
+/// decision, which is what keeps one question from seeing another's text.
+nonisolated(unsafe) private var adapted: [String: SystemLanguageModel] = [:]
+
 private func model(for request: Request) throws -> SystemLanguageModel {
+    let permissive = request.guardrails == "permissive_content_transformations"
     let guardrails: SystemLanguageModel.Guardrails =
-        request.guardrails == "permissive_content_transformations"
-        ? .permissiveContentTransformations : .default
+        permissive ? .permissiveContentTransformations : .default
     // An adapted model replaces the use case rather than adding to it: the
     // runtime takes an adapter or a use case, not both.
     if let path = request.adapterPath {
+        let key = "\(permissive)|\(path)"
+        if let cached = adapted[key] {
+            return cached
+        }
         let adapter = try SystemLanguageModel.Adapter(fileURL: URL(fileURLWithPath: path))
-        return SystemLanguageModel(adapter: adapter, guardrails: guardrails)
+        let model = SystemLanguageModel(adapter: adapter, guardrails: guardrails)
+        adapted[key] = model
+        return model
     }
     let useCase: SystemLanguageModel.UseCase =
         request.useCase == "content_tagging" ? .contentTagging : .general

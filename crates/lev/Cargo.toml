@@ -65,6 +65,10 @@ name = "lev-order-sweep"
 path = "src/bin/lev_order_sweep.rs"
 
 [[bin]]
+name = "lev-calibration-sweep"
+path = "src/bin/lev_calibration_sweep.rs"
+
+[[bin]]
 name = "lev-render"
 path = "src/bin/lev_render.rs"
 

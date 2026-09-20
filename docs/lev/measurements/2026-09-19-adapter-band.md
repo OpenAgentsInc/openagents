@@ -305,3 +305,88 @@ both times, and `crates/lev/manifests/lev-adapted-v2.json` carries
 repository is one no door can serve. Fitting it the way `lev-adapted@1`'s
 maps were fitted, from recorded rows through `gym fit --records`, needs the
 band on the wire and in `gym::row::Row`, and it is in neither.
+
+## Correction: the calibration comparisons on this page, against a measured floor
+
+Added after
+[`2026-09-19-calibration-variance.md`](2026-09-19-calibration-variance.md)
+measured the block-to-block spread of ECE, Brier, log loss, and the
+confident-error count — the four this page compares doors on, and the four
+neither correction above could judge.
+
+Eight disjoint seed blocks over the same 98 evaluation items, one unchanged
+base door, give standard deviations of **0.0266 on ECE, 0.0119 on Brier,
+0.6428 on log loss, and 2.49 on the confident-error count**. Two doors on
+one block each need 0.075 ECE, 0.034 Brier, 1.82 log loss, or seven
+confident errors to clear two sigma.
+
+The same run swept the band adapter over four blocks and found it steadier
+than the base on every measure: the same accuracy in all four blocks, and
+calibration spreads two to three times narrower. The floors above are the
+base door's, which is the noisier of the two and so the conservative choice
+for a comparison between them.
+
+Against that floor:
+
+| Comparison | Difference | Sigma | Reading |
+| --- | --- | --- | --- |
+| Base against band, accuracy 0.77 to 0.88 | 0.110 | 3.9 | real |
+| Base against band, Brier 0.154 to 0.114 | 0.040 | 2.4 | real |
+| Base against band, ECE 0.106 to 0.102 | 0.004 | 0.1 | **inside the noise** |
+| Base against band, log loss 1.952 to 2.601 | 0.649 | 0.7 | **inside the noise** |
+| Base against band, confident errors 6 to 9 | 3 | 0.9 | **inside the noise** |
+| Choice against band, log loss 2.323 to 2.601 | 0.278 | 0.3 | **inside the noise** |
+| Choice against band, confident errors 8 to 9 | 1 | 0.3 | **inside the noise** |
+
+**"Log loss and confident errors are both worse on the band adapter than on
+the choice adapter, which was already worse than the base" does not hold.**
+Not one of those four comparisons clears the floor. The reason is specific
+and worth keeping: 87% of a raw Lev log loss is the `1e-12` clamp on items
+answered wrongly at a reported 1.000, so the raw log loss is the
+confident-error count in another unit — and that count ran 6, 6, 10, 4, 4,
+10, 6, 4 over eight blocks of an unchanged base door.
+
+**"The overconfidence problem is not fixed" is not withdrawn by this, and it
+is not confirmed by it either.** Nine confident errors on 98 items is a
+level, and a bad one; what does not survive is the *comparison* saying the
+adapters made it worse. The band adapter's own count ran 9, 9, 11, 8 across
+its four blocks, which brackets the base door's mean of 6.25 from above
+without clearing it.
+
+What survives is the accuracy and the sharpness: eleven points of accuracy
+at 3.9 sigma and a Brier fall at 2.4 sigma against the base.
+
+## The band-conditioned map survives, and by a wide margin
+
+The same measurement puts a floor under the claim this page rests on, and
+that claim holds. A map is fitted once on the calibration split and scored
+on every evaluation block, so the improvement it buys is paired inside each
+block and its spread is measured directly:
+
+| Map, against the raw signal | Gain | Gain sd | Two sigma | Reading |
+| --- | --- | --- | --- | --- |
+| Band-conditioned, log loss 2.601 to 0.388 | +2.262 | 0.3212 | 0.642 | **survives, 7.0 sigma** |
+| Band-conditioned, ECE 0.102 to 0.069 | +0.041 | 0.0075 | 0.015 | **survives, 5.5 sigma** |
+| Band-conditioned, Brier 0.114 to 0.104 | +0.009 | 0.0042 | 0.008 | survives, 2.1 sigma |
+| Pooled, log loss 2.601 to 0.499 | +2.155 | 0.3220 | 0.644 | survives, 6.7 sigma |
+| Pooled, ECE 0.102 to 0.106 | +0.002 | 0.0063 | 0.013 | **inside the noise** |
+| Either map, confident errors 9 to 11 | −2.250 | 1.2583 | 2.517 | **inside the noise** |
+
+Nearly all of that spread is the raw side. The band-conditioned log loss
+itself moved by 0.02 across the four blocks while the raw signal moved by
+0.33, because a map takes values off 1.000 and the clamp stops firing.
+
+Two sentences on this page need a word changed. **"Pooling leaves ECE
+slightly worse than the raw signal — 0.106 against 0.102"** is inside the
+noise: the measured gain is +0.002 against a bound of 0.013, so pooling
+moves ECE by nothing, which is a cleaner statement of the same point and
+still the contrast the page is drawing. And **"confident errors went from
+nine to eleven"** is inside the noise too. The mechanism given for it is
+sound — a map that assigns 0.95 to the `almost certain` band makes every
+wrong answer in that band a confident error by definition — but the count
+did not establish it.
+
+That second one agrees with the re-measurement above, which found eight
+confident errors before the map and eight after on the 79 open items: the
+rise did not recur there, and here it does not clear the noise. Two
+different runs, the same reading.

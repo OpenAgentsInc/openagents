@@ -167,6 +167,20 @@ lost. Changing a gate after seeing results deserves the scrutiny it sounds
 like it deserves; the defence is that the condition was wrong on its own
 terms, not that it was inconvenient.
 
+**Both margins are still tuned constants, and the measurement they were
+waiting for now exists.** `min_ece_reduction` records that "nothing has
+measured the variance", and the gate's `pending_measurement` names
+openagents#9370, which measured accuracy only.
+[`measurements/2026-09-19-calibration-variance.md`](measurements/2026-09-19-calibration-variance.md)
+measures it for ECE, Brier, and log loss: four disjoint seed blocks over the
+same 98 evaluation items give standard deviations of 0.0207, 0.0099, and
+0.6605 on an unchanged base door. A tenth of an ECE near 0.11 is 0.011,
+which is about half of one such standard deviation, so the inherited
+threshold is smaller than the noise it was meant to exclude. Deriving the
+margins from that measurement moves the gate digest every recorded verdict
+names, so it is its own change and its own re-judging of the record, not a
+line edit here.
+
 Two things changed when the rule became a file. A verdict is now three
 values rather than two: a measure that moved the wrong way `failed`, a
 measure that moved the right way but short of its margin is `unverifiable`,

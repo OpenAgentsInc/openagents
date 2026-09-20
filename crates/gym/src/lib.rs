@@ -35,6 +35,8 @@
 //!   a table of rows says afterwards.
 //! - [`regress`] — one door against its own last recorded run, which is the
 //!   question a repository with no CI asks before every push.
+//! - [`spread`] — how far a metric moves when only the seed block moves,
+//!   which is the floor a gate's thresholds are multiples of.
 //!
 //! What it deliberately does not own: how any model answers. The Gym scores
 //! what comes back from `POST /v1/systemone` and knows nothing else about
@@ -47,6 +49,7 @@ pub mod gate;
 pub mod questions;
 pub mod regress;
 pub mod row;
+pub mod spread;
 pub mod store;
 pub mod suite;
 pub mod views;

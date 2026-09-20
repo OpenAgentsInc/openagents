@@ -60,7 +60,7 @@
 //! criteria read the direction and refuse the size: a metric that did not
 //! move the wrong way has held, and one that did is
 //! [`Verdict::Unverifiable`] with the move printed rather than a loss
-//! nobody can size. The floors are read from [`crate::ab::Rule::v1`] rather
+//! nobody can size. The floors are read from [`crate::ab::Rule::v2`] rather
 //! than restated here, so openagents#9376 lands them in one place and this
 //! module judges them without being edited.
 //!
@@ -1164,6 +1164,7 @@ fn not_judged(name: &str, rank: u8, reason: &str) -> Criterion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gate::Bound;
     use crate::row::RefusalCode;
     use indexmap::IndexMap;
 
@@ -1211,7 +1212,7 @@ mod tests {
     }
 
     fn rule() -> Rule {
-        Rule::v1()
+        Rule::v2()
     }
 
     fn only(findings: Vec<Finding>) -> Finding {
@@ -1392,6 +1393,20 @@ mod tests {
         // Every item answered correctly on both runs, and reported less
         // confidently on the later one. Accuracy does not move, no answer is
         // wrong at all, and the calibration measures all move the wrong way.
+        //
+        // openagents#9376 measured every floor the committed rule carries,
+        // so the rule that exercises this path is built for it. It is the
+        // behaviour a metric added before its measurement will meet.
+        let mut unmeasured = rule();
+        for floor in &mut unmeasured.metric_order {
+            if floor.metric == Metric::Brier {
+                floor.block_sigma = Bound {
+                    value: None,
+                    basis: Basis::Unmeasured,
+                    why: "Nothing has measured this.".into(),
+                };
+            }
+        }
         let before: Vec<Row> = (0..20)
             .map(|index| {
                 answered_at(&format!("routing/{index:03}"), "routing", BEFORE, true, 0.8)
@@ -1402,7 +1417,7 @@ mod tests {
                 answered_at(&format!("routing/{index:03}"), "routing", AFTER, true, 0.6)
             })
             .collect();
-        let report = report_of(review(Some(&before), &after, &rule()));
+        let report = report_of(review(Some(&before), &after, &unmeasured));
         let brier = criterion(&report, OVERALL, "brier_holds_within_the_noise");
         assert_eq!(brier.verdict, Verdict::Unverifiable, "{}", brier.detail);
         assert!(
@@ -1410,7 +1425,16 @@ mod tests {
             "{}",
             brier.detail
         );
-        assert_eq!(report.verdict, Verdict::Unverifiable, "and it is not called a failure");
+        // The report itself fails, on ece and log loss, which do carry
+        // floors and did move further the wrong way than those floors
+        // allow. What this pins is that brier, which has no floor here, is
+        // reported rather than counted against the door.
+        assert_eq!(report.verdict, Verdict::Failed);
+        assert_ne!(
+            criterion(&report, OVERALL, "ece_holds_within_the_noise").verdict,
+            Verdict::Unverifiable,
+            "a metric with a floor is judged by it"
+        );
     }
 
     #[test]
@@ -1637,7 +1661,7 @@ mod tests {
     fn the_report_carries_the_rule_that_set_its_floors() {
         let report =
             report_of(review(Some(&run_of(BEFORE, 16)), &run_of(AFTER, 16), &rule()));
-        assert_eq!(report.rule_id, "ab-v1");
+        assert_eq!(report.rule_id, "ab-v2");
         assert_eq!(report.rule_digest, rule().digest());
         assert!(report.rule_digest.starts_with("gate:"), "{}", report.rule_digest);
     }

@@ -78,6 +78,11 @@ set is a distribution.
   move accuracy by 2 points and the raw top share by 3, which is the floor
   under any comparison on this door:
   [`measurements/2026-09-19-seed-variance.md`](measurements/2026-09-19-seed-variance.md).
+  The calibration metrics move differently and one of them moves a great
+  deal — the confident-error count ran 6, 6, 10, 4 over four blocks of an
+  unchanged base door, and the raw log loss with it, because most of a raw
+  log loss here is the clamp on those items:
+  [`measurements/2026-09-19-calibration-variance.md`](measurements/2026-09-19-calibration-variance.md).
 - Its resolution is `1/N`. At `N = 16` the finest distinction the estimator
   can draw is 0.0625, which is coarser than the two decimal places the
   System One contract reports. Either the door reports at the estimator's
