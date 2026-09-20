@@ -1,0 +1,146 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,21 +0,0 @@
+-//! The `classify` state has to fit the smallest door `coder` serves.
+-//!
+-//! `coder-turns-v1` holds 40 real turn states built under the caps
+-//! `classify::state_of` used to apply, and on that suite Apple's on-device
+-//! door refused every state from 10,704 bytes. The first test here rebuilds
+-//! every one of those states under [`Caps::PRODUCTION`] and holds it to
+-//! [`STATE_BUDGET`], so a cap that drifts fails the build rather than the
+-//! door. The second checks that [`Caps::UNBUDGETED`] reproduces the suite's
+-//! states byte for byte, which is what makes the sweep a comparison of caps
+-//! and nothing else.
+-//!
+-//! The sweep itself is ignored: it asks hosted Jev, needs `TYPESAFE_API_KEY`,
+-//! and writes rows. `docs/decision-models/2026-09-20-state-budget.md` is the
+-//! record it produced. To run it:
+-//!
+-//! ```text
+-//! cargo test -p coder --test state_caps sweep -- --ignored --nocapture
+-//! ```
+-//!
+-//! `STATE_SWEEP_ROWS` names the JSON Lines file the rows go to; by default
+-//! `docs/decision-models/2026-09-20-state-budget.jsonl`, beside the record.
+@@ -28 +7 @@
+-use coder::classify::{Caps, STATE_BUDGET, bounded_text, questions, state_within};
++use coder::classify::{Caps, STATE_BUDGET, bounded_text, state_within};
+@@ -35 +14 @@
+-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../gym/suites/coder-turns-v1.json")
++    PathBuf::from("/Users/christopherdavid/work/openagents/crates/gym/suites/coder-turns-v1.json")
+@@ -105 +83,0 @@
+-#[test]
+@@ -125 +102,0 @@
+-#[test]
+@@ -146 +122,0 @@
+-#[test]
+@@ -165 +140,0 @@
+-#[test]
+@@ -300,2 +274,0 @@
+-#[test]
+-#[ignore = "asks hosted Jev; needs TYPESAFE_API_KEY and writes rows"]
+@@ -310 +283 @@
+-    let client = Client::new(Config::new().timeout(Duration::from_secs(120)))
++    let client = Client::new(Config::new().base_url("http://127.0.0.1:11456").api_key("local-measurement").retry(jev::RetryPolicy { max_retries: 0, ..Default::default() }).timeout(Duration::from_secs(120)))
+@@ -318 +291,4 @@
+-    let mut rows = Vec::new();
++    let mut rows: Vec<Value> = if rows_path.exists() {
++        fs::read_to_string(&rows_path).expect("retained rows")
++            .lines().map(|line| serde_json::from_str(line).expect("retained JSON row")).collect()
++    } else { Vec::new() };
+@@ -325,0 +302,14 @@
++            let held: Vec<&Value> = rows.iter().filter(|row| row["rung"] == rung && row["state"] == turn.key).collect();
++            if !held.is_empty() {
++                assert_eq!(held.len(), turn.truths.len(), "a retained request must be complete");
++                for row in &held {
++                    let family = row["family"].as_str().expect("family");
++                    assert_eq!(row["truth"].as_str(), turn.truths.get(family).map(String::as_str));
++                    assert_eq!(row["state_bytes"].as_u64(), Some(size(&state) as u64));
++                    let tally = correct.entry(family.to_string()).or_default();
++                    tally.1 += 1;
++                    if row["correct"] == true { tally.0 += 1; }
++                }
++                if !held[0]["refusal"].is_null() { refused += 1; }
++                continue;
++            }
+@@ -345 +335 @@
+-                            "door": "jev (hosted)",
++                            "door": "lev-base",
+@@ -368 +358 @@
+-                            "door": "jev (hosted)",
++                            "door": "lev-base",
+@@ -379,0 +370,4 @@
++            let checkpoint = rows_path.with_extension("jsonl.tmp");
++            fs::write(&checkpoint, rows.iter().map(|row| format!("{row}\n")).collect::<String>()).expect("checkpoint rows");
++            fs::rename(&checkpoint, &rows_path).expect("replace checkpoint");
++            println!("saved {rung}: {} ({} rows)", turn.key, rows.len());
+@@ -380,0 +375 @@
++        fs::write(&rows_path, rows.iter().map(|row| format!("{row}\n")).collect::<String>()).expect("checkpoint rows");
+@@ -401,0 +397,67 @@
++use indexmap::IndexMap;
++use jev::{Choice, Entry, Noul, Questions, Score};
++pub fn questions() -> Questions {
++    Questions::new()
++        .with(
++            "action",
++            Choice::new(
++                "Based on the conversation so far, what is the single next best step?",
++                IndexMap::from([
++                    (
++                        "respond".to_string(),
++                        Some(Entry::from(
++                            "Answer the user's message directly — the intent is clear and no code is needed yet",
++                        )),
++                    ),
++                    (
++                        "clarify".to_string(),
++                        Some(Entry::from(
++                            "Ask one short clarifying question — the request is ambiguous and a wrong answer wastes the turn",
++                        )),
++                    ),
++                    (
++                        "end_conversation".to_string(),
++                        Some(Entry::from(
++                            "The user is done: a goodbye, a thanks, or an explicit quit",
++                        )),
++                    ),
++                    (
++                        "none".to_string(),
++                        Some(Entry::from(
++                            "No listed step fits: the state does not support a next action",
++                        )),
++                    ),
++                ]),
++            ),
++        )
++        .with(
++            "needs_code",
++            Noul::new(
++                "Does the user's request need code written, or files in a repository inspected or changed?",
++            ),
++        )
++        .with(
++            "risk",
++            Score::new(
++                "How much can the chosen next step damage?",
++                vec![
++                    Some(Entry::from("0: answer in prose; nothing changes")),
++                    Some(Entry::from("1: reads files or runs a reversible command")),
++                    Some(Entry::from("2: writes files or could break a build")),
++                ],
++            ),
++        )
++        .with(
++            "progress",
++            Score::new(
++                "How close is the conversation to a resolved end?",
++                vec![
++                    Some(Entry::from("0: just started")),
++                    Some(Entry::from("1: underway, intent understood")),
++                    Some(Entry::from("2: resolved or resolving now")),
++                ],
++            ),
++        )
++}
++
++fn main() { every_real_turn_state_fits_the_budget(); sweep(); }

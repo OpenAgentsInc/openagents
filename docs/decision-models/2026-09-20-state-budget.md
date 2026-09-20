@@ -188,13 +188,10 @@ status and kind.
 
 ## What this does not show
 
-- **Lev was not run.** There is no Apple hardware on this machine. The
-  claim that every real state now fits is a byte count against a boundary
-  read from retained rows, not a refusal count from a fresh Lev run. The
-  next Lev run on `coder-turns-v1` with these caps is the measurement
-  that closes the door question; its `branch_too_long` count should be
-  zero, and if it is not, `STATE_BUDGET` is wrong and this record says by
-  how much.
+- **The initial run did not ask Lev.** The Apple follow-up below now
+  measures base Lev at every rung on the 16 development states. At the
+  production caps, all 16 were answered. The all-40-state claim remains
+  a byte-budget assertion, not a live acceptance test of all 40 states.
 - **The locked partition is unread.** The ladder ran on development only.
 - **The caps were chosen on the same 40 states the fit is asserted on.**
   A longer session than any in the suite would produce a longer
@@ -214,3 +211,174 @@ status and kind.
 - `crates/coder/tests/state_caps.rs`: the fit test, the reproduction
   test, two tests on the bounding itself, and the ignored sweep that
   produced the rows above.
+
+
+## Lev on the same ladder
+
+**The production caps answered all 16 development states: 38/64 correct,
+with no refused requests, against 21/64 and eight refused requests on the
+unbudgeted rung.** This removes the observed coverage problem on this
+subset. It does not establish that all 40 states were answered by Lev.
+
+### The paired results
+
+| Rung | Median B | Largest B | Pooled | `action` | `needs_code` | `progress` | `risk` | Refused requests |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| unbudgeted | 11,914 | 20,053 | 21/64 | 8/16 | 4/16 | 5/16 | 4/16 | 8 |
+| output 512 | 10,064 | 15,561 | 25/64 | 10/16 | 4/16 | 5/16 | 6/16 | 6 |
+| output 256 | 9,240 | 14,781 | 26/64 | 11/16 | 5/16 | 4/16 | 6/16 | 5 |
+| commands 3 | 9,240 | 14,781 | 26/64 | 11/16 | 5/16 | 4/16 | 6/16 | 5 |
+| turns 8 | 6,766 | 9,945 | 39/64 | 16/16 | 8/16 | 6/16 | 9/16 | 0 |
+| turns 6 | 5,649 | 8,021 | 41/64 | 16/16 | 8/16 | 5/16 | 12/16 | 0 |
+| turns 4 | 3,546 | 5,473 | 38/64 | 16/16 | 10/16 | 3/16 | 9/16 | 0 |
+| turns 6, message 1024 | 3,631 | 4,879 | 37/64 | 16/16 | 8/16 | 4/16 | 9/16 | 0 |
+| **production: turns 6, message 768** | 3,106 | 4,100 | 38/64 | 16/16 | 8/16 | 4/16 | 10/16 | 0 |
+| turns 6, message 512 | 2,717 | 3,309 | 40/64 | 16/16 | 8/16 | 6/16 | 10/16 | 0 |
+| turns 4, message 512 | 1,806 | 2,312 | 35/64 | 16/16 | 7/16 | 5/16 | 7/16 | 0 |
+
+Each rung retains 16 request outcomes, four question rows per request. The
+[704 raw rows](2026-09-20-state-budget-lev.jsonl) match the Jev rows by rung, state, family, truth,
+caps, and state byte count. Their SHA-256 is
+`22535d570d20436d99c7f0c192e5b253cd7b5ce02d8f10a93ae357de26bb8e8a`. The
+[run metadata](2026-09-20-state-budget-lev-run.json) retains the source revisions, start and end times,
+loads, and runner digest.
+
+The first four rungs returned HTTP 413 on 8, 6, 5, and 5 requests,
+respectively. Every later rung answered all 16 requests. The SDK recorded
+these errors as `api 413: Other`; their response bodies were not retained,
+so this record does not assign a more specific typed cause.
+
+### What this changes about the door recommendation
+
+The coverage objection is removed for these development states at the
+production caps. The recommendation remains hosted Jev for now. The pooled
+comparison is Lev 38/64 against the retained Jev run's 32/64, but it includes
+three questions that production no longer asks. On the remaining `action`
+question, Lev is 16/16 and Jev is 12/16; every truth in this subset is
+`respond`, so the constant `respond` is also 16/16. This sample does not
+establish that a model adds value to that decision or that changing doors
+improves the production workload.
+
+The sweep fits no calibration map and changes no release admission. It also
+does not measure the latency of the current one-question route: each timed
+request here asks four historical questions. These are 16 states with
+correlated questions, not 64 independent workloads, and one pass per rung
+establishes no new noise floor. The tighter caps' scores are retained rather
+than selecting whichever rung happened to score highest.
+
+### Machine, method, and limitations
+
+This follow-up runs the same eleven rungs against base Lev on an Apple M5
+Max, macOS 26.4, build `25E246`. It asks the same 16 development states and
+four historical questions as the retained Jev run: 64 rows per rung, 704
+rows in total. Matching a row by rung, state, and family must also match its
+truth, caps, and serialized state size. This is a live measurement of those
+16 states. The assertion that all 40 states fit the byte budget is a
+separate check and does not establish that Lev answered all 40.
+
+No adapted release participates: `docs/lev/disposition.md` and the three
+adapted manifests admit no families. The base server uses eight seeded
+samples per question, seed block zero, and four helpers. Its manifest is
+`lev-base@1`; its published runtime signature is `9799725`. No calibration
+directory is loaded, so the answers are sampling frequencies. The manifest's
+routing admission does not make these four workload families calibrated.
+
+### Method and retained evidence
+
+The measurement runner is derived from
+`crates/coder/tests/state_caps.rs` at
+`dbab6bef920ed77e45cb2fd74f1245ab90e44ec6`. Production has since retired three
+of the four questions. To preserve the comparison, the runner uses the
+four-question `questions()` function from
+`b8c3124e15:crates/coder/src/classify.rs`, including its option order.
+The suite, labels, ladder, state construction, and answer selection are
+unchanged. The production test file is not edited.
+
+The first attempt completed the unbudgeted rung. Its controller had a
+30-minute overall limit and the runner saved only at rung boundaries. After
+observing how long requests took, the operator stopped that attempt,
+retained its 64 completed rows, and resumed with a checkpoint after each
+request and a three-hour overall limit. The per-request deadline stayed at
+120 seconds, with SDK retries disabled. The resumed process reads complete
+retained requests and skips them. It does not ask the completed unbudgeted
+rung again. Any work beyond the completed rung that had not been checkpointed
+is not recoverable and is not counted; subsequent rungs come from the resumed
+attempt. This is a complete grid assembled across two attempts, not one
+uninterrupted run. The original attempt's raw rows remain unchanged in the final
+file; reparsing and serializing them would round one latency value.
+
+The source checkout was `dbab6bef92` for the first attempt and `29afd7c2dd`
+for the resume. There is no change between them in `classify.rs`, Jev, or
+Lev. The companion runner patch applies to the pinned test source and
+reproduces the resumed runner byte for byte. Its suite path names this
+measurement's checkout; change only that path when reproducing elsewhere.
+
+The server command, from the repository root:
+
+```sh
+LEV_OS_BUILD=25E246 \
+  /tmp/openagents-supervision/root-target/debug/lev-serve \
+  --manifest crates/lev/manifests/lev-base-v1.json \
+  --port 11456 --policy-refresh off
+```
+
+The external Rust runner uses local path dependencies on `coder` and `jev`,
+plus `serde_json = "1"`, `indexmap = "2"`, and Tokio with its `full` feature.
+It calls `http://127.0.0.1:11456` with a local placeholder credential. Its
+commands are:
+
+```sh
+CARGO_TARGET_DIR=/tmp/openagents-apple-handoff/sweep-target \
+  cargo build --manifest-path /tmp/openagents-apple-handoff/state-sweep/Cargo.toml
+STATE_SWEEP_ROWS=/tmp/openagents-apple-handoff/state-budget-lev.jsonl \
+  /tmp/openagents-apple-handoff/sweep-target/debug/lev-state-sweep-record
+```
+
+Each request asks all four questions. A failed request contributes four
+incorrect rows, so unanswered items stay in the pooled denominator. The
+error column preserves the SDK's status and category; a generic `Other`
+category does not establish a more specific refusal reason. A request's
+latency is repeated on its four question rows, not four independent timings.
+This is an accuracy and state-size run, not the quiet latency experiment:
+scoped compilation and tests also ran during the sweep, and ordinary desktop
+applications remained open.
+
+
+Load averages (1, 5, and 15 minutes) and controller wall times:
+
+| Attempt | Started, UTC | Load before | Load after | Wall time | Outcome |
+| --- | --- | --- | --- | --- | --- |
+| Initial | 2026-09-20 15:41:29 | 1.24, 2.20, 2.57 | 2.57, 1.87, 2.11 | 835.8 s | Stopped after retaining the unbudgeted rung |
+| Resume | 2026-09-20 15:56:31 | 2.49, 1.95, 2.12 | 3.73, 3.78, 3.78 | 5,706.3 s | Completed the remaining ten rungs; exit 0 |
+
+The resumed attempt finished at 2026-09-20 17:31:38 UTC. These wall times
+include startup and checkpointing; they are not isolated inference timings.
+
+### Reproducing the runner
+
+The [runner patch](2026-09-20-state-budget-lev-runner.patch),
+[Cargo manifest](2026-09-20-state-budget-lev.Cargo.toml), and
+[lockfile](2026-09-20-state-budget-lev.Cargo.lock) retain the measured harness.
+Create an external directory with `src/main.rs` containing
+`git show dbab6bef920ed77e45cb2fd74f1245ab90e44ec6:crates/coder/tests/state_caps.rs`,
+then apply the patch there with `patch -p1`. Copy the manifest and lockfile
+there as `Cargo.toml` and `Cargo.lock`. The patch has no context lines; when
+using `git apply` instead, pass `--unidiff-zero`.
+
+Adjust the checkout path in `src/main.rs` and the two path dependencies in
+`Cargo.toml` for your machine. Use the recorded source revision and pinned
+Rust 1.97.1, build the Swift helper, and start the server as above. Build the
+runner with `cargo build --locked --manifest-path <runner>/Cargo.toml` and
+a separate `CARGO_TARGET_DIR`. For a fresh measurement, set
+`STATE_SWEEP_ROWS` to a new file: an existing checkpoint resumes its retained
+requests instead of asking them again.
+
+On this checkout, applying the patch reproduced the running source byte for
+byte, SHA-256
+`4dc2c642e21514fc0368fe50ef6f4b118d4b6711f5e51ceda1bf32fb13f42979`.
+The row validation checked all 704 keys, their caps, state byte counts, and
+truths against the retained Jev rows. Scoped Coder Clippy with
+`--all-targets -- -D warnings` and `cargo test -p coder` passed. Workspace
+formatting passed before publication. The original suite,
+question files, gates, and production tests remain unchanged by this
+measurement.

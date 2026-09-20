@@ -1,0 +1,44 @@
+{
+  "chip": "Apple M5 Max",
+  "macos": "26.4",
+  "os_build": "25E246",
+  "base_model_signature": "9799725",
+  "manifest": "lev-base@1",
+  "samples": 8,
+  "seed_base": 0,
+  "pool_width": 4,
+  "loaded_calibration": "none",
+  "retained_requests": 176,
+  "rows": 704,
+  "row_sha256": "22535d570d20436d99c7f0c192e5b253cd7b5ce02d8f10a93ae357de26bb8e8a",
+  "first_attempt": {
+    "source": "dbab6bef920ed77e45cb2fd74f1245ab90e44ec6",
+    "load_before": "10:41  up 2 days, 11:29, 3 users, load averages: 1.24 2.20 2.57",
+    "started_utc": "2026-09-20T15:41:29Z",
+    "exit_code": -15,
+    "seconds": 835.7862763329999,
+    "load_after": "10:55  up 2 days, 11:43, 3 users, load averages: 2.57 1.87 2.11"
+  },
+  "resumed_attempt": {
+    "source": "29afd7c2dd05d411ec08f740e4b36b0fe2b16c8d",
+    "started_utc": "2026-09-20T15:56:31.664348+00:00",
+    "load_before": [
+      2.494140625,
+      1.9541015625,
+      2.119140625
+    ],
+    "retained_rows_before": 64,
+    "previous_attempt": "state-sweep-result.json",
+    "reason": "Resume completed requests with per-request checkpointing; extend whole sweep deadline to three hours without changing per-call deadline or measurement inputs.",
+    "exit_code": 0,
+    "seconds": 5706.3279582079995,
+    "load_after": [
+      3.72900390625,
+      3.7841796875,
+      3.78173828125
+    ],
+    "finished_utc": "2026-09-20T17:31:38.042409+00:00"
+  },
+  "runner_source_sha256": "4dc2c642e21514fc0368fe50ef6f4b118d4b6711f5e51ceda1bf32fb13f42979",
+  "note": "The first 64 raw rows are retained unchanged from the first attempt. Uncheckpointed work beyond that rung is not counted. All later rows come from the resumed attempt."
+}
