@@ -41,6 +41,12 @@ measurement of the cache alone. Source:
 
 ### Artifact downloads no longer reproduce the fixture set
 
+**Resolved in [#9454](https://github.com/OpenAgentsInc/openagents/issues/9454):**
+the downloader now uses immutable artifact locks and checks raw inputs,
+converted heads, and base files. [Artifact acquisition](artifacts.md)
+records the verified historical recovery path. The observations below
+describe the pre-fix behavior.
+
 [`fetch-kev-artifacts.sh`](../../scripts/fetch-kev-artifacts.sh) downloads
 adapter files from Hub `main`, while the fixture manifests pin earlier
 contents. All three Qwen3 adapters now differ. The Hub's LFS SHA-256

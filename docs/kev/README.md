@@ -149,19 +149,20 @@ Weights ship as a LoRA adapter (`adapter_model.safetensors`), a pointer head
 (`head.pt`), tokenizer files, and evaluation/provenance records — the base
 model downloads separately under its own license.
 
-`./scripts/fetch-kev-artifacts.sh [<variant>...]` downloads an adapter and
-its base, converts `head.pt` to the `head.safetensors` and `head_meta.json`
-the port reads, and checks every adapter file against the fixture manifest's
-pinned digests. It writes to `KEV_ARTIFACTS`, by default `../kev-artifacts`
-beside the checkout, and needs no token for these public checkpoints. The
-script prints the `cargo test -p kev --features serve --release` invocation
-that runs the weights-gated conformance tests against what it fetched.
+`./scripts/fetch-kev-artifacts.sh [<variant>...]` downloads a pinned adapter and
+its base, converts verified `head.pt` to the `head.safetensors` and `head_meta.json`
+the port reads, and checks source, converted-head, and base files against
+the fixture set's `artifact-lock.json`. It writes to `KEV_ARTIFACTS`, by
+default `../kev-artifacts` beside the checkout, and needs no token for
+these public checkpoints. Run
+`KEV_VARIANT=<variant> cargo test -p kev --features serve --release` for
+the default artifact layout; the [fixture instructions](../../crates/kev/fixtures/README.md)
+describe overrides for other roots.
 
-**Download limitation, 2026-09-20:** the script fetches adapter files from
-Hub `main`, which no longer matches the Qwen3 fixture manifests. A fresh
-download fails their digest checks. Existing matching artifacts remain
-usable. The [release review](2026-09-20-upstream-review.md#artifact-downloads-no-longer-reproduce-the-fixture-set)
-records matching historical revisions and the required downloader change.
+The downloader now uses immutable revisions, including the historical
+Qwen3 adapters that Hub `main` replaced. Fresh and populated directories
+must pass the same checks. See [artifact acquisition](artifacts.md) for
+recovery instructions and separate candidate locks.
 
 The following table describes the **historical fixture checkpoints**.
 For current Hub scores, use the

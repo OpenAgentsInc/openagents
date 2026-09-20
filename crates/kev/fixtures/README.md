@@ -12,6 +12,13 @@ variant name is not a matching checkpoint. The
 records the observed hashes and historical revisions. Preserve these
 fixtures when measuring a replacement adapter.
 
+Each fixture set now has an `artifact-lock.json` alongside the unchanged
+`manifest.json`. The lock pins source revisions, raw inputs, converted
+head outputs, and every base file the runtime loads. Use
+[`scripts/fetch-kev-artifacts.sh`](../../../scripts/fetch-kev-artifacts.sh)
+to recover the historical bundles. See [artifact acquisition](../../../docs/kev/artifacts.md)
+for fresh directories, cache validation, and replacement checkpoints.
+
 ## Variants
 
 `fixtures/` holds the `kev-0.5b` set (checkpoint `jaredpalmer/kev-0.5b`
@@ -37,6 +44,9 @@ serve`) and the variant's run directory (`hf download jaredpalmer/<id>
 --revision <immutable-hub-commit> --local-dir <run>`). Pin the reference
 code revision as well. Generate replacement checkpoints into a separate
 fixture directory until conformance and workload evaluation are complete.
+Pin and verify an artifact lock before running the generator. Record the
+full reference code commit in that lock, and retain it beside the generated
+manifest. A golden manifest alone does not pin the raw head or base files.
 
 ```sh
 cd ~/work/projects/repos/kev
@@ -66,7 +76,8 @@ shard.
 | `golden/` | fp32 CPU per-question probability vectors, shaped answers, token counts |
 | `probes/` | `isolation`, `packed_vs_separate`, `permutation`, `forgery` results per variant |
 | `tokenizer.json` | Delimiter token ids and sanitized `user_tokens()` cases |
-| `manifest.json` | sha256 and byte size of every artifact file the Rust side loads |
+| `manifest.json` | Historical artifact digests recorded when the golden fixtures were generated |
+| `artifact-lock.json` | Immutable Hub revisions and source, converted-head, and base-file digests; acquisition provenance separate from the historical golden manifest |
 | `gen_fixtures.py` | The generator; development-time tool, runs in the reference venv |
 
 ## Weights stay out of git

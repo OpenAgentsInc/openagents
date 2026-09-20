@@ -16,6 +16,7 @@ done
 
 features='kev/serve,lev/serve,gym/tui,jev/blocking'
 echo 'Gate: Rust 1.97.1, rustfmt style edition 2024.'
+python3 scripts/test_fetch_kev_artifacts.py
 cargo fmt --all --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo clippy --locked --workspace --all-targets --features "$features" -- -D warnings
