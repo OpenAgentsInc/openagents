@@ -120,6 +120,86 @@ the ones its `refuses` list declares. A binary name and an argv written
 into the source would be a second source of truth beside the manifest that
 exists to be the first, and the two would drift.
 
+The executor also carries a filesystem `Policy`, built from the proof the
+probe ran under: the adapter-state directories the operator's approval
+granted, and the approval's own material — the manifest, the resolved
+adapter, and the directory the approval store lives in — sealed against
+the delegate it approves. A manifest's `enforces` list is a claim about
+bounds and never becomes a grant; a caller-built executor carries
+`Policy::empty` and grants nothing.
+
+## The filesystem boundary is enforced, not declared
+
+`writes: false` on a task is a statement, not a wall. Every delegated
+command runs inside a `coder-boundary` write boundary, and the record
+carries the resolved profile — backend, checkout, writable, protected,
+and sealed paths — in the call's `extra`.
+
+- A read-only task denies `file-write*` everywhere except a private
+  scratch directory and the adapter state the policy grants. The
+  boundary exports its scratch as `TMPDIR` and repoints nothing else:
+  `HOME` and the `XDG` variables pass through from the caller, so where
+  an adapter keeps its state is the approval's word — a granted writable
+  path — never a variable the boundary redirected. The rest of the
+  environment, the declared argv, and the working directory are the
+  manifest's and the caller's, preserved.
+- A writing task adds its own worktree to the writable set. The main
+  checkout stays protected — the worktree beneath it is the profile's
+  one exception — and the common Git directory stays sealed against
+  every exception, so a delegate cannot commit, stage, or corrupt the
+  shared object store. Its edits stay in the worktree for the reviewer.
+- A platform with no enforced backend, a grant that overlaps a protected
+  or sealed path, or a path that does not resolve refuses the delegation
+  as `boundary_unavailable` before anything spawns. There is no
+  unrestricted fallback.
+
+The boundary and the checkout are both held through
+`supervise::Job::run_holding`, so neither the profile file, the owned
+scratch, nor the worktree is released until the process group is
+terminated, reaped, and drained — including when the caller walks away.
+
+## The approval is decided again at dispatch
+
+A survey's proof is a cache: it says the probe ran under an approval, not
+that the approval still holds when the delegation runs. The policy an
+executor carries names the approval's identity — the manifest's digest
+and `invoke` argv as surveyed, the adapter's canonical path, and the
+store the record lives in — and `Delegator::run` re-decides it before
+anything spawns. The manifest is re-read and compared byte-for-byte: a
+manifest that changed since the survey refuses the cached executor with
+`unapproved` even when the operator approved the change, because the new
+approval names a manifest the old executor's argv never read — a fresh
+survey builds the executor that carries it. When the manifest matches,
+the store is re-read once and the record's adapter path, adapter bytes,
+and pinned argv files are verified again in the directory the argv will
+run in, through `Trust::decide_verified`: the grants and pins the
+boundary is built from come from the same store snapshot the decision
+checked, not a second read. A manifest rewritten since approval, an
+adapter replaced, a retargeted script, or a revoked record refuses the
+delegation with `unapproved`, and a grant the operator withdrew is not
+handed out anyway.
+
+One refinement the pins alone do not cover: sealing protects what a
+pinned word *points at*, but the argv spells the word — a script path
+inside a directory the grant makes writable can be retargeted by the
+delegate after verification, swapping the pinned script for one the
+approval never read. The policy keeps each pinned word's spelled path,
+and a writable grant — including the writing checkout itself — that
+covers that path or any directory above it refuses the delegation as
+`boundary_unavailable` before anything spawns. The check follows the
+word's real ancestry, so a symlinked directory inside a grant counts the
+same as a plain one. The same check covers the lexical adapter, manifest,
+and approval-store paths. Sealing their canonical targets alone would leave
+a writable alias outside those targets available for retargeting.
+
+What this does not promise: the seal and the ancestry check are the
+boundary's word, enforced at spawn and held while the child runs. A
+process outside the boundary — another shell, another agent — can still
+rewrite an approved file between the check and the read. The approval
+store is the host's guarantee about its own writes; this implementation
+does not claim to close races against writers the boundary does not
+hold.
+
 ## Four outcomes, not one
 
 | Outcome | What it means | ATIF outcome |
@@ -154,18 +234,19 @@ the repository, which makes the bound a timer rather than a bound; killing
 only the direct delegate leaves its background children doing the same
 thing. `crates/supervise` runs each delegation in a process group of its
 own, terminates that group on the bound or on a cancelled caller, and reaps
-the direct child before the delegation reports — which is also why the
-worktree is removed after the executor is gone rather than while it is still
-writing to it. A timed-out delegation keeps the bounded output the executor
-managed to print. Read [`subprocesses.md`](subprocesses.md).
+the direct child before the delegation reports — which is also why a
+read-only worktree is removed after the executor is gone rather than while
+it is still writing to it. A timed-out delegation keeps the bounded output
+the executor managed to print. Read [`subprocesses.md`](subprocesses.md).
 
 ## Isolation is provided or refused, never pretended
 
 A delegate that writes needs a checkout of its own, or six of them collide.
 A `Delegator` told which checkout it is working in makes one worktree per
-delegation, runs the executor in it, and removes it when the delegation
-ends — whatever it ended as, because a delegation that timed out leaves a
-checkout behind just as surely as one that answered.
+delegation and runs the executor in it. A read-only delegation's checkout
+is removed when the delegation ends; a writing delegation's stays where
+the executor left it — its edits are owed to a reviewer, not silently
+merged or discarded — and the recorded call names the retained path.
 
 A delegator that was **not** told refuses a task asking for a worktree with
 `isolation_unavailable`, and any delegator refuses a task that says it
@@ -180,9 +261,10 @@ delegations from a worktree under `/private/tmp` came back with `Refusing
 to run in an untrusted workspace`. A worktree inside a checkout the
 operator already trusts is accepted.
 
-Worktrees separate edits. They do not prohibit writes, and a recorded call
-still says `wrote: null` rather than claiming a check nobody runs.
-Observing what a delegate actually changed is separate work.
+Worktrees separate edits; the filesystem boundary is what prohibits
+writes. A recorded call still says `wrote: null` rather than claiming a
+check nobody runs — what a delegate actually changed is the workspace
+snapshot's answer, taken independently of the run.
 
 ### Coordinate checkout creation and cleanup
 
@@ -200,9 +282,13 @@ Lock acquisition and each Git subprocess have a 30-second bound. Git output is
 capped at 64 KiB per stream. Coder reserves a new directory atomically, so a
 recycled process identifier cannot make cleanup remove an earlier checkout.
 Normal completion awaits cleanup and reports a cleanup failure with its path.
-On cancellation, the supervisor retains the checkout until the child is reaped;
-a background cleanup transaction then removes it. Abrupt process termination
-can still leave a checkout for the operator to inspect and remove.
+On cancellation the supervisor holds the checkout until the child is reaped.
+What happens then depends on what the task declared: a writing delegation's
+checkout was retained before the executor spawned, so it — and whatever the
+delegate already wrote into it — stays on disk and in `git worktree list` for
+the reviewer even when no result came back; a read-only delegation's is
+removed by the cleanup transaction. Abrupt process termination can still leave
+a checkout for the operator to inspect and remove.
 
 ## Running the live check
 
@@ -221,8 +307,9 @@ repository the delegates run in, which matters because a git worktree under
 
 ## What is not built
 
-- **Evidence of what a delegate changed.** A worktree keeps six delegates
-  from colliding; it does not stop one from writing, and nothing yet reads
-  back what a delegation left behind.
+- **Grading what a delegate changed.** The boundary confines writes and
+  the retained checkout keeps them, and `crates/coder-boundary` snapshots
+  observe a tree before and after a run; the CoderBench side that grades
+  a run against that observation is separate work.
 - **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
   the program, and the program still runs from a caller in Rust.

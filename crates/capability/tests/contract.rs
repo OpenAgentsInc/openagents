@@ -914,3 +914,77 @@ fn a_symlinked_manifest_cannot_move_its_repository_trust_boundary() {
         Decision::Unapproved(_)
     ));
 }
+
+/// `decide_verified` answers with the record it checked: the grants,
+/// the adapter, and the pinned words come back in the same decision, so
+/// a boundary built from them is built from the verified snapshot — not
+/// from a later load of the store.
+#[test]
+fn a_verified_decision_carries_the_record_it_checked() {
+    let outside = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let granted = tempfile::tempdir().unwrap();
+    let script = outside.path().join("probe.sh");
+    std::fs::write(&script, "echo pinned 1.0.0\n").unwrap();
+    let body = manifest(
+        "contract-verified",
+        "sh",
+        json!(["sh", script.display().to_string()]),
+        json!({}),
+    );
+    let repository = repository("contract-verified", &body);
+    let mut trust = trust_in(outside.path());
+    trust
+        .approve(
+            Some(repository.path()),
+            "contract-verified",
+            &[granted.path().to_path_buf()],
+        )
+        .unwrap();
+
+    let entry = entry(repository.path(), "contract-verified");
+    let verified = trust.decide_verified(&entry, workspace.path());
+    let capability::Verified::Approved(record) = &verified else {
+        panic!("an approved manifest verifies: {verified:?}")
+    };
+    // The record the decision returns is the one it verified: the
+    // manifest digest, the canonical adapter, the pinned argv file, and
+    // the granted writable state — all from the store as it stood at
+    // this check.
+    assert_eq!(record.slug, "contract-verified");
+    assert_eq!(record.manifest, entry.digest);
+    assert_eq!(record.writable, vec![granted.path().canonicalize().unwrap()]);
+    assert_eq!(
+        record.pinned[0].path,
+        script.canonicalize().unwrap(),
+        "the pinned word's canonical target rides in the decision"
+    );
+
+    // And the two forms of the decision agree: the proof `decide`
+    // reports names the same record.
+    match trust.decide(&entry, workspace.path()) {
+        Decision::Approved(Proof::Approved { digest, writable, .. }) => {
+            assert_eq!(digest, record.manifest);
+            assert_eq!(writable, record.writable);
+        }
+        other => panic!("the verified decision and the proof agree: {other:?}"),
+    }
+}
+
+/// A refusal carries no record: `decide_verified` never returns a
+/// record its checks did not pass.
+#[test]
+fn an_unapproved_decision_verifies_nothing() {
+    let outside = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let repository = repository(
+        "contract-unapproved",
+        &manifest("contract-unapproved", "sh", json!(["sh", "--version"]), json!({})),
+    );
+    let trust = trust_in(outside.path());
+    let entry = entry(repository.path(), "contract-unapproved");
+    assert!(matches!(
+        trust.decide_verified(&entry, workspace.path()),
+        capability::Verified::Unapproved(_)
+    ));
+}

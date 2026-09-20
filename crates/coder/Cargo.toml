@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 atif = { path = "../atif" }
 capability = { path = "../capability" }
+coder-boundary = { path = "../coder-boundary" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
 crossterm = { version = "0.29", features = ["event-stream"] }

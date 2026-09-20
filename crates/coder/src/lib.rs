@@ -59,7 +59,9 @@ mod worktree;
 pub use crate::capability::{Found, Manifest, Presence};
 pub use agent::{Agent, Classified, Verdict};
 pub use classify::{Action, Judgment, Route, route, state_of};
-pub use delegate::{Bounds, Delegation, Delegator, Executor, Isolation, Task};
+pub use delegate::{
+    Bounds, Delegation, Delegator, EnforcedBoundary, Executor, Isolation, Policy, Task,
+};
 pub use generate::{
     Door, Generate, GenerateError, Message, Meta, ResponsesDoor, Role, StubGenerate, Usage,
 };

@@ -180,6 +180,26 @@ pub enum Decision {
     Unapproved(String),
 }
 
+/// The same decision, carrying the record the checks ran against.
+///
+/// [`Trust::decide`] answers for a caller that records the proof;
+/// [`Trust::decide_verified`] answers for a caller that acts on what was
+/// checked — a filesystem boundary built from an approval grants the
+/// writable paths and seals the pinned files of this record, taken from
+/// the store as it was at this decision rather than a later load that
+/// could name a different one.
+#[derive(Clone, Debug)]
+pub enum Verified {
+    /// A stored record approved the manifest — the record whose adapter,
+    /// pins, and grants the checks verified.
+    Approved(Record),
+    /// A trust that approves everything; no record exists to carry.
+    Unconditional,
+    /// The manifest may not run; the string says why, in words an
+    /// operator can act on.
+    Unapproved(String),
+}
+
 /// The operator's approvals, loaded from the store.
 ///
 /// `Trust` answers one question — may this manifest's argv run — and the
@@ -303,6 +323,32 @@ impl Trust {
 
     /// Whether `entry`'s manifest may run its probe in `workspace`.
     ///
+    /// This is [`Trust::decide_verified`] reduced to the [`Proof`] a
+    /// caller records: the checks are the same, and the record they ran
+    /// against becomes the proof's digest, grants, and store.
+    #[must_use]
+    pub fn decide(&self, entry: &Entry, workspace: &Path) -> Decision {
+        match self.decide_verified(entry, workspace) {
+            Verified::Approved(record) => Decision::Approved(Proof::Approved {
+                digest: record.manifest.clone(),
+                writable: record.writable.clone(),
+                store: self.store.clone(),
+            }),
+            Verified::Unconditional => Decision::Approved(Proof::Unconditional),
+            Verified::Unapproved(why) => Decision::Unapproved(why),
+        }
+    }
+
+    /// Whether `entry`'s manifest may run its probe in `workspace`,
+    /// carrying the record the checks ran against.
+    ///
+    /// [`Trust::decide`] answers the question for a caller that records
+    /// the proof; this form is for a caller that *acts* on what was
+    /// checked. A filesystem boundary built from an approval grants the
+    /// writable paths and seals the pinned files of the record this
+    /// decision verified — taken from the store as it was at this check,
+    /// not a later load that could name a different record.
+    ///
     /// The order is the contract, and every step fails closed:
     ///
     /// - a stored trust re-reads its file — a store deleted, replaced, or
@@ -316,12 +362,12 @@ impl Trust {
     ///   whose bytes changed, or whose argv names a file that re-resolves
     ///   differently in `workspace` is unapproved again.
     #[must_use]
-    pub fn decide(&self, entry: &Entry, workspace: &Path) -> Decision {
+    pub fn decide_verified(&self, entry: &Entry, workspace: &Path) -> Verified {
         if self.unconditional {
-            return Decision::Approved(Proof::Unconditional);
+            return Verified::Unconditional;
         }
         if let Some(error) = &self.error {
-            return Decision::Unapproved(format!(
+            return Verified::Unapproved(format!(
                 "the trust store could not be read ({error}), so nothing it names may run"
             ));
         }
@@ -331,7 +377,7 @@ impl Trust {
             match Self::load(&self.store) {
                 Ok(fresh) => fresh.records,
                 Err(error) => {
-                    return Decision::Unapproved(format!(
+                    return Verified::Unapproved(format!(
                         "the trust store could not be read ({error}), so nothing it names may run"
                     ));
                 }
@@ -343,7 +389,7 @@ impl Trust {
             .iter()
             .find(|record| record.manifest == entry.digest)
         else {
-            return Decision::Unapproved(format!(
+            return Verified::Unapproved(format!(
                 "no approval names this exact manifest — \
                  `capability-trust approve {}` records one in {}",
                 entry.manifest.slug,
@@ -357,7 +403,7 @@ impl Trust {
         let work = match workspace.canonicalize() {
             Ok(work) => work,
             Err(error) => {
-                return Decision::Unapproved(format!(
+                return Verified::Unapproved(format!(
                     "the workspace {} cannot be resolved ({error}), so nothing may run in it",
                     workspace.display()
                 ));
@@ -366,7 +412,7 @@ impl Trust {
         let store = match self.store.canonicalize() {
             Ok(store) => store,
             Err(error) => {
-                return Decision::Unapproved(format!(
+                return Verified::Unapproved(format!(
                     "the trust store at {} cannot be resolved ({error}), so the approval \
                      it names cannot be checked — nothing it names may run",
                     self.store.display()
@@ -374,7 +420,7 @@ impl Trust {
             }
         };
         if store.starts_with(&work) {
-            return Decision::Unapproved(format!(
+            return Verified::Unapproved(format!(
                 "the trust store at {} sits inside the workspace it would approve — \
                  set {STORE_ENV} to a path outside it",
                 store.display()
@@ -396,14 +442,14 @@ impl Trust {
             });
             match root {
                 Some(root) if store.starts_with(&root) => {
-                    return Decision::Unapproved(format!(
+                    return Verified::Unapproved(format!(
                         "the trust store at {} sits inside the repository the manifest came from — \
                          a manifest cannot approve itself",
                         store.display()
                     ));
                 }
                 None => {
-                    return Decision::Unapproved(format!(
+                    return Verified::Unapproved(format!(
                         "the manifest at {} cannot be resolved, so the store's place \
                          against its repository cannot be checked — nothing it names may run",
                         entry.path.display()
@@ -413,13 +459,9 @@ impl Trust {
             }
         }
         if let Err(why) = self.verify_adapter(entry, record, &work) {
-            return Decision::Unapproved(why);
+            return Verified::Unapproved(why);
         }
-        Decision::Approved(Proof::Approved {
-            digest: record.manifest.clone(),
-            writable: record.writable.clone(),
-            store: self.store.clone(),
-        })
+        Verified::Approved(record.clone())
     }
 
     /// The adapter half of the decision: the manifest's `detect.binary`

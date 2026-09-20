@@ -56,7 +56,7 @@ use atif::{Call, Decision, Outcome};
 use jev::{Answer, SystemOneRequest};
 use serde_json::{Map, Value, json};
 
-use crate::delegate::{Bounds, Delegation, Delegator, Isolation, Task};
+use crate::delegate::{Bounds, Delegation, Delegator, Isolation, Task, boundary_supported};
 use crate::program::{Kind, Program, Step};
 use crate::questions::{self, Fill, Set};
 use crate::source::{self, OnOverflow, Overflow, Selection, Source};
@@ -86,13 +86,11 @@ pub const NO_PROGRAM: &str = "none";
 /// The schema a recorded runtime step carries in its `extra`.
 pub const STEP_SCHEMA: &str = "openagents.program-step.v1";
 
-/// The bounds a `delegate` step names that the **host** holds to, rather
-/// than handing to the executor.
+/// Bounds enforced by the host's delegation implementation.
 ///
-/// Everything else on a `delegate` step is a bound the executor is asked
-/// to keep, which is what the admission check tests against the
-/// capability's `cannot_enforce`.
-const HOST_BOUNDS: &[&str] = &["concurrent_max", "isolation"];
+/// A manifest's declaration is not evidence that an executor enforces a
+/// bound. The host owns concurrency, checkout isolation, and deadlines.
+const HOST_BOUNDS: &[&str] = &["concurrent_max", "isolation", "minutes"];
 
 /// The one condition a `check` step's `refuse_on` may name here.
 const INTERSECTION: &str = "cannot_enforce_intersection";
@@ -113,7 +111,8 @@ const UNKNOWN: &str = "enforcement_unknown";
 pub enum Enforcement {
     /// The host keeps it, and does not need the executor's agreement.
     Host,
-    /// The executor declares it keeps it.
+    /// The executor has been independently verified to keep it.
+    /// Manifest declarations alone never establish this state.
     Executor,
     /// The executor declares it will silently ignore it. This is the
     /// dangerous one, and it is the one the bound names.
@@ -522,6 +521,11 @@ impl Runtime {
             Kind::Query => self.admit_source(step).map(|_| ()),
             Kind::Decide => self.admit_question(step),
             Kind::Check => self.admit_check(program, step),
+            Kind::Delegate if !boundary_supported() => Err(Refused::at(
+                &step.name,
+                "boundary_unavailable",
+                "this host has no available filesystem boundary for delegation",
+            )),
             _ => Ok(()),
         }
     }
@@ -574,8 +578,21 @@ impl Runtime {
                     "a lookup that answers with more than its bound truncates or refuses, and this step names {value}"
                 )),
             },
-            "max_results" | "concurrent_max" | "minutes" => match value.as_u64() {
-                Some(count) if count > 0 => Ok(()),
+            "minutes" => match value.as_u64() {
+                Some(count)
+                    if Bounds::minutes(count).untenable().is_none()
+                        && Instant::now()
+                            .checked_add(Bounds::minutes(count).wall())
+                            .is_some() =>
+                {
+                    Ok(())
+                }
+                _ => refuse(format!(
+                    "minutes must name a positive deadline this host can represent, and this step names {value}"
+                )),
+            },
+            "max_results" | "concurrent_max" => match value.as_u64() {
+                Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
                 _ => refuse(format!(
                     "{bound} is a count above zero, and this step names {value}"
                 )),
@@ -1130,9 +1147,6 @@ impl Runtime {
                 bound if manifest.cannot_enforce.iter().any(|named| named == bound) => {
                     Enforcement::Ignored
                 }
-                bound if manifest.enforces.iter().any(|named| named == bound) => {
-                    Enforcement::Executor
-                }
                 _ => Enforcement::Unknown,
             };
             held.insert(bound.clone(), by);
@@ -1165,9 +1179,9 @@ impl Runtime {
                 ignored.join(", ")
             ),
             (true, false) => format!(
-                "refused: {} declares neither way about {{{}}}, and a bound nobody named is not enforced by having gone unmentioned",
-                inputs.executor,
-                unknown.join(", ")
+                "refused: enforcement of {{{}}} by {} is unverified",
+                unknown.join(", "),
+                inputs.executor
             ),
         };
         let mut extra = self.step_extra(step);
@@ -1273,7 +1287,8 @@ impl Runtime {
             .bounds
             .get("concurrent_max")
             .and_then(Value::as_u64)
-            .unwrap_or(1) as usize;
+            .map(|count| usize::try_from(count).expect("admission checked the concurrency bound"))
+            .unwrap_or(1);
         let minutes = step.bounds.get("minutes").and_then(Value::as_u64);
         let bounded: Vec<Task> = selection
             .tasks()
@@ -1532,6 +1547,56 @@ fn read_of(response: &jev::SystemOneResponse, gate: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn empty_runtime() -> Runtime {
+        Runtime {
+            survey: Survey {
+                capabilities: Vec::new(),
+                programs: crate::program::Registry::open(&[]),
+                sources: source::Registry::open(&[]),
+                workspace: std::env::temp_dir(),
+            },
+            questions: questions::Registry::open(&[]),
+            door: None,
+            repository: None,
+            host: Host::without_repository(),
+        }
+    }
+
+    #[test]
+    fn an_unrepresentable_deadline_refuses_before_any_step_runs() {
+        let runtime = empty_runtime();
+        for minutes in [0, u64::MAX, u64::MAX / 60] {
+            let program: Program = serde_json::from_value(json!({
+                "v": 1, "slug": "deadline",
+                "steps": [
+                    {"name": "select", "kind": "query", "bounds": {}},
+                    {"name": "work", "kind": "delegate", "bounds": {"minutes": minutes}}
+                ]
+            }))
+            .unwrap();
+            let refused = runtime
+                .admit(&program)
+                .expect_err("an invalid deadline cannot run");
+            assert_eq!(refused.step, "work");
+            assert_eq!(refused.code, "bound_unenforceable");
+        }
+    }
+
+    #[test]
+    fn executor_claims_cannot_admit_an_unsupported_bound() {
+        let runtime = empty_runtime();
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "unknown-bound",
+            "steps": [{"name": "work", "kind": "delegate", "bounds": {"memory_mb": 128}}]
+        }))
+        .unwrap();
+        let refused = runtime
+            .admit(&program)
+            .expect_err("no memory enforcement exists");
+        assert_eq!(refused.code, "bound_unenforceable");
+        assert!(refused.reason.contains("memory_mb"));
+    }
 
     /// The work is the list the sentence carries, in the order it was
     /// written, and the prose around it is not work.

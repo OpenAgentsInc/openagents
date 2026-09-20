@@ -367,6 +367,11 @@ fn decision_named(path: &Path, name: &str) -> atif::Call {
 /// the program states are the bounds the run held to.
 #[tokio::test]
 async fn the_first_program_runs_from_its_definition() {
+    // Every delegation runs under an enforced filesystem boundary; a
+    // platform without one refuses rather than spawning.
+    if !coder::delegate::boundary_supported() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let run = runtime(root)
@@ -435,6 +440,9 @@ async fn the_first_program_runs_from_its_definition() {
 /// The operator's sentence picks the program, and the program runs.
 #[tokio::test]
 async fn a_request_selects_its_program_and_runs_it() {
+    if !coder::delegate::boundary_supported() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let run = runtime(root).await.apply(&inputs(), None).await;
@@ -449,6 +457,9 @@ async fn a_request_selects_its_program_and_runs_it() {
 /// the golden.
 #[tokio::test]
 async fn the_recorded_run_is_the_path_the_task_expects() {
+    if !coder::delegate::boundary_supported() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let traces = tempfile::tempdir().unwrap();
@@ -663,62 +674,52 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     );
 }
 
-/// A refused step stops the program, and the run says where it stopped.
+/// An executor declaration cannot authorize a bound the host cannot verify.
 #[tokio::test]
-async fn a_refused_step_stops_the_program() {
+async fn an_executor_claim_does_not_establish_enforcement() {
     let machine = machine();
     let root = machine.path();
-    // A manifest that says it will silently ignore the bound the fan-out
-    // needs. The admission check is what catches that, and it runs before
-    // anything is delegated.
     let mut manifest = declared(root);
-    manifest["cannot_enforce"] = json!(["minutes", "tool_set"]);
-    manifest["enforces"] = json!([]);
+    manifest["enforces"] = json!(["minutes", "memory_mb"]);
     redeclare(root, &manifest);
-
-    let run = runtime(root)
-        .await
-        .run(&fan_out(root), &inputs(), None)
-        .await;
-
-    assert_eq!(run.step_names(), ["select", "independence"]);
-    let stopped = run.stopped.expect("the check refused");
-    assert_eq!(stopped.step, "admit");
-    assert_eq!(stopped.code, "cannot_enforce_intersection");
-    assert!(stopped.reason.contains("silently ignore"), "{stopped}");
-    assert!(
-        run.delegations.is_empty(),
-        "nothing was delegated to an executor that would ignore the bound"
-    );
+    let mut program = fan_out(root);
+    let delegate = program
+        .steps
+        .iter_mut()
+        .find(|step| step.kind == coder::program::Kind::Delegate)
+        .unwrap();
+    delegate.bounds.insert("memory_mb".to_string(), json!(128));
+    let delegate_name = delegate.name.clone();
+    let run = runtime(root).await.run(&program, &inputs(), None).await;
+    let stopped = run
+        .stopped
+        .expect("an unsupported bound refuses before any step runs");
+    assert_eq!(stopped.step, delegate_name);
+    assert_eq!(stopped.code, "bound_unenforceable");
+    assert!(run.steps.is_empty());
+    assert!(run.delegations.is_empty());
 }
 
-/// A bound neither list mentions is not enforced by having gone
-/// unmentioned, and the check refuses it the way it refuses one the
-/// executor says it will ignore.
-///
-/// This is the third state. A check that intersected the required bounds
-/// with `cannot_enforce` and admitted the rest would admit this
-/// delegation, and the executor would run without the bound while the
-/// trace recorded that it had been checked.
+/// The supervisor's deadline does not depend on an executor's promise.
 #[tokio::test]
-async fn a_bound_nobody_claims_is_refused() {
-    let machine = machine();
-    let root = machine.path();
-    let mut manifest = declared(root);
-    manifest["enforces"] = json!([]);
-    manifest["cannot_enforce"] = json!(["tool_set"]);
-    redeclare(root, &manifest);
-
-    let run = runtime(root)
-        .await
-        .run(&fan_out(root), &inputs(), None)
-        .await;
-
-    let stopped = run.stopped.expect("nobody said they would keep minutes");
-    assert_eq!(stopped.step, "admit");
-    assert_eq!(stopped.code, "enforcement_unknown");
-    assert!(stopped.reason.contains("neither way"), "{stopped}");
-    assert!(run.delegations.is_empty());
+async fn the_host_holds_minutes_even_when_the_executor_does_not() {
+    if !coder::delegate::boundary_supported() {
+        return;
+    }
+    for ignored in [json!([]), json!(["minutes"])] {
+        let machine = machine();
+        let root = machine.path();
+        let mut manifest = declared(root);
+        manifest["enforces"] = json!([]);
+        manifest["cannot_enforce"] = ignored;
+        redeclare(root, &manifest);
+        let run = runtime(root)
+            .await
+            .run(&fan_out(root), &inputs(), None)
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.answered(), 6);
+    }
 }
 
 /// Every bound the fan-out names is held by somebody, and the trace says
@@ -750,10 +751,10 @@ async fn the_check_records_who_holds_each_bound() {
         .find(|call| call.name == "admission_check")
         .expect("the check ran");
     assert_eq!(check.extra["admitted"], json!(true));
-    assert_eq!(check.extra["enforcement"]["minutes"], json!("executor"));
+    assert_eq!(check.extra["enforcement"]["minutes"], json!("host"));
     assert_eq!(check.extra["enforcement"]["concurrent_max"], json!("host"));
     assert_eq!(check.extra["enforcement"]["isolation"], json!("host"));
-    assert_eq!(check.extra["required"], json!(["minutes"]));
+    assert_eq!(check.extra["required"], json!([]));
 }
 
 /// An executor this machine cannot reach is a route nobody was offered,
@@ -924,6 +925,9 @@ async fn a_source_this_host_does_not_resolve_refuses_the_program() {
 /// order is enforced.
 #[tokio::test]
 async fn a_file_source_is_the_path_an_explicit_list_takes() {
+    if !coder::delegate::boundary_supported() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     std::fs::create_dir_all(root.join("sources")).unwrap();

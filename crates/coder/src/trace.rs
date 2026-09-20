@@ -332,10 +332,35 @@ impl Recorder {
         if let Some(correct) = delegation.correct() {
             extra.insert("correct".to_string(), json!(correct));
         }
-        // Null rather than absent, and null rather than false: a delegate
-        // that wrote would name the path here, and nothing today can,
-        // because a task that writes is refused until it can be isolated.
+        // Null rather than absent, and null rather than false: the
+        // boundary record below says what a write would have had to pass
+        // through, and what a delegate actually changed is the workspace
+        // snapshot's answer, not this call's.
         extra.insert("wrote".to_string(), Value::Null);
+        if let Some(boundary) = &delegation.boundary {
+            let paths = |paths: &[PathBuf]| {
+                paths
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+            };
+            extra.insert(
+                "boundary".to_string(),
+                json!({
+                    "backend": boundary.backend.display().to_string(),
+                    "checkout": boundary
+                        .checkout
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    "writable": paths(&boundary.writable),
+                    "protected": paths(&boundary.protected),
+                    "sealed": paths(&boundary.sealed),
+                }),
+            );
+        }
+        if let Some(retained) = &delegation.retained {
+            extra.insert("retained".to_string(), json!(retained.display().to_string()));
+        }
         let call = Call {
             id: self.next_call_id(),
             name: DELEGATE_CALL.to_string(),

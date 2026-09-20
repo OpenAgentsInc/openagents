@@ -69,7 +69,8 @@ pub use manifest::{Claim, Detect, Manifest, Refusal, SUBPROCESS, WorkspaceProbe}
 pub use probe::{Found, Presence};
 pub use registry::{Entry, Registry, Source, SourceDir, resolve, search, search_dirs};
 pub use trust::{
-    Approval, Decision, Pinned, Proof, Record, Trust, digest_bytes, digest_file, store_path,
+    Approval, Decision, Pinned, Proof, Record, Trust, Verified, digest_bytes, digest_file,
+    store_path,
 };
 
 /// The event kind a manifest publishes as, per NIP-CAP.

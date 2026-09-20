@@ -7,6 +7,7 @@
 
 use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use supervise::{Job, Limits};
@@ -20,7 +21,7 @@ const LOCK_NAME: &str = "coder-worktrees.lock";
 pub struct Worktree {
     repository: PathBuf,
     path: PathBuf,
-    active: bool,
+    active: AtomicBool,
 }
 
 impl Worktree {
@@ -63,7 +64,7 @@ impl Worktree {
             let worktree = Self {
                 repository,
                 path,
-                active: true,
+                active: AtomicBool::new(true),
             };
             mutate(&worktree.repository, &worktree.path, true)?;
             Ok(worktree)
@@ -78,14 +79,29 @@ impl Worktree {
         &self.path
     }
 
+    /// Keeps the checkout: it will not be removed when this `Worktree`
+    /// drops, however it drops.
+    ///
+    /// A delegation that may have written owes a reviewer the files the
+    /// executor left — answered, failed, timed out, or cancelled — so
+    /// retention is set before the executor spawns rather than after it
+    /// ends. The worktree stays registered with the repository, so
+    /// `git worktree list` names it even when the caller walked away
+    /// and no result came back; removing it or merging from it is the
+    /// reviewer's decision now.
+    pub(crate) fn retain(&self) -> PathBuf {
+        self.active.store(false, Ordering::Release);
+        self.path.clone()
+    }
+
     /// Removes the checkout before a completed delegation reports.
     pub(crate) async fn close(self) -> Result<(), String> {
         tokio::task::spawn_blocking(move || {
-            let mut worktree = self;
+            let worktree = self;
             let result = mutate(&worktree.repository, &worktree.path, false);
             // A failed removal is reported with the retained path. Do not
             // silently retry after reporting that failure to the caller.
-            worktree.active = false;
+            worktree.active.store(false, Ordering::Release);
             result
         })
         .await
@@ -95,7 +111,7 @@ impl Worktree {
 
 impl Drop for Worktree {
     fn drop(&mut self) {
-        if !self.active {
+        if !self.active.load(Ordering::Acquire) {
             return;
         }
         let repository = self.repository.clone();
@@ -157,7 +173,12 @@ fn git(repository: &Path) -> Job {
         .bounded(Limits::within(GIT_WALL).keeping(64 * 1024))
 }
 
-async fn common_directory(repository: &Path) -> Result<PathBuf, String> {
+/// The repository's common Git directory, resolved to a canonical
+/// absolute path. For a linked checkout this is the main checkout's
+/// `.git`, which is the directory a delegate's boundary seals — writing
+/// there from a worktree would corrupt the shared object store and the
+/// metadata of every sibling.
+pub(crate) async fn common_directory(repository: &Path) -> Result<PathBuf, String> {
     let ended = git(repository)
         .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
         .run()

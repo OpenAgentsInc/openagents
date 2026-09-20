@@ -439,6 +439,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "capability",
+ "coder-boundary",
  "coder-terminal",
  "coderbench",
  "crossterm",

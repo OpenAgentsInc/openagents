@@ -128,6 +128,11 @@ fn tasks() -> Vec<Task> {
 
 #[tokio::test]
 async fn six_recorded_delegations_read_back_as_the_golden_does() {
+    // Every delegation runs under an enforced filesystem boundary; on a
+    // platform without one, nothing here can spawn.
+    if !coder::delegate::boundary_supported() {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     let delegator = Delegator::new(executor(stub(dir.path())))
         .in_directory(dir.path())
@@ -201,6 +206,9 @@ async fn six_recorded_delegations_read_back_as_the_golden_does() {
 /// not one.
 #[tokio::test]
 async fn the_three_ways_a_delegation_does_not_answer_stay_apart() {
+    if !coder::delegate::boundary_supported() {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     let write = |name: &str, body: &str| {
         let path = dir.path().join(name);

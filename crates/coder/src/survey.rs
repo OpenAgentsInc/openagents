@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::capability::{self, Found, Presence, Trust};
-use crate::delegate::Executor;
+use crate::delegate::{Executor, Policy};
 use crate::program;
 use crate::source;
 use crate::trace::Recorder;
@@ -127,7 +127,14 @@ pub fn executor(found: &Found) -> Option<Executor> {
     };
     let manifest = &found.manifest;
     let (_, arguments) = manifest.invoke.split_first()?;
-    let executor = Executor::new(&manifest.slug, path.clone(), arguments.to_vec());
+    // The approval that let the probe run is also the delegation's
+    // filesystem policy — not its cached grants, but where the manifest
+    // and the store live, so the delegation decides again at dispatch.
+    // The approval's own material — manifest, adapter, store — is sealed
+    // against the delegate it approves, and a manifest's `enforces` list
+    // is a claim about bounds and never becomes a grant.
+    let executor = Executor::new(&manifest.slug, path.clone(), arguments.to_vec())
+        .under(Policy::of(found, path));
     Some(manifest.refuses.iter().fold(executor, |executor, refusal| {
         executor.refusing(&refusal.name, &refusal.matches)
     }))
