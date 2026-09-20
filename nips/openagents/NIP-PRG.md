@@ -1,4 +1,4 @@
-NIP-PRO
+NIP-PRG
 =======
 
 Programs
@@ -43,7 +43,8 @@ program from the kind alone.
     ["step", "query"],
     ["step", "decide"],
     ["step", "check"],
-    ["step", "delegate"]
+    ["step", "delegate"],
+    ["step", "module"]
   ],
   "content": "<json body>"
 }
@@ -96,6 +97,7 @@ by its name.
 | `decide` | A typed question put to a decision model. |
 | `delegate` | Work handed to an executor. |
 | `program` | Another program, by address. See [Composition](#composition). |
+| `module` | A WebAssembly module, by content hash. See [Modules](#modules). |
 
 The registry is open: a future NIP may define more.
 
@@ -112,6 +114,109 @@ Question text belongs to a separately addressed and separately digested
 question set, because rewording a question changes what was asked. A program
 that inlined its wording could not say which version produced a result, and
 two runs of "the same" program would not be comparable.
+
+## Modules
+
+Some programs need code. A step of kind `module` runs a WebAssembly module:
+
+```jsonc
+{"name": "extract", "kind": "module",
+ "module": {
+   "hash": "sha256:9f2b…",
+   "interface": {"entry": "handle", "input": "json", "output": "json"},
+   "sources": [
+     {"url": "https://example.org/extract-1.4.0.wasm"},
+     {"naddr": "naddr1…"}
+   ]
+ },
+ "bounds": {"memory_mib": 64, "timeout_ms": 5000, "allowed_hosts": [], "allowed_paths": []}}
+```
+
+### The hash is the identity and the sources are hints
+
+A module is named by **content hash**. `sources` says where bytes matching
+that hash might be found, in preference order.
+
+A host MUST verify the hash before instantiating anything, and MUST refuse
+the module when no source produces matching bytes. A source that serves
+something else is a source that failed, not a module that changed.
+
+This is the rule that makes fetching code from a stranger's URL tolerable:
+the URL cannot decide what runs. **`hash` is required.** A module reference
+without one is refused, rather than fetched and hoped about.
+
+A host MAY ignore `sources` entirely and resolve the hash from a local
+store. A program that runs from cache and a program that fetches run the
+same bytes, which is the point of naming them by content.
+
+### Bounds on a module are enforced by the runtime
+
+A `module` step's bounds are the ones a WebAssembly host can actually
+impose: linear memory, wall clock, and what the guest may reach.
+
+| Bound | Meaning |
+| --- | --- |
+| `memory_mib` | Ceiling on linear memory. |
+| `timeout_ms` | Wall clock, after which the host stops the guest. |
+| `allowed_hosts` | Hosts the guest may reach. **Absent means none.** |
+| `allowed_paths` | Paths the guest may read, and whether writable. **Absent means none.** |
+| `fuel` | Optional instruction budget, where the runtime counts. |
+
+**Absence is denial, never a default grant.** A host that cannot enforce a
+declared bound refuses the step rather than running the guest without it,
+which is the general rule in [Bounds](#bounds) applied where it is easiest
+to get wrong.
+
+A module declaring a host or a path it was not granted MUST be refused at
+load, before instantiation, by inspecting what it imports. Checking after
+the fact is checking after it happened.
+
+### Module announcements — kind `30183`
+
+Optional. A module announcement says where a hash can be found and what it
+expects.
+
+```jsonc
+{
+  "kind": 30183,
+  "pubkey": "<publisher pubkey, hex>",
+  "tags": [["d", "extract-tables"], ["hash", "sha256:9f2b…"], ["v", "1.4.0"]],
+  "content": "{\"interface\":{…},\"requires\":{\"memory_mib\":64},\"sources\":[…],\"size\":184320}"
+}
+```
+
+**An announcement is a locator, not an authority.** It does not say a module
+is safe, and it cannot change what a program runs, because the program names
+a hash. An announcement that points at different bytes fails verification
+and is discarded — which is why replacement at a `d` tag is harmless here,
+unlike for a program.
+
+`requires` states what the module needs. A program's step bounds are checked
+against it, and the step is refused when it grants less than the module
+requires — a guest given 16 MiB when it needs 64 will fail at an arbitrary
+moment instead of at admission.
+
+Version coexistence works the way it does for programs: publish two `d`
+tags. The `v` tag is for people reading a listing, and nothing resolves by
+it.
+
+### What this is a version of
+
+Extism solved most of this and is worth reading before reimplementing any of
+it. Its manifest carries Wasm sources as a file path, raw bytes, or a URL,
+each with optional metadata, alongside `memory`, `timeout_ms`,
+`allowed_hosts`, and `allowed_paths`. Those bounds are the same bounds, and
+a capability manifest under [NIP-CAP](NIP-CAP.md) is close to the same
+object.
+
+Two deliberate differences:
+
+- **The hash is required here and optional there.** An Extism manifest may
+  name a URL with no hash, and then the URL decides what runs. For a module
+  a program fetched from a registry, that is the whole risk.
+- **The registry is addressable events rather than a hosted service.** A
+  publisher signs an announcement and anyone can mirror the bytes, because
+  identity is the hash and not the host serving it.
 
 ## Bounds
 
@@ -186,8 +291,24 @@ A host SHOULD resolve programs only from pubkeys its operator names, SHOULD
 refuse a `v` it does not know, and MUST ignore fields it does not
 understand rather than guessing at them.
 
-Because a program carries no code, the attack surface is the **shape** it
-describes: a program that fans out to a thousand delegations, or composes
-to a great depth, or names a step kind that a permissive host treats as
+A program carries no code, so its own attack surface is the **shape** it
+describes: a program that fans out to a thousand delegations, or composes to
+a great depth, or names a step kind that a permissive host treats as
 optional. The bounds rules above are what make those refusable, and a host
 that does not enforce them is where the risk actually lives.
+
+A `module` step changes that, and it is worth being plain about how. The
+program still carries no code, but it now names code, and a host that runs
+it is executing something a stranger compiled. Three things carry the weight
+and none of them is the signature on the event:
+
+- **The hash**, which means the source cannot decide what runs.
+- **The import check at load**, which means a guest cannot reach a host or a
+  path the step did not grant, and is refused before instantiation rather
+  than caught afterwards.
+- **The runtime bounds**, which mean a guest that does nothing else wrong
+  still cannot run forever or allocate without limit.
+
+Signing an announcement says a publisher wrote it. It does not say the
+module is safe, and a host that treats a familiar pubkey as a reason to relax
+any of the three has removed the part that was protecting it.

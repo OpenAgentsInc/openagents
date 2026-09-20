@@ -11,7 +11,7 @@ manifests, which say **how to drive an executor**, and `kind:30181` operator
 policies, which say **which executors an operator prefers**.
 
 Programs — the composable unit of work whose steps reach these capabilities
-— are [NIP-PRO](NIP-PRO.md), and are deliberately not defined here. A
+— are [NIP-PRG](NIP-PRG.md), and are deliberately not defined here. A
 program is a general primitive that says nothing about any machine; a
 capability is specific to one.
 
@@ -58,7 +58,7 @@ A **plugin** is none of these. In the reference implementation a plugin is a
 sandboxed WebAssembly guest: small, pure, deterministic, and denied the
 network. An executor that spawns a process and reaches the internet is the
 tier a plugin host refuses to load. The reusable component is the
-**program** of [NIP-PRO](NIP-PRO.md), not a plugin, and the distinction is
+**program** of [NIP-PRG](NIP-PRG.md), not a plugin, and the distinction is
 load-bearing rather than cosmetic — see
 [`docs/programs.md`](../../docs/programs.md).
 

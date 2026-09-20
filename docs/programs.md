@@ -65,7 +65,7 @@ prefer, how wide a fan-out may go, and what is never to be used.
 query, a decision, a deterministic check, or a delegation.
 
 They are addressable Nostr events in two NIPs, split on purpose.
-[NIP-PRO](../nips/openagents/NIP-PRO.md) defines programs (`30182`) and
+[NIP-PRG](../nips/openagents/NIP-PRG.md) defines programs (`30182`) and
 [NIP-CAP](../nips/openagents/NIP-CAP.md) defines capabilities (`30180`,
 `30181`). The relay is the workspace, which is the pattern `AGENTS.md` names
 for application behaviour: event kinds and relay policy rather than a
@@ -176,7 +176,7 @@ example of exactly that shape.
 
 ## The first program
 
-`delegate-fan-out`, whose steps are in [NIP-PRO](../nips/openagents/NIP-PRO.md):
+`delegate-fan-out`, whose steps are in [NIP-PRG](../nips/openagents/NIP-PRG.md):
 
 ```text
 select  (query)     the top N open issues
