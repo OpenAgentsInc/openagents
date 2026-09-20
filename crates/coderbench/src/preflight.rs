@@ -371,25 +371,21 @@ mod tests {
             ],
         )
         .unwrap();
-        let global = dir.path().join("gitconfig");
-        std::fs::write(
-            &global,
-            "[url \"https://git-manager.devin.ai/proxy/github.com/\"]\n\tinsteadOf = https://github.com/\n",
+        // The rewrite lives in the checkout's own configuration, which
+        // `remote get-url` applies exactly as it would a global one, so the
+        // test touches no process environment that other tests share.
+        git(
+            &repository,
+            &[
+                "config",
+                "url.https://git-manager.devin.ai/proxy/github.com/.insteadOf",
+                "https://github.com/",
+            ],
         )
         .unwrap();
-
-        // The rewrite lives in a global configuration the test owns, and
-        // the variable is restored before the test ends. No other test
-        // here depends on GIT_CONFIG_GLOBAL.
-        let previous = std::env::var_os("GIT_CONFIG_GLOBAL");
-        unsafe { std::env::set_var("GIT_CONFIG_GLOBAL", &global) };
         let rewritten = git(&repository, &["remote", "get-url", "origin"]).unwrap();
         let same = same_repository("https://github.com/OpenAgentsInc/openagents", &repository);
         let different = same_repository("https://github.com/OpenAgentsInc/coder", &repository);
-        match previous {
-            Some(value) => unsafe { std::env::set_var("GIT_CONFIG_GLOBAL", value) },
-            None => unsafe { std::env::remove_var("GIT_CONFIG_GLOBAL") },
-        }
 
         assert!(
             rewritten.starts_with("https://git-manager.devin.ai/proxy/"),

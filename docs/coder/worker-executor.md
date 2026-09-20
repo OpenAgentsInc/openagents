@@ -97,9 +97,8 @@ Two refusals come from the host environment rather than the job:
   `XDG_DATA_HOME` the worker uses, or trust the checkout in both stores.
 - **Preflight reports `origin is <rewritten URL>`.** A global
   `url.<base>.insteadOf` entry rewrites the URL that
-  `git remote get-url origin` returns, so CoderBench preflight sees a
-  different repository and refuses a matching checkout. The preflight
-  check itself is tracked as
-  [#9448](https://github.com/OpenAgentsInc/openagents/issues/9448); until
-  it lands, invoke `coderbench` with `GIT_CONFIG_GLOBAL=/dev/null`, which
-  also hides every other global Git setting.
+  `git remote get-url origin` returns. CoderBench preflight reads the
+  checkout's configured `remote.origin.url` instead
+  ([#9448](https://github.com/OpenAgentsInc/openagents/issues/9448)), so a
+  `coderbench` older than that fix needs `GIT_CONFIG_GLOBAL=/dev/null`,
+  which also hides every other global Git setting.
