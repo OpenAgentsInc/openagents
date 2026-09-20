@@ -46,12 +46,16 @@ second vocabulary. Two consequences will surprise you:
 
 - **`coderbench diff` can no longer return a pass.** A trace carries neither
   the run's exit code nor the workspace, so a diff reports what it cannot
-  see. Only `coderbench run` observes both. A diff of the staged golden
-  exits `4` naming exactly what is missing, and that is correct behaviour
-  rather than a regression.
+  see. Only `coderbench run` observes both. A diff of the staged golden now
+  exits `1` — its delegation prompts are the staging script's wording, not
+  the request's, so the manifest's expectations measure it wrong rather
+  than unverifiable. Step 3 explains.
 - **Missing evidence is `unverifiable`, not a pass.** A delegation counts
   only if the trace says it completed, says it was correct, and holds an
-  answer. `correct: None` is a fault.
+  answer — unless the manifest pins the answers itself (`grade.expects`),
+  in which case the manifest is the check and `correct` is only a claim.
+  Without a manifest expectation, `correct: None` remains unverified.
+  With one, the recorded answer can be checked independently.
 
 `coderbench` now depends on `gym` for that type, which pulls `jev`, `tokio`,
 and `reqwest` into its build graph. One vocabulary was judged worth the
@@ -82,15 +86,28 @@ Devin delegations that all answered correctly, and landed **no
 answer per delegation, and a task read out of a sentence carries no expected
 answer. The six answers were right and nothing in the run establishes it.
 
-Two candidates, neither picked:
+The first candidate won and is implemented: the manifest owns the answers.
+`grade.expects` pins one `{prompt, answer}` entry per delegation in request
+order, and the grader checks each recorded call positionally — the prompt
+must match exactly, the output must match after edge-trimming with case
+intact, and a self-asserted `correct` flag is a claim rather than the check.
+A malformed `expects` (blank or repeated prompts, blank answers, counts that
+disagree with `delegations`/`delegations_correct`) cannot pass: `Task::load`
+refuses it and `judge` faults it. Tasks without `expects` keep the
+trace-reported rule. The rejected alternative — letting the `accept`
+decision be the evidence — stays rejected for this task; it inherits
+whatever that door's judgment is worth rather than checking anything.
 
-- The manifest checks recorded outputs, which keeps the expectation in the
-  task where a reader can argue with it.
-- The `accept` decision becomes the evidence, which is closer to how a real
-  burndown would work and inherits whatever that door's judgment is worth.
+The staged golden predates the request carrying the questions, so its
+delegation prompts are the staging script's wording and it now grades
+**failed** under the manifest's expectations — measured, not unverifiable.
+That is expected and is the re-recording's job to fix, not the grader's.
+The tests that exercise the expectation path use an authored fixture — the
+golden rewritten to the calls a sentence-driven run is expected to make —
+not a recording.
 
-Pick one before re-recording, because the golden should be observed **and**
-graded rather than observed and unverifiable.
+The golden still needs to be observed **and** graded rather than observed
+and unverifiable, which is the next step.
 
 ### 3b. Re-record the golden as observed
 

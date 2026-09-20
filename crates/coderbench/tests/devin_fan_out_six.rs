@@ -6,12 +6,11 @@
 //! from the format fails here rather than the first time somebody tries to
 //! read one.
 
-use coderbench::{Fault, Observed, Task, Verdict, Workspace, goldens_dir, observe, tasks_dir};
+mod common;
 
-fn task() -> Task {
-    Task::load(&tasks_dir().join("devin-fan-out-six").join("task.json"))
-        .expect("task manifest loads")
-}
+use coderbench::{Fault, Observed, Task, Verdict, Workspace, goldens_dir, observe};
+
+use common::{authored_run, authored_text, task};
 
 fn golden() -> Observed {
     observe(&goldens_dir().join("devin-fan-out-six.atif.jsonl")).expect("golden observes")
@@ -43,10 +42,22 @@ fn the_golden_reads_back_as_atif() {
 
 /// A trace on its own cannot pass. It holds the path, and it does not hold
 /// the exit code or the workspace, so the two faults left are about the
-/// evidence rather than about the run.
+/// evidence rather than about the run. The trace here is the authored
+/// fixture — the golden rewritten to the calls a sentence-driven run is
+/// expected to make — so the delegation answers are the manifest's check
+/// rather than a claim the recording makes about itself.
 #[test]
 fn a_trace_alone_is_unverifiable() {
-    let judgment = task().judge(&golden());
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("authored.atif.jsonl");
+    std::fs::write(&path, authored_text()).unwrap();
+    let run = observe(&path).expect("the rewritten golden still reads");
+    let task = task();
+    for (delegation, want) in run.delegations.iter().zip(&task.grade.expects) {
+        assert_eq!(delegation.prompt, want.prompt);
+        assert_eq!(delegation.correct, None);
+    }
+    let judgment = task.judge(&run);
     assert_eq!(judgment.verdict, Verdict::Unverifiable);
     let said: Vec<String> = judgment.faults.iter().map(ToString::to_string).collect();
     assert_eq!(
@@ -61,28 +72,76 @@ fn a_trace_alone_is_unverifiable() {
     );
 }
 
+/// The staged golden predates the request carrying the questions: its
+/// delegation prompts are the staging script's wording rather than the
+/// request's list items, so under the manifest's own answers the recorded
+/// run is measured and short rather than verified. The path is still what
+/// it recorded — only the delegation answers do not establish themselves.
 #[test]
-fn the_recorded_run_took_the_path_the_task_expects() {
+fn the_staged_recording_is_not_the_task_the_manifest_states() {
     let run = golden();
     assert_eq!(run.program.as_deref(), Some("delegate-fan-out"));
     assert_eq!(run.delegations.len(), 6);
     assert!(
         run.delegations.iter().all(coderbench::Delegation::verified),
-        "every delegate completed, answered, and was checked"
+        "every delegate completed, answered, and was checked — as the staging script recorded it"
     );
     assert!(run.writes.is_empty(), "no delegate reported writing");
 
     let judgment = task().judge(&as_run(run));
+    assert_eq!(judgment.verdict, Verdict::Failed);
     assert!(
-        judgment.passed(),
-        "the recorded run is clean once the driver's two facts are supplied: {:?}",
+        judgment.faults.iter().all(|fault| matches!(
+            fault,
+            Fault::DelegationMisattributed { .. } | Fault::DelegationsCorrect { .. }
+        )),
+        "the only faults are the staged prompts not being the task's: {:?}",
         judgment.faults
     );
 }
 
+/// The authored fixture, judged end to end: the calls ask the request's
+/// questions in order and answer them the way the manifest independently
+/// holds, and nothing asserts its own correctness — the grade passes on
+/// the check, not the claim.
+///
+/// This proves the grader against the shape a sentence-driven run is
+/// expected to record; it is not that run. The observed recording lands
+/// after openagents#9427.
+#[test]
+fn the_authored_run_passes_on_the_manifests_check() {
+    let run = authored_run();
+    for (delegation, want) in run.delegations.iter().zip(&task().grade.expects) {
+        assert!(
+            delegation.verified_against(want),
+            "{} is checked against the task's answer",
+            delegation.id
+        );
+    }
+    let judgment = task().judge(&run);
+    assert!(
+        judgment.passed(),
+        "independently verified answers on the expected path: {:?}",
+        judgment.faults
+    );
+}
+
+/// Whitespace at an answer's edges does not change it — a delegate that
+/// answers `  3\n` answered 3 — while the answer's case and interior
+/// spacing stay part of the value.
+#[test]
+fn whitespace_at_an_answers_edges_is_the_same_answer() {
+    let task = task();
+    let mut run = authored_run();
+    run.delegations[5].output = "  3\n".to_string();
+    assert!(run.delegations[5].verified_against(&task.grade.expects[5]));
+    let judgment = task.judge(&run);
+    assert!(judgment.passed(), "{:?}", judgment.faults);
+}
+
 #[test]
 fn a_wrong_delegation_is_a_fault() {
-    let mut run = as_run(golden());
+    let mut run = authored_run();
     run.delegations[2].correct = Some(false);
     let judgment = task().judge(&run);
     assert_eq!(judgment.verdict, Verdict::Failed);
@@ -97,15 +156,15 @@ fn a_wrong_delegation_is_a_fault() {
 
 #[test]
 fn a_missing_decision_is_a_fault() {
-    let mut run = as_run(golden());
+    let mut run = authored_run();
     run.decisions.remove("independence");
     let judgment = task().judge(&run);
     assert_eq!(judgment.verdict, Verdict::Failed);
-    assert!(
-        judgment
-            .faults
-            .iter()
-            .any(|f| matches!(f, Fault::DecisionMissing { name } if name == "independence")),
+    assert_eq!(
+        judgment.faults,
+        vec![Fault::DecisionMissing {
+            name: "independence".to_string()
+        }],
         "a run that skipped the independence decision is not on the path"
     );
 }
@@ -143,23 +202,31 @@ fn the_golden_says_what_it_rests_on() {
 /// in it.
 #[test]
 fn faults_come_back_in_path_order() {
-    let judgment = task().judge(&Observed::default());
+    let task: Task = task();
+    let judgment = task.judge(&Observed::default());
     let said: Vec<String> = judgment.faults.iter().map(ToString::to_string).collect();
-    assert_eq!(
-        said,
-        vec![
-            "never ran the capability_probe check",
-            "never ran the program_registry check",
-            "selected program none, expected delegate-fan-out",
-            "never asked the program decision",
-            "never asked the independence decision",
-            "never ran the admission_check check",
-            "started 0 delegations, expected 6",
-            "0 delegations are recorded correct, expected 6; 0 recorded nothing either way",
-            "nothing compared the workspace, so writing nothing is unobserved rather than shown",
-            "the trace has no end record, so the session never closed",
-            "nothing observed how the episode ended; the task allows answered",
-        ]
+    let mut wanted: Vec<String> = vec![
+        "never ran the capability_probe check".to_string(),
+        "never ran the program_registry check".to_string(),
+        "selected program none, expected delegate-fan-out".to_string(),
+        "never asked the program decision".to_string(),
+        "never asked the independence decision".to_string(),
+        "never ran the admission_check check".to_string(),
+        "started 0 delegations, expected 6".to_string(),
+    ];
+    wanted.extend(
+        task.grade
+            .expects
+            .iter()
+            .map(|want| format!("no delegation asked {}", want.prompt)),
     );
+    wanted.extend([
+        "0 delegations are recorded correct, expected 6; 0 recorded nothing either way".to_string(),
+        "nothing compared the workspace, so writing nothing is unobserved rather than shown"
+            .to_string(),
+        "the trace has no end record, so the session never closed".to_string(),
+        "nothing observed how the episode ended; the task allows answered".to_string(),
+    ]);
+    assert_eq!(said, wanted);
     assert_eq!(judgment.verdict, Verdict::Failed);
 }

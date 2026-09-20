@@ -35,6 +35,31 @@ the checkout as it was before and after the run. A task that forbids writes
 is judged against the workspace, because an absent `wrote` field is a run
 that said nothing rather than a run that wrote nothing.
 
+## A task can own the expected answers
+
+A manifest may carry `grade.expects`: one `{prompt, answer}` entry per
+delegation, in the order the request asks the questions. The runtime never
+receives them — they are the manifest's own copy of the truth, so the grade
+checks what the run recorded against something the run did not write.
+
+The check is positional. The run's first delegation is compared to the first
+entry: the recorded `arguments.prompt` must be the pinned prompt exactly —
+case, spacing, and wording are the question — and the recorded `output` must
+be the pinned answer, whitespace at the edges aside, with case intact. A
+missing, duplicated, reordered, or substituted delegation fails rather than
+matching wherever it lands, a self-asserted `correct` flag adds nothing, and
+a trace that calls its own answer wrong contradicts the manifest and fails.
+
+A manifest that cannot check cannot pass: `expects` pins one entry per
+delegation (`expects.len()` is `delegations`, and `delegations_correct` is
+the same count because every pinned answer must verify), each prompt and
+answer is nonblank, and no two prompts repeat. `Task::load` refuses such a
+manifest, and `judge` faults it on a task built by hand.
+
+A task without `expects` keeps the trace-reported evidence rule: the trace's own
+`correct` flag is the only correctness evidence, so only a delegation the
+trace itself records as checked counts.
+
 `tests/negative.rs` holds the runs that must not grade clean, starting with
 the one from audit finding A04
 ([#9418](https://github.com/OpenAgentsInc/openagents/issues/9418)): six

@@ -16,8 +16,12 @@
 //! and pointing that at the workspace this test runs in would read whatever
 //! else was happening on the machine.
 
+mod common;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+use common::authored_text;
 
 /// Runs the harness.
 fn coderbench(arguments: &[&str]) -> Output {
@@ -187,6 +191,48 @@ fn a_run_judges_the_trace_it_captured() {
     assert!(report.contains("6 started, 6 verified correct"), "{report}");
     assert!(report.contains("the workspace is unchanged"), "{report}");
     assert!(trace.exists(), "the harness reads the file it named");
+}
+
+/// A run of a task that owns its answers is judged against the manifest's
+/// copy rather than the run's claims: an authored trace in the shape a
+/// sentence-driven run is expected to record passes with no `correct`
+/// flag anywhere in it.
+#[test]
+fn a_run_is_judged_against_the_manifests_own_answers() {
+    let directory = tempfile::tempdir().unwrap();
+    // The task is the real manifest with the machine requirements blanked
+    // out — the temporary checkout cannot hold them — so a run of it turns
+    // on the harness and the delegation checks alone.
+    let mut manifest = serde_json::to_value(
+        coderbench::load_task("devin-fan-out-six").expect("the real manifest loads"),
+    )
+    .unwrap();
+    manifest["requires"] = serde_json::json!({});
+    let task = directory.path().join("expects.json");
+    std::fs::write(&task, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+    let authored = directory.path().join("authored.atif.jsonl");
+    std::fs::write(&authored, authored_text()).unwrap();
+    let coder = fake_coder(directory.path(), &authored, 0);
+    let trace = directory.path().join("run.atif.jsonl");
+
+    let output = coderbench(&[
+        "run",
+        &task.display().to_string(),
+        "--repository",
+        &repository(directory.path()).display().to_string(),
+        "--coder",
+        &coder.display().to_string(),
+        "--trace",
+        &trace.display().to_string(),
+    ]);
+
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(0), "{report}");
+    assert!(report.contains("No faults"), "{report}");
+    assert!(
+        report.contains("6 started, 6 verified against the task's expected answers"),
+        "{report}"
+    );
 }
 
 /// A run that took none of the path faults on every step of it, and the
@@ -402,10 +448,25 @@ fn a_workspace_nobody_could_read_is_not_a_pass() {
 /// A trace cannot carry the exit code or the workspace, so the best a diff
 /// of a clean trace can answer is `unverifiable`. A trace that took none of
 /// the path still fails, because a fault that was measured beats evidence
-/// that was not.
+/// that was not — and so does a trace whose delegations are not the task's,
+/// whatever it asserted about itself.
 #[test]
 fn a_diff_judges_a_trace_that_already_exists() {
+    // The staged golden asked the six questions another way, so against the
+    // manifest's own answers it is measured rather than unverifiable.
     let output = coderbench(&["diff", "devin-fan-out-six", &golden().display().to_string()]);
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(1), "{report}");
+    assert!(report.contains("failed: 9 faults"), "{report}");
+    assert!(report.contains("expected How many"), "{report}");
+
+    // A trace holding the calls a sentence-driven run is expected to make
+    // is missing the two things only a driver sees, which is
+    // `unverifiable` rather than a pass.
+    let directory = tempfile::tempdir().unwrap();
+    let authored = directory.path().join("authored.atif.jsonl");
+    std::fs::write(&authored, authored_text()).unwrap();
+    let output = coderbench(&["diff", "devin-fan-out-six", &authored.display().to_string()]);
     let report = said(&output);
     assert_eq!(output.status.code(), Some(4), "{report}");
     assert!(report.contains("unverifiable: 2 faults"), "{report}");
@@ -418,12 +479,11 @@ fn a_diff_judges_a_trace_that_already_exists() {
         "{report}"
     );
 
-    let directory = tempfile::tempdir().unwrap();
     let nothing = empty_handed(directory.path());
     let output = coderbench(&["diff", "devin-fan-out-six", &nothing.display().to_string()]);
     let report = said(&output);
     assert_eq!(output.status.code(), Some(1), "{report}");
-    assert!(report.contains("failed: 10 faults"), "{report}");
+    assert!(report.contains("failed: 16 faults"), "{report}");
 }
 
 /// A trace that is not there is not a judgment, and it is not a clean run

@@ -182,8 +182,37 @@ pub struct Grade {
     /// it was correct, and holds the answer. One that recorded none of that
     /// is unverified, and the shortfall it leaves is
     /// [`Verdict::Unverifiable`] rather than a pass.
+    ///
+    /// When [`Grade::expects`] states the answers itself, a delegation
+    /// counts when the recorded call is checked against the manifest's own
+    /// expectation instead, and what the run asserted about itself adds
+    /// nothing either way.
     #[serde(default)]
     pub delegations_correct: usize,
+    /// The answers the task expects, one per delegation, in the order the
+    /// request asks the questions.
+    ///
+    /// This is the manifest's own copy of the answers, so a run is checked
+    /// against something other than what it said about itself: the runtime
+    /// is never told them, and a `correct` flag the trace recorded is a
+    /// claim rather than the check. Each entry pins the prompt that
+    /// identifies the delegation and the output it owes, and the list is
+    /// positional — a reordered, duplicated, or substituted delegation is
+    /// not the delegation the task expects in its place.
+    ///
+    /// A non-empty `expects` pins every delegation the run owes, so its
+    /// length is `delegations`, and every pinned answer must verify, so
+    /// `delegations_correct` is the same count. Anything else is a
+    /// malformed manifest rather than a passing grade: a prompt or answer
+    /// that is blank, a prompt two entries share, or a count that
+    /// disagrees fails [`Task::load`] and faults a [`Task::judge`] call on
+    /// a task built by hand.
+    ///
+    /// A task that states no expectations keeps the trace-reported evidence rule:
+    /// only a delegation the trace itself records as checked counts, and
+    /// one that recorded nothing either way is [`Verdict::Unverifiable`].
+    #[serde(default)]
+    pub expects: Vec<ExpectedAnswer>,
     /// How many files the run is expected to write. Zero for a read-only
     /// task, and a run that writes one has left the path whatever else it
     /// got right.
@@ -294,6 +323,30 @@ impl Predicate {
     }
 }
 
+/// One delegation's expected answer: the prompt that identifies the
+/// delegation, and the output it owes.
+///
+/// The prompt is the identity because it is the one thing a recorded call
+/// and the task's request both carry verbatim — a call id is assigned as
+/// the run writes it and a request does not name one. It compares
+/// exactly, byte for byte: case, spacing, and wording are the question,
+/// so a recorded prompt that differs in any of them is a different
+/// question however it answered.
+///
+/// The answer compares after trimming whitespace from the ends, with case
+/// and interior spacing intact — `L1, L2, L3` and `l1, l2, l3` are
+/// different answers, because identifiers and kind numbers change meaning
+/// with their case. A task that needs a looser comparison states it in
+/// the prompt's wording instead.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ExpectedAnswer {
+    /// The prompt the delegation is asked, exactly as the request's list
+    /// item carries it.
+    pub prompt: String,
+    /// The output the task expects back.
+    pub answer: String,
+}
+
 /// The number a typed answer carries: a belief, or the confidence of a
 /// choice.
 fn number(answer: &Value) -> Option<f64> {
@@ -387,6 +440,24 @@ pub enum Fault {
     Program { expected: String, found: String },
     /// The run started the wrong number of delegations.
     DelegationCount { expected: usize, found: usize },
+    /// The task expects a delegation asking this, and the run recorded
+    /// none in its place.
+    DelegationMissing { prompt: String },
+    /// The delegation in a slot asked a different question than the one
+    /// the task pins there. A reordered, duplicated, or substituted
+    /// delegation reads the same way: the recorded prompt is not the
+    /// expected one.
+    DelegationMisattributed {
+        id: String,
+        wanted: String,
+        found: String,
+    },
+    /// A delegation's recorded output is not the answer the task expects.
+    DelegationAnswered {
+        id: String,
+        wanted: String,
+        found: String,
+    },
     /// A delegation the run started did not answer correctly.
     DelegationWrong { id: String },
     /// A delegation did not complete.
@@ -437,6 +508,11 @@ pub enum Fault {
     Unfinished,
     /// Part of the trace did not read back.
     TornTrace { lines: usize },
+    /// The task's own expectation cannot check a run: it pins no prompt or
+    /// no answer, repeats a prompt, or states a count that disagrees with
+    /// the delegations it pins. This is a fault about the manifest rather
+    /// than about the run, and a manifest that cannot check cannot pass.
+    ExpectationMalformed { why: String },
 }
 
 impl Fault {
@@ -449,6 +525,10 @@ impl Fault {
         match self {
             Self::Program { .. }
             | Self::DelegationCount { .. }
+            | Self::DelegationMissing { .. }
+            | Self::DelegationMisattributed { .. }
+            | Self::DelegationAnswered { .. }
+            | Self::ExpectationMalformed { .. }
             | Self::DelegationWrong { .. }
             | Self::DelegationFailed { .. }
             | Self::DecisionMissing { .. }
@@ -493,6 +573,23 @@ impl std::fmt::Display for Fault {
             }
             Self::DelegationCount { expected, found } => {
                 write!(f, "started {found} delegations, expected {expected}")
+            }
+            Self::DelegationMissing { prompt } => {
+                write!(f, "no delegation asked {prompt}")
+            }
+            Self::DelegationMisattributed { id, wanted, found } => {
+                if found.is_empty() {
+                    write!(f, "delegation {id} asked nothing, expected {wanted}")
+                } else {
+                    write!(f, "delegation {id} asked {found}, expected {wanted}")
+                }
+            }
+            Self::DelegationAnswered { id, wanted, found } => {
+                if found.is_empty() {
+                    write!(f, "delegation {id} answered nothing, expected {wanted}")
+                } else {
+                    write!(f, "delegation {id} answered {found}, expected {wanted}")
+                }
             }
             Self::DelegationWrong { id } => write!(f, "delegation {id} answered wrongly"),
             Self::DelegationFailed { id, outcome } => {
@@ -572,6 +669,9 @@ impl std::fmt::Display for Fault {
                 "{lines} {} of the trace did not read back",
                 if *lines == 1 { "line" } else { "lines" }
             ),
+            Self::ExpectationMalformed { why } => {
+                write!(f, "the task's expected answers cannot check a run: {why}")
+            }
         }
     }
 }
@@ -623,6 +723,9 @@ pub struct Observed {
 #[derive(Clone, Debug)]
 pub struct Delegation {
     pub id: String,
+    /// The prompt the call was handed, which is how the task tells one
+    /// delegation from another.
+    pub prompt: String,
     pub output: String,
     pub milliseconds: u64,
     /// How the call ended.
@@ -643,6 +746,27 @@ impl Delegation {
         self.outcome == Outcome::Completed
             && self.correct == Some(true)
             && !self.output.trim().is_empty()
+    }
+
+    /// Whether this delegation is the one `want` describes and produced
+    /// the answer it owes.
+    ///
+    /// This is the check [`Grade::expects`] buys, and the one the run's
+    /// report counts with: the recorded call asked exactly the question
+    /// the task pinned, it completed, and its recorded output is the
+    /// answer the task owns. The run's own claim adds nothing either way —
+    /// `correct` saying `true` is not needed, and `correct` saying
+    /// `false` is the record contradicting the manifest, which cannot
+    /// verify. An expectation with a blank prompt or a blank answer is
+    /// one nothing can satisfy, so it verifies nothing.
+    #[must_use]
+    pub fn verified_against(&self, want: &ExpectedAnswer) -> bool {
+        self.outcome == Outcome::Completed
+            && !want.prompt.trim().is_empty()
+            && !want.answer.trim().is_empty()
+            && self.prompt == want.prompt
+            && self.correct != Some(false)
+            && self.output.trim() == want.answer.trim()
     }
 }
 
@@ -690,7 +814,11 @@ impl Task {
     /// Returns an error when the file cannot be read, does not parse, or
     /// declares a schema this version does not know. An unknown schema is
     /// an error rather than a warning: a manifest a reader half-understands
-    /// grades a run against a rule nobody stated.
+    /// grades a run against a rule nobody stated. So is a manifest whose
+    /// `expects` entries cannot check a run — a blank prompt or answer, a
+    /// repeated prompt, or a count that does not pin one per delegation —
+    /// because grading against half an expectation silently passes what it
+    /// cannot verify.
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let task: Self =
@@ -701,6 +829,10 @@ impl Task {
                 path.display(),
                 task.schema
             ));
+        }
+        let malformed = task.malformed_expectations();
+        if !malformed.is_empty() {
+            return Err(format!("{}: {}", path.display(), malformed.join("; ")));
         }
         Ok(task)
     }
@@ -763,6 +895,84 @@ impl Task {
                 found: run.delegations.len(),
             });
         }
+        if self.grade.expects.is_empty() {
+            self.judge_reported(run, faults);
+            return;
+        }
+        let malformed = self.malformed_expectations();
+        if !malformed.is_empty() {
+            // A manifest that cannot check cannot pass, whatever the run
+            // did — and a hand-built task reaches `judge` without going
+            // through `load`, so the check lives here too.
+            faults.extend(
+                malformed
+                    .into_iter()
+                    .map(|why| Fault::ExpectationMalformed { why }),
+            );
+            return;
+        }
+        self.judge_expected(run, faults);
+    }
+
+    /// Every way `grade.expects` fails to state a checkable expectation,
+    /// empty when the manifest can check.
+    ///
+    /// A task that owns the answers pins one entry per delegation, so
+    /// `expects.len()` is `delegations`, and every pinned answer must
+    /// verify, so `delegations_correct` is the same count. Each entry
+    /// needs a prompt that is not blank — it is the delegation's
+    /// identity — and an answer that is not blank, because an empty
+    /// answer compared to an empty output would "verify" a delegation
+    /// that said nothing. Two entries asking the same prompt leave one
+    /// question answering for two places.
+    fn malformed_expectations(&self) -> Vec<String> {
+        let expects = &self.grade.expects;
+        if expects.is_empty() {
+            return Vec::new();
+        }
+        let mut problems = Vec::new();
+        if expects.len() != self.grade.delegations {
+            problems.push(format!(
+                "expects pins {} answers for {} delegations; it owes one per delegation",
+                expects.len(),
+                self.grade.delegations
+            ));
+        }
+        if self.grade.delegations_correct != expects.len() {
+            problems.push(format!(
+                "delegations_correct is {}, but {} pinned answers means all {} must verify",
+                self.grade.delegations_correct,
+                expects.len(),
+                expects.len()
+            ));
+        }
+        for (place, want) in expects.iter().enumerate() {
+            if want.prompt.trim().is_empty() {
+                problems.push(format!("expects[{place}] pins no prompt"));
+            } else if expects[..place]
+                .iter()
+                .any(|earlier| earlier.prompt == want.prompt)
+            {
+                problems.push(format!(
+                    "expects[{place}] repeats a prompt an earlier entry pins"
+                ));
+            }
+            if want.answer.trim().is_empty() {
+                problems.push(format!("expects[{place}] pins no answer"));
+            }
+        }
+        problems
+    }
+
+    /// Correctness as the run reported it, for a task that states no
+    /// answers of its own.
+    ///
+    /// Only a delegation the trace itself records as checked counts: the
+    /// call completed, `correct` says `true`, and there is an answer to
+    /// have checked. One that recorded none of that is unverified, and
+    /// the shortfall it leaves is [`Verdict::Unverifiable`] rather than a
+    /// pass — nobody looked.
+    fn judge_reported(&self, run: &Observed, faults: &mut Vec<Fault>) {
         let mut verified = 0usize;
         let mut unverified = 0usize;
         for delegation in &run.delegations {
@@ -793,6 +1003,63 @@ impl Task {
                 expected: self.grade.delegations_correct,
                 verified,
                 unverified,
+            });
+        }
+    }
+
+    /// Each delegation against the answer the task owns for its place.
+    ///
+    /// `grade.expects` is positional, so the run's first delegation must
+    /// be the request's first question: a missing, reordered, duplicated,
+    /// or substituted delegation faults rather than matching wherever it
+    /// lands. The check is the manifest's, and every shortfall against it
+    /// is measured — there is no unverified state when the task holds the
+    /// answers itself.
+    fn judge_expected(&self, run: &Observed, faults: &mut Vec<Fault>) {
+        let mut verified = 0usize;
+        for (place, want) in self.grade.expects.iter().enumerate() {
+            let Some(delegation) = run.delegations.get(place) else {
+                faults.push(Fault::DelegationMissing {
+                    prompt: want.prompt.clone(),
+                });
+                continue;
+            };
+            if delegation.verified_against(want) {
+                verified += 1;
+                continue;
+            }
+            // Not the expectation's answer — name the first clause that
+            // failed, in the order `verified_against` reads them.
+            if delegation.outcome != Outcome::Completed {
+                faults.push(Fault::DelegationFailed {
+                    id: delegation.id.clone(),
+                    outcome: outcome_word(delegation.outcome),
+                });
+            } else if delegation.prompt != want.prompt {
+                faults.push(Fault::DelegationMisattributed {
+                    id: delegation.id.clone(),
+                    wanted: want.prompt.clone(),
+                    found: delegation.prompt.clone(),
+                });
+            } else if delegation.correct == Some(false) {
+                // The trace calls its own answer wrong: a measured claim
+                // the manifest cannot confirm, whatever the output holds.
+                faults.push(Fault::DelegationWrong {
+                    id: delegation.id.clone(),
+                });
+            } else {
+                faults.push(Fault::DelegationAnswered {
+                    id: delegation.id.clone(),
+                    wanted: want.answer.clone(),
+                    found: delegation.output.clone(),
+                });
+            }
+        }
+        if verified < self.grade.delegations_correct {
+            faults.push(Fault::DelegationsCorrect {
+                expected: self.grade.delegations_correct,
+                verified,
+                unverified: 0,
             });
         }
     }
@@ -953,6 +1220,9 @@ impl Task {
             Fault::AnswerMissing { decision, .. } | Fault::AnswerWrong { decision, .. } => decision,
             Fault::OutOfOrder { step, .. } => step,
             Fault::DelegationCount { .. }
+            | Fault::DelegationMissing { .. }
+            | Fault::DelegationMisattributed { .. }
+            | Fault::DelegationAnswered { .. }
             | Fault::DelegationWrong { .. }
             | Fault::DelegationFailed { .. }
             | Fault::DelegationUnverified { .. }
@@ -964,7 +1234,10 @@ impl Task {
             | Fault::EndingUnobserved { .. }
             | Fault::EndingUnstated { .. }
             | Fault::Unfinished
-            | Fault::TornTrace { .. } => return last + 1,
+            | Fault::TornTrace { .. }
+            // A fault about the manifest rather than the run sorts with
+            // the record faults: it is not about a place in the path.
+            | Fault::ExpectationMalformed { .. } => return last + 1,
         };
         self.grade
             .path
@@ -1039,6 +1312,12 @@ pub fn observe(path: &Path) -> Result<Observed, String> {
             if call.name == DELEGATE_CALL {
                 out.delegations.push(Delegation {
                     id: call.id.clone(),
+                    prompt: call
+                        .arguments
+                        .get("prompt")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     output: call.output.clone(),
                     milliseconds: call.milliseconds,
                     outcome: call.outcome,

@@ -454,7 +454,10 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
     .unwrap();
     let path = recorder.path().to_path_buf();
 
-    let inputs = inputs();
+    let mut inputs = inputs();
+    for task in &mut inputs.tasks {
+        task.expected = None;
+    }
     recorder.user(&inputs.request);
     let runtime = runtime(root).await;
     runtime.survey().record(&mut recorder, None);
@@ -514,15 +517,30 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
     );
     assert_eq!(decisions[1].extra["gate"], json!("independent"));
 
-    let task = coderbench::Task::load(
+    let mut task = coderbench::Task::load(
         &coderbench::tasks_dir()
             .join("devin-fan-out-six")
             .join("task.json"),
     )
     .expect("the task manifest loads");
+    // This fixture has its own prompts and fixed answers. Keep those
+    // expectations in the grader; the runtime received none of them.
+    task.grade.expects = QUESTIONS
+        .iter()
+        .map(|(prompt, _, answer)| coderbench::ExpectedAnswer {
+            prompt: (*prompt).to_string(),
+            answer: (*answer).to_string(),
+        })
+        .collect();
     let mut observed = coderbench::observe(&path).expect("the grader reads the trace");
     assert_eq!(observed.program.as_deref(), Some("delegate-fan-out"));
     assert_eq!(observed.delegations.len(), 6);
+    assert!(
+        observed
+            .delegations
+            .iter()
+            .all(|call| call.correct.is_none())
+    );
     assert!(observed.writes.is_empty());
 
     // The grade wants two facts a trace cannot carry: how the turn ended,

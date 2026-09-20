@@ -68,8 +68,10 @@ The split is what the grade is for. These are different states, and only one
 of them is a fault in the agent:
 
 - A delegation the trace records as wrong is **failed**.
-- A delegation that recorded no correctness either way is **unverifiable**.
-  Nobody checked it. Six of those are not six correct answers, and a task
+- A delegation whose answer is not the one the task owns is **failed**,
+  when the task owns one — see the next section.
+- Without a manifest expectation, a delegation that recorded no correctness
+  either way is **unverifiable**. Nobody checked it. Six of those are not six correct answers, and a task
   that requires six correct answers does not get them from six silences.
 - A trace nobody compared against the workspace is **unverifiable** about
   writes. An absent `wrote` field is a run that said nothing, not a run that
@@ -87,6 +89,7 @@ the other cases that must not grade clean.
 | Evidence | Where it comes from | Missing means |
 | --- | --- | --- |
 | Call outcome | each call's `outcome` in the trace | a failed check or delegation is a fault, not a name that was present |
+| Delegation answers | the call's `arguments.prompt` and `output`, against `grade.expects` positionally | a wrong or misplaced delegation is **failed**; a self-asserted `correct` flag is a claim, not the check |
 | Decision answers | the decision call's `answers` | a null answer is `unverifiable`, and `grade.answers` states the predicate the run gates on |
 | Step order | the order calls appear, against `grade.path` | a step that ran before one the path puts first is a fault |
 | Trace integrity | the end record and the unreadable-line count | no end record is **failed**; a torn line is `unverifiable` |
@@ -96,6 +99,58 @@ the other cases that must not grade clean.
 `grade.endings` defaults to `answered`. Stating it per task is what keeps a
 run that ran past its timeout from grading clean because the trace it left
 holds the expected names.
+
+### A task can own the expected answers
+
+`grade.expects` holds the answers the task itself checked, one `{prompt,
+answer}` entry per delegation, in the order the request asks the questions.
+The runtime never receives them: they exist so the grade reads what the run
+recorded against something the run did not write, rather than against the
+`correct` flag a trace may assert about itself.
+
+When a task states them, a delegation verifies only when all of it lines up:
+
+- the recorded call's `arguments.prompt` is the pinned prompt, byte for
+  byte — case, spacing, and wording are the question, so a prompt that
+  differs in any of them is a different question however it answered;
+- the call completed;
+- the recorded `output` is the pinned answer after trimming whitespace from
+  the ends, with case and interior spacing intact — `L1, L2, L3` and
+  `l1, l2, l3` are different answers, and a task that wants a looser
+  output format states that requirement in the prompt.
+
+The list is positional, so the run's first delegation is checked against the
+first entry, the second against the second, and so on. A missing,
+duplicated, reordered, or substituted delegation is a **failed** fault
+rather than a match wherever it lands, and a trace that calls its own answer
+wrong (`correct: false`) is the record contradicting the manifest — failed,
+not proof either way. There is no unverified state on this path: the task
+holds the answers, so every shortfall is measured.
+
+The contract on the manifest is equally strict, because a malformed
+expectation cannot check anything: `expects` pins one entry per delegation,
+so its length is `grade.delegations`; every pinned answer must verify, so
+`grade.delegations_correct` is the same count; and each prompt and answer
+must be nonblank and each prompt unique — an empty answer compared to an
+empty output would otherwise "verify" a delegation that said nothing.
+`Task::load` refuses a manifest that breaks the contract, and `judge`
+reports it as a fault on a task built by hand, so neither entry point can
+silently pass what it cannot verify.
+
+A task that states no `expects` keeps the older rule: the trace's own
+`correct` flag is the only correctness evidence there is, so only a
+delegation the trace itself records as checked counts, and one that recorded
+nothing either way is unverifiable rather than wrong.
+
+The 2026-09-20 verification passed 58 CoderBench tests and the 22 offline
+Coder program-runtime tests under Rust 1.97.1. The runtime integration test
+records delegations without expected answers or correctness flags, then
+checks their outputs against independent fixture expectations. Strict Clippy
+passed for CoderBench and the supervisor with its default features enabled.
+The standalone CoderBench build still reports pre-existing unused-helper
+warnings in the supervisor's blocking-only configuration; #9429 tracks the
+workspace verification baseline. These checks verify grading behavior; they
+do not replace the pending observed golden.
 
 ### `diff` cannot hand back a pass
 
@@ -341,16 +396,19 @@ correct, and holds an answer somebody checked. **A task read out of an
 operator's sentence carries no expected answer**, so `Delegation::correct`
 is `None` and six delegations record nothing either way. The six answers
 were right; nothing in the run establishes that, which is exactly what the
-grade says.
+grade said.
 
-So the observed golden still needs one thing, and it belongs to
-[#9412](https://github.com/OpenAgentsInc/openagents/issues/9412): where the
-expected answers come from when the request does not carry them. The
-program already asks — the `accept` step puts one Noul per requirement to a
-decision door and got 0.74 to 0.83 — and the grader reads `correct` rather
-than that answer. Either the manifest checks the recorded outputs itself or
-the acceptance decision becomes the evidence; the two are different claims
-and the golden should say which one it rests on.
+The question that run left open — where the expected answers come from when
+the request does not carry them — is answered: the manifest owns them.
+`grade.expects` pins each question's prompt and answer in order, verified
+against the sources the questions name, and the grader checks the recorded
+calls against them positionally (see "A task can own the expected answers").
+The alternative — letting the `accept` step's decision be the evidence —
+was considered and set aside for this task, because it inherits the door's
+judgment rather than checking anything. What remains for the golden is a
+fresh observed recording: the staged one's delegation prompts are the
+staging script's wording rather than the request's list items, so it now
+grades `failed` on the manifest's expectations — measured, not unverifiable.
 
 One smaller thing changed with this run: the task's sentence now carries its
 six questions. The `select` step names the `request` source, and the request

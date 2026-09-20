@@ -306,11 +306,26 @@ fn diff(name: &str, trace: &Path) -> u8 {
 
 /// Prints what the run did, then every way it left the path.
 fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
-    let verified = run
-        .delegations
-        .iter()
-        .filter(|delegation| delegation.verified())
-        .count();
+    // What counted a delegation depends on who owns the answers. A task
+    // that states them checks the recorded calls itself; a task that does
+    // not can only count what the run recorded as checked.
+    let (verified, proof) = match task.grade.expects.is_empty() {
+        true => (
+            run.delegations
+                .iter()
+                .filter(|delegation| delegation.verified())
+                .count(),
+            "verified correct",
+        ),
+        false => (
+            run.delegations
+                .iter()
+                .zip(&task.grade.expects)
+                .filter(|(delegation, want)| delegation.verified_against(want))
+                .count(),
+            "verified against the task's expected answers",
+        ),
+    };
     println!();
     println!("What the trace holds:");
     println!("  trace          {}", trace.display());
@@ -339,7 +354,7 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
         }
     );
     println!(
-        "  delegations    {} started, {verified} verified correct",
+        "  delegations    {} started, {verified} {proof}",
         run.delegations.len()
     );
     println!(
