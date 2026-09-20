@@ -81,13 +81,18 @@ fn the_blocking_client_sends_and_reads_one_request() -> Outcome {
     let mut options = IndexMap::new();
     options.insert("billing".to_string(), Some(Entry::from("Money questions")));
     options.insert("technical".to_string(), Some(Entry::from("Broken things")));
+    options.insert("other".to_string(), None);
     let questions = Questions::new()
         .with("department", Choice::new("Which team?", options))
         .with(
             "severity",
             Score::new(
                 "How severe?",
-                vec![Some(Entry::from("Cosmetic")), Some(Entry::from("Blocking"))],
+                vec![
+                    Some(Entry::from("Cosmetic")),
+                    Some(Entry::from("Impaired")),
+                    Some(Entry::from("Blocking")),
+                ],
             ),
         )
         .with("requestsRefund", Noul::new("Is a refund asked for?"));

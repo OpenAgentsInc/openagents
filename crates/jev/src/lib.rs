@@ -206,7 +206,8 @@ mod retry;
 mod transport;
 
 pub use answers::{
-    Answer, ChoiceAnswer, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse, Usage,
+    Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,
+    Usage,
 };
 #[cfg(feature = "blocking")]
 pub use client::BlockingClient;

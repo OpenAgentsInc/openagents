@@ -250,11 +250,18 @@ impl Client {
     /// before any request. Returns [`Error::Api`], [`Error::Connection`], or
     /// [`Error::Timeout`] when the call fails after its retries or runs out
     /// of budget, and [`Error::ResponseValidation`] when the answers do not
-    /// read.
+    /// read or do not hold to their numeric contract. Returns
+    /// [`Error::MissingAnswer`] or [`Error::AnswerType`] when a question
+    /// went unanswered or was answered in another type; a Choice or Score
+    /// answered over other options than the question named is
+    /// [`Error::ResponseValidation`]. A caller that wants the bytes
+    /// regardless reads [`Client::system_one_raw`].
     pub async fn system_one(&self, request: SystemOneRequest) -> Result<SystemOneResponse> {
         let prepared = self.prepare_system_one(&request)?;
         let raw = self.send_read(&prepared).await?;
-        SystemOneResponse::decode(raw)
+        let response = SystemOneResponse::decode(raw)?;
+        response.check_against(&request.questions)?;
+        Ok(response)
     }
 
     /// Ask questions about one state and hand back the response unread, for a

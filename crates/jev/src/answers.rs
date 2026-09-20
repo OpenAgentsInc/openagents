@@ -5,6 +5,15 @@
 //! is skipped with a warning rather than failing the call, an unknown field is
 //! ignored, and a field the SDK cannot read is named by a dotted path such as
 //! `answers.tone.confidence`.
+//!
+//! Reading is also where the numbers are held to their contract. A
+//! probability is finite and from 0 to 1, a distribution's mass is 1 within
+//! [`MASS_TOLERANCE`] per entry, a picked option is one the distribution
+//! names, and a score lies within its legend. A door that sends a Noul of
+//! `-2.0` is not read as a typed answer; the bytes stay on the raw response.
+//! [`SystemOneResponse::check_against`] then holds a response to the request
+//! that produced it: every question answered in its own type, and every
+//! option and level named the way the question named it.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -17,7 +26,15 @@ use serde_json::value::RawValue;
 
 use crate::Result;
 use crate::error::{Error, REQUEST_ID_HEADER, ResponseBody};
-use crate::questions::Entry;
+use crate::questions::{Entry, Question, Questions};
+
+/// How far from 1 a distribution's mass may fall, per entry.
+///
+/// The API reports each probability rounded to two decimals, so a
+/// distribution of `n` entries may carry `n` half-cents of rounding. A
+/// distribution is read when its mass is within `MASS_TOLERANCE × n` of 1,
+/// and never tighter than one cent.
+pub const MASS_TOLERANCE: f64 = 0.005;
 
 /// The probability that the answer to a Noul question is yes.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -273,6 +290,67 @@ impl SystemOneResponse {
         })
     }
 
+    /// Hold the response to the request that produced it.
+    ///
+    /// Every question must be answered in its own type. A Choice answer
+    /// must name exactly the question's options, and a Score answer's
+    /// legend and probabilities exactly the question's levels. A
+    /// [`Question::Raw`] is held only to being answered, since the SDK does
+    /// not read its options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MissingAnswer`] for a question with no answer,
+    /// [`Error::AnswerType`] for one answered in another type, and
+    /// [`Error::ResponseValidation`] naming the option or level at fault.
+    pub fn check_against(&self, questions: &Questions) -> Result<()> {
+        for (id, question) in questions.iter() {
+            let answer = self.answer(id)?;
+            match (question, answer) {
+                (Question::Noul(_), Answer::Noul(_)) | (Question::Raw(_), _) => {}
+                (Question::Choice(asked), Answer::Choice(answer)) => {
+                    let same = asked.criteria.len() == answer.probabilities.len()
+                        && asked
+                            .criteria
+                            .keys()
+                            .all(|option| answer.probabilities.contains_key(option));
+                    if !same {
+                        let field = answer
+                            .probabilities
+                            .keys()
+                            .find(|option| !asked.criteria.contains_key(*option))
+                            .map_or_else(
+                                || "probabilities".to_string(),
+                                |option| format!("probabilities.{option}"),
+                            );
+                        return Err(self.mismatch_field(id, &field));
+                    }
+                }
+                (Question::Score(asked), Answer::Score(answer)) => {
+                    let levels = asked.criteria.len();
+                    if !names_every_level(answer.legend.keys(), levels) {
+                        return Err(self.mismatch_field(id, "legend"));
+                    }
+                    if !answer.probabilities.is_empty()
+                        && !names_every_level(answer.probabilities.keys(), levels)
+                    {
+                        return Err(self.mismatch_field(id, "probabilities"));
+                    }
+                }
+                (Question::Noul(_), found) => return Err(mismatch(id, "noul", found)),
+                (Question::Choice(_), found) => return Err(mismatch(id, "choice", found)),
+                (Question::Score(_), found) => return Err(mismatch(id, "score", found)),
+            }
+        }
+        Ok(())
+    }
+
+    /// The validation error for an answer field that does not match the
+    /// question.
+    fn mismatch_field(&self, id: &str, field: &str) -> Error {
+        validation(&self.raw, format!("answers.{id}.{field}"))
+    }
+
     /// One answer of any type.
     fn answer(&self, id: &str) -> Result<&Answer> {
         self.answers
@@ -310,25 +388,22 @@ fn decode_answer(raw: &RawResponse, id: &str, body: &RawValue) -> Result<Option<
     match kind.as_str() {
         "noul" => {
             let answer: NoulAnswer = read(raw, id, body, NOUL_FIELDS)?;
-            if answer
-                .selected
-                .as_deref()
-                .is_some_and(|option| !matches!(option, "no" | "yes"))
-            {
-                return Err(validation(raw, format!("answers.{id}.selected")));
+            if let Some(field) = noul_fault(&answer) {
+                return Err(validation(raw, format!("answers.{id}.{field}")));
             }
             Ok(Some(Answer::Noul(answer)))
         }
-        "choice" => read(raw, id, body, CHOICE_FIELDS).map(|answer| Some(Answer::Choice(answer))),
+        "choice" => {
+            let answer: ChoiceAnswer = read(raw, id, body, CHOICE_FIELDS)?;
+            if let Some(field) = choice_fault(&answer) {
+                return Err(validation(raw, format!("answers.{id}.{field}")));
+            }
+            Ok(Some(Answer::Choice(answer)))
+        }
         "score" => {
             let answer: ScoreAnswer = read(raw, id, body, SCORE_FIELDS)?;
-            if let Some(selected) = &answer.selected {
-                let valid = selected.parse::<u32>().ok().is_some_and(|level| {
-                    level.to_string() == *selected && answer.probabilities.contains_key(&level)
-                });
-                if !valid {
-                    return Err(validation(raw, format!("answers.{id}.selected")));
-                }
+            if let Some(field) = score_fault(&answer) {
+                return Err(validation(raw, format!("answers.{id}.{field}")));
             }
             Ok(Some(Answer::Score(answer)))
         }
@@ -344,6 +419,114 @@ fn decode_answer(raw: &RawResponse, id: &str, body: &RawValue) -> Result<Option<
             Ok(None)
         }
     }
+}
+
+/// Whether a level map's keys are exactly `0..levels`: as many keys as
+/// levels, each below the count, with no repeats possible in a map.
+fn names_every_level<'a>(keys: impl ExactSizeIterator<Item = &'a u32>, levels: usize) -> bool {
+    keys.len() == levels && keys.into_iter().all(|level| (*level as usize) < levels)
+}
+
+/// Whether a number is a probability: finite, from 0 to 1.
+fn is_probability(value: f64) -> bool {
+    value.is_finite() && (0.0..=1.0).contains(&value)
+}
+
+/// The first entry of a distribution that is not a probability, or
+/// `probabilities` itself when the entries do not sum to 1 within tolerance.
+/// An empty distribution is not checked; the API leaves one out on some
+/// Score answers.
+fn mass_fault<'a, K: std::fmt::Display>(
+    probabilities: impl ExactSizeIterator<Item = (K, &'a f64)>,
+) -> Option<String> {
+    let entries = probabilities.len();
+    if entries == 0 {
+        return None;
+    }
+    let mut mass = 0.0;
+    for (key, value) in probabilities {
+        if !is_probability(*value) {
+            return Some(format!("probabilities.{key}"));
+        }
+        mass += value;
+    }
+    let allowed = (MASS_TOLERANCE * entries as f64).max(0.01);
+    ((mass - 1.0).abs() > allowed).then(|| "probabilities".to_string())
+}
+
+/// The field of a Noul answer that breaks the contract, if one does.
+fn noul_fault(answer: &NoulAnswer) -> Option<&'static str> {
+    if !is_probability(answer.noul) {
+        return Some("noul");
+    }
+    if answer
+        .selected
+        .as_deref()
+        .is_some_and(|option| !matches!(option, "no" | "yes"))
+    {
+        return Some("selected");
+    }
+    None
+}
+
+/// The field of a Choice answer that breaks the contract, if one does: a
+/// confidence or probability out of range, a mass away from 1, an empty
+/// distribution, or a choice the distribution does not name.
+fn choice_fault(answer: &ChoiceAnswer) -> Option<String> {
+    if !is_probability(answer.confidence) {
+        return Some("confidence".to_string());
+    }
+    if answer.probabilities.is_empty() {
+        return Some("probabilities".to_string());
+    }
+    if let Some(field) = mass_fault(answer.probabilities.iter()) {
+        return Some(field);
+    }
+    if !answer.probabilities.contains_key(&answer.choice) {
+        return Some("choice".to_string());
+    }
+    None
+}
+
+/// The field of a Score answer that breaks the contract, if one does: an
+/// empty legend, a confidence or probability out of range, a mass away
+/// from 1, a probability for a level the legend lacks, a score outside the
+/// legend's levels, or a selected level the distribution does not name.
+fn score_fault(answer: &ScoreAnswer) -> Option<String> {
+    let (Some(lowest), Some(highest)) = (
+        answer.legend.keys().next(),
+        answer.legend.keys().next_back(),
+    ) else {
+        return Some("legend".to_string());
+    };
+    if !is_probability(answer.confidence) {
+        return Some("confidence".to_string());
+    }
+    if !answer.score.is_finite()
+        || answer.score < f64::from(*lowest)
+        || answer.score > f64::from(*highest)
+    {
+        return Some("score".to_string());
+    }
+    if let Some(level) = answer
+        .probabilities
+        .keys()
+        .find(|level| !answer.legend.contains_key(level))
+    {
+        return Some(format!("probabilities.{level}"));
+    }
+    if let Some(field) = mass_fault(answer.probabilities.iter()) {
+        return Some(field);
+    }
+    if let Some(selected) = &answer.selected {
+        let valid = selected.parse::<u32>().ok().is_some_and(|level| {
+            level.to_string() == *selected && answer.probabilities.contains_key(&level)
+        });
+        if !valid {
+            return Some("selected".to_string());
+        }
+    }
+    None
 }
 
 /// One answer of a known type, or the first field that stopped it.

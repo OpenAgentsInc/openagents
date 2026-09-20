@@ -279,7 +279,10 @@ fn once() -> RetryPolicy {
 fn asking() -> SystemOneRequest {
     SystemOneRequest::new(
         "I was charged twice for one order.",
-        Questions::new().with("refund", Noul::new("Does the customer want money back?")),
+        Questions::new().with(
+            "requestsRefund",
+            Noul::new("Does the customer want money back?"),
+        ),
     )
 }
 
@@ -325,7 +328,7 @@ async fn a_request_names_the_state_the_model_and_the_questions() -> Outcome {
     let body = seen.first().ok_or("the server read one request")?.json()?;
     assert_eq!(body["state"], json!("I was charged twice for one order."));
     assert_eq!(body["model"], json!("jev-latest"));
-    assert_eq!(body["questions"]["refund"]["type"], json!("noul"));
+    assert_eq!(body["questions"]["requestsRefund"]["type"], json!("noul"));
     Ok(())
 }
 
@@ -1055,7 +1058,7 @@ fn the_body_a_caller_records_is_the_body_the_wire_carries() -> Outcome {
     let body = asking().body("jev-latest")?;
     assert_eq!(body["state"], json!("I was charged twice for one order."));
     assert_eq!(body["model"], json!("jev-latest"));
-    assert_eq!(body["questions"]["refund"]["type"], json!("noul"));
+    assert_eq!(body["questions"]["requestsRefund"]["type"], json!("noul"));
 
     // A model the request names wins over the caller's default, and a field
     // merged in last lands beside the three.
@@ -1503,20 +1506,23 @@ async fn array_and_null_entries_reach_the_wire() -> Outcome {
     let array = SystemOneRequest::new(
         json!(["part one", "part two"]),
         Questions::new().with(
-            "q",
+            "requestsRefund",
             Noul::new(json!(["Is this two parts?", {"note": "yes it is"}])),
         ),
     );
     client.system_one(array).await?;
 
-    let null = SystemOneRequest::new(Entry::Null, Questions::new().with("q", Noul::new("x?")));
+    let null = SystemOneRequest::new(
+        Entry::Null,
+        Questions::new().with("requestsRefund", Noul::new("x?")),
+    );
     client.system_one(null).await?;
 
     let seen = seen.lock().await;
     let first = seen[0].json()?;
     assert_eq!(first["state"], json!(["part one", "part two"]));
     assert_eq!(
-        first["questions"]["q"]["instructions"],
+        first["questions"]["requestsRefund"]["instructions"],
         json!(["Is this two parts?", {"note": "yes it is"}])
     );
     let second = seen[1].json()?;
@@ -1542,6 +1548,6 @@ async fn extra_body_keeps_nulls_and_replaces_shallow_fields() -> Outcome {
     assert_eq!(body["state"], serde_json::Value::Null);
     assert_eq!(body["future_option"], serde_json::Value::Null);
     assert_eq!(body["nested"], json!({"enabled": true}));
-    assert_eq!(body["questions"]["refund"]["type"], json!("noul"));
+    assert_eq!(body["questions"]["requestsRefund"]["type"], json!("noul"));
     Ok(())
 }
