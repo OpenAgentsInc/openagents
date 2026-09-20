@@ -34,6 +34,7 @@ the burndown that goal exists for.
 | Doors | Two gateway lanes, bounded streams, and model ids in exactly one file. |
 | Subprocesses | One supervisor owns a job, its process tree, and what it prints. |
 | Finding work | A `query` step resolves a named source, bounded and ordered, and records what it dropped. |
+| The whole path | `coder -p "Delegate six…"` selects the program, fans out six real delegations, and lands no missing decisions or checks. |
 
 ## What to do next, in order
 
@@ -56,19 +57,10 @@ second vocabulary. Two consequences will surprise you:
 and `reqwest` into its build graph. One vocabulary was judged worth the
 weight; moving `Verdict` somewhere lighter is a reasonable future change.
 
-### 1. Finish the blockers that are in flight
+### 1. Nothing is in flight
 
-Five issues were being worked when this was written:
-[#9416](https://github.com/OpenAgentsInc/openagents/issues/9416)/[#9417](https://github.com/OpenAgentsInc/openagents/issues/9417)
-(subprocess supervision),
-[#9418](https://github.com/OpenAgentsInc/openagents/issues/9418) (grader
-integrity),
-[#9434](https://github.com/OpenAgentsInc/openagents/issues/9434) (the turn
-reaches the runtime),
-[#9439](https://github.com/OpenAgentsInc/openagents/issues/9439)/[#9440](https://github.com/OpenAgentsInc/openagents/issues/9440)
-(stream bounds and gateway lanes), and
-[#9441](https://github.com/OpenAgentsInc/openagents/issues/9441) (finding
-work). Check which landed before starting anything.
+Every blocker listed on #9404 has landed. The path runs end to end from a
+sentence. What remains is below, in order.
 
 ### 2. [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427), held on purpose
 
@@ -79,7 +71,28 @@ Read-only is declared and not enforced. It was held because it rewrites
 Note `shell::run` gained a `Permit` parameter from #9415 and the bounded
 form is now `run_within(proposal, permit, wall)`.
 
-### 3. Re-record the golden as observed
+### 3. Make a delegation's answer checkable, then re-record the golden
+
+The path already runs: four `coderbench run devin-fan-out-six` episodes
+driven through `coder -p` selected `delegate-fan-out` at 0.96, ran six real
+Devin delegations that all answered correctly, and landed **no
+`DecisionMissing` and no `CheckMissing`** — the line #9409 left open.
+
+**The grade is `unverifiable`, and correctly so.** #9418 requires a checked
+answer per delegation, and a task read out of a sentence carries no expected
+answer. The six answers were right and nothing in the run establishes it.
+
+Two candidates, neither picked:
+
+- The manifest checks recorded outputs, which keeps the expectation in the
+  task where a reader can argue with it.
+- The `accept` decision becomes the evidence, which is closer to how a real
+  burndown would work and inherits whatever that door's judgment is worth.
+
+Pick one before re-recording, because the golden should be observed **and**
+graded rather than observed and unverifiable.
+
+### 3b. Re-record the golden as observed
 
 `crates/coderbench/goldens/devin-fan-out-six.atif.jsonl` is **staged**: every
 call in it is real and a shell script drove them, not Coder. Once #9434 and
@@ -165,6 +178,26 @@ baseline. Total headroom was 0.025 against a floor of 0.056, so **no win was
 available at any strength, whatever it tried.** Publish the headroom beside
 the digest.
 
+### The selection question loses to a constant, and shipped anyway
+
+The first measurement of program selection is the clearest instance of the
+trap below, and worth reading before adding any question.
+
+On 32 real turns the constant `none` scores **0.969**. Hosted Jev scores
+**0.938** — below the constant. Headroom was 0.031 against a 0.056 floor, so
+**no win was available at any strength**, which is #9392's lesson arriving a
+second time.
+
+It shipped because the **error structure**, not the accuracy, is what
+matters here: 0 false negatives in 9, 3 false positives in 35, and all four
+mistakes chose `answer-question` rather than `delegate-fan-out`. **None ran
+anything**, because a program cannot fan out over work the request never
+named. The cheap error is the one that happens, and it is structural rather
+than threshold-dependent.
+
+Keep that distinction. An accuracy figure would have refused this feature or
+approved it for the wrong reason.
+
 ### A question that is nearly always the same answer is a trap
 
 [#9395](https://github.com/OpenAgentsInc/openagents/issues/9395) found six of
@@ -192,7 +225,7 @@ test and a recording of something else doing what it should do.
 - **Credentials:** hosted Jev is `set -a; . ~/work/.secrets/typesafe.env; set +a`, and a local door key is at `~/work/.secrets/coder-local-door.env`. Both are machine-local and gitignored; never print either. `crates/jev`'s `Config` reads the process environment and loads **no** dotenv, so exporting first is required, and a missing key and a missing `model` field in the body produce different errors.
 - **Local doors:** `~/work/kev-artifacts/` holds four kev checkpoints and their bases. `kev-serve` takes about 45 seconds to load on CPU and answers in roughly 2 seconds.
 - **Devin:** at `~/.local/bin/devin`, **not on a spawned subshell's `PATH`**. It also refuses a workspace it does not trust, including a git worktree under `/private/tmp` — which is where agent worktrees live, so live delegation from one is refused.
-- **One flake is explained, one is not.** `delegate::tests::the_fan_out_is_concurrent_under_its_bound` was asserting a fixed 1.5-second ceiling, so under a busy suite it failed **about the machine rather than about concurrency**; #9416 changed it to compare wall clock against summed delegation time. `program_run::the_recorded_run_is_the_path_the_task_expects` is still unexplained — it failed once under overlapping `cargo test` processes and passed alone on repeats. Worth chasing, because #9418's new tests found a real defect of that shape: two concurrent `drive::output` calls could read the same nanosecond, share a temp filename, and delete each other's file, which reads as a command that answered with nothing.
+- **One flake is explained, one is not.** `delegate::tests::the_fan_out_is_concurrent_under_its_bound` was asserting a fixed 1.5-second ceiling, so under a busy suite it failed **about the machine rather than about concurrency**; #9416 changed it to compare wall clock against summed delegation time. The other is now **reproducible and is a real bug**: `the_first_program_runs_from_its_definition` **loses a delegation about one run in four** under parallel `cargo test`, and it reproduces at `1f78b260e2` without any of today's later changes. A fan-out that silently drops one of six under load is exactly the defect an unattended burndown would hide, and #9418 already found one of that shape — two concurrent `drive::output` calls reading the same nanosecond, sharing a temp filename, and deleting each other's file, which reads as a command that answered with nothing. **Chase this before the first unattended run.**
 
 ## The audit
 
