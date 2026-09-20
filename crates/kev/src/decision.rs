@@ -105,7 +105,7 @@ impl DecisionModel {
         let opts = enc
             .option_isolation
             .then(|| std::slice::from_ref(&enc.opt));
-        let allow = branch_mask(&[enc.seg.clone()], opts);
+        let allow = branch_mask(std::slice::from_ref(&enc.seg), opts);
         let len = enc.ids.len();
         let flat: Vec<f32> = allow[0]
             .iter()

@@ -94,12 +94,12 @@ fn env_override_applies(variant: &Variant) -> bool {
 /// The adapter directory for a variant: env override when the variant is
 /// selected, else the `kev-artifacts/<id>` convention.
 pub fn adapter_dir(variant: &Variant) -> Option<PathBuf> {
-    if env_override_applies(variant) {
-        if let Ok(dir) = std::env::var("KEV_ARTIFACT_DIR") {
-            let dir = PathBuf::from(dir);
-            if dir.join("head.safetensors").exists() {
-                return Some(dir);
-            }
+    if env_override_applies(variant)
+        && let Ok(dir) = std::env::var("KEV_ARTIFACT_DIR")
+    {
+        let dir = PathBuf::from(dir);
+        if dir.join("head.safetensors").exists() {
+            return Some(dir);
         }
     }
     let dir = artifacts_root().join(&variant.id);
@@ -109,12 +109,12 @@ pub fn adapter_dir(variant: &Variant) -> Option<PathBuf> {
 /// The backbone directory for a variant, resolved through the manifest's
 /// `head_meta.base` field.
 pub fn base_dir(variant: &Variant) -> Option<PathBuf> {
-    if env_override_applies(variant) {
-        if let Ok(dir) = std::env::var("KEV_BASE_DIR") {
-            let dir = PathBuf::from(dir);
-            if dir.join("config.json").exists() {
-                return Some(dir);
-            }
+    if env_override_applies(variant)
+        && let Ok(dir) = std::env::var("KEV_BASE_DIR")
+    {
+        let dir = PathBuf::from(dir);
+        if dir.join("config.json").exists() {
+            return Some(dir);
         }
     }
     let manifest = fixture(variant, "manifest.json");

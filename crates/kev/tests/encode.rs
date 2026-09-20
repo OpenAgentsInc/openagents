@@ -127,7 +127,7 @@ fn sanitized_text_never_yields_delimiter_ids() {
 fn mask_isolates_sibling_questions() {
     // Three segments: 3 state tokens, two 4-token branches.
     let seg = vec![0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2];
-    let allow = branch_mask(&[seg.clone()], None);
+    let allow = branch_mask(std::slice::from_ref(&seg), None);
     let m = &allow[0];
     for (i, row) in m.iter().enumerate() {
         for (j, yes) in row.iter().enumerate() {
@@ -136,16 +136,15 @@ fn mask_isolates_sibling_questions() {
         }
     }
     // Explicitly: no question-1 token attends to a question-2 token or back.
-    for i in 3..7 {
-        for j in 7..11 {
-            assert!(!m[i][j] && !m[j][i]);
-        }
+    for row in &m[3..7] {
+        assert!(row[7..11].iter().all(|allowed| !allowed));
+    }
+    for row in &m[7..11] {
+        assert!(row[3..7].iter().all(|allowed| !allowed));
     }
     // Every branch token attends to every state token.
-    for i in 3..11 {
-        for j in 0..3 {
-            assert!(m[i][j]);
-        }
+    for row in &m[3..11] {
+        assert!(row[..3].iter().all(|allowed| *allowed));
     }
 }
 
@@ -157,17 +156,17 @@ fn option_isolation_mask_keeps_spans_apart() {
     let allow = branch_mask(&[seg], Some(&[opt]));
     let m = &allow[0];
     // Span 0 (j in 3..6) is invisible to span 1 (i in 6..9).
-    for i in 6..9 {
-        for j in 3..6 {
-            assert!(!m[i][j], "span1 token {i} must not see span0 token {j}");
+    for (i, row) in m.iter().enumerate().take(9).skip(6) {
+        for (j, allowed) in row.iter().enumerate().take(6).skip(3) {
+            assert!(!allowed, "span1 token {i} must not see span0 token {j}");
         }
     }
     // Decide (i=9) sees both spans.
-    for j in 3..9 {
-        assert!(m[9][j], "decide must see option token {j}");
+    for (j, allowed) in m[9].iter().enumerate().take(9).skip(3) {
+        assert!(allowed, "decide must see option token {j}");
     }
     // Spans still see the instructions (j=2) and state.
-    for i in 3..9 {
-        assert!(m[i][2] && m[i][0]);
+    for row in &m[3..9] {
+        assert!(row[2] && row[0]);
     }
 }
