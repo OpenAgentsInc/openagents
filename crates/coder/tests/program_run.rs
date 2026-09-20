@@ -1,0 +1,872 @@
+//! `delegate-fan-out` runs from its definition, and the trace reads back
+//! the way the golden does.
+//!
+//! The program under test is the repository's own
+//! `programs/delegate-fan-out.json`, the wording is the repository's own
+//! `questions/`, and the steps are run by `coder::runtime`. What stands in
+//! for the machine is the executor and the decision door: a shell script
+//! that answers the golden's six questions, and a local HTTP server that
+//! answers the two decision calls. Everything between them is the code a
+//! live run uses.
+//!
+//! The test that matters most is the last one: the trace is handed to
+//! `coderbench::observe`, the same reader that judges
+//! `goldens/devin-fan-out-six.atif.jsonl`, and the task's own manifest
+//! judges what it read.
+
+use std::io::Write as _;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+
+use coder::delegate::WORKTREE_DIR;
+use coder::program::Program;
+use coder::questions;
+use coder::runtime::{Host, Inputs, Runtime};
+use coder::survey::Survey;
+use coder::trace::Recorder;
+use coder::{Delegation, Task};
+use serde_json::{Value, json};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+
+/// The six questions the golden asks, with the answers it recorded.
+const QUESTIONS: &[(&str, &str, &str)] = &[
+    (
+        "How many `pub struct` declarations are in crates/atif/src/document.rs?",
+        "crates/atif/src/document.rs",
+        "5",
+    ),
+    (
+        "What are the three partition names in the Partition enum in crates/gym/src/suite.rs?",
+        "crates/gym/src/suite.rs",
+        "calibration, development, locked",
+    ),
+    (
+        "What are the variant names of the Estimator enum in crates/lev/src/estimator.rs?",
+        "crates/lev/src/estimator.rs",
+        "L1, L2, L3",
+    ),
+    (
+        "How many distinct kev checkpoints are named in docs/kev/model-cards.md?",
+        "docs/kev/model-cards.md",
+        "4",
+    ),
+    (
+        "Which single Nostr event kind number does nips/openagents/NIP-PRG.md define?",
+        "nips/openagents/NIP-PRG.md",
+        "30182",
+    ),
+    (
+        "What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs?",
+        "crates/coder/src/shell.rs",
+        "3",
+    ),
+];
+
+/// The repository this crate lives in, whose `programs/` and `questions/`
+/// the test runs from.
+fn checkout() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// A checkout with one commit, the repository's programs and questions,
+/// and a capability manifest for a stub executor.
+///
+/// A real checkout rather than a bare directory, because
+/// `isolation: worktree` is a bound this host provides by making one, and
+/// a test that skipped it would not be testing the program the repository
+/// carries.
+fn machine() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let root = dir.path();
+    for named in ["programs", "questions", "capabilities"] {
+        std::fs::create_dir_all(root.join(named)).unwrap();
+    }
+    for named in ["programs", "questions"] {
+        for entry in std::fs::read_dir(checkout().join(named)).unwrap() {
+            let entry = entry.unwrap();
+            std::fs::copy(entry.path(), root.join(named).join(entry.file_name())).unwrap();
+        }
+    }
+    std::fs::write(
+        root.join("capabilities").join("stub-local.json"),
+        manifest(root),
+    )
+    .unwrap();
+    std::fs::write(root.join("a.rs"), "// a file\n").unwrap();
+
+    let run = |arguments: &[&str]| {
+        let done = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(arguments)
+            .output()
+            .expect("version control runs");
+        assert!(done.status.success(), "{arguments:?}");
+    };
+    run(&["init", "--quiet"]);
+    run(&["config", "user.email", "test@example.invalid"]);
+    run(&["config", "user.name", "A Test"]);
+    run(&["add", "."]);
+    run(&["commit", "--quiet", "-m", "a machine"]);
+    dir
+}
+
+/// A capability manifest for a stub executor, in the shape
+/// `capabilities/devin-local.json` has: what it enforces, what it will
+/// silently ignore, and the argv that hands it a task.
+fn manifest(root: &Path) -> String {
+    let script = root.join("stub.sh");
+    let mut body = String::from("#!/bin/sh\n");
+    for (prompt, _, answer) in QUESTIONS {
+        let key = prompt.split(' ').next_back().unwrap_or(prompt);
+        body.push_str(&format!(
+            "case \"$1\" in *\"{key}\") printf '{answer}\\n'; exit 0 ;; esac\n"
+        ));
+    }
+    body.push_str("printf 'no answer\\n'\n");
+    let mut file = std::fs::File::create(&script).unwrap();
+    file.write_all(body.as_bytes()).unwrap();
+    drop(file);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    json!({
+        "v": 1,
+        "slug": "stub-local",
+        "name": "A stub executor",
+        "summary": "Answers one question, for a test.",
+        "transport": "subprocess",
+        "detect": {"binary": "sh", "version": ["sh", "-c", "echo stub 1.0.0"]},
+        "enforces": ["minutes"],
+        "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
+        "sees_repository": true,
+        "concurrent_max": 6,
+        "cost": "local",
+        "isolation": ["worktree", "directory"],
+        "invoke": ["sh", script.display().to_string()],
+        "refuses": [{
+            "name": "untrusted_workspace",
+            "match": "Refusing to run in an untrusted workspace",
+            "explanation": "The executor declines a directory nobody has trusted."
+        }]
+    })
+    .to_string()
+}
+
+/// A decision door that answers the way the recorded episode's door did,
+/// including the one answer it got wrong.
+///
+/// `readonly` came back at 0.17 for a fact the state asserts in as many
+/// words, reproducibly, across three recordings. It is kept here rather
+/// than corrected, because the program must not depend on it and the test
+/// is where that is shown.
+async fn door() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address: SocketAddr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut arrived = Vec::new();
+                let mut buffer = [0u8; 4096];
+                loop {
+                    let Ok(read) = socket.read(&mut buffer).await else {
+                        return;
+                    };
+                    if read == 0 {
+                        break;
+                    }
+                    arrived.extend_from_slice(&buffer[..read]);
+                    let text = String::from_utf8_lossy(&arrived).to_string();
+                    let Some((head, body)) = text.split_once("\r\n\r\n") else {
+                        continue;
+                    };
+                    let length: usize = head
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .and_then(|value| value.trim().parse().ok())
+                        })
+                        .unwrap_or(0);
+                    if body.len() < length {
+                        continue;
+                    }
+                    let asked: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+                    let reply = answers(&asked).to_string();
+                    let _ = socket
+                        .write_all(
+                            format!(
+                                "HTTP/1.1 200 Test\r\ncontent-type: application/json\r\n\
+                                 content-length: {}\r\nconnection: close\r\n\r\n{reply}",
+                                reply.len()
+                            )
+                            .as_bytes(),
+                        )
+                        .await;
+                    let _ = socket.flush().await;
+                    return;
+                }
+            });
+        }
+    });
+    format!("http://{address}")
+}
+
+/// What the stub door answers, read off the question ids the request
+/// carries.
+fn answers(asked: &Value) -> Value {
+    let questions = asked.get("questions").and_then(Value::as_object);
+    let asked_about = |id: &str| questions.is_some_and(|questions| questions.contains_key(id));
+    if asked_about("program") {
+        return json!({
+            "model": "kev-latest",
+            "answers": {"program": {
+                "type": "choice",
+                "choice": "delegate-fan-out",
+                "confidence": 0.83,
+                "probabilities": {
+                    "delegate-fan-out": 0.87,
+                    "review-changes": 0.0,
+                    "answer-question": 0.13,
+                    "run-suite": 0.0
+                }
+            }}
+        });
+    }
+    if asked_about("independent") {
+        return json!({
+            "model": "kev-latest",
+            "answers": {
+                "independent": {"type": "noul", "noul": 0.93},
+                "readonly": {"type": "noul", "noul": 0.17},
+                "needs_tool_restriction": {"type": "noul", "noul": 0.54}
+            }
+        });
+    }
+    let mut per_requirement = serde_json::Map::new();
+    for id in questions.into_iter().flatten().map(|(id, _)| id) {
+        per_requirement.insert(id.clone(), json!({"type": "noul", "noul": 0.91}));
+    }
+    json!({"model": "kev-latest", "answers": per_requirement})
+}
+
+/// A runtime over the scratch machine, asking the stub door.
+async fn runtime(root: &Path) -> Runtime {
+    let client = jev::Client::new(
+        jev::Config::new()
+            .api_key("ts-test-key")
+            .base_url(door().await)
+            .default_model("kev-latest"),
+    )
+    .expect("the stub door builds a client");
+    Runtime::over(
+        Survey::read(Some(root), root),
+        questions::Registry::open(&[root.join("questions")]),
+        Host::with_repository(),
+    )
+    .asking(Some(client))
+}
+
+/// The capability manifest the scratch machine declares.
+fn declared(root: &Path) -> Value {
+    serde_json::from_str(
+        &std::fs::read_to_string(root.join("capabilities").join("stub-local.json")).unwrap(),
+    )
+    .unwrap()
+}
+
+/// Declares it differently, for a case about what a manifest says.
+fn redeclare(root: &Path, manifest: &Value) {
+    std::fs::write(
+        root.join("capabilities").join("stub-local.json"),
+        manifest.to_string(),
+    )
+    .unwrap();
+}
+
+fn inputs() -> Inputs {
+    Inputs {
+        request: "Delegate six instances of Devin, one for each of these six read-only questions."
+            .to_string(),
+        tasks: QUESTIONS
+            .iter()
+            .map(|(prompt, reads, answer)| Task::reading(prompt, reads).expecting(answer))
+            .collect(),
+        executor: "stub-local".to_string(),
+    }
+}
+
+/// `delegate-fan-out`, with its `fan_out` step's bounds replaced. The rest
+/// of the program is the repository's own.
+fn program_with(root: &Path, bounds: Value) -> Program {
+    let mut program = fan_out(root);
+    let step = program
+        .steps
+        .iter_mut()
+        .find(|step| step.name == "fan_out")
+        .expect("the program fans out");
+    step.bounds = bounds.as_object().cloned().unwrap_or_default();
+    program
+}
+
+fn fan_out(root: &Path) -> Program {
+    Program::load(&root.join("programs").join("delegate-fan-out.json"))
+        .expect("the repository's own program")
+}
+
+/// Every step runs, in the order the program lists them, and the bounds
+/// the program states are the bounds the run held to.
+#[tokio::test]
+async fn the_first_program_runs_from_its_definition() {
+    let machine = machine();
+    let root = machine.path();
+    let run = runtime(root)
+        .await
+        .run(&fan_out(root), &inputs(), None)
+        .await;
+
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert_eq!(
+        run.step_names(),
+        ["select", "independence", "admit", "fan_out", "accept"],
+        "the order is the program's, not the code's"
+    );
+    assert_eq!(run.delegations.len(), 6);
+    assert_eq!(run.correct(), (6, 6), "{}", run.summary());
+
+    // The bounds came off the program. Six at once, one checkout each,
+    // five minutes — no, sixty: the step says sixty.
+    assert!(
+        run.delegations
+            .iter()
+            .all(|delegation| delegation.concurrent_max == 6)
+    );
+    assert!(
+        run.delegations
+            .iter()
+            .all(|delegation| delegation.task.isolation == coder::Isolation::Worktree)
+    );
+    assert!(
+        run.delegations
+            .iter()
+            .all(|delegation| delegation.task.bounds.declared() == &json!({"minutes": 60})),
+        "the wall bound is the one the fan_out step states"
+    );
+    let mut checkouts: Vec<&Path> = run
+        .delegations
+        .iter()
+        .map(|delegation| delegation.workdir.as_path())
+        .collect();
+    checkouts.sort_unstable();
+    checkouts.dedup();
+    assert_eq!(checkouts.len(), 6, "six delegations, six checkouts");
+    assert!(
+        std::fs::read_dir(root.join(WORKTREE_DIR))
+            .map(|entries| entries.count())
+            .unwrap_or(0)
+            == 0,
+        "no checkout outlives the step that made it"
+    );
+
+    // The independence answer that was wrong did not decide anything. The
+    // program fans out on `independent`, and admission is the
+    // deterministic check.
+    let independence = &run.answers["independence"];
+    assert_eq!(independence["readonly"]["noul"], json!(0.17));
+    assert_eq!(independence["independent"]["noul"], json!(0.93));
+    assert_eq!(run.answers["accept"].as_object().unwrap().len(), 6);
+}
+
+/// The operator's sentence picks the program, and the program runs.
+#[tokio::test]
+async fn a_request_selects_its_program_and_runs_it() {
+    let machine = machine();
+    let root = machine.path();
+    let run = runtime(root).await.apply(&inputs(), None).await;
+
+    assert_eq!(run.program.as_deref(), Some("delegate-fan-out"));
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert_eq!(run.answered(), 6);
+}
+
+/// The trace reads back the way the golden does: the calls the task grades
+/// on, in the order the golden has them, judged by the reader that judges
+/// the golden.
+#[tokio::test]
+async fn the_recorded_run_is_the_path_the_task_expects() {
+    let machine = machine();
+    let root = machine.path();
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder = Recorder::open(
+        traces.path(),
+        "kev-latest",
+        "stub",
+        &root.display().to_string(),
+    )
+    .unwrap();
+    let path = recorder.path().to_path_buf();
+
+    let inputs = inputs();
+    recorder.user(&inputs.request);
+    let runtime = runtime(root).await;
+    runtime.survey().record(&mut recorder, None);
+    let run = runtime.apply(&inputs, Some(&mut recorder)).await;
+    drop(recorder);
+
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+
+    let recording = atif::log::read(&path).expect("the trace reads back");
+    let names: Vec<&str> = recording
+        .steps
+        .iter()
+        .filter_map(|step| step.call.as_ref())
+        .map(|call| call.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "capability_probe",
+            "program_registry",
+            "program",
+            "task_select",
+            "independence",
+            "admission_check",
+            "delegate",
+            "delegate",
+            "delegate",
+            "delegate",
+            "delegate",
+            "delegate",
+            "accept",
+        ],
+        "the golden's order, with the lookup and the acceptance the golden stopped short of"
+    );
+
+    // The decision calls carry the question set that answered, which is
+    // the half a program is not allowed to carry.
+    let decisions: Vec<&atif::Call> = recording
+        .steps
+        .iter()
+        .filter_map(|step| step.call.as_ref())
+        .filter(|call| call.is_decision())
+        .collect();
+    assert_eq!(decisions.len(), 3);
+    assert_eq!(
+        decisions[1].extra["question_set"],
+        json!("openagents.independence.v1")
+    );
+    assert!(
+        decisions[1].extra["set_digest"].as_str().is_some_and(
+            |digest| digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit())
+        ),
+        "two runs of the same program asked the same wording, and the digest says so"
+    );
+    assert_eq!(decisions[1].extra["gate"], json!("independent"));
+
+    let task = coderbench::Task::load(
+        &coderbench::tasks_dir()
+            .join("devin-fan-out-six")
+            .join("task.json"),
+    )
+    .expect("the task manifest loads");
+    let observed = coderbench::observe(&path).expect("the grader reads the trace");
+    assert_eq!(observed.program.as_deref(), Some("delegate-fan-out"));
+    assert_eq!(observed.delegations.len(), 6);
+    assert!(observed.writes.is_empty());
+
+    let faults = task.judge(&observed);
+    assert!(
+        !faults.iter().any(|fault| matches!(
+            fault,
+            coderbench::Fault::DecisionMissing { .. } | coderbench::Fault::CheckMissing { .. }
+        )),
+        "every decision and check the task names was made: {faults:?}"
+    );
+    assert!(faults.is_empty(), "{faults:?}");
+}
+
+/// A step whose bounds this host cannot enforce does not run, and neither
+/// does the program that carried it.
+#[tokio::test]
+async fn a_bound_this_host_cannot_enforce_refuses_before_anything_runs() {
+    let machine = machine();
+    let root = machine.path();
+    let runtime = runtime(root).await;
+
+    for (bounds, expected) in [
+        // A shape nobody here can make. Running it in the shared
+        // directory instead is the substitution the rule forbids.
+        (json!({"isolation": "vm", "minutes": 60}), "vm checkout"),
+        // A bound key this host keeps nothing for.
+        (json!({"budget_cents": 500}), "cannot enforce budget_cents"),
+        // A key it knows, carrying a value it cannot hold to.
+        (json!({"concurrent_max": 0}), "count above zero"),
+    ] {
+        let program = program_with(root, bounds.clone());
+        let refused = runtime
+            .admit(&program)
+            .expect_err(&format!("{bounds} is not enforceable here"));
+        assert_eq!(refused.step, "fan_out");
+        assert_eq!(refused.code, "bound_unenforceable");
+        assert!(refused.reason.contains(expected), "{refused}");
+
+        let run = runtime.run(&program, &inputs(), None).await;
+        assert!(run.steps.is_empty(), "nothing ran: {:?}", run.step_names());
+        assert!(run.delegations.is_empty());
+        assert_eq!(run.stopped, Some(refused));
+    }
+}
+
+/// A host that cannot make a checkout refuses the step that asked for one,
+/// rather than running it in the directory it shares.
+#[tokio::test]
+async fn a_host_that_cannot_isolate_refuses_the_fan_out() {
+    let machine = machine();
+    let root = machine.path();
+    let runtime = runtime(root).await.on(Host::without_repository());
+    let refused = runtime
+        .admit(&fan_out(root))
+        .expect_err("worktree is not a shape this host makes");
+    assert_eq!(refused.step, "fan_out");
+    assert!(refused.reason.contains("worktree checkout"), "{refused}");
+}
+
+/// A step kind this host does not run refuses the whole program. It is
+/// never skipped: a program whose unknown steps are skipped is a different
+/// program.
+#[tokio::test]
+async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
+    let machine = machine();
+    let root = machine.path();
+    let runtime = runtime(root).await;
+
+    // A kind the registry does not know at all never becomes a program.
+    let exotic = root.join("exotic.json");
+    std::fs::write(
+        &exotic,
+        r#"{"v":1,"slug":"exotic","steps":[
+            {"name":"one","kind":"query","bounds":{}},
+            {"name":"two","kind":"teleport","bounds":{}}]}"#,
+    )
+    .unwrap();
+    let reason = Program::load(&exotic).expect_err("an unknown kind is refused");
+    assert!(reason.contains("teleport"), "{reason}");
+
+    // A kind this version recognizes and does not run is refused at
+    // admission, before the step in front of it runs.
+    let composed = root.join("composed.json");
+    std::fs::write(
+        &composed,
+        r#"{"v":1,"slug":"composed","steps":[
+            {"name":"one","kind":"query","bounds":{"max_results":4}},
+            {"name":"two","kind":"program","program":"naddr1abc","bounds":{}}]}"#,
+    )
+    .unwrap();
+    let program = Program::load(&composed).expect("composition parses");
+    let refused = runtime
+        .admit(&program)
+        .expect_err("this host runs no program step");
+    assert_eq!(refused.step, "two");
+    assert_eq!(refused.code, "step_kind_unavailable");
+
+    let run = runtime.run(&program, &inputs(), None).await;
+    assert!(
+        run.steps.is_empty(),
+        "the query step in front of it did not run either: {:?}",
+        run.step_names()
+    );
+}
+
+/// A refused step stops the program, and the run says where it stopped.
+#[tokio::test]
+async fn a_refused_step_stops_the_program() {
+    let machine = machine();
+    let root = machine.path();
+    // A manifest that says it will silently ignore the bound the fan-out
+    // needs. The admission check is what catches that, and it runs before
+    // anything is delegated.
+    let mut manifest = declared(root);
+    manifest["cannot_enforce"] = json!(["minutes", "tool_set"]);
+    manifest["enforces"] = json!([]);
+    redeclare(root, &manifest);
+
+    let run = runtime(root)
+        .await
+        .run(&fan_out(root), &inputs(), None)
+        .await;
+
+    assert_eq!(run.step_names(), ["select", "independence"]);
+    let stopped = run.stopped.expect("the check refused");
+    assert_eq!(stopped.step, "admit");
+    assert_eq!(stopped.code, "cannot_enforce_intersection");
+    assert!(stopped.reason.contains("silently ignore"), "{stopped}");
+    assert!(
+        run.delegations.is_empty(),
+        "nothing was delegated to an executor that would ignore the bound"
+    );
+}
+
+/// A bound neither list mentions is not enforced by having gone
+/// unmentioned, and the check refuses it the way it refuses one the
+/// executor says it will ignore.
+///
+/// This is the third state. A check that intersected the required bounds
+/// with `cannot_enforce` and admitted the rest would admit this
+/// delegation, and the executor would run without the bound while the
+/// trace recorded that it had been checked.
+#[tokio::test]
+async fn a_bound_nobody_claims_is_refused() {
+    let machine = machine();
+    let root = machine.path();
+    let mut manifest = declared(root);
+    manifest["enforces"] = json!([]);
+    manifest["cannot_enforce"] = json!(["tool_set"]);
+    redeclare(root, &manifest);
+
+    let run = runtime(root)
+        .await
+        .run(&fan_out(root), &inputs(), None)
+        .await;
+
+    let stopped = run.stopped.expect("nobody said they would keep minutes");
+    assert_eq!(stopped.step, "admit");
+    assert_eq!(stopped.code, "enforcement_unknown");
+    assert!(stopped.reason.contains("neither way"), "{stopped}");
+    assert!(run.delegations.is_empty());
+}
+
+/// Every bound the fan-out names is held by somebody, and the trace says
+/// by whom.
+#[tokio::test]
+async fn the_check_records_who_holds_each_bound() {
+    let machine = machine();
+    let root = machine.path();
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder = Recorder::open(
+        traces.path(),
+        "kev-latest",
+        "stub",
+        &root.display().to_string(),
+    )
+    .unwrap();
+    let path = recorder.path().to_path_buf();
+    runtime(root)
+        .await
+        .run(&fan_out(root), &inputs(), Some(&mut recorder))
+        .await;
+    drop(recorder);
+
+    let recording = atif::log::read(&path).unwrap();
+    let check = recording
+        .steps
+        .iter()
+        .filter_map(|step| step.call.as_ref())
+        .find(|call| call.name == "admission_check")
+        .expect("the check ran");
+    assert_eq!(check.extra["admitted"], json!(true));
+    assert_eq!(check.extra["enforcement"]["minutes"], json!("executor"));
+    assert_eq!(check.extra["enforcement"]["concurrent_max"], json!("host"));
+    assert_eq!(check.extra["enforcement"]["isolation"], json!("host"));
+    assert_eq!(check.extra["required"], json!(["minutes"]));
+}
+
+/// An executor this machine cannot reach is a route nobody was offered,
+/// and the step that needed it refuses rather than failing six times.
+#[tokio::test]
+async fn an_absent_executor_refuses_the_delegate_step() {
+    let machine = machine();
+    let root = machine.path();
+    let mut inputs = inputs();
+    inputs.executor = "not-a-capability-here".to_string();
+
+    let run = runtime(root).await.run(&fan_out(root), &inputs, None).await;
+
+    let stopped = run.stopped.expect("there is no executor");
+    assert_eq!(stopped.step, "admit", "the check names it first");
+    assert_eq!(stopped.code, "capability_undeclared");
+    assert!(run.delegations.is_empty());
+}
+
+/// A program that fans out over nothing is not a fan-out.
+#[tokio::test]
+async fn a_lookup_that_found_no_work_refuses() {
+    let machine = machine();
+    let root = machine.path();
+    let mut inputs = inputs();
+    inputs.tasks.clear();
+
+    let run = runtime(root).await.run(&fan_out(root), &inputs, None).await;
+    let stopped = run.stopped.expect("nothing to delegate");
+    assert_eq!(stopped.step, "select");
+    assert_eq!(stopped.code, "no_tasks");
+}
+
+/// `max_results` bounds the lookup rather than describing it.
+#[tokio::test]
+async fn the_lookup_holds_to_its_own_bound() {
+    let machine = machine();
+    let root = machine.path();
+    let mut program = fan_out(root);
+    program.steps[0]
+        .bounds
+        .insert("max_results".to_string(), json!(2));
+    let mut inputs = inputs();
+    inputs.tasks = inputs.tasks.into_iter().cycle().take(20).collect();
+
+    let run = runtime(root).await.run(&program, &inputs, None).await;
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert_eq!(
+        run.delegations.len(),
+        2,
+        "a lookup that answered with more than the step allows ran unbounded"
+    );
+}
+
+/// The concurrency bound is the step's, and it is a bound rather than an
+/// ambition.
+#[tokio::test]
+async fn the_fan_out_runs_at_the_width_the_step_states() {
+    let machine = machine();
+    let root = machine.path();
+    let mut program = fan_out(root);
+    let fan_out_step = program
+        .steps
+        .iter_mut()
+        .find(|step| step.name == "fan_out")
+        .unwrap();
+    fan_out_step
+        .bounds
+        .insert("concurrent_max".to_string(), json!(1));
+
+    let run = runtime(root).await.run(&program, &inputs(), None).await;
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert!(
+        run.delegations
+            .iter()
+            .all(|delegation: &Delegation| delegation.concurrent_max == 1),
+        "the width the program states is the width the trace records"
+    );
+}
+
+/// A `decide` step whose question this host has no wording for refuses,
+/// because a step that carried its own wording would have been refused
+/// when the program was read.
+#[tokio::test]
+async fn a_question_with_no_wording_refuses() {
+    let machine = machine();
+    let root = machine.path();
+    std::fs::remove_file(root.join("questions").join("independence.json")).unwrap();
+
+    let runtime = runtime(root).await;
+    let refused = runtime
+        .admit(&fan_out(root))
+        .expect_err("the wording is gone");
+    assert_eq!(refused.step, "independence");
+    assert_eq!(refused.code, "question_unresolved");
+    assert!(
+        refused.reason.contains("openagents.independence.v1"),
+        "{refused}"
+    );
+}
+
+/// A `refuse_below` bound is a floor the step refuses under, and the
+/// refusal stops the program.
+#[tokio::test]
+async fn an_answer_below_the_floor_stops_the_program() {
+    let machine = machine();
+    let root = machine.path();
+    let mut program = fan_out(root);
+    let step = program
+        .steps
+        .iter_mut()
+        .find(|step| step.name == "independence")
+        .unwrap();
+    step.bounds.insert("refuse_below".to_string(), json!(0.95));
+
+    let run = runtime(root).await.run(&program, &inputs(), None).await;
+    assert_eq!(run.step_names(), ["select"]);
+    let stopped = run.stopped.expect("0.93 is below 0.95");
+    assert_eq!(stopped.step, "independence");
+    assert_eq!(stopped.code, "below_floor");
+    assert!(run.delegations.is_empty());
+}
+
+/// The live check: the repository's own program, its own capability
+/// manifest, its own question sets, a real decision door, and the Devin
+/// CLI on this computer.
+///
+/// Ignored by default: it needs the executor, a door, and about two
+/// minutes. The executor refuses a checkout nobody has trusted, and the
+/// worktrees the `fan_out` step's `isolation` bound calls for are made
+/// **under** the repository for exactly that reason, so run it from a
+/// checkout the executor trusts:
+///
+/// ```text
+/// cargo +1.97.1 test -p coder --test program_run -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "needs an executor, a decision door, and a workspace the executor trusts"]
+async fn the_first_program_runs_live() {
+    let root = match std::env::var_os("CODER_DELEGATE_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => checkout().canonicalize().expect("the repository root"),
+    };
+    let runtime = Runtime::open(Some(&root), &root);
+    let found = runtime
+        .survey()
+        .capability("devin-local")
+        .expect("the repository declares devin-local");
+    println!("{}", found.message());
+
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder =
+        Recorder::open(traces.path(), "live", "door", &root.display().to_string()).unwrap();
+    let path = recorder.path().to_path_buf();
+    let mut inputs = inputs();
+    inputs.executor = "devin-local".to_string();
+    inputs.tasks = QUESTIONS
+        .iter()
+        .map(|(prompt, reads, answer)| {
+            Task::reading(
+                &format!("{prompt} Answer with the value and nothing else."),
+                reads,
+            )
+            .expecting(answer)
+        })
+        .collect();
+    recorder.user(&inputs.request);
+    runtime.survey().record(&mut recorder, None);
+    let run = runtime.apply(&inputs, Some(&mut recorder)).await;
+    drop(recorder);
+
+    for step in &run.steps {
+        println!("{:>12}  {}", step.name, step.output);
+    }
+    for delegation in &run.delegations {
+        println!("{:>12}  {}", delegation.task.head(40), delegation.line());
+    }
+    println!("{}", run.summary());
+    println!("trace {}", path.display());
+
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert_eq!(run.program.as_deref(), Some("delegate-fan-out"));
+    let observed = coderbench::observe(&path).expect("the grader reads the trace");
+    let task = coderbench::Task::load(
+        &coderbench::tasks_dir()
+            .join("devin-fan-out-six")
+            .join("task.json"),
+    )
+    .unwrap();
+    let faults = task.judge(&observed);
+    println!("faults: {faults:?}");
+    assert!(
+        !faults.iter().any(|fault| matches!(
+            fault,
+            coderbench::Fault::DecisionMissing { .. } | coderbench::Fault::CheckMissing { .. }
+        )),
+        "{faults:?}"
+    );
+}

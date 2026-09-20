@@ -5,8 +5,9 @@ stated bound, and records each as an ATIF `Call` named `delegate`.
 
 Status: implemented in `crates/coder` (`delegate.rs`, recorded by
 `trace.rs`). The executor is `devin-local`, the Devin CLI on the operator's
-computer. The program runtime that reaches this from an operator's sentence
-is not built yet, so today the call site is a caller in Rust.
+computer. A `delegate` step of a program reaches this through
+`coder::runtime`; what still runs from a caller in Rust is the program,
+not the fan-out.
 
 Read [`../programs.md`](../programs.md) for why delegation is reached
 through a program rather than offered to the model, and
@@ -23,10 +24,18 @@ take it, the golden was a specification rather than a path Coder walks.
 ## What one delegation is
 
 ```rust
-use coder::delegate::{Delegator, Executor, Task};
+use coder::delegate::{Delegator, Task};
+use coder::survey::Survey;
 
-let delegator = Delegator::new(Executor::devin_local()?)
-    .in_directory("/Users/someone/work/openagents")
+// The executor comes from the probed manifest: the binary is the absolute
+// path the probe resolved, and the arguments are the manifest's `invoke`.
+let repository = std::path::Path::new("/Users/someone/work/openagents");
+let executor = Survey::read(Some(repository), repository)
+    .executor("devin-local")
+    .expect("devin-local is present here");
+
+let delegator = Delegator::new(executor)
+    .in_repository(repository)
     .bounded_to(6);
 
 let answers = delegator
@@ -80,13 +89,23 @@ six:
 subshell inherits. The first recorded attempt at this fan-out failed six
 times out of six with `command not found` on a machine that had the binary.
 
-`resolve` searches `PATH` and then the directories a spawned process usually
-does not have — `~/.local/bin`, `~/.bun/bin`, `~/.cargo/bin`, `~/bin`,
-`/opt/homebrew/bin`, `/usr/local/bin` — and returns an absolute path, which
-the trace records. `CODER_DEVIN` points at a copy somewhere else.
+The capability probe searches `PATH` and then the directories a spawned
+process usually does not have — `~/.local/bin`, `~/.bun/bin`,
+`~/.cargo/bin`, `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`,
+`/usr/bin`, `/bin` — and returns an absolute path, which the trace records.
+`CODER_CAPABILITY_PATH` adds directories ahead of all of them.
 
 A probe that shells out to a bare name reports the capability absent on a
 machine that has it.
+
+## The manifest says how to drive the executor
+
+Nothing in `delegate.rs` names an executor. `survey::executor` builds an
+`Executor` from a probed manifest: the binary is the path the probe
+resolved, the arguments are the manifest's `invoke`, and the refusals are
+the ones its `refuses` list declares. A binary name and an argv written
+into the source would be a second source of truth beside the manifest that
+exists to be the first, and the two would drift.
 
 ## Four outcomes, not one
 
@@ -120,18 +139,30 @@ A bound that expires kills the delegate. Without that the host stops waiting
 while the executor keeps running against the repository, which makes the
 bound a timer rather than a bound.
 
-## Isolation is not pretended
+## Isolation is provided or refused, never pretended
 
 A delegate that writes needs a checkout of its own, or six of them collide.
-That is not built. Rather than record `isolation: worktree` and run in the
-shared directory anyway, a task that asks for a worktree is refused with
-`isolation_unavailable`, and a task that says it writes without one is
-refused with `isolation_required`. Both refusals happen before anything
-spawns.
+A `Delegator` told which checkout it is working in makes one worktree per
+delegation, runs the executor in it, and removes it when the delegation
+ends — whatever it ended as, because a delegation that timed out leaves a
+checkout behind just as surely as one that answered.
 
-So every delegation today is read-only, which is why every recorded call
-says `wrote: null` rather than claiming a check nobody runs. The first task
-is read-only and needs no isolation; the write path waits for a real one.
+A delegator that was **not** told refuses a task asking for a worktree with
+`isolation_unavailable`, and any delegator refuses a task that says it
+writes into the directory it shares with five siblings, with
+`isolation_required`. Both refusals land before anything spawns. Nothing
+records `isolation: worktree` and runs in the shared directory.
+
+The worktrees go under the repository, in `.coder/worktrees`, rather than
+under the system temporary directory. That is not tidiness: `devin`
+declines a directory nobody has trusted interactively, and six of six
+delegations from a worktree under `/private/tmp` came back with `Refusing
+to run in an untrusted workspace`. A worktree inside a checkout the
+operator already trusts is accepted.
+
+Worktrees separate edits. They do not prohibit writes, and a recorded call
+still says `wrote: null` rather than claiming a check nobody runs.
+Observing what a delegate actually changed is separate work.
 
 ## Running the live check
 
@@ -145,14 +176,13 @@ CODER_DELEGATE_DIR=/path/to/openagents \
 ```
 
 Run them from a checkout the executor trusts. `CODER_DELEGATE_DIR` names the
-directory the delegates run in, which matters because a git worktree under
+repository the delegates run in, which matters because a git worktree under
 `/private/tmp` is one this executor refuses.
 
 ## What is not built
 
-- **Worktree isolation**, and with it delegations that write.
-- **The program runtime** that reaches a fan-out from an operator's
-  sentence. Until it exists, the call site is Rust rather than a sentence.
-- **A capability probe** that resolves the manifest and decides whether to
-  offer the executor at all. `Executor::devin_local` resolves one binary;
-  it does not read a manifest or admit a set of bounds.
+- **Evidence of what a delegate changed.** A worktree keeps six delegates
+  from colliding; it does not stop one from writing, and nothing yet reads
+  back what a delegation left behind.
+- **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
+  the program, and the program still runs from a caller in Rust.

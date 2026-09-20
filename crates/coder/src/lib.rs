@@ -23,8 +23,12 @@
 //!   states: present, absent, and present and unavailable.
 //! - [`program`] reads the programs a run can take, each a state machine of
 //!   named steps with per-step bounds.
+//! - [`questions`] holds the wording a `decide` step names and must not
+//!   carry, addressed by identifier and digested as a whole.
 //! - [`survey`] is the two of them together: what a host knows about itself
 //!   at the moment it starts choosing.
+//! - [`runtime`] runs a program's steps from the program: the bounds it
+//!   can enforce, the ones it refuses, and the trace of what happened.
 
 pub mod agent;
 pub mod capability;
@@ -32,8 +36,10 @@ pub mod classify;
 pub mod delegate;
 pub mod generate;
 pub mod program;
+pub mod questions;
 pub mod relay;
 pub mod repo;
+pub mod runtime;
 pub mod shell;
 pub mod survey;
 pub mod trace;
@@ -49,6 +55,7 @@ pub use generate::{
 pub use program::Program;
 pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
+pub use runtime::{Enforcement, Host, Inputs, Refused, Run, Runtime};
 pub use shell::{Outcome, Proposal, ShellEvent, Status};
 pub use survey::Survey;
 pub use trace::Recorder;

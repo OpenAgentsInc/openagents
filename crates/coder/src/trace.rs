@@ -357,9 +357,19 @@ impl Recorder {
     }
 
     /// One question put to a decision model, and what it answered.
-    pub fn decision(&mut self, mut decision: Decision) {
-        decision.id = self.next_call_id();
-        self.write(Step::called(decision.call()));
+    pub fn decision(&mut self, decision: Decision) {
+        self.decision_call(decision.call());
+    }
+
+    /// One decision call a caller assembled itself.
+    ///
+    /// A host that records more about a question than [`Decision`] carries
+    /// — which question set answered, and the digest of its wording —
+    /// builds the call and hands it over rather than losing the extra
+    /// fields to a type that has no room for them.
+    pub fn decision_call(&mut self, mut call: atif::Call) {
+        call.id = self.next_call_id();
+        self.write(Step::called(call));
     }
 
     /// Closes the log, so a reader can tell a session that ended from one

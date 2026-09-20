@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "id": "openagents.independence.v1",
+  "name": "Can these tasks run at once",
+  "summary": "Asks whether a set of tasks may be fanned out in parallel.",
+  "gate": "independent",
+  "questions": {
+    "independent": {
+      "type": "noul",
+      "instructions": "The six tasks can run in parallel without colliding."
+    },
+    "readonly": {
+      "type": "noul",
+      "instructions": "Every task is read-only and writes no file."
+    },
+    "needs_tool_restriction": {
+      "type": "noul",
+      "instructions": "At least one task requires restricting which tools the delegate may use."
+    }
+  }
+}

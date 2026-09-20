@@ -22,9 +22,10 @@
 //! **`PATH` is not enough.** `devin` is on the operator's interactive
 //! `PATH` and not on the one a spawned subshell inherits, so the first
 //! recorded attempt failed six times out of six with `command not found`
-//! on a machine that had the binary. [`resolve`] finds an absolute path
-//! and [`Executor`] keeps it, which is also what
-//! [NIP-CAP](../../../nips/openagents/NIP-CAP.md)'s `detect` field is for.
+//! on a machine that had the binary. So an [`Executor`] carries an
+//! absolute path and never a name, and the path comes from the capability
+//! probe rather than from a search written here: the probe resolves it,
+//! [`crate::survey::executor`] hands it over, and this module runs it.
 //!
 //! **A present executor can still refuse a directory.** Six of six
 //! delegations from a git worktree under `/private/tmp` came back with
@@ -43,15 +44,16 @@
 //! [`Status::Harness`], which nobody can read an answer out of. The trace
 //! keeps all four apart.
 //!
-//! # Isolation
+//! # Isolation is provided or refused, never pretended
 //!
-//! A delegate that writes needs its own checkout, or six of them collide.
-//! Worktree isolation is not built yet, so a task that asks for it — or a
-//! task that says it writes — is refused before anything spawns rather
-//! than run unisolated and recorded as though it were safe. Read-only
-//! delegations need no isolation and are the path that works today.
+//! A delegate that writes needs a checkout of its own, or six of them
+//! collide. A [`Delegator`] told which checkout it is working in makes one
+//! worktree per delegation and removes it afterwards; one that was not
+//! refuses a task asking for a worktree, and refuses a task that says it
+//! writes without one. Both refusals land before anything spawns, so
+//! nothing records `isolation: worktree` and runs in the shared
+//! directory.
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -73,20 +75,13 @@ pub const OUTPUT_MAX: usize = 64 * 1024;
 /// [NIP-CAP](../../../nips/openagents/NIP-CAP.md) names capabilities.
 pub const DEVIN_LOCAL: &str = "devin-local";
 
-/// The variable that points at a Devin binary, for an operator whose copy
-/// is somewhere [`resolve`] does not look.
-pub const DEVIN_ENV: &str = "CODER_DEVIN";
-
-/// Directories searched after `PATH`, because a login shell's `PATH` is not
-/// the one a spawned process inherits.
-const EXTRA_BIN_DIRS: &[&str] = &[
-    ".local/bin",
-    ".bun/bin",
-    ".cargo/bin",
-    "bin",
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-];
+/// The directory, under the repository, that worktrees are made in.
+///
+/// Under the repository rather than under the system temporary directory,
+/// because a checkout somewhere else is a directory nobody has trusted:
+/// `devin` declines `/private/tmp/…` and accepts a worktree inside a
+/// checkout it already trusts.
+pub const WORKTREE_DIR: &str = ".coder/worktrees";
 
 /// One refusal an executor declares: the code a host records, and the
 /// phrase the executor prints when it refuses that way.
@@ -122,6 +117,13 @@ impl Refusal {
 /// admission check. What a delegation needs is narrower: which binary, at
 /// which absolute path, with which arguments, and what it declares it
 /// refuses.
+///
+/// **Nothing here names an executor.** An `Executor` is built by
+/// [`crate::survey::executor`] from a probed manifest, so the binary is
+/// the absolute path the probe resolved and the arguments are the
+/// manifest's `invoke`. A constructor that wrote a binary name and an argv
+/// into this file would be a second source of truth for how to drive an
+/// executor, next to the manifest that exists to be the first.
 #[derive(Clone, Debug)]
 pub struct Executor {
     /// The capability slug, the name a trace records.
@@ -137,37 +139,23 @@ pub struct Executor {
 }
 
 impl Executor {
-    /// The Devin CLI on this computer, with its binary resolved.
-    ///
-    /// # Errors
-    ///
-    /// Returns a sentence naming why the binary could not be resolved. An
-    /// executor that is not installed is not a failure; it is a capability
-    /// that is not an option, and the caller decides what that means.
-    pub fn devin_local() -> Result<Self, String> {
-        let binary = match std::env::var_os(DEVIN_ENV).filter(|path| !path.is_empty()) {
-            Some(path) => PathBuf::from(path),
-            None => resolve("devin")?,
-        };
-        Ok(Self::devin_at(binary))
+    /// An executor over a resolved binary and the arguments that go before
+    /// the prompt.
+    #[must_use]
+    pub fn new(capability: &str, binary: impl Into<PathBuf>, arguments: Vec<String>) -> Self {
+        Executor {
+            capability: capability.to_string(),
+            binary: binary.into(),
+            arguments,
+            refuses: Vec::new(),
+        }
     }
 
-    /// The same adapter against a named binary, which is how a test drives
-    /// it without the real CLI.
+    /// Adds one refusal this executor declares.
     #[must_use]
-    pub fn devin_at(binary: impl Into<PathBuf>) -> Self {
-        Executor {
-            capability: DEVIN_LOCAL.to_string(),
-            binary: binary.into(),
-            // `devin -p -- <prompt>` is the non-interactive form: print the
-            // answer and exit. The `--` keeps a prompt that starts with a
-            // dash from being read as a flag.
-            arguments: vec!["-p".to_string(), "--".to_string()],
-            refuses: vec![Refusal::new(
-                "untrusted_workspace",
-                "Refusing to run in an untrusted workspace",
-            )],
-        }
+    pub fn refusing(mut self, code: &str, phrase: &str) -> Self {
+        self.refuses.push(Refusal::new(code, phrase));
+        self
     }
 
     /// The refusal a piece of output declares, when it declares one.
@@ -178,54 +166,6 @@ impl Executor {
             .find(|refusal| text.contains(&refusal.phrase))
             .map(|refusal| refusal.code.clone())
     }
-}
-
-/// Finds a binary's absolute path: `PATH` first, then the directories a
-/// spawned process usually does not inherit.
-///
-/// # Errors
-///
-/// Returns a sentence naming the binary that was not found.
-pub fn resolve(binary: &str) -> Result<PathBuf, String> {
-    resolve_in(
-        binary,
-        &std::env::var_os("PATH").unwrap_or_default(),
-        std::env::var_os("HOME").map(PathBuf::from).as_deref(),
-    )
-}
-
-/// [`resolve`] over a named search path, so a test can search a directory
-/// it made rather than the machine's.
-fn resolve_in(binary: &str, path: &OsStr, home: Option<&Path>) -> Result<PathBuf, String> {
-    let extra = EXTRA_BIN_DIRS
-        .iter()
-        .filter_map(|dir| match Path::new(dir).is_absolute() {
-            true => Some(PathBuf::from(dir)),
-            false => home.map(|home| home.join(dir)),
-        });
-    for dir in std::env::split_paths(path).chain(extra) {
-        let candidate = dir.join(binary);
-        if executable(&candidate) {
-            return Ok(candidate);
-        }
-    }
-    Err(format!(
-        "{binary} is not on PATH or in the usual bin directories"
-    ))
-}
-
-/// Whether a path is a file this process may run.
-#[cfg(unix)]
-fn executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .is_ok_and(|file| file.is_file() && file.permissions().mode() & 0o111 != 0)
-}
-
-/// Whether a path is a file this process may run.
-#[cfg(not(unix))]
-fn executable(path: &Path) -> bool {
-    std::fs::metadata(path).is_ok_and(|file| file.is_file())
 }
 
 /// What a delegation may spend.
@@ -279,12 +219,25 @@ pub enum Isolation {
     /// fan-out. Correct for a delegate that only reads.
     Directory,
     /// A checkout of its own, so a delegate that writes cannot collide
-    /// with its five siblings. Not built yet; a task that asks for it is
-    /// refused rather than run in the shared directory.
+    /// with its five siblings. A delegator that knows which checkout it
+    /// works in makes one and removes it afterwards; one that does not
+    /// refuses the task rather than running it in the shared directory.
     Worktree,
 }
 
 impl Isolation {
+    /// The shape a word names, or `None` for a word this host has no
+    /// shape for. A program bound naming one of those is a bound the host
+    /// cannot enforce, and the step it bounds does not run.
+    #[must_use]
+    pub fn named(word: &str) -> Option<Self> {
+        match word {
+            "directory" => Some(Isolation::Directory),
+            "worktree" => Some(Isolation::Worktree),
+            _ => None,
+        }
+    }
+
     /// The word the trace spells this with.
     #[must_use]
     pub fn word(self) -> &'static str {
@@ -346,17 +299,21 @@ impl Task {
         self
     }
 
-    /// Why a task cannot be run as it stands, when it cannot.
+    /// Why a task contradicts itself, when it does.
     ///
-    /// Both answers are about isolation, and both are refusals rather than
-    /// failures: nothing was attempted, and the reason is a property of
-    /// the request.
+    /// A task that writes into the directory it shares with five siblings
+    /// has asked for something nobody can grant, whatever the host can
+    /// provide. That is a refusal rather than a failure: nothing was
+    /// attempted, and the reason is a property of the request.
+    ///
+    /// Whether the isolation a task *does* ask for is available is the
+    /// host's answer, not the task's, and [`Delegator::unisolated`] gives
+    /// it.
     #[must_use]
-    pub fn unisolated(&self) -> Option<&'static str> {
+    pub fn contradictory(&self) -> Option<&'static str> {
         match (self.isolation, self.writes) {
-            (Isolation::Worktree, _) => Some("isolation_unavailable"),
             (Isolation::Directory, true) => Some("isolation_required"),
-            (Isolation::Directory, false) => None,
+            _ => None,
         }
     }
 
@@ -477,6 +434,10 @@ impl Delegation {
 pub struct Delegator {
     executor: Executor,
     workdir: PathBuf,
+    /// The checkout a worktree branches from, when this host knows one.
+    /// `None` is a host that cannot isolate, and it refuses rather than
+    /// sharing a directory it was asked not to.
+    repository: Option<PathBuf>,
     concurrent_max: usize,
 }
 
@@ -488,6 +449,7 @@ impl Delegator {
         Delegator {
             executor,
             workdir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            repository: None,
             concurrent_max: CONCURRENT_MAX,
         }
     }
@@ -498,6 +460,46 @@ impl Delegator {
     pub fn in_directory(mut self, workdir: impl Into<PathBuf>) -> Self {
         self.workdir = workdir.into();
         self
+    }
+
+    /// Runs the delegations in a checkout this host may branch worktrees
+    /// from, which is what makes `isolation: worktree` something the host
+    /// provides rather than something it refuses.
+    ///
+    /// The directory is both the shared working directory and the
+    /// repository a worktree comes from, because they are the same
+    /// checkout: the caller is saying which repository the fan-out is
+    /// working on.
+    #[must_use]
+    pub fn in_repository(mut self, root: impl Into<PathBuf>) -> Self {
+        let root = root.into();
+        self.workdir = root.clone();
+        self.repository = Some(root);
+        self
+    }
+
+    /// Whether this host can give a delegation the checkout shape it
+    /// names.
+    #[must_use]
+    pub fn provides(&self, isolation: Isolation) -> bool {
+        match isolation {
+            Isolation::Directory => true,
+            Isolation::Worktree => self.repository.is_some(),
+        }
+    }
+
+    /// Why this host cannot run a task as it stands, when it cannot.
+    ///
+    /// Two answers, both refusals and both before anything spawns: the
+    /// task contradicts itself, or it asks for a checkout shape this host
+    /// has no way to make.
+    #[must_use]
+    pub fn unisolated(&self, task: &Task) -> Option<&'static str> {
+        task.contradictory()
+            .or(match self.provides(task.isolation) {
+                true => None,
+                false => Some("isolation_unavailable"),
+            })
     }
 
     /// Bounds how many delegations run at once. Zero is read as one.
@@ -526,21 +528,44 @@ impl Delegator {
     }
 
     /// Hands one task to the executor and waits for it.
+    ///
+    /// A task asking for a checkout of its own gets one, made before the
+    /// executor spawns and removed when the delegation ends, whatever it
+    /// ended as.
     pub async fn run(&self, task: Task) -> Delegation {
-        if let Some(code) = task.unisolated() {
+        if let Some(code) = self.unisolated(&task) {
             return self.ended(
                 task,
                 Status::Refused(code.to_string()),
                 String::new(),
                 String::new(),
                 Duration::ZERO,
+                self.workdir.clone(),
             );
         }
         let started = Instant::now();
+        // A worktree that will not be made is the harness rather than the
+        // executor: nobody can say what the delegate would have answered,
+        // and a host that ran the task in the shared directory instead
+        // would be recording an isolation it did not provide.
+        let checkout = match self.checkout(&task).await {
+            Ok(checkout) => checkout,
+            Err(why) => {
+                return self.ended(
+                    task,
+                    Status::Harness(why.clone()),
+                    String::new(),
+                    why,
+                    started.elapsed(),
+                    self.workdir.clone(),
+                );
+            }
+        };
+        let workdir = checkout.path(&self.workdir).to_path_buf();
         let running = Command::new(&self.executor.binary)
             .args(&self.executor.arguments)
             .arg(&task.prompt)
-            .current_dir(&self.workdir)
+            .current_dir(&workdir)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -573,7 +598,18 @@ impl Delegator {
             ),
             Err(_) => (Status::TimedOut, String::new(), String::new()),
         };
-        self.ended(task, status, output, detail, elapsed)
+        drop(checkout);
+        self.ended(task, status, output, detail, elapsed, workdir)
+    }
+
+    /// The checkout one task runs in.
+    async fn checkout(&self, task: &Task) -> Result<Checkout, String> {
+        match (task.isolation, &self.repository) {
+            (Isolation::Worktree, Some(repository)) => {
+                Worktree::add(repository).await.map(Checkout::Own)
+            }
+            _ => Ok(Checkout::Shared),
+        }
     }
 
     /// Hands every task to the executor at once, no more than
@@ -599,12 +635,13 @@ impl Delegator {
         output: String,
         detail: String,
         elapsed: Duration,
+        workdir: PathBuf,
     ) -> Delegation {
         Delegation {
             task,
             capability: self.executor.capability.clone(),
             binary: self.executor.binary.clone(),
-            workdir: self.workdir.clone(),
+            workdir,
             concurrent_max: self.concurrent_max,
             status,
             output,
@@ -612,6 +649,104 @@ impl Delegator {
             elapsed,
         }
     }
+}
+
+/// Where one delegation runs.
+#[derive(Debug)]
+enum Checkout {
+    /// The delegator's own directory, shared with the fan-out's siblings.
+    /// Correct for a delegate that only reads.
+    Shared,
+    /// A checkout of this delegation's own, removed when it ends.
+    Own(Worktree),
+}
+
+impl Checkout {
+    /// The directory the executor runs in.
+    fn path<'a>(&'a self, shared: &'a Path) -> &'a Path {
+        match self {
+            Checkout::Shared => shared,
+            Checkout::Own(worktree) => &worktree.path,
+        }
+    }
+}
+
+/// One checkout made for one delegation, removed when it is dropped.
+///
+/// The removal is in `Drop` rather than after the wait, because a
+/// delegation that timed out, failed, or panicked leaves a checkout behind
+/// just as surely as one that answered, and six of those per fan-out is a
+/// repository nobody can work in.
+#[derive(Debug)]
+pub struct Worktree {
+    repository: PathBuf,
+    path: PathBuf,
+}
+
+impl Worktree {
+    /// Makes a detached checkout of `repository` at its current `HEAD`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the checkout was not made.
+    async fn add(repository: &Path) -> Result<Self, String> {
+        let path = repository.join(WORKTREE_DIR).join(unique_name());
+        let done = Command::new("git")
+            .arg("-C")
+            .arg(repository)
+            .args(["worktree", "add", "--detach"])
+            .arg(&path)
+            .arg("HEAD")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .map_err(|error| format!("cannot make a worktree: {error}"))?;
+        if !done.status.success() {
+            return Err(format!(
+                "cannot make a worktree in {}: {}",
+                path.display(),
+                String::from_utf8_lossy(&done.stderr).trim()
+            ));
+        }
+        Ok(Worktree {
+            repository: repository.to_path_buf(),
+            path,
+        })
+    }
+
+    /// The checkout this delegation ran in.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for Worktree {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&self.repository)
+            .args(["worktree", "remove", "--force"])
+            .arg(&self.path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
+/// A name no other worktree of this repository holds: the process, and a
+/// count within it.
+fn unique_name() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// The first `max` characters of a string, cut on a character boundary.
@@ -670,10 +805,44 @@ mod tests {
         path
     }
 
+    /// A checkout with one commit, for the cases about isolation. `None`
+    /// on a machine with no working version control, where the case is
+    /// about something this test cannot set up rather than about the code.
+    fn scratch_repository() -> Option<tempfile::TempDir> {
+        let dir = tempfile::tempdir().ok()?;
+        std::fs::write(dir.path().join("a.rs"), "// a file\n").ok()?;
+        let run = |arguments: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args(arguments)
+                .output()
+                .ok()
+                .filter(|done| done.status.success())
+        };
+        run(&["init", "--quiet"])?;
+        run(&["config", "user.email", "test@example.invalid"])?;
+        run(&["config", "user.name", "A Test"])?;
+        run(&["add", "a.rs"])?;
+        run(&["commit", "--quiet", "-m", "one file"])?;
+        Some(dir)
+    }
+
     /// The bound a case that is not about timing out runs under. Generous,
     /// because a test machine running its other tests at the same time
     /// spawns a process slowly enough to matter.
     const BOUND: Duration = Duration::from_secs(20);
+
+    /// An executor over a stub, the way `survey::executor` builds one over
+    /// a probed manifest: a resolved path, the arguments that manifest
+    /// names, and the refusal it declares. The stub takes no arguments
+    /// before the prompt, and nothing here names a real executor.
+    fn executor(binary: impl Into<PathBuf>) -> Executor {
+        Executor::new("stub-local", binary, Vec::new()).refusing(
+            "untrusted_workspace",
+            "Refusing to run in an untrusted workspace",
+        )
+    }
 
     fn six_tasks() -> Vec<Task> {
         (1..=6)
@@ -687,7 +856,7 @@ mod tests {
     async fn a_delegate_answers_and_is_graded() {
         let dir = tempfile::tempdir().unwrap();
         let binary = stub(dir.path(), "devin", "printf '5\\n'");
-        let delegator = Delegator::new(Executor::devin_at(&binary)).in_directory(dir.path());
+        let delegator = Delegator::new(executor(&binary)).in_directory(dir.path());
 
         let right = delegator
             .run(Task::reading("how many", "crates/atif/src/document.rs").expecting("5"))
@@ -724,9 +893,7 @@ mod tests {
             "refusing",
             "echo 'Error: Refusing to run in an untrusted workspace: /private/tmp' >&2\nexit 1",
         );
-        let refused = Delegator::new(Executor::devin_at(&refusing))
-            .run(task())
-            .await;
+        let refused = Delegator::new(executor(&refusing)).run(task()).await;
         assert_eq!(
             refused.status,
             Status::Refused("untrusted_workspace".into())
@@ -737,7 +904,7 @@ mod tests {
         assert!(refused.recorded_output().contains("untrusted workspace"));
 
         let slow = stub(dir.path(), "slow", "sleep 30");
-        let timed_out = Delegator::new(Executor::devin_at(&slow))
+        let timed_out = Delegator::new(executor(&slow))
             .run(
                 Task::reading("anything", "a.rs")
                     .bounded(Bounds::within(Duration::from_millis(250))),
@@ -747,14 +914,12 @@ mod tests {
         assert_eq!(timed_out.outcome(), atif::Outcome::Failed);
 
         let broken = stub(dir.path(), "broken", "echo 'boom' >&2\nexit 3");
-        let failed = Delegator::new(Executor::devin_at(&broken))
-            .run(task())
-            .await;
+        let failed = Delegator::new(executor(&broken)).run(task()).await;
         assert_eq!(failed.status, Status::Failed(3));
         assert_eq!(failed.outcome(), atif::Outcome::Failed);
 
         // No binary at all is the harness, not the executor.
-        let missing = Delegator::new(Executor::devin_at(dir.path().join("absent")))
+        let missing = Delegator::new(executor(dir.path().join("absent")))
             .run(task())
             .await;
         assert!(matches!(missing.status, Status::Harness(_)));
@@ -771,7 +936,7 @@ mod tests {
             "devin",
             "echo 'Refusing to run in an untrusted workspace' >&2\nexit 1",
         );
-        let delegation = Delegator::new(Executor::devin_at(&binary))
+        let delegation = Delegator::new(executor(&binary))
             .run(Task::reading("how many", "a.rs").expecting("5"))
             .await;
         assert_eq!(delegation.correct(), Some(false));
@@ -782,7 +947,7 @@ mod tests {
     async fn the_fan_out_is_concurrent_under_its_bound() {
         let dir = tempfile::tempdir().unwrap();
         let binary = stub(dir.path(), "devin", "sleep 0.4\nprintf 'done\\n'");
-        let executor = Executor::devin_at(&binary);
+        let executor = executor(&binary);
 
         let started = Instant::now();
         let wide = Delegator::new(executor.clone())
@@ -823,7 +988,7 @@ mod tests {
             "devin",
             "for a in \"$@\"; do prompt=\"$a\"; done\ncase \"$prompt\" in *' 1') sleep 0.5 ;; esac\nprintf '%s\\n' \"$prompt\"",
         );
-        let delegations = Delegator::new(Executor::devin_at(&binary))
+        let delegations = Delegator::new(executor(&binary))
             .bounded_to(6)
             .fan_out(six_tasks())
             .await;
@@ -841,14 +1006,14 @@ mod tests {
         );
     }
 
-    /// A delegate that would write, or that asks for a worktree, is
-    /// refused before anything spawns rather than run in the shared
-    /// directory.
+    /// A delegate that would write into the shared directory, or that asks
+    /// a host for a checkout it cannot make, is refused before anything
+    /// spawns rather than run in the shared directory.
     #[tokio::test]
     async fn an_unisolated_write_is_refused_before_it_spawns() {
         let dir = tempfile::tempdir().unwrap();
-        let binary = stub(dir.path(), "devin", "printf 'wrote it\\n'");
-        let delegator = Delegator::new(Executor::devin_at(&binary));
+        let binary = stub(dir.path(), "stub", "printf 'wrote it\\n'");
+        let delegator = Delegator::new(executor(&binary));
 
         let mut writing = Task::reading("change a file", "a.rs");
         writing.writes = true;
@@ -858,36 +1023,97 @@ mod tests {
 
         let mut isolated = Task::reading("change a file", "a.rs");
         isolated.isolation = Isolation::Worktree;
+        assert!(!delegator.provides(Isolation::Worktree));
         let unavailable = delegator.run(isolated).await;
         assert_eq!(
             unavailable.status,
-            Status::Refused("isolation_unavailable".into())
+            Status::Refused("isolation_unavailable".into()),
+            "a host with no checkout to branch from refuses rather than sharing one"
         );
     }
 
-    /// The resolver returns an absolute path, and finds a binary in a
-    /// directory that is not on the search path at all — which is the case
-    /// that broke the first recorded attempt.
-    #[test]
-    fn the_resolver_returns_an_absolute_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().join("home");
-        std::fs::create_dir_all(home.join(".local/bin")).unwrap();
-        stub(dir.path(), "on-the-path", "true");
-        stub(&home.join(".local/bin"), "off-the-path", "true");
-        let path = std::env::join_paths([dir.path()]).unwrap();
+    /// A delegation that asked for a checkout of its own gets one, runs in
+    /// it, and leaves none behind.
+    #[tokio::test]
+    async fn a_worktree_delegation_runs_in_its_own_checkout() {
+        let Some(repository) = scratch_repository() else {
+            return;
+        };
+        let binary = stub(repository.path(), "stub", "pwd");
+        let delegator = Delegator::new(executor(&binary)).in_repository(repository.path());
+        assert!(delegator.provides(Isolation::Worktree));
 
-        let found = resolve_in("on-the-path", &path, Some(&home)).unwrap();
-        assert!(found.is_absolute());
-        assert!(executable(&found));
+        let mut task = Task::reading("where am I", "a.rs");
+        task.isolation = Isolation::Worktree;
+        let delegation = delegator.run(task).await;
 
-        let elsewhere = resolve_in("off-the-path", &path, Some(&home)).unwrap();
-        assert_eq!(elsewhere, home.join(".local/bin/off-the-path"));
+        assert_eq!(delegation.status, Status::Answered, "{delegation:?}");
+        assert_ne!(
+            delegation.workdir,
+            repository.path(),
+            "the delegation ran somewhere of its own"
+        );
+        assert!(
+            delegation
+                .workdir
+                .starts_with(repository.path().join(WORKTREE_DIR)),
+            "the checkout sits under the repository, which is the directory an \
+             executor has been told to trust: {}",
+            delegation.workdir.display()
+        );
+        assert!(
+            !delegation.workdir.exists(),
+            "the checkout is removed when the delegation ends"
+        );
+    }
 
-        assert!(resolve_in("absent", &path, Some(&home)).is_err());
-        // A file nobody may run is not the binary.
-        std::fs::write(dir.path().join("not-executable"), "").unwrap();
-        assert!(resolve_in("not-executable", &path, Some(&home)).is_err());
+    /// Six delegations that each asked for a checkout of their own get six
+    /// different ones, at once.
+    #[tokio::test]
+    async fn six_worktrees_do_not_collide() {
+        let Some(repository) = scratch_repository() else {
+            return;
+        };
+        let binary = stub(repository.path(), "stub", "pwd");
+        let tasks: Vec<Task> = six_tasks()
+            .into_iter()
+            .map(|mut task| {
+                task.isolation = Isolation::Worktree;
+                task
+            })
+            .collect();
+
+        let delegations = Delegator::new(executor(&binary))
+            .in_repository(repository.path())
+            .bounded_to(6)
+            .fan_out(tasks)
+            .await;
+
+        assert!(
+            delegations.iter().all(Delegation::answered),
+            "{:?}",
+            delegations.iter().map(Delegation::line).collect::<Vec<_>>()
+        );
+        let mut checkouts: Vec<&Path> = delegations
+            .iter()
+            .map(|delegation| delegation.workdir.as_path())
+            .collect();
+        checkouts.sort_unstable();
+        checkouts.dedup();
+        assert_eq!(checkouts.len(), 6, "six delegations, six checkouts");
+        assert!(
+            !repository
+                .path()
+                .join(WORKTREE_DIR)
+                .join("..")
+                .join(WORKTREE_DIR)
+                .exists()
+                || std::fs::read_dir(repository.path().join(WORKTREE_DIR))
+                    .map(|entries| entries.count())
+                    .unwrap_or(0)
+                    == 0,
+            "no checkout outlives its delegation"
+        );
     }
 
     #[test]

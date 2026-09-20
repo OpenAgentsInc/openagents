@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::capability::{self, Found, Presence};
-use crate::delegate::{Executor, Refusal};
+use crate::delegate::Executor;
 use crate::program;
 use crate::trace::Recorder;
 
@@ -109,16 +109,10 @@ pub fn executor(found: &Found) -> Option<Executor> {
     };
     let manifest = &found.manifest;
     let (_, arguments) = manifest.invoke.split_first()?;
-    Some(Executor {
-        capability: manifest.slug.clone(),
-        binary: path.clone(),
-        arguments: arguments.to_vec(),
-        refuses: manifest
-            .refuses
-            .iter()
-            .map(|refusal| Refusal::new(&refusal.name, &refusal.matches))
-            .collect(),
-    })
+    let executor = Executor::new(&manifest.slug, path.clone(), arguments.to_vec());
+    Some(manifest.refuses.iter().fold(executor, |executor, refusal| {
+        executor.refusing(&refusal.name, &refusal.matches)
+    }))
 }
 
 #[cfg(test)]

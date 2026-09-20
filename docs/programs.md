@@ -98,11 +98,37 @@ carries both, and `crates/coder` reads them:
 | --- | --- |
 | `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first. |
 | `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `review-changes`, `answer-question`, `run-suite`. |
+| `questions/` | One question set per file, addressed by identifier: `openagents.program.v1`, `openagents.independence.v1`, `openagents.completion.v1`. |
 
 A host reads `CODER_CAPABILITY_DIR` first, then the repository's directory,
-then `~/.openagents/capabilities`, and the same three for programs. The
-first definition of a slug wins, so an operator overrides a checkout
-without editing it.
+then `~/.openagents/capabilities`, and the same three for programs and for
+questions. The first definition of a slug wins, so an operator overrides a
+checkout without editing it.
+
+### A `decide` step names a question, and the wording lives elsewhere
+
+A program carries no prompts, and that includes the wording of the
+questions it asks. A `decide` step names an identifier such as
+`openagents.independence.v1`; the text behind it is a file in `questions/`,
+digested as a whole, and the digest is recorded beside every answer.
+
+Rewording a question changes what was asked. A program that inlined its
+wording could not say which version produced a result, so `Program::load`
+refuses a `decide` step carrying `instructions`, `criteria`, `questions`,
+`text`, or `prompt`, and `Runtime::admit` refuses one whose identifier this
+host has no wording for.
+
+A set fills in exactly two things at run time, and both are bounded fields
+chosen after the route was:
+
+- A Choice question declaring `"options": "supplied"` takes its options
+  from the run. The program-selection question's options are the programs
+  this host resolved, which is how an operator without an executor gets a
+  shorter option set rather than a broken one.
+- A set declaring `per_requirement` is a template. The host asks it once
+  per requirement and writes the requirement's name into the instructions,
+  because a set of identical questions under different identifiers gives a
+  model nothing to tell them apart with.
 
 The program registry read records the Nostr filter it would have sent
 beside the answer it got from disk, because the query is the part that has
@@ -256,15 +282,107 @@ Two steps are deterministic and two are decisions, which is the right ratio:
 the program is mostly mechanism, and the decision model is asked only where
 a judgment is genuinely required.
 
-The `fan_out` step is the one `crates/coder` implements today:
-[`coder/delegate.md`](coder/delegate.md) covers what it records, how it is
-bounded, and why a refusal, a timeout, and a failure are three outcomes.
-Nothing yet reaches it from an operator's sentence.
+`coder::runtime` runs all five from the file, and
+[`coder/delegate.md`](coder/delegate.md) covers the `fan_out` step in
+detail: what it records, how it is bounded, and why a refusal, a timeout,
+and a failure are three outcomes.
 
 Bounds are enforced, not declared. `concurrent_max` bounds the fan-out,
-`isolation: worktree` gives each session its own branch so a collision is
-recoverable, and the `minutes` bound comes from the manifest's `enforces`
-list rather than from hope.
+`isolation: worktree` gives each session a checkout of its own so a
+collision is recoverable, and the `minutes` bound reaches the executor only
+after the admission check has established that somebody is holding the
+delegation to it.
+
+## The runtime
+
+`coder::runtime` is the interpreter. It takes a program, the work, and the
+capability slug that is to do the work, and runs the steps the program
+lists in the order the program lists them. Four rules make it a runtime
+rather than a loop over a list, and all four are NIP-PRG's.
+
+**A step whose bounds the host cannot enforce does not run.** Not a warning
+and not a substitution. `Runtime::admit` checks every step's bounds against
+the host before the first step runs, so a program this host cannot hold to
+fails before it has done anything. The host keeps a table of the bound keys
+it enforces per step kind, and it checks the values as well as the keys: a
+step naming `isolation: "vm"` is refused, because running it in a shared
+directory instead is the substitution the rule forbids.
+
+**A step kind the host does not run refuses the whole program.** An
+unrecognized kind is refused when the file is read. A kind this version
+recognizes and does not run — `program` and `module`, which are composition
+and WebAssembly — is refused at admission. Neither is skipped.
+
+**A `decide` step names a question, never its wording.** See the previous
+section.
+
+**A refused step stops the program**, and the reason it stopped is what the
+run reports. An answer below a `refuse_below` floor, a check that will not
+admit the delegation, and an executor this machine cannot reach are all
+refusals, and each one stops the rest.
+
+### What a step does here
+
+| Kind | What the runtime does |
+| --- | --- |
+| `query` | Looks the work up and truncates it to `max_results`. A step with no source named reads the program's declared inputs. |
+| `decide` | Puts the named question set to a decision door and records `openagents.decision-call.v1`, with the set's identifier and digest beside the answer. |
+| `check` | Runs the admission test the `refuse_on` bound names. |
+| `delegate` | Hands the work to the executor the capability probe resolved, at the width, isolation, and wall bound the step states. |
+
+### Admission has three answers, not two
+
+For every bound a `delegate` step names, the check records who holds the
+delegation to it: this host, the executor, or **nobody**.
+
+| State | What it means |
+| --- | --- |
+| `host` | The host keeps it, and does not need the executor's agreement. `concurrent_max` and `isolation` are the host's. |
+| `executor` | The manifest's `enforces` list names it. |
+| `ignored` | The manifest's `cannot_enforce` list names it. Refused. |
+| `unknown` | Neither list names it. Refused. |
+
+The third state is the one a two-state answer gets wrong. Intersecting the
+required bounds with `cannot_enforce` and admitting everything else admits
+a bound that is enforced, apparently, by having gone unmentioned — and the
+delegation then runs as though the bound held, with a trace recording that
+it was checked. Refusing there is stricter than the `refuse_on` bound
+names, which is always allowed: a host never has to run a step.
+
+This does not establish that a delegate respected a bound. It establishes
+who claimed to be holding it. Observing what a delegate actually did is
+separate work.
+
+### The first program, live
+
+The repository's own `delegate-fan-out`, its own `devin-local` manifest,
+its own question sets, a hosted decision door, and the Devin CLI on the
+operator's computer:
+
+| Step | What it did |
+| --- | --- |
+| `select` | 6 tasks |
+| `independence` | `independent` 0.96, clearing the 0.7 floor |
+| `admit` | `minutes` kept by `devin-local`; `concurrent_max` and `isolation` kept by the host |
+| `fan_out` | 6 of 6 answered at a width of 6, one checkout each |
+| `accept` | 6 answers, one per requirement |
+
+33.9 seconds of wall clock against 77.6 seconds of summed agent time, six
+of six correct, and no faults from the reader that judges the
+`devin-fan-out-six` golden. A second run took 47.7 seconds against 186.1
+seconds summed, and was also six of six with no faults: the wall clock is
+the slowest delegate and the executor is not fast twice in a row. Run it
+yourself with the command in `crates/coder/tests/program_run.rs`.
+
+### What the runtime does not do yet
+
+- **Reach itself from an operator's sentence.** The call site is still a
+  caller in Rust. Wiring it into the turn needs a `select` step that can
+  find the work, because the operator's sentence names a count and not a
+  task list.
+- **Compose.** No `program` step, no `module` step, no cycle detection, no
+  depth bound, and nothing that fetches. All are specified, and none is
+  needed to run the first program.
 
 ## What to build first
 
@@ -278,8 +396,10 @@ list rather than from hope.
 3. **A suite of real fan-out decisions**, labelled by whether the branches
    conflicted. This is harvestable from history: pairs of issues that were
    worked in parallel, and whether their branches collided.
-4. **The program, as a host-driven call site** reached by the operator's
-   request, with every step recorded in the trace.
+4. **The program, as a host-driven call site**, with every step recorded in
+   the trace. **The runtime is landed** — see [The runtime](#the-runtime) —
+   and what remains is reaching it from the operator's request rather than
+   from a caller in Rust.
    [#9400](https://github.com/OpenAgentsInc/openagents/issues/9400) puts
    decision calls in ATIF's `extra`, which is where the evidence for step 3
    comes from next time.

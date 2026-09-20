@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "openagents.completion.v1",
+  "name": "Did the delegated work land",
+  "summary": "Asks, once per requirement, whether a delegation produced a usable result.",
+  "per_requirement": {
+    "type": "noul",
+    "instructions": "The requirement the state lists under {requirement} landed: the delegate answered it, and the answer is usable as it stands."
+  }
+}

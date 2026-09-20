@@ -9,7 +9,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use coder::delegate::{Bounds, Delegator, Executor, Isolation, Status, Task};
+use coder::capability::Presence;
+use coder::delegate::{Bounds, DEVIN_LOCAL, Delegator, Executor, Isolation, Status, Task};
+use coder::survey::Survey;
 use coder::trace::{DELEGATE_CALL, Recorder};
 use serde_json::Value;
 
@@ -70,6 +72,48 @@ fn stub(dir: &Path) -> PathBuf {
     path
 }
 
+/// An executor over a stub, the shape `survey::executor` builds over a
+/// probed manifest: a resolved path, no arguments before the prompt, and
+/// the refusal the manifest declares. It answers to the slug the golden
+/// records, because a trace that named the stub would not read back the
+/// way a golden does.
+fn executor(binary: impl Into<PathBuf>) -> Executor {
+    Executor::new(DEVIN_LOCAL, binary, Vec::new()).refusing(
+        "untrusted_workspace",
+        "Refusing to run in an untrusted workspace",
+    )
+}
+
+/// The repository the live cases run in. `CODER_DELEGATE_DIR` moves it,
+/// which matters because an executor refuses a checkout nobody trusts.
+fn repository() -> PathBuf {
+    match std::env::var_os("CODER_DELEGATE_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("the repository root"),
+    }
+}
+
+/// The live executor, resolved the way a run resolves one: from the
+/// manifest in `capabilities/`, probed against the directory the
+/// delegations will run in.
+fn live_executor(repository: &Path) -> Executor {
+    let survey = Survey::read(Some(repository), repository);
+    let found = survey
+        .capability(DEVIN_LOCAL)
+        .expect("the repository declares devin-local");
+    assert!(
+        matches!(found.presence, Presence::Present { .. }),
+        "{}",
+        found.message()
+    );
+    survey
+        .executor(DEVIN_LOCAL)
+        .expect("a present capability drives an executor")
+}
+
 fn tasks() -> Vec<Task> {
     QUESTIONS
         .iter()
@@ -80,7 +124,7 @@ fn tasks() -> Vec<Task> {
 #[tokio::test]
 async fn six_recorded_delegations_read_back_as_the_golden_does() {
     let dir = tempfile::tempdir().unwrap();
-    let delegator = Delegator::new(Executor::devin_at(stub(dir.path())))
+    let delegator = Delegator::new(executor(stub(dir.path())))
         .in_directory(dir.path())
         .bounded_to(6);
 
@@ -188,14 +232,12 @@ async fn the_three_ways_a_delegation_does_not_answer_stay_apart() {
     let mut recorder = Recorder::open(dir.path(), "kev-latest", "stub", "/tmp/repo").unwrap();
     let path = recorder.path().to_path_buf();
     for (binary, task) in [(&refusing, task()), (&slow, brief()), (&broken, task())] {
-        let delegation = Delegator::new(Executor::devin_at(binary)).run(task).await;
+        let delegation = Delegator::new(executor(binary)).run(task).await;
         recorder.delegation(&delegation);
     }
     let mut worktree = task();
     worktree.isolation = Isolation::Worktree;
-    let unisolated = Delegator::new(Executor::devin_at(&refusing))
-        .run(worktree)
-        .await;
+    let unisolated = Delegator::new(executor(&refusing)).run(worktree).await;
     assert_eq!(
         unisolated.status,
         Status::Refused("isolation_unavailable".into())
@@ -249,18 +291,12 @@ async fn the_three_ways_a_delegation_does_not_answer_stay_apart() {
 #[tokio::test]
 #[ignore = "needs the Devin CLI and a workspace it trusts"]
 async fn a_live_delegation_answers_one_read_only_question() {
-    let executor = Executor::devin_local().expect("devin resolves to an absolute path");
+    let repository = repository();
+    let executor = live_executor(&repository);
     assert!(executor.binary.is_absolute());
-    let repository = match std::env::var_os("CODER_DELEGATE_DIR") {
-        Some(dir) => PathBuf::from(dir),
-        None => Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .canonicalize()
-            .expect("the repository root"),
-    };
 
     let delegation = Delegator::new(executor)
-        .in_directory(&repository)
+        .in_repository(&repository)
         .run(
             Task::reading(
                 "What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs? \
@@ -286,16 +322,9 @@ async fn a_live_delegation_answers_one_read_only_question() {
 #[tokio::test]
 #[ignore = "needs the Devin CLI and a workspace it trusts"]
 async fn a_live_fan_out_of_six_runs_in_parallel() {
-    let executor = Executor::devin_local().expect("devin resolves to an absolute path");
-    let repository = match std::env::var_os("CODER_DELEGATE_DIR") {
-        Some(dir) => PathBuf::from(dir),
-        None => Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .canonicalize()
-            .expect("the repository root"),
-    };
-    let delegator = Delegator::new(executor)
-        .in_directory(&repository)
+    let repository = repository();
+    let delegator = Delegator::new(live_executor(&repository))
+        .in_repository(&repository)
         .bounded_to(6);
 
     let live: Vec<Task> = QUESTIONS

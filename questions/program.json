@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "id": "openagents.program.v1",
+  "name": "Which program applies",
+  "summary": "Picks the program a request asks for, from the ones this host resolved.",
+  "gate": "program",
+  "questions": {
+    "program": {
+      "type": "choice",
+      "instructions": "Which program does this request ask for?",
+      "options": "supplied"
+    }
+  }
+}
