@@ -1,11 +1,11 @@
 # Lev roadmap
 
-**Status:** filed and part-built. The tracker is
-[#9345](https://github.com/OpenAgentsInc/openagents/issues/9345) and the
-items below are issues #9346 to #9355. The sequence started with measurement
-rather than code, and that turned out to matter: the run answered the
-question the design rested on with a no, and the table below records where
-that left each step.
+**Status:** the original sequence is recorded, including implemented work,
+negative measurements, and deferred fleet work. The tracker is [#9345](https://github.com/OpenAgentsInc/openagents/issues/9345).
+Adapter transfer measurements remain open in
+[#9380](https://github.com/OpenAgentsInc/openagents/issues/9380).
+The sequence below records implementation and evidence separately from
+whether a measured model or calibration map is admitted.
 
 Read [`README.md`](README.md) first for what Lev is,
 [`apple-fm-surface.md`](apple-fm-surface.md) for what is already known, and
@@ -37,13 +37,12 @@ implementation of the System One contract, and `crates/jev` and `crates/kev`
 already live here. The Apple bridge expertise lives in `psionic`.
 **Settled: here**, beside `crates/jev` and `crates/kev`.
 
-**D4 — Base model only in v1, or an adapter too?** An adapter needs Apple's
-adapter training toolkit, which is not on this machine, and it commits the
-project to retraining on Apple's release schedule.
-**Settled: base only.** The toolkit is not on this machine, and #9353 records
-the shape of the work and the reason it is not scheduled. The measurement run
-raised the stakes on this one: an adapter is now the only visible route to a
-signal worth calibrating.
+**D4 — Base model only in v1, or an adapter too?** The first release used
+the base model. The adapter implementation subsequently landed in #9353,
+and choice, band, and permutation adapters were trained and measured under
+#9363. Apple's toolkit remains an external, nonredistributable training
+dependency; it is not needed to serve an existing package. Adapter transfer
+beyond the training domain is the open measurement in #9380.
 
 **D5 — Who reads Apple's terms?** Serving the on-device model to third
 parties through the mesh, for payment, is a licensing question with a yes or
@@ -66,32 +65,52 @@ L2, marked uncalibrated in every response, or refuses when the caller sends
 
 | # | Issue | State | Evidence |
 | --- | --- | --- | --- |
-| 0 | [#9345](https://github.com/OpenAgentsInc/openagents/issues/9345) tracker | open | — |
+| 0 | [#9345](https://github.com/OpenAgentsInc/openagents/issues/9345) tracker | open | #9380 and final evidence reconciliation remain |
 | 1 | [#9346](https://github.com/OpenAgentsInc/openagents/issues/9346) behavior record | **done** | `docs/lev/measurements/2026-09-19-behavior.md` |
 | 2 | [#9347](https://github.com/OpenAgentsInc/openagents/issues/9347) contract types, schema compiler | **done** | 22 unit tests, adversarial option text |
-| 3 | [#9348](https://github.com/OpenAgentsInc/openagents/issues/9348) bridge seam, isolation | **done** | sibling 0.62, absent 0.62, state 1.00 on live hardware |
+| 3 | [#9348](https://github.com/OpenAgentsInc/openagents/issues/9348) bridge seam, isolation | **done** | historical isolation record; live startup floor passed in `measurements/2026-09-20-admission-live.md` (#9389) |
 | 4 | [#9349](https://github.com/OpenAgentsInc/openagents/issues/9349) estimators | **done** | seeds reproduce 16/16 in and across processes |
-| 5 | [#9350](https://github.com/OpenAgentsInc/openagents/issues/9350) calibration map | **done, negative** | machinery built; no family's map passes the admission gate at this suite size |
+| 5 | [#9350](https://github.com/OpenAgentsInc/openagents/issues/9350) calibration map | **done** | historical negative result; routing subsequently admitted on the larger suite; see current release manifests |
 | 6 | [#9351](https://github.com/OpenAgentsInc/openagents/issues/9351) `lev-serve` | **done** | an unmodified `jev` client round-trips all three types |
 | 7 | [#9352](https://github.com/OpenAgentsInc/openagents/issues/9352) band readout | **done, negative** | implemented; the band is constant on the base model, so nothing fits |
-| 8 | [#9353](https://github.com/OpenAgentsInc/openagents/issues/9353) adapter lane | deferred | Apple's toolkit is an external dependency |
+| 8 | [#9353](https://github.com/OpenAgentsInc/openagents/issues/9353) adapter lane | **done** | `crates/lev/src/adapter.rs`, `training/lev-adapter/`; trained packages measured in #9363 |
 | 9 | [#9354](https://github.com/OpenAgentsInc/openagents/issues/9354) comparison and disposition | **done** | `disposition.md`, four doors on one suite |
-| 10 | [#9355](https://github.com/OpenAgentsInc/openagents/issues/9355) mesh row | **closed** | licensing resolved yes; refile against a disposition |
+| 10 | [#9355](https://github.com/OpenAgentsInc/openagents/issues/9355) mesh row | **closed, licensing resolved** | fleet behavior remains specified in `mesh-plan.md`; closure does not claim fleet implementation |
 
-Steps 5 and 7 finished with negative results rather than with a feature, and
-that is worth stating precisely. The calibration machinery works: a binned
-map with Jeffreys smoothing, per-family fitting on a held-out split, scoring,
-a record, and an admission gate that requires a map to beat the raw signal on
-items it was not fitted on. Hosted Jev's map passes that gate. None of Lev's
-does, because fitting five bins on six to twelve items degrades a signal more
-often than it improves one. The fix is suite size, which is authoring work.
+Step 5 initially finished with a negative result on `support-v1`. Later,
+larger-suite records admitted routing. The current `lev-adapted@1` manifest
+references an admitted routing map; its severity and urgency records are
+unverifiable. The band and permutation manifests (`lev-adapted@2` and `@3`)
+still have empty `evalRef` arrays. A historical fitted map or training result
+does not establish admission for an unmeasured workload.
 
-The band readout is likewise implemented end to end and produces `likely` on
-every item, including the wrong ones, so there is nothing to fit. That needs
-an adapter, which needs a toolkit that is not on this machine.
+Step 7 found a constant band on the base model. The trained band adapter
+subsequently produced a varying signal, recorded in
+[`measurements/2026-09-19-adapter-band.md`](measurements/2026-09-19-adapter-band.md).
+The later flip-rate record withdrew improvements that did not clear the
+measured noise floor; see
+[`measurements/2026-09-19-flip-rate-variance.md`](measurements/2026-09-19-flip-rate-variance.md).
 
-What ships is a typed, shape-guaranteed, deterministic choice at no marginal
-cost, with an approximate confidence whose meaning every response states.
+## Remaining evidence
+
+- #9389 is complete: the live startup admission probe is recorded in
+  [`measurements/2026-09-20-admission-live.md`](measurements/2026-09-20-admission-live.md).
+- #9380 remains open: band and permutation adapters on `coder-turns-v1`,
+  Lev on `external-v1`, the domain gaps and disposition, and release evidence
+  references remain to be completed and reconciled.
+- #9398 remains open: the base state-budget sweep is retained, but the
+  admitted choice adapter still needs the same eleven rungs. See
+  [`../decision-models/2026-09-20-state-budget.md`](../decision-models/2026-09-20-state-budget.md).
+- #9382, #9393, and #9426 track quiet timing, deployment comparisons, and the
+  remaining hardware verification. Do not treat implementation status here
+  as evidence that those measurements ran.
+
+The detailed issue descriptions below preserve the original design brief.
+Where the original probability rule differs from the implemented door,
+`lev-serve` returns explicitly uncalibrated sampling frequencies unless the
+caller requests `extensions.require_calibration`. The calibration metadata,
+loaded maps, and current manifest determine what a particular invocation can
+claim. L1 remains an internal choice-only path.
 
 ## [Lev] Apple FM decision-model roadmap and tracking
 
@@ -292,8 +311,9 @@ Acceptance:
 
 ## [Lev 8] The adapter lane
 
-Part of [Lev]. **Gated on D4 and on obtaining Apple's adapter training
-toolkit, which is not on this machine.**
+Part of [Lev]. **Originally gated on D4 and obtaining Apple's adapter training
+toolkit.** The implementation and training lane are now complete; the toolkit
+remains an external prerequisite for another training run.
 
 - Convert suite records to the toolkit's dataset shape: JSON Lines, one
   message array per line, `response_format` on the user message for the
