@@ -1,0 +1,36 @@
+{
+  "command": [
+    "./scripts/verify-rust.sh",
+    "--with-metal"
+  ],
+  "source": "4d8d3dd787e934f9ad26ef1151dbd11ea66d8c5d",
+  "git_status": "?? .claude/\n",
+  "started_utc": "2026-09-20T21:26:14.715888+00:00",
+  "environment_removed": [
+    "KEV_TEST_DEVICE",
+    "KEV_VARIANT",
+    "KEV_ARTIFACT_DIR",
+    "KEV_BASE_DIR",
+    "LEV_BRIDGE_ALLOW_UNSIGNED",
+    "LEV_BRIDGE_DEADLINE_MS"
+  ],
+  "environment_overrides": {
+    "CARGO_TARGET_DIR": "/tmp/openagents-supervision/root-target",
+    "LEV_BRIDGE_BIN": "/Users/christopherdavid/work/openagents/swift/lev-bridge/.build/release/lev-bridge",
+    "LEV_OS_BUILD": "25E246"
+  },
+  "load_before": [
+    2.916015625,
+    2.83154296875,
+    3.44482421875
+  ],
+  "exit_code": 101,
+  "finished_utc": "2026-09-20T23:05:02.192823+00:00",
+  "seconds": 5927.405387166001,
+  "load_after": [
+    10.8916015625,
+    10.66064453125,
+    14.8251953125
+  ],
+  "log_sha256": "ee684f02eec098e448b0b321e740338ab1892e21c131b3f2ca4a09b67f7b66c7"
+}

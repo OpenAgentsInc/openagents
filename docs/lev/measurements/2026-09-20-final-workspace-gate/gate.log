@@ -1,0 +1,2560 @@
+Gate: Rust 1.97.1, rustfmt style edition 2024.
+.........
+----------------------------------------------------------------------
+Ran 9 tests in 0.020s
+
+OK
+    Checking subtle v2.6.1
+    Checking inout v0.2.2
+    Checking nostr v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr)
+    Checking atif v0.1.0 (/Users/christopherdavid/work/openagents/crates/atif)
+    Checking coder-boundary v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-boundary)
+    Checking coder-terminal v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-terminal)
+    Checking wait-timeout v0.2.1
+    Checking bit-vec v0.8.0
+    Checking fnv v1.0.7
+    Checking quick-error v1.2.3
+    Checking rand_xorshift v0.4.0
+    Checking unarray v0.1.4
+    Checking hkdf v0.13.0
+    Checking kev v0.1.0 (/Users/christopherdavid/work/openagents/crates/kev)
+    Checking rustls v0.23.45
+    Checking cipher v0.5.2
+    Checking rusty-fork v0.3.1
+    Checking bit-set v0.8.0
+    Checking proptest v1.11.0
+    Checking chacha20 v0.10.2
+    Checking capability v0.1.0 (/Users/christopherdavid/work/openagents/crates/capability)
+    Checking rand v0.10.2
+    Checking postgres-protocol v0.6.12
+    Checking postgres-types v0.2.14
+    Checking tokio-rustls v0.26.5
+    Checking tungstenite v0.30.0
+    Checking tokio-postgres v0.7.18
+    Checking hyper-rustls v0.27.9
+    Checking tokio-tungstenite v0.30.0
+    Checking reqwest v0.12.28
+    Checking nostr-relay v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr-relay)
+    Checking jev v0.1.0 (/Users/christopherdavid/work/openagents/crates/jev)
+    Checking gym v0.1.0 (/Users/christopherdavid/work/openagents/crates/gym)
+    Checking coder v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder)
+    Checking lev v0.1.0 (/Users/christopherdavid/work/openagents/crates/lev)
+    Checking coderbench v0.1.0 (/Users/christopherdavid/work/openagents/crates/coderbench)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.60s
+    Checking hyper-rustls v0.27.9
+    Checking atif v0.1.0 (/Users/christopherdavid/work/openagents/crates/atif)
+    Checking coder-boundary v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-boundary)
+    Checking coder-terminal v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-terminal)
+    Checking nostr v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr)
+    Checking kev v0.1.0 (/Users/christopherdavid/work/openagents/crates/kev)
+    Checking reqwest v0.12.28
+    Checking capability v0.1.0 (/Users/christopherdavid/work/openagents/crates/capability)
+    Checking nostr-relay v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr-relay)
+    Checking jev v0.1.0 (/Users/christopherdavid/work/openagents/crates/jev)
+    Checking gym v0.1.0 (/Users/christopherdavid/work/openagents/crates/gym)
+    Checking coder v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder)
+    Checking lev v0.1.0 (/Users/christopherdavid/work/openagents/crates/lev)
+    Checking coderbench v0.1.0 (/Users/christopherdavid/work/openagents/crates/coderbench)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.97s
+   Compiling serde_core v1.0.229
+   Compiling subtle v2.6.1
+   Compiling mio v1.2.3
+   Compiling thiserror v2.0.20
+   Compiling futures-util v0.3.34
+   Compiling zerofrom v0.1.8
+   Compiling tracing v0.1.44
+   Compiling inout v0.2.2
+   Compiling unicode-truncate v2.0.1
+   Compiling secp256k1 v0.31.1
+   Compiling fnv v1.0.7
+   Compiling bytemuck v1.25.2
+   Compiling wait-timeout v0.2.1
+   Compiling bit-vec v0.8.0
+   Compiling quick-error v1.2.3
+   Compiling rand_xorshift v0.4.0
+   Compiling unarray v0.1.4
+   Compiling hkdf v0.13.0
+   Compiling rustls v0.23.45
+   Compiling yoke v0.8.3
+   Compiling darling_core v0.20.11
+   Compiling cipher v0.5.2
+   Compiling rusty-fork v0.3.1
+   Compiling half v2.7.1
+   Compiling num-complex v0.4.6
+   Compiling dyn-stack v0.13.2
+   Compiling bit-set v0.8.0
+   Compiling tokio v1.53.1
+   Compiling signal-hook-mio v0.2.5
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling chacha20 v0.10.2
+   Compiling crossterm v0.29.0
+   Compiling proptest v1.11.0
+   Compiling pulp v0.22.3
+   Compiling float8 v0.7.0
+   Compiling rand v0.10.2
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling postgres-protocol v0.6.12
+   Compiling serde v1.0.229
+   Compiling indexmap v2.14.2
+   Compiling hashbrown v0.16.1
+   Compiling monostate v0.1.18
+   Compiling darling_macro v0.20.11
+   Compiling postgres-types v0.2.14
+   Compiling darling v0.20.11
+   Compiling icu_provider v2.3.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling compact_str v0.9.1
+   Compiling coder-boundary v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-boundary)
+   Compiling dary_heap v0.3.9
+   Compiling spm_precompiled v0.1.4
+   Compiling ahash v0.8.12
+   Compiling kasuari v0.4.12
+   Compiling serde_json v1.0.151
+   Compiling zip v8.6.0
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling tungstenite v0.30.0
+   Compiling ratatui-core v0.1.2
+   Compiling derive_builder_core v0.20.2
+   Compiling nostr v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr)
+   Compiling atif v0.1.0 (/Users/christopherdavid/work/openagents/crates/atif)
+   Compiling safetensors v0.8.0
+   Compiling idna_adapter v1.2.2
+   Compiling derive_builder_macro v0.20.2
+   Compiling tokio-rustls v0.26.5
+   Compiling tokio-util v0.7.19
+   Compiling hyper v1.11.1
+   Compiling tower v0.5.3
+   Compiling supervise v0.1.0 (/Users/christopherdavid/work/openagents/crates/supervise)
+   Compiling ratatui-widgets v0.3.2
+   Compiling ratatui-crossterm v0.1.2
+   Compiling gemm-common v0.19.0
+   Compiling idna v1.1.0
+   Compiling derive_builder v0.20.2
+   Compiling capability v0.1.0 (/Users/christopherdavid/work/openagents/crates/capability)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling url v2.5.8
+   Compiling tokio-postgres v0.7.18
+   Compiling gemm-f32 v0.19.0
+   Compiling gemm-f64 v0.19.0
+   Compiling gemm-c32 v0.19.0
+   Compiling hyper-util v0.1.20
+   Compiling gemm-c64 v0.19.0
+   Compiling ratatui-macros v0.7.2
+   Compiling tower-http v0.6.11
+   Compiling ratatui v0.30.2
+   Compiling tokenizers v0.22.2
+   Compiling tokenizers v0.23.2
+   Compiling gemm-f16 v0.19.0
+   Compiling hyper-rustls v0.27.9
+   Compiling coder-terminal v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-terminal)
+   Compiling reqwest v0.12.28
+   Compiling nostr-relay v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr-relay)
+   Compiling gemm v0.19.0
+   Compiling jev v0.1.0 (/Users/christopherdavid/work/openagents/crates/jev)
+   Compiling gym v0.1.0 (/Users/christopherdavid/work/openagents/crates/gym)
+   Compiling coder v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder)
+   Compiling candle-core v0.11.0
+   Compiling lev v0.1.0 (/Users/christopherdavid/work/openagents/crates/lev)
+   Compiling coderbench v0.1.0 (/Users/christopherdavid/work/openagents/crates/coderbench)
+   Compiling candle-nn v0.11.0
+   Compiling kev v0.1.0 (/Users/christopherdavid/work/openagents/crates/kev)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 24.72s
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/atif-465d748d6ffd8562)
+
+running 24 tests
+test document::tests::timestamps_format_in_utc ... ok
+test document::tests::a_pipeline_is_what_its_first_program_does ... ok
+test document::tests::a_step_round_trips_through_json ... ok
+test log::tests::a_session_id_leads_with_its_start_time ... ok
+test document::tests::a_failed_decision_call_keeps_its_reason ... ok
+test document::tests::usage_totals_across_the_session ... ok
+test document::tests::a_document_reports_the_session_it_came_from ... ok
+test document::tests::a_digest_answers_what_was_asked_not_how_it_was_spelled ... ok
+test document::tests::a_call_and_its_result_are_one_step ... ok
+test document::tests::a_decision_call_records_the_door_and_the_state_it_read ... ok
+test document::tests::decisions_and_tool_calls_count_separately ... ok
+test document::tests::repeated_shell_commands_report_as_waste ... ok
+test log::tests::a_file_with_no_session_record_is_refused ... ok
+test log::tests::a_log_without_an_ending_reads_as_interrupted ... ok
+test log::tests::a_finished_log_refuses_another_step ... ok
+test log::tests::a_half_written_line_does_not_cost_the_lines_before_it ... ok
+test log::tests::the_lifecycle_is_one_header_then_steps_then_one_end ... ok
+test log::tests::two_sessions_cannot_share_a_file ... ok
+test log::tests::a_log_round_trips_through_a_document ... ok
+test log::tests::the_whole_reader_refuses_an_interrupted_session ... ok
+test log::tests::a_named_log_lands_where_it_was_told_to ... ok
+test log::tests::logs_list_oldest_first ... ok
+test log::tests::an_interior_line_that_is_not_utf8_is_a_fault_on_its_own ... ok
+test log::tests::a_final_record_torn_at_any_byte_keeps_the_prefix ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/capability-06ceca7eacf47d75)
+
+running 7 tests
+test bounded::tests::a_command_that_fails_to_spawn_fails_the_run ... ok
+test bounded::tests::a_probe_runs_from_inside_an_async_host ... ok
+test bounded::tests::a_bounded_run_reads_what_the_command_said ... ok
+test bounded::tests::a_nonzero_exit_is_an_answer_not_a_stop ... ok
+test bounded::tests::voluminous_output_is_kept_to_the_cap_and_marked ... ok
+test bounded::tests::a_hung_command_is_stopped_at_the_wall ... ok
+test bounded::tests::a_hung_commands_children_do_not_outlive_it ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running unittests src/bin/capability-trust.rs (/tmp/openagents-supervision/root-target/debug/deps/capability_trust-62253551d9049fa1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contract.rs (/tmp/openagents-supervision/root-target/debug/deps/contract-d7bbb65ca39c73a7)
+
+running 29 tests
+test a_mismatched_argv_is_refused_at_load ... ok
+test a_relative_script_is_refused_at_approval ... ok
+test a_changed_manifest_loses_its_approval ... ok
+test a_store_inside_the_workspace_approves_nothing ... ok
+test a_store_inside_the_manifests_repository_approves_nothing ... ok
+test a_symlinked_manifest_cannot_move_its_repository_trust_boundary ... ok
+test an_unapproved_decision_verifies_nothing ... ok
+test an_unapproved_manifest_stays_inert ... ok
+test an_approval_names_real_paths ... ok
+test a_transport_this_host_does_not_run_stays_unprobed ... ok
+
+running 1 test
+test reading_a_registry_runs_nothing ... ok
+test an_unresolvable_argv_word_is_refused_at_approval ... ok
+test the_checked_in_manifest_parses ... ok
+test deleting_the_approval_store_revokes_cached_approval ... ok
+test a_failed_probe_is_unknown ... ok
+test a_verified_decision_carries_the_record_it_checked ... ok
+test a_probe_runs_inside_an_async_host ... ok
+test a_nonzero_probe_naming_its_acceptance_is_present ... ok
+test a_relative_script_appearing_in_the_workspace_approves_nothing ... ok
+test a_nonzero_probe_naming_nothing_is_unknown ... ok
+test each_argv_alias_is_verified_even_when_targets_were_identical ... ok
+test a_declared_refusal_is_unavailable ... ok
+test retargeting_an_argv_symlink_invalidates_approval ... ok
+test a_changed_argv_script_loses_its_approval ... ok
+test an_approved_manifest_runs_its_probe ... ok
+test a_noisy_probe_is_unknown ... ok
+test a_changed_adapter_loses_its_approval ... ok
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.26s
+
+
+running 1 test
+test a_hung_probe_is_unknown ... ok
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.10s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.12s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.12s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.12s
+
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/coder-ab6feca02a1dee8e)
+
+running 170 tests
+test about::tests::the_openagents_checkout_is_own_source ... ok
+test about::tests::the_block_does_not_claim_classifier_usage ... ok
+test classify::tests::a_confident_respond_routes_to_respond ... ok
+test about::tests::outside_git_the_block_says_so_and_keeps_the_directory ... ok
+test classify::tests::the_choice_is_the_shell_route ... ok
+test classify::tests::the_choice_rules_at_any_confidence ... ok
+test agent::tests::a_retry_changes_the_next_instructions ... ok
+test classify::tests::an_unreadable_answer_halts_and_none_answers ... ok
+test about::tests::a_decoy_terminal_directory_is_not_own_source ... ok
+test classify::tests::every_action_names_and_parses ... ok
+test delegate::tests::a_bound_reads_back_the_way_it_was_stated ... ok
+test agent::tests::classify_without_a_key_skips_with_a_note ... ok
+test classify::tests::the_state_is_a_structured_object ... ok
+test agent::tests::a_reply_streams_and_joins_the_transcript ... ok
+test agent::tests::an_unsupported_plan_is_refused_without_a_repair ... ok
+test classify::tests::a_damage_answer_is_not_read ... ok
+test agent::tests::a_quoted_example_runs_nothing ... ok
+test agent::tests::a_clarifying_turn_runs_nothing ... ok
+test agent::tests::an_answering_permit_runs_nothing ... ok
+test classify::tests::the_sets_ask_one_question_each ... ok
+test delegate::tests::a_manifest_changed_since_approval_runs_nothing ... ok
+test delegate::tests::a_grant_covering_the_store_refuses_rather_than_narrowing ... ok
+test agent::tests::a_repaired_exhaustion_answers_in_prose ... ok
+test agent::tests::a_permitted_plan_runs ... ok
+test agent::tests::prose_after_exhaustion_is_the_answer ... ok
+test delegate::tests::a_reapproved_manifest_still_refuses_the_surveyed_executor ... ok
+test delegate::tests::a_revoked_approval_runs_nothing ... ok
+test delegate::tests::a_pinned_alias_inside_a_grant_refuses_the_delegation ... ok
+test delegate::tests::a_pinned_alias_behind_a_writable_symlink_ancestor_refuses ... ok
+test delegate::tests::a_pinned_script_is_sealed_for_the_delegate ... ok
+test delegate::tests::an_adapter_changed_since_approval_runs_nothing ... ok
+test delegate::tests::a_trust_store_alias_under_a_writable_grant_refuses ... ok
+test agent::tests::an_exhausted_loop_ends_as_a_refusal_with_what_it_saw ... ok
+test delegate::tests::an_unisolated_write_is_refused_before_it_spawns ... ok
+test delegate::tests::an_untenable_bound_or_width_refuses_before_anything_spawns ... ok
+test delegate::tests::answers_compare_without_their_whitespace ... ok
+test delegate::tests::an_overbroad_grant_refuses_the_delegation_rather_than_narrowing_it ... ok
+test agent::tests::the_instructions_tell_the_application_from_the_workspace ... ok
+test delegate::tests::a_noisy_delegate_is_bounded_while_it_prints ... ok
+test delegate::tests::a_delegate_answers_and_is_graded ... ok
+test delegate::tests::the_answer_is_what_follows_the_last_mark ... ok
+test delegate::tests::a_cancelled_read_only_delegation_releases_its_checkout ... ok
+test delegate::tests::only_a_devin_worktree_delegation_is_trusted ... ok
+test delegate::tests::the_trust_store_follows_the_executor_data_home ... ok
+test delegate::tests::a_missing_trust_store_is_created ... ok
+test executor_door::tests::a_lone_turn_is_the_prompt ... ok
+test executor_door::tests::an_unknown_slug_refuses_to_open ... ok
+test delegate::tests::a_worktree_is_trusted_exactly_and_then_withdrawn ... ok
+test executor_door::tests::the_prompt_carries_instructions_history_and_the_last_turn ... ok
+test generate::tests::a_door_that_cannot_name_its_model_says_unknown ... ok
+test generate::tests::a_keepalive_is_not_an_event ... ok
+test generate::tests::a_lane_is_a_model_under_a_short_name ... ok
+test generate::tests::a_last_event_without_a_blank_line_still_counts ... ok
+test generate::tests::a_chunk_boundary_anywhere_leaves_the_answer_whole ... ok
+test generate::tests::a_quiet_door_files_under_two_causes ... ok
+test generate::tests::a_record_that_is_not_json_or_not_utf8_is_a_failure_not_a_skip ... ok
+test generate::tests::a_stream_arriving_one_byte_at_a_time_reads_the_same ... ok
+test generate::tests::a_stream_that_ends_before_completing_is_a_failure_that_keeps_the_text ... ok
+test generate::tests::an_incomplete_response_is_a_failure_with_its_reason ... ok
+test generate::tests::data_lines_of_one_event_join_with_a_newline ... ok
+test generate::tests::events_after_completed_are_a_failure ... ok
+test generate::tests::no_key_means_no_door ... ok
+test generate::tests::only_a_door_that_picks_its_model_takes_a_lane ... ok
+test generate::tests::the_body_speaks_responses_wire_format ... ok
+test generate::tests::the_relay_failures_file_under_four_causes ... ok
+test generate::tests::the_stub_answers_and_reports_no_usage ... ok
+test generate::tests::two_configured_doors_are_a_refusal_rather_than_a_choice ... ok
+test permit::tests::a_withdrawn_permit_stays_withdrawn ... ok
+test permit::tests::only_an_answering_route_carries_execution ... ok
+test permit::tests::the_operator_can_turn_the_shell_off ... ok
+test program::tests::a_decide_step_that_inlines_its_wording_is_refused ... ok
+test program::tests::a_repeated_step_name_is_refused ... ok
+test delegate::tests::the_wrapped_command_repoints_only_tmpdir ... ok
+test program::tests::a_version_this_host_does_not_know_is_refused ... ok
+test program::tests::a_source_that_is_not_a_slug_or_not_on_a_query_step_is_refused ... ok
+test program::tests::an_unrecognized_step_kind_refuses_the_whole_program ... ok
+test program::tests::the_fan_out_program_keeps_its_bounds ... ok
+test program::tests::the_query_is_the_filter_a_relay_would_answer ... ok
+test program::tests::the_registry_lists_the_five_programs_the_repository_carries ... ok
+test program::tests::the_read_records_the_query_beside_the_answer ... ok
+test questions::tests::a_set_this_host_does_not_read_is_refused ... ok
+test questions::tests::a_supplied_choice_takes_its_options_from_the_run ... ok
+test questions::tests::a_fixed_set_asks_what_the_file_says ... ok
+test questions::tests::a_template_that_names_no_requirement_is_refused ... ok
+test questions::tests::a_template_asks_once_per_requirement_and_names_each_one ... ok
+test questions::tests::the_registry_holds_the_sets_the_first_program_names ... ok
+test relay::tests::a_directory_in_the_identitys_place_is_an_error_not_a_first_run ... ok
+test relay::tests::a_directory_that_cannot_take_the_file_fails_the_install_and_leaves_nothing ... ok
+test relay::tests::a_worker_answers_at_the_version_the_request_named ... ok
+test generate::tests::a_line_that_never_ends_is_bounded ... ok
+test relay::tests::a_first_run_installs_a_private_identity_and_a_second_run_reads_it ... ok
+test relay::tests::an_unreadable_identity_is_an_error_not_a_first_run ... ok
+test relay::tests::identity_round_trips_a_hex_secret ... ok
+test relay::tests::npub_and_hex_pubkeys_parse ... ok
+test relay::tests::payload_versions_are_explicit ... ok
+test relay::tests::signed_auth_and_request_events_verify ... ok
+test repo::tests::terms_pick_identifiers_and_skip_stop_words ... ok
+test runtime::tests::a_request_supplies_its_task_list ... ok
+test runtime::tests::a_request_with_no_list_supplies_no_work ... ok
+test runtime::tests::a_selection_names_a_program_or_none ... ok
+test runtime::tests::acceptance_grades_each_item_against_what_it_expects ... ok
+test runtime::tests::an_unrepresentable_deadline_refuses_before_any_step_runs ... ok
+test runtime::tests::executor_claims_cannot_admit_an_unsupported_bound ... ok
+test relay::tests::concurrent_first_runs_agree_on_one_identity ... ok
+test shell::tests::a_command_without_a_permit_never_spawns ... ok
+test shell::tests::a_denied_command_never_spawns ... ok
+test shell::tests::a_fence_surrounded_by_prose_is_not_a_plan ... ok
+test shell::tests::a_fenced_plan_parses ... ok
+test shell::tests::a_json_plan_parses ... ok
+test shell::tests::a_malformed_command_refuses_the_plan ... ok
+test shell::tests::a_plan_is_refused_without_a_permit_to_run_it ... ok
+test shell::tests::a_command_runs_and_captures ... ok
+test shell::tests::an_example_in_prose_is_not_a_plan ... ok
+test shell::tests::an_unreadable_plan_becomes_the_answer ... ok
+test shell::tests::an_unsupported_version_is_refused ... ok
+test delegate::tests::a_narrating_delegate_is_graded_on_what_follows_the_mark ... ok
+test shell::tests::prose_is_not_a_plan ... ok
+test shell::tests::the_deny_list_catches_endings ... ok
+test shell::tests::too_many_commands_refuse_the_plan ... ok
+test source::tests::a_lookup_that_overflows_can_refuse_instead ... ok
+test source::tests::a_path_two_items_touch_is_recorded ... ok
+test source::tests::a_source_ordering_by_identifier_sorts_before_it_bounds ... ok
+test source::tests::a_source_that_leaves_the_workspace_is_refused ... ok
+test source::tests::a_work_item_states_what_it_expects ... ok
+test source::tests::a_work_list_reads_back_the_paths_it_names ... ok
+test source::tests::a_work_list_this_host_does_not_read_is_refused ... ok
+test source::tests::six_tasks_over_six_files_collide_over_nothing ... ok
+test source::tests::the_order_is_recorded_and_the_bound_is_applied ... ok
+test source::tests::the_repositorys_sources_read ... ok
+test source::tests::the_request_is_a_source_like_any_other ... ok
+test source::tests::work_that_comes_after_nothing_in_the_list_runs ... ok
+test source::tests::work_that_comes_after_work_in_the_same_list_is_dropped ... ok
+test shell::tests::output_is_bounded_and_the_rest_is_counted ... ok
+test survey::tests::a_machine_with_no_manifests_surveys_to_nothing ... ok
+test survey::tests::a_repositorys_own_trust_file_approves_nothing ... ok
+test survey::tests::a_capability_that_is_not_a_route_drives_nothing ... ok
+test survey::tests::a_survey_reads_the_repositorys_capabilities_and_programs ... ok
+test survey::tests::an_executor_is_built_from_what_the_probe_resolved ... ok
+test survey::tests::both_reads_reach_the_trace_as_checks ... ok
+test survey::tests::coderbench_reads_both_reads_as_the_checks_the_task_names ... ok
+test trace::tests::a_failed_write_stops_the_recording_rather_than_the_turn ... ok
+test trace::tests::a_recorder_writes_steps_as_they_happen ... ok
+test trace::tests::the_switch_turns_recording_off_and_the_directory_moves_it ... ok
+test turn::tests::a_refused_plan_finishes_refused ... ok
+test turn::tests::a_turn_without_a_classifier_answers ... ok
+test turn::tests::a_turn_without_a_door_never_reaches_selection ... ok
+test trace::tests::a_shell_call_keeps_its_output_and_names_what_was_shown ... ok
+test worktree::tests::a_contended_metadata_lock_times_out_and_then_recovers ... ok
+
+running 1 test
+test worktree::tests::child_attempts_the_metadata_lock ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+
+test worktree::tests::a_different_process_cannot_take_the_metadata_lock ... ok
+test delegate::tests::a_read_only_delegate_writes_nowhere_but_scratch_and_grants ... ok
+test worktree::tests::child_attempts_the_metadata_lock ... ok
+test repo::tests::a_repo_discovers_this_workspace ... ok
+test worktree::tests::a_parent_symlink_cannot_create_a_checkout_outside_the_repository ... ok
+test worktree::tests::linked_checkouts_share_the_same_metadata_lock ... ok
+test worktree::tests::a_checkout_is_seeded_with_a_scratch_git_directory_at_its_base ... ok
+test delegate::tests::a_refused_delegate_did_not_answer_correctly ... ok
+test delegate::tests::an_approved_delegate_writes_its_state_but_never_its_approval ... ok
+test worktree::tests::simultaneous_additions_and_removals_keep_all_answers ... ok
+test delegate::tests::a_failed_writing_delegate_keeps_its_checkout ... ok
+test delegate::tests::a_devin_worktree_delegation_is_trusted_for_its_run ... ok
+test delegate::tests::results_keep_the_order_the_tasks_were_given ... ok
+test delegate::tests::a_worktree_delegation_runs_in_its_own_checkout ... ok
+test delegate::tests::a_writing_delegate_writes_only_its_checkout_and_keeps_it ... ok
+test delegate::tests::the_caller_environment_passes_through_but_tmpdir_is_private ... ok
+test delegate::tests::six_worktrees_do_not_collide ... ok
+test delegate::tests::refusal_timeout_and_failure_stay_apart ... ok
+test delegate::tests::a_timed_out_delegation_ends_its_descendants ... ok
+test delegate::tests::the_fan_out_is_concurrent_under_its_bound ... ok
+test shell::tests::a_timed_out_command_leaves_nothing_behind ... ok
+test delegate::tests::a_cancelled_writing_delegation_keeps_its_checkout_and_its_edits ... ok
+
+test result: ok. 170 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.55s
+
+     Running unittests src/main.rs (/tmp/openagents-supervision/root-target/debug/deps/coder-9868e57f0d68f046)
+
+running 5 tests
+test cli::tests::nothing_is_the_terminal ... ok
+test cli::tests::the_terminal_takes_a_named_trace ... ok
+test cli::tests::the_prompt_reads_from_either_side_of_the_flags ... ok
+test cli::tests::a_wrong_command_line_says_so ... ok
+test cli::tests::a_prompt_file_implies_print ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/coder-worker.rs (/tmp/openagents-supervision/root-target/debug/deps/coder_worker-9ef2c414901cb591)
+
+running 11 tests
+test tests::only_an_open_worker_off_loopback_is_refused_deployment ... ok
+test tests::the_allowlist_reads_npub_and_hex_and_refuses_typos ... ok
+test tests::events_that_are_not_requests_to_this_worker_are_set_aside ... ok
+test tests::a_replayed_old_request_is_refused_stale ... ok
+test tests::a_full_worker_refuses_busy_and_still_answers_probes ... ok
+test tests::a_model_door_refuses_a_writing_delegation ... ok
+test tests::a_customer_off_the_allowlist_is_refused_with_a_typed_code ... ok
+test tests::unreadable_content_is_refused_malformed ... ok
+test tests::unsupported_requests_refuse_before_generation_or_configured_decline ... ok
+test tests::the_worker_preserves_supported_request_versions ... ok
+test tests::a_job_that_outruns_its_bound_is_refused_timed_out ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/delegation.rs (/tmp/openagents-supervision/root-target/debug/deps/delegation-620c4bb5574fd7e2)
+
+running 4 tests
+test a_live_delegation_answers_one_read_only_question ... ignored, needs the Devin CLI and a workspace it trusts
+test a_live_fan_out_of_six_runs_in_parallel ... ignored, needs the Devin CLI and a workspace it trusts
+test six_recorded_delegations_read_back_as_the_golden_does ... ok
+test the_three_ways_a_delegation_does_not_answer_stay_apart ... ok
+
+test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.79s
+
+     Running tests/gateway_stream.rs (/tmp/openagents-supervision/root-target/debug/deps/gateway_stream-2c12673c17113a98)
+
+running 9 tests
+test the_bounds_are_thirty_seconds_two_minutes_and_a_second ... ok
+test a_stream_that_closes_before_completing_is_not_an_answer ... ok
+test a_lanes_reasoning_does_not_reach_the_answer ... ok
+test both_lanes_read_through_one_reader ... ok
+test a_model_id_is_written_in_one_place ... ok
+test a_door_that_sends_headers_and_stops_is_not_asked_again ... ok
+test a_partial_answer_says_how_much_arrived_and_is_not_repeated ... ok
+test a_door_that_talks_forever_is_bounded ... ok
+test a_door_that_never_answers_is_asked_again_and_then_reported ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+     Running tests/headless.rs (/tmp/openagents-supervision/root-target/debug/deps/headless-4d81436fb91dcadd)
+
+running 8 tests
+test a_wrong_command_line_exits_with_the_usage_code ... ok
+test help_says_what_the_flags_are ... ok
+test two_configured_doors_end_the_run_rather_than_measuring_one ... ok
+test a_failed_turn_reports_its_cause_as_a_field ... ok
+test a_named_trace_that_cannot_be_opened_ends_the_run ... ok
+test a_headless_turn_prints_a_reply_and_records_it ... ok
+test a_headless_turn_reports_one_json_object ... ok
+test a_prompt_reads_from_a_file ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
+
+     Running tests/program_run.rs (/tmp/openagents-supervision/root-target/debug/deps/program_run-44aad35160d788e2)
+
+running 24 tests
+test a_source_this_host_does_not_resolve_refuses_the_program ... ok
+test an_executor_claim_does_not_establish_enforcement ... ok
+test a_step_kind_this_host_does_not_run_refuses_the_program ... ok
+test the_first_program_runs_live ... ignored, needs an executor, a decision door, and a workspace the executor trusts
+test a_host_that_cannot_isolate_refuses_the_fan_out ... ok
+test an_absent_executor_refuses_the_delegate_step ... ok
+test an_answer_below_the_floor_stops_the_program ... ok
+test a_bound_this_host_cannot_enforce_refuses_before_anything_runs ... ok
+test a_lookup_that_found_no_work_refuses ... ok
+test a_question_with_no_wording_refuses ... ok
+test a_turn_that_asks_for_no_program_is_unchanged ... ok
+test a_lookup_over_its_bound_refuses_rather_than_choosing ... ok
+test a_program_chosen_for_a_request_with_no_work_delegates_nothing ... ok
+test the_burn_down_briefs_its_delegates_and_judges_what_each_item_expects ... ok
+test a_file_source_is_the_path_an_explicit_list_takes ... ok
+test a_request_selects_its_program_and_runs_it ... ok
+test the_check_records_who_holds_each_bound ... ok
+test a_plan_with_no_collisions_says_nothing_about_collisions ... ok
+test a_sentence_runs_the_program_through_a_turn ... ok
+test the_lookup_holds_to_its_own_bound ... ok
+test the_first_program_runs_from_its_definition ... ok
+test the_recorded_run_is_the_path_the_task_expects ... ok
+test the_host_holds_minutes_even_when_the_executor_does_not ... ok
+test the_fan_out_runs_at_the_width_the_step_states ... ok
+
+test result: ok. 23 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.62s
+
+     Running tests/relay_binding.rs (/tmp/openagents-supervision/root-target/debug/deps/relay_binding-1af435988a8cb8be)
+
+running 25 tests
+test a_forgery_cannot_claim_a_real_events_id ... ok
+test a_bound_refusal_still_refuses_with_its_code ... ok
+test a_v1_partial_is_heard_but_never_streamed ... ok
+test a_gap_then_an_empty_result_is_not_an_answer ... ok
+test a_duplicate_partial_does_not_display_twice ... ok
+test a_bound_answer_lands_under_a_label_the_door_never_opened ... ok
+test a_repeated_sequence_ends_the_stream ... ok
+test a_bound_answer_completes_the_turn ... ok
+test an_answer_signed_by_someone_else_is_not_the_workers ... ok
+test an_answer_addressed_to_someone_else_is_not_the_answer ... ok
+test an_empty_result_is_not_completed_by_the_stream ... ok
+test a_payload_that_claims_another_version_is_not_read ... ok
+test a_payload_that_names_no_version_is_not_read ... ok
+test an_answer_for_another_job_is_skipped_and_the_real_one_lands ... ok
+test a_kind_and_type_that_do_not_pair_are_not_read ... ok
+test an_event_of_an_unexpected_kind_is_not_an_answer ... ok
+test partials_stream_only_in_the_signed_order ... ok
+test an_event_that_names_no_job_is_not_the_answer ... ok
+test an_event_that_names_no_recipient_is_not_the_answer ... ok
+test a_stream_that_outgrows_its_cap_is_refused ... ok
+test an_event_flood_is_refused ... ok
+test a_payload_with_an_unknown_type_is_not_contact ... ok
+test a_partial_without_a_sequence_is_not_contact ... ok
+test a_relabeled_old_result_is_not_the_answer ... ok
+test malformed_payloads_are_not_contact ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.02s
+
+     Running tests/relay_delegation.rs (/tmp/openagents-supervision/root-target/debug/deps/relay_delegation-0ae49df91d115756)
+
+running 8 tests
+test no_relay_to_ask_is_absent ... ok
+test a_worker_that_delegates_makes_the_capability_present ... ok
+test a_worker_without_an_executor_is_present_and_unavailable ... ok
+test a_worker_that_declines_the_probe_is_unavailable_with_its_code ... ok
+test each_task_is_one_encrypted_request_and_its_record_says_what_answered ... ok
+test a_relay_with_nobody_behind_it_is_unavailable_not_absent ... ok
+test the_workers_busy_is_a_typed_refusal_beside_the_answers ... ok
+test the_terminals_width_bounds_how_many_jobs_are_open_at_once ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.93s
+
+     Running tests/relay_job.rs (/tmp/openagents-supervision/root-target/debug/deps/relay_job-9f92135e0d9be5c3)
+
+running 5 tests
+test a_declining_worker_refuses_with_a_code ... ok
+test a_job_turn_streams_feedback_and_a_result ... ok
+test a_relay_trace_names_the_model_the_worker_used ... ok
+test an_absent_worker_fails_in_the_contact_wait ... ok
+test a_worker_that_starts_and_stops_is_not_an_absent_one ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/relay_lifecycle.rs (/tmp/openagents-supervision/root-target/debug/deps/relay_lifecycle-edf03db4e643447b)
+
+running 7 tests
+test a_closed_subscription_is_a_relay_error_not_a_silence ... ok
+test a_socket_the_relay_dropped_is_replaced_for_the_next_job ... ok
+test a_refusal_closes_its_subscription_and_keeps_the_socket ... ok
+test a_cancelled_turn_takes_its_socket_and_subscription_with_it ... ok
+test forty_jobs_share_one_socket_and_leave_no_subscription_open ... ok
+test a_relay_that_accepts_and_says_nothing_is_bounded ... ok
+test a_wait_that_ran_out_evicts_the_socket ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s
+
+     Running tests/shell_verdicts.rs (/tmp/openagents-supervision/root-target/debug/deps/shell_verdicts-24a7043481ea82ec)
+
+running 4 tests
+test the_retry_bound_is_a_typed_stop ... ok
+test a_retry_is_acted_on ... ok
+test a_pass_resets_the_retry_count ... ok
+test pass_and_stop_are_unchanged ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+     Running tests/state_caps.rs (/tmp/openagents-supervision/root-target/debug/deps/state_caps-f7539f813793125d)
+
+running 5 tests
+test sweep ... ignored, asks hosted Jev; needs TYPESAFE_API_KEY and writes rows
+test prose_is_cut_on_a_character_boundary ... ok
+test a_shell_record_is_bounded_block_by_block ... ok
+test every_real_turn_state_fits_the_budget ... ok
+test the_unbudgeted_caps_reproduce_the_suite ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/suite_questions.rs (/tmp/openagents-supervision/root-target/debug/deps/suite_questions-f488906f91446f3c)
+
+running 7 tests
+test print_wire_questions ... ignored, prints the wire question bodies for the question set generator
+test print_wire_selection ... ignored, prints the selection question body for the question set generator
+test the_retired_v1_questions_are_not_sent ... ok
+test the_question_set_is_the_production_text ... ok
+test the_selection_question_is_the_production_text ... ok
+test the_selection_question_offers_none_and_the_resolved_programs ... ok
+test the_suite_names_that_set_and_carries_no_text_of_its_own ... ok
+
+test result: ok. 5 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/trace.rs (/tmp/openagents-supervision/root-target/debug/deps/trace-2dbfeb86cefa1a67)
+
+running 2 tests
+test a_killed_session_leaves_the_steps_it_had ... ok
+test a_conversation_records_itself_as_it_runs ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/worker_lifecycle.rs (/tmp/openagents-supervision/root-target/debug/deps/worker_lifecycle-3e66c59b54f7c0b7)
+
+running 4 tests
+test check_refuses_an_open_worker_on_a_shared_relay ... ok
+test a_request_delivered_twice_is_answered_once ... ok
+test a_job_that_fails_before_running_frees_its_slot ... ok
+test a_dropped_or_restarted_relay_is_rejoined_and_resubscribed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.61s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/coder_boundary-b7396bd05d3c8f7f)
+
+running 12 tests
+test boundary::tests::a_relative_path_is_refused ... ok
+test boundary::tests::quoting_escapes_quotes_and_backslashes ... ok
+test boundary::tests::quoting_refuses_control_characters ... ok
+test boundary::tests::the_boundary_and_its_held_half_are_send ... ok
+test boundary::tests::a_missing_protected_path_is_refused ... ok
+test boundary::tests::a_missing_backend_is_a_refusal ... ok
+test boundary::tests::a_missing_writable_path_is_refused ... ok
+test boundary::tests::a_writable_path_cannot_escape_through_dotdot ... ok
+test snapshot::observe::tests::a_file_replaced_by_a_fifo_refuses_without_waiting_for_a_writer ... ok
+test boundary::tests::a_writable_path_resolves_through_a_symlinked_alias ... ok
+test snapshot::observe::tests::opening_a_root_rejects_symlinked_parent_components ... ok
+test snapshot::observe::tests::directory_collection_stops_at_its_budget ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/boundary.rs (/tmp/openagents-supervision/root-target/debug/deps/boundary-e92595487564866b)
+
+running 21 tests
+test a_relative_writable_path_is_refused ... ok
+test a_protected_path_that_is_missing_is_refused ... ok
+test a_missing_writable_path_is_an_error ... ok
+test a_readonly_writable_may_not_nest_under_a_protected_path ... ok
+test a_path_with_a_control_character_has_no_safe_spelling ... ok
+test a_checkout_may_not_be_the_protected_checkout ... ok
+test a_sealed_path_may_not_nest_under_the_checkout ... ok
+test a_writable_path_cannot_escape_through_dotdot ... ok
+test a_checkout_may_not_nest_under_a_sealed_path ... ok
+test a_writable_path_may_not_contain_a_protected_one ... ok
+test a_checkout_may_nest_under_the_protected_checkout ... ok
+test enforced::a_relative_program_is_refused ... ok
+test a_writable_path_equal_to_a_protected_one_is_refused ... ok
+test a_writable_may_not_nest_under_a_protected_path ... ok
+test a_writable_may_not_nest_under_a_sealed_path ... ok
+test a_writable_path_is_resolved_not_aliased ... ok
+test enforced::the_profile_denies_first_and_allows_after ... ok
+test enforced::a_path_that_quotes_is_escaped_not_interpreted ... ok
+test enforced::the_boundary_reaches_the_whole_process_tree ... ok
+test enforced::a_readonly_boundary_denies_writes_outside_its_scratch ... ok
+test enforced::a_writing_boundary_allows_its_checkout_inside_the_protected_one ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/snapshot.rs (/tmp/openagents-supervision/root-target/debug/deps/snapshot-e0c7532f65b79c19)
+
+running 17 tests
+test a_missing_root_is_unverifiable ... ok
+test a_byte_bound_is_unverifiable ... ok
+test a_change_to_the_roots_own_metadata_is_seen ... ok
+test an_unreadable_tree_is_unverifiable_not_clean ... ok
+test a_content_change_to_an_already_dirty_file_is_seen ... ok
+test a_rename_is_a_rename_not_a_delete_and_create ... ok
+test a_path_that_changes_kind_is_retyped ... ok
+test a_renamed_and_altered_file_reports_both ... ok
+test a_rewrite_with_identical_content_is_seen ... ok
+test an_unchanged_tree_observes_clean ... ok
+test a_renamed_directory_carries_its_entries_with_it ... ok
+test failed_entries_count_against_the_bound_too ... ok
+test replacing_a_file_with_identical_content_and_mtime_is_seen ... ok
+test an_entry_bound_is_unverifiable_not_truncated_clean ... ok
+test creation_removal_and_modification_are_seen ... ok
+test observation_is_deterministic ... ok
+test a_symlink_is_observed_not_followed ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/coder_terminal-d8d6e50d93f7f440)
+
+running 82 tests
+test editor::tests::caret_row_column_counts_wrapped_cells ... ok
+test editor::tests::a_combining_accent_edits_as_one_grapheme ... ok
+test editor::tests::typed_text_reads_back ... ok
+test editor::tests::a_zwj_emoji_sequence_is_one_step_and_one_delete ... ok
+test editor::tests::history_walks_stash_and_restore_the_draft ... ok
+test editor::tests::kill_line_start_respects_newlines ... ok
+test editor::tests::home_and_end_stay_on_the_logical_line ... ok
+test editor::tests::take_returns_and_records ... ok
+test editor::tests::backspace_steps_whole_graphemes ... ok
+test composer::tests::a_long_draft_scrolls_its_window ... ok
+test editor::tests::kill_word_eats_space_then_word ... ok
+test composer::tests::the_caret_follows_the_draft ... ok
+test editor::tests::a_resize_reflows_the_draft_and_keeps_the_caret_in_view ... ok
+test editor::tests::the_window_scrolls_to_keep_the_caret_visible ... ok
+test composer::tests::an_empty_composer_draws_two_rows_and_the_prompt ... ok
+test composer::tests::a_wrapped_draft_breaks_at_the_last_space ... ok
+test editor::tests::up_and_down_report_the_edges ... ok
+test editor::tests::vertical_motion_keeps_a_column_across_short_rows ... ok
+test editor::tests::wide_characters_count_two_cells_toward_the_caret_column ... ok
+test composer::tests::a_rail_too_wide_is_left_out ... ok
+test editor::tests::word_motions_land_on_boundaries ... ok
+test composer::tests::rails_draw_left_and_right_when_they_fit ... ok
+test events::tests::a_control_event_to_a_gone_inbox_says_so ... ok
+test guard::tests::a_failed_step_undoes_the_ones_before_it_in_reverse ... ok
+test guard::tests::a_failed_first_step_leaves_nothing_to_undo ... ok
+test guard::tests::dropping_the_guard_restores_everything_in_reverse ... ok
+test guard::tests::restore_reports_and_drop_does_not_repeat_it ... ok
+test events::tests::drain_keeps_text_and_controls_in_order ... ok
+test hairline::tests::an_area_too_small_for_a_frame_is_left_alone ... ok
+test hairline::tests::a_rail_the_rule_cannot_hold_whole_is_left_out ... ok
+test guard::tests::the_hook_and_the_guard_share_one_list_so_neither_restores_twice ... ok
+test hairline::tests::a_rail_outside_the_buffer_draws_nothing ... ok
+test events::tests::text_past_the_backlog_is_dropped_and_counted_while_controls_pass ... ok
+test hairline::tests::each_rail_carries_its_own_style ... ok
+test hairline::tests::the_frame_draws_its_rules_and_its_corners ... ok
+test intensity::tests::each_step_owns_its_amber ... ok
+test guard::tests::an_unwinding_panic_still_restores ... ok
+test intensity::tests::the_ladder_has_four_steps ... ok
+test events::tests::recv_accounts_for_text_it_hands_over ... ok
+test intensity::tests::the_ladder_orders_by_brightness ... ok
+test keys::tests::a_plain_character_edits ... ok
+test keys::tests::alt_enter_keeps_the_draft ... ok
+test keys::tests::ctrl_j_is_a_newline_too ... ok
+test keys::tests::enter_submits_the_draft ... ok
+test keys::tests::readline_chords_drive_the_editor ... ok
+test keys::tests::up_at_the_top_walks_history ... ok
+test keys::tests::up_with_nowhere_to_go_is_ignored ... ok
+test ladder::tests::a_colorless_table_can_ask_for_a_bold_top_step ... ok
+test ladder::tests::anything_else_is_indexed ... ok
+test ladder::tests::colorterm_truecolor_means_rgb ... ok
+test ladder::tests::drain_color_keeps_modifiers ... ok
+test ladder::tests::indexed_renders_the_nearest_cube_entry ... ok
+test ladder::tests::no_color_dims_the_faint_half ... ok
+test ladder::tests::no_color_wins_over_colorterm ... ok
+test ladder::tests::the_selection_tint_sits_just_above_the_field ... ok
+test ladder::tests::truecolor_renders_the_exact_amber ... ok
+test markdown::tests::a_heading_draws_bright_and_bold ... ok
+test markdown::tests::a_fence_keeps_its_lines_as_code ... ok
+test markdown::tests::a_link_marks_its_text ... ok
+test markdown::tests::a_list_marks_and_hangs_its_items ... ok
+test markdown::tests::a_quote_prefaces_its_blocks ... ok
+test markdown::tests::a_paragraph_is_one_line_with_runs ... ok
+test markdown::tests::a_slice_of_marked_text_clips_to_the_range ... ok
+test markdown::tests::a_task_list_carries_its_marks ... ok
+test markdown::tests::raw_html_is_text ... ok
+test markdown::tests::blocks_separate_with_a_blank_line ... ok
+test scrollback::tests::a_filter_hides_lines_without_wrapping_them ... ok
+test scrollback::tests::the_limit_evicts_the_oldest_lines ... ok
+test spinner::tests::the_ascii_bar_turns_once_over_two_passes ... ok
+test scrollback::tests::a_resize_rewraps_every_line ... ok
+test spinner::tests::the_cycle_walks_every_frame_in_order ... ok
+test wrap::tests::a_caret_at_a_wrap_point_joins_the_later_row ... ok
+test wrap::tests::a_caret_at_text_end_joins_the_last_row ... ok
+test wrap::tests::a_grapheme_cluster_never_splits_at_a_wrap ... ok
+test wrap::tests::a_space_run_at_a_break_is_swallowed ... ok
+test wrap::tests::byte_at_column_walks_graphemes ... ok
+test wrap::tests::wide_characters_wrap_by_cells_not_code_points ... ok
+test wrap::tests::wrap_breaks_at_a_space ... ok
+test scrollback::tests::a_frame_wraps_only_the_lines_it_has_not_seen ... ok
+test wrap::tests::wrap_gives_an_empty_line_its_own_row ... ok
+test wrap::tests::wrap_splits_a_word_that_cannot_fit ... ok
+test events::tests::every_control_event_arrives_in_order_with_nobody_reading ... ok
+
+test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/coderbench-ad7ac05e97536b1d)
+
+running 15 tests
+test drive::tests::an_exit_code_is_an_outcome ... ok
+test preflight::tests::a_remote_compares_by_what_it_names ... ok
+test workspace_path_tests::escaped_names_do_not_collapse_distinct_write_paths ... ok
+test preflight::tests::a_workspace_reads_both_directions ... ok
+test drive::tests::a_taken_trace_is_refused_before_the_run ... ok
+test preflight::tests::resolving_finds_what_is_installed ... ok
+test preflight::tests::an_unknown_slug_is_not_a_capability ... ok
+test preflight::tests::the_registry_answers_for_devin ... ok
+test preflight::tests::an_unapproved_manifest_is_unprobed_and_runs_nothing ... ok
+test preflight::tests::a_checkout_cannot_approve_its_own_capability ... ok
+test drive::tests::an_oversized_probe_answer_is_bounded ... ok
+test preflight::tests::a_directory_that_is_not_a_checkout_says_so ... ok
+test preflight::tests::a_rewritten_remote_still_names_the_checkout ... ok
+test drive::tests::a_command_answers_or_is_stopped ... ok
+test drive::tests::a_stopped_probe_leaves_nothing_behind ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.01s
+
+     Running unittests src/main.rs (/tmp/openagents-supervision/root-target/debug/deps/coderbench-5d0f38dfec8a1933)
+
+running 4 tests
+test tests::a_diff_takes_a_task_and_a_trace ... ok
+test tests::a_run_reads_its_flags ... ok
+test tests::a_wrong_command_line_says_so ... ok
+test tests::a_timed_out_run_is_not_a_clean_run ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/devin_fan_out_six.rs (/tmp/openagents-supervision/root-target/debug/deps/devin_fan_out_six-9f17745607d9218e)
+
+running 9 tests
+test the_golden_says_what_it_rests_on ... ok
+test faults_come_back_in_path_order ... ok
+test the_observed_recording_matches_the_manifest_answers ... ok
+test a_trace_alone_is_unverifiable ... ok
+test a_missing_decision_is_a_fault ... ok
+test whitespace_at_an_answers_edges_is_the_same_answer ... ok
+test a_wrong_delegation_is_a_fault ... ok
+test the_authored_run_passes_on_the_manifests_check ... ok
+test the_golden_reads_back_as_atif ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/harness.rs (/tmp/openagents-supervision/root-target/debug/deps/harness-bd25680ae5078c5c)
+
+running 16 tests
+test a_wrong_command_line_takes_the_usage_code ... ok
+test a_missing_trace_is_its_own_exit_code ... ok
+test tune_refuses_before_a_required_capability_run ... ok
+test tune_rejects_invalid_usage ... ok
+test tune_reads_recorded_series_and_uses_the_decision_gate ... ok
+test a_diff_judges_a_trace_that_already_exists ... ok
+test a_wrong_commit_refuses_before_the_run ... ok
+test a_workspace_removed_during_the_run_is_not_a_pass ... ok
+test a_write_nobody_reported_is_still_a_write ... ok
+test a_run_judges_the_trace_it_captured ... ok
+test a_run_is_judged_against_the_manifests_own_answers ... ok
+test faults_read_in_the_order_the_path_takes ... ok
+test tune_runs_the_requested_number_of_live_trials ... ok
+test a_timeout_before_any_trace_exits_with_no_trace ... ok
+test the_right_commit_holds_the_requirement ... ok
+test writes_to_already_dirty_and_ignored_files_are_observed ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.70s
+
+     Running tests/negative.rs (/tmp/openagents-supervision/root-target/debug/deps/negative-7759007feb3eab57)
+
+running 24 tests
+test a_malformed_manifest_does_not_load ... ok
+test an_unchecked_run_is_unverifiable_rather_than_clean ... ok
+test a_correct_flag_on_an_empty_answer_is_not_a_check ... ok
+test a_delegation_the_trace_calls_wrong_is_a_fault ... ok
+test a_duplicated_delegation_is_not_two_answers ... ok
+test an_answer_that_differs_only_in_case_is_a_different_answer ... ok
+test a_torn_trace_is_unverifiable ... ok
+test a_named_check_that_failed_is_a_fault ... ok
+test a_self_asserted_correct_flag_is_not_the_check ... ok
+test six_ungraded_delegations_are_not_six_correct_ones ... ok
+test a_delegation_that_failed_is_a_fault ... ok
+test a_missing_delegation_is_named ... ok
+test a_declined_ending_is_a_fault_for_a_task_that_does_not_allow_it ... ok
+test a_timed_out_ending_is_a_fault ... ok
+test an_empty_expectation_verifies_nothing ... ok
+test a_self_reported_write_cannot_satisfy_the_required_write_count ... ok
+test a_trace_without_an_end_record_is_a_fault ... ok
+test reordered_delegations_are_not_the_task ... ok
+test a_decision_that_went_the_wrong_way_is_a_fault ... ok
+test a_wrong_or_empty_answer_is_a_fault ... ok
+test a_prompt_that_differs_in_case_or_spacing_is_a_different_question ... ok
+test reordered_steps_are_a_fault ... ok
+test writes_are_judged_against_the_workspace ... ok
+test malformed_expectations_fault_rather_than_pass ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/tune.rs (/tmp/openagents-supervision/root-target/debug/deps/tune-74b0f6334d06fc7f)
+
+running 10 tests
+test it_should_describe_a_shift_inside_or_outside_the_spread ... ok
+test it_should_mark_one_run_unverifiable ... ok
+test it_should_find_sorted_traces_and_reject_an_empty_directory ... ok
+test it_should_leave_one_run_comparison_unverifiable ... ok
+test it_should_read_a_recorded_run_back_as_it_was_judged_live ... ok
+test it_should_key_persistent_program_faults_independently_of_call_ids ... ok
+test it_should_pass_eight_clean_runs_with_no_faults ... ok
+test it_should_classify_one_wrong_delegation_as_intermittent ... ok
+test it_should_not_pass_eight_runs_below_the_gate_floor ... ok
+test it_should_use_the_gate_for_pass_rate_comparisons ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/workspace.rs (/tmp/openagents-supervision/root-target/debug/deps/workspace-7cde89b2bf2c4387)
+
+running 2 tests
+test a_partial_snapshot_cannot_supply_a_clean_workspace ... ok
+test renames_and_deletions_keep_every_affected_path ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/gym-f4b7dda2e9e96ebf)
+
+running 269 tests
+test ab::tests::a_confirmation_plan_draws_blocks_the_screening_did_not ... ok
+test ab::tests::an_unmeasured_floor_still_refuses_to_earn_a_win ... ok
+test ab::tests::every_ordered_metric_carries_a_measured_floor ... ok
+test ab::tests::interleaving_is_deterministic_and_covers_both_orders ... ok
+test ab::tests::the_calibration_floors_are_the_measured_block_spreads ... ok
+test ab::tests::a_rule_that_lets_confident_errors_earn_a_win_is_refused ... ok
+test ab::tests::the_effect_size_is_the_measured_block_spread_and_not_a_carried_constant ... ok
+test ab::tests::the_schema_tag_belongs_to_this_crate ... ok
+test ab::tests::the_verdict_precedence_carries_into_the_decision ... ok
+test ab::tests::an_unmeasured_metric_leaves_the_round_undecided_rather_than_passing_by_default ... ok
+test ab::tests::a_pooled_ece_is_unknown_rather_than_an_item_weighted_invention ... ok
+test ab::tests::a_door_refusal_enters_the_comparison_as_a_refusal ... ok
+test ab::tests::a_harness_failure_requeues_once_and_never_enters_the_comparison ... ok
+test ab::tests::a_cell_that_fails_twice_leaves_the_round_undecided ... ok
+test ab::tests::a_confirmation_over_different_families_is_not_the_same_experiment ... ok
+test calibrate::tests::a_band_table_separates_what_the_frequency_alone_cannot ... ok
+test calibrate::tests::a_document_tagged_as_something_else_does_not_serve ... ok
+test calibrate::tests::a_base_fitted_record_refuses_an_adapted_door_and_names_the_field ... ok
+test calibrate::tests::a_distribution_keeps_its_shape_when_it_is_rescaled ... ok
+test ab::tests::the_rule_names_the_measurements_it_refuses_to_invent ... ok
+test calibrate::tests::a_map_reports_what_a_bin_actually_did ... ok
+test calibrate::tests::a_record_refuses_a_host_it_was_not_fitted_on ... ok
+test ab::tests::the_committed_rule_validates_and_carries_a_digest ... ok
+test calibrate::tests::a_refused_map_does_not_serve_and_says_the_verdict ... ok
+test ab::tests::an_increase_in_confident_errors_rejects_whatever_else_improved ... ok
+test calibrate::tests::a_small_unanimous_bin_does_not_claim_certainty ... ok
+test calibrate::tests::a_unanimous_estimate_spreads_the_remainder_evenly ... ok
+test calibrate::tests::a_thin_band_falls_back_to_the_pooled_table ... ok
+test calibrate::tests::a_well_calibrated_set_scores_near_zero_error ... ok
+test ab::tests::a_win_inside_the_noise_is_undecided_rather_than_kept_or_reverted ... ok
+test ab::tests::a_mean_that_improves_while_the_median_does_not_is_reverted ... ok
+test calibrate::tests::an_empty_bin_falls_back_to_the_base_rate_rather_than_inventing_one ... ok
+test calibrate::tests::an_unknown_band_reads_the_pooled_table ... ok
+test calibrate::tests::checkpoint_replacement_and_execution_changes_invalidate_calibration ... ok
+test ab::tests::two_blocks_a_side_is_below_the_floor_the_median_criterion_needs ... ok
+test calibrate::tests::a_record_round_trips_and_carries_its_provenance ... ok
+test ab::tests::unknown_confident_errors_are_unverifiable_and_never_zero ... ok
+test calibrate::tests::metrics_convert_to_the_shape_a_gate_judges ... ok
+test ab::tests::a_candidate_that_improves_overall_while_wrecking_one_family_is_refused ... ok
+test calibrate::tests::nothing_verifiable_serves_nothing ... ok
+test calibrate::tests::perfect_confidence_that_is_always_wrong_scores_as_badly_as_it_should ... ok
+test calibrate::tests::legacy_calibration_records_keep_their_version_and_existing_matches ... ok
+test eval::tests::a_code_mentioned_in_prose_is_not_a_refusal ... ok
+test eval::tests::a_failure_with_no_code_is_the_harness_and_writes_no_row ... ok
+test ab::tests::changing_a_threshold_or_its_provenance_produces_a_new_rule ... ok
+test calibrate::tests::the_bin_count_follows_the_evidence ... ok
+test eval::tests::a_named_selected_overrides_what_the_numbers_imply ... ok
+test eval::tests::a_permutation_reorders_the_options_and_nothing_else ... ok
+test eval::tests::a_refused_row_stays_in_the_denominator_with_no_score ... ok
+test eval::tests::a_score_is_scored_on_its_argmax_level_not_its_weighted_mean ... ok
+test eval::tests::a_scored_row_carries_the_verdict_and_the_whole_distribution ... ok
+test eval::tests::a_timestamp_reads_as_rfc_3339_in_utc ... ok
+test ab::tests::a_confirmation_that_redraws_a_screening_block_is_refused ... ok
+test eval::tests::a_tied_score_is_the_highest_tied_level_and_it_is_not_a_refusal ... ok
+test eval::tests::a_typed_refusal_is_the_door_declining_whatever_the_code_is ... ok
+test eval::tests::an_unnamed_code_is_kept_rather_than_bucketed ... ok
+test ab::tests::a_win_that_repeats_on_its_own_metric_is_kept ... ok
+test ab::tests::a_win_on_one_metric_confirmed_on_a_different_one_is_reverted ... ok
+test eval::tests::every_row_of_a_run_pins_the_question_set_it_served ... ok
+test eval::tests::only_a_choice_has_an_order_to_permute ... ok
+test eval::tests::the_table_is_computed_from_the_rows ... ok
+test gate::tests::a_bound_with_a_value_and_no_basis_behind_it_is_refused ... ok
+test calibrate::tests::a_directory_of_records_reads_in_order_and_an_absent_one_reads_as_none ... ok
+test gate::tests::a_gate_with_an_unreadable_schema_is_refused ... ok
+test gate::tests::a_percentile_is_always_a_call_that_happened ... ok
+test gate::tests::a_ceiling_nobody_stated_is_unverifiable_rather_than_passed ... ok
+test gate::tests::a_door_that_is_less_accurate_fails_the_decision_gate ... ok
+test gate::tests::a_door_that_declines_a_tenth_of_the_workload_fails_its_ceiling ... ok
+test gate::tests::an_unknown_field_is_refused_rather_than_ignored ... ok
+test gate::tests::a_latency_rise_inside_the_noise_is_unverifiable_rather_than_failed ... ok
+test gate::tests::a_gate_judges_only_the_measurement_it_reads ... ok
+test gate::tests::a_seed_floor_measured_over_no_items_is_refused ... ok
+test gate::tests::a_map_fitted_on_eighteen_items_is_unverifiable_not_failed ... ok
+test gate::tests::an_unmeasured_bound_reports_unverifiable_and_never_passes ... ok
+test gate::tests::a_smaller_win_on_the_same_suite_is_unverifiable_rather_than_failed ... ok
+test gate::tests::a_map_that_improves_ece_too_little_is_unverifiable ... ok
+test gate::tests::binning_cannot_lose_more_brier_than_twice_the_bin_width ... ok
+test gate::tests::an_uncounted_refusal_is_not_a_refusal_of_zero ... ok
+test gate::tests::a_map_that_hedges_everything_into_the_middle_fails ... ok
+test gate::tests::a_gate_whose_file_name_is_not_its_id_is_refused ... ok
+test gate::tests::a_map_whose_brier_rose_is_failed ... ok
+test gate::tests::a_metered_lane_over_its_ceiling_fails ... ok
+test gate::tests::an_unmetered_lane_is_not_a_price_of_zero ... ok
+test gate::tests::fewer_than_twenty_timed_calls_cannot_produce_a_percentile ... ok
+test gate::tests::an_unmeasured_seed_floor_leaves_confident_errors_unverifiable ... ok
+test gate::tests::the_four_way_table_kept_the_statistic_that_hides_the_tail ... ok
+test gate::tests::the_decision_bound_records_what_it_does_not_cover ... ok
+test gate::tests::the_digest_is_stable_across_serialization_order ... ok
+test eval::tests::a_family_is_fitted_on_one_partition_and_judged_on_another ... ok
+test gate::tests::the_verdict_precedence_is_failed_then_unverifiable_then_passed ... ok
+test ab::tests::a_full_ab_produces_an_evidence_document_carrying_its_own_rule ... ok
+test gate::tests::the_digest_ignores_comment ... ok
+test gate::tests::the_router_and_the_batch_job_disagree_about_the_same_door ... ok
+test gate::tests::the_adapter_is_the_better_decision_and_the_worse_probability ... ok
+test gate::tests::the_same_case_with_confident_errors_unrecorded_is_unverifiable ... ok
+test gate::tests::a_rise_beyond_the_seed_floor_still_fails_probability_v2 ... ok
+test gate::tests::every_committed_bound_says_where_it_came_from ... ok
+test gate::tests::thirteen_points_of_accuracy_clears_the_noise_and_says_what_it_covers ... ok
+test gate::tests::the_committed_gate_cannot_refuse_a_door_on_a_clock_yet ... ok
+test gate::tests::the_twelve_item_maps_the_small_suite_produced_are_unverifiable ... ok
+test gate::tests::widening_a_tolerance_produces_a_new_rule ... ok
+test gate::tests::uncounted_confident_errors_are_unverifiable_under_both_probability_gates ... ok
+test questions::tests::a_set_with_no_text_is_refused ... ok
+test gate::tests::the_seed_floor_scales_with_the_items_under_judgment ... ok
+test questions::tests::a_set_tagged_with_another_schema_is_refused ... ok
+test questions::tests::a_set_loads_from_a_file_named_after_it ... ok
+test gate::tests::the_case_that_widened_the_brier_tolerance ... ok
+test questions::tests::the_committed_suite_file_still_carries_its_question_text ... ok
+test questions::tests::each_routing_candidate_is_its_own_text ... ok
+test gate::tests::the_seed_floor_is_inside_probability_v2s_identity_and_absent_from_v1s ... ok
+test gate::tests::every_committed_gate_loads_and_validates ... ok
+test regress::tests::a_changed_suite_refuses_the_comparison ... ok
+test regress::tests::a_changed_door_refuses_the_comparison_and_names_the_field ... ok
+test gate::tests::one_failed_group_beats_any_number_of_passed_ones ... ok
+test regress::tests::a_different_number_of_draws_refuses_the_comparison ... ok
+test regress::tests::a_different_seed_block_refuses_the_comparison ... ok
+test regress::tests::a_door_that_answered_nothing_reports_unknown_and_never_zero ... ok
+test regress::tests::a_door_that_begins_declining_fails_even_when_accuracy_rises ... ok
+test regress::tests::a_fall_inside_the_floor_holds_and_says_it_is_inside ... ok
+test regress::tests::a_fall_larger_than_the_floor_is_a_regression ... ok
+test regress::tests::a_door_that_stops_declining_passes_and_names_the_items ... ok
+test regress::tests::a_refusal_renders_as_neither_a_pass_nor_a_failure ... ok
+test regress::tests::a_reversed_pass_is_a_run_of_its_own ... ok
+test regress::tests::a_gain_larger_than_the_floor_is_reported_as_one ... ok
+test regress::tests::a_metric_with_no_measured_spread_is_reported_and_not_judged ... ok
+test regress::tests::a_group_that_passed_leads_with_the_accuracy_rather_than_the_item_count ... ok
+test regress::tests::a_rise_in_confident_errors_is_a_regression ... ok
+test regress::tests::a_rerun_that_changed_nothing_passes ... ok
+test regress::tests::one_recorded_run_has_nothing_to_compare_against ... ok
+test regress::tests::reworded_question_text_refuses_the_comparison ... ok
+test regress::tests::every_door_in_the_store_is_answered_for ... ok
+test regress::tests::one_store_holding_two_runs_needs_no_second_store ... ok
+test regress::tests::each_family_is_judged_on_its_own ... ok
+test regress::tests::the_schema_tag_belongs_to_this_crate ... ok
+test row::content_identity_tests::discovered_content_identity_retains_separate_execution_settings ... ok
+test regress::tests::the_limit_is_on_the_report_and_on_the_output ... ok
+test row::content_identity_tests::legacy_identity_round_trips_without_inventing_checkpoint_provenance ... ok
+test row::tests::a_coherent_row_passes_its_check ... ok
+test row::tests::a_hosted_identity_round_trips_without_inventing_a_signature ... ok
+test row::tests::a_measured_zero_is_kept_apart_from_an_unknown ... ok
+test row::tests::a_named_answer_requires_its_distribution ... ok
+test row::tests::a_refusal_clears_a_score_that_was_already_set ... ok
+test row::tests::a_refusal_that_carries_a_score_is_rejected ... ok
+test row::tests::a_refused_row_is_distinguishable_from_a_scored_one ... ok
+test row::tests::a_row_for_a_hosted_door_carries_the_unverified_identity ... ok
+test row::tests::a_row_must_name_its_item_and_may_omit_what_is_unknown ... ok
+test row::tests::a_row_naming_an_option_the_distribution_lacks_is_rejected ... ok
+test regress::tests::the_newest_run_is_the_one_judged ... ok
+test row::tests::a_row_round_trips_through_json ... ok
+test regress::tests::the_report_carries_the_rule_that_set_its_floors ... ok
+test row::tests::a_row_tagged_as_another_document_is_rejected ... ok
+test regress::tests::two_runs_over_different_items_are_two_measurements ... ok
+test row::tests::a_row_that_answered_and_refused_is_rejected ... ok
+test row::tests::a_row_with_no_outcome_is_rejected ... ok
+test row::tests::a_row_serializes_to_the_named_fields_in_order ... ok
+test row::tests::a_score_takes_the_top_probability_from_the_distribution ... ok
+test row::tests::a_row_that_pins_no_question_set_omits_both_fields ... ok
+test row::tests::a_scored_row_keeps_the_named_answer_over_the_argmax ... ok
+test row::tests::an_answered_row_without_a_verdict_is_rejected ... ok
+test row::tests::an_empty_distribution_leaves_the_top_probability_unknown ... ok
+test row::tests::an_identity_without_a_signature_is_not_verified ... ok
+test row::tests::an_on_device_identity_round_trips_with_its_signature ... ok
+test row::tests::an_unnamed_refusal_code_is_kept_rather_than_bucketed ... ok
+test row::tests::an_unknown_number_renders_as_null_and_never_as_zero ... ok
+test row::tests::every_named_refusal_code_round_trips_on_its_wire_label ... ok
+test row::tests::the_gate_and_the_chain_are_declared_but_not_computed_here ... ok
+test row::tests::the_schema_tag_belongs_to_this_crate ... ok
+test row::tests::the_label_source_travels_with_the_row ... ok
+test spread::tests::a_bin_edge_lands_in_the_bin_it_opens ... ok
+test row::tests::the_perturbation_axes_record_what_was_varied ... ok
+test row::tests::historical_rows_keep_their_schema_and_omit_new_provenance ... ok
+test spread::tests::a_spread_needs_two_blocks ... ok
+test spread::tests::a_line_that_is_not_a_draw_is_refused_by_line_number ... ok
+test spread::tests::a_suite_ece_is_not_the_item_weighted_mean_of_its_families ... ok
+test spread::tests::a_block_missing_an_item_is_named_rather_than_averaged_over ... ok
+test spread::tests::frozen_ece_equals_live_ece_when_the_reference_is_the_block_itself ... ok
+test spread::tests::another_schema_is_refused_rather_than_read_as_a_draw ... ok
+test spread::tests::frozen_ece_holds_membership_when_an_item_crosses_an_edge ... ok
+test spread::tests::observations_come_back_in_item_order_so_two_blocks_pair ... ok
+test spread::tests::one_block_is_not_a_spread_but_is_a_complete_grid ... ok
+test spread::tests::the_mean_signal_is_taken_item_by_item_across_blocks ... ok
+test spread::tests::the_detectable_difference_falls_as_blocks_are_added ... ok
+test spread::tests::the_bootstrap_keeps_each_stratum_at_its_own_size ... ok
+test spread::tests::the_bootstrap_reproduces_from_its_seed ... ok
+test store::tests::a_line_that_is_not_json_is_refused ... ok
+test store::tests::a_perturbation_key_ignores_the_order_of_a_nested_field ... ok
+test store::tests::a_measured_float_that_does_not_round_trip_still_verifies ... ok
+test store::tests::a_receipt_covers_every_field_including_the_one_before_it ... ok
+test store::tests::a_receipt_does_not_depend_on_the_order_the_fields_were_written_in ... ok
+test store::tests::a_duplicate_perturbation_is_refused ... ok
+test questions::tests::a_suite_with_no_inline_text_has_no_set_to_derive ... ok
+test store::tests::a_receipt_that_does_not_match_its_contents_is_refused ... ok
+test store::tests::a_chain_round_trips_and_reports_its_head ... ok
+test questions::tests::a_variant_set_replaces_the_text_the_items_carry ... ok
+test questions::tests::a_set_that_misses_a_family_is_refused_rather_than_asked ... ok
+test store::tests::a_run_that_does_not_say_what_it_asked_is_not_a_text_comparison ... ok
+test questions::tests::the_committed_suite_names_the_committed_set ... ok
+test questions::tests::the_committed_set_is_the_text_the_suite_carries_inline ... ok
+test questions::tests::two_spellings_of_one_family_cannot_be_lifted_out_of_the_items ... ok
+test store::tests::a_side_that_scored_two_suites_is_not_one_side ... ok
+test store::tests::a_row_with_no_schema_is_refused_rather_than_skipped ... ok
+test questions::tests::the_routing_candidates_reword_one_family_and_freeze_the_answer_space ... ok
+test store::tests::a_new_perturbation_of_the_same_item_is_accepted ... ok
+test store::tests::an_empty_side_is_not_a_comparison ... ok
+test questions::tests::renaming_a_set_leaves_its_digest_alone ... ok
+test questions::tests::the_authored_digest_is_recorded_literally ... ok
+test store::tests::a_value_that_is_not_an_object_is_not_a_row ... ok
+test store::tests::a_row_sealed_against_the_wrong_head_is_refused ... ok
+test store::tests::two_runs_over_the_same_items_and_different_text_are_a_question_text_comparison ... ok
+test store::tests::a_second_writer_is_refused_while_the_lock_is_held ... ok
+test store::tests::two_runs_over_the_same_items_and_the_same_text_are_a_door_comparison ... ok
+test store::tests::two_runs_whose_items_differ_are_still_refused ... ok
+test store::tests::a_removed_row_reads_as_a_resequence_and_not_as_an_edit ... ok
+test store::tests::a_reordered_pair_reads_as_a_resequence ... ok
+test store::tests::an_unknown_schema_is_a_hard_error_that_says_what_to_do ... ok
+test store::tests::the_allowlist_names_schemas_rather_than_types ... ok
+test store::tests::a_reworded_question_is_a_second_trial_and_not_a_repeat ... ok
+test store::tests::a_row_that_does_not_extend_the_head_leaves_the_file_byte_identical ... ok
+test store::tests::a_truncated_file_is_repaired_before_it_is_appended_to ... ok
+test store::tests::re_scoring_the_same_trial_is_refused_even_when_the_score_changed ... ok
+test store::tests::an_inserted_row_reads_as_a_resequence ... ok
+test gate::tests::probability_v1_refuses_the_unchanged_door_about_half_the_time ... ok
+test store::tests::an_edited_row_names_the_row_and_the_digest ... ok
+test store::tests::an_edit_and_a_resequence_are_two_different_messages ... ok
+test suite::tests::a_suite_tagged_with_another_schema_is_refused ... ok
+test gate::tests::probability_v2_passes_the_unchanged_door_on_every_pair_of_blocks ... ok
+test suite::tests::a_tampered_suite_is_refused ... ok
+test suite::tests::a_dangling_symlinked_ledger_is_refused ... ok
+test questions::tests::rewording_a_question_moves_the_question_digest_and_nothing_else ... ok
+test suite::tests::a_read_that_does_not_say_why_is_refused ... ok
+test questions::tests::a_reworded_question_is_a_candidate_against_the_same_items ... ok
+test store::tests::concurrent_appends_do_not_interleave_into_a_broken_chain ... ok
+test suite::tests::an_exposed_locked_partition_is_refused_to_an_adapted_door_and_not_recorded ... ok
+test suite::tests::a_commit_that_fails_returns_no_items_and_spends_nothing ... ok
+test suite::tests::a_suite_carries_its_question_text_on_every_item_or_on_none ... ok
+test suite::tests::every_label_of_every_family_appears_in_every_partition ... ok
+test suite::tests::every_family_appears_in_every_partition_in_the_same_proportion ... ok
+test suite::tests::a_locked_read_hands_back_the_items_and_records_itself ... ok
+test suite::tests::an_override_with_nothing_to_override_is_refused ... ok
+test suite::tests::a_different_suite_has_its_own_read_to_spend ... ok
+test suite::tests::a_hardlinked_ledger_is_refused ... ok
+test suite::tests::moving_one_item_between_partitions_is_refused ... ok
+test suite::tests::a_ledger_under_new_directories_is_created_and_committed ... ok
+test suite::tests::pointing_the_gate_elsewhere_leaves_the_digest_alone ... ok
+test suite::tests::renaming_the_suite_leaves_the_digest_alone ... ok
+test suite::tests::naming_a_question_set_leaves_the_digest_alone ... ok
+test suite::tests::an_extreme_lock_wait_neither_panics_nor_waits_on_a_free_ledger ... ok
+test suite::tests::a_second_read_without_an_override_is_refused ... ok
+test suite::tests::rewording_a_question_in_the_set_does_not_touch_the_suite ... ok
+test suite::tests::a_refused_read_leaves_no_lock_and_no_record ... ok
+test suite::tests::the_committed_digest_did_not_move_when_the_gate_became_a_reference ... ok
+test suite::tests::the_committed_suite_loads_and_its_digest_matches ... ok
+test suite::tests::the_locked_partition_is_not_reachable_through_partition ... ok
+test suite::tests::the_three_partitions_are_disjoint_and_cover_every_item ... ok
+test suite::tests::the_two_way_suite_does_not_load_as_a_three_way_one ... ok
+test suite::tests::an_exposed_locked_partition_still_serves_a_door_that_never_trained ... ok
+test suite::tests::the_manifest_names_its_gate_and_does_not_restate_it ... ok
+test suite::tests::a_held_lock_is_reported_after_the_wait ... ok
+test suite::tests::a_record_that_lost_its_newline_still_counts_and_the_next_append_repairs_it ... ok
+test suite::tests::an_exposure_that_does_not_describe_its_suite_is_refused ... ok
+test suite::tests::an_override_is_allowed_and_recorded_as_one ... ok
+test suite::tests::the_three_way_suite_says_its_locked_partition_is_exposed ... ok
+test suite::tests::an_interrupted_append_fails_closed_until_the_line_is_repaired ... ok
+test suite::tests::the_unseen_suite_is_the_three_way_suite_minus_what_the_adapters_saw ... ok
+test suite::tests::aliased_spellings_of_one_ledger_share_one_first_read ... ok
+test suite::tests::sixteen_callers_get_exactly_one_first_read ... ok
+test suite::tests::one_state_never_straddles_two_partitions ... ok
+test suite::tests::the_coder_suite_carries_both_kinds_of_evidence_and_says_which ... ok
+test suite::tests::the_coder_suite_loads_and_its_digest_matches ... ok
+
+test result: ok. 269 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running unittests src/bin/gym.rs (/tmp/openagents-supervision/root-target/debug/deps/gym-9550736b1a543e45)
+
+running 7 tests
+test tests::a_refused_row_names_no_option ... ok
+test tests::model_discovery_selects_the_requested_variant_or_alias ... ok
+test tests::a_recorded_row_names_the_option_it_chose ... ok
+test tests::the_same_door_name_keeps_checkpoint_and_execution_comparisons_separate ... ok
+test tests::a_file_of_comments_names_no_items ... ok
+test tests::item_ids_skip_comments_and_blank_lines ... ok
+test tests::eval_subsets_preserve_order_and_reject_locked_or_unknown_items ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/gate_digest.rs (/tmp/openagents-supervision/root-target/debug/deps/gate_digest-604bdb8120c5a02a)
+
+running 28 tests
+test a_bare_string_in_previously_is_refused ... ok
+test a_v1_document_is_refused_by_name_not_as_a_syntax_error ... ok
+test a_v2_pending_string_is_refused_for_carrying_no_why ... ok
+test a_pending_object_with_an_unknown_field_is_refused ... ok
+test a_binding_with_a_malformed_digest_is_refused ... ok
+test a_binding_without_record_provenance_is_refused ... ok
+test a_binding_to_a_stale_identity_is_refused ... ok
+test a_correctly_bound_alias_attributes ... ok
+test evidence_names_a_record_not_the_file_holding_it ... ok
+test a_changed_policy_cannot_inherit_the_previous_encodings_identity ... ok
+test prose_edits_keep_the_previous_encodings_identity ... ok
+test the_enums_that_say_what_a_statistic_covers_are_identity ... ok
+test decision_and_deployment_carried_no_recorded_digest_forward ... ok
+test the_recorded_v1_digest_still_attributes_to_probability_v1 ... ok
+test every_shipped_gate_loads_under_v2_and_digests ... ok
+test editing_the_question_does_not_re_identify_a_gate ... ok
+test editing_a_bounds_prose_does_not_re_identify_a_gate ... ok
+test a_threshold_change_is_a_different_gate ... ok
+test changing_a_rules_evidence_is_a_different_gate ... ok
+test the_shipped_gates_are_different_rules ... ok
+test editing_a_pending_why_does_not_re_identify_a_gate ... ok
+test renaming_the_gate_is_a_different_gate ... ok
+test editing_the_comment_does_not_re_identify_a_gate ... ok
+test relabelling_a_bounds_basis_is_a_different_gate ... ok
+test no_policy_edit_inherits_the_previous_encodings_identity ... ok
+test the_schema_is_inside_the_identity ... ok
+test changing_pending_identity_is_a_different_gate ... ok
+test a_digest_no_gate_recorded_does_not_attribute ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kev_variant_rows.rs (/tmp/openagents-supervision/root-target/debug/deps/kev_variant_rows-0834cba8b4aee354)
+
+running 1 test
+test kev_variant_rows_reconcile_against_the_pinned_suite ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests/locked_ledger.rs (/tmp/openagents-supervision/root-target/debug/deps/locked_ledger-7d3a1157200df419)
+
+running 7 tests
+test child_process ... ignored
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+test a_relative_ledger_path_is_created_and_committed ... ok
+
+running 1 test
+test aliased_spellings_of_one_ledger_share_one_first_read ... ok
+
+running 1 test
+test each_digest_spends_its_own_first_read ... ok
+test racing_processes_get_exactly_one_first_read ... ok
+test an_override_keeps_its_authority_and_reason_across_processes ... ok
+test the_state_a_killed_writer_leaves_fails_closed_and_recovers ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/program_selection_v2.rs (/tmp/openagents-supervision/root-target/debug/deps/program_selection_v2-f91eba850ab4ab22)
+
+running 1 test
+test current_program_suite_preserves_open_history_and_reserves_new_locked_items ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/rederived_floors.rs (/tmp/openagents-supervision/root-target/debug/deps/rederived_floors-009642c92f106b5d)
+
+running 6 tests
+test the_band_conditioned_claim_on_lev_band_reproduces ... ok
+test the_raw_block_spreads_reproduce_from_the_draws ... ok
+test the_two_sigma_bounds_are_derived_quantities_not_the_spreads_themselves ... ok
+test the_fixed_map_claims_on_lev_base_reproduce ... ok
+test mapped_observations_and_the_draw_path_agree_where_they_overlap ... ok
+test every_committed_calibration_record_regenerates_from_the_store ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/selected_rows.rs (/tmp/openagents-supervision/root-target/debug/deps/selected_rows-47d13a8907ffd785)
+
+running 1 test
+test a_v2_row_extends_a_v1_chain_without_rewriting_it ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/winner_inversion.rs (/tmp/openagents-supervision/root-target/debug/deps/winner_inversion-305d0a7228afcacc)
+
+running 10 tests
+test a_rescale_moves_the_argmax_in_principle ... ok
+test a_stored_calibrated_row_maps_around_its_named_answer ... ok
+test a_row_without_a_named_answer_reads_its_own_argmax ... ok
+test an_observation_reads_the_selected_options_probability_rather_than_the_largest ... ok
+test no_map_moves_the_accuracy_of_the_rows_it_scores ... ok
+test a_gate_verdict_over_scores_alone_cannot_see_a_map_that_moves_the_argmax ... ok
+test the_probability_gate_admits_a_map_that_moves_the_argmax ... ok
+test the_argmax_moves_exactly_when_the_calibrated_probability_falls_below_the_runner_ups_share ... ok
+test no_map_the_gate_admits_over_the_committed_store_moves_an_argmax ... ok
+test no_committed_map_moves_the_argmax_of_any_committed_row ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/jev-2256f66497ce8138)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/answers.rs (/tmp/openagents-supervision/root-target/debug/deps/answers-78f33e18ab595b31)
+
+running 12 tests
+test a_body_that_is_not_json_names_the_body ... ok
+test a_response_without_usage_decodes ... ok
+test an_unknown_field_is_ignored ... ok
+test a_score_without_probabilities_decodes ... ok
+test a_typed_accessor_names_the_type_it_found_and_the_id_it_missed ... ok
+test the_recorded_response_decodes ... ok
+test an_unknown_answer_type_is_skipped ... ok
+test the_recorded_distributions_sum_to_one ... ok
+test the_answers_keep_the_order_the_response_sent ... ok
+test the_documented_response_decodes ... ok
+test the_filtered_views_hold_one_type_each ... ok
+test a_field_that_does_not_read_is_named_by_a_dotted_path ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/blocking.rs (/tmp/openagents-supervision/root-target/debug/deps/blocking-8fbfc7e59761eb6e)
+
+running 3 tests
+test the_blocking_client_lists_models ... ok
+test the_blocking_client_sends_and_reads_one_request ... ok
+test the_blocking_call_holds_the_same_whole_call_deadline ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/client.rs (/tmp/openagents-supervision/root-target/debug/deps/client-eb9e5f0caf860c06)
+
+running 49 tests
+test a_client_refuses_settings_it_cannot_use ... ok
+test a_client_reads_back_its_settings ... ok
+test a_request_that_reaches_nothing_is_a_connection_error ... ok
+test a_rate_limit_names_the_wait_the_server_asked_for ... ok
+test a_204_carries_no_body ... ok
+test a_request_carries_the_headers_the_api_reads ... ok
+test a_request_names_the_model_the_call_asks_for ... ok
+test a_models_body_of_another_shape_names_the_field ... ok
+test a_body_the_client_cannot_read_names_its_field ... ok
+test a_caller_cannot_replace_the_headers_the_api_reads ... ok
+test a_request_names_the_state_the_model_and_the_questions ... ok
+test a_server_wait_past_the_budget_never_runs ... ok
+test a_status_the_policy_does_not_retry_runs_once ... ok
+test a_supplied_http_client_cannot_override_the_sdk_headers ... ok
+test an_empty_body_says_there_was_none ... ok
+test a_long_message_is_whole_and_a_long_body_is_cut ... ok
+test the_body_a_caller_records_is_the_body_the_wire_carries ... ok
+test extra_body_fields_are_merged_last ... ok
+test extra_body_keeps_nulls_and_replaces_shallow_fields ... ok
+test array_and_null_entries_reach_the_wire ... ok
+test the_budget_stops_a_retry_before_it_waits ... ok
+test the_endpoint_names_the_path_and_omits_url_credentials ... ok
+test a_call_names_its_own_retry_policy ... ok
+test a_retried_status_runs_again_and_says_which_attempt_it_is ... ok
+test a_body_that_breaks_mid_read_is_retried ... ok
+test the_models_listing_reads_the_envelope ... ok
+test the_questions_are_checked_before_any_request ... ok
+test the_models_raw_listing_keeps_what_the_card_drops ... ok
+test the_raw_call_hands_back_the_response_unread ... ok
+test a_connection_error_is_retried_then_the_last_one_is_returned ... ok
+test the_recorded_request_is_the_body_this_crate_sends ... ok
+test each_error_status_names_its_kind ... ok
+test the_message_is_read_out_of_the_body ... ok
+test the_last_failure_of_an_exhausted_policy_is_the_one_returned ... ok
+test the_models_envelope_names_the_first_field_it_cannot_read ... ok
+test zero_backoff_still_retries ... ok
+test a_call_policy_retries_only_the_statuses_it_names ... ok
+test the_error_body_edge_cases_both_official_sdks_cover ... ok
+test the_retry_count_names_every_attempt ... ok
+test the_retries_run_out_and_the_last_failure_is_returned ... ok
+test the_budget_is_a_deadline_the_first_attempt_cannot_outlive ... ok
+test the_budget_bounds_the_raw_call_the_same_way ... ok
+test a_body_that_stalls_mid_read_times_out ... ok
+test an_attempt_past_its_timeout_is_a_timeout ... ok
+test the_budget_bounds_a_body_that_stalls ... ok
+test a_call_names_its_own_timeout_and_the_retry_follows_it ... ok
+test a_retry_gets_only_the_time_the_call_has_left ... ok
+test a_server_delay_sets_the_wait ... ok
+test an_aborted_call_sends_no_retry ... ok
+
+test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+     Running tests/env.rs (/tmp/openagents-supervision/root-target/debug/deps/env-68aa4e8c5dd0bfd7)
+
+running 1 test
+test resolution_is_explicit_then_env_then_default ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/invariants.rs (/tmp/openagents-supervision/root-target/debug/deps/invariants-eee23e40b9254f5f)
+
+running 16 tests
+test a_question_without_an_answer_is_missing ... ok
+test a_faulty_answer_leaves_the_rest_of_the_body_unread ... ok
+test a_question_answered_in_another_type_is_a_type_error ... ok
+test a_choice_answered_over_fewer_options_is_a_fault_too ... ok
+test a_rounded_distribution_is_within_tolerance ... ok
+test a_score_answered_over_other_levels_is_a_fault ... ok
+test a_score_confidence_is_a_probability ... ok
+test the_documented_response_answers_the_documented_questions ... ok
+test a_score_needs_levels_from_its_legend_or_its_distribution ... ok
+test a_choice_answered_over_other_options_names_the_stranger ... ok
+test a_choice_names_an_option_the_distribution_carries ... ok
+test a_choice_confidence_is_a_probability ... ok
+test a_choice_distribution_is_one_of_probabilities_that_sum_to_one ... ok
+test a_noul_is_a_probability ... ok
+test a_score_distribution_names_only_legend_levels_and_sums_to_one ... ok
+test a_score_lies_within_its_legend ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/live.rs (/tmp/openagents-supervision/root-target/debug/deps/live-da8b46241a8e5892)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/logging.rs (/tmp/openagents-supervision/root-target/debug/deps/logging-845c9def5988ab3a)
+
+running 5 tests
+test a_credential_never_reaches_a_log_line ... ok
+test an_answer_logs_one_info_summary ... ok
+test nothing_is_logged_above_the_level ... ok
+test requests_are_numbered ... ok
+test a_retry_is_logged_before_the_next_attempt ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/questions.rs (/tmp/openagents-supervision/root-target/debug/deps/questions-f127212363ae1856)
+
+running 17 tests
+test a_bare_scalar_becomes_text ... ok
+test a_question_failure_reads_with_its_id ... ok
+test a_request_asks_at_least_one_question ... ok
+test a_set_built_from_an_iterator_reads_the_same ... ok
+test an_entry_takes_anything_that_serializes ... ok
+test an_empty_noul_criteria_sends_an_empty_object ... ok
+test a_question_written_out_as_json_is_sent_as_it_stands ... ok
+test an_entry_takes_the_four_shapes_the_api_reads ... ok
+test a_score_names_two_to_ten_levels ... ok
+test a_question_written_out_as_json_names_a_type_and_its_criteria ... ok
+test a_question_written_out_as_json_fails_the_checks_the_python_sdk_runs ... ok
+test a_question_set_keeps_its_order_and_names_its_types ... ok
+test a_score_serializes_its_levels_in_order ... ok
+test a_choice_keeps_the_order_its_options_were_added_in ... ok
+test a_noul_serializes_to_the_wire_shape ... ok
+test a_question_the_checks_do_not_know_is_left_to_the_api ... ok
+test a_choice_names_at_most_255_options ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/retry.rs (/tmp/openagents-supervision/root-target/debug/deps/retry-6cbccd815e5e8800)
+
+running 14 tests
+test the_delay_doubles_up_to_the_cap ... ok
+test the_retried_statuses_are_408_429_and_every_5xx ... ok
+test the_defaults_are_the_ones_both_official_sdks_ship ... ok
+test the_millisecond_header_wins_over_the_second_one ... ok
+test an_unreadable_millisecond_count_falls_through_to_seconds ... ok
+test a_server_delay_replaces_the_computed_one ... ok
+test a_predicate_adds_to_the_built_in_rules ... ok
+test a_rate_limit_error_names_the_wait ... ok
+test a_server_delay_reads_an_http_date ... ok
+test a_server_delay_reads_seconds_a_date_and_nothing ... ok
+test the_policy_reads_without_its_predicate ... ok
+test a_failure_is_retried_by_its_kind ... ok
+test the_jitter_takes_a_fraction_off_the_delay ... ok
+test every_field_is_checked ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/selected_answer.rs (/tmp/openagents-supervision/root-target/debug/deps/selected_answer-d25b3297d81cdbe7)
+
+running 2 tests
+test a_noul_cannot_name_an_option_outside_yes_and_no ... ok
+test a_score_must_name_an_actual_canonical_level ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/surface.rs (/tmp/openagents-supervision/root-target/debug/deps/surface-96b2c3c6ee63e61b)
+
+running 8 tests
+test the_defaults_and_the_variable_names_are_the_official_ones ... ok
+test the_result_alias_names_this_crate_s_failure ... ok
+test the_models_surface_reads_from_outside ... ok
+test the_retry_surface_reads_from_outside ... ok
+test every_failure_reads_without_its_key_and_names_its_request ... ok
+test a_caller_builds_every_question_type_and_reads_every_answer_type ... ok
+test a_key_never_reaches_a_log_line_or_a_failure ... ok
+test the_blocking_client_builds_from_the_same_settings ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/kev-714fb328e0130345)
+
+running 4 tests
+test lora::tests::the_original_base_and_delta_are_added_before_rounding ... ok
+test artifacts::tests::missing_optional_metadata_is_part_of_identity ... ok
+test artifacts::tests::identity_uses_loaded_bytes_and_logical_names ... ok
+test model::loading_tests::adapted_loading_preserves_source_precision_until_the_merge ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/api.rs (/tmp/openagents-supervision/root-target/debug/deps/api-2c0c56c96824abc5)
+
+running 5 tests
+test validation_refuses_bad_requests ... ok
+test a_score_reports_the_weighted_mean_while_a_reader_argmaxes ... ok
+test sanitize_rewrites_delimiter_spans ... ok
+test every_corpus_request_reproduces_its_record ... ok
+test every_golden_answer_set_reproduces ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/conformance.rs (/tmp/openagents-supervision/root-target/debug/deps/conformance-d8a2c92d059e1383)
+
+running 6 tests
+test forgery_cannot_add_options has been running for over 60 seconds
+test golden_probabilities_reproduce has been running for over 60 seconds
+test isolation_probe_holds has been running for over 60 seconds
+test option_isolation_flag_matches_reference has been running for over 60 seconds
+test packed_matches_separate has been running for over 60 seconds
+test permutation_probe_reproduces has been running for over 60 seconds
+test option_isolation_flag_matches_reference ... ok
+test forgery_cannot_add_options ... ok
+test isolation_probe_holds ... ok
+test packed_matches_separate ... ok
+test permutation_probe_reproduces ... ok
+test golden_probabilities_reproduce ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5724.45s
+
+     Running tests/encode.rs (/tmp/openagents-supervision/root-target/debug/deps/encode-c78ddbd00392f340)
+
+running 5 tests
+test mask_isolates_sibling_questions ... ok
+test option_isolation_mask_keeps_spans_apart ... ok
+test tokenizer_cases_reproduce ... ok
+test sanitized_text_never_yields_delimiter_ids ... ok
+test every_fixture_encoding_reproduces ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.64s
+
+     Running tests/refusals.rs (/tmp/openagents-supervision/root-target/debug/deps/refusals-35a7dad564051c8a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/serve.rs (/tmp/openagents-supervision/root-target/debug/deps/serve-ab42bae560b84ea5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/lev-e090281fc2da19be)
+
+running 71 tests
+test admission::tests::position_bias_is_not_a_leak ... ok
+test admission::tests::a_sibling_read_above_the_control_is_a_leak ... ok
+test admission::tests::a_probe_that_cannot_read_the_state_proves_nothing ... ok
+test admission::tests::no_family_is_no_map ... ok
+test admission::tests::a_denial_names_its_step ... ok
+test api::tests::a_question_serializes_with_its_type_tag ... ok
+test api::tests::a_one_option_choice_is_not_a_choice ... ok
+test adapter::tests::a_container_round_trips_through_the_writer_and_the_reader ... ok
+test api::tests::an_empty_question_map_is_refused ... ok
+test api::tests::an_answer_carries_the_tag_jev_reads ... ok
+test api::tests::a_blank_or_padded_option_name_is_refused ... ok
+test api::tests::score_levels_are_bounded_at_both_ends ... ok
+test estimator::tests::a_block_is_contiguous_and_starts_where_the_last_one_ended ... ok
+test api::tests::a_choice_over_the_bound_is_refused_by_code ... ok
+test api::tests::a_calibrated_answer_names_its_selected_option_on_the_wire ... ok
+test estimator::tests::a_block_past_the_seed_space_is_refused_rather_than_wrapped ... ok
+test adapter::tests::unknown_producer_metadata_round_trips ... ok
+test estimator::tests::a_choice_answer_takes_the_selected_option ... ok
+test estimator::tests::a_choice_for_an_option_the_distribution_does_not_name_refuses ... ok
+test adapter::tests::a_directory_without_the_suffix_is_refused ... ok
+test estimator::tests::a_map_that_sinks_the_selected_option_does_not_change_the_answer ... ok
+test estimator::tests::a_noul_answer_is_the_probability_of_yes ... ok
+test estimator::tests::a_noul_or_score_carries_the_selected_option_through_an_inversion ... ok
+test estimator::tests::a_score_is_the_probability_weighted_mean ... ok
+test adapter::tests::a_zero_rank_is_refused ... ok
+test adapter::tests::a_signature_mismatch_refuses_with_its_own_code ... ok
+test adapter::tests::a_bad_signature_is_refused_at_open ... ok
+test estimator::tests::a_tied_argmax_resolves_to_the_last_level_listed ... ok
+test adapter::tests::a_good_package_opens ... ok
+test estimator::tests::an_l2_estimate_carries_its_own_resolution ... ok
+test estimator::tests::confidence_is_distance_above_uniform ... ok
+test estimator::tests::two_blocks_never_share_a_seed ... ok
+test adapter::tests::raw_tensor_bytes_are_refused_even_when_the_values_are_right ... ok
+test adapter::tests::a_half_draft_pair_is_not_a_package_state ... ok
+test policy::tests::a_revocation_aimed_at_nothing_is_refused ... ok
+test policy::tests::a_cache_that_is_not_a_snapshot_refuses_rather_than_being_ignored ... ok
+test manifest::tests::a_family_with_no_eval_ref_does_not_admit ... ok
+test policy::tests::a_snapshot_round_trips_through_its_own_writer ... ok
+test manifest::tests::a_declared_interface_that_is_not_the_contract_is_refused ... ok
+test manifest::tests::a_manifest_round_trips_through_its_own_writer ... ok
+test policy::tests::a_window_is_written_the_way_an_operator_says_it ... ok
+test policy::tests::a_fetch_that_does_not_digest_leaves_the_cache_alone ... ok
+test manifest::tests::a_refused_eval_ref_does_not_admit_either ... ok
+test policy::tests::a_revocation_aimed_at_a_base_signature_stops_every_release_on_it ... ok
+test manifest::tests::a_map_fitted_against_another_door_may_not_be_named ... ok
+test policy::tests::a_failed_fetch_leaves_the_door_on_its_own_clock ... ok
+test manifest::tests::a_manifest_pinned_to_another_base_is_refused ... ok
+test policy::tests::a_release_holds_the_window_lower_and_cannot_raise_it ... ok
+test render::tests::a_string_renders_as_itself ... ok
+test manifest::tests::the_package_on_disk_has_to_be_the_one_the_manifest_describes ... ok
+test render::tests::field_order_survives ... ok
+test render::tests::an_object_renders_as_labelled_lines ... ok
+test render::tests::nesting_indents_and_nulls_drop_out ... ok
+test policy::tests::a_family_scoped_revocation_stops_that_family_and_no_other ... ok
+test schema::tests::a_choice_admits_exactly_its_option_keys ... ok
+test schema::tests::a_hostile_state_reaches_the_prompt_and_never_the_instructions ... ok
+test schema::tests::a_noul_admits_no_and_yes_in_that_order ... ok
+test schema::tests::a_score_admits_level_indices_and_keeps_its_legend ... ok
+test manifest::tests::an_eval_ref_that_no_longer_matches_its_record_is_refused ... ok
+test schema::tests::every_question_reads_the_same_state ... ok
+test observation::tests::observation_cannot_grant_admission_or_change_calibration_references ... ok
+test policy::tests::a_revocation_that_is_not_yet_in_effect_does_not_bite ... ok
+test schema::tests::option_text_cannot_add_an_option ... ok
+test policy::tests::deleting_the_cache_does_not_unmanage_the_release ... ok
+test policy::tests::a_current_snapshot_serves_and_a_revoked_release_does_not ... ok
+test policy::tests::the_window_is_the_maximum_enforcement_delay ... ok
+test observation::tests::changed_bytes_counts_and_identities_are_rejected ... ok
+test suite::tests::a_tampered_suite_is_refused ... ok
+test suite::tests::the_splits_are_disjoint_and_both_populated ... ok
+test suite::tests::the_shipped_suite_loads_and_its_digest_matches ... ok
+test suite::tests::every_item_names_a_truth_its_question_admits ... ok
+
+test result: ok. 71 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/bin/lev_adapter_check.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_adapter_check-170a2365f7ce6fdb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_band.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_band-8c6a869927588f7e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_calibration_sweep.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_calibration_sweep-30bfa5af37e3f034)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_measure.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_measure-ab8de3cda4174a41)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_order_sweep.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_order_sweep-eaabb8da4701ea83)
+
+running 5 tests
+test tests::the_population_spread_divides_by_every_value ... ok
+test tests::every_order_of_three_options_is_listed_once ... ok
+test tests::an_unanswered_item_leaves_the_denominator_rather_than_counting_as_agreement ... ok
+test tests::a_flip_is_an_item_that_answered_differently ... ok
+test tests::a_permutation_reorders_the_options_and_nothing_else ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_policy.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_policy-a84fdfd096cbd239)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_render.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_render-2477cd6bbc72a7ac)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_seed_sweep.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_seed_sweep-ee056f70f0c1ddba)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adapter.rs (/tmp/openagents-supervision/root-target/debug/deps/adapter-87cdb584b829c5fc)
+
+running 3 tests
+test the_device_reports_the_base_signature_it_will_accept ... ok
+test the_runtime_loads_a_package_this_repository_wrote ... ok
+test an_untrained_package_loads_and_then_fails_at_inference ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+     Running tests/admission.rs (/tmp/openagents-supervision/root-target/debug/deps/admission-dfd3481de38df2ac)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/calibrated_answer_roundtrip.rs (/tmp/openagents-supervision/root-target/debug/deps/calibrated_answer_roundtrip-e061f2cccdda36a1)
+
+running 6 tests
+test an_uncalibrated_answer_reads_the_same_either_way ... ok
+test calibrated_noul_preserves_the_fixed_answer_on_the_wire ... ok
+test calibrated_choice_preserves_the_fixed_answer_on_the_wire ... ok
+test calibrated_score_preserves_the_fixed_answer_on_the_wire ... ok
+test a_tied_raw_maximum_serves_the_last_tied_level_through_the_wire ... ok
+test a_band_conditioned_map_preserves_the_fixed_answer_on_the_wire ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (/tmp/openagents-supervision/root-target/debug/deps/conformance-837e0f2417100b5a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/isolation.rs (/tmp/openagents-supervision/root-target/debug/deps/isolation-a2e9f7e0160cc662)
+
+running 2 tests
+test a_compiled_question_never_carries_a_sibling_question ... ok
+test a_secret_in_a_sibling_reads_like_a_secret_that_was_never_named ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.07s
+
+     Running tests/manifests.rs (/tmp/openagents-supervision/root-target/debug/deps/manifests-2fa7ca0e1a584961)
+
+running 7 tests
+test the_base_release_admits_exactly_the_families_its_records_admit ... ok
+test every_committed_manifest_loads_and_declares_this_build_of_the_contract ... ok
+test every_committed_manifest_names_a_policy_snapshot_it_can_resolve ... ok
+test an_adapted_release_names_only_maps_fitted_against_itself ... ok
+test every_eval_ref_matches_the_record_it_names ... ok
+test every_observation_ref_matches_its_retained_rows ... ok
+test the_package_is_checked_when_it_is_on_this_machine ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.58s
+
+     Running tests/pool.rs (/tmp/openagents-supervision/root-target/debug/deps/pool-455a9f7bf0941988)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/revocation.rs (/tmp/openagents-supervision/root-target/debug/deps/revocation-96029565c2271e1c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/supervision.rs (/tmp/openagents-supervision/root-target/debug/deps/supervision-883a75c5f1153c2f)
+
+running 1 test
+test faults_retire_a_helper_and_the_lane_recovers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.77s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/nostr-8f444dabd9016521)
+
+running 8 tests
+test nip19::tests::mixed_case_is_refused ... ok
+test domain::filter::tests::search_never_reads_excluded_kinds ... ok
+test domain::filter::tests::search_terms_drop_extensions ... ok
+test domain::filter::tests::search_is_ascii_case_insensitive_substring_matching ... ok
+test nip19::tests::bip173_invalid_strings_are_refused ... ok
+test nip19::tests::a_zero_secret_is_not_a_key ... ok
+test nip19::tests::bip173_valid_strings_decode_and_round_trip ... ok
+test nip44::tests::pinned_nip44_vector_and_tamper_boundaries ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/nip44_differential.rs (/tmp/openagents-supervision/root-target/debug/deps/nip44_differential-029a9e582ac329fb)
+
+running 12 tests
+test chacha20_rfc8439_section_2_4_2_vector ... ok
+test hkdf_expand_over_a_long_key_matches_rustcrypto_extract_then_expand ... ok
+test constant_time_equal_matches_subtle_at_boundary_sizes ... ok
+test hkdf_expand_matches_rustcrypto_at_boundary_sizes ... ok
+test hmac_sha256_matches_rustcrypto_at_boundary_sizes ... ok
+test chacha20_matches_rustcrypto_at_boundary_sizes ... ok
+test constant_time_equal_detects_a_single_flipped_bit ... ok
+test constant_time_equal_matches_subtle ... ok
+test message_keys_match_rustcrypto_hkdf ... ok
+test hkdf_expand_matches_rustcrypto ... ok
+test hmac_sha256_matches_rustcrypto ... ok
+test chacha20_matches_rustcrypto ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+
+     Running tests/nip44_vectors.rs (/tmp/openagents-supervision/root-target/debug/deps/nip44_vectors-b2e79228b6119e80)
+
+running 11 tests
+test payload_size_boundaries_before_any_key_material_is_used ... ok
+test vector_file_matches_the_checksum_the_pinned_spec_publishes ... ok
+test valid_padded_lengths ... ok
+test invalid_payloads_are_refused_with_the_named_cause ... ok
+test invalid_conversation_key_inputs_are_refused_by_key_parsing ... ok
+test valid_message_keys ... ok
+test valid_conversation_keys ... ok
+test valid_encrypt_decrypt ... ok
+test plaintext_length_boundaries ... ok
+test invalid_plaintext_lengths ... ok
+test valid_encrypt_decrypt_long_messages ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/properties.rs (/tmp/openagents-supervision/root-target/debug/deps/properties-eb6a7ce9c69a638d)
+
+running 20 tests
+test nip44_padded_length_is_monotone_and_bounded ... ok
+test bech32_detects_any_single_character_substitution ... ok
+test bech32_round_trips_any_prefix_and_payload ... ok
+test bech32_refuses_to_encode_past_90_characters ... ok
+test nip44_base64_round_trips ... ok
+test bech32_decode_never_panics ... ok
+test event_json_has_the_nip01_wire_shape ... ok
+test filter_json_round_trips ... ok
+test canonical_preimage_is_the_nip01_array ... ok
+test filter_parsing_rejects_unknown_fields_and_keeps_channel_window_fields ... ok
+test event_json_round_trips ... ok
+test a_filter_built_from_an_event_matches_it ... ok
+test structure_validation_accepts_well_formed_fields_and_never_panics ... ok
+test filter_matching_agrees_with_a_naive_reading ... ok
+test filter_json_from_arbitrary_values_never_panics ... ok
+test nip44_rejects_every_single_byte_corruption ... ok
+test nip44_decrypt_never_panics_on_arbitrary_text ... ok
+test npub_and_nsec_round_trip_real_keys ... ok
+test nip44_payload_framing ... ok
+test nip44_pad_and_unpad_round_trip ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.59s
+
+     Running tests/search_equivalence.rs (/tmp/openagents-supervision/root-target/debug/deps/search_equivalence-61be90865811f6d3)
+
+running 2 tests
+test content_cases_match_and_validate ... ok
+test shared_corpus_matches_through_search_matches_and_filter ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/nostr_relay-09c47e10e5c920c6)
+
+running 18 tests
+test gateway::config::tests::supported_nip_environment_grammar_is_bounded ... ok
+test gateway::rate::tests::rate_and_connection_limits_fail_closed_and_permits_release ... ok
+test gateway::rate::tests::gift_wrap_rate_dimensions_are_bounded_without_inferring_an_inner_sender ... ok
+test gateway::subscription::tests::malformed_wraps_are_never_live_visible ... ok
+test gateway::server::tests::req_limits_reject_empty_arrays_and_expensive_queries_and_clamp_limits ... ok
+test gateway::management::tests::nip86_management_fixture_corpus ... ok
+test gateway::subscription::tests::subscription_index_covers_every_exact_selector_and_the_broad_lane ... ok
+test gateway::media::tests::media_paths_mime_and_ranges_are_bounded ... ok
+test gateway::wire::tests::nip11_operator_parity_is_bounded_to_active_capabilities ... ok
+test gateway::wire::tests::nip01_gateway_message_fixture_corpus ... ok
+test gateway::wire::tests::nip45_count_message_fixture_corpus ... ok
+test bulk_import::tests::line_reader_is_bounded_and_rejects_blanks ... ok
+test gateway::subscription::tests::full_send_queue_closes_only_its_connection ... ok
+test gateway::wire::tests::nip11_fixture_corpus ... ok
+test bulk_import::tests::fixture_pins_strict_jsonl_records_and_refusals ... ok
+test gateway::auth::tests::nip42_fixture_corpus ... ok
+test gateway::subscription::tests::indexed_fanout_buffers_and_deduplicates_the_eose_handoff ... ok
+test gateway::wire::fuzz::deterministic_wire_mutations_are_bounded_and_panic_free ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running unittests src/main.rs (/tmp/openagents-supervision/root-target/debug/deps/nostr_relay-73e467de2a026120)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/backup_postgres.rs (/tmp/openagents-supervision/root-target/debug/deps/backup_postgres-de689e2fdff51f1d)
+
+running 1 test
+test backup_unit_restores_whole_under_concurrent_mutation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bulk_import_postgres.rs (/tmp/openagents-supervision/root-target/debug/deps/bulk_import_postgres-5b2fc03f4c2ebbbc)
+
+running 1 test
+test signed_event_jsonl_import_is_ordered_and_idempotent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/deployment_static.rs (/tmp/openagents-supervision/root-target/debug/deps/deployment_static-4256af6d44a480f2)
+
+running 6 tests
+test github_workflows_are_forbidden ... ok
+test container_remains_one_unprivileged_binary ... ok
+test proxy_templates_preserve_websocket_and_client_ip_contracts ... ok
+test restore_procedure_checks_the_real_schema ... ok
+test backup_is_private_atomic_retained_and_scheduled ... ok
+test systemd_unit_is_fail_closed_and_sandboxed ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gateway_postgres.rs (/tmp/openagents-supervision/root-target/debug/deps/gateway_postgres-573b1e2bcb217b64)
+
+running 1 test
+test m3_gateway_contract_against_postgres ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/load_postgres.rs (/tmp/openagents-supervision/root-target/debug/deps/load_postgres-5c01e9a7c248c3a4)
+
+running 1 test
+test m4_release_load_proof ... ignored, release-mode load proof; run scripts/test-postgres.sh
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/multiprocess_postgres.rs (/tmp/openagents-supervision/root-target/debug/deps/multiprocess_postgres-57adb5134821806a)
+
+running 1 test
+test m4_two_process_gap_and_chaos_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/soak_postgres.rs (/tmp/openagents-supervision/root-target/debug/deps/soak_postgres-261d72c815949283)
+
+running 1 test
+test m8_long_run_soak ... ignored, one-hour release soak; run scripts/test-soak.sh
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/store_postgres.rs (/tmp/openagents-supervision/root-target/debug/deps/store_postgres-294ae2fdaf285fb8)
+
+running 1 test
+test m2_store_contract_against_postgres ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/store_static.rs (/tmp/openagents-supervision/root-target/debug/deps/store_static-28fa1ff11e13f042)
+
+running 6 tests
+test legacy_expiration_migration_adds_a_terminal_outcome ... ok
+test block_migrations_contain_identity_and_derived_state ... ok
+test legacy_import_migration_contains_a_bounded_idempotency_ledger ... ok
+test m6_migration_contains_group_and_management_state ... ok
+test m2_migration_contains_the_required_store_contract ... ok
+test m7_migration_contains_media_ownership_and_replay_state ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/supervise-4e59174084916f30)
+
+running 4 tests
+test tests::a_sink_counts_everything_and_keeps_its_cap ... ok
+test tests::a_cap_inside_a_character_drops_the_partial_one ... ok
+test tests::invalid_bytes_inside_the_kept_text_are_replaced ... ok
+test tests::a_stream_under_its_cap_is_whole ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/blocking.rs (/tmp/openagents-supervision/root-target/debug/deps/blocking-bb1da8bdf1958340)
+
+running 4 tests
+test a_child_in_this_process_s_group_is_refused ... ok
+test an_ordinary_command_answers ... ok
+test a_descendant_does_not_outlive_a_child_that_exits ... ok
+test a_deadline_ends_the_grandchild_too ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.24s
+
+     Running tests/capture.rs (/tmp/openagents-supervision/root-target/debug/deps/capture-800ec25f57d9625f)
+
+running 5 tests
+test a_cap_inside_a_character_keeps_valid_text ... ok
+test both_streams_are_bounded_at_once ... ok
+test oversized_output_is_cut_as_it_arrives ... ok
+test a_timed_out_job_keeps_what_it_printed ... ok
+test a_producer_that_never_stops_is_bounded_and_ended ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/resource.rs (/tmp/openagents-supervision/root-target/debug/deps/resource-5d2369f2ce8d4ed2)
+
+running 2 tests
+test a_prepared_command_keeps_its_directory_and_environment_policy ... ok
+test a_cancelled_caller_does_not_release_a_live_jobs_resource ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running tests/tree.rs (/tmp/openagents-supervision/root-target/debug/deps/tree-2604e077314f6627)
+
+running 10 tests
+test a_program_that_will_not_start_is_the_harness ... ok
+test a_job_runs_where_it_was_told_to ... ok
+test a_job_reports_its_own_ending ... ok
+test nothing_is_left_unreaped ... ok
+test a_child_that_ignores_the_ask_is_ended_anyway ... ok
+test a_cancelled_job_takes_its_tree_with_it ... ok
+test a_caller_that_stops_waiting_still_ends_the_job ... ok
+test a_deadline_ends_the_grandchild_too ... ok
+test a_descendant_does_not_outlive_a_child_that_exits ... ok
+test one_job_ending_leaves_the_other_alone ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.02s
+
+   Doc-tests atif
+
+running 1 test
+test crates/atif/src/lib.rs - (line 39) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.50s; merged doctests compilation took 0.28s
+   Doc-tests capability
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coder
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coder_boundary
+
+running 1 test
+test crates/coder-boundary/src/boundary.rs - boundary (line 43) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.42s; merged doctests compilation took 0.25s
+   Doc-tests coder_terminal
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coderbench
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gym
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests jev
+
+running 7 tests
+test crates/jev/src/lib.rs - (line 22) - compile ... ok
+test crates/jev/src/client.rs - client::SystemOneRequest (line 33) ... ok
+test crates/jev/src/config.rs - config::Config (line 72) ... ok
+test crates/jev/src/config.rs - config::ApiKey (line 19) ... ok
+test crates/jev/src/retry.rs - retry::RetryPolicy (line 35) ... ok
+test crates/jev/src/questions.rs - questions::Questions (line 369) ... ok
+test crates/jev/src/lib.rs - (line 70) ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.66s; merged doctests compilation took 0.47s
+   Doc-tests kev
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests lev
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nostr
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nostr_relay
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests supervise
+
+running 1 test
+test crates/supervise/src/job.rs - job::Job (line 23) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.43s; merged doctests compilation took 0.24s
+   Compiling indexmap v2.14.2
+   Compiling serde v1.0.229
+   Compiling tracing v0.1.44
+   Compiling hyper v1.11.1
+   Compiling kasuari v0.4.12
+   Compiling tower v0.5.3
+   Compiling axum-core v0.5.6
+   Compiling serde_urlencoded v0.7.1
+   Compiling compact_str v0.9.1
+   Compiling coder-boundary v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-boundary)
+   Compiling ahash v0.8.12
+   Compiling spm_precompiled v0.1.4
+   Compiling dary_heap v0.3.9
+   Compiling serde_json v1.0.151
+   Compiling zip v8.6.0
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.20
+   Compiling ratatui-core v0.1.2
+   Compiling nostr v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr)
+   Compiling atif v0.1.0 (/Users/christopherdavid/work/openagents/crates/atif)
+   Compiling tokenizers v0.22.2
+   Compiling safetensors v0.8.0
+   Compiling tokenizers v0.23.2
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.8.9
+   Compiling ratatui-widgets v0.3.2
+   Compiling ratatui-crossterm v0.1.2
+   Compiling capability v0.1.0 (/Users/christopherdavid/work/openagents/crates/capability)
+   Compiling reqwest v0.12.28
+   Compiling nostr-relay v0.1.0 (/Users/christopherdavid/work/openagents/crates/nostr-relay)
+   Compiling ratatui-macros v0.7.2
+   Compiling ratatui v0.30.2
+   Compiling jev v0.1.0 (/Users/christopherdavid/work/openagents/crates/jev)
+   Compiling coder-terminal v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder-terminal)
+   Compiling gym v0.1.0 (/Users/christopherdavid/work/openagents/crates/gym)
+   Compiling coder v0.1.0 (/Users/christopherdavid/work/openagents/crates/coder)
+   Compiling candle-core v0.11.0
+   Compiling lev v0.1.0 (/Users/christopherdavid/work/openagents/crates/lev)
+   Compiling coderbench v0.1.0 (/Users/christopherdavid/work/openagents/crates/coderbench)
+   Compiling candle-nn v0.11.0
+   Compiling kev v0.1.0 (/Users/christopherdavid/work/openagents/crates/kev)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 28.35s
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/atif-52559c36e44e19f8)
+
+running 24 tests
+test document::tests::timestamps_format_in_utc ... ok
+test document::tests::a_pipeline_is_what_its_first_program_does ... ok
+test document::tests::a_failed_decision_call_keeps_its_reason ... ok
+test log::tests::a_session_id_leads_with_its_start_time ... ok
+test document::tests::a_step_round_trips_through_json ... ok
+test document::tests::a_digest_answers_what_was_asked_not_how_it_was_spelled ... ok
+test document::tests::a_decision_call_records_the_door_and_the_state_it_read ... ok
+test document::tests::a_document_reports_the_session_it_came_from ... ok
+test document::tests::a_call_and_its_result_are_one_step ... ok
+test document::tests::usage_totals_across_the_session ... ok
+test document::tests::repeated_shell_commands_report_as_waste ... ok
+test document::tests::decisions_and_tool_calls_count_separately ... ok
+test log::tests::a_file_with_no_session_record_is_refused ... ok
+test log::tests::a_finished_log_refuses_another_step ... ok
+test log::tests::a_half_written_line_does_not_cost_the_lines_before_it ... ok
+test log::tests::a_log_without_an_ending_reads_as_interrupted ... ok
+test log::tests::two_sessions_cannot_share_a_file ... ok
+test log::tests::a_named_log_lands_where_it_was_told_to ... ok
+test log::tests::the_lifecycle_is_one_header_then_steps_then_one_end ... ok
+test log::tests::the_whole_reader_refuses_an_interrupted_session ... ok
+test log::tests::a_log_round_trips_through_a_document ... ok
+test log::tests::logs_list_oldest_first ... ok
+test log::tests::an_interior_line_that_is_not_utf8_is_a_fault_on_its_own ... ok
+test log::tests::a_final_record_torn_at_any_byte_keeps_the_prefix ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/capability-a23fec074f558a56)
+
+running 7 tests
+test bounded::tests::a_command_that_fails_to_spawn_fails_the_run ... ok
+test bounded::tests::a_probe_runs_from_inside_an_async_host ... ok
+test bounded::tests::a_nonzero_exit_is_an_answer_not_a_stop ... ok
+test bounded::tests::a_bounded_run_reads_what_the_command_said ... ok
+test bounded::tests::voluminous_output_is_kept_to_the_cap_and_marked ... ok
+test bounded::tests::a_hung_command_is_stopped_at_the_wall ... ok
+test bounded::tests::a_hung_commands_children_do_not_outlive_it ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running unittests src/bin/capability-trust.rs (/tmp/openagents-supervision/root-target/debug/deps/capability_trust-173fc9d292de9eb5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contract.rs (/tmp/openagents-supervision/root-target/debug/deps/contract-101810f55cfa7bc7)
+
+running 29 tests
+test a_mismatched_argv_is_refused_at_load ... ok
+test a_relative_script_is_refused_at_approval ... ok
+test a_changed_manifest_loses_its_approval ... ok
+test a_store_inside_the_workspace_approves_nothing ... ok
+test a_store_inside_the_manifests_repository_approves_nothing ... ok
+test an_unapproved_decision_verifies_nothing ... ok
+test a_symlinked_manifest_cannot_move_its_repository_trust_boundary ... ok
+test a_transport_this_host_does_not_run_stays_unprobed ... ok
+test an_unapproved_manifest_stays_inert ... ok
+test reading_a_registry_runs_nothing ... ok
+test an_approval_names_real_paths ... ok
+test the_checked_in_manifest_parses ... ok
+
+running 1 test
+test an_unresolvable_argv_word_is_refused_at_approval ... ok
+test a_verified_decision_carries_the_record_it_checked ... ok
+test deleting_the_approval_store_revokes_cached_approval ... ok
+test a_failed_probe_is_unknown ... ok
+test a_probe_runs_inside_an_async_host ... ok
+test a_declared_refusal_is_unavailable ... ok
+test a_nonzero_probe_naming_nothing_is_unknown ... ok
+test a_nonzero_probe_naming_its_acceptance_is_present ... ok
+test a_relative_script_appearing_in_the_workspace_approves_nothing ... ok
+test a_changed_argv_script_loses_its_approval ... ok
+test each_argv_alias_is_verified_even_when_targets_were_identical ... ok
+test retargeting_an_argv_symlink_invalidates_approval ... ok
+test an_approved_manifest_runs_its_probe ... ok
+test a_noisy_probe_is_unknown ... ok
+test a_changed_adapter_loses_its_approval ... ok
+test a_hung_probe_is_unknown ... ok
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.33s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.13s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.18s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.20s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.13s
+
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/coder-1f467029cc83ae79)
+
+running 170 tests
+test about::tests::the_openagents_checkout_is_own_source ... ok
+test about::tests::the_block_does_not_claim_classifier_usage ... ok
+test classify::tests::a_confident_respond_routes_to_respond ... ok
+test classify::tests::an_unreadable_answer_halts_and_none_answers ... ok
+test about::tests::outside_git_the_block_says_so_and_keeps_the_directory ... ok
+test classify::tests::the_choice_rules_at_any_confidence ... ok
+test classify::tests::the_choice_is_the_shell_route ... ok
+test about::tests::a_decoy_terminal_directory_is_not_own_source ... ok
+test agent::tests::a_retry_changes_the_next_instructions ... ok
+test classify::tests::every_action_names_and_parses ... ok
+test agent::tests::classify_without_a_key_skips_with_a_note ... ok
+test delegate::tests::a_bound_reads_back_the_way_it_was_stated ... ok
+test agent::tests::a_reply_streams_and_joins_the_transcript ... ok
+test agent::tests::an_unsupported_plan_is_refused_without_a_repair ... ok
+test classify::tests::the_state_is_a_structured_object ... ok
+test agent::tests::an_answering_permit_runs_nothing ... ok
+test agent::tests::a_quoted_example_runs_nothing ... ok
+test classify::tests::the_sets_ask_one_question_each ... ok
+test agent::tests::a_clarifying_turn_runs_nothing ... ok
+test classify::tests::a_damage_answer_is_not_read ... ok
+test delegate::tests::a_manifest_changed_since_approval_runs_nothing ... ok
+test delegate::tests::a_grant_covering_the_store_refuses_rather_than_narrowing ... ok
+test agent::tests::a_repaired_exhaustion_answers_in_prose ... ok
+test agent::tests::prose_after_exhaustion_is_the_answer ... ok
+test delegate::tests::a_reapproved_manifest_still_refuses_the_surveyed_executor ... ok
+test agent::tests::a_permitted_plan_runs ... ok
+test delegate::tests::a_revoked_approval_runs_nothing ... ok
+test delegate::tests::a_pinned_alias_inside_a_grant_refuses_the_delegation ... ok
+test delegate::tests::a_pinned_alias_behind_a_writable_symlink_ancestor_refuses ... ok
+test delegate::tests::a_pinned_script_is_sealed_for_the_delegate ... ok
+test delegate::tests::an_adapter_changed_since_approval_runs_nothing ... ok
+test delegate::tests::a_trust_store_alias_under_a_writable_grant_refuses ... ok
+test agent::tests::an_exhausted_loop_ends_as_a_refusal_with_what_it_saw ... ok
+test delegate::tests::an_unisolated_write_is_refused_before_it_spawns ... ok
+test delegate::tests::an_untenable_bound_or_width_refuses_before_anything_spawns ... ok
+test delegate::tests::answers_compare_without_their_whitespace ... ok
+test delegate::tests::an_overbroad_grant_refuses_the_delegation_rather_than_narrowing_it ... ok
+test agent::tests::the_instructions_tell_the_application_from_the_workspace ... ok
+test delegate::tests::a_cancelled_read_only_delegation_releases_its_checkout ... ok
+test delegate::tests::a_missing_trust_store_is_created ... ok
+test delegate::tests::the_answer_is_what_follows_the_last_mark ... ok
+test delegate::tests::a_worktree_is_trusted_exactly_and_then_withdrawn ... ok
+test delegate::tests::only_a_devin_worktree_delegation_is_trusted ... ok
+test delegate::tests::the_trust_store_follows_the_executor_data_home ... ok
+test delegate::tests::the_wrapped_command_repoints_only_tmpdir ... ok
+test executor_door::tests::a_lone_turn_is_the_prompt ... ok
+test executor_door::tests::an_unknown_slug_refuses_to_open ... ok
+test executor_door::tests::the_prompt_carries_instructions_history_and_the_last_turn ... ok
+test generate::tests::a_chunk_boundary_anywhere_leaves_the_answer_whole ... ok
+test generate::tests::a_door_that_cannot_name_its_model_says_unknown ... ok
+test generate::tests::a_keepalive_is_not_an_event ... ok
+test generate::tests::a_lane_is_a_model_under_a_short_name ... ok
+test generate::tests::a_last_event_without_a_blank_line_still_counts ... ok
+test delegate::tests::a_delegate_answers_and_is_graded ... ok
+test generate::tests::a_quiet_door_files_under_two_causes ... ok
+test generate::tests::a_record_that_is_not_json_or_not_utf8_is_a_failure_not_a_skip ... ok
+test generate::tests::a_stream_arriving_one_byte_at_a_time_reads_the_same ... ok
+test generate::tests::a_stream_that_ends_before_completing_is_a_failure_that_keeps_the_text ... ok
+test generate::tests::an_incomplete_response_is_a_failure_with_its_reason ... ok
+test generate::tests::data_lines_of_one_event_join_with_a_newline ... ok
+test generate::tests::events_after_completed_are_a_failure ... ok
+test generate::tests::no_key_means_no_door ... ok
+test generate::tests::only_a_door_that_picks_its_model_takes_a_lane ... ok
+test generate::tests::the_body_speaks_responses_wire_format ... ok
+test generate::tests::the_relay_failures_file_under_four_causes ... ok
+test generate::tests::the_stub_answers_and_reports_no_usage ... ok
+test generate::tests::two_configured_doors_are_a_refusal_rather_than_a_choice ... ok
+test permit::tests::a_withdrawn_permit_stays_withdrawn ... ok
+test permit::tests::only_an_answering_route_carries_execution ... ok
+test permit::tests::the_operator_can_turn_the_shell_off ... ok
+test program::tests::a_decide_step_that_inlines_its_wording_is_refused ... ok
+test program::tests::a_repeated_step_name_is_refused ... ok
+test program::tests::a_source_that_is_not_a_slug_or_not_on_a_query_step_is_refused ... ok
+test program::tests::a_version_this_host_does_not_know_is_refused ... ok
+test program::tests::an_unrecognized_step_kind_refuses_the_whole_program ... ok
+test program::tests::the_fan_out_program_keeps_its_bounds ... ok
+test program::tests::the_query_is_the_filter_a_relay_would_answer ... ok
+test program::tests::the_read_records_the_query_beside_the_answer ... ok
+test program::tests::the_registry_lists_the_five_programs_the_repository_carries ... ok
+test questions::tests::a_fixed_set_asks_what_the_file_says ... ok
+test questions::tests::a_set_this_host_does_not_read_is_refused ... ok
+test questions::tests::a_supplied_choice_takes_its_options_from_the_run ... ok
+test questions::tests::a_template_asks_once_per_requirement_and_names_each_one ... ok
+test questions::tests::a_template_that_names_no_requirement_is_refused ... ok
+test questions::tests::the_registry_holds_the_sets_the_first_program_names ... ok
+test relay::tests::a_directory_in_the_identitys_place_is_an_error_not_a_first_run ... ok
+test relay::tests::a_directory_that_cannot_take_the_file_fails_the_install_and_leaves_nothing ... ok
+test relay::tests::a_first_run_installs_a_private_identity_and_a_second_run_reads_it ... ok
+test relay::tests::a_worker_answers_at_the_version_the_request_named ... ok
+test generate::tests::a_line_that_never_ends_is_bounded ... ok
+test relay::tests::an_unreadable_identity_is_an_error_not_a_first_run ... ok
+test relay::tests::identity_round_trips_a_hex_secret ... ok
+test relay::tests::npub_and_hex_pubkeys_parse ... ok
+test relay::tests::payload_versions_are_explicit ... ok
+test relay::tests::signed_auth_and_request_events_verify ... ok
+test relay::tests::concurrent_first_runs_agree_on_one_identity ... ok
+test repo::tests::terms_pick_identifiers_and_skip_stop_words ... ok
+test runtime::tests::a_request_supplies_its_task_list ... ok
+test runtime::tests::a_request_with_no_list_supplies_no_work ... ok
+test runtime::tests::a_selection_names_a_program_or_none ... ok
+test runtime::tests::acceptance_grades_each_item_against_what_it_expects ... ok
+test runtime::tests::an_unrepresentable_deadline_refuses_before_any_step_runs ... ok
+test runtime::tests::executor_claims_cannot_admit_an_unsupported_bound ... ok
+test shell::tests::a_command_runs_and_captures ... ok
+test shell::tests::a_command_without_a_permit_never_spawns ... ok
+test shell::tests::a_denied_command_never_spawns ... ok
+test shell::tests::a_fence_surrounded_by_prose_is_not_a_plan ... ok
+test shell::tests::a_fenced_plan_parses ... ok
+test shell::tests::a_json_plan_parses ... ok
+test shell::tests::a_malformed_command_refuses_the_plan ... ok
+test shell::tests::a_plan_is_refused_without_a_permit_to_run_it ... ok
+test delegate::tests::a_noisy_delegate_is_bounded_while_it_prints ... ok
+test shell::tests::an_example_in_prose_is_not_a_plan ... ok
+test shell::tests::an_unreadable_plan_becomes_the_answer ... ok
+test shell::tests::an_unsupported_version_is_refused ... ok
+test shell::tests::output_is_bounded_and_the_rest_is_counted ... ok
+test shell::tests::prose_is_not_a_plan ... ok
+test shell::tests::the_deny_list_catches_endings ... ok
+test shell::tests::too_many_commands_refuse_the_plan ... ok
+test source::tests::a_lookup_that_overflows_can_refuse_instead ... ok
+test source::tests::a_path_two_items_touch_is_recorded ... ok
+test source::tests::a_source_ordering_by_identifier_sorts_before_it_bounds ... ok
+test source::tests::a_source_that_leaves_the_workspace_is_refused ... ok
+test source::tests::a_work_item_states_what_it_expects ... ok
+test source::tests::a_work_list_reads_back_the_paths_it_names ... ok
+test source::tests::a_work_list_this_host_does_not_read_is_refused ... ok
+test source::tests::six_tasks_over_six_files_collide_over_nothing ... ok
+test source::tests::the_order_is_recorded_and_the_bound_is_applied ... ok
+test source::tests::the_repositorys_sources_read ... ok
+test source::tests::the_request_is_a_source_like_any_other ... ok
+test source::tests::work_that_comes_after_nothing_in_the_list_runs ... ok
+test source::tests::work_that_comes_after_work_in_the_same_list_is_dropped ... ok
+test survey::tests::a_capability_that_is_not_a_route_drives_nothing ... ok
+test survey::tests::a_machine_with_no_manifests_surveys_to_nothing ... ok
+test survey::tests::a_repositorys_own_trust_file_approves_nothing ... ok
+test survey::tests::a_survey_reads_the_repositorys_capabilities_and_programs ... ok
+test survey::tests::an_executor_is_built_from_what_the_probe_resolved ... ok
+test survey::tests::both_reads_reach_the_trace_as_checks ... ok
+test survey::tests::coderbench_reads_both_reads_as_the_checks_the_task_names ... ok
+test repo::tests::a_repo_discovers_this_workspace ... ok
+test trace::tests::a_failed_write_stops_the_recording_rather_than_the_turn ... ok
+test trace::tests::a_shell_call_keeps_its_output_and_names_what_was_shown ... ok
+test trace::tests::a_recorder_writes_steps_as_they_happen ... ok
+test trace::tests::the_switch_turns_recording_off_and_the_directory_moves_it ... ok
+test turn::tests::a_turn_without_a_classifier_answers ... ok
+test turn::tests::a_refused_plan_finishes_refused ... ok
+test turn::tests::a_turn_without_a_door_never_reaches_selection ... ok
+test worktree::tests::a_contended_metadata_lock_times_out_and_then_recovers ... ok
+
+running 1 test
+test worktree::tests::child_attempts_the_metadata_lock ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+
+test worktree::tests::a_different_process_cannot_take_the_metadata_lock ... ok
+test worktree::tests::a_parent_symlink_cannot_create_a_checkout_outside_the_repository ... ok
+test worktree::tests::child_attempts_the_metadata_lock ... ok
+test worktree::tests::a_checkout_is_seeded_with_a_scratch_git_directory_at_its_base ... ok
+test worktree::tests::linked_checkouts_share_the_same_metadata_lock ... ok
+test delegate::tests::a_narrating_delegate_is_graded_on_what_follows_the_mark ... ok
+test delegate::tests::a_timed_out_delegation_ends_its_descendants ... FAILED
+test delegate::tests::a_read_only_delegate_writes_nowhere_but_scratch_and_grants ... ok
+test delegate::tests::a_refused_delegate_did_not_answer_correctly ... ok
+test worktree::tests::simultaneous_additions_and_removals_keep_all_answers ... ok
+test delegate::tests::an_approved_delegate_writes_its_state_but_never_its_approval ... ok
+test delegate::tests::a_failed_writing_delegate_keeps_its_checkout ... ok
+test delegate::tests::results_keep_the_order_the_tasks_were_given ... ok
+test delegate::tests::a_devin_worktree_delegation_is_trusted_for_its_run ... ok
+test delegate::tests::a_worktree_delegation_runs_in_its_own_checkout ... ok
+test delegate::tests::a_writing_delegate_writes_only_its_checkout_and_keeps_it ... ok
+test delegate::tests::the_caller_environment_passes_through_but_tmpdir_is_private ... ok
+test delegate::tests::six_worktrees_do_not_collide ... ok
+test delegate::tests::refusal_timeout_and_failure_stay_apart ... ok
+test shell::tests::a_timed_out_command_leaves_nothing_behind ... ok
+test delegate::tests::the_fan_out_is_concurrent_under_its_bound ... FAILED
+test delegate::tests::a_cancelled_writing_delegation_keeps_its_checkout_and_its_edits ... ok
+
+failures:
+
+---- delegate::tests::a_timed_out_delegation_ends_its_descendants stdout ----
+
+thread 'delegate::tests::a_timed_out_delegation_ends_its_descendants' (32805367) panicked at crates/coder/src/delegate.rs:2217:9:
+assertion `left == right` failed
+  left: ""
+ right: "partway through"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- delegate::tests::the_fan_out_is_concurrent_under_its_bound stdout ----
+
+thread 'delegate::tests::the_fan_out_is_concurrent_under_its_bound' (32808276) panicked at crates/coder/src/delegate.rs:2310:9:
+a width of one is the sequential case: 2.531683875s against 3.7654655s
+
+
+failures:
+    delegate::tests::a_timed_out_delegation_ends_its_descendants
+    delegate::tests::the_fan_out_is_concurrent_under_its_bound
+
+test result: FAILED. 168 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.67s
+
+error: test failed, to rerun pass `-p coder --lib`
