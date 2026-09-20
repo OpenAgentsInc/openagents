@@ -41,7 +41,7 @@ use super::{
     auth::{AuthState, make_challenge, read_process_secret},
     db::{DbPool, DbProtocolConfig},
     management::{is_management_request, serve_management},
-    media::{MediaStorage, is_media_request, serve_media},
+    media::{MediaStorage, STALE_RESERVATION_AGE, is_media_request, serve_media},
     rate::{ConnectionPermit, RateLimiter},
     socket::{
         ServerWebSocket, effective_ip, is_websocket_upgrade, read_http_head, serve_http,
@@ -160,6 +160,7 @@ impl Gateway {
         let expiration_current = Arc::clone(&current);
         let mut expiration_stop = shutdown_receiver.clone();
         let expiration_interval = config.expiration_sweep;
+        let expiration_media = media.clone();
         background.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(expiration_interval);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -171,11 +172,26 @@ impl Gateway {
                         }
                     }
                     _ = interval.tick() => {
-                        if expiration_store.delete_expired(unix_now()).await.is_err()
+                        let now = unix_now();
+                        if expiration_store.delete_expired(now).await.is_err()
                             || !expiration_store.is_current()
                         {
                             fail_process(&expiration_current, &expiration_shutdown);
                             break;
+                        }
+                        if let Some(storage) = &expiration_media {
+                            let cutoff = now.saturating_sub(STALE_RESERVATION_AGE.as_secs());
+                            match expiration_store.release_stale_media_reservations(cutoff).await {
+                                Ok(records) => {
+                                    for record in &records {
+                                        let _ = storage.remove_unpublished_blob(record).await;
+                                    }
+                                }
+                                Err(_) => {
+                                    fail_process(&expiration_current, &expiration_shutdown);
+                                    break;
+                                }
+                            }
                         }
                     }
                 }

@@ -1645,6 +1645,23 @@ impl Store {
         Ok(())
     }
 
+    /// Drop every upload registration that never published and was made
+    /// at or before `cutoff`, with the ownership it reserved. Returns the
+    /// dropped records so the caller can remove any bytes left on disk.
+    pub async fn release_stale_media_reservations(
+        &self,
+        cutoff: u64,
+    ) -> Result<Vec<MediaRecord>, StoreError> {
+        self.ensure_current()?;
+        let cutoff = pg_i64(cutoff, "media reservation cutoff")?;
+        self.client
+            .query(&self.statements.delete_stale_media_reservations, &[&cutoff])
+            .await?
+            .into_iter()
+            .map(decode_media_row)
+            .collect()
+    }
+
     pub async fn finalize_media(&self, sha256: &str) -> Result<(), StoreError> {
         self.ensure_current()?;
         if self

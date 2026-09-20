@@ -62,6 +62,13 @@ async fn m3_gateway_contract_against_postgres() {
     .await
     .unwrap();
     assert_physically_expired(&verification_database_url, &expired_id).await;
+    let media_root_for_release = media_root.clone();
+    tokio::task::spawn_blocking(move || {
+        disconnected_upload_releases_reservation(address_one, &media_root_for_release)
+    })
+    .await
+    .unwrap();
+    stale_reservation_sweep_contract(&verification_database_url, address_one, &media_root).await;
     configure_closed_membership(&verification_database_url).await;
     tokio::task::spawn_blocking(move || closed_agent_auth_contract(address_one))
         .await
@@ -651,6 +658,164 @@ fn media_contract(address: SocketAddr, media_root: &Path) {
         &[],
     );
     assert!(final_delete.starts_with(b"HTTP/1.1 200 OK\r\n"));
+}
+
+fn upload_authorization(secret: u8, sha256: &str, content: &str) -> String {
+    let auth = signed_event(
+        secret,
+        now(),
+        27_235,
+        vec![
+            Tag::new(vec!["u".into(), "http://relay.test/upload".into()]),
+            Tag::new(vec!["method".into(), "PUT".into()]),
+            Tag::new(vec!["payload".into(), sha256.to_owned()]),
+        ],
+        content,
+    );
+    base64(&serde_json::to_vec(&auth).unwrap())
+}
+
+fn upload_head(authorization: &str, length: usize) -> String {
+    format!(
+        "PUT /upload HTTP/1.1\r\nHost: relay.test\r\nContent-Type: application/octet-stream\r\nAuthorization: Nostr {authorization}\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n"
+    )
+}
+
+fn temporary_file_count(media_root: &Path) -> usize {
+    std::fs::read_dir(media_root.join(".tmp"))
+        .map(|entries| entries.count())
+        .unwrap_or(0)
+}
+
+/// A client that hangs up halfway through an authorized body leaves no
+/// temporary file and holds no quota: the same pubkey then fits a body of
+/// the same size where two reservations would not.
+fn disconnected_upload_releases_reservation(address: SocketAddr, media_root: &Path) {
+    let temporary_before = temporary_file_count(media_root);
+    let abandoned = vec![b'a'; 900];
+    let abandoned_hash = hex(&Sha256::digest(&abandoned));
+    let mut stream = StdTcpStream::connect(address).unwrap();
+    stream
+        .write_all(
+            upload_head(&upload_authorization(77, &abandoned_hash, "abandoned"), 900).as_bytes(),
+        )
+        .unwrap();
+    stream.write_all(&abandoned[..400]).unwrap();
+    // Give the relay time to register and start streaming before the hangup.
+    std::thread::sleep(Duration::from_millis(300));
+    drop(stream);
+
+    let replacement = vec![b'b'; 900];
+    let replacement_hash = hex(&Sha256::digest(&replacement));
+    let mut response = Vec::new();
+    for _ in 0..50 {
+        response = raw_http(
+            address,
+            &upload_head(
+                &upload_authorization(77, &replacement_hash, "replacement"),
+                900,
+            ),
+            &replacement,
+        );
+        if response.starts_with(b"HTTP/1.1 201 Created\r\n") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        response.starts_with(b"HTTP/1.1 201 Created\r\n"),
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    assert_eq!(temporary_file_count(media_root), temporary_before);
+    let abandoned_missing = raw_http(
+        address,
+        &format!("GET /{abandoned_hash} HTTP/1.1\r\nHost: relay.test\r\nConnection: close\r\n\r\n"),
+        &[],
+    );
+    assert!(abandoned_missing.starts_with(b"HTTP/1.1 404 Not Found\r\n"));
+}
+
+/// A registration a cancelled task never released, here planted directly
+/// as an unpublished row older than the stale age, is swept with its
+/// ownership and any bytes it left under the blob path, so the pubkey's
+/// quota comes back without a restart.
+async fn stale_reservation_sweep_contract(
+    database_url: &str,
+    address: SocketAddr,
+    media_root: &Path,
+) {
+    let orphan = vec![b'o'; 1_000];
+    let orphan_hash = hex(&Sha256::digest(&orphan));
+    let orphan_dir = media_root.join(&orphan_hash[..2]);
+    std::fs::create_dir_all(&orphan_dir).unwrap();
+    let orphan_storage_key = "c".repeat(64);
+    let orphan_path = orphan_dir.join(format!("{orphan_hash}.{orphan_storage_key}"));
+    std::fs::write(&orphan_path, &orphan).unwrap();
+    let (client, connection) = tokio_postgres::connect(database_url, NoTls).await.unwrap();
+    let driver = tokio::spawn(connection);
+    let stale_uploaded_at = i64::try_from(now()).unwrap() - 7_200;
+    client
+        .execute(
+            "INSERT INTO media_blob (sha256, storage_key, size, media_type, uploaded_at, ready) \
+             VALUES ($1, $2, 1000, 'application/octet-stream', $3, FALSE)",
+            &[&orphan_hash, &orphan_storage_key, &stale_uploaded_at],
+        )
+        .await
+        .unwrap();
+    client
+        .execute(
+            "INSERT INTO media_owner (sha256, pubkey) VALUES ($1, $2)",
+            &[&orphan_hash, &pubkey(78)],
+        )
+        .await
+        .unwrap();
+    let fresh = vec![b'f'; 1_000];
+    let fresh_hash = hex(&Sha256::digest(&fresh));
+    let mut response = Vec::new();
+    for _ in 0..50 {
+        let head = upload_head(&upload_authorization(78, &fresh_hash, "after sweep"), 1_000);
+        let body = fresh.clone();
+        response = tokio::task::spawn_blocking(move || raw_http(address, &head, &body))
+            .await
+            .unwrap();
+        if response.starts_with(b"HTTP/1.1 201 Created\r\n") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        response.starts_with(b"HTTP/1.1 201 Created\r\n"),
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    let orphan_rows = client
+        .query_one(
+            "SELECT count(*) FROM media_blob WHERE sha256 = $1",
+            &[&orphan_hash],
+        )
+        .await
+        .unwrap()
+        .get::<_, i64>(0);
+    assert_eq!(orphan_rows, 0, "stale reservation row must be swept");
+    let orphan_owners = client
+        .query_one(
+            "SELECT count(*) FROM media_owner WHERE sha256 = $1",
+            &[&orphan_hash],
+        )
+        .await
+        .unwrap()
+        .get::<_, i64>(0);
+    assert_eq!(
+        orphan_owners, 0,
+        "stale reservation ownership must be swept"
+    );
+    assert!(
+        !orphan_path.exists(),
+        "stale reservation bytes must be removed"
+    );
+    drop(client);
+    driver.await.unwrap().unwrap();
 }
 
 fn raw_http(address: SocketAddr, head: &str, body: &[u8]) -> Vec<u8> {

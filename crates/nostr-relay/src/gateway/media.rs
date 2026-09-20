@@ -34,6 +34,12 @@ use super::{
 const MEDIA_IO_TIMEOUT: Duration = Duration::from_secs(30);
 const MEDIA_UPLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 const STALE_TEMPORARY_AGE: Duration = Duration::from_secs(3_600);
+/// How old an unpublished upload registration must be before the sweep
+/// releases it. A live upload finishes or fails inside
+/// `MEDIA_UPLOAD_TIMEOUT`, so a registration this old belongs to a
+/// connection task that was cancelled before it could release, in this
+/// process or in one that has since exited.
+pub const STALE_RESERVATION_AGE: Duration = Duration::from_secs(3_600);
 /// How long a deleted blob's bytes stay under `.deleted/`. A backup that
 /// dumps the database and then archives the media root within this window
 /// finds every blob the dump references, live or retained. Read
@@ -81,6 +87,17 @@ impl MediaStorage {
             self.root
                 .join(&record.sha256[..2])
                 .join(format!("{}.{}", record.sha256, record.storage_key))
+        }
+    }
+
+    /// Remove the bytes of a registration that was released before it
+    /// published. Only a blob installed on its way to publication can be
+    /// here, so a missing file is not an error.
+    pub(super) async fn remove_unpublished_blob(&self, record: &MediaRecord) -> io::Result<()> {
+        match fs::remove_file(self.blob_path(record)).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
         }
     }
 
@@ -169,16 +186,22 @@ pub async fn serve_media(
 
 /// A registration made before the body arrived. Releasing it undoes the
 /// uploader's new ownership and an unpublished blob row nobody else owns,
-/// so a body that never came or came wrong holds no quota.
+/// so a body that never came or came wrong holds no quota. The guard also
+/// holds the temporary file the body streams into: dropping it, including
+/// when the connection task is cancelled, removes that file. A registration
+/// the process never releases is swept once it is older than
+/// [`STALE_RESERVATION_AGE`].
 struct Reservation<'a> {
     db: &'a DbPool,
     pubkey: &'a str,
     sha256: &'a str,
     owned_before: bool,
+    temporary_path: Option<PathBuf>,
 }
 
 impl Reservation<'_> {
-    async fn release(&self) {
+    async fn release(&mut self) {
+        self.remove_temporary();
         let _ = self
             .db
             .abandon_media(
@@ -187,6 +210,18 @@ impl Reservation<'_> {
                 self.owned_before,
             )
             .await;
+    }
+
+    fn remove_temporary(&mut self) {
+        if let Some(path) = self.temporary_path.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        self.remove_temporary();
     }
 }
 
@@ -299,11 +334,12 @@ async fn serve_upload(
             .await;
         }
     };
-    let reservation = Reservation {
+    let mut reservation = Reservation {
         db,
         pubkey: &auth.pubkey,
         sha256: &sha256,
         owned_before: outcome.owned_before,
+        temporary_path: None,
     };
     let (temporary_path, mut file) = match storage.temporary_file().await {
         Ok(temporary) => temporary,
@@ -318,6 +354,7 @@ async fn serve_upload(
             .await;
         }
     };
+    reservation.temporary_path = Some(temporary_path.clone());
     let received = match timeout(
         MEDIA_UPLOAD_TIMEOUT,
         stream_upload(&mut stream, &mut file, length),
@@ -326,13 +363,12 @@ async fn serve_upload(
     {
         Ok(Ok(received)) => received,
         Ok(Err(_)) | Err(_) => {
-            let _ = fs::remove_file(&temporary_path).await;
             reservation.release().await;
             return media_error(&mut stream, 400, "Bad Request", "incomplete upload body").await;
         }
     };
+    drop(file);
     if received != sha256 {
-        let _ = fs::remove_file(&temporary_path).await;
         reservation.release().await;
         return media_error(
             &mut stream,
@@ -348,7 +384,6 @@ async fn serve_upload(
         .is_err()
         || fs::rename(&temporary_path, &blob_path).await.is_err()
     {
-        let _ = fs::remove_file(&temporary_path).await;
         reservation.release().await;
         return media_error(
             &mut stream,
@@ -358,7 +393,8 @@ async fn serve_upload(
         )
         .await;
     }
-    match db.finalize_media(sha256).await {
+    reservation.temporary_path = None;
+    match db.finalize_media(sha256.clone()).await {
         Ok(()) => {}
         Err(StoreError::Media(_)) => {
             let _ = fs::remove_file(&blob_path).await;
@@ -371,6 +407,10 @@ async fn serve_upload(
             .await;
         }
         Err(_) => {
+            if outcome.created {
+                let _ = fs::remove_file(&blob_path).await;
+            }
+            reservation.release().await;
             return media_error(
                 &mut stream,
                 503,
