@@ -5,9 +5,10 @@ episode: the whole path from the operator's sentence to the final summary,
 recorded as one ATIF trace.
 
 The first task is `devin-fan-out-six`, the delegation
-[`programs.md`](programs.md) specifies. It ran on 2026-09-20 and the golden
+[`programs.md`](programs.md) specifies. It ran on 2026-09-20, twice, and the golden
 is **recorded**, not authored:
-`crates/coderbench/goldens/devin-fan-out-six.atif.jsonl`.
+`crates/coderbench/goldens/devin-fan-out-six.atif.jsonl`, at commit
+`af5a24e982`.
 
 ## What ran
 
@@ -19,25 +20,26 @@ computer, in parallel.
 | Executor | `devin 3000.10.31`, resolved at `~/.local/bin/devin` |
 | Delegations | 6, in parallel |
 | Correct | **6 of 6** |
-| Wall clock | 23.7 s |
-| Summed agent time | 99.0 s |
+| Wall clock | 22.5 s |
+| Summed agent time | 63.3 s |
 | Files written | 0 |
 
 ## What the decision models were asked
 
-**Program selection**, on kev-4b: `delegate-fan-out` at confidence 1.000.
+**Program selection**, on kev-4b: `delegate-fan-out` at confidence 0.83.
 
 **Independence**, on kev-4b, over three `Noul` questions:
 
 | Question | Answer | Correct |
 | --- | --- | --- |
-| The six tasks can run in parallel without colliding | **0.94** | yes |
-| Every task is read-only and writes no file | **0.16** | **no** |
-| At least one task needs a tool restriction | 0.49 | no signal |
+| The six tasks can run in parallel without colliding | **0.93** | yes |
+| Every task is read-only and writes no file | **0.17** | **no** |
+| At least one task needs a tool restriction | 0.53 | no signal |
 
 The door got the hard question right and the easy one wrong. The state says
 "Every task is read-only" in as many words, and the answer came back at
-0.16. This is recorded rather than smoothed over, because a golden that
+0.17. The first recording put it at 0.16, so this is reproducible rather
+than a stray sample. This is recorded rather than smoothed over, because a golden that
 showed only the flattering half would be worth nothing.
 
 It did not affect the run: the fan-out gated on `independent`, and admission
@@ -89,24 +91,42 @@ depends on repository contents has to pin the commit, which is why the task
 manifest carries `requires.repository` and why the reference
 implementation's manifests carry a `base` commit.
 
-## A recorded golden is not retconned
+## The first golden was deleted and re-recorded
 
-On 2026-09-20 the `nips/coder/` lane was renamed `nips/openagents/`. One of
-the six delegations asks about `nips/coder/NIP-CAP.md`, and that prompt was
-**left as it was recorded**.
+The `nips/coder/` lane became `nips/openagents/`, and one of the six
+delegations asked about a file that rename moved. The recording no longer
+described anything that could happen again.
 
-A golden says what happened. The delegate was asked about a path that
-existed at the time and answered correctly, and rewriting the question to
-match today's tree would make the file say something that never occurred.
-The same rule the receipt chain enforces for rows applies to a trace: the
-record is evidence, and evidence that is edited to stay tidy is not
-evidence.
+It was **deleted and the episode re-run**, not patched. A recording of a
+world that no longer exists is worse than no recording, because it reads as
+evidence. Editing the prompt to match today's tree would have been worse
+still: the file would then say a question was asked that never was.
 
-The consequence is that **this task no longer reproduces**. A rerun would
-ask about a path that is gone and the delegate would say so. That is a stale
-task rather than a corrupt golden, and the fix is a new task at a new commit
-rather than an edit to this one — which is the argument for `requires.repository`
-carrying a pinned commit, made by the first thing that moved underneath it.
+The re-run pins `requires.base` to the commit it ran at. That field existed
+before the rename and was empty; the first thing to move underneath the task
+is what filled it in.
+
+## What the probe learned that a present/absent check cannot say
+
+Two findings from resolving `devin-local`, both recorded in the golden's
+capability step.
+
+**`PATH` is not enough.** The first attempt failed six times with `command
+not found`. The binary is on the operator's interactive `PATH` and not on
+the one a spawned subshell inherits, which is why
+[NIP-CAP](../nips/openagents/NIP-CAP.md)'s `detect` resolves an absolute
+path rather than assuming a name resolves.
+
+**A present executor can still refuse.** The re-run was first attempted from
+a git worktree under `/private/tmp` and was refused six times out of six:
+`Refusing to run in an untrusted workspace`. The capability was installed,
+detected, and unavailable for that directory.
+
+That is a state a present-or-absent probe cannot represent, and it is not
+rare — an executor that sandboxes itself will have opinions about where it
+runs. The task manifest gained `requires.capabilities_refuse` for it, and a
+manifest under NIP-CAP should say what its executor declines as well as what
+it cannot enforce.
 
 ## What is not tested yet
 

@@ -58,6 +58,19 @@ pub struct Requires {
     pub capabilities: Vec<String>,
     #[serde(default)]
     pub repository: String,
+    /// The commit the task's expected answers were true at.
+    ///
+    /// A task whose grade depends on repository contents needs one. A
+    /// rename moved a path `devin-fan-out-six` reads and invalidated its
+    /// first recording, which is how this field got here.
+    #[serde(default)]
+    pub base: String,
+    /// What a capability refuses, beyond being absent.
+    ///
+    /// A present executor can still decline a particular directory, and a
+    /// probe that reports only presence cannot say so.
+    #[serde(default)]
+    pub capabilities_refuse: BTreeMap<String, Vec<String>>,
 }
 
 /// The path a correct run takes.

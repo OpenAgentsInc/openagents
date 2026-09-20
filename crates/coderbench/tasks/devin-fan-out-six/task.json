@@ -7,7 +7,13 @@
     "capabilities": [
       "devin-local"
     ],
-    "repository": "https://github.com/OpenAgentsInc/openagents.git"
+    "repository": "https://github.com/OpenAgentsInc/openagents.git",
+    "base": "af5a24e982020c2f6f2349afab30ea7655d58730",
+    "capabilities_refuse": {
+      "devin-local": [
+        "untrusted_workspace"
+      ]
+    }
   },
   "grade": {
     "kind": "path",
@@ -26,5 +32,5 @@
     ]
   },
   "timeout_secs": 300,
-  "notes": "The subject under test is the delegation path, not the work. Each delegate answers one read-only question about a different file, so the six are independent by construction and the independence decision has a known answer. The grade separates decisions from checks: program and independence go to a decision model, while capability probing, program resolution, and bounds admission are deterministic and must not be asked of a model."
+  "notes": "The subject under test is the delegation path, not the work. Each delegate answers one read-only question about a different file, so the six are independent by construction and the independence decision has a known answer. The grade separates decisions from checks: program and independence go to a decision model, while capability probing, program resolution, and bounds admission are deterministic and must not be asked of a model. requires.base pins the commit because a rename moved a path this task reads and invalidated an earlier recording."
 }
