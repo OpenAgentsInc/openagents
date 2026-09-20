@@ -1126,13 +1126,21 @@ impl Delegator {
             bytes: ended.bytes(),
         };
         let reported = match ended.ending {
+            // A refusal is a declined run, so only an exit that is not
+            // success can be one. An executor that finished its work may
+            // quote the refusal phrase in what it printed — a delegate
+            // documenting the refusal wrote the phrase into a file and
+            // echoed it — and that is an answer, not a refusal.
+            Ending::Exited(Some(0)) => Reported {
+                status: Status::Answered,
+                ..said
+            },
             Ending::Exited(code) => {
                 let status = match self
                     .executor
                     .refusal(&format!("{}{}", said.detail, said.output))
                 {
                     Some(code) => Status::Refused(code),
-                    None if code == Some(0) => Status::Answered,
                     None => Status::Failed(code.unwrap_or(-1)),
                 };
                 Reported { status, ..said }
@@ -1693,6 +1701,16 @@ mod tests {
         // as one that never ran rather than as one that failed.
         assert_eq!(refused.outcome(), atif::Outcome::Cancelled);
         assert!(refused.recorded_output().contains("untrusted workspace"));
+
+        // The phrase alone is not a refusal: an executor that exits 0
+        // after quoting it did its work.
+        let quoting = stub(
+            dir.path(),
+            "quoting",
+            "echo 'Documented the error: Refusing to run in an untrusted workspace'",
+        );
+        let quoted = Delegator::new(executor(&quoting)).run(task()).await;
+        assert_eq!(quoted.status, Status::Answered);
 
         let slow = stub(dir.path(), "slow", "sleep 30");
         let timed_out = Delegator::new(executor(&slow))
