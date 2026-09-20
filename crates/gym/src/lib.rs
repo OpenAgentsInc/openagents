@@ -33,6 +33,8 @@
 //!   probability, and the record that says what it was fitted against.
 //! - [`coverage`] — the declared selection a run was meant to ask, and the
 //!   accounting of whether the recorded rows cover it.
+//! - [`commitment`] — the digested anchor a report is checked against after
+//!   the store has left the writer's hands.
 //! - [`eval`] — one run over a suite: what a door's answer becomes, and what
 //!   a table of rows says afterwards.
 //! - [`regress`] — one door against its own last recorded run, which is the
@@ -47,6 +49,7 @@
 pub mod ab;
 pub mod build;
 pub mod calibrate;
+pub mod commitment;
 pub mod coverage;
 pub mod eval;
 pub mod gate;

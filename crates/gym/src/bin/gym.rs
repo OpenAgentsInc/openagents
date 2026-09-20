@@ -123,6 +123,9 @@ struct Options {
     out: Option<String>,
     /// A door `report` was told the run was meant to ask; repeatable.
     expect: Vec<String>,
+    /// Where `report` writes the report commitment, and the file `verify`
+    /// checks a store against.
+    commitment: Option<String>,
     /// The caller's JSONL file `build` reads.
     input: Option<String>,
     /// The suite's name, and the question set's id.
@@ -198,6 +201,8 @@ gym regress  compare a door with its own last recorded run
   --family name       the one family to ask; every family by default
   --expect name       a door `report` was told the run was meant to ask;
                       repeatable
+  --commitment path   where `report` writes the record's commitment, or
+                      the file `verify` checks the store against
   --fit               fit one map per family and judge it
   --record path       append every row to this store
   --records dir       write one calibration record per family here
@@ -264,6 +269,7 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--items" => options.items = args.next(),
             "--from" => options.from.extend(args.next()),
             "--expect" => options.expect.extend(args.next()),
+            "--commitment" => options.commitment = args.next(),
             "--out" => options.out = args.next(),
             "--input" => options.input = args.next(),
             "--name" => options.name = args.next(),
@@ -1422,8 +1428,49 @@ fn report_command(options: &Options) -> Result<(), String> {
          A verified chain proves these rows were not edited or resequenced inside this \
          file; it does not prove the file is whole or that this is the only store. \
          Completeness comes from the declared selection above, and permanence comes \
-         from a commitment held apart from the store.\n",
+         from the commitment written beside this record — check a later copy of the \
+         store against it with `gym verify --store … --commitment …`.\n",
     );
+
+    // The commitment is what a caller holds when the store is out of reach:
+    // head, row count, declared selection, and the identities and digests
+    // the report claimed. It is written only when the selection is
+    // declared — a commitment over an unknown selection anchors nothing.
+    if let Some(path) = options.commitment.as_deref() {
+        let (suite, prov) = provenance.as_ref().ok_or_else(|| {
+            "--commitment needs --suite so the commitment can bind the declared selection"
+                .to_string()
+        })?;
+        let expected = declared.as_ref().expect("a suite gives a selection");
+        let selection = gym::commitment::Selection {
+            partitions: declared_partitions(options)?
+                .iter()
+                .map(|partition| partition.as_str().to_string())
+                .collect(),
+            family: options.family.clone(),
+            items: options
+                .items
+                .as_deref()
+                .map(read_item_ids)
+                .transpose()?
+                .map(|ids| ids.into_iter().collect()),
+            doors: expected.doors.clone(),
+        };
+        let commitment = gym::commitment::Commitment::of(
+            suite,
+            expected,
+            selection,
+            &rows,
+            head.clone(),
+            prov.as_ref(),
+        );
+        let text = serde_json::to_string_pretty(&commitment).map_err(|error| error.to_string())?;
+        std::fs::write(path, text + "\n").map_err(|error| format!("{path}: {error}"))?;
+        println!(
+            "Wrote commitment `{path}` — digest `{}`.",
+            commitment.digest
+        );
+    }
 
     match options.out.as_deref() {
         Some(file) => {
@@ -1904,7 +1951,6 @@ fn verify_command(options: &Options) -> Result<(), String> {
         ChainVerdict::Ok { rows, head } => {
             let head = head.as_deref().unwrap_or("none");
             println!("`{path}`: {rows} rows, chain intact, head `{head}`.");
-            Ok(())
         }
         ChainVerdict::Broken {
             index,
@@ -1915,9 +1961,34 @@ fn verify_command(options: &Options) -> Result<(), String> {
                 "`{path}`: chain broken at row {index} ({}).",
                 fault.as_str()
             );
-            Err(detail)
+            return Err(detail);
         }
     }
+    if let Some(file) = options.commitment.as_deref() {
+        let commitment = gym::commitment::Commitment::load(file)?;
+        let typed: Vec<Row> = rows
+            .iter()
+            .cloned()
+            .map(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
+            .collect::<Result<_, _>>()?;
+        let faults = gym::commitment::check(&commitment, &typed);
+        if !faults.is_empty() {
+            for fault in &faults {
+                eprintln!("against `{file}`: {fault}");
+            }
+            return Err(format!("the store does not match the commitment in {file}"));
+        }
+        let grown = gym::commitment::growth(&commitment, &typed);
+        let note = match grown {
+            0 => String::new(),
+            grown => format!("; {grown} rows appended since the commitment"),
+        };
+        println!(
+            "`{path}` matches commitment `{file}` (digest `{}`){note}.",
+            commitment.digest
+        );
+    }
+    Ok(())
 }
 
 /// A caller's labelled file becomes a pinned suite and its question set.
@@ -3717,6 +3788,73 @@ mod tests {
             record.contains("unverifiable as a completed evaluation"),
             "{record}"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A commitment written beside a record verifies the same store later,
+    /// and a tail dropped after the hand-off is named against it.
+    #[test]
+    fn a_commitment_verifies_the_store_and_names_a_dropped_tail() {
+        let dir = std::env::temp_dir().join(format!("gym-report-com-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, path) = caller_suite();
+        let store = chained(&dir, "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let commitment = dir.join("commitment.json");
+        report_command(&Options {
+            store: Some(store.clone()),
+            suite: Some(path),
+            partition: Some("development".to_string()),
+            commitment: Some(commitment.to_str().unwrap().to_string()),
+            out: Some(dir.join("record.md").to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        verify_command(&Options {
+            store: Some(store.clone()),
+            commitment: Some(commitment.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+
+        // The record was handed over; the store lost its last row. The
+        // chain still verifies — a prefix is intact — and the commitment
+        // is what names the loss.
+        let mut rows = read_rows(&store).unwrap();
+        rows.pop();
+        let trimmed = dir.join("trimmed.jsonl");
+        let shorter = Store::at(trimmed.to_str().unwrap());
+        for row in &rows {
+            shorter.append(row).unwrap();
+        }
+        let trouble = verify_command(&Options {
+            store: Some(trimmed.to_str().unwrap().to_string()),
+            commitment: Some(commitment.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap_err();
+        assert!(
+            trouble.contains("does not match the commitment"),
+            "{trouble}"
+        );
+        rows.clear();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A commitment without a declared selection anchors nothing, so
+    /// `report --commitment` needs `--suite`.
+    #[test]
+    fn a_commitment_needs_the_declared_selection() {
+        let dir = std::env::temp_dir().join(format!("gym-report-noc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, _) = caller_suite();
+        let store = chained(&dir, "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let trouble = report_command(&Options {
+            store: Some(store),
+            commitment: Some(dir.join("commitment.json").to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap_err();
+        assert!(trouble.contains("--commitment needs --suite"), "{trouble}");
         std::fs::remove_dir_all(&dir).ok();
     }
 }
