@@ -6,6 +6,19 @@ Task manifests and recorded goldens for whole Coder episodes.
 everything from the operator's sentence to the final summary, recorded as
 one [ATIF](../atif) trace.
 
+## Running an episode
+
+```sh
+coderbench run devin-fan-out-six            # run Coder, capture, judge
+coderbench diff devin-fan-out-six trace.jsonl   # judge a trace you have
+```
+
+`run` refuses before it starts Coder when the machine does not hold what
+the task requires, and names the requirement that failed. It exits `0` for
+a clean run, `1` for faults, `2` for a refusal, and `3` when there is no
+trace to judge. [`../../docs/coderbench.md`](../../docs/coderbench.md) has
+the flags and the reasoning.
+
 ## What a golden is
 
 A golden is not a transcript to match character for character. It is the

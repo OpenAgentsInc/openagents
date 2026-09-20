@@ -29,8 +29,16 @@
       "admission_check",
       "capability_probe",
       "program_registry"
+    ],
+    "path": [
+      "capability_probe",
+      "program_registry",
+      "program",
+      "independence",
+      "admission_check",
+      "delegate"
     ]
   },
   "timeout_secs": 300,
-  "notes": "The subject under test is the delegation path, not the work. Each delegate answers one read-only question about a different file, so the six are independent by construction and the independence decision has a known answer. The grade separates decisions from checks: program and independence go to a decision model, while capability probing, program resolution, and bounds admission are deterministic and must not be asked of a model. requires.base pins the commit because a rename moved a path this task reads and invalidated an earlier recording."
+  "notes": "The subject under test is the delegation path, not the work. Each delegate answers one read-only question about a different file, so the six are independent by construction and the independence decision has a known answer. The grade separates decisions from checks: program and independence go to a decision model, while capability probing, program resolution, and bounds admission are deterministic and must not be asked of a model. requires.base pins the commit because a rename moved a path this task reads and invalidated an earlier recording. The grade also states the path in order, so a fault list reads from the earliest thing that went wrong rather than from the first thing the checker tested."
 }

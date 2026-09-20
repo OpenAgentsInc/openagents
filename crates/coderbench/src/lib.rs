@@ -16,8 +16,21 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod drive;
+pub mod preflight;
+
 /// The schema a task manifest declares.
 pub const TASK_SCHEMA: &str = "openagents.coderbench.task.v1";
+
+/// The name a program-selection decision goes by in a trace.
+///
+/// [`observe`] reads the selected program out of a call with this name, and
+/// [`Task::judge`] places a program fault at this step of the path, so the
+/// two agree about which call is the selection.
+pub const PROGRAM_CALL: &str = "program";
+
+/// The name a delegation goes by in a trace.
+pub const DELEGATE_CALL: &str = "delegate";
 
 /// What a golden rests on, which a reader needs before trusting it.
 ///
@@ -163,6 +176,14 @@ pub struct Grade {
     /// run that asked a model what a check should have settled.
     #[serde(default)]
     pub checks: Vec<String>,
+    /// The steps a correct run takes, in the order it takes them.
+    ///
+    /// `decisions` and `checks` say which steps a run owes; this says when.
+    /// [`Task::judge`] reports faults in this order, so the first fault is
+    /// the earliest thing that went wrong rather than the first thing the
+    /// checker happened to test. A step this list does not name sorts last.
+    #[serde(default)]
+    pub path: Vec<String>,
 }
 
 /// Everything wrong with a run, named.
@@ -248,6 +269,11 @@ impl Task {
     /// Returns every fault rather than the first, because a run that took
     /// the wrong program usually gets several things wrong afterwards and
     /// the first one is rarely the informative one.
+    ///
+    /// The faults come back in the order [`Grade::path`] states, so the
+    /// first one is the earliest thing that went wrong. Reporting them in
+    /// the order the checker tests them would put a missing delegation
+    /// above the missing probe that explains it.
     #[must_use]
     pub fn judge(&self, run: &Observed) -> Vec<Fault> {
         let mut faults = Vec::new();
@@ -272,7 +298,9 @@ impl Task {
         }
         for delegation in &run.delegations {
             if delegation.correct == Some(false) {
-                faults.push(Fault::DelegationWrong { id: delegation.id.clone() });
+                faults.push(Fault::DelegationWrong {
+                    id: delegation.id.clone(),
+                });
             }
         }
         for name in &self.grade.decisions {
@@ -290,7 +318,31 @@ impl Task {
                 faults.push(Fault::UnexpectedWrite { path: path.clone() });
             }
         }
+        // A stable sort, so faults that share a step keep the order they
+        // were found in: how many delegations ran, then which of them
+        // answered wrongly, then what they wrote.
+        faults.sort_by_key(|fault| self.stage(fault));
         faults
+    }
+
+    /// Where in the expected path the step a fault is about falls.
+    ///
+    /// A step [`Grade::path`] does not name sorts after every step it does,
+    /// rather than before them, because a path that does not mention a step
+    /// cannot say when it happens.
+    fn stage(&self, fault: &Fault) -> usize {
+        let step = match fault {
+            Fault::Program { .. } => PROGRAM_CALL,
+            Fault::DecisionMissing { name } | Fault::CheckMissing { name } => name,
+            Fault::DelegationCount { .. }
+            | Fault::DelegationWrong { .. }
+            | Fault::UnexpectedWrite { .. } => DELEGATE_CALL,
+        };
+        self.grade
+            .path
+            .iter()
+            .position(|named| named == step)
+            .unwrap_or(self.grade.path.len())
     }
 }
 
@@ -311,7 +363,7 @@ pub fn observe(path: &Path) -> Result<Observed, String> {
             == Some(atif::document::DECISION_CALL_SCHEMA);
         if is_decision {
             let answers = call.extra.get("answers").cloned().unwrap_or(Value::Null);
-            if call.name == "program" {
+            if call.name == PROGRAM_CALL {
                 out.program = answers
                     .get("program")
                     .and_then(|a| a.get("choice"))
@@ -321,7 +373,7 @@ pub fn observe(path: &Path) -> Result<Observed, String> {
             out.decisions.insert(call.name.clone(), answers);
         } else {
             out.checks.push(call.name.clone());
-            if call.name == "delegate" {
+            if call.name == DELEGATE_CALL {
                 out.delegations.push(Delegation {
                     id: call.id.clone(),
                     output: call.output.clone(),
@@ -347,4 +399,32 @@ pub fn tasks_dir() -> PathBuf {
 #[must_use]
 pub fn goldens_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("goldens")
+}
+
+/// The workspace's own capability registry, which is where a manifest is
+/// read from when the checkout being measured predates one.
+#[must_use]
+pub fn capabilities_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("capabilities")
+}
+
+/// Reads a task by identifier or by path.
+///
+/// A bare identifier names a task in [`tasks_dir`]. Anything holding a
+/// separator or ending in `.json` is read as a path, so a manifest kept
+/// beside a scratch experiment runs the same way a shipped one does.
+///
+/// # Errors
+///
+/// Returns an error when the manifest cannot be read or does not parse.
+pub fn load_task(name: &str) -> Result<Task, String> {
+    let manifest = if name.ends_with(".json") || name.contains(std::path::MAIN_SEPARATOR) {
+        PathBuf::from(name)
+    } else {
+        tasks_dir().join(name).join("task.json")
+    };
+    Task::load(&manifest)
 }

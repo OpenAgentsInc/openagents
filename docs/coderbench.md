@@ -17,6 +17,73 @@ should take, written in the format Coder already emits, and no run of
 staged file is replaced rather than kept beside it
 ([#9412](https://github.com/OpenAgentsInc/openagents/issues/9412)).
 
+## Running one
+
+```sh
+coderbench run devin-fan-out-six
+coderbench diff devin-fan-out-six runs/one.atif.jsonl
+```
+
+`run` reads the manifest, checks what the task requires, drives `coder -p`,
+reads back the trace it named, judges it, and prints every fault. `diff` is
+the same path with the run step removed, for a trace somebody already has.
+
+| Flag | Effect |
+| --- | --- |
+| `--repository <DIR>` | The checkout to run in. Default: this directory. |
+| `--coder <PATH>` | The `coder` binary. Default: `CODERBENCH_CODER`, the binary beside this one, then `PATH`. |
+| `--trace <PATH>` | Where the run's trace lands. Default: a new file under `~/.openagents/coderbench/`. |
+| `--timeout <SECS>` | Override the task's own timeout. |
+
+The trace is named rather than searched for, which is what
+[`--trace`](coder/headless.md) is for, and the path must not already exist:
+a session never writes over another session's record. Standard output and
+standard error land beside it as `<trace>.stdout` and `<trace>.stderr`, so
+what the agent said is readable next to what it did.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The run took the path the task expects. |
+| `1` | The run left the path. Every fault is printed. |
+| `2` | The machine does not hold what the task requires. Nothing ran. |
+| `3` | There is no trace to judge. |
+| `64` | The command line was wrong. |
+
+### It refuses before it runs anything
+
+A run at the wrong commit, or without the executor the task delegates to,
+produces faults that are about the machine. Somebody then reads them as
+faults in the agent and spends an afternoon on it. So `run` checks the
+task's `requires` first and refuses with exit `2`, naming the requirement
+that failed:
+
+- the checkout is the repository the task names, at `requires.base`, with
+  nothing uncommitted — a delegate reads the working copy, and an edited
+  file is not the base commit however the commit reads;
+- every capability in `requires.capabilities` is installed, resolved from
+  its manifest in the `capabilities/` registry and detected the way
+  [NIP-CAP](../nips/openagents/NIP-CAP.md) says to detect it. The registry
+  is the one `crates/coder` reads, in the same order and under the same
+  `CODER_CAPABILITY_DIR`, with the workspace's own last so a checkout
+  pinned to a commit from before the registry existed still resolves.
+
+Every requirement is printed, met or not, because the faults underneath
+mean one thing at the base commit and another thing anywhere else.
+
+This is the harness checking its own preconditions, not the capability
+probe Coder owes its own runs. When Coder grows one, the probe becomes a
+step in the trace and this stays what it is: the reason the run was worth
+starting.
+
+### Faults read in path order
+
+`grade.path` states the steps in the order a correct run takes them, and the
+fault list follows it. The first fault is then the earliest thing that went
+wrong rather than the first thing the checker happened to test, which
+matters most when a run has no path at all: a missing probe above the
+missing delegations it explains reads as a work list, and the reverse reads
+as noise.
+
 ## What ran
 
 Six read-only questions, one per file, delegated to the Devin CLI on this
