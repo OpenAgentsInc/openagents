@@ -42,7 +42,9 @@ Created 19 issues with source evidence, acceptance criteria, and dependencies:
 
 - **#9413 is blocked on A01, A17, and A18.** A plan requires host execution
   intent; executable probes require host trust; admission requires verified
-  enforcement. A model's independence/read-only judgment and a successful staged
+  enforcement. A01 has a verified fix in `25f0b54e4a`, recorded in the
+  [verification record](verification.md#a01-after-the-fix); A17 and A18 remain
+  open. A model's independence/read-only judgment and a successful staged
   golden cannot waive these requirements. Process-tree cancellation and capture
   bounds from A02–A03 also precede unattended work.
 - **#9409 delivered part of A18.** Commit `1eb60eccea` refuses unknown bounds and

@@ -88,6 +88,7 @@ describe engineering impact, not a vulnerability scoring system.
 ### A01. Require an execution intent before parsing a shell plan
 
 Tracking: [#9415](https://github.com/OpenAgentsInc/openagents/issues/9415).
+Fixed by `25f0b54e4a`; see [A01 after the fix](verification.md#a01-after-the-fix).
 
 The [plan parser](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/shell.rs#L119) extracts fenced JSON from
 anywhere in an answer and accepts a `commands` array without requiring the

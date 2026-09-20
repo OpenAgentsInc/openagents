@@ -213,6 +213,59 @@ not retained rather than reconstructing a historical error response. The
 published numerical comparisons should change only if that reconciliation or a
 properly scoped rerun supplies a reason.
 
+### A01 after the fix
+
+Commit `25f0b54e4a` makes a generated answer and an executable plan separate
+validated outcomes and moves execution intent into a host-owned `Permit`. The
+harness's A01 probes were updated to that interface and gained two more
+observations, an unpermitted turn and a permitted one, so the record separates
+a boundary that closed from one that refuses everything.
+
+Before the fix, at `81eb7fd31a`, the original A01 probes still reproduce the
+audit's run. The parser's source is unchanged from the reviewed snapshot: a
+diff of `crates/coder/src/shell.rs` between `1843fa6c18` and `81eb7fd31a` is
+empty.
+
+```text
+embedded_example_is_plan=true
+clarify_executed_command=true
+```
+
+After it, at `25f0b54e4a`, the harness prints:
+
+```text
+embedded_example_is_plan=false
+clarify_executed_command=false
+unpermitted_turn_executed_command=false
+permitted_turn_executed_command=true
+```
+
+The clarification probe now hands the turn a complete plan under the supported
+schema together with an executing permit, so what it measures is the permit
+rather than the schema. The remaining probes are unchanged by this commit, and
+the `shell_status=timed out wrote_after_timeout=true` line still reports A02.
+
+The regressions run with the workspace toolchain: 23 tests, no failures and
+none ignored.
+
+```sh
+cargo +1.97.1 test --locked -p coder --lib shell::tests
+cargo +1.97.1 test --locked -p coder --lib permit::tests
+cargo +1.97.1 test --locked -p coder --lib agent::tests
+```
+
+They cover a plan quoted as an example in prose, a fenced plan with prose
+before or after it, a missing version, a later version, a version given as a
+string, eight malformed command lists, an eleventh command, a clarifying turn
+holding a valid plan, an unpermitted turn holding one, a proposal that reaches
+the runner without a permit, and a permitted plan that still runs. The whole
+crate passes: 85 library tests and 39 integration tests.
+
+This is the parsing and execution-intent half of the #9413 release blocker. It
+does not establish the process-tree termination of A02, the capture bounds of
+A03, or the trusted executable probes of A17, and it does not verify that a
+delegated executor honors a bound.
+
 ### Runtime admission and worktrees
 
 Commit `1eb60eccea31873af59fe2df65e16ce46b99b928` landed during this follow-up.
