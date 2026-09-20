@@ -226,7 +226,9 @@ label/question limits, batch support, probability semantics, artifact and
 execution identity, supported capacity, and availability. The tenant registry
 authorizes access to those capabilities. Atomic updates and rollback retain
 the binding under which an in-flight request was admitted. Owner:
-[#9474](https://github.com/OpenAgentsInc/openagents/issues/9474).
+[#9474](https://github.com/OpenAgentsInc/openagents/issues/9474), landed in
+`crates/tenancy` as a versioned, self-digested manifest with admission
+snapshots and digest-archived revisions.
 
 Add a Rust Laya integration alongside the existing doors, with licensed,
 digested artifacts and explicit tokenizer/runtime configuration. The
@@ -639,7 +641,7 @@ launch. Keep useful narrow releases available while later work proceeds.
 | Landed measurement tools | [#9464](https://github.com/OpenAgentsInc/openagents/issues/9464), [#9465](https://github.com/OpenAgentsInc/openagents/issues/9465), [#9477](https://github.com/OpenAgentsInc/openagents/issues/9477): caller intake, reports, and Rust suite builder; keep closed |
 | Caller validation | [#9480](https://github.com/OpenAgentsInc/openagents/issues/9480): permitted workload and independently usable measured record; does not block independent Rust foundation work |
 | Landed evidence controls | [#9478](https://github.com/OpenAgentsInc/openagents/issues/9478), [#9479](https://github.com/OpenAgentsInc/openagents/issues/9479): report coverage and independently retained commitments; keep closed and preserve their guarantees in service publication |
-| Shared serving foundation | [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466), [#9467](https://github.com/OpenAgentsInc/openagents/issues/9467), [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471), [#9474](https://github.com/OpenAgentsInc/openagents/issues/9474): agree on tenant, request/attempt, identity, outcome, and reservation contracts |
+| Shared serving foundation | [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466), [#9467](https://github.com/OpenAgentsInc/openagents/issues/9467), [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471), [#9474](https://github.com/OpenAgentsInc/openagents/issues/9474): agree on tenant, request/attempt, identity, outcome, and reservation contracts; the registry itself is landed in `crates/tenancy` |
 | First usable HTTP service | [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468), [#9476](https://github.com/OpenAgentsInc/openagents/issues/9476): bounded gateway and usable native docs/CLI |
 | Classification and scale | [#9482](https://github.com/OpenAgentsInc/openagents/issues/9482), [#9483](https://github.com/OpenAgentsInc/openagents/issues/9483), [#9484](https://github.com/OpenAgentsInc/openagents/issues/9484): facade, efficient scheduling, then durable jobs |
 | Decision policies and backends | [#9485](https://github.com/OpenAgentsInc/openagents/issues/9485), [#9486](https://github.com/OpenAgentsInc/openagents/issues/9486): measured review/fallback and capability-aware additional models; neither is required for strict native inference |
