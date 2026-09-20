@@ -139,11 +139,19 @@ fn a_score_distribution_names_only_legend_levels_and_sums_to_one() {
 }
 
 #[test]
-fn a_score_needs_a_legend() {
+fn a_score_needs_levels_from_its_legend_or_its_distribution() {
     assert_eq!(
         fault(json!({"type":"score","score":0.0,"confidence":0.5,"legend":{}})),
         "answers.q.legend"
     );
+    // A door asked with level indices alone sends no legend; the
+    // distribution names the levels, and the score is held to them.
+    let indexed = |score: f64| {
+        json!({"type":"score","score":score,"confidence":0.5,"legend":{},
+            "probabilities":{"0":0.5,"1":0.375,"2":0.125}})
+    };
+    assert!(decode(indexed(0.62)).is_ok());
+    assert_eq!(fault(indexed(2.5)), "answers.q.score");
 }
 
 #[test]

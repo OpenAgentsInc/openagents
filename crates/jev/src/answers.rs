@@ -294,7 +294,8 @@ impl SystemOneResponse {
     ///
     /// Every question must be answered in its own type. A Choice answer
     /// must name exactly the question's options, and a Score answer's
-    /// legend and probabilities exactly the question's levels. A
+    /// legend, when it sends one, and probabilities exactly the question's
+    /// levels. A
     /// [`Question::Raw`] is held only to being answered, since the SDK does
     /// not read its options.
     ///
@@ -328,7 +329,8 @@ impl SystemOneResponse {
                 }
                 (Question::Score(asked), Answer::Score(answer)) => {
                     let levels = asked.criteria.len();
-                    if !names_every_level(answer.legend.keys(), levels) {
+                    if !answer.legend.is_empty() && !names_every_level(answer.legend.keys(), levels)
+                    {
                         return Err(self.mismatch_field(id, "legend"));
                     }
                     if !answer.probabilities.is_empty()
@@ -488,32 +490,43 @@ fn choice_fault(answer: &ChoiceAnswer) -> Option<String> {
     None
 }
 
-/// The field of a Score answer that breaks the contract, if one does: an
-/// empty legend, a confidence or probability out of range, a mass away
+/// The field of a Score answer that breaks the contract, if one does: no
+/// levels at all, a confidence or probability out of range, a mass away
 /// from 1, a probability for a level the legend lacks, a score outside the
-/// legend's levels, or a selected level the distribution does not name.
+/// answer's levels, or a selected level the distribution does not name.
+///
+/// The legend names the levels when it has any; a door asked with level
+/// indices alone sends an empty legend, and then the distribution names
+/// them.
 fn score_fault(answer: &ScoreAnswer) -> Option<String> {
-    let (Some(lowest), Some(highest)) = (
-        answer.legend.keys().next(),
-        answer.legend.keys().next_back(),
-    ) else {
-        return Some("legend".to_string());
+    let (lowest, highest) = if answer.legend.is_empty() {
+        match (
+            answer.probabilities.keys().next(),
+            answer.probabilities.keys().next_back(),
+        ) {
+            (Some(lowest), Some(highest)) => (*lowest, *highest),
+            _ => return Some("legend".to_string()),
+        }
+    } else {
+        let lowest = *answer.legend.keys().next()?;
+        let highest = *answer.legend.keys().next_back()?;
+        if let Some(level) = answer
+            .probabilities
+            .keys()
+            .find(|level| !answer.legend.contains_key(level))
+        {
+            return Some(format!("probabilities.{level}"));
+        }
+        (lowest, highest)
     };
     if !is_probability(answer.confidence) {
         return Some("confidence".to_string());
     }
     if !answer.score.is_finite()
-        || answer.score < f64::from(*lowest)
-        || answer.score > f64::from(*highest)
+        || answer.score < f64::from(lowest)
+        || answer.score > f64::from(highest)
     {
         return Some("score".to_string());
-    }
-    if let Some(level) = answer
-        .probabilities
-        .keys()
-        .find(|level| !answer.legend.contains_key(level))
-    {
-        return Some(format!("probabilities.{level}"));
     }
     if let Some(field) = mass_fault(answer.probabilities.iter()) {
         return Some(field);
