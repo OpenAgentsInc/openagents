@@ -16,8 +16,8 @@ use serde_json::Value;
 
 use crate::about::About;
 use crate::classify::{
-    Judgment, Route, ShellRoute, judgment_of, questions, route, shell_extensions, shell_questions,
-    shell_verdict_of, state_of,
+    Judgment, Route, ShellRoute, judgment_of, questions, route, shell_questions, shell_verdict_of,
+    state_of,
 };
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::permit::Permit;
@@ -755,8 +755,7 @@ impl Agent {
             return ShellRoute::Pass;
         };
         let state = shell::state_of(&self.task, outcomes);
-        let request =
-            SystemOneRequest::new(state, shell_questions()).extra_body(shell_extensions());
+        let request = SystemOneRequest::new(state, shell_questions());
         let asked = request
             .body(classify.default_model())
             .map_or(Value::Null, Value::Object);

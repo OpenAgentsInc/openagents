@@ -277,15 +277,6 @@ impl App {
             detail.push_str(&pairs.join(" · "));
             detail.push_str(&format!(" · conf {:.2}", action.confidence));
         }
-        if let Some(risk) = verdict.judgment.risk {
-            detail.push_str(&format!(" · risk {risk:.1}"));
-        }
-        if let Some(progress) = verdict.judgment.progress {
-            detail.push_str(&format!(" · prog {progress:.1}"));
-        }
-        if let Some(code) = verdict.judgment.needs_code {
-            detail.push_str(&format!(" · code {code:.2}"));
-        }
         self.push_detail("    ", detail);
     }
 

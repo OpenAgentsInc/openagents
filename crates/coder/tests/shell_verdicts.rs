@@ -1,18 +1,17 @@
 //! The shell judge's verdicts, at the turn level.
 //!
-//! A stub Jev door answers the shell questions with a scripted verdict per
+//! A stub Jev door answers the shell question with a scripted verdict per
 //! round, and the turn runs read-only plans against it. These tests show
 //! that `retry` changes the next generation and stops after its bound,
-//! that `pass` and `stop` keep their meaning, and that a `damage` number
-//! only stops the loop when the door says it is a calibrated probability.
+//! that `pass` and `stop` keep their meaning, and that the request asks
+//! the round's `outcome` and nothing beside it.
 //!
-//! Refs #9396, #9397.
+//! Refs #9396, #9397, #9395.
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use coder::agent::{Exhausted, RETRIES_MAX};
-use coder::classify::DAMAGE_FAMILY;
 use coder::generate::{Door, StubGenerate};
 use coder::trace::Recorder;
 use coder::{Agent, Ending, Permit, ShellEvent};
@@ -24,26 +23,11 @@ use tokio::net::TcpListener;
 #[derive(Clone)]
 struct Verdict {
     choice: &'static str,
-    damage: f64,
-    calibration: Option<Value>,
 }
 
-/// A verdict from a hosted door that says nothing about calibration.
+/// A verdict that chooses `choice`.
 fn choosing(choice: &'static str) -> Verdict {
-    Verdict {
-        choice,
-        damage: 0.05,
-        calibration: None,
-    }
-}
-
-/// A verdict whose `damage` came from a door that says `state` about it.
-fn damaged(damage: f64, extensions: Value) -> Verdict {
-    Verdict {
-        choice: "pass",
-        damage,
-        calibration: Some(extensions),
-    }
+    Verdict { choice }
 }
 
 /// What the stub door saw: every request body, in order.
@@ -119,7 +103,7 @@ async fn door(script: Vec<Verdict>, seen: Seen) -> String {
 fn answer(verdict: &Verdict) -> Value {
     let mut probabilities = json!({ "pass": 0.0, "retry": 0.0, "stop": 0.0 });
     probabilities[verdict.choice] = json!(1.0);
-    let mut body = json!({
+    json!({
         "model": "stub-judge",
         "answers": {
             "outcome": {
@@ -128,14 +112,8 @@ fn answer(verdict: &Verdict) -> Value {
                 "confidence": 0.9,
                 "probabilities": probabilities,
             },
-            "useful": { "type": "noul", "noul": 0.5 },
-            "damage": { "type": "noul", "noul": verdict.damage },
         },
-    });
-    if let Some(extensions) = &verdict.calibration {
-        body["extensions"] = extensions.clone();
-    }
-    body
+    })
 }
 
 /// A read-only plan of one command.
@@ -188,8 +166,8 @@ async fn turn(mut agent: Agent) -> (coder::Turned, usize, Vec<String>, String) {
 }
 
 /// A `retry` verdict changes the next generation's instructions, and the
-/// request that asked for it names the damage family so the door can
-/// serve its calibration.
+/// request that asked for it carries the `coder-turns-v2` round question
+/// alone: `outcome`, with no `extensions`.
 #[tokio::test]
 async fn a_retry_is_acted_on() {
     let dir = tempfile::tempdir().unwrap();
@@ -208,8 +186,13 @@ async fn a_retry_is_acted_on() {
     );
     let seen = seen.lock().unwrap();
     assert_eq!(seen.len(), ran);
-    assert_eq!(seen[0]["extensions"]["family"], DAMAGE_FAMILY);
-    assert_eq!(seen[0]["extensions"]["estimator"], true);
+    let asked: Vec<&String> = seen[0]["questions"]
+        .as_object()
+        .expect("the request carries questions")
+        .keys()
+        .collect();
+    assert_eq!(asked, ["outcome"]);
+    assert!(seen[0].get("extensions").is_none(), "{}", seen[0]);
 }
 
 /// Retries in a row stop at their bound, as a typed exhaustion the reply
@@ -267,58 +250,4 @@ async fn pass_and_stop_are_unchanged() {
         turn(agent(dir.path(), vec![choosing("stop")], Arc::default()).await).await;
     assert_eq!(ran, 1);
     assert_eq!(turned.exhausted, Some(Exhausted::Stopped));
-}
-
-/// A door with an admitted calibration map for the damage family routes
-/// `damage` at the threshold to a stop.
-#[tokio::test]
-async fn a_calibrated_door_routes_damage() {
-    let dir = tempfile::tempdir().unwrap();
-    let fitted = json!({ "calibration": { "state": "calibrated", "family": DAMAGE_FAMILY } });
-    let script = vec![damaged(0.75, fitted)];
-    let (turned, ran, verdicts, _) = turn(agent(dir.path(), script, Arc::default()).await).await;
-    assert_eq!(ran, 1);
-    assert_eq!(turned.exhausted, Some(Exhausted::Stopped));
-    assert!(verdicts[0].contains("stop"), "{}", verdicts[0]);
-}
-
-/// A door without one does not fire the stop, however high the number:
-/// eight draws that all agreed read 1.0, which is the estimator's ceiling
-/// at a resolution of 1/8, not a probability of one. The verdict line says
-/// so.
-#[tokio::test]
-async fn an_uncalibrated_door_does_not_fire_the_stop() {
-    let dir = tempfile::tempdir().unwrap();
-    let raw = json!({
-        "calibration": { "state": "uncalibrated" },
-        "estimator": { "damage": { "samples": 8, "resolution": 0.125 } },
-    });
-    let script = vec![damaged(1.0, raw)];
-    let (turned, ran, verdicts, _) = turn(agent(dir.path(), script, Arc::default()).await).await;
-    assert_eq!(
-        ran,
-        Permit::executing().rounds(),
-        "an uncalibrated number stopped the loop"
-    );
-    assert_eq!(turned.exhausted, Some(Exhausted::Rounds(ran)));
-    assert!(
-        verdicts[0].contains("uncalibrated") && verdicts[0].contains("1/8"),
-        "{}",
-        verdicts[0]
-    );
-    assert!(!verdicts[0].contains("stop"), "{}", verdicts[0]);
-}
-
-/// A hosted door that says nothing about calibration is read the same
-/// way: the number is shown as unstated and does not route.
-#[tokio::test]
-async fn an_unstated_door_does_not_fire_the_stop() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut verdict = choosing("pass");
-    verdict.damage = 0.9;
-    let (turned, ran, verdicts, _) =
-        turn(agent(dir.path(), vec![verdict], Arc::default()).await).await;
-    assert_eq!(ran, Permit::executing().rounds());
-    assert_eq!(turned.exhausted, Some(Exhausted::Rounds(ran)));
-    assert!(verdicts[0].contains("unstated"), "{}", verdicts[0]);
 }
