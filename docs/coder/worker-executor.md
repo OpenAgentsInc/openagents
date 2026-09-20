@@ -82,3 +82,24 @@ Postgres relay: `coder -p "Reply with exactly the word pong"` returned
   work directory; separate them.
 - `exited 101 ... Read-only file system` — the executor writes state
   outside the grant; relocate its state directory into the grant.
+
+## Troubleshooting
+
+Two refusals come from the host environment rather than the job:
+
+- **`Refusing to run in an untrusted workspace`.** The Devin CLI keeps its
+  trusted-workspace list under `$XDG_DATA_HOME/devin`, so this setup leaves
+  two trust stores: the worker's, under `$HOME/worker-jobs/xdg`, and the
+  default `~/.local/share/devin`. A `coder -p` or `coderbench run` started
+  from a shell without `XDG_DATA_HOME` consults the default store, where
+  the checkout is untrusted, and the workspace probe answers
+  `present_unavailable`. Run the driving command with the same
+  `XDG_DATA_HOME` the worker uses, or trust the checkout in both stores.
+- **Preflight reports `origin is <rewritten URL>`.** A global
+  `url.<base>.insteadOf` entry rewrites the URL that
+  `git remote get-url origin` returns, so CoderBench preflight sees a
+  different repository and refuses a matching checkout. The preflight
+  check itself is tracked as
+  [#9448](https://github.com/OpenAgentsInc/openagents/issues/9448); until
+  it lands, invoke `coderbench` with `GIT_CONFIG_GLOBAL=/dev/null`, which
+  also hides every other global Git setting.
