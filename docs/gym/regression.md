@@ -63,6 +63,7 @@ held. The command refuses, by name, when it was not:
 | The suite digest moved | A changed suite is a different measurement. Comparing across digests is how a suite edit comes to read as a model result. |
 | The question text moved | Rewording a question makes a candidate against the same items rather than a regression in the door, and `gym compare` reads two question sets as what they are. |
 | The door's identity moved | A different model, base signature, or adapter is a different door, and `gym compare` is the command for two doors. |
+| Checkpoint contents or numerical execution settings moved | New Kev records bind the loaded artifact digest and serving settings; neither can change inside a regression comparison. See [model identity](model-identity.md). |
 | The estimator, draws, seed block, or option order moved | A different trial. The difference between them is not the commit's. |
 | There is one recorded run | Nothing to compare against yet. |
 

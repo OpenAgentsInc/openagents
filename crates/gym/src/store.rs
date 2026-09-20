@@ -80,7 +80,11 @@ use std::path::{Path, PathBuf};
 /// it. `crate::row::SCHEMA` is a `&str` for the same reason, and naming it
 /// here keeps one declaration of the string while leaving the allowlist a
 /// list of names.
-pub const KNOWN_ROW_SCHEMAS: &[&str] = &[crate::row::LEGACY_SCHEMA, crate::row::SCHEMA];
+pub const KNOWN_ROW_SCHEMAS: &[&str] = &[
+    crate::row::LEGACY_SCHEMA,
+    crate::row::PREVIOUS_SCHEMA,
+    crate::row::SCHEMA,
+];
 
 /// The field holding a row's own receipt.
 pub const RECEIPT_FIELD: &str = "receipt";
@@ -1298,11 +1302,16 @@ mod tests {
         // into the type that wrote it to find out whether it may.
         assert_eq!(
             KNOWN_ROW_SCHEMAS,
-            &[crate::row::LEGACY_SCHEMA, crate::row::SCHEMA]
+            &[
+                crate::row::LEGACY_SCHEMA,
+                crate::row::PREVIOUS_SCHEMA,
+                crate::row::SCHEMA
+            ]
         );
         assert!(known_row_schema("openagents.gym.eval_row.v1"));
         assert!(known_row_schema("openagents.gym.eval_row.v2"));
-        assert!(!known_row_schema("openagents.gym.eval_row.v3"));
+        assert!(known_row_schema("openagents.gym.eval_row.v3"));
+        assert!(!known_row_schema("openagents.gym.eval_row.v4"));
 
         let dir = tempfile::tempdir().unwrap();
         let store = store_in(&dir);

@@ -46,6 +46,13 @@ and `score` questions, so the official `typesafe-sdk` — and this
 repository's `crates/jev` — work against a local kev server with a
 `base_url` change.
 
+`GET /v1/models` also publishes a digest of the loaded base, adapter, head,
+tokenizer, and configuration bytes, plus separate numerical execution
+settings. Gym retains both when scoring the door and rejects stale
+calibration matches after a checkpoint or execution change. See
+[model identity](../gym/model-identity.md) for the record versions and
+verification limits.
+
 When the server declines a request it answers with the refusal envelope the
 System One doors share: `{"detail": …, "error": {"code", "message",
 "question"}}`, at 422 for contract violations (`invalid_request`,

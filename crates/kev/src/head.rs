@@ -29,7 +29,20 @@ impl PointerHead {
     ///
     /// Returns [`Error::Artifact`] when a tensor is missing or mis-shaped.
     pub fn load(dir: &Path, device: &Device) -> Result<Self> {
-        let tensors = candle_core::safetensors::load(dir.join("head.safetensors"), device)
+        Self::load_tracked(
+            dir,
+            device,
+            &mut crate::artifacts::ArtifactReader::default(),
+        )
+    }
+
+    pub(crate) fn load_tracked(
+        dir: &Path,
+        device: &Device,
+        reader: &mut crate::artifacts::ArtifactReader,
+    ) -> Result<Self> {
+        let bytes = reader.read("adapter/head.safetensors", &dir.join("head.safetensors"))?;
+        let tensors = candle_core::safetensors::load_buffer(&bytes, device)
             .map_err(|e| Error::Artifact(format!("load head.safetensors: {e}")))?;
         let get = |name: &str| {
             tensors

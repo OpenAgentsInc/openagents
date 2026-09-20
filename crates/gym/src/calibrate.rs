@@ -486,7 +486,10 @@ fn english() -> String {
 }
 
 /// The schema tag a calibration record carries.
-pub const RECORD_SCHEMA: &str = "openagents.gym.calibration_record.v1";
+pub const RECORD_SCHEMA: &str = "openagents.gym.calibration_record.v2";
+
+/// Records written before checkpoint contents and execution settings were bound.
+pub const LEGACY_RECORD_SCHEMA: &str = "openagents.gym.calibration_record.v1";
 
 /// Which estimator drew the raw signal, and from where.
 ///
@@ -544,16 +547,10 @@ pub enum Mismatch {
         serving: String,
     },
     /// The record cannot name what it was fitted against.
-    #[error(
-        "door_identity.verified: the record names no base model signature, so there is nothing \
-         to match it against"
-    )]
+    #[error("door_identity.verified: the record has incomplete model identity")]
     RecordUnverifiable,
     /// The door cannot say what it is running.
-    #[error(
-        "door_identity.verified: this door publishes no base model signature, so no record can \
-         be checked against it"
-    )]
+    #[error("door_identity.verified: this door publishes incomplete model identity")]
     DoorUnverifiable,
     /// The base model underneath has changed.
     #[error(
@@ -573,6 +570,19 @@ pub enum Mismatch {
         /// The adapter the door serves, or `none`.
         serving: String,
     },
+    /// Checkpoint contents differ, even if the public model name is unchanged.
+    #[error(
+        "artifact_signature: the map was fitted against {fitted} and this door serves {serving}"
+    )]
+    ArtifactSignature {
+        /// Content identity recorded when the map was fitted.
+        fitted: String,
+        /// Content identity reported by the serving door.
+        serving: String,
+    },
+    /// Numerical execution settings differ from those used to fit the map.
+    #[error("execution: the map and serving door use different numerical settings")]
+    Execution,
 }
 
 /// What a calibrated question family carries.
@@ -659,7 +669,7 @@ pub struct Record {
 }
 
 fn record_schema() -> String {
-    RECORD_SCHEMA.to_string()
+    LEGACY_RECORD_SCHEMA.to_string()
 }
 
 impl Record {
@@ -721,7 +731,7 @@ impl Record {
     ///
     /// Returns the first [`Mismatch`] found, which names the field.
     pub fn serve_to(&self, os_build: &str, identity: &DoorIdentity) -> Result<(), Mismatch> {
-        if self.schema != RECORD_SCHEMA {
+        if self.schema != RECORD_SCHEMA && self.schema != LEGACY_RECORD_SCHEMA {
             return Err(Mismatch::Schema {
                 found: self.schema.clone(),
             });
@@ -741,10 +751,10 @@ impl Record {
         // Refusing here is what keeps a hosted door, which publishes a name
         // and no signature, from picking up a map fitted on something else
         // that happens to carry the same name.
-        if !self.door_identity.verified {
+        if !self.door_identity.calibration_identity_complete() {
             return Err(Mismatch::RecordUnverifiable);
         }
-        if !identity.verified {
+        if !identity.calibration_identity_complete() {
             return Err(Mismatch::DoorUnverifiable);
         }
         if self.door_identity.base_model_signature != identity.base_model_signature {
@@ -758,6 +768,15 @@ impl Record {
                 fitted: name_or_none(&self.door_identity.adapter),
                 serving: name_or_none(&identity.adapter),
             });
+        }
+        if self.door_identity.artifact_signature != identity.artifact_signature {
+            return Err(Mismatch::ArtifactSignature {
+                fitted: name_or_none(&self.door_identity.artifact_signature),
+                serving: name_or_none(&identity.artifact_signature),
+            });
+        }
+        if self.door_identity.execution != identity.execution {
+            return Err(Mismatch::Execution);
         }
         Ok(())
     }
@@ -995,6 +1014,58 @@ mod tests {
             .expect_err("a new build is a new host");
         assert!(matches!(moved, Mismatch::OsBuild { .. }), "{moved}");
         assert!(moved.to_string().starts_with("os_build:"), "{moved}");
+    }
+
+    #[test]
+    fn checkpoint_replacement_and_execution_changes_invalidate_calibration() {
+        let mut record = record();
+        record.door_identity.model = "kev-4b".to_string();
+        record.door_identity.artifact_signature = format!("sha256:{}", "a".repeat(64));
+        record
+            .door_identity
+            .execution
+            .insert("dtype".to_string(), "f32".to_string());
+        record
+            .door_identity
+            .execution
+            .insert("backend".to_string(), "cpu".to_string());
+        let mut identity = record.door_identity.clone();
+        assert!(record.valid_for("25E246", &identity));
+        identity.artifact_signature = format!("sha256:{}", "b".repeat(64));
+        assert!(matches!(
+            record.serve_to("25E246", &identity),
+            Err(Mismatch::ArtifactSignature { .. })
+        ));
+        identity = record.door_identity.clone();
+        identity
+            .execution
+            .insert("dtype".to_string(), "bf16".to_string());
+        assert_eq!(
+            record.serve_to("25E246", &identity),
+            Err(Mismatch::Execution)
+        );
+        identity = record.door_identity.clone();
+        record.door_identity.artifact_signature.clear();
+        assert_eq!(
+            record.serve_to("25E246", &identity),
+            Err(Mismatch::RecordUnverifiable)
+        );
+        identity.artifact_signature.clear();
+        assert_eq!(
+            record.serve_to("25E246", &identity),
+            Err(Mismatch::RecordUnverifiable)
+        );
+    }
+
+    #[test]
+    fn legacy_calibration_records_keep_their_version_and_existing_matches() {
+        let mut legacy = record();
+        legacy.schema = LEGACY_RECORD_SCHEMA.to_string();
+        let value = serde_json::to_value(&legacy).unwrap();
+        let decoded: Record = serde_json::from_value(value.clone()).unwrap();
+        assert!(decoded.valid_for("25E246", &legacy.door_identity));
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+        assert_ne!(LEGACY_RECORD_SCHEMA, RECORD_SCHEMA);
     }
 
     #[test]

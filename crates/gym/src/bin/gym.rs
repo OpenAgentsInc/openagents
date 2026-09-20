@@ -388,7 +388,7 @@ async fn published_facts(client: &Client, unknown: Facts) -> Facts {
     let Ok(body) = serde_json::from_slice::<Value>(&response.bytes) else {
         return unknown;
     };
-    let Some(model) = body.get("models").and_then(|models| models.get(0)) else {
+    let Some(model) = discovered_model(&body, client.default_model()) else {
         return unknown;
     };
     let text = |key: &str| {
@@ -399,19 +399,9 @@ async fn published_facts(client: &Client, unknown: Facts) -> Facts {
             .to_string()
     };
     let number = |key: &str| model.get(key).and_then(Value::as_u64);
-    let reported = text("name");
-    let signature = text("base_model_signature");
     let estimator = text("estimator");
     Facts {
-        identity: DoorIdentity::published(
-            if reported.is_empty() {
-                unknown.name.clone()
-            } else {
-                reported
-            },
-            signature,
-            text("adapter"),
-        ),
+        identity: DoorIdentity::from_model_card(model, &unknown.name),
         estimator: if estimator.is_empty() {
             "unreported".to_string()
         } else {
@@ -421,6 +411,24 @@ async fn published_facts(client: &Client, unknown: Facts) -> Facts {
         seed_base: number("seed_base"),
         ..unknown
     }
+}
+
+/// Select the card for the requested model, including a published alias.
+fn discovered_model<'a>(body: &'a Value, selected: &str) -> Option<&'a Value> {
+    let cards = body.get("models")?.as_array()?;
+    cards
+        .iter()
+        .find(|card| {
+            card.get("id").and_then(Value::as_str) == Some(selected)
+                || card.get("name").and_then(Value::as_str) == Some(selected)
+                || card
+                    .get("aliases")
+                    .and_then(Value::as_array)
+                    .is_some_and(|aliases| {
+                        aliases.iter().any(|alias| alias.as_str() == Some(selected))
+                    })
+        })
+        .or_else(|| (cards.len() == 1).then(|| &cards[0]))
 }
 
 /// How many options a Choice question serves.
@@ -574,6 +582,12 @@ fn run_over(suite: &Suite, gate: &Gate, questions: &QuestionSet, facts: &Facts) 
 }
 
 fn report_identity(facts: &Facts) {
+    if !facts.identity.artifact_signature.is_empty() {
+        println!(
+            "Checkpoint: `{}`. Execution: `{:?}`.",
+            facts.identity.artifact_signature, facts.identity.execution
+        );
+    }
     if facts.identity.verified {
         println!(
             "Identity: base `{}`{}. Estimator `{}`{}{}.\n",
@@ -1128,11 +1142,21 @@ fn compare_command(options: &Options) -> Result<(), String> {
 
     let labels: Vec<String> = sides.iter().map(Side::label).collect();
     let baseline = match &options.baseline {
-        Some(named) => sides
-            .iter()
-            .find(|side| &side.door == named || &side.label() == named)
-            .map(Side::label)
-            .ok_or_else(|| format!("no rows for the baseline {named}"))?,
+        Some(named) => {
+            let matches: Vec<_> = sides
+                .iter()
+                .filter(|side| &side.door == named || &side.label() == named)
+                .collect();
+            match matches.as_slice() {
+                [side] => side.label(),
+                [] => return Err(format!("no rows for the baseline {named}")),
+                _ => {
+                    return Err(format!(
+                        "baseline {named} names multiple checkpoints or question sets; use the full comparison label"
+                    ));
+                }
+            }
+        }
         None => labels[0].clone(),
     };
     let Some(before) = measured.get(&baseline) else {
@@ -1193,6 +1217,7 @@ fn compare_command(options: &Options) -> Result<(), String> {
 struct Side {
     door: String,
     questions: Option<String>,
+    identity: Option<DoorIdentity>,
 }
 
 impl Side {
@@ -1200,13 +1225,24 @@ impl Side {
         Self {
             door: row.door.clone(),
             questions: row.question_set.clone(),
+            identity: (!row.door_identity.artifact_signature.is_empty())
+                .then(|| row.door_identity.clone()),
         }
     }
 
     fn label(&self) -> String {
+        use sha2::Digest;
+        let door = self.identity.as_ref().map_or_else(
+            || self.door.clone(),
+            |identity| {
+                // Strings, maps of strings, and a boolean serialize without a failure.
+                let encoded = serde_json::to_vec(identity).expect("a model identity serializes");
+                format!("{}@{:x}", self.door, sha2::Sha256::digest(encoded))
+            },
+        );
         match &self.questions {
-            Some(set) => format!("{} asked as {set}", self.door),
-            None => self.door.clone(),
+            Some(set) => format!("{door} asked as {set}"),
+            None => door,
         }
     }
 }
@@ -1233,7 +1269,7 @@ fn admit(
 fn identity_of(rows: &[Row]) -> String {
     let mut seen: Vec<String> = Vec::new();
     for row in rows {
-        let identity = if row.door_identity.verified {
+        let mut identity = if row.door_identity.calibration_identity_complete() {
             let base: String = row
                 .door_identity
                 .base_model_signature
@@ -1245,8 +1281,14 @@ fn identity_of(rows: &[Row]) -> String {
                 adapter => format!("base `{base}`, adapter `{adapter}`"),
             }
         } else {
-            "not verifiable".to_string()
+            "incomplete identity".to_string()
         };
+        if !row.door_identity.artifact_signature.is_empty() {
+            identity.push_str(&format!(
+                ", checkpoint `{}`, execution `{:?}`",
+                row.door_identity.artifact_signature, row.door_identity.execution
+            ));
+        }
         if !seen.contains(&identity) {
             seen.push(identity);
         }
@@ -2403,6 +2445,40 @@ fn report_map_spread(raw: &[Metrics], pooled: &[Metrics], banded: &[Metrics]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_discovery_selects_the_requested_variant_or_alias() {
+        let cards = serde_json::json!({"models": [
+            {"id":"kev-0.5b"},
+            {"id":"kev-4b", "aliases":["jev-latest", "kev-latest"]}
+        ]});
+        assert_eq!(discovered_model(&cards, "kev-4b").unwrap()["id"], "kev-4b");
+        assert_eq!(
+            discovered_model(&cards, "jev-latest").unwrap()["id"],
+            "kev-4b"
+        );
+        assert!(discovered_model(&cards, "absent").is_none());
+    }
+
+    #[test]
+    fn the_same_door_name_keeps_checkpoint_and_execution_comparisons_separate() {
+        let mut before = Row {
+            door: "kev-4b".to_string(),
+            ..Row::default()
+        };
+        before.door_identity = DoorIdentity::published("kev-4b", "same-base", "");
+        before.door_identity.artifact_signature = format!("sha256:{}", "a".repeat(64));
+        let mut after = before.clone();
+        after.door_identity.artifact_signature = format!("sha256:{}", "b".repeat(64));
+        assert_ne!(Side::of(&before), Side::of(&after));
+        assert_ne!(Side::of(&before).label(), Side::of(&after).label());
+        after = before.clone();
+        after
+            .door_identity
+            .execution
+            .insert("dtype".to_string(), "bf16".to_string());
+        assert_ne!(Side::of(&before).label(), Side::of(&after).label());
+    }
 
     /// A file of item ids reads back without its provenance.
     ///

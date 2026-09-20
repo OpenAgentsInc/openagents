@@ -284,13 +284,28 @@ impl Backbone {
     ///
     /// Returns [`Error::Artifact`] when a file or tensor is missing or malformed.
     pub fn load(dir: &Path, device: &Device, dtype: DType) -> Result<Self> {
-        let config: Config = serde_json::from_str(
-            &std::fs::read_to_string(dir.join("config.json"))
-                .map_err(|e| Error::Artifact(format!("read config.json: {e}")))?,
-        )?;
-        let mut shard_paths: Vec<_> = std::fs::read_dir(dir)
+        Self::load_tracked(
+            dir,
+            device,
+            dtype,
+            &mut crate::artifacts::ArtifactReader::default(),
+        )
+    }
+
+    pub(crate) fn load_tracked(
+        dir: &Path,
+        device: &Device,
+        dtype: DType,
+        reader: &mut crate::artifacts::ArtifactReader,
+    ) -> Result<Self> {
+        let config: Config =
+            serde_json::from_slice(&reader.read("base/config.json", &dir.join("config.json"))?)?;
+        let entries = std::fs::read_dir(dir)
             .map_err(|e| Error::Artifact(format!("read_dir {}: {e}", dir.display())))?
-            .filter_map(std::result::Result::ok)
+            .collect::<std::io::Result<Vec<_>>>()
+            .map_err(|e| Error::Artifact(format!("list base shards: {e}")))?;
+        let mut shard_paths: Vec<_> = entries
+            .into_iter()
             .map(|e| e.path())
             .filter(|p| {
                 p.extension().is_some_and(|x| x == "safetensors")
@@ -307,9 +322,17 @@ impl Backbone {
         }
         let mut tensors = std::collections::HashMap::new();
         for path in &shard_paths {
-            for (k, v) in candle_core::safetensors::load(path, device)
-                .map_err(|e| Error::Artifact(format!("load {}: {e}", path.display())))?
-            {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| {
+                    Error::Artifact("a base shard has a non-UTF-8 filename".to_string())
+                })?;
+            let bytes = reader.read(&format!("base/{name}"), path)?;
+            let loaded = candle_core::safetensors::load_buffer(&bytes, device)
+                .map_err(|e| Error::Artifact(format!("load {}: {e}", path.display())))?;
+            drop(bytes);
+            for (k, v) in loaded {
                 let name = k.strip_prefix("model.").unwrap_or(&k).to_string();
                 tensors.insert(name, v.to_dtype(dtype)?);
             }

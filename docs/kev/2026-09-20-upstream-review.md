@@ -78,6 +78,13 @@ publishes that revision and the run path, but no adapter/head content
 digest. Replacing an adapter in place can preserve both its model ID and
 base signature. A checkpoint name alone cannot identify a measurement.
 
+**Resolved in [#9455](https://github.com/OpenAgentsInc/openagents/issues/9455):**
+the runtime now hashes the bytes it loads and publishes that content
+identity with separate execution settings. Gym binds both in new rows,
+comparisons, and calibration matching. Historical rows retain their bytes
+and incomplete provenance; [model identity](../gym/model-identity.md)
+describes the migration.
+
 ### The bf16 merge differs from upstream
 
 [`DecisionModel::load_with_dtype`](../../crates/kev/src/decision.rs)

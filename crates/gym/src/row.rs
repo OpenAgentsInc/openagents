@@ -34,12 +34,16 @@
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// The schema tag every row carries.
 ///
 /// It is written into the row rather than inferred from the file, so a line
 /// that escapes its store still says what it is and what reads it.
-pub const SCHEMA: &str = "openagents.gym.eval_row.v2";
+pub const SCHEMA: &str = "openagents.gym.eval_row.v3";
+
+/// Rows with explicit selected answers, before checkpoint content identity.
+pub const PREVIOUS_SCHEMA: &str = "openagents.gym.eval_row.v2";
 
 /// Historical rows whose `raw_top` was the distribution maximum.
 /// Their bytes and receipts remain unchanged; readers use the legacy
@@ -64,6 +68,13 @@ pub struct DoorIdentity {
     /// The adapter package identifier, when a door serves one.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub adapter: String,
+    /// Digest of checkpoint contents reported by the serving runtime.
+    /// Empty for older records or doors that publish no content identity.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub artifact_signature: String,
+    /// Numerical serving settings, kept distinct from checkpoint contents.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub execution: BTreeMap<String, String>,
     /// Whether any of the above can actually be checked.
     ///
     /// False for a hosted closed model. That is the `unknown is not zero`
@@ -105,7 +116,99 @@ impl DoorIdentity {
             verified: !base_model_signature.is_empty(),
             base_model_signature,
             adapter: adapter.into(),
+            ..Self::default()
         }
+    }
+
+    /// Read one discovered card without treating a Kev base revision as a
+    /// complete checkpoint identity. Published evidence is a runtime claim;
+    /// Gym does not read the remote weight files itself.
+    #[must_use]
+    pub fn from_model_card(card: &serde_json::Value, fallback: &str) -> Self {
+        let text = |name: &str| {
+            card.get(name)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+        };
+        let model = if text("name").is_empty() {
+            fallback
+        } else {
+            text("name")
+        };
+        let mut identity = Self::published(model, text("base_model_signature"), text("adapter"));
+        identity.artifact_signature = card
+            .pointer("/artifact_identity/digest")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        identity.execution = card
+            .get("execution")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default();
+        if !identity.artifact_signature.is_empty() {
+            identity.verified = identity.has_content_signature();
+        } else if identity.model.starts_with("kev-") {
+            identity.verified = false;
+        }
+        identity
+    }
+
+    /// Whether the published content digest has the supported SHA-256 form.
+    #[must_use]
+    pub fn has_content_signature(&self) -> bool {
+        self.artifact_signature
+            .strip_prefix("sha256:")
+            .is_some_and(|digest| {
+                digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+    }
+
+    /// Whether a calibration record has enough identity to match this door.
+    #[must_use]
+    pub fn calibration_identity_complete(&self) -> bool {
+        self.verified
+            && (!self.model.starts_with("kev-")
+                || (self.has_content_signature()
+                    && ["dtype", "backend"].iter().all(|key| {
+                        self.execution
+                            .get(*key)
+                            .is_some_and(|value| !value.is_empty())
+                    })))
+    }
+}
+
+#[cfg(test)]
+mod content_identity_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn legacy_identity_round_trips_without_inventing_checkpoint_provenance() {
+        let old =
+            json!({"model":"kev-4b", "base_model_signature":"base-revision", "verified":true});
+        let identity: DoorIdentity = serde_json::from_value(old.clone()).unwrap();
+        assert!(identity.artifact_signature.is_empty());
+        assert!(!identity.calibration_identity_complete());
+        assert_eq!(serde_json::to_value(identity).unwrap(), old);
+        let reported = DoorIdentity::from_model_card(&old, "kev-4b");
+        assert!(!reported.verified);
+    }
+
+    #[test]
+    fn discovered_content_identity_retains_separate_execution_settings() {
+        let card = json!({
+            "name": "kev-4b",
+            "artifact_identity": {"digest": format!("sha256:{}", "a".repeat(64))},
+            "execution": {"dtype": "bf16", "backend": "metal"}
+        });
+        let identity = DoorIdentity::from_model_card(&card, "fallback");
+        assert!(identity.calibration_identity_complete());
+        assert_eq!(identity.execution["dtype"], "bf16");
+        assert!(identity.base_model_signature.is_empty());
+        let mut invalid = card;
+        invalid["artifact_identity"]["digest"] = json!("mutable-name");
+        assert!(!DoorIdentity::from_model_card(&invalid, "fallback").verified);
     }
 }
 
@@ -628,7 +731,7 @@ impl Row {
     ///
     /// Returns the first contradiction found.
     pub fn check(&self) -> Result<(), RowError> {
-        if self.schema != SCHEMA && self.schema != LEGACY_SCHEMA {
+        if ![SCHEMA, PREVIOUS_SCHEMA, LEGACY_SCHEMA].contains(&self.schema.as_str()) {
             return Err(RowError::UnknownSchema {
                 found: self.schema.clone(),
             });
@@ -733,7 +836,7 @@ mod tests {
 
     #[test]
     fn the_schema_tag_belongs_to_this_crate() {
-        assert_eq!(SCHEMA, "openagents.gym.eval_row.v2");
+        assert_eq!(SCHEMA, "openagents.gym.eval_row.v3");
         assert!(
             SCHEMA.starts_with(SCHEMA_PREFIX),
             "the row is tagged into the Gym family"
@@ -754,16 +857,20 @@ mod tests {
 
     #[test]
     fn historical_rows_keep_their_schema_and_omit_new_provenance() {
-        let mut legacy = scored_row();
-        legacy.schema = LEGACY_SCHEMA.to_string();
-        legacy.selected = None;
-        let before = serde_json::to_value(&legacy).unwrap();
-        assert!(before.get("selected").is_none());
-        let decoded: Row = serde_json::from_value(before.clone()).unwrap();
-        decoded.check().unwrap();
-        assert_eq!(serde_json::to_value(decoded).unwrap(), before);
-        assert_eq!(before["schema"], LEGACY_SCHEMA);
-        assert_ne!(before["schema"], SCHEMA);
+        for schema in [LEGACY_SCHEMA, PREVIOUS_SCHEMA] {
+            let mut legacy = scored_row();
+            legacy.schema = schema.to_string();
+            legacy.selected = None;
+            let before = serde_json::to_value(&legacy).unwrap();
+            assert!(before.get("selected").is_none());
+            assert!(before["door_identity"].get("artifact_signature").is_none());
+            assert!(before["door_identity"].get("execution").is_none());
+            let decoded: Row = serde_json::from_value(before.clone()).unwrap();
+            decoded.check().unwrap();
+            assert_eq!(serde_json::to_value(decoded).unwrap(), before);
+            assert_eq!(before["schema"], schema);
+            assert_ne!(before["schema"], SCHEMA);
+        }
     }
 
     #[test]

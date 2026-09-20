@@ -56,16 +56,47 @@ pub struct Variant {
     /// The base checkpoint revision the artifact was trained against, when
     /// `head_meta.json` names one.
     ///
-    /// This is what `/v1/models` publishes as `base_model_signature`, and it
-    /// is the field a recorded result row uses to say which checkpoint
-    /// answered. An artifact that names no revision publishes an empty
-    /// string rather than a signature nobody can check.
+    /// Published as `base_model_signature` for compatibility. It describes
+    /// the declared base revision; `artifact_identity` identifies the bytes
+    /// actually loaded, including the adapter and head. An artifact that
+    /// names no base revision publishes an empty string.
     pub base_revision: String,
     /// The adapter rank `/api/info` reports.
     pub lora: usize,
 }
 
 impl Variant {
+    /// Numerical settings recorded separately from checkpoint contents.
+    #[must_use]
+    pub fn execution_identity(&self) -> std::collections::BTreeMap<String, String> {
+        let backend = if self.model.device.is_cpu() {
+            "cpu"
+        } else if self.model.device.is_metal() {
+            "metal"
+        } else {
+            "cuda"
+        };
+        [
+            ("backend", backend.to_string()),
+            (
+                "dtype",
+                format!("{:?}", self.model.backbone.dtype()).to_lowercase(),
+            ),
+            (
+                "head_dtype",
+                format!("{:?}", self.model.head.q.weight.dtype()).to_lowercase(),
+            ),
+            ("attention", "eager-block-causal-v1".to_string()),
+            ("lora_merge", "cast-base-then-add-v1".to_string()),
+            ("option_isolation", self.model.option_isolation.to_string()),
+            ("max_state", INFER_MAX_STATE.to_string()),
+            ("max_branch", INFER_MAX_BRANCH.to_string()),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value))
+        .collect()
+    }
+
     /// The working memory one forward of `tokens` packed tokens needs on this
     /// variant, from its model card: the backbone's head count, widths, and
     /// compute dtype.
@@ -714,6 +745,8 @@ async fn models(State(state): State<Arc<ServeState>>) -> Json<Value> {
                 "description": format!("kev decision model on {}, served by the openagents Rust port", v.base),
                 "release_date": "2026-09-19",
                 "base_model_signature": v.base_revision,
+                "artifact_identity": v.model.artifacts,
+                "execution": v.execution_identity(),
                 "aliases": if i == state.default { state.aliases.clone() } else { Vec::<String>::new() },
                 "run": v.run,
                 "base": v.base,

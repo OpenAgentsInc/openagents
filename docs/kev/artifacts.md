@@ -76,9 +76,10 @@ into a fresh directory rather than rewriting historical evidence.
    before workload scoring or changing a serving default.
 
 The lock digest identifies the acquisition record, including its paths and
-recipe. It is not yet a runtime attestation; the server must independently
-identify what it actually loads. That work is tracked in
-[#9455](https://github.com/OpenAgentsInc/openagents/issues/9455).
+recipe. The server separately hashes the bytes it loads and publishes that
+content identity through model discovery. Gym retains it with the numerical
+execution settings. See [model identity](../gym/model-identity.md) for the
+different guarantees of acquisition verification and runtime reporting.
 
 ## Verification
 

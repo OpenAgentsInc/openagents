@@ -261,6 +261,88 @@ async fn serve_state(state: Arc<ServeState>) -> String {
     format!("http://{addr}")
 }
 
+/// Replacing an adapter at the same path must survive discovery and storage
+/// as a different checkpoint, even when its public name and base stay fixed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replaced_adapter_identity_round_trips_through_jev_and_gym() {
+    use gym::row::{DoorIdentity, Row};
+    use gym::store::Store;
+
+    let directory = tempfile::tempdir().unwrap();
+    let (base, adapter) = write_variant(directory.path(), "kev-test", 64, HEADS);
+    let mut identities = Vec::new();
+    let store = Store::at(directory.path().join("results.jsonl"));
+    for replacement in [false, true] {
+        if replacement {
+            let path = adapter.join("adapter_model.safetensors");
+            let mut bytes = std::fs::read(&path).unwrap();
+            let offset = bytes.len() - 4;
+            bytes[offset..].copy_from_slice(&1.0_f32.to_le_bytes());
+            std::fs::write(path, bytes).unwrap();
+        }
+        let model = DecisionModel::load(&base, &adapter, Device::Cpu).unwrap();
+        let expected = model.artifacts.digest.clone();
+        let state = Arc::new(
+            ServeState::new(
+                vec![Variant {
+                    model,
+                    model_id: "kev-test".to_string(),
+                    run: adapter.display().to_string(),
+                    base: "same-base".to_string(),
+                    base_revision: "same-base-revision".to_string(),
+                    lora: 1,
+                }],
+                0,
+                vec!["jev-latest".to_string()],
+                "cpu".to_string(),
+                Admission {
+                    max_total_tokens: RIG_TOKENS,
+                    memory_budget_bytes: RIG_BUDGET_MIB * MIB,
+                    ..Admission::default()
+                },
+            )
+            .unwrap(),
+        );
+        let url = serve_state(state).await;
+        let client = jev::Client::new(jev::Config::new().api_key("local").base_url(url)).unwrap();
+        let response = client
+            .models()
+            .list_raw(jev::ListOptions::default())
+            .await
+            .unwrap();
+        let body: Value = serde_json::from_slice(&response.bytes).unwrap();
+        let identity = DoorIdentity::from_model_card(&body["models"][0], "kev-test");
+        assert_eq!(identity.artifact_signature, expected);
+        assert!(identity.calibration_identity_complete());
+        assert_eq!(identity.execution["backend"], "cpu");
+        store
+            .append(&Row {
+                suite_digest: "synthetic-suite".to_string(),
+                item_id: "same-item".to_string(),
+                door: "kev-test".to_string(),
+                door_identity: identity.clone(),
+                ..Row::default()
+            })
+            .unwrap();
+        identities.push(identity);
+    }
+    assert_eq!(identities[0].model, identities[1].model);
+    assert_eq!(
+        identities[0].base_model_signature,
+        identities[1].base_model_signature
+    );
+    assert_ne!(
+        identities[0].artifact_signature,
+        identities[1].artifact_signature
+    );
+    let rows = store.verified_rows().unwrap();
+    assert_eq!(rows.len(), 2);
+    for (row, identity) in rows.into_iter().zip(identities) {
+        let decoded: Row = serde_json::from_value(row).unwrap();
+        assert_eq!(decoded.door_identity, identity);
+    }
+}
+
 /// Run the blocking jev client off the test's runtime thread.
 fn blocking<F, T>(f: F) -> T
 where

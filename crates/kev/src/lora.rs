@@ -33,26 +33,45 @@ pub struct LoraConfig {
 /// Returns [`Error::Artifact`] when the adapter is malformed, names a module
 /// the backbone does not carry, or the pair for a module is incomplete.
 pub fn apply_lora(backbone: &mut Backbone, dir: &Path, device: &Device) -> Result<()> {
-    let config: LoraConfig = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("adapter_config.json"))
-            .map_err(|e| Error::Artifact(format!("read adapter_config.json: {e}")))?,
-    )?;
+    apply_lora_tracked(
+        backbone,
+        dir,
+        device,
+        &mut crate::artifacts::ArtifactReader::default(),
+    )
+}
+
+pub(crate) fn apply_lora_tracked(
+    backbone: &mut Backbone,
+    dir: &Path,
+    device: &Device,
+    reader: &mut crate::artifacts::ArtifactReader,
+) -> Result<()> {
+    let config: LoraConfig = serde_json::from_slice(&reader.read(
+        "adapter/adapter_config.json",
+        &dir.join("adapter_config.json"),
+    )?)?;
     let scale = config.lora_alpha / config.r as f64;
-    let tensors: HashMap<String, Tensor> =
-        candle_core::safetensors::load(dir.join("adapter_model.safetensors"), device)
-            .map_err(|e| Error::Artifact(format!("load adapter_model.safetensors: {e}")))?
-            .into_iter()
-            .map(|(k, v)| {
-                // peft prefixes `base_model.model.`; the weights themselves
-                // then match the backbone's `model.` layout.
-                let name = k
-                    .strip_prefix("base_model.model.model.")
-                    .or_else(|| k.strip_prefix("base_model.model."))
-                    .unwrap_or(&k)
-                    .to_string();
-                Ok((name, v.to_dtype(DType::F32)?))
-            })
-            .collect::<candle_core::Result<_>>()?;
+    let bytes = reader.read(
+        "adapter/adapter_model.safetensors",
+        &dir.join("adapter_model.safetensors"),
+    )?;
+    let loaded = candle_core::safetensors::load_buffer(&bytes, device)
+        .map_err(|e| Error::Artifact(format!("load adapter_model.safetensors: {e}")))?;
+    drop(bytes);
+    let tensors: HashMap<String, Tensor> = loaded
+        .into_iter()
+        .map(|(k, v)| {
+            // peft prefixes `base_model.model.`; the weights themselves
+            // then match the backbone's `model.` layout.
+            let name = k
+                .strip_prefix("base_model.model.model.")
+                .or_else(|| k.strip_prefix("base_model.model."))
+                .unwrap_or(&k)
+                .to_string();
+            Ok((name, v.to_dtype(DType::F32)?))
+        })
+        .collect::<candle_core::Result<_>>()?;
     backbone.merge_lora(&tensors, &config.target_modules, scale)
 }
 

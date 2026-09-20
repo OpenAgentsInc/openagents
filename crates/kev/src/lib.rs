@@ -14,6 +14,7 @@
 //! architecture, the measurements, and the port roadmap.
 
 pub mod api;
+pub mod artifacts;
 pub mod decision;
 pub mod encode;
 pub mod error;

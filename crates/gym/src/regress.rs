@@ -1118,6 +1118,11 @@ fn identity_difference(before: &DoorIdentity, after: &DoorIdentity) -> String {
             &after.base_model_signature,
         ),
         ("the adapter", &before.adapter, &after.adapter),
+        (
+            "the checkpoint contents",
+            &before.artifact_signature,
+            &after.artifact_signature,
+        ),
     ];
     for (field, was, now) in named {
         if was != now {
@@ -1127,6 +1132,9 @@ fn identity_difference(before: &DoorIdentity, after: &DoorIdentity) -> String {
                 or_none(now)
             ));
         }
+    }
+    if before.execution != after.execution {
+        moved.push("the numerical execution settings changed".to_string());
     }
     if before.verified != after.verified {
         moved.push(format!(

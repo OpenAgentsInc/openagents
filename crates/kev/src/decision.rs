@@ -7,10 +7,11 @@ use candle_core::{DType, Device, Tensor};
 use tokenizers::Tokenizer;
 
 use crate::api::{Answer, Meta, Record, SystemOneRequest, to_answers, to_record};
+use crate::artifacts::{ArtifactIdentity, ArtifactReader};
 use crate::encode::{Encoding, branch_mask, encode};
 use crate::error::{Error, Result};
 use crate::head::PointerHead;
-use crate::lora::apply_lora;
+use crate::lora::apply_lora_tracked;
 use crate::model::Backbone;
 
 use indexmap::IndexMap;
@@ -36,6 +37,8 @@ pub struct DecisionModel {
     pub option_isolation: bool,
     /// The device the weights live on.
     pub device: Device,
+    /// Content identity captured from the same bytes used to load the model.
+    pub artifacts: ArtifactIdentity,
 }
 
 impl DecisionModel {
@@ -63,18 +66,26 @@ impl DecisionModel {
         device: Device,
         dtype: DType,
     ) -> Result<Self> {
-        let mut backbone = Backbone::load(base_dir, &device, dtype)?;
-        apply_lora(&mut backbone, adapter_dir, &device)?;
-        let head = PointerHead::load(adapter_dir, &device)?;
-        let tokenizer = Tokenizer::from_file(adapter_dir.join("tokenizer.json"))
-            .map_err(|e| Error::Tokenize(e.to_string()))?;
-        let option_isolation = match std::fs::read_to_string(adapter_dir.join("head_meta.json")) {
-            Ok(text) => {
-                serde_json::from_str::<HeadMeta>(&text)
+        let mut reader = ArtifactReader::default();
+        let mut backbone = Backbone::load_tracked(base_dir, &device, dtype, &mut reader)?;
+        apply_lora_tracked(&mut backbone, adapter_dir, &device, &mut reader)?;
+        let head = PointerHead::load_tracked(adapter_dir, &device, &mut reader)?;
+        let tokenizer_bytes = reader.read(
+            "adapter/tokenizer.json",
+            &adapter_dir.join("tokenizer.json"),
+        )?;
+        let tokenizer =
+            Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| Error::Tokenize(e.to_string()))?;
+        let option_isolation = match reader.optional(
+            "adapter/head_meta.json",
+            &adapter_dir.join("head_meta.json"),
+        )? {
+            Some(bytes) => {
+                serde_json::from_slice::<HeadMeta>(&bytes)
                     .map_err(|e| Error::Artifact(format!("head_meta.json: {e}")))?
                     .option_isolation
             }
-            Err(_) => false,
+            None => false,
         };
         Ok(Self {
             backbone,
@@ -82,6 +93,7 @@ impl DecisionModel {
             tokenizer,
             option_isolation,
             device,
+            artifacts: reader.finish()?,
         })
     }
 
