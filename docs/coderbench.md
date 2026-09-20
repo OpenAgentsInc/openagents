@@ -5,10 +5,17 @@ episode: the whole path from the operator's sentence to the final summary,
 recorded as one ATIF trace.
 
 The first task is `devin-fan-out-six`, the delegation
-[`programs.md`](programs.md) specifies. It ran on 2026-09-20, three times, and the golden
-is **recorded**, not authored:
+[`programs.md`](programs.md) specifies. It ran on 2026-09-20, three times. The golden is **staged**, not observed:
 `crates/coderbench/goldens/devin-fan-out-six.atif.jsonl`, at commit
 `752eab3ad8`.
+
+Every call in it is real — six Devin sessions ran, two decision calls hit a
+live door, the delegates answered correctly. **Coder orchestrated none of
+it.** A shell script did. So this is a specification of the path Coder
+should take, written in the format Coder already emits, and no run of
+`coder` has yet produced it. It becomes `observed` when one does, and the
+staged file is replaced rather than kept beside it
+([#9412](https://github.com/OpenAgentsInc/openagents/issues/9412)).
 
 ## What ran
 

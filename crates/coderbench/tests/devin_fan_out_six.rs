@@ -57,3 +57,21 @@ fn a_missing_decision_is_a_fault() {
         "a run that skipped the independence decision is not on the path"
     );
 }
+
+#[test]
+fn the_golden_says_what_it_rests_on() {
+    use coderbench::{GoldenMeta, Provenance};
+    let meta = GoldenMeta::load(&goldens_dir().join("devin-fan-out-six.meta.json"))
+        .expect("the golden declares its provenance");
+    assert_eq!(meta.task, "devin-fan-out-six");
+    assert!(!meta.repository_commit.is_empty(), "a golden names the commit it ran at");
+    assert_eq!(
+        meta.provenance,
+        Provenance::Staged,
+        "Coder has not produced this path yet; see openagents#9412"
+    );
+    assert_ne!(
+        meta.orchestrator, "coder",
+        "a staged golden did not have Coder driving it, and must not claim to"
+    );
+}

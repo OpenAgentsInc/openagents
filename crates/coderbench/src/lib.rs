@@ -25,13 +25,74 @@ pub const TASK_SCHEMA: &str = "openagents.coderbench.task.v1";
 /// path that was observed and a path somebody wrote down are different
 /// evidence, and a file that does not say which is a file that will be read
 /// as the stronger one.
+///
+/// Three states rather than two, because "recorded" was covering two
+/// different things. A recording of the program under test and a recording
+/// of something else doing what that program should do are not the same
+/// evidence, and the second is the one a reader over-trusts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provenance {
-    /// The episode ran and this is what it did.
-    Recorded,
-    /// Nobody ran it; this is the path somebody expects.
+    /// Coder ran and this is what it did. The only kind that shows the
+    /// program under test doing the thing.
+    Observed,
+    /// Every call is real and something else drove them. A staged golden is
+    /// a specification written in the format a run emits, which is useful
+    /// and is not evidence about Coder.
+    Staged,
+    /// Nobody ran it. The path somebody expects.
     Authored,
+}
+
+/// What a golden says about itself, beside the trace.
+///
+/// A sidecar rather than a field inside the trace, because ATIF describes a
+/// session and this describes the file. A session cannot say who was
+/// driving it.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GoldenMeta {
+    pub schema: String,
+    /// Which task this golden is a golden for.
+    pub task: String,
+    pub provenance: Provenance,
+    /// What drove the episode. `coder` for an observed one; for a staged
+    /// one, what stood in for it.
+    pub orchestrator: String,
+    /// The commit the episode ran at.
+    #[serde(default)]
+    pub repository_commit: String,
+    #[serde(default)]
+    pub recorded: String,
+    /// Why this golden is not observed yet, when it is not.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// The schema a golden's sidecar declares.
+pub const GOLDEN_META_SCHEMA: &str = "openagents.coderbench.golden.v1";
+
+impl GoldenMeta {
+    /// Reads a golden's sidecar.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read, does not parse, or
+    /// declares a schema this version does not know. A golden with no
+    /// sidecar is an error rather than a default, because the default a
+    /// reader would assume is the strongest one.
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let meta: Self =
+            serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        if meta.schema != GOLDEN_META_SCHEMA {
+            return Err(format!(
+                "{}: schema is {}, this version reads {GOLDEN_META_SCHEMA}",
+                path.display(),
+                meta.schema
+            ));
+        }
+        Ok(meta)
+    }
 }
 
 /// One task: what the operator asks, what the environment must hold, and

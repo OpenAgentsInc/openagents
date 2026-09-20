@@ -27,16 +27,29 @@ should have settled.
 
 ## Provenance
 
-A golden says whether it was **recorded** or **authored**. This is the
-distinction `gym::row::LabelSource` draws for items, for the same reason: a
-path that was observed and a path somebody expects are different evidence,
-and a file that does not say which will be read as the stronger one.
+Every golden has a `.meta.json` sidecar saying what it rests on. A golden
+without one is an error rather than a default, because the default a reader
+assumes is the strongest one.
+
+| Provenance | Meaning |
+| --- | --- |
+| `observed` | Coder ran and this is what it did. |
+| `staged` | Every call is real and something else drove them. |
+| `authored` | Nobody ran it. |
+
+Three states rather than two, because "recorded" was covering two different
+things. A recording of the program under test and a recording of something
+else doing what that program should do are not the same evidence, and the
+second is the one a reader over-trusts.
+
+The sidecar is beside the trace rather than inside it because ATIF describes
+a session, and a session cannot say who was driving it.
 
 ## Tasks
 
 | Task | What it tests |
 | --- | --- |
-| `devin-fan-out-six` | The delegation path: probe, program lookup, program selection, independence, admission, six parallel delegations, summary. Recorded on 2026-09-20. |
+| `devin-fan-out-six` | The delegation path: probe, program lookup, program selection, independence, admission, six parallel delegations, summary. **Staged** on 2026-09-20 — every call real, orchestrated by a shell script rather than by Coder. It becomes observed when a real run reproduces it ([#9412](https://github.com/OpenAgentsInc/openagents/issues/9412)). |
 
 Read [`../../docs/coderbench.md`](../../docs/coderbench.md) for what the
 first recording found.
