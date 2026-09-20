@@ -65,6 +65,27 @@ impl RefusalCode {
     }
 }
 
+/// The forward bound a `busy` refusal names.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Bound {
+    /// The forward slots the host allows across every variant.
+    Host,
+    /// The forward slots one variant's working set allows on this host.
+    Variant(String),
+    /// The working-memory budget, counted in MiB.
+    Memory,
+}
+
+impl std::fmt::Display for Bound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Host => f.write_str("the host's forward slots"),
+            Self::Variant(model) => write!(f, "the `{model}` forward slots"),
+            Self::Memory => f.write_str("the working-memory budget in MiB"),
+        }
+    }
+}
+
 /// A request that failed validation, or an artifact that failed to load.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -122,9 +143,15 @@ pub enum Error {
         floor: usize,
         max: usize,
     },
-    /// Every inference slot is taken.
-    #[error("busy: {in_flight} forwards in flight, the door's limit")]
-    Busy { in_flight: usize },
+    /// A forward bound is saturated: the host's slots, the named variant's
+    /// slots, or the working-memory budget. `in_flight` and `limit` count
+    /// forwards for the first two and MiB for the budget.
+    #[error("busy: {bound} at its limit, {in_flight} of {limit} in use")]
+    Busy {
+        bound: Bound,
+        in_flight: usize,
+        limit: usize,
+    },
     /// The `model` field names no loaded variant.
     #[error("unknown model `{model}`; known: {}", known.join(", "))]
     UnknownModel { model: String, known: Vec<String> },

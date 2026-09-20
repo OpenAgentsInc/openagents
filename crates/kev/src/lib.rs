@@ -33,7 +33,7 @@ pub use encode::{
     Encoding, MAX_BRANCH, MAX_STATE, OPT_DECIDE, OPT_NONE, SPECIAL, branch_mask, encode,
     user_tokens,
 };
-pub use error::{Error, MAX_OPTIONS, Result};
+pub use error::{Bound, Error, MAX_OPTIONS, Result};
 pub use head::PointerHead;
 pub use lora::{LoraConfig, apply_lora};
 pub use model::{Backbone, Config, Linear};

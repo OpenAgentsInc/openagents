@@ -63,12 +63,37 @@ over the budget answers `branch_too_long` at 413. After encoding and
 before the block-causal mask is built, the packed length is bounded to
 8,192 tokens, and its mask bytes `4 × tokens²` are bounded to 256 MiB;
 either refusal answers `branch_too_long` at 413 and names the bytes.
-The forward slot is the final stage: when every slot is held, the server
-answers `busy` at 503 rather than queueing, so a client's cancellation
-leaves nothing waiting behind it. `kev::serve::Admission` holds the five
-bounds, and `ServeState::new` refuses a state that could not honor them —
-no variants, a default index that names none, an alias that is also a
-variant id, or a zero bound — at construction rather than on the first
+The forward permit is the final stage, and it is three bounds taken at
+once: a host slot, a slot of the variant the request resolved to, and the
+variant's share of a working-memory budget. When any of the three is at
+its limit, the server answers `busy` at 503 naming which — `the host's
+forward slots`, ``the `kev-0.5b` forward slots``, or `the working-memory
+budget in MiB` — rather than queueing, so a client's cancellation leaves
+nothing waiting behind it. The permit rides with the blocking forward and
+is returned when the forward ends, not when the caller stops waiting.
+
+The per-variant bound is not a number an operator picks. At startup
+`kev-serve` measures the memory the host can lend after the weights are
+resident (`MemAvailable` on Linux, free plus inactive pages from `vm_stat`
+on macOS; `--memory-budget-mib` states it instead) and asks each variant
+what one forward at the token bound costs: `Variant::forward_bytes` reads
+the loaded backbone's head count, head width, hidden and intermediate
+sizes, and compute dtype — the shape the model card states — and sums the
+`tokens²` attention scores per head across the three copies the forward
+holds, the `tokens²` mask and its `f32` build buffers, and the per-token
+activations. A variant's slots are the budget divided by that cost,
+capped at the host's slots, and a variant whose single forward would not
+fit is refused at startup with the two numbers, so it never learns that on
+a request. `/api/info` reports the budget, what is in use, and each
+variant's `forward_mib`, `concurrency`, and `in_flight`.
+[`measurements/2026-09-20-per-variant-admission.md`](measurements/2026-09-20-per-variant-admission.md)
+holds the estimate beside the resident-set growth a real `kev-0.5b`
+forward showed on a Linux CPU box.
+
+`kev::serve::Admission` holds the six bounds, and `ServeState::new` refuses
+a state that could not honor them — no variants, a default index that
+names none, an alias that is also a variant id, a zero bound, or a variant
+that does not fit the budget — at construction rather than on the first
 request.
 
 `ServeState::select` resolves an exact variant id, `kev-latest`, an absent

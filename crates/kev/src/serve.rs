@@ -31,7 +31,10 @@ use tokenizers::Tokenizer;
 
 use crate::api::{Answer, Question, Record, SystemOneRequest, to_answers, to_record};
 use crate::decision::DecisionModel;
-use crate::error::{Error, MAX_OPTIONS, RefusalCode};
+use crate::error::{Bound, Error, MAX_OPTIONS, RefusalCode};
+
+/// The unit the working-memory budget is counted in.
+pub const MIB: usize = 1024 * 1024;
 
 /// The state budget serving admits; the reference serves with the training
 /// bounds relaxed to the branch ceiling.
@@ -62,6 +65,124 @@ pub struct Variant {
     pub lora: usize,
 }
 
+impl Variant {
+    /// The working memory one forward of `tokens` packed tokens needs on this
+    /// variant, from its model card: the backbone's head count, widths, and
+    /// compute dtype.
+    ///
+    /// The estimate is the larger of two peaks. Building the mask holds the
+    /// `f32` allow matrix and its tensor copy, then the copy in the compute
+    /// dtype. The forward holds that mask, three `[heads, tokens, tokens]`
+    /// score tensors inside one attention layer (scaled, masked, and
+    /// normalized), and the per-token activations: the residual stream and
+    /// its normed copy, the query, key, and value projections after
+    /// grouped-query expansion, the attention output, and the two SwiGLU
+    /// intermediates. Weights are not counted; they are resident before any
+    /// request arrives.
+    #[must_use]
+    pub fn forward_bytes(&self, tokens: usize) -> usize {
+        let config = self.model.backbone.config();
+        let dtype = self.model.backbone.dtype().size_in_bytes();
+        let square = tokens.saturating_mul(tokens);
+        let mask_build = square
+            .saturating_mul(2 * std::mem::size_of::<f32>())
+            .saturating_add(square.saturating_mul(dtype));
+        let scores = square
+            .saturating_mul(config.num_attention_heads)
+            .saturating_mul(3)
+            .saturating_mul(dtype);
+        let attention_width = config.num_attention_heads.saturating_mul(config.head_dim());
+        let per_token = config
+            .hidden_size
+            .saturating_mul(2)
+            .saturating_add(attention_width.saturating_mul(4))
+            .saturating_add(config.intermediate_size.saturating_mul(2));
+        let activations = tokens.saturating_mul(per_token).saturating_mul(dtype);
+        let forward = square
+            .saturating_mul(dtype)
+            .saturating_add(scores)
+            .saturating_add(activations);
+        mask_build.max(forward)
+    }
+}
+
+/// The working memory the host can lend to forwards, measured now.
+///
+/// On Linux this is `MemAvailable` from `/proc/meminfo`; on macOS it is the
+/// free and inactive pages `vm_stat` reports, at the page size it names.
+/// Measure it after the weights are loaded so what they hold is already
+/// subtracted. `None` when the host offers neither reading.
+#[must_use]
+pub fn host_memory_budget() -> Option<usize> {
+    if cfg!(target_os = "linux") {
+        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+        return meminfo_available(&meminfo);
+    }
+    if cfg!(target_os = "macos") {
+        let output = std::process::Command::new("vm_stat").output().ok()?;
+        return vm_stat_available(&String::from_utf8_lossy(&output.stdout));
+    }
+    None
+}
+
+/// `MemAvailable` in bytes from the text of `/proc/meminfo`.
+fn meminfo_available(meminfo: &str) -> Option<usize> {
+    let line = meminfo
+        .lines()
+        .find_map(|line| line.strip_prefix("MemAvailable:"))?;
+    let kib: usize = line.trim().trim_end_matches("kB").trim().parse().ok()?;
+    Some(kib.saturating_mul(1024))
+}
+
+/// Free plus inactive pages in bytes from the text of `vm_stat`.
+fn vm_stat_available(report: &str) -> Option<usize> {
+    let page_size: usize = report
+        .lines()
+        .next()?
+        .split("page size of")
+        .nth(1)?
+        .trim()
+        .split(' ')
+        .next()?
+        .parse()
+        .ok()?;
+    let pages = |label: &str| -> Option<usize> {
+        report
+            .lines()
+            .find_map(|line| line.strip_prefix(label))?
+            .trim()
+            .trim_end_matches('.')
+            .parse()
+            .ok()
+    };
+    let free = pages("Pages free:")?;
+    let inactive = pages("Pages inactive:")?;
+    Some(free.saturating_add(inactive).saturating_mul(page_size))
+}
+
+#[cfg(test)]
+mod host_memory_tests {
+    use super::{meminfo_available, vm_stat_available};
+
+    #[test]
+    fn meminfo_reads_mem_available() {
+        let text = "MemTotal:       32878592 kB\nMemFree:        23775372 kB\nMemAvailable:   31567072 kB\n";
+        assert_eq!(meminfo_available(text), Some(31_567_072 * 1024));
+        assert_eq!(meminfo_available("MemTotal: 1 kB\n"), None);
+        assert_eq!(meminfo_available("MemAvailable: lots\n"), None);
+    }
+
+    #[test]
+    fn vm_stat_reads_free_and_inactive_pages() {
+        let text = "Mach Virtual Memory Statistics: (page size of 16384 bytes)\n\
+                    Pages free:                               12345.\n\
+                    Pages active:                            100000.\n\
+                    Pages inactive:                           54321.\n";
+        assert_eq!(vm_stat_available(text), Some((12_345 + 54_321) * 16_384));
+        assert_eq!(vm_stat_available("Pages free: 1.\n"), None);
+    }
+}
+
 /// What one request may cost before the door evaluates it.
 ///
 /// The bounds are checked in this order, cheapest first: question and option
@@ -77,13 +198,23 @@ pub struct Admission {
     pub max_total_tokens: usize,
     /// Bytes the `f32` attention mask of one packed sequence may need.
     pub max_attention_bytes: usize,
-    /// Forwards in flight at once across every loaded variant.
+    /// Forwards in flight at once across every loaded variant, the host's
+    /// compute bound.
     pub concurrency: usize,
+    /// Working memory in bytes every forward in flight may hold together.
+    ///
+    /// Each variant's share is what one of its forwards needs at
+    /// `max_total_tokens`, so the forwards a variant may run at once is this
+    /// budget divided by [`Variant::forward_bytes`]. The default is zero,
+    /// which [`ServeState::new`] refuses: `kev-serve` fills it from
+    /// [`host_memory_budget`] after the weights load, and a test states it.
+    pub memory_budget_bytes: usize,
 }
 
 impl Default for Admission {
     /// The token and attention-byte defaults coincide at
-    /// [`INFER_MAX_BRANCH`], whose mask needs 256 MiB.
+    /// [`INFER_MAX_BRANCH`], whose mask needs 256 MiB. The memory budget
+    /// has no default worth the name; the caller measures or states it.
     fn default() -> Self {
         Self {
             max_questions: 64,
@@ -91,6 +222,7 @@ impl Default for Admission {
             max_total_tokens: INFER_MAX_BRANCH,
             max_attention_bytes: Self::attention_bytes(INFER_MAX_BRANCH),
             concurrency: 2,
+            memory_budget_bytes: 0,
         }
     }
 }
@@ -188,6 +320,29 @@ fn option_count(question: &Question) -> usize {
     }
 }
 
+/// One variant's share of the host: what a forward of it costs and how many
+/// may run at once.
+pub struct VariantSlots {
+    /// Working memory one forward at `Admission::max_total_tokens` needs,
+    /// rounded up to whole MiB.
+    pub forward_mib: usize,
+    /// Forwards of this variant that fit the memory budget at once, no more
+    /// than the host's `concurrency`.
+    pub limit: usize,
+    /// The permits `limit` counts.
+    pub slots: Arc<Semaphore>,
+}
+
+/// The permits one forward holds until it ends: a host slot, a variant slot,
+/// and its share of the memory budget. The permit rides with the blocking
+/// task, so a caller that stops waiting releases it when the forward it
+/// started ends, not before.
+pub struct Permit {
+    _host: OwnedSemaphorePermit,
+    _variant: OwnedSemaphorePermit,
+    _memory: OwnedSemaphorePermit,
+}
+
 /// Everything one running server knows beyond the weights.
 pub struct ServeState {
     /// Every loaded variant; requests pick one by `model` id.
@@ -202,6 +357,12 @@ pub struct ServeState {
     pub admission: Admission,
     /// The forward slots `admission.concurrency` counts.
     pub slots: Arc<Semaphore>,
+    /// Each variant's slots, indexed like `variants`.
+    pub variant_slots: Vec<VariantSlots>,
+    /// The memory budget in MiB, one permit each.
+    pub memory: Arc<Semaphore>,
+    /// The permits `memory` started with.
+    pub memory_mib: usize,
 }
 
 impl ServeState {
@@ -211,8 +372,11 @@ impl ServeState {
     /// # Errors
     ///
     /// [`Error::Artifact`] when `variants` is empty, `default` names no
-    /// variant, an alias collides with a variant id, or `admission` holds a
-    /// zero bound.
+    /// variant, an alias collides with a variant id, `admission` holds a
+    /// zero bound, or one forward of a variant at `max_total_tokens` needs
+    /// more than the memory budget. In that last case lower the token bound
+    /// or serve the variant on a host with more memory; admitting it would
+    /// exhaust the process on the first full-length request.
     pub fn new(
         variants: Vec<Variant>,
         default: usize,
@@ -242,12 +406,39 @@ impl ServeState {
             || admission.max_total_tokens == 0
             || admission.max_attention_bytes == 0
             || admission.concurrency == 0
+            || admission.memory_budget_bytes == 0
         {
             return Err(Error::Artifact(
                 "admission bounds must be at least one".to_string(),
             ));
         }
+        let memory_mib = admission.memory_budget_bytes.div_ceil(MIB);
+        if memory_mib > Semaphore::MAX_PERMITS || u32::try_from(memory_mib).is_err() {
+            return Err(Error::Artifact(format!(
+                "memory budget of {memory_mib} MiB exceeds what the door can count"
+            )));
+        }
+        let mut variant_slots = Vec::with_capacity(variants.len());
+        for variant in &variants {
+            let forward_mib = variant
+                .forward_bytes(admission.max_total_tokens)
+                .div_ceil(MIB)
+                .max(1);
+            if forward_mib > memory_mib {
+                return Err(Error::Artifact(format!(
+                    "`{}`: one forward at {} tokens needs {forward_mib} MiB; the memory budget is {memory_mib} MiB",
+                    variant.model_id, admission.max_total_tokens
+                )));
+            }
+            let limit = (memory_mib / forward_mib).min(admission.concurrency);
+            variant_slots.push(VariantSlots {
+                forward_mib,
+                limit,
+                slots: Arc::new(Semaphore::new(limit)),
+            });
+        }
         let slots = Arc::new(Semaphore::new(admission.concurrency));
+        let memory = Arc::new(Semaphore::new(memory_mib));
         Ok(Self {
             variants,
             default,
@@ -255,19 +446,74 @@ impl ServeState {
             device,
             admission,
             slots,
+            variant_slots,
+            memory,
+            memory_mib,
         })
     }
 
-    /// One forward slot, or [`Error::Busy`] when every slot is taken. The
-    /// permit rides with the blocking task, so a caller that stops waiting
-    /// releases it when the forward it started ends, not before.
-    fn slot(&self) -> Result<OwnedSemaphorePermit, Error> {
-        self.slots
+    /// The permits one forward of variant `index` holds, or [`Error::Busy`]
+    /// naming the bound that is saturated. Nothing waits: a refusal is
+    /// immediate, so a caller that gives up leaves no queue entry behind.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Busy`] when the host's slots, the variant's slots, or the
+    /// memory budget cannot take one more forward.
+    ///
+    /// # Panics
+    ///
+    /// When `index` names no loaded variant; [`ServeState::select_index`]
+    /// is where an index comes from.
+    pub fn permit(&self, index: usize) -> Result<Permit, Error> {
+        let host = self
+            .slots
             .clone()
             .try_acquire_owned()
             .map_err(|_| Error::Busy {
+                bound: Bound::Host,
                 in_flight: self.admission.concurrency,
-            })
+                limit: self.admission.concurrency,
+            })?;
+        let share = &self.variant_slots[index];
+        let variant_permit = share
+            .slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Busy {
+                bound: Bound::Variant(self.variants[index].model_id.clone()),
+                in_flight: share.limit,
+                limit: share.limit,
+            })?;
+        let busy_memory = || Error::Busy {
+            bound: Bound::Memory,
+            in_flight: self.memory_in_use_mib(),
+            limit: self.memory_mib,
+        };
+        let mib = u32::try_from(share.forward_mib).map_err(|_| busy_memory())?;
+        let memory = self
+            .memory
+            .clone()
+            .try_acquire_many_owned(mib)
+            .map_err(|_| busy_memory())?;
+        Ok(Permit {
+            _host: host,
+            _variant: variant_permit,
+            _memory: memory,
+        })
+    }
+
+    /// Forwards of variant `index` in flight now, for operators and tests.
+    #[must_use]
+    pub fn in_flight(&self, index: usize) -> usize {
+        let share = &self.variant_slots[index];
+        share.limit - share.slots.available_permits()
+    }
+
+    /// MiB of the memory budget held by forwards in flight now.
+    #[must_use]
+    pub fn memory_in_use_mib(&self) -> usize {
+        self.memory_mib - self.memory.available_permits()
     }
 
     /// Resolve a request's `model` field to a loaded variant: an exact id,
@@ -275,17 +521,30 @@ impl ServeState {
     /// The aliases the listing publishes and the aliases this resolves are
     /// one list, so a client that keeps its default model reaches the door.
     pub fn select(&self, model: &str) -> Result<&Variant, Error> {
+        self.select_index(model).map(|index| &self.variants[index])
+    }
+
+    /// The index into `variants` a `model` field resolves to, the same way
+    /// [`ServeState::select`] does.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownModel`] when `model` is neither a loaded id,
+    /// `kev-latest`, an advertised alias, nor empty.
+    pub fn select_index(&self, model: &str) -> Result<usize, Error> {
         if model == "kev-latest" || model.is_empty() || self.aliases.iter().any(|a| a == model) {
-            return self.variants.get(self.default).ok_or_else(|| {
-                Error::Artifact(format!(
+            return if self.default < self.variants.len() {
+                Ok(self.default)
+            } else {
+                Err(Error::Artifact(format!(
                     "default variant index {} is not loaded",
                     self.default
-                ))
-            });
+                )))
+            };
         }
         self.variants
             .iter()
-            .find(|v| v.model_id == model)
+            .position(|v| v.model_id == model)
             .ok_or_else(|| Error::UnknownModel {
                 model: model.to_string(),
                 known: self
@@ -400,7 +659,10 @@ async fn systemone(
         .admission
         .admit_shape(&request)
         .map_err(|e| refused(&e))?;
-    let permit = state.slot().map_err(|e| refused(&e))?;
+    let permit = state
+        .select_index(&request.model)
+        .and_then(|index| state.permit(index))
+        .map_err(|e| refused(&e))?;
     let out = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         evaluate(&state, &request)
@@ -424,7 +686,10 @@ async fn systemone_separate(
         .admission
         .admit_shape(&request)
         .map_err(|e| refused(&e))?;
-    let permit = state.slot().map_err(|e| refused(&e))?;
+    let permit = state
+        .select_index(&request.model)
+        .and_then(|index| state.permit(index))
+        .map_err(|e| refused(&e))?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         evaluate_separate(&state, &request)
@@ -458,21 +723,33 @@ async fn models(State(state): State<Arc<ServeState>>) -> Json<Value> {
     Json(json!({ "models": cards }))
 }
 
-/// `GET /api/info`: what is loaded, for operators.
+/// `GET /api/info`: what is loaded and what each variant may run at once,
+/// for operators.
 async fn info(State(state): State<Arc<ServeState>>) -> Json<Value> {
     Json(json!({
         "device": state.device,
         "default": state.variants[state.default].model_id,
+        "admission": {
+            "max_total_tokens": state.admission.max_total_tokens,
+            "concurrency": state.admission.concurrency,
+            "memory_budget_mib": state.memory_mib,
+            "memory_in_use_mib": state.memory_in_use_mib(),
+        },
         "variants": state
             .variants
             .iter()
-            .map(|v| json!({
+            .zip(&state.variant_slots)
+            .enumerate()
+            .map(|(i, (v, share))| json!({
                 "model_id": v.model_id,
                 "run": v.run,
                 "base": v.base,
                 "base_revision": v.base_revision,
                 "lora": v.lora,
                 "option_isolation": v.model.option_isolation,
+                "forward_mib": share.forward_mib,
+                "concurrency": share.limit,
+                "in_flight": state.in_flight(i),
             }))
             .collect::<Vec<_>>(),
     }))
@@ -491,7 +768,10 @@ async fn predict(
     let model_field = body["model"].as_str().unwrap_or("kev-latest").to_string();
     let record: Record =
         serde_json::from_value(body.clone()).map_err(|e| invalid(format!("request body: {e}")))?;
-    let permit = state.slot().map_err(|e| refused(&e))?;
+    let permit = state
+        .select_index(&model_field)
+        .and_then(|index| state.permit(index))
+        .map_err(|e| refused(&e))?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let variant = state.select(&model_field)?;

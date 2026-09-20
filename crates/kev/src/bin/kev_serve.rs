@@ -21,7 +21,7 @@ use std::sync::Arc;
 use candle_core::{DType, Device};
 use kev::decision::DecisionModel;
 use kev::lora::LoraConfig;
-use kev::serve::{Admission, ServeState, Variant, router};
+use kev::serve::{Admission, MIB, ServeState, Variant, host_memory_budget, router};
 
 struct Args {
     adapter_dir: Option<PathBuf>,
@@ -32,6 +32,11 @@ struct Args {
     default: String,
     device: String,
     dtype: String,
+    /// Packed tokens one forward may hold; `None` keeps the default bound.
+    max_tokens: Option<usize>,
+    /// Working memory forwards may hold together, in MiB; `None` measures
+    /// the host after the weights load.
+    memory_budget_mib: Option<usize>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -43,6 +48,8 @@ fn parse_args() -> Result<Args, String> {
     let mut default = "kev-latest".to_string();
     let mut device = "cpu".to_string();
     let mut dtype = std::env::var("KEV_DTYPE").unwrap_or_else(|_| "fp32".to_string());
+    let mut max_tokens = None;
+    let mut memory_budget_mib = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut take = |name: &str| args.next().ok_or_else(|| format!("{name} needs a value"));
@@ -59,10 +66,25 @@ fn parse_args() -> Result<Args, String> {
             "--default" => default = take("--default")?,
             "--device" => device = take("--device")?,
             "--dtype" => dtype = take("--dtype")?,
+            "--max-tokens" => {
+                max_tokens = Some(
+                    take("--max-tokens")?
+                        .parse()
+                        .map_err(|_| "--max-tokens needs a number".to_string())?,
+                )
+            }
+            "--memory-budget-mib" => {
+                memory_budget_mib = Some(
+                    take("--memory-budget-mib")?
+                        .parse()
+                        .map_err(|_| "--memory-budget-mib needs a number".to_string())?,
+                )
+            }
             "--help" | "-h" => {
                 eprintln!(
                     "kev-serve --adapter-dir DIR --base-dir DIR [--host H] [--port P] [--device cpu|metal] [--dtype fp32|bf16]\n\
-                     kev-serve --bundle-dir DIR [--default ID] [...]"
+                     kev-serve --bundle-dir DIR [--default ID] [...]\n\
+                     [--max-tokens N] [--memory-budget-mib N]"
                 );
                 std::process::exit(0);
             }
@@ -84,6 +106,8 @@ fn parse_args() -> Result<Args, String> {
         default,
         device,
         dtype,
+        max_tokens,
+        memory_budget_mib,
     })
 }
 
@@ -263,12 +287,32 @@ async fn main() -> ExitCode {
         variants.len(),
         variants[default].model_id
     );
+    let memory_budget_bytes = match args.memory_budget_mib {
+        Some(mib) => mib.saturating_mul(MIB),
+        None => match host_memory_budget() {
+            Some(bytes) => bytes,
+            None => {
+                eprintln!(
+                    "kev-serve: this host reports no available memory; pass --memory-budget-mib"
+                );
+                return ExitCode::from(2);
+            }
+        },
+    };
+    let mut admission = Admission {
+        memory_budget_bytes,
+        ..Admission::default()
+    };
+    if let Some(max_tokens) = args.max_tokens {
+        admission.max_total_tokens = max_tokens;
+        admission.max_attention_bytes = Admission::attention_bytes(max_tokens);
+    }
     let state = match ServeState::new(
         variants,
         default,
         vec!["jev-latest".to_string()],
         args.device,
-        Admission::default(),
+        admission,
     ) {
         Ok(state) => Arc::new(state),
         Err(e) => {
@@ -276,6 +320,16 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    eprintln!(
+        "kev-serve: memory budget {} MiB, {} forwards at once across variants",
+        state.memory_mib, state.admission.concurrency
+    );
+    for (variant, share) in state.variants.iter().zip(&state.variant_slots) {
+        eprintln!(
+            "kev-serve: {}: one forward at {} tokens needs {} MiB, {} at once",
+            variant.model_id, state.admission.max_total_tokens, share.forward_mib, share.limit
+        );
+    }
     let addr: SocketAddr = match format!("{}:{}", args.host, args.port).parse() {
         Ok(addr) => addr,
         Err(e) => {

@@ -13,7 +13,7 @@ use std::sync::{Arc, OnceLock};
 use candle_core::Device;
 use kev::decision::DecisionModel;
 use kev::lora::LoraConfig;
-use kev::serve::{Admission, ServeState, Variant, router};
+use kev::serve::{Admission, ServeState, Variant, host_memory_budget, router};
 
 fn dir(env: &str, fallback: &str) -> Option<PathBuf> {
     if let Ok(dir) = std::env::var(env) {
@@ -50,7 +50,10 @@ fn state() -> Option<&'static Arc<ServeState>> {
                 0,
                 vec!["jev-latest".to_string()],
                 "cpu".to_string(),
-                Admission::default(),
+                Admission {
+                    memory_budget_bytes: host_memory_budget()?,
+                    ..Admission::default()
+                },
             )
             .ok()?;
             Some(Arc::new(state))

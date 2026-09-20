@@ -4,10 +4,17 @@
 //! The door is the real router over a real `DecisionModel`, but the model is
 //! a one-layer backbone this file writes itself — a few kilobytes of
 //! safetensors and a word-level tokenizer — so no downloaded weights or paid
-//! inference are involved. Two variants load: `kev-test`, which answers, and
+//! inference are involved. Three variants load: `kev-test`, which answers;
 //! `kev-broken`, whose embedding table is too small for the tokenizer's ids,
 //! so a valid request to it fails inside the forward pass — a door-owned
-//! `inference_failure` on input the contract accepts.
+//! `inference_failure` on input the contract accepts; and `kev-wide`, which
+//! answers like `kev-test` but with four times the attention heads, so one
+//! forward of it costs more working memory and the door grants it fewer
+//! slots.
+//!
+//! Costs the tests state come from [`Variant::forward_bytes`] on these
+//! configs at the rig's token bound, so they are the door's own arithmetic
+//! rather than a number typed here.
 //!
 //! Builds only under `--features serve`.
 
@@ -22,12 +29,22 @@ use candle_core::Device;
 use gym::eval::{Disposition, observations};
 use gym::row::RefusalCode;
 use kev::decision::DecisionModel;
-use kev::serve::{Admission, ServeState, Variant, router};
+use kev::serve::{Admission, MIB, ServeState, Variant, router};
 use serde_json::{Value, json};
 
 const HIDDEN: usize = 16;
 const INTER: usize = 32;
 const DP: usize = 8;
+/// Attention heads of `kev-test` and `kev-broken`.
+const HEADS: usize = 2;
+/// Attention heads of `kev-wide`; more heads mean more score memory per
+/// forward, which is what the per-variant bound measures.
+const WIDE_HEADS: usize = 8;
+/// The rig's token bound; every forward cost below is at this length.
+const RIG_TOKENS: usize = 200;
+/// The rig's working-memory budget: enough that four `kev-test` forwards
+/// fit beside each other, too little for four `kev-wide` forwards.
+const RIG_BUDGET_MIB: usize = 12;
 
 /// A word-level tokenizer that knows the five delimiter tokens `encode`
 /// needs and maps every other word to `[UNK]`: one token per word, which is
@@ -95,9 +112,10 @@ fn write_safetensors(path: &Path, tensors: &[(&str, &[usize])]) {
 
 /// Write one variant's files and return `(base_dir, adapter_dir)` for
 /// [`DecisionModel::load`]. `<name>-base/` holds the one-layer backbone with
-/// `vocab` embedding rows; `<name>/` holds the adapter the serving path
-/// reads — tokenizer, pointer head, and a LoRA config that targets nothing.
-fn write_variant(root: &Path, name: &str, vocab: usize) -> (PathBuf, PathBuf) {
+/// `vocab` embedding rows and `heads` attention heads; `<name>/` holds the
+/// adapter the serving path reads — tokenizer, pointer head, and a LoRA
+/// config that targets nothing.
+fn write_variant(root: &Path, name: &str, vocab: usize, heads: usize) -> (PathBuf, PathBuf) {
     let adapter = root.join(name);
     let base = root.join(format!("{name}-base"));
     std::fs::create_dir_all(&adapter).expect("adapter dir");
@@ -110,8 +128,8 @@ fn write_variant(root: &Path, name: &str, vocab: usize) -> (PathBuf, PathBuf) {
             "hidden_size": HIDDEN,
             "intermediate_size": INTER,
             "num_hidden_layers": 1,
-            "num_attention_heads": 2,
-            "num_key_value_heads": 2,
+            "num_attention_heads": heads,
+            "num_key_value_heads": heads,
             "rms_norm_eps": 1e-6,
             "rope_theta": 10000.0,
             "vocab_size": vocab,
@@ -176,19 +194,24 @@ struct Rig {
 
 fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
-    RIG.get_or_init(|| build_rig(4))
+    RIG.get_or_init(|| build_rig(4, RIG_BUDGET_MIB * MIB))
 }
 
-/// A rig of its own, with `concurrency` forward slots.
-fn build_rig(concurrency: usize) -> Rig {
+/// A rig of its own, with `concurrency` host forward slots and
+/// `memory_budget_bytes` of working memory.
+fn build_rig(concurrency: usize, memory_budget_bytes: usize) -> Rig {
     {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut variants = Vec::new();
         // `kev-broken` loads an embedding table smaller than any id the
         // tokenizer emits, so every valid request to it fails at the
         // embedding lookup — a deterministic inference failure.
-        for (name, vocab) in [("kev-test", 64usize), ("kev-broken", 4usize)] {
-            let (base, adapter) = write_variant(dir.path(), name, vocab);
+        for (name, vocab, heads) in [
+            ("kev-test", 64usize, HEADS),
+            ("kev-broken", 4usize, HEADS),
+            ("kev-wide", 64usize, WIDE_HEADS),
+        ] {
+            let (base, adapter) = write_variant(dir.path(), name, vocab, heads);
             let model = DecisionModel::load(&base, &adapter, Device::Cpu).expect("load");
             variants.push(Variant {
                 model,
@@ -210,8 +233,9 @@ fn build_rig(concurrency: usize) -> Rig {
                     Admission {
                         max_questions: 3,
                         max_total_options: 20,
-                        max_total_tokens: 200,
+                        max_total_tokens: RIG_TOKENS,
                         concurrency,
+                        memory_budget_bytes,
                         ..Admission::default()
                     },
                 )
@@ -690,7 +714,7 @@ async fn incomplete_response_body_stays_harness() {
 /// of queueing; the slot's release lets the next request through.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_full_door_answers_busy_and_recovers() {
-    let rig = build_rig(1);
+    let rig = build_rig(1, RIG_BUDGET_MIB * MIB);
     let state = rig.state.clone();
     let url = serve_state(state.clone()).await;
     let held = state
@@ -703,12 +727,211 @@ async fn a_full_door_answers_busy_and_recovers() {
         move || refused_error(client(&url).system_one(request("Was it late?")))
     });
     expect_refusal(&refused, 503, "busy");
+    assert!(
+        refused.to_string().contains("the host's forward slots"),
+        "{refused}"
+    );
     drop(held);
     blocking(move || {
         client(&url)
             .system_one(request("Was it late?"))
             .expect("the freed slot admits the next request");
     });
+}
+
+/// A request for `model`, so a test can address one variant.
+fn request_for(model: &str, question: &str) -> jev::SystemOneRequest {
+    let mut request = request(question);
+    request.model = Some(model.to_string());
+    request
+}
+
+/// Each variant's slots come from its own forward cost against the one
+/// budget, so a heavier variant gets fewer, and none gets more than the
+/// host's slots.
+#[test]
+fn each_variant_is_bounded_by_its_own_forward_cost() {
+    let state = &rig().state;
+    assert_eq!(state.memory_mib, RIG_BUDGET_MIB);
+    let test = state.select_index("kev-test").expect("kev-test");
+    let wide = state.select_index("kev-wide").expect("kev-wide");
+    for (index, variant) in state.variants.iter().enumerate() {
+        let share = &state.variant_slots[index];
+        let expected_mib = variant.forward_bytes(RIG_TOKENS).div_ceil(MIB).max(1);
+        assert_eq!(share.forward_mib, expected_mib, "{}", variant.model_id);
+        assert_eq!(
+            share.limit,
+            (RIG_BUDGET_MIB / expected_mib).min(state.admission.concurrency),
+            "{}",
+            variant.model_id
+        );
+        assert!(share.limit >= 1, "{}", variant.model_id);
+    }
+    let (test, wide) = (&state.variant_slots[test], &state.variant_slots[wide]);
+    assert!(
+        wide.forward_mib > test.forward_mib,
+        "kev-wide {} MiB, kev-test {} MiB",
+        wide.forward_mib,
+        test.forward_mib
+    );
+    assert!(
+        wide.limit < test.limit,
+        "kev-wide {} slots at {} MiB, kev-test {} slots at {} MiB",
+        wide.limit,
+        wide.forward_mib,
+        test.limit,
+        test.forward_mib
+    );
+    // More tokens cost more; the estimate is monotone.
+    let variant = &state.variants[0];
+    assert!(variant.forward_bytes(2 * RIG_TOKENS) > variant.forward_bytes(RIG_TOKENS));
+    assert_eq!(variant.forward_bytes(0), 0);
+}
+
+/// `kev-wide` at its own limit answers `busy` naming that variant, while
+/// `kev-test` on the same host keeps answering; freeing the slot lets the
+/// next `kev-wide` request through.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_saturated_variant_refuses_alone() {
+    let rig = build_rig(4, RIG_BUDGET_MIB * MIB);
+    let state = rig.state.clone();
+    let url = serve_state(state.clone()).await;
+    let wide = state.select_index("kev-wide").expect("kev-wide");
+    let share = &state.variant_slots[wide];
+    let held = share
+        .slots
+        .clone()
+        .try_acquire_many_owned(u32::try_from(share.limit).expect("small"))
+        .expect("every kev-wide slot");
+    assert_eq!(state.in_flight(wide), share.limit);
+    let refused = blocking({
+        let url = url.clone();
+        move || refused_error(client(&url).system_one(request_for("kev-wide", "Was it late?")))
+    });
+    expect_refusal(&refused, 503, "busy");
+    assert!(
+        refused.to_string().contains("the `kev-wide` forward slots"),
+        "{refused}"
+    );
+    assert_eq!(
+        state.slots.available_permits(),
+        state.admission.concurrency,
+        "a refusal holds no host slot"
+    );
+    assert_eq!(state.memory_in_use_mib(), 0, "a refusal holds no memory");
+    blocking({
+        let url = url.clone();
+        move || {
+            client(&url)
+                .system_one(request_for("kev-test", "Was it late?"))
+                .expect("kev-test answers while kev-wide is full");
+        }
+    });
+    drop(held);
+    blocking(move || {
+        client(&url)
+            .system_one(request_for("kev-wide", "Was it late?"))
+            .expect("the freed kev-wide slot admits the next request");
+    });
+    assert_eq!(state.in_flight(wide), 0);
+    assert_eq!(state.memory_in_use_mib(), 0);
+}
+
+/// With the memory budget spent, a variant whose slots are free is still
+/// refused, and the refusal names the budget in MiB.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_spent_memory_budget_refuses_with_free_slots() {
+    let rig = build_rig(4, RIG_BUDGET_MIB * MIB);
+    let state = rig.state.clone();
+    let url = serve_state(state.clone()).await;
+    let test = state.select_index("kev-test").expect("kev-test");
+    let leave = state.variant_slots[test].forward_mib - 1;
+    let held = state
+        .memory
+        .clone()
+        .try_acquire_many_owned(u32::try_from(state.memory_mib - leave).expect("small"))
+        .expect("most of the budget");
+    assert_eq!(state.memory_in_use_mib(), state.memory_mib - leave);
+    assert_eq!(state.in_flight(test), 0);
+    let refused = blocking({
+        let url = url.clone();
+        move || refused_error(client(&url).system_one(request("Was it late?")))
+    });
+    expect_refusal(&refused, 503, "busy");
+    assert!(
+        refused
+            .to_string()
+            .contains("the working-memory budget in MiB"),
+        "{refused}"
+    );
+    assert_eq!(state.in_flight(test), 0, "a refusal holds no variant slot");
+    assert_eq!(
+        state.slots.available_permits(),
+        4,
+        "a refusal holds no host slot"
+    );
+    drop(held);
+    blocking(move || {
+        client(&url)
+            .system_one(request("Was it late?"))
+            .expect("the freed budget admits the next request");
+    });
+    assert_eq!(state.memory_in_use_mib(), 0);
+}
+
+/// Callers that give up on a full door leave nothing behind: the door
+/// refuses instead of queueing, so after a burst against a held slot every
+/// counter reads what it did before, and permits held by forwards in flight
+/// are returned when those forwards end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_burst_against_a_full_door_leaves_no_queue() {
+    let rig = build_rig(1, RIG_BUDGET_MIB * MIB);
+    let state = rig.state.clone();
+    let url = serve_state(state.clone()).await;
+    let held = state
+        .slots
+        .clone()
+        .try_acquire_owned()
+        .expect("the one slot");
+    let mut refusals = Vec::new();
+    for _ in 0..8 {
+        let url = url.clone();
+        refusals.push(tokio::task::spawn_blocking(move || {
+            refused_error(client(&url).system_one(request("Was it late?")))
+        }));
+    }
+    for refusal in refusals {
+        let refused = refusal.await.expect("a refusal, not a hang");
+        expect_refusal(&refused, 503, "busy");
+    }
+    assert_eq!(
+        state.slots.available_permits(),
+        0,
+        "the held slot is the only one taken"
+    );
+    assert_eq!(state.memory_in_use_mib(), 0);
+    for index in 0..state.variants.len() {
+        assert_eq!(state.in_flight(index), 0);
+    }
+    drop(held);
+    let mut answers = Vec::new();
+    for _ in 0..8 {
+        let url = url.clone();
+        answers.push(tokio::task::spawn_blocking(move || {
+            client(&url).system_one(request("Was it late?"))
+        }));
+    }
+    let mut admitted = 0;
+    for answer in answers {
+        match answer.await.expect("an answer or a refusal") {
+            Ok(_) => admitted += 1,
+            Err(error) => expect_refusal(&error, 503, "busy"),
+        }
+    }
+    assert!(admitted >= 1, "the freed slot admits at least one");
+    assert_eq!(state.slots.available_permits(), 1, "every permit came back");
+    assert_eq!(state.memory_in_use_mib(), 0);
+    assert_eq!(state.in_flight(0), 0);
 }
 
 #[test]
@@ -826,7 +1049,7 @@ fn every_advertised_alias_resolves() {
 #[test]
 fn an_invalid_serving_state_is_refused_at_construction() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let (base, adapter) = write_variant(dir.path(), "kev-test", 64);
+    let (base, adapter) = write_variant(dir.path(), "kev-test", 64, HEADS);
     let variant = || Variant {
         model: DecisionModel::load(&base, &adapter, Device::Cpu).expect("load"),
         model_id: "kev-test".to_string(),
@@ -837,14 +1060,19 @@ fn an_invalid_serving_state_is_refused_at_construction() {
     };
     let aliases = || vec!["jev-latest".to_string()];
     let cpu = || "cpu".to_string();
-    let cases: [(&str, Result<ServeState, kev::Error>); 5] = [
+    // Enough for one forward at the default token bound on this config.
+    let admission = || Admission {
+        memory_budget_bytes: 4096 * MIB,
+        ..Admission::default()
+    };
+    let cases: [(&str, Result<ServeState, kev::Error>); 7] = [
         (
             "no variants",
-            ServeState::new(Vec::new(), 0, aliases(), cpu(), Admission::default()),
+            ServeState::new(Vec::new(), 0, aliases(), cpu(), admission()),
         ),
         (
             "default variant index 1",
-            ServeState::new(vec![variant()], 1, aliases(), cpu(), Admission::default()),
+            ServeState::new(vec![variant()], 1, aliases(), cpu(), admission()),
         ),
         (
             "alias `kev-test`",
@@ -853,7 +1081,7 @@ fn an_invalid_serving_state_is_refused_at_construction() {
                 0,
                 vec!["kev-test".to_string()],
                 cpu(),
-                Admission::default(),
+                admission(),
             ),
         ),
         (
@@ -865,7 +1093,7 @@ fn an_invalid_serving_state_is_refused_at_construction() {
                 cpu(),
                 Admission {
                     concurrency: 0,
-                    ..Admission::default()
+                    ..admission()
                 },
             ),
         ),
@@ -878,6 +1106,23 @@ fn an_invalid_serving_state_is_refused_at_construction() {
                 cpu(),
                 Admission {
                     max_attention_bytes: 0,
+                    ..admission()
+                },
+            ),
+        ),
+        (
+            "admission bounds",
+            ServeState::new(vec![variant()], 0, aliases(), cpu(), Admission::default()),
+        ),
+        (
+            "the memory budget is 1 MiB",
+            ServeState::new(
+                vec![variant()],
+                0,
+                aliases(),
+                cpu(),
+                Admission {
+                    memory_budget_bytes: 1,
                     ..Admission::default()
                 },
             ),
@@ -888,7 +1133,7 @@ fn an_invalid_serving_state_is_refused_at_construction() {
         assert!(error.to_string().contains(needle), "{needle}: {error}");
     }
     assert!(
-        ServeState::new(vec![variant()], 0, aliases(), cpu(), Admission::default()).is_ok(),
+        ServeState::new(vec![variant()], 0, aliases(), cpu(), admission()).is_ok(),
         "a well-formed state constructs"
     );
 }
