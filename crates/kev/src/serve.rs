@@ -274,7 +274,7 @@ impl ServeState {
     /// `kev-latest`, any alias the listing advertises, or an absent field.
     /// The aliases the listing publishes and the aliases this resolves are
     /// one list, so a client that keeps its default model reaches the door.
-    fn select(&self, model: &str) -> Result<&Variant, Error> {
+    pub fn select(&self, model: &str) -> Result<&Variant, Error> {
         if model == "kev-latest" || model.is_empty() || self.aliases.iter().any(|a| a == model) {
             return self.variants.get(self.default).ok_or_else(|| {
                 Error::Artifact(format!(
@@ -302,7 +302,8 @@ impl ServeState {
     ///
     /// # Errors
     ///
-    /// [`Error::UnknownModel`] when `model` names no loaded variant.
+    /// [`Error::UnknownModel`] when `model` is neither a loaded id,
+    /// `kev-latest`, an advertised alias, nor empty.
     pub fn pick<'a>(
         &'a self,
         request: &crate::api::SystemOneRequest,

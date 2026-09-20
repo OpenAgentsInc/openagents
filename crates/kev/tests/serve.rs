@@ -81,13 +81,7 @@ where
 }
 
 fn client(url: &str) -> jev::BlockingClient {
-    jev::BlockingClient::new(
-        jev::Config::new()
-            .api_key("kev-test")
-            .base_url(url)
-            .default_model("kev-latest"),
-    )
-    .expect("client")
+    jev::BlockingClient::new(jev::Config::new().api_key("kev-test").base_url(url)).expect("client")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -111,11 +105,11 @@ async fn jev_client_round_trips_all_types() {
                 "frustration",
                 Score::new("How frustrated?", vec![None, None, None]),
             );
+        // An unmodified client sends `jev-latest`; the alias resolves to the default variant.
         let request = jev::SystemOneRequest::new(
             "Shoes arrived late and I see two charges on my card.",
             questions,
-        )
-        .model("kev-latest");
+        );
         let response = client(&url).system_one(request).expect("system_one");
 
         assert_eq!(response.model, "kev-latest");

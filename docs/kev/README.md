@@ -71,6 +71,11 @@ no variants, a default index that names none, an alias that is also a
 variant id, or a zero bound — at construction rather than on the first
 request.
 
+`ServeState::select` resolves an exact variant id, `kev-latest`, an absent
+model, or any alias the listing advertises — `jev-latest` included — so an
+unmodified Jev client reaches the default variant. A name outside that set
+answers `model_unavailable` at 503.
+
 Kev serves on Linux and macOS, on CPU by default. Metal (`--device metal`)
 requires macOS and the `metal` feature; CUDA is not built. Tests that need
 the real `kev-0.5b` artifacts skip when `KEV_ARTIFACT_DIR` and

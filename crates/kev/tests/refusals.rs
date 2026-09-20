@@ -783,6 +783,41 @@ fn the_delimiter_floor_is_refused_before_encoding() {
     assert_eq!(error.refusal().label(), "branch_too_long");
 }
 
+#[test]
+fn every_advertised_alias_resolves() {
+    let state = rig().state;
+    assert!(state.aliases.iter().any(|a| a == jev::defaults::MODEL));
+    for model in ["jev-latest", "", "kev-latest"] {
+        assert_eq!(
+            state
+                .select(model)
+                .expect("default alias")
+                .model_id
+                .as_str(),
+            "kev-test"
+        );
+    }
+    assert_eq!(
+        state
+            .select("kev-broken")
+            .expect("variant id")
+            .model_id
+            .as_str(),
+        "kev-broken"
+    );
+    let error = match state.select("kev-nope") {
+        Err(error) => error,
+        Ok(_) => panic!("expected unknown model"),
+    };
+    let kev::Error::UnknownModel { model, known } = error else {
+        panic!("expected unknown model");
+    };
+    assert_eq!(model, "kev-nope");
+    for name in ["kev-test", "kev-broken", "kev-latest", "jev-latest"] {
+        assert!(known.iter().any(|known| known == name), "{name}: {known:?}");
+    }
+}
+
 /// The public constructor refuses a state the handlers could not serve
 /// rather than letting a request find the hole.
 #[test]
