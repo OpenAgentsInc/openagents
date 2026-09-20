@@ -5,10 +5,10 @@ episode: the whole path from the operator's sentence to the final summary,
 recorded as one ATIF trace.
 
 The first task is `devin-fan-out-six`, the delegation
-[`programs.md`](programs.md) specifies. It ran on 2026-09-20, twice, and the golden
+[`programs.md`](programs.md) specifies. It ran on 2026-09-20, three times, and the golden
 is **recorded**, not authored:
 `crates/coderbench/goldens/devin-fan-out-six.atif.jsonl`, at commit
-`af5a24e982`.
+`752eab3ad8`.
 
 ## What ran
 
@@ -20,8 +20,8 @@ computer, in parallel.
 | Executor | `devin 3000.10.31`, resolved at `~/.local/bin/devin` |
 | Delegations | 6, in parallel |
 | Correct | **6 of 6** |
-| Wall clock | 22.5 s |
-| Summed agent time | 63.3 s |
+| Wall clock | 46.6 s |
+| Summed agent time | 80.7 s |
 | Files written | 0 |
 
 ## What the decision models were asked
@@ -38,8 +38,8 @@ computer, in parallel.
 
 The door got the hard question right and the easy one wrong. The state says
 "Every task is read-only" in as many words, and the answer came back at
-0.17. The first recording put it at 0.16, so this is reproducible rather
-than a stray sample. This is recorded rather than smoothed over, because a golden that
+0.17. Three recordings put it at 0.16, 0.17, and 0.17, so this is
+reproducible rather than a stray sample. This is recorded rather than smoothed over, because a golden that
 showed only the flattering half would be worth nothing.
 
 It did not affect the run: the fan-out gated on `independent`, and admission
@@ -93,18 +93,25 @@ implementation's manifests carry a `base` commit.
 
 ## The first golden was deleted and re-recorded
 
-The `nips/coder/` lane became `nips/openagents/`, and one of the six
-delegations asked about a file that rename moved. The recording no longer
-described anything that could happen again.
+Twice. The `nips/coder/` lane became `nips/openagents/`, and then NIP-PRO
+became NIP-PRG. Each time, one of the six delegations asked about a file the
+rename moved, and the recording stopped describing anything that could
+happen again.
 
 It was **deleted and the episode re-run**, not patched. A recording of a
 world that no longer exists is worse than no recording, because it reads as
 evidence. Editing the prompt to match today's tree would have been worse
 still: the file would then say a question was asked that never was.
 
-The re-run pins `requires.base` to the commit it ran at. That field existed
-before the rename and was empty; the first thing to move underneath the task
-is what filled it in.
+Each re-run pins `requires.base` to the commit it ran at. That field existed
+before the first rename and was empty; the first thing to move underneath
+the task is what filled it in.
+
+**A task that reads file paths is invalidated by every rename**, which is a
+property of this task rather than of goldens. It is cheap here — the episode
+re-records in under a minute — and it would not be cheap for a task whose
+delegates do real work. A task meant to last should ask about things that do
+not move.
 
 ## What the probe learned that a present/absent check cannot say
 

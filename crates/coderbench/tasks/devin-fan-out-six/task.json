@@ -8,7 +8,7 @@
       "devin-local"
     ],
     "repository": "https://github.com/OpenAgentsInc/openagents.git",
-    "base": "af5a24e982020c2f6f2349afab30ea7655d58730",
+    "base": "752eab3ad8c28382166a5431b314832281eb92f1",
     "capabilities_refuse": {
       "devin-local": [
         "untrusted_workspace"
