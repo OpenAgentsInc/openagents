@@ -74,9 +74,7 @@ impl Config {
     /// rotary (Qwen3 does, Qwen2 does not).
     #[must_use]
     pub fn qk_norm(&self) -> bool {
-        self.architectures
-            .iter()
-            .any(|a| a == "Qwen3ForCausalLM")
+        self.architectures.iter().any(|a| a == "Qwen3ForCausalLM")
     }
 }
 
@@ -296,9 +294,8 @@ impl Backbone {
             .map(|e| e.path())
             .filter(|p| {
                 p.extension().is_some_and(|x| x == "safetensors")
-                    && p.file_name().is_some_and(|n| {
-                        n.to_string_lossy().starts_with("model")
-                    })
+                    && p.file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with("model"))
             })
             .collect();
         shard_paths.sort();
@@ -406,16 +403,12 @@ impl Backbone {
                 let a = tensors
                     .get(&format!("layers.{i}.{group}.{target}.lora_A.weight"))
                     .ok_or_else(|| {
-                        Error::Artifact(format!(
-                            "missing lora_A for layers.{i}.{group}.{target}"
-                        ))
+                        Error::Artifact(format!("missing lora_A for layers.{i}.{group}.{target}"))
                     })?;
                 let b = tensors
                     .get(&format!("layers.{i}.{group}.{target}.lora_B.weight"))
                     .ok_or_else(|| {
-                        Error::Artifact(format!(
-                            "missing lora_B for layers.{i}.{group}.{target}"
-                        ))
+                        Error::Artifact(format!("missing lora_B for layers.{i}.{group}.{target}"))
                     })?;
                 crate::lora::merge(linear, a, b, scale)?;
             }
@@ -444,7 +437,11 @@ impl Backbone {
         for layer in &self.layers {
             let h = rms_norm(&x, &layer.input_layernorm, self.config.rms_norm_eps)?;
             x = (x + layer.attn.forward(&h, &rotary, pos, mask)?)?;
-            let h = rms_norm(&x, &layer.post_attention_layernorm, self.config.rms_norm_eps)?;
+            let h = rms_norm(
+                &x,
+                &layer.post_attention_layernorm,
+                self.config.rms_norm_eps,
+            )?;
             x = (x + layer.mlp.forward(&h)?)?;
         }
         Ok(rms_norm(&x, &self.norm, self.config.rms_norm_eps)?)

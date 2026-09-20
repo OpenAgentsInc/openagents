@@ -1400,11 +1400,9 @@ impl Rule {
 
         criteria.push(median_agrees(earned, &summaries, blocked.as_deref()));
 
-        let earned =
-            earned.filter(|_| {
-                Verdict::over(criteria.iter().map(|criterion| criterion.verdict))
-                    == Verdict::Passed
-            });
+        let earned = earned.filter(|_| {
+            Verdict::over(criteria.iter().map(|criterion| criterion.verdict)) == Verdict::Passed
+        });
         Stage {
             phase: round.phase,
             outcome: Outcome {

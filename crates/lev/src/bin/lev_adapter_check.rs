@@ -31,7 +31,10 @@ use gym::calibrate::{EstimatorConfig, Record};
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
-    let target = arguments.first().filter(|first| !first.starts_with("--")).cloned();
+    let target = arguments
+        .first()
+        .filter(|first| !first.starts_with("--"))
+        .cloned();
     let options = Options::read(&arguments[usize::from(target.is_some())..]);
 
     match (target, &options.emit) {
@@ -90,8 +93,10 @@ impl Options {
                 "--created" => options.created = value(),
                 "--os-build" => options.os_build = value(),
                 "--families" => {
-                    options.families =
-                        value().split(',').map(|name| name.trim().to_string()).collect();
+                    options.families = value()
+                        .split(',')
+                        .map(|name| name.trim().to_string())
+                        .collect();
                 }
                 "--estimator" => options.estimator = value(),
                 "--samples" => options.samples = value().parse().unwrap_or(options.samples),
@@ -122,14 +127,31 @@ fn describe(path: &Path) {
     println!("records      {}", package.records.len());
     println!(
         "payload      {} bytes",
-        package.records.iter().map(|record| record.length).sum::<u64>()
+        package
+            .records
+            .iter()
+            .map(|record| record.length)
+            .sum::<u64>()
     );
-    println!("draft model  {}", if package.has_draft { "present" } else { "absent" });
+    println!(
+        "draft model  {}",
+        if package.has_draft {
+            "present"
+        } else {
+            "absent"
+        }
+    );
     match Artifact::of_package(&package) {
         Ok(artifact) => {
             println!("sha256       {}", artifact.sha256);
-            println!("size         {} bytes ({WEIGHTS_FILE})", artifact.size_bytes);
-            println!("metadata     {} ({METADATA_FILE})", artifact.metadata_sha256);
+            println!(
+                "size         {} bytes ({WEIGHTS_FILE})",
+                artifact.size_bytes
+            );
+            println!(
+                "metadata     {} ({METADATA_FILE})",
+                artifact.metadata_sha256
+            );
         }
         Err(fault) => {
             eprintln!("sha256       not computed: {fault}");
@@ -196,14 +218,22 @@ fn check_manifest(path: &Path) {
         println!(
             "evalRef      {:<9} {:<8} {}",
             reference.family,
-            if reference.admitted { "admitted" } else { "refused" },
+            if reference.admitted {
+                "admitted"
+            } else {
+                "refused"
+            },
             reference.verdict
         );
     }
     let admitted = manifest.admitted_families();
     println!(
         "admits       {}",
-        if admitted.is_empty() { "nothing".to_string() } else { admitted.join(", ") }
+        if admitted.is_empty() {
+            "nothing".to_string()
+        } else {
+            admitted.join(", ")
+        }
     );
 
     // A release that checks out and is revoked is still refused, so the
@@ -215,18 +245,32 @@ fn check_manifest(path: &Path) {
     // machine, and `lev-policy show` is the command that exits on it.
     let policy = manifest.policy();
     let report = policy.report();
-    println!("policy       {} ({})", report.standing.label(), report.source);
+    println!(
+        "policy       {} ({})",
+        report.standing.label(),
+        report.source
+    );
     if !report.revoked.is_empty() {
         for revocation in &report.revoked {
-            eprintln!("revoked      REFUSED: {} — {}", revocation.scope(), revocation.reason);
+            eprintln!(
+                "revoked      REFUSED: {} — {}",
+                revocation.scope(),
+                revocation.reason
+            );
         }
         std::process::exit(1);
     }
     match policy.admits("") {
         Ok(()) => {
-            println!("serves       yes, for another {} seconds", report.expires_in_seconds);
+            println!(
+                "serves       yes, for another {} seconds",
+                report.expires_in_seconds
+            );
         }
-        Err(refusal) => println!("serves       not from this machine yet — {}", refusal.message),
+        Err(refusal) => println!(
+            "serves       not from this machine yet — {}",
+            refusal.message
+        ),
     }
     check_device(&signature);
 }
@@ -265,13 +309,15 @@ fn emit(package: Option<Package>, release: &str, options: &Options) {
             std::process::exit(2);
         }
     };
-    let artifact = package.as_ref().map(|package| match Artifact::of_package(package) {
-        Ok(artifact) => artifact,
-        Err(fault) => {
-            eprintln!("{fault}");
-            std::process::exit(1);
-        }
-    });
+    let artifact = package
+        .as_ref()
+        .map(|package| match Artifact::of_package(package) {
+            Ok(artifact) => artifact,
+            Err(fault) => {
+                eprintln!("{fault}");
+                std::process::exit(1);
+            }
+        });
     let signature = match &package {
         Some(package) => package.metadata.base_model_signature.clone(),
         None => options.base.clone(),
@@ -338,7 +384,11 @@ fn eval_refs(dir: Option<&str>) -> Vec<EvalRef> {
                 std::process::exit(1);
             }
         };
-        refs.push(EvalRef::of_record(&record, path.display().to_string(), digest));
+        refs.push(EvalRef::of_record(
+            &record,
+            path.display().to_string(),
+            digest,
+        ));
     }
     refs
 }

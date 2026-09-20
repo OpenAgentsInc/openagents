@@ -25,7 +25,10 @@ fn choice(instructions: &str, options: &[&str]) -> Question {
     for option in options {
         criteria.insert((*option).to_string(), None);
     }
-    Question::Choice { instructions: Some(json!(instructions)), criteria }
+    Question::Choice {
+        instructions: Some(json!(instructions)),
+        criteria,
+    }
 }
 
 fn one(state: Value, question: Question) -> Compiled {
@@ -37,7 +40,10 @@ fn one(state: Value, question: Question) -> Compiled {
         questions,
         extensions: Extensions::default(),
     };
-    compile(&request).expect("the fixture compiles").swap_remove("q").expect("one question")
+    compile(&request)
+        .expect("the fixture compiles")
+        .swap_remove("q")
+        .expect("one question")
 }
 
 /// Items with a known answer, for the spread-against-difficulty question.
@@ -50,31 +56,71 @@ struct Item {
 const DEPARTMENTS: [&str; 4] = ["billing", "technical", "sales", "other"];
 
 const EASY: [Item; 4] = [
-    Item { label: "easy/charge", state: "I was charged twice for the same order and want one refunded.", truth: "billing" },
-    Item { label: "easy/crash", state: "The app crashes every time I open the settings screen.", truth: "technical" },
-    Item { label: "easy/quote", state: "Can you send me a quote for 50 seats on the enterprise plan?", truth: "sales" },
-    Item { label: "easy/weather", state: "Does anyone here know a good restaurant near your office?", truth: "other" },
+    Item {
+        label: "easy/charge",
+        state: "I was charged twice for the same order and want one refunded.",
+        truth: "billing",
+    },
+    Item {
+        label: "easy/crash",
+        state: "The app crashes every time I open the settings screen.",
+        truth: "technical",
+    },
+    Item {
+        label: "easy/quote",
+        state: "Can you send me a quote for 50 seats on the enterprise plan?",
+        truth: "sales",
+    },
+    Item {
+        label: "easy/weather",
+        state: "Does anyone here know a good restaurant near your office?",
+        truth: "other",
+    },
 ];
 
 const HARD: [Item; 4] = [
-    Item { label: "hard/upgrade", state: "My card was declined when the plan tried to upgrade itself, and now I cannot log in.", truth: "billing" },
-    Item { label: "hard/seats", state: "We added seats last month and the invoice does not match what the sales rep quoted.", truth: "billing" },
-    Item { label: "hard/slow", state: "Everything has felt slower since the update, but I am not sure if it is my laptop.", truth: "technical" },
-    Item { label: "hard/renewal", state: "Our renewal is coming up and I want to talk through whether the higher tier is worth it.", truth: "sales" },
+    Item {
+        label: "hard/upgrade",
+        state: "My card was declined when the plan tried to upgrade itself, and now I cannot log in.",
+        truth: "billing",
+    },
+    Item {
+        label: "hard/seats",
+        state: "We added seats last month and the invoice does not match what the sales rep quoted.",
+        truth: "billing",
+    },
+    Item {
+        label: "hard/slow",
+        state: "Everything has felt slower since the update, but I am not sure if it is my laptop.",
+        truth: "technical",
+    },
+    Item {
+        label: "hard/renewal",
+        state: "Our renewal is coming up and I want to talk through whether the higher tier is worth it.",
+        truth: "sales",
+    },
 ];
 
 fn sample(bridge: &mut Bridge, compiled: &Compiled, seed: u64) -> String {
-    let call = Call::decide(compiled, Sampling::Random { seed, temperature: None });
-    bridge.decide(&call).map_or_else(|refusal| format!("<{}>", refusal.code.label()), |outcome| {
-        outcome.choice.unwrap_or_else(|| "<none>".to_string())
-    })
+    let call = Call::decide(
+        compiled,
+        Sampling::Random {
+            seed,
+            temperature: None,
+        },
+    );
+    bridge.decide(&call).map_or_else(
+        |refusal| format!("<{}>", refusal.code.label()),
+        |outcome| outcome.choice.unwrap_or_else(|| "<none>".to_string()),
+    )
 }
 
 fn greedy(bridge: &mut Bridge, compiled: &Compiled) -> String {
     let call = Call::decide(compiled, Sampling::Greedy);
-    bridge.decide(&call).map_or_else(|refusal| format!("<{}>", refusal.code.label()), |outcome| {
-        outcome.choice.unwrap_or_else(|| "<none>".to_string())
-    })
+    bridge.decide(&call).map_or_else(
+        |refusal| format!("<{}>", refusal.code.label()),
+        |outcome| outcome.choice.unwrap_or_else(|| "<none>".to_string()),
+    )
 }
 
 fn counts(values: &[String]) -> BTreeMap<String, usize> {
@@ -112,14 +158,21 @@ fn main() {
 
     // 1. Greedy determinism.
     println!("## Is greedy decoding deterministic?\n");
-    let compiled = one(json!(EASY[0].state), choice("Route the message to one department.", &DEPARTMENTS));
+    let compiled = one(
+        json!(EASY[0].state),
+        choice("Route the message to one department.", &DEPARTMENTS),
+    );
     let runs: Vec<String> = (0..8).map(|_| greedy(&mut bridge, &compiled)).collect();
     let distinct = counts(&runs);
     println!(
         "Eight greedy calls on one question returned {} distinct answer{}: {}.\n",
         distinct.len(),
         if distinct.len() == 1 { "" } else { "s" },
-        distinct.iter().map(|(k, v)| format!("`{k}` x{v}")).collect::<Vec<_>>().join(", ")
+        distinct
+            .iter()
+            .map(|(k, v)| format!("`{k}` x{v}"))
+            .collect::<Vec<_>>()
+            .join(", ")
     );
     println!(
         "{}\n",
@@ -132,20 +185,29 @@ fn main() {
 
     // 2. Seed reproducibility.
     println!("## Does a seed reproduce a sample?\n");
-    let first: Vec<String> = (0..n).map(|seed| sample(&mut bridge, &compiled, seed)).collect();
-    let second: Vec<String> = (0..n).map(|seed| sample(&mut bridge, &compiled, seed)).collect();
+    let first: Vec<String> = (0..n)
+        .map(|seed| sample(&mut bridge, &compiled, seed))
+        .collect();
+    let second: Vec<String> = (0..n)
+        .map(|seed| sample(&mut bridge, &compiled, seed))
+        .collect();
     let agree = first.iter().zip(&second).filter(|(a, b)| a == b).count();
-    println!(
-        "Seeds `0..{n}` were drawn twice in one process. {agree} of {n} agreed.\n"
-    );
+    println!("Seeds `0..{n}` were drawn twice in one process. {agree} of {n} agreed.\n");
     drop(compiled);
 
     // A second process, to separate session state from process state.
     let mut fresh = Bridge::discover().expect("a second helper starts");
-    let compiled = one(json!(EASY[0].state), choice("Route the message to one department.", &DEPARTMENTS));
-    let third: Vec<String> = (0..n).map(|seed| sample(&mut fresh, &compiled, seed)).collect();
+    let compiled = one(
+        json!(EASY[0].state),
+        choice("Route the message to one department.", &DEPARTMENTS),
+    );
+    let third: Vec<String> = (0..n)
+        .map(|seed| sample(&mut fresh, &compiled, seed))
+        .collect();
     let across = first.iter().zip(&third).filter(|(a, b)| a == b).count();
-    println!("The same seeds in a second helper process agreed with the first on {across} of {n}.\n");
+    println!(
+        "The same seeds in a second helper process agreed with the first on {across} of {n}.\n"
+    );
     println!(
         "{}\n",
         if agree == n as usize && across == n as usize {
@@ -160,7 +222,9 @@ fn main() {
 
     // 3. Spread against difficulty. This is the premise of L2.
     println!("## Does sampling spread track difficulty?\n");
-    println!("This is the premise the L2 estimator rests on. If spread carries no signal about difficulty, an ensemble measures nothing worth calibrating.\n");
+    println!(
+        "This is the premise the L2 estimator rests on. If spread carries no signal about difficulty, an ensemble measures nothing worth calibrating.\n"
+    );
     println!("| Item | Truth | Top answer | Top share over {n} seeds | Correct |");
     println!("| --- | --- | --- | --- | --- |");
     let mut easy_shares = Vec::new();
@@ -169,8 +233,13 @@ fn main() {
     let mut total = 0_usize;
     for (items, bucket) in [(&EASY[..], &mut easy_shares), (&HARD[..], &mut hard_shares)] {
         for item in items {
-            let compiled = one(json!(item.state), choice("Route the message to one department.", &DEPARTMENTS));
-            let draws: Vec<String> = (0..n).map(|seed| sample(&mut bridge, &compiled, seed)).collect();
+            let compiled = one(
+                json!(item.state),
+                choice("Route the message to one department.", &DEPARTMENTS),
+            );
+            let draws: Vec<String> = (0..n)
+                .map(|seed| sample(&mut bridge, &compiled, seed))
+                .collect();
             let counted = counts(&draws);
             let (top, count) = counted.iter().max_by_key(|(_, c)| **c).expect("a draw");
             let share = *count as f64 / n as f64;
@@ -212,8 +281,20 @@ fn main() {
         let forward = DEPARTMENTS;
         let mut reversed = DEPARTMENTS;
         reversed.reverse();
-        let a = greedy(&mut bridge, &one(json!(item.state), choice("Route the message to one department.", &forward)));
-        let b = greedy(&mut bridge, &one(json!(item.state), choice("Route the message to one department.", &reversed)));
+        let a = greedy(
+            &mut bridge,
+            &one(
+                json!(item.state),
+                choice("Route the message to one department.", &forward),
+            ),
+        );
+        let b = greedy(
+            &mut bridge,
+            &one(
+                json!(item.state),
+                choice("Route the message to one department.", &reversed),
+            ),
+        );
         println!("| `{}` | forward | `{a}` |", item.label);
         println!("| `{}` | reversed | `{b}` |", item.label);
         trials += 1;
@@ -236,14 +317,21 @@ fn main() {
     let bands: Vec<String> = BANDS.iter().map(|band| (*band).to_string()).collect();
     let mut band_rows = Vec::new();
     for item in EASY.iter().chain(HARD.iter()) {
-        let compiled = one(json!(item.state), choice("Route the message to one department.", &DEPARTMENTS));
+        let compiled = one(
+            json!(item.state),
+            choice("Route the message to one department.", &DEPARTMENTS),
+        );
         let call = Call::decide(&compiled, Sampling::Greedy).with_band(bands.clone());
         match bridge.decide(&call) {
             Ok(outcome) => {
                 let picked = outcome.choice.unwrap_or_default();
                 let band = outcome.band.unwrap_or_else(|| "<none>".to_string());
                 let right = picked == item.truth;
-                println!("| `{}` | `{picked}` | `{band}` | {} |", item.label, if right { "yes" } else { "no" });
+                println!(
+                    "| `{}` | `{picked}` | `{band}` | {} |",
+                    item.label,
+                    if right { "yes" } else { "no" }
+                );
                 band_rows.push((band, right));
             }
             Err(refusal) => println!("| `{}` | `<{}>` | | |", item.label, refusal.code.label()),
@@ -272,11 +360,22 @@ fn main() {
     println!("| --- | --- |");
     for multiple in [1_usize, 8, 32, 128] {
         let state = EASY[0].state.repeat(multiple);
-        let compiled = one(json!(state.clone()), choice("Route the message to one department.", &DEPARTMENTS));
+        let compiled = one(
+            json!(state.clone()),
+            choice("Route the message to one department.", &DEPARTMENTS),
+        );
         let start = Instant::now();
         let answer = greedy(&mut bridge, &compiled);
         let elapsed = start.elapsed().as_millis();
-        println!("| {} | {elapsed} ms{} |", state.len(), if answer.starts_with('<') { format!(" ({answer})") } else { String::new() });
+        println!(
+            "| {} | {elapsed} ms{} |",
+            state.len(),
+            if answer.starts_with('<') {
+                format!(" ({answer})")
+            } else {
+                String::new()
+            }
+        );
     }
     println!(
         "\nLev builds one session per question, so a request with `Q` questions pays the state cost `Q` times. Kev computes the state once and branches, which is why its packing is about twice as fast at 2.7 questions per request. This table is the price of the isolation Lev buys structurally.\n"
@@ -285,10 +384,22 @@ fn main() {
     // 7. Guardrails on decision-shaped input.
     println!("## How often do guardrails fire on decision-shaped input?\n");
     let hostile = [
-        ("moderation", "This user wrote: 'I will find out where you live.' Is that a threat?"),
-        ("abuse", "A reviewer called the product garbage and the founder a fraud."),
-        ("medical", "The customer says the device gave them a burn on their wrist."),
-        ("ordinary", "The customer asks whether the invoice includes tax."),
+        (
+            "moderation",
+            "This user wrote: 'I will find out where you live.' Is that a threat?",
+        ),
+        (
+            "abuse",
+            "A reviewer called the product garbage and the founder a fraud.",
+        ),
+        (
+            "medical",
+            "The customer says the device gave them a burn on their wrist.",
+        ),
+        (
+            "ordinary",
+            "The customer asks whether the invoice includes tax.",
+        ),
     ];
     println!("| Input | Outcome |");
     println!("| --- | --- |");
@@ -308,7 +419,13 @@ fn main() {
     );
 
     println!("## What this record does not settle\n");
-    println!("- The context limit. Driving a state past the window costs minutes of sampling and is worth its own run.");
-    println!("- Whether the runtime reports token counts. The helper does not surface any, so `usage` stays empty rather than carrying a character-count fiction.");
-    println!("- Anything about calibration. Every number here is behavior, not accuracy against labelled outcomes at a size worth fitting.");
+    println!(
+        "- The context limit. Driving a state past the window costs minutes of sampling and is worth its own run."
+    );
+    println!(
+        "- Whether the runtime reports token counts. The helper does not surface any, so `usage` stays empty rather than carrying a character-count fiction."
+    );
+    println!(
+        "- Anything about calibration. Every number here is behavior, not accuracy against labelled outcomes at a size worth fitting."
+    );
 }

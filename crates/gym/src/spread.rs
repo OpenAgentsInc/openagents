@@ -314,7 +314,10 @@ impl Draws {
         let items: BTreeSet<&str> = mine.iter().map(|row| row.item.as_str()).collect();
         let mut by_block: BTreeMap<u64, BTreeSet<&str>> = BTreeMap::new();
         for row in &mine {
-            by_block.entry(row.block).or_default().insert(row.item.as_str());
+            by_block
+                .entry(row.block)
+                .or_default()
+                .insert(row.item.as_str());
         }
         for (block, held) in &by_block {
             if held.len() == items.len() {
@@ -406,7 +409,11 @@ impl Spread {
         }
         let n = values.len() as f64;
         let mean = values.iter().sum::<f64>() / n;
-        let variance = values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let variance = values
+            .iter()
+            .map(|value| (value - mean).powi(2))
+            .sum::<f64>()
+            / (n - 1.0);
         Some(Self {
             values: values.to_vec(),
             mean,
@@ -487,8 +494,7 @@ pub fn ece_frozen(reference: &[f64], observations: &[Observation]) -> f64 {
         }
         let share = inside.len() as f64 / n;
         let mean_p = inside.iter().map(|o| o.raw).sum::<f64>() / inside.len() as f64;
-        let mean_correct =
-            inside.iter().filter(|o| o.correct).count() as f64 / inside.len() as f64;
+        let mean_correct = inside.iter().filter(|o| o.correct).count() as f64 / inside.len() as f64;
         ece += share * (mean_p - mean_correct).abs();
     }
     ece
@@ -610,7 +616,15 @@ mod tests {
     use super::*;
     use crate::calibrate::score;
 
-    fn draw(door: &str, split: &str, family: &str, item: &str, block: u64, top: f64, correct: bool) -> Draw {
+    fn draw(
+        door: &str,
+        split: &str,
+        family: &str,
+        item: &str,
+        block: u64,
+        top: f64,
+        correct: bool,
+    ) -> Draw {
         Draw {
             schema: DRAW_SCHEMA.to_string(),
             suite: "support-v2".to_string(),
@@ -639,7 +653,15 @@ mod tests {
     fn a_line_that_is_not_a_draw_is_refused_by_line_number() {
         let text = format!(
             "{}\nnot json\n",
-            line(&draw("lev-base", "evaluation", "routing", "routing/001", 0, 1.0, true))
+            line(&draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/001",
+                0,
+                1.0,
+                true
+            ))
         );
         let problem = Draws::parse(&text).expect_err("the second line is not a draw");
         assert!(
@@ -650,7 +672,15 @@ mod tests {
 
     #[test]
     fn another_schema_is_refused_rather_than_read_as_a_draw() {
-        let mut row = draw("lev-base", "evaluation", "routing", "routing/001", 0, 1.0, true);
+        let mut row = draw(
+            "lev-base",
+            "evaluation",
+            "routing",
+            "routing/001",
+            0,
+            1.0,
+            true,
+        );
         row.schema = "openagents.gym.eval_row.v1".to_string();
         let problem = Draws::parse(&line(&row)).expect_err("the tag is wrong");
         assert!(
@@ -661,16 +691,48 @@ mod tests {
 
     #[test]
     fn a_block_missing_an_item_is_named_rather_than_averaged_over() {
-        let rows = [draw("lev-base", "evaluation", "routing", "routing/001", 0, 1.0, true),
-            draw("lev-base", "evaluation", "routing", "routing/002", 0, 0.5, false),
-            draw("lev-base", "evaluation", "routing", "routing/001", 1, 0.875, true)];
+        let rows = [
+            draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/001",
+                0,
+                1.0,
+                true,
+            ),
+            draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/002",
+                0,
+                0.5,
+                false,
+            ),
+            draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/001",
+                1,
+                0.875,
+                true,
+            ),
+        ];
         let text: String = rows.iter().map(|row| format!("{}\n", line(row))).collect();
         let draws = Draws::parse(&text).expect("the draws parse");
         let problem = draws
             .complete("lev-base", "evaluation")
             .expect_err("block 1 is a row short");
         match problem {
-            Incomplete::Ragged { block, held, expected, first, .. } => {
+            Incomplete::Ragged {
+                block,
+                held,
+                expected,
+                first,
+                ..
+            } => {
                 assert_eq!(block, 1);
                 assert_eq!((held, expected), (1, 2));
                 assert_eq!(first, "routing/002", "the missing item is named");
@@ -681,8 +743,26 @@ mod tests {
 
     #[test]
     fn one_block_is_not_a_spread_but_is_a_complete_grid() {
-        let rows = [draw("lev-base", "evaluation", "routing", "routing/001", 0, 1.0, true),
-            draw("lev-base", "evaluation", "routing", "routing/002", 0, 0.5, false)];
+        let rows = [
+            draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/001",
+                0,
+                1.0,
+                true,
+            ),
+            draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/002",
+                0,
+                0.5,
+                false,
+            ),
+        ];
         let text: String = rows.iter().map(|row| format!("{}\n", line(row))).collect();
         let draws = Draws::parse(&text).expect("the draws parse");
         draws
@@ -699,8 +779,26 @@ mod tests {
 
     #[test]
     fn observations_come_back_in_item_order_so_two_blocks_pair() {
-        let rows = [draw("lev-base", "evaluation", "routing", "routing/002", 0, 0.5, false),
-            draw("lev-base", "evaluation", "routing", "routing/001", 0, 1.0, true)];
+        let rows = [
+            draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/002",
+                0,
+                0.5,
+                false,
+            ),
+            draw(
+                "lev-base",
+                "evaluation",
+                "routing",
+                "routing/001",
+                0,
+                1.0,
+                true,
+            ),
+        ];
         let text: String = rows.iter().map(|row| format!("{}\n", line(row))).collect();
         let draws = Draws::parse(&text).expect("the draws parse");
         let observations = draws.observations("lev-base", "evaluation", None, 0);
@@ -721,7 +819,10 @@ mod tests {
         let spread = Spread::over(&[0.0, 0.0394]).expect("two blocks");
         let one = spread.detectable(2.0, 1, 1).expect("one block a side");
         let four = spread.detectable(2.0, 4, 4).expect("four blocks a side");
-        assert!((one / four - 2.0).abs() < 1e-9, "four blocks a side halves it");
+        assert!(
+            (one / four - 2.0).abs() < 1e-9,
+            "four blocks a side halves it"
+        );
     }
 
     #[test]

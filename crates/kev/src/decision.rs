@@ -6,7 +6,7 @@ use std::path::Path;
 use candle_core::{DType, Device, Tensor};
 use tokenizers::Tokenizer;
 
-use crate::api::{Meta, Record, SystemOneRequest, to_answers, to_record, Answer};
+use crate::api::{Answer, Meta, Record, SystemOneRequest, to_answers, to_record};
 use crate::encode::{Encoding, branch_mask, encode};
 use crate::error::{Error, Result};
 use crate::head::PointerHead;
@@ -69,9 +69,11 @@ impl DecisionModel {
         let tokenizer = Tokenizer::from_file(adapter_dir.join("tokenizer.json"))
             .map_err(|e| Error::Tokenize(e.to_string()))?;
         let option_isolation = match std::fs::read_to_string(adapter_dir.join("head_meta.json")) {
-            Ok(text) => serde_json::from_str::<HeadMeta>(&text)
-                .map_err(|e| Error::Artifact(format!("head_meta.json: {e}")))?
-                .option_isolation,
+            Ok(text) => {
+                serde_json::from_str::<HeadMeta>(&text)
+                    .map_err(|e| Error::Artifact(format!("head_meta.json: {e}")))?
+                    .option_isolation
+            }
             Err(_) => false,
         };
         Ok(Self {
@@ -102,17 +104,14 @@ impl DecisionModel {
     /// The additive `[len, len]` mask for one encoding, `f32::MIN` where a
     /// query may not attend.
     fn additive_mask(&self, enc: &Encoding) -> Result<Tensor> {
-        let opts = enc
-            .option_isolation
-            .then(|| std::slice::from_ref(&enc.opt));
+        let opts = enc.option_isolation.then(|| std::slice::from_ref(&enc.opt));
         let allow = branch_mask(std::slice::from_ref(&enc.seg), opts);
         let len = enc.ids.len();
         let flat: Vec<f32> = allow[0]
             .iter()
             .flat_map(|row| row.iter().map(|yes| if *yes { 0.0 } else { f32::MIN }))
             .collect();
-        Ok(Tensor::from_vec(flat, (len, len), &self.device)?
-            .to_dtype(self.backbone.dtype())?)
+        Ok(Tensor::from_vec(flat, (len, len), &self.device)?.to_dtype(self.backbone.dtype())?)
     }
 
     /// One option distribution per question for a packed encoding.

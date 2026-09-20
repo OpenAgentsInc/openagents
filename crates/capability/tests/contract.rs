@@ -953,7 +953,10 @@ fn a_verified_decision_carries_the_record_it_checked() {
     // this check.
     assert_eq!(record.slug, "contract-verified");
     assert_eq!(record.manifest, entry.digest);
-    assert_eq!(record.writable, vec![granted.path().canonicalize().unwrap()]);
+    assert_eq!(
+        record.writable,
+        vec![granted.path().canonicalize().unwrap()]
+    );
     assert_eq!(
         record.pinned[0].path,
         script.canonicalize().unwrap(),
@@ -963,7 +966,9 @@ fn a_verified_decision_carries_the_record_it_checked() {
     // And the two forms of the decision agree: the proof `decide`
     // reports names the same record.
     match trust.decide(&entry, workspace.path()) {
-        Decision::Approved(Proof::Approved { digest, writable, .. }) => {
+        Decision::Approved(Proof::Approved {
+            digest, writable, ..
+        }) => {
             assert_eq!(digest, record.manifest);
             assert_eq!(writable, record.writable);
         }
@@ -979,7 +984,12 @@ fn an_unapproved_decision_verifies_nothing() {
     let workspace = tempfile::tempdir().unwrap();
     let repository = repository(
         "contract-unapproved",
-        &manifest("contract-unapproved", "sh", json!(["sh", "--version"]), json!({})),
+        &manifest(
+            "contract-unapproved",
+            "sh",
+            json!(["sh", "--version"]),
+            json!({}),
+        ),
     );
     let trust = trust_in(outside.path());
     let entry = entry(repository.path(), "contract-unapproved");

@@ -280,7 +280,10 @@ mod tests {
             Ladder::new(Colors::True).selection(),
             rgb(crate::intensity::NEAR_BLACK_TINT)
         );
-        assert_eq!(Ladder::new(Colors::Indexed).selection(), Color::Indexed(235));
+        assert_eq!(
+            Ladder::new(Colors::Indexed).selection(),
+            Color::Indexed(235)
+        );
         assert_eq!(Ladder::new(Colors::None).selection(), Color::Reset);
     }
 

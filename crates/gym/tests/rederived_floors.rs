@@ -657,7 +657,10 @@ fn every_committed_calibration_record_regenerates_from_the_store() {
             path.display()
         );
         assert!(
-            record.gate_digest.as_deref().is_some_and(|digest| gate.has_digest(digest)),
+            record
+                .gate_digest
+                .as_deref()
+                .is_some_and(|digest| gate.has_digest(digest)),
             "{name}: the record names neither the current gate nor a reviewed equivalent identity",
         );
         assert_eq!(

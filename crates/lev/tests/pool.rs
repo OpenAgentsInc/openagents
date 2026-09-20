@@ -22,7 +22,10 @@ fn compiled() -> lev::schema::Compiled {
     let mut questions = IndexMap::new();
     questions.insert(
         "q".to_string(),
-        Question::Choice { instructions: Some(json!("Route this message.")), criteria },
+        Question::Choice {
+            instructions: Some(json!("Route this message.")),
+            criteria,
+        },
     );
     let request = SystemOneRequest {
         state: json!("We added seats last month and the invoice does not match the quote."),
@@ -30,7 +33,10 @@ fn compiled() -> lev::schema::Compiled {
         questions,
         extensions: Extensions::default(),
     };
-    compile(&request).expect("it compiles").swap_remove("q").expect("one question")
+    compile(&request)
+        .expect("it compiles")
+        .swap_remove("q")
+        .expect("one question")
 }
 
 #[test]
@@ -64,7 +70,10 @@ fn a_pool_reproduces_a_single_helper_s_estimate_and_beats_its_clock() {
         pool.width()
     );
 
-    assert_eq!(serial.choice, parallel.choice, "the pool changed the answer");
+    assert_eq!(
+        serial.choice, parallel.choice,
+        "the pool changed the answer"
+    );
     assert_eq!(
         serial.frequency, parallel.frequency,
         "the pool changed the distribution: {:?} against {:?}",
@@ -115,7 +124,10 @@ fn a_seed_block_replays_across_processes_and_a_second_block_is_disjoint() {
     assert_eq!(block_one.seeds, (n..2 * n).collect::<Vec<u64>>());
     assert_eq!(block_one.seed_base, 1);
     assert!(
-        block_zero.seeds.iter().all(|seed| !block_one.seeds.contains(seed)),
+        block_zero
+            .seeds
+            .iter()
+            .all(|seed| !block_one.seeds.contains(seed)),
         "the blocks share a seed: {:?} against {:?}",
         block_zero.seeds,
         block_one.seeds

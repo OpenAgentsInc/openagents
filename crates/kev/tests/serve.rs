@@ -106,10 +106,7 @@ async fn jev_client_round_trips_all_types() {
             .with("escalate", Noul::new("Urgent human attention?"))
             .with(
                 "frustration",
-                Score::new(
-                    "How frustrated?",
-                    vec![None, None, None],
-                ),
+                Score::new("How frustrated?", vec![None, None, None]),
             );
         let request = jev::SystemOneRequest::new(
             "Shoes arrived late and I see two charges on my card.",
@@ -193,10 +190,7 @@ async fn refusals_are_typed() {
         .expect("send");
     assert_eq!(response.status(), 422);
     let body: serde_json::Value = response.json().await.expect("json");
-    assert_eq!(
-        body["detail"],
-        "questions must hold at least one question"
-    );
+    assert_eq!(body["detail"], "questions must hold at least one question");
     assert_eq!(body["error"]["code"], "invalid_request");
     assert_eq!(
         body["error"]["message"],
@@ -214,6 +208,11 @@ async fn refusals_are_typed() {
         .expect("send");
     assert_eq!(response.status(), 422);
     let body: serde_json::Value = response.json().await.expect("json");
-    assert!(body["detail"].as_str().unwrap().starts_with("request body:"));
+    assert!(
+        body["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("request body:")
+    );
     assert_eq!(body["error"]["code"], "invalid_request");
 }

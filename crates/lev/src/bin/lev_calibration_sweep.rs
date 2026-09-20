@@ -121,15 +121,22 @@ fn read_options() -> Options {
             "--adapter" => options.adapter = args.next().filter(|value| !value.is_empty()),
             "--split" => options.split = args.next().unwrap_or(options.split),
             "--blocks" => {
-                options.blocks = args.next().and_then(|v| v.parse().ok()).unwrap_or(options.blocks);
+                options.blocks = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(options.blocks);
             }
             "--samples" => {
-                options.samples =
-                    args.next().and_then(|v| v.parse().ok()).unwrap_or(options.samples);
+                options.samples = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(options.samples);
             }
             "--helpers" => {
-                options.helpers =
-                    args.next().and_then(|v| v.parse().ok()).unwrap_or(options.helpers);
+                options.helpers = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(options.helpers);
             }
             // The band costs one greedy call per item and only a banded map
             // reads it. A door whose band is known to carry no signal does
@@ -218,7 +225,10 @@ fn main() {
     };
     let availability = pool.availability().expect("availability answered");
     if !availability.is_available() {
-        eprintln!("the runtime is {}: {:?}", availability.status, availability.reason);
+        eprintln!(
+            "the runtime is {}: {:?}",
+            availability.status, availability.reason
+        );
         std::process::exit(2);
     }
     let base_signature = pool.base_signature_prefix().unwrap_or_default();
@@ -235,7 +245,10 @@ fn main() {
     let bands: Vec<String> = BANDS.iter().map(|band| (*band).to_string()).collect();
 
     let path = Path::new(&options.out);
-    let Recorded { drawn, bands: mut known_bands } = already(path, &options.door);
+    let Recorded {
+        drawn,
+        bands: mut known_bands,
+    } = already(path, &options.door);
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -243,7 +256,10 @@ fn main() {
         .expect("the draws file opens for appending");
 
     let locked = locked_items();
-    let spending = items.iter().filter(|item| locked.contains(&item.id)).count();
+    let spending = items
+        .iter()
+        .filter(|item| locked.contains(&item.id))
+        .count();
     eprintln!(
         "{spending} of these items are locked by support-v2-three-way and are read anyway; \
          see this binary's documentation for why"
@@ -271,7 +287,9 @@ fn main() {
             let request = SystemOneRequest {
                 state: item.state.clone(),
                 model: None,
-                questions: [("q".to_string(), item.question.clone())].into_iter().collect(),
+                questions: [("q".to_string(), item.question.clone())]
+                    .into_iter()
+                    .collect(),
                 extensions: Extensions::default(),
             };
             let Ok(compiled) = compile(&request) else {
@@ -285,8 +303,8 @@ fn main() {
                 Some(band) => band.clone(),
                 None if !options.band => None,
                 None => {
-                    let call = Call::decide(&compiled["q"], Sampling::Greedy)
-                        .with_band(bands.clone());
+                    let call =
+                        Call::decide(&compiled["q"], Sampling::Greedy).with_band(bands.clone());
                     let call = match options.adapter.as_deref() {
                         Some(path) => call.with_adapter(path),
                         None => call,

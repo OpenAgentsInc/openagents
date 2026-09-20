@@ -522,9 +522,7 @@ impl Bounds {
         let untenable = match wall {
             None => Some("bound_overflow"),
             Some(wall) if wall.is_zero() => Some("bound_zero"),
-            Some(wall) if Instant::now().checked_add(wall).is_none() => {
-                Some("bound_overflow")
-            }
+            Some(wall) if Instant::now().checked_add(wall).is_none() => Some("bound_overflow"),
             Some(_) => None,
         };
         Bounds {
@@ -1242,10 +1240,7 @@ impl Delegator {
                         dir.display()
                     )
                 })?;
-                if let Some(grant) = grants
-                    .iter()
-                    .find(|grant| canonical.starts_with(grant))
-                {
+                if let Some(grant) = grants.iter().find(|grant| canonical.starts_with(grant)) {
                     return Err(format!(
                         "the protected invocation or approval path {} sits under the writable {} — \
                          the delegate could retarget it after verification",
@@ -1297,11 +1292,9 @@ impl Delegator {
     /// The checkout one task runs in.
     async fn checkout(&self, task: &Task) -> Result<Checkout, String> {
         match (task.isolation, &self.repository) {
-            (Isolation::Worktree, Some(repository)) => {
-                Worktree::add(repository)
-                    .await
-                    .map(|worktree| Checkout::Own(Arc::new(worktree)))
-            }
+            (Isolation::Worktree, Some(repository)) => Worktree::add(repository)
+                .await
+                .map(|worktree| Checkout::Own(Arc::new(worktree))),
             _ => Ok(Checkout::Shared),
         }
     }
@@ -1418,10 +1411,12 @@ impl Checkout {
     async fn close(self) -> Result<(), String> {
         match self {
             Checkout::Shared => Ok(()),
-            Checkout::Own(worktree) => Arc::try_unwrap(worktree)
-                .map_err(|_| "the executor still holds its worktree".to_string())?
-                .close()
-                .await,
+            Checkout::Own(worktree) => {
+                Arc::try_unwrap(worktree)
+                    .map_err(|_| "the executor still holds its worktree".to_string())?
+                    .close()
+                    .await
+            }
         }
     }
 
@@ -1596,8 +1591,7 @@ mod tests {
             digest: entry.digest.clone(),
             path: manifest.clone(),
         };
-        let executor =
-            crate::survey::executor(&found).expect("a present probe yields an executor");
+        let executor = crate::survey::executor(&found).expect("a present probe yields an executor");
         (executor, store, manifest)
     }
 
@@ -2014,8 +2008,7 @@ mod tests {
                 state.display(),
             ),
         );
-        let executor =
-            executor(&binary).under(Policy::empty().granting(&state).sealing(&sealed));
+        let executor = executor(&binary).under(Policy::empty().granting(&state).sealing(&sealed));
         let delegation = Delegator::new(executor)
             .in_directory(dir.path())
             .run(Task::reading("write something", "a.rs"))
@@ -2053,16 +2046,12 @@ mod tests {
             boundary.protected
         );
         assert!(
-            boundary
-                .sealed
-                .contains(&sealed.canonicalize().unwrap()),
+            boundary.sealed.contains(&sealed.canonicalize().unwrap()),
             "the seal is in the record: {:?}",
             boundary.sealed
         );
         assert!(
-            boundary
-                .writable
-                .contains(&state.canonicalize().unwrap()),
+            boundary.writable.contains(&state.canonicalize().unwrap()),
             "the grant is in the record: {:?}",
             boundary.writable
         );
@@ -2099,7 +2088,10 @@ mod tests {
             .await;
 
         assert_eq!(delegation.status, Status::Answered, "{delegation:?}");
-        assert!(!root.join("pwned").exists(), "the main checkout is protected");
+        assert!(
+            !root.join("pwned").exists(),
+            "the main checkout is protected"
+        );
         assert!(
             !root.join(".git").join("pwned").exists(),
             "the common Git directory is sealed"
@@ -2241,16 +2233,12 @@ mod tests {
             boundary.sealed
         );
         assert!(
-            boundary
-                .sealed
-                .contains(&manifest.canonicalize().unwrap()),
+            boundary.sealed.contains(&manifest.canonicalize().unwrap()),
             "the manifest is sealed: {:?}",
             boundary.sealed
         );
         assert!(
-            boundary
-                .sealed
-                .contains(&binary.canonicalize().unwrap()),
+            boundary.sealed.contains(&binary.canonicalize().unwrap()),
             "the adapter is sealed: {:?}",
             boundary.sealed
         );
@@ -2291,9 +2279,7 @@ mod tests {
         assert!(delegation.output.contains("ran"), "{}", delegation.output);
         let boundary = delegation.boundary.expect("the run records its boundary");
         assert!(
-            boundary
-                .sealed
-                .contains(&script.canonicalize().unwrap()),
+            boundary.sealed.contains(&script.canonicalize().unwrap()),
             "the pinned script is sealed: {:?}",
             boundary.sealed
         );
@@ -2324,10 +2310,7 @@ mod tests {
         );
         // Rewrite the manifest between the survey and the dispatch —
         // a different digest names no record.
-        let changed = format!(
-            "{}\n",
-            std::fs::read_to_string(&manifest).unwrap()
-        );
+        let changed = format!("{}\n", std::fs::read_to_string(&manifest).unwrap());
         std::fs::write(&manifest, changed).unwrap();
 
         let delegation = Delegator::new(executor)
@@ -2540,7 +2523,11 @@ mod tests {
             .in_directory(repo.path())
             .run(Task::reading("read only", "a.rs"))
             .await;
-        assert_eq!(result.status, Status::Refused("boundary_unavailable".into()), "{result:?}");
+        assert_eq!(
+            result.status,
+            Status::Refused("boundary_unavailable".into()),
+            "{result:?}"
+        );
         assert!(result.output.is_empty());
         assert!(result.detail.contains("retarget"), "{}", result.detail);
     }
@@ -2826,11 +2813,15 @@ mod tests {
         let delegator = Delegator::new(executor.clone()).in_directory(dir.path());
         let policy = executor.policy().resolve(dir.path()).unwrap();
         let (boundary, command) = delegator
-            .prepare(&Task::reading("check", "a.rs"), &Checkout::Shared, dir.path(), &policy)
+            .prepare(
+                &Task::reading("check", "a.rs"),
+                &Checkout::Shared,
+                dir.path(),
+                &policy,
+            )
             .await
             .unwrap();
-        let envs: std::collections::BTreeMap<&OsStr, Option<&OsStr>> =
-            command.get_envs().collect();
+        let envs: std::collections::BTreeMap<&OsStr, Option<&OsStr>> = command.get_envs().collect();
         assert_eq!(
             envs.get(OsStr::new("TMPDIR")).copied().flatten(),
             boundary.scratch().map(Path::as_os_str),

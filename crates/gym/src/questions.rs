@@ -259,7 +259,10 @@ impl QuestionSet {
             source,
         })?;
         let set = Self::from_json(&source, path)?;
-        let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default();
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default();
         if stem != set.id {
             return Err(QuestionError::Invalid {
                 id: set.id.clone(),
@@ -325,7 +328,12 @@ impl QuestionSet {
             });
         }
         for (family, question) in &self.questions {
-            let text = |key: &str| question.get(key).and_then(Value::as_str).unwrap_or_default();
+            let text = |key: &str| {
+                question
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            };
             if !question.is_object() {
                 return Err(QuestionError::Invalid {
                     id: self.id.clone(),
@@ -472,8 +480,11 @@ mod tests {
 
     fn written(dir: &Path, name: &str, set: &Value) -> PathBuf {
         let path = dir.join(format!("{name}.json"));
-        std::fs::write(&path, serde_json::to_string_pretty(set).expect("a document"))
-            .expect("the file is written");
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(set).expect("a document"),
+        )
+        .expect("the file is written");
         path
     }
 
@@ -575,8 +586,15 @@ mod tests {
             let before = &baseline.questions["routing"];
             let after = &candidate.questions["routing"];
             assert_ne!(after, before, "{id} rewords routing");
-            assert_eq!(after["type"], before["type"], "{id} keeps the question type");
-            assert_eq!(options(after), options(before), "{id} freezes the option names");
+            assert_eq!(
+                after["type"], before["type"],
+                "{id} keeps the question type"
+            );
+            assert_eq!(
+                options(after),
+                options(before),
+                "{id} freezes the option names"
+            );
         }
     }
 
@@ -588,7 +606,10 @@ mod tests {
         let mut digests: Vec<String> = Vec::new();
         for id in CANDIDATES {
             let digest = load(id).expect("the candidate loads").digest();
-            assert!(!digests.contains(&digest), "{id} repeats another candidate's text");
+            assert!(
+                !digests.contains(&digest),
+                "{id} repeats another candidate's text"
+            );
             digests.push(digest);
         }
     }
@@ -598,7 +619,10 @@ mod tests {
         let suite = suite();
         let before = QuestionSet::authored(&suite).expect("authored");
         let mut after = before.clone();
-        let routing = after.questions.get_mut("routing").expect("the routing question");
+        let routing = after
+            .questions
+            .get_mut("routing")
+            .expect("the routing question");
         routing["instructions"] = json!("Which team handles this?");
 
         assert_ne!(after.digest(), before.digest(), "the reword is a new set");
@@ -725,7 +749,10 @@ mod tests {
             json!("Which team handles this?")
         );
         assert_eq!(
-            routing.question.as_ref().expect("the item carries its text")["instructions"],
+            routing
+                .question
+                .as_ref()
+                .expect("the item carries its text")["instructions"],
             json!("Which team should handle this message?"),
             "the item is unchanged, which is why the suite digest is"
         );
@@ -812,12 +839,8 @@ mod tests {
         let rows: Vec<serde_json::Value> = items
             .iter()
             .map(|item| {
-                serde_json::to_value(
-                    other
-                        .row(item, None, &answered(item), None)
-                        .expect("a row"),
-                )
-                .expect("a row serializes")
+                serde_json::to_value(other.row(item, None, &answered(item), None).expect("a row"))
+                    .expect("a row serializes")
             })
             .collect();
         assert!(admit_comparison(&before, &rows).is_err(), "different items");

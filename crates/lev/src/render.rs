@@ -72,7 +72,10 @@ mod tests {
 
     #[test]
     fn a_string_renders_as_itself() {
-        assert_eq!(render(&json!("the order was charged twice")), "the order was charged twice");
+        assert_eq!(
+            render(&json!("the order was charged twice")),
+            "the order was charged twice"
+        );
     }
 
     #[test]
@@ -84,7 +87,10 @@ mod tests {
     #[test]
     fn nesting_indents_and_nulls_drop_out() {
         let value = json!({"ticket": {"id": 7, "note": null}, "tags": ["billing", "urgent"]});
-        assert_eq!(render(&value), "ticket:\n  id: 7\ntags:\n  - billing\n  - urgent");
+        assert_eq!(
+            render(&value),
+            "ticket:\n  id: 7\ntags:\n  - billing\n  - urgent"
+        );
     }
 
     #[test]

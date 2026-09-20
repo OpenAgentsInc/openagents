@@ -83,8 +83,10 @@ impl Options {
                 "--revoke" => options.revoke.push(value()),
                 "--revoke-base" => options.revoke_base.push(value()),
                 "--families" => {
-                    options.families =
-                        value().split(',').map(|name| name.trim().to_string()).collect();
+                    options.families = value()
+                        .split(',')
+                        .map(|name| name.trim().to_string())
+                        .collect();
                 }
                 "--reason" => options.reason = value(),
                 "--expect" => options.expect = Some(value()),
@@ -192,7 +194,10 @@ fn show(options: &Options) {
                     freshness_window_seconds: options.window.unwrap_or(DEFAULT_WINDOW_SECONDS),
                 },
                 Path::new("."),
-                options.release.clone().unwrap_or_else(|| "an unnamed release".to_string()),
+                options
+                    .release
+                    .clone()
+                    .unwrap_or_else(|| "an unnamed release".to_string()),
                 options.base.clone().unwrap_or_default(),
             )
         }
@@ -222,7 +227,10 @@ fn show(options: &Options) {
         );
     }
     match policy.admits("") {
-        Ok(()) => println!("serves      yes, until {}", stamp(now_plus(report.expires_in_seconds))),
+        Ok(()) => println!(
+            "serves      yes, until {}",
+            stamp(now_plus(report.expires_in_seconds))
+        ),
         Err(refusal) => {
             println!("serves      no");
             println!("reason      {}", refusal.message);

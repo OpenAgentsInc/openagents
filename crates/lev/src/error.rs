@@ -99,7 +99,11 @@ impl Refusal {
     /// Builds a refusal with no question attached.
     #[must_use]
     pub fn new(code: RefusalCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into(), question: None }
+        Self {
+            code,
+            message: message.into(),
+            question: None,
+        }
     }
 
     /// Builds a refusal that names the question that caused it.

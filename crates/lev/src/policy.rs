@@ -341,7 +341,9 @@ impl Snapshot {
     /// Returns the [`Trouble`] that names the field.
     pub fn check(&self) -> Result<(), Trouble> {
         if self.schema != POLICY_SCHEMA {
-            return Err(Trouble::Schema { found: self.schema.clone() });
+            return Err(Trouble::Schema {
+                found: self.schema.clone(),
+            });
         }
         if self.issued.trim().is_empty() {
             return Err(Trouble::Blank { field: "issued" });
@@ -352,7 +354,9 @@ impl Snapshot {
                 return Err(Trouble::Unaimed { at });
             }
             if revocation.reason.trim().is_empty() {
-                return Err(Trouble::Blank { field: "revoked[].reason" });
+                return Err(Trouble::Blank {
+                    field: "revoked[].reason",
+                });
             }
             parse(&revocation.effective, "revoked[].effective")?;
         }
@@ -375,7 +379,9 @@ impl Snapshot {
         self.revoked
             .iter()
             .filter(|revocation| revocation.aims_at(release, base))
-            .filter(|revocation| parse(&revocation.effective, "effective").is_ok_and(|at| at <= now))
+            .filter(|revocation| {
+                parse(&revocation.effective, "effective").is_ok_and(|at| at <= now)
+            })
             .collect()
     }
 }
@@ -517,7 +523,11 @@ pub struct Policy {
 
 /// The cached snapshot, read once per decision.
 enum Cached {
-    Held { snapshot: Snapshot, digest: String, issued: i64 },
+    Held {
+        snapshot: Snapshot,
+        digest: String,
+        issued: i64,
+    },
     Missing,
     Broken(Trouble),
 }
@@ -603,7 +613,11 @@ impl Policy {
     pub fn admits(&self, family: &str) -> crate::error::Result<()> {
         match self.standing_for(family) {
             Standing::Current { .. } => Ok(()),
-            Standing::Revoked { reason, effective, scope } => Err(Refusal::new(
+            Standing::Revoked {
+                reason,
+                effective,
+                scope,
+            } => Err(Refusal::new(
                 RefusalCode::Revoked,
                 format!(
                     "{} is revoked as of {effective}, for {scope}: {reason}. A revoked release \
@@ -611,7 +625,10 @@ impl Policy {
                     self.release
                 ),
             )),
-            Standing::Stale { age_seconds, window_seconds } => Err(Refusal::new(
+            Standing::Stale {
+                age_seconds,
+                window_seconds,
+            } => Err(Refusal::new(
                 RefusalCode::PolicyStale,
                 format!(
                     "{} is a managed release and its policy snapshot is {age_seconds} seconds \
@@ -656,12 +673,16 @@ impl Policy {
     pub fn standing_for(&self, family: &str) -> Standing {
         let now = self.clock.now();
         match self.cached() {
-            Cached::Missing => Standing::Absent { cache: self.cache.display().to_string() },
+            Cached::Missing => Standing::Absent {
+                cache: self.cache.display().to_string(),
+            },
             Cached::Broken(trouble) => Standing::Unreadable {
                 cache: self.cache.display().to_string(),
                 reason: trouble.to_string(),
             },
-            Cached::Held { snapshot, issued, .. } => {
+            Cached::Held {
+                snapshot, issued, ..
+            } => {
                 let window = self.window(&snapshot);
                 let expires_in = issued.saturating_add(as_i64(window)).saturating_sub(now);
                 if expires_in < 0 {
@@ -671,13 +692,18 @@ impl Policy {
                     };
                 }
                 let biting = snapshot.biting(&self.release, &self.base_signature, now);
-                match biting.into_iter().find(|revocation| revocation.covers(family)) {
+                match biting
+                    .into_iter()
+                    .find(|revocation| revocation.covers(family))
+                {
                     Some(revocation) => Standing::Revoked {
                         reason: revocation.reason.clone(),
                         effective: revocation.effective.clone(),
                         scope: revocation.scope(),
                     },
-                    None => Standing::Current { expires_in_seconds: expires_in },
+                    None => Standing::Current {
+                        expires_in_seconds: expires_in,
+                    },
                 }
             }
         }
@@ -698,12 +724,16 @@ impl Policy {
             sha256: String::new(),
             revoked: Vec::new(),
         };
-        if let Cached::Held { snapshot, digest, issued } = self.cached() {
+        if let Cached::Held {
+            snapshot,
+            digest,
+            issued,
+        } = self.cached()
+        {
             let window = self.window(&snapshot);
             report.issued = snapshot.issued.clone();
             report.window_seconds = window;
-            report.expires_in_seconds =
-                issued.saturating_add(as_i64(window)).saturating_sub(now);
+            report.expires_in_seconds = issued.saturating_add(as_i64(window)).saturating_sub(now);
             report.sha256 = digest;
             report.revoked = snapshot
                 .biting(&self.release, &self.base_signature, now)
@@ -723,7 +753,10 @@ impl Policy {
         if !self.standing().serves() {
             return Vec::new();
         }
-        held.iter().copied().filter(|family| self.standing_for(family).serves()).collect()
+        held.iter()
+            .copied()
+            .filter(|family| self.standing_for(family).serves())
+            .collect()
     }
 
     /// The window in force: the smaller of the release's and the snapshot's.
@@ -750,7 +783,11 @@ impl Policy {
             Ok(issued) => issued,
             Err(trouble) => return Cached::Broken(trouble),
         };
-        Cached::Held { snapshot, digest: digest_of(text.as_bytes()), issued }
+        Cached::Held {
+            snapshot,
+            digest: digest_of(text.as_bytes()),
+            issued,
+        }
     }
 }
 
@@ -830,7 +867,10 @@ pub fn duration(value: &str) -> Option<u64> {
         'd' => (&value[..value.len() - 1], 24 * 60 * 60),
         _ => (value, 1),
     };
-    count.parse::<u64>().ok().map(|count| count.saturating_mul(scale))
+    count
+        .parse::<u64>()
+        .ok()
+        .map(|count| count.saturating_mul(scale))
 }
 
 /// An HTTP date, as a snapshot writes one.
@@ -853,7 +893,10 @@ pub fn digest_of(bytes: &[u8]) -> String {
 fn parse(value: &str, field: &'static str) -> Result<i64, Trouble> {
     httpdate::parse_http_date(value.trim())
         .map(unix)
-        .map_err(|_| Trouble::Timestamp { field, value: value.to_string() })
+        .map_err(|_| Trouble::Timestamp {
+            field,
+            value: value.to_string(),
+        })
 }
 
 fn unix(at: SystemTime) -> i64 {
@@ -876,12 +919,18 @@ fn prefix_match(left: &str, right: &str) -> bool {
 /// A relative source resolves against the manifest's directory.
 fn resolve(source: &str, beside: &Path) -> PathBuf {
     let path = expand(source);
-    if path.is_absolute() { path } else { beside.join(path) }
+    if path.is_absolute() {
+        path
+    } else {
+        beside.join(path)
+    }
 }
 
 /// A leading `~` is the running user's home. Any other path is untouched.
 fn expand(path: &str) -> PathBuf {
-    let Some(rest) = path.strip_prefix("~/") else { return PathBuf::from(path) };
+    let Some(rest) = path.strip_prefix("~/") else {
+        return PathBuf::from(path);
+    };
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() => PathBuf::from(home).join(rest),
         _ => PathBuf::from(path),
@@ -914,8 +963,11 @@ mod tests {
     }
 
     fn publish(dir: &Path, snapshot: &Snapshot) {
-        std::fs::write(dir.join("service.json"), snapshot.to_json().expect("it encodes"))
-            .expect("the service publishes");
+        std::fs::write(
+            dir.join("service.json"),
+            snapshot.to_json().expect("it encodes"),
+        )
+        .expect("the service publishes");
     }
 
     #[test]
@@ -929,9 +981,13 @@ mod tests {
 
     #[test]
     fn a_snapshot_round_trips_through_its_own_writer() {
-        let written = Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS)
-            .revoking(Revocation::of(RELEASE, "the base moved", NOW));
-        let read = Snapshot::from_json(&written.to_json().expect("it encodes")).expect("it decodes");
+        let written = Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS).revoking(Revocation::of(
+            RELEASE,
+            "the base moved",
+            NOW,
+        ));
+        let read =
+            Snapshot::from_json(&written.to_json().expect("it encodes")).expect("it decodes");
         assert_eq!(read, written);
         assert_eq!(read.issued_at().expect("a date"), NOW);
     }
@@ -968,9 +1024,15 @@ mod tests {
             )),
         );
         policy.fetch().expect("the revocation fetches");
-        let refusal = policy.admits("routing").expect_err("a revoked release is refused");
+        let refusal = policy
+            .admits("routing")
+            .expect_err("a revoked release is refused");
         assert_eq!(refusal.code, RefusalCode::Revoked);
-        assert!(refusal.message.contains("replaced the base"), "{}", refusal.message);
+        assert!(
+            refusal.message.contains("replaced the base"),
+            "{}",
+            refusal.message
+        );
         assert!(!policy.standing().serves());
     }
 
@@ -989,7 +1051,9 @@ mod tests {
             )),
         );
         policy.fetch().expect("the snapshot fetches");
-        let refusal = policy.admits("").expect_err("every release on that base is refused");
+        let refusal = policy
+            .admits("")
+            .expect_err("every release on that base is refused");
         assert_eq!(refusal.code, RefusalCode::Revoked);
     }
 
@@ -1006,7 +1070,9 @@ mod tests {
         );
         policy.fetch().expect("the snapshot fetches");
         assert!(policy.admits("routing").is_err());
-        policy.admits("severity").expect("another family still serves");
+        policy
+            .admits("severity")
+            .expect("another family still serves");
         assert_eq!(policy.serving(&["routing", "severity"]), vec!["severity"]);
     }
 
@@ -1023,9 +1089,14 @@ mod tests {
             )),
         );
         policy.fetch().expect("the snapshot fetches");
-        policy.admits("routing").expect("a future revocation does not bite yet");
+        policy
+            .admits("routing")
+            .expect("a future revocation does not bite yet");
         policy.clock().advance(600);
-        assert!(policy.admits("routing").is_err(), "it bites once it is in effect");
+        assert!(
+            policy.admits("routing").is_err(),
+            "it bites once it is in effect"
+        );
     }
 
     #[test]
@@ -1039,9 +1110,13 @@ mod tests {
         policy.fetch().expect("the snapshot fetches");
 
         policy.clock().advance(as_i64(DEFAULT_WINDOW_SECONDS));
-        policy.admits("routing").expect("the last second inside the window serves");
+        policy
+            .admits("routing")
+            .expect("the last second inside the window serves");
         policy.clock().advance(1);
-        let refusal = policy.admits("routing").expect_err("one second past the window does not");
+        let refusal = policy
+            .admits("routing")
+            .expect_err("one second past the window does not");
         assert_eq!(refusal.code, RefusalCode::PolicyStale);
         assert!(matches!(policy.standing(), Standing::Stale { .. }));
     }
@@ -1054,13 +1129,16 @@ mod tests {
             cache: dir.join("cache.json").display().to_string(),
             freshness_window_seconds: 3_600,
         };
-        let policy = Policy::for_release(&reference, &dir, RELEASE, BASE)
-            .with_clock(Clock::fixed(NOW));
+        let policy =
+            Policy::for_release(&reference, &dir, RELEASE, BASE).with_clock(Clock::fixed(NOW));
         publish(&dir, &Snapshot::new(NOW, 100 * DEFAULT_WINDOW_SECONDS));
         policy.fetch().expect("the snapshot fetches");
         assert_eq!(policy.report().window_seconds, 3_600);
         policy.clock().advance(3_601);
-        assert!(policy.admits("routing").is_err(), "a generous snapshot did not raise the window");
+        assert!(
+            policy.admits("routing").is_err(),
+            "a generous snapshot did not raise the window"
+        );
     }
 
     #[test]
@@ -1072,9 +1150,15 @@ mod tests {
         policy.admits("routing").expect("a current snapshot serves");
 
         std::fs::remove_file(dir.join("cache.json")).expect("the cache deletes");
-        let refusal = policy.admits("routing").expect_err("an absent snapshot is an expired one");
+        let refusal = policy
+            .admits("routing")
+            .expect_err("an absent snapshot is an expired one");
         assert_eq!(refusal.code, RefusalCode::PolicyStale);
-        assert!(refusal.message.contains("deleting the cache"), "{}", refusal.message);
+        assert!(
+            refusal.message.contains("deleting the cache"),
+            "{}",
+            refusal.message
+        );
     }
 
     #[test]
@@ -1083,7 +1167,9 @@ mod tests {
         let policy = policy(&dir);
         std::fs::write(dir.join("cache.json"), "{\"schema\":\"something.else\"}")
             .expect("the cache writes");
-        let refusal = policy.admits("routing").expect_err("a document that is not a snapshot");
+        let refusal = policy
+            .admits("routing")
+            .expect_err("a document that is not a snapshot");
         assert_eq!(refusal.code, RefusalCode::PolicyStale);
         assert!(matches!(policy.standing(), Standing::Unreadable { .. }));
     }
@@ -1094,17 +1180,29 @@ mod tests {
         // will load it, so a cache is never briefly authoritative and wrong.
         let dir = scratch("digest");
         let cache = dir.join("cache.json");
-        let good = Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS).to_json().expect("it encodes");
+        let good = Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS)
+            .to_json()
+            .expect("it encodes");
         let held = store(&cache, good.as_bytes(), None).expect("the first snapshot stores");
 
-        let trouble = store(&cache, b"{\"schema\":\"openagents.lev.policy_snapshot.v1\"}", Some(&held))
-            .expect_err("bytes that do not digest are refused");
+        let trouble = store(
+            &cache,
+            b"{\"schema\":\"openagents.lev.policy_snapshot.v1\"}",
+            Some(&held),
+        )
+        .expect_err("bytes that do not digest are refused");
         assert!(matches!(trouble, Trouble::Digest { .. }), "{trouble}");
-        assert_eq!(std::fs::read_to_string(&cache).expect("the cache reads"), good);
+        assert_eq!(
+            std::fs::read_to_string(&cache).expect("the cache reads"),
+            good
+        );
 
         let trouble = store(&cache, b"not a document", None).expect_err("and neither is garbage");
         assert!(matches!(trouble, Trouble::Unreadable { .. }), "{trouble}");
-        assert_eq!(std::fs::read_to_string(&cache).expect("the cache reads"), good);
+        assert_eq!(
+            std::fs::read_to_string(&cache).expect("the cache reads"),
+            good
+        );
     }
 
     #[test]
@@ -1118,7 +1216,12 @@ mod tests {
 
         policy.clock().advance(as_i64(DEFAULT_WINDOW_SECONDS) + 1);
         assert!(policy.fetch().is_err(), "the service is unreachable");
-        assert_eq!(policy.admits("routing").expect_err("and the door stopped").code,
-            RefusalCode::PolicyStale);
+        assert_eq!(
+            policy
+                .admits("routing")
+                .expect_err("and the door stopped")
+                .code,
+            RefusalCode::PolicyStale
+        );
     }
 }

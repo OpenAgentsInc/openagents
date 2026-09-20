@@ -72,7 +72,11 @@ fn spread(values: &[f64]) -> (f64, f64, f64, f64) {
     let variance = if values.len() < 2 {
         0.0
     } else {
-        values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (n - 1.0)
+        values
+            .iter()
+            .map(|value| (value - mean).powi(2))
+            .sum::<f64>()
+            / (n - 1.0)
     };
     let low = values.iter().copied().fold(f64::INFINITY, f64::min);
     let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -87,7 +91,12 @@ fn spread(values: &[f64]) -> (f64, f64, f64, f64) {
 fn population_sd(values: &[f64]) -> f64 {
     let n = values.len() as f64;
     let mean = values.iter().sum::<f64>() / n;
-    (values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / n).sqrt()
+    (values
+        .iter()
+        .map(|value| (value - mean).powi(2))
+        .sum::<f64>()
+        / n)
+        .sqrt()
 }
 
 /// Every permutation of `0..count`, in lexicographic order.
@@ -111,7 +120,11 @@ fn orders(count: usize) -> Vec<Vec<usize>> {
 
 /// The same Choice question with its options served in `order`.
 fn permuted(question: &Question, order: &[usize]) -> Option<Question> {
-    let Question::Choice { instructions, criteria } = question else {
+    let Question::Choice {
+        instructions,
+        criteria,
+    } = question
+    else {
         return None;
     };
     let keys: Vec<&String> = criteria.keys().collect();
@@ -123,7 +136,10 @@ fn permuted(question: &Question, order: &[usize]) -> Option<Question> {
         let key = keys.get(*index)?;
         reordered.insert((*key).clone(), criteria.get(*key)?.clone());
     }
-    Some(Question::Choice { instructions: instructions.clone(), criteria: reordered })
+    Some(Question::Choice {
+        instructions: instructions.clone(),
+        criteria: reordered,
+    })
 }
 
 /// One greedy call for one item under one order.
@@ -188,8 +204,9 @@ fn sweep(pool: &Pool, door: &Door, items: &[&Item], orders: &[Vec<usize>]) -> An
     let mut repeat = Vec::with_capacity(items.len());
     for index in 0..items.len() {
         let base = index * passes;
-        let row: Vec<Option<String>> =
-            (0..orders.len()).map(|offset| answered(&outcomes[base + offset])).collect();
+        let row: Vec<Option<String>> = (0..orders.len())
+            .map(|offset| answered(&outcomes[base + offset]))
+            .collect();
         grid.push(row);
         repeat.push(answered(&outcomes[base + orders.len()]));
     }
@@ -201,7 +218,12 @@ fn sweep(pool: &Pool, door: &Door, items: &[&Item], orders: &[Vec<usize>]) -> An
             reason.clone().unwrap_or_default()
         );
     }
-    Answers { grid, repeat, refused, reason }
+    Answers {
+        grid,
+        repeat,
+        refused,
+        reason,
+    }
 }
 
 /// The flip rate between two orders, and the items it was counted over.
@@ -209,7 +231,9 @@ fn flip_rate(answers: &Answers, left: usize, right: usize) -> (usize, usize) {
     let mut flips = 0;
     let mut trials = 0;
     for row in &answers.grid {
-        let (Some(a), Some(b)) = (&row[left], &row[right]) else { continue };
+        let (Some(a), Some(b)) = (&row[left], &row[right]) else {
+            continue;
+        };
         trials += 1;
         if a != b {
             flips += 1;
@@ -360,7 +384,9 @@ fn accuracy(answers: &Answers, items: &[&Item], order: usize) -> (usize, usize) 
     let mut correct = 0;
     let mut scored = 0;
     for (index, item) in items.iter().enumerate() {
-        let Some(choice) = &answers.grid[index][order] else { continue };
+        let Some(choice) = &answers.grid[index][order] else {
+            continue;
+        };
         scored += 1;
         if choice == &item.truth {
             correct += 1;
@@ -371,7 +397,11 @@ fn accuracy(answers: &Answers, items: &[&Item], order: usize) -> (usize, usize) 
 
 /// How an order reads in a table.
 fn label(order: &[usize]) -> String {
-    order.iter().map(usize::to_string).collect::<Vec<_>>().join("")
+    order
+        .iter()
+        .map(usize::to_string)
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn main() {
@@ -386,7 +416,10 @@ fn main() {
             // A bounded run, for checking the instrument before spending an
             // hour of device time on it.
             "--items" => {
-                limit = args.next().and_then(|value| value.parse().ok()).unwrap_or(limit);
+                limit = args
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(limit);
             }
             "--door" => {
                 let Some(spec) = args.next() else { continue };
@@ -399,7 +432,10 @@ fn main() {
                 }
             }
             "--helpers" => {
-                helpers = args.next().and_then(|value| value.parse().ok()).unwrap_or(helpers);
+                helpers = args
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(helpers);
             }
             other => {
                 eprintln!("unknown flag {other}");
@@ -428,8 +464,11 @@ fn main() {
         .split("evaluation")
         .filter(|item| matches!(item.question, Question::Choice { .. }))
         .collect();
-    let readable: Vec<&Item> =
-        evaluation.iter().copied().filter(|item| !locked.contains(&item.id.as_str())).collect();
+    let readable: Vec<&Item> = evaluation
+        .iter()
+        .copied()
+        .filter(|item| !locked.contains(&item.id.as_str()))
+        .collect();
     let width = match readable.first().map(|item| match &item.question {
         Question::Choice { criteria, .. } => criteria.len(),
         _ => 0,
@@ -481,7 +520,11 @@ fn main() {
     println!("| Run fact | Value |");
     println!("| --- | --- |");
     println!("| Availability | `{}` |", availability.status);
-    println!("| Suite | `{}`, digest `{}` |", suite.name, &suite.digest[..16]);
+    println!(
+        "| Suite | `{}`, digest `{}` |",
+        suite.name,
+        &suite.digest[..16]
+    );
     println!("| Decoding | greedy, one call per item per order |");
     println!(
         "| Options per item | {width}, so {} orders and {} pairs |",
@@ -499,7 +542,10 @@ fn main() {
     );
     println!("| Doors | {} |", doors.len());
     println!("| Pool width | {} |", pool.width());
-    println!("| Calls | {} |\n", doors.len() * items.len() * (every_order.len() + 1));
+    println!(
+        "| Calls | {} |\n",
+        doors.len() * items.len() * (every_order.len() + 1)
+    );
 
     let swept: Vec<Answers> = doors
         .iter()
@@ -523,13 +569,16 @@ fn main() {
             for (position, item) in items.iter().enumerate() {
                 for (order, permutation) in every_order.iter().enumerate() {
                     let answered = &swept[index].grid[position][order];
-                    lines.push_str(&serde_json::json!({
-                        "door": door.label,
-                        "item": item.id,
-                        "truth": item.truth,
-                        "order": label(permutation),
-                        "choice": answered,
-                    }).to_string());
+                    lines.push_str(
+                        &serde_json::json!({
+                            "door": door.label,
+                            "item": item.id,
+                            "truth": item.truth,
+                            "order": label(permutation),
+                            "choice": answered,
+                        })
+                        .to_string(),
+                    );
                     lines.push('\n');
                 }
             }
@@ -584,7 +633,10 @@ fn main() {
          Calls refused |"
     );
     println!("| --- | --- | --- | --- | --- | --- | --- |");
-    let published_index = pairs.iter().position(|pair| *pair == (0, reversed)).expect("a pair");
+    let published_index = pairs
+        .iter()
+        .position(|pair| *pair == (0, reversed))
+        .expect("a pair");
     for (index, door) in doors.iter().enumerate() {
         let series = &rates[index];
         let (mean, _, low, high) = spread(series);
@@ -672,21 +724,29 @@ fn main() {
     println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for left in 0..doors.len() {
         for right in (left + 1)..doors.len() {
-            let differences: Vec<f64> =
-                (0..pairs.len()).map(|pair| rates[left][pair] - rates[right][pair]).collect();
+            let differences: Vec<f64> = (0..pairs.len())
+                .map(|pair| rates[left][pair] - rates[right][pair])
+                .collect();
             let (mean, _, _, _) = spread(&differences);
             let order_sd = population_sd(&differences);
             let (a, b) = pairs[published_index];
             let item_sd = resampled_difference(&swept[left], &swept[right], a, b, items.len());
             let combined = 2.0 * (order_sd.powi(2) + item_sd.powi(2)).sqrt();
             let published = differences[published_index];
-            let reading = if published.abs() >= combined { "clears" } else { "inside the noise" };
+            let reading = if published.abs() >= combined {
+                "clears"
+            } else {
+                "inside the noise"
+            };
             // The same comparison run the way it should be: every pair of
             // orders, which spends the order axis instead of drawing from it.
             let pooled_sd =
                 resampled_mean_difference(&swept[left], &swept[right], &pairs, items.len());
-            let pooled_reading =
-                if mean.abs() >= 2.0 * pooled_sd { "clears" } else { "inside the noise" };
+            let pooled_reading = if mean.abs() >= 2.0 * pooled_sd {
+                "clears"
+            } else {
+                "inside the noise"
+            };
             println!(
                 "| `{}` against `{}` | {published:+.3} | {order_sd:.4} | {item_sd:.4} | \
                  {combined:.3} | {reading} | {mean:+.3} | {:.3} | {pooled_reading} |",
@@ -723,14 +783,21 @@ mod tests {
         for option in options {
             criteria.insert((*option).to_string(), None);
         }
-        Question::Choice { instructions: Some(json!("which one")), criteria }
+        Question::Choice {
+            instructions: Some(json!("which one")),
+            criteria,
+        }
     }
 
     fn answers(rows: &[&[&str]]) -> Answers {
         Answers {
             grid: rows
                 .iter()
-                .map(|row| row.iter().map(|choice| Some((*choice).to_string())).collect())
+                .map(|row| {
+                    row.iter()
+                        .map(|choice| Some((*choice).to_string()))
+                        .collect()
+                })
                 .collect(),
             repeat: Vec::new(),
             refused: 0,
@@ -752,13 +819,21 @@ mod tests {
     fn a_permutation_reorders_the_options_and_nothing_else() {
         let asked = permuted(&question(&["billing", "technical", "sales"]), &[2, 0, 1])
             .expect("a Choice permutes");
-        let Question::Choice { instructions, criteria } = asked else {
+        let Question::Choice {
+            instructions,
+            criteria,
+        } = asked
+        else {
             panic!("a Choice stays a Choice");
         };
         assert_eq!(instructions, Some(json!("which one")));
         assert_eq!(
             criteria.keys().cloned().collect::<Vec<String>>(),
-            vec!["sales".to_string(), "billing".to_string(), "technical".to_string()]
+            vec![
+                "sales".to_string(),
+                "billing".to_string(),
+                "technical".to_string()
+            ]
         );
     }
 
@@ -779,7 +854,11 @@ mod tests {
     fn an_unanswered_item_leaves_the_denominator_rather_than_counting_as_agreement() {
         let mut measured = answers(&[&["billing", "sales"], &["technical", "technical"]]);
         measured.grid[0][1] = None;
-        assert_eq!(flip_rate(&measured, 0, 1), (0, 1), "the refused item is not counted");
+        assert_eq!(
+            flip_rate(&measured, 0, 1),
+            (0, 1),
+            "the refused item is not counted"
+        );
         assert_eq!(flipped(&measured, 0, 0, 1), None);
     }
 
@@ -790,7 +869,10 @@ mod tests {
         assert!((population_sd(&values) - 1.118_033_988_749_895).abs() < 1e-12);
         let (mean, sample_sd, low, high) = spread(&values);
         assert!((mean - 2.5).abs() < 1e-12);
-        assert!(sample_sd > population_sd(&values), "a sample spread is the wider one");
+        assert!(
+            sample_sd > population_sd(&values),
+            "a sample spread is the wider one"
+        );
         assert!((low - 1.0).abs() < 1e-12 && (high - 4.0).abs() < 1e-12);
     }
 }

@@ -359,7 +359,10 @@ impl Recorder {
             );
         }
         if let Some(retained) = &delegation.retained {
-            extra.insert("retained".to_string(), json!(retained.display().to_string()));
+            extra.insert(
+                "retained".to_string(),
+                json!(retained.display().to_string()),
+            );
         }
         let call = Call {
             id: self.next_call_id(),

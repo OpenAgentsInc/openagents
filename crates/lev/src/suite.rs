@@ -61,8 +61,7 @@ impl Suite {
 
     /// The digest over the items, as the generator writes it.
     pub fn compute_digest(&self) -> Result<String, String> {
-        let canonical =
-            serde_json::to_string(&self.items).map_err(|error| error.to_string())?;
+        let canonical = serde_json::to_string(&self.items).map_err(|error| error.to_string())?;
         // The generator writes compact, key-sorted JSON.
         let value: Value = serde_json::from_str(&canonical).map_err(|error| error.to_string())?;
         let sorted = canonicalize(&value);
@@ -97,7 +96,13 @@ fn canonicalize(value: &Value) -> String {
             keys.sort();
             let inner: Vec<String> = keys
                 .iter()
-                .map(|key| format!("{}:{}", serde_json::to_string(key).unwrap_or_default(), canonicalize(&fields[*key])))
+                .map(|key| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(key).unwrap_or_default(),
+                        canonicalize(&fields[*key])
+                    )
+                })
                 .collect();
             format!("{{{}}}", inner.join(","))
         }
@@ -140,7 +145,9 @@ mod tests {
             let compiled = crate::schema::compile(&crate::api::SystemOneRequest {
                 state: item.state.clone(),
                 model: None,
-                questions: [(item.id.clone(), item.question.clone())].into_iter().collect(),
+                questions: [(item.id.clone(), item.question.clone())]
+                    .into_iter()
+                    .collect(),
                 extensions: crate::api::Extensions::default(),
             })
             .expect("the item compiles");

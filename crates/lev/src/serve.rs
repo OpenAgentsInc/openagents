@@ -59,7 +59,9 @@ use gym::calibrate::{EstimatorConfig, Mismatch, Record};
 use gym::row::DoorIdentity;
 
 use crate::adapter::Metadata;
-use crate::api::{MAX_CHOICE_OPTIONS, MAX_SCORE_LEVELS, SystemOneRequest, SystemOneResponse, Usage};
+use crate::api::{
+    MAX_CHOICE_OPTIONS, MAX_SCORE_LEVELS, SystemOneRequest, SystemOneResponse, Usage,
+};
 use crate::bridge::Pool;
 use crate::error::{Refusal, RefusalCode};
 use crate::estimator::{Estimator, answer, argmax, l2_pool_with};
@@ -129,7 +131,11 @@ pub enum Refused {
 
 /// One estimator configuration, in one line.
 fn estimator_line(config: &EstimatorConfig) -> String {
-    let EstimatorConfig { estimator, samples, seed_base } = config;
+    let EstimatorConfig {
+        estimator,
+        samples,
+        seed_base,
+    } = config;
     format!("{estimator} over {samples} draws from seed block {seed_base}")
 }
 
@@ -214,12 +220,17 @@ impl Calibration {
     /// Why a record was refused, by the family or file it named.
     #[must_use]
     pub fn refusal(&self, family: &str) -> Option<&Refused> {
-        self.refused.iter().find(|(named, _)| named == family).map(|(_, reason)| reason)
+        self.refused
+            .iter()
+            .find(|(named, _)| named == family)
+            .map(|(_, reason)| reason)
     }
 
     /// Every record that may not serve, with the field that refused it.
     pub fn refusals(&self) -> impl Iterator<Item = (&str, &Refused)> {
-        self.refused.iter().map(|(named, reason)| (named.as_str(), reason))
+        self.refused
+            .iter()
+            .map(|(named, reason)| (named.as_str(), reason))
     }
 
     /// What stopped the directory from being read at all, when something
@@ -243,14 +254,19 @@ impl Calibration {
 /// measurement the release rests on, unchanged since the release was written,
 /// and fitted under the estimator the release serves.
 fn against_manifest(record: &Record, manifest: Option<&Manifest>) -> Result<(), Refused> {
-    let Some(manifest) = manifest else { return Ok(()) };
+    let Some(manifest) = manifest else {
+        return Ok(());
+    };
     let release = manifest.release();
     let Some(reference) = manifest.eval_ref(&record.family) else {
         return Err(Refused::Unnamed { release });
     };
     reference
         .matches(record)
-        .map_err(|fault| Refused::Changed { release: release.clone(), fault })?;
+        .map_err(|fault| Refused::Changed {
+            release: release.clone(),
+            fault,
+        })?;
     if record.estimator_config != manifest.estimator {
         return Err(Refused::Estimator {
             release,
@@ -368,8 +384,12 @@ impl Door {
     #[must_use]
     pub fn with_calibration(mut self, dir: impl AsRef<Path>) -> Self {
         let identity = self.identity();
-        self.calibration =
-            Calibration::load_for(dir.as_ref(), &self.os_build, &identity, self.manifest.as_ref());
+        self.calibration = Calibration::load_for(
+            dir.as_ref(),
+            &self.os_build,
+            &identity,
+            self.manifest.as_ref(),
+        );
         self
     }
 
@@ -457,7 +477,9 @@ impl Door {
     #[must_use]
     pub fn with_adapter(mut self, path: impl Into<String>) -> Self {
         let path = path.into();
-        self.pinned = crate::adapter::Package::open(&path).ok().map(|package| package.metadata);
+        self.pinned = crate::adapter::Package::open(&path)
+            .ok()
+            .map(|package| package.metadata);
         self.adapter = Some(path);
         self
     }
@@ -625,7 +647,10 @@ async fn system_one(State(door): State<Arc<Door>>, body: String) -> Response {
     }
 }
 
-fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Result<SystemOneResponse> {
+fn answer_request(
+    door: &Door,
+    request: &SystemOneRequest,
+) -> crate::error::Result<SystemOneResponse> {
     let family = request.extensions.family.as_deref().unwrap_or_default();
     // First, and before the runtime is consulted. A revoked release must
     // refuse for the reason it was revoked rather than for whatever the
@@ -634,7 +659,11 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
     if let Some(policy) = &door.policy {
         policy.admits(family)?;
     }
-    let fitted = if family.is_empty() { None } else { door.calibration.record(family) };
+    let fitted = if family.is_empty() {
+        None
+    } else {
+        door.calibration.record(family)
+    };
     if fitted.is_none() && request.extensions.require_calibration {
         return Err(Refusal::new(
             RefusalCode::Uncalibrated,
@@ -650,7 +679,10 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
             format!(
                 "the on-device model is {}{}",
                 availability.status,
-                availability.reason.map(|reason| format!(": {reason}")).unwrap_or_default()
+                availability
+                    .reason
+                    .map(|reason| format!(": {reason}"))
+                    .unwrap_or_default()
             ),
         ));
     }
@@ -820,11 +852,19 @@ mod tests {
             gate_digest: Some("gate:abc".to_string()),
             locked_reads: Vec::new(),
             fitted: "2026-09-19".to_string(),
-            map: Map::fit(&[Observation::new(1.0, true), Observation::new(1.0, false)], 2),
+            map: Map::fit(
+                &[Observation::new(1.0, true), Observation::new(1.0, false)],
+                2,
+            ),
             raw_metrics: Metrics::default(),
             calibrated_metrics: Metrics::default(),
             admitted,
-            verdict: if admitted { "admitted: test" } else { "refused: Brier rose" }.to_string(),
+            verdict: if admitted {
+                "admitted: test"
+            } else {
+                "refused: Brier rose"
+            }
+            .to_string(),
         }
     }
 
@@ -854,13 +894,20 @@ mod tests {
 
         // A record fitted against another door is refused, and the refusal
         // names the field that refused it.
-        let adapter =
-            calibration.refusal("urgency").expect("the adapted map is refused").to_string();
+        let adapter = calibration
+            .refusal("urgency")
+            .expect("the adapted map is refused")
+            .to_string();
         assert!(adapter.starts_with("adapter:"), "{adapter}");
         assert!(adapter.contains("fmadapter-lev-9799725"), "{adapter}");
 
-        let refused = calibration.refusal("severity").expect("an unadmitted map is refused");
-        assert!(matches!(refused, Refused::Door(Mismatch::NotAdmitted { .. })), "{refused}");
+        let refused = calibration
+            .refusal("severity")
+            .expect("an unadmitted map is refused");
+        assert!(
+            matches!(refused, Refused::Door(Mismatch::NotAdmitted { .. })),
+            "{refused}"
+        );
     }
 
     /// A manifest naming the records in `dir` that `families` covers.
@@ -909,7 +956,11 @@ mod tests {
         write(dir.path(), &record("urgency", serving.clone(), true));
 
         let loose = Calibration::load(dir.path(), "25E246", &serving);
-        assert_eq!(loose.families(), vec!["routing", "urgency"], "without a document, both serve");
+        assert_eq!(
+            loose.families(),
+            vec!["routing", "urgency"],
+            "without a document, both serve"
+        );
 
         let manifest = manifest(dir.path(), &["routing"]);
         let held = Calibration::load_for(dir.path(), "25E246", &serving, Some(&manifest));
@@ -961,14 +1012,24 @@ mod tests {
     #[test]
     fn a_door_that_cannot_say_what_it_runs_serves_nothing() {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        write(dir.path(), &record("routing", DoorIdentity::published("lev-base", BASE, ""), true));
+        write(
+            dir.path(),
+            &record(
+                "routing",
+                DoorIdentity::published("lev-base", BASE, ""),
+                true,
+            ),
+        );
 
         // A door whose runtime published no signature is not a door any map
         // may claim, however well the names line up.
         let nameless = DoorIdentity::published("lev-base", "", "");
         let calibration = Calibration::load(dir.path(), "25E246", &nameless);
         assert!(calibration.is_empty());
-        let reason = calibration.refusal("routing").expect("it says why").to_string();
+        let reason = calibration
+            .refusal("routing")
+            .expect("it says why")
+            .to_string();
         assert!(reason.starts_with("door_identity.verified:"), "{reason}");
     }
 
@@ -988,7 +1049,11 @@ mod tests {
         write(dir.path(), &record("routing", serving.clone(), true));
         write(
             dir.path(),
-            &record("urgency", DoorIdentity::published("lev-base", "another-base", ""), true),
+            &record(
+                "urgency",
+                DoorIdentity::published("lev-base", "another-base", ""),
+                true,
+            ),
         );
         let calibration = Calibration::load(dir.path(), "25E246", &serving);
 
@@ -997,10 +1062,16 @@ mod tests {
 
         let mismatched = uncalibrated_reason(&calibration, "urgency");
         assert!(mismatched.contains("base_model_signature:"), "{mismatched}");
-        assert!(mismatched.contains("does not match this door"), "{mismatched}");
+        assert!(
+            mismatched.contains("does not match this door"),
+            "{mismatched}"
+        );
 
         let uncovered = uncalibrated_reason(&calibration, "tone");
-        assert!(uncovered.contains("holds no fitted calibration map for `tone`"), "{uncovered}");
+        assert!(
+            uncovered.contains("holds no fitted calibration map for `tone`"),
+            "{uncovered}"
+        );
         assert!(uncovered.contains("It serves routing"), "{uncovered}");
     }
 

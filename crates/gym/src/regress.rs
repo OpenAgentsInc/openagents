@@ -235,7 +235,10 @@ impl Panel {
     /// set before anything below is judged.
     #[must_use]
     pub fn asked(&self, group: &str) -> BTreeSet<String> {
-        self.group(group).iter().map(|row| row.item_id.clone()).collect()
+        self.group(group)
+            .iter()
+            .map(|row| row.item_id.clone())
+            .collect()
     }
 
     /// Every item the door answered in one group.
@@ -460,7 +463,9 @@ pub struct Report {
 impl Report {
     /// The groups that kept the report from passing.
     pub fn breaches(&self) -> impl Iterator<Item = &Movement> {
-        self.groups.iter().filter(|group| group.verdict != Verdict::Passed)
+        self.groups
+            .iter()
+            .filter(|group| group.verdict != Verdict::Passed)
     }
 
     /// The whole suite's movement.
@@ -557,8 +562,7 @@ pub fn review(earlier: Option<&[Row]>, latest: &[Row], rule: &Rule) -> Vec<Findi
     doors
         .into_iter()
         .filter_map(|door| {
-            let mine: Vec<&Panel> =
-                current.iter().filter(|panel| panel.door == door).collect();
+            let mine: Vec<&Panel> = current.iter().filter(|panel| panel.door == door).collect();
             let after = *mine.last()?;
             let candidates: Vec<&Panel> = match &baseline {
                 Some(panels) => panels.iter().filter(|panel| panel.door == door).collect(),
@@ -907,7 +911,11 @@ fn confident_errors(was: &Measure, now: &Measure, blocked: Option<&str>) -> Crit
     Criterion {
         name: name.to_string(),
         rank: 1,
-        verdict: if after > before { Verdict::Failed } else { Verdict::Passed },
+        verdict: if after > before {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
         detail,
     }
 }
@@ -941,7 +949,11 @@ pub fn render_floors(rule: &Rule) -> String {
             Some(sigma) => format!("one seed block's spread is {sigma:.4}"),
             None => "no measured spread".to_string(),
         };
-        let _ = writeln!(out, "- **{}** — {value}, {basis}. {}", floor.metric, floor.block_sigma.why);
+        let _ = writeln!(
+            out,
+            "- **{}** — {value}, {basis}. {}",
+            floor.metric, floor.block_sigma.why
+        );
         if basis == Basis::Unmeasured {
             let _ = writeln!(
                 out,
@@ -1004,7 +1016,11 @@ fn render_report(report: &Report) -> String {
     );
     let _ = writeln!(out, "| --- | --- | --- | --- | --- | --- | --- | --- |");
     for group in &report.groups {
-        let _ = writeln!(out, "{}", measure_row(&group.group, "before", &group.before));
+        let _ = writeln!(
+            out,
+            "{}",
+            measure_row(&group.group, "before", &group.before)
+        );
         let _ = writeln!(out, "{}", measure_row(&group.group, "after", &group.after));
     }
     let _ = writeln!(
@@ -1020,7 +1036,11 @@ fn render_report(report: &Report) -> String {
             || "nothing was judged".to_string(),
             |criterion| format!("{}: {}", criterion.name, criterion.detail),
         );
-        let _ = writeln!(out, "| `{}` | {} | {headline} |", group.group, group.verdict);
+        let _ = writeln!(
+            out,
+            "| `{}` | {} | {headline} |",
+            group.group, group.verdict
+        );
     }
     let _ = writeln!(out, "\n**{}**\n", report.verdict);
 
@@ -1028,8 +1048,10 @@ fn render_report(report: &Report) -> String {
     if !breaches.is_empty() {
         let _ = writeln!(out, "### What did not pass\n");
         for group in breaches {
-            for criterion in
-                group.criteria.iter().filter(|criterion| criterion.verdict != Verdict::Passed)
+            for criterion in group
+                .criteria
+                .iter()
+                .filter(|criterion| criterion.verdict != Verdict::Passed)
             {
                 let _ = writeln!(
                     out,
@@ -1061,7 +1083,10 @@ fn measure_row(group: &str, side: &str, measure: &Measure) -> String {
 
 /// A measured number, or the word for the absence of one.
 fn number(value: Option<f64>, places: usize) -> String {
-    value.map_or_else(|| "unknown".to_string(), |value| format!("{value:.places$}"))
+    value.map_or_else(
+        || "unknown".to_string(),
+        |value| format!("{value:.places$}"),
+    )
 }
 
 fn count(value: Option<usize>) -> String {
@@ -1126,7 +1151,11 @@ fn or_none(value: &str) -> String {
 }
 
 fn verifiable(verified: bool) -> &'static str {
-    if verified { "verifiable" } else { "not verifiable" }
+    if verified {
+        "verifiable"
+    } else {
+        "not verifiable"
+    }
 }
 
 /// The question text a run served, for a refusal that has to name both.
@@ -1193,7 +1222,9 @@ mod tests {
     /// option it picked.
     fn answered_at(item: &str, family: &str, at: &str, correct: bool, top: f64) -> Row {
         let distribution: IndexMap<String, f64> =
-            [("yes".to_string(), top), ("no".to_string(), 1.0 - top)].into_iter().collect();
+            [("yes".to_string(), top), ("no".to_string(), 1.0 - top)]
+                .into_iter()
+                .collect();
         start(item, family, at).scored(distribution, correct)
     }
 
@@ -1206,7 +1237,13 @@ mod tests {
     fn run_of(at: &str, right: usize) -> Vec<Row> {
         (0..20)
             .map(|index| {
-                answered_at(&format!("routing/{index:03}"), "routing", at, index < right, 0.8)
+                answered_at(
+                    &format!("routing/{index:03}"),
+                    "routing",
+                    at,
+                    index < right,
+                    0.8,
+                )
             })
             .collect()
     }
@@ -1255,8 +1292,11 @@ mod tests {
 
     #[test]
     fn a_rerun_that_changed_nothing_passes() {
-        let report =
-            report_of(review(Some(&run_of(BEFORE, 16)), &run_of(AFTER, 16), &rule()));
+        let report = report_of(review(
+            Some(&run_of(BEFORE, 16)),
+            &run_of(AFTER, 16),
+            &rule(),
+        ));
         assert_eq!(report.verdict, Verdict::Passed, "{:#?}", report.groups);
         assert_eq!(report.before, BEFORE);
         assert_eq!(report.after, AFTER);
@@ -1270,12 +1310,19 @@ mod tests {
 
     #[test]
     fn a_fall_larger_than_the_floor_is_a_regression() {
-        let report =
-            report_of(review(Some(&run_of(BEFORE, 16)), &run_of(AFTER, 14), &rule()));
+        let report = report_of(review(
+            Some(&run_of(BEFORE, 16)),
+            &run_of(AFTER, 14),
+            &rule(),
+        ));
         assert_eq!(report.verdict, Verdict::Failed);
         let accuracy = criterion(&report, OVERALL, "accuracy_holds_within_the_noise");
         assert_eq!(accuracy.verdict, Verdict::Failed);
-        assert!(accuracy.detail.contains("0.800 to 0.700"), "{}", accuracy.detail);
+        assert!(
+            accuracy.detail.contains("0.800 to 0.700"),
+            "{}",
+            accuracy.detail
+        );
         assert!(
             accuracy.detail.contains("0.056"),
             "the floor is on the line: {}",
@@ -1285,18 +1332,36 @@ mod tests {
 
     #[test]
     fn a_fall_inside_the_floor_holds_and_says_it_is_inside() {
-        let report =
-            report_of(review(Some(&run_of(BEFORE, 16)), &run_of(AFTER, 15), &rule()));
+        let report = report_of(review(
+            Some(&run_of(BEFORE, 16)),
+            &run_of(AFTER, 15),
+            &rule(),
+        ));
         let accuracy = criterion(&report, OVERALL, "accuracy_holds_within_the_noise");
-        assert_eq!(accuracy.verdict, Verdict::Passed, "0.050 is under the 0.056 floor");
-        assert!(accuracy.detail.contains("inside the floor"), "{}", accuracy.detail);
-        assert_ne!(report.verdict, Verdict::Failed, "a move inside the floor is not a loss");
+        assert_eq!(
+            accuracy.verdict,
+            Verdict::Passed,
+            "0.050 is under the 0.056 floor"
+        );
+        assert!(
+            accuracy.detail.contains("inside the floor"),
+            "{}",
+            accuracy.detail
+        );
+        assert_ne!(
+            report.verdict,
+            Verdict::Failed,
+            "a move inside the floor is not a loss"
+        );
     }
 
     #[test]
     fn a_gain_larger_than_the_floor_is_reported_as_one() {
-        let report =
-            report_of(review(Some(&run_of(BEFORE, 14)), &run_of(AFTER, 16), &rule()));
+        let report = report_of(review(
+            Some(&run_of(BEFORE, 14)),
+            &run_of(AFTER, 16),
+            &rule(),
+        ));
         let accuracy = criterion(&report, OVERALL, "accuracy_holds_within_the_noise");
         assert_eq!(accuracy.verdict, Verdict::Passed);
         assert!(
@@ -1329,15 +1394,24 @@ mod tests {
         let answered = criterion(&report, OVERALL, "the_door_answered_the_same_items");
         assert_eq!(answered.verdict, Verdict::Failed);
         assert!(
-            answered.detail.contains("declined 4 items it answered before"),
+            answered
+                .detail
+                .contains("declined 4 items it answered before"),
             "{}",
             answered.detail
         );
-        assert!(answered.detail.contains("`guardrail` x4"), "{}", answered.detail);
+        assert!(
+            answered.detail.contains("`guardrail` x4"),
+            "{}",
+            answered.detail
+        );
 
         let overall = report.overall().expect("the suite's movement");
         assert_eq!(overall.after.scores.accuracy, Some(1.0), "the average rose");
-        assert_eq!(overall.after.asked, 20, "and the items stayed in the denominator");
+        assert_eq!(
+            overall.after.asked, 20,
+            "and the items stayed in the denominator"
+        );
         assert_eq!(overall.after.answered, 16);
         assert_eq!(
             overall.deciding().map(|criterion| criterion.name.as_str()),
@@ -1362,7 +1436,9 @@ mod tests {
         let answered = criterion(&report, OVERALL, "the_door_answered_the_same_items");
         assert_eq!(answered.verdict, Verdict::Passed);
         assert!(
-            answered.detail.contains("answered 1 items it declined before (routing/019)"),
+            answered
+                .detail
+                .contains("answered 1 items it declined before (routing/019)"),
             "{}",
             answered.detail
         );
@@ -1409,20 +1485,18 @@ mod tests {
             }
         }
         let before: Vec<Row> = (0..20)
-            .map(|index| {
-                answered_at(&format!("routing/{index:03}"), "routing", BEFORE, true, 0.8)
-            })
+            .map(|index| answered_at(&format!("routing/{index:03}"), "routing", BEFORE, true, 0.8))
             .collect();
         let after: Vec<Row> = (0..20)
-            .map(|index| {
-                answered_at(&format!("routing/{index:03}"), "routing", AFTER, true, 0.6)
-            })
+            .map(|index| answered_at(&format!("routing/{index:03}"), "routing", AFTER, true, 0.6))
             .collect();
         let report = report_of(review(Some(&before), &after, &unmeasured));
         let brier = criterion(&report, OVERALL, "brier_holds_within_the_noise");
         assert_eq!(brier.verdict, Verdict::Unverifiable, "{}", brier.detail);
         assert!(
-            brier.detail.contains("Nothing has measured this suite's block-to-block spread"),
+            brier
+                .detail
+                .contains("Nothing has measured this suite's block-to-block spread"),
             "{}",
             brier.detail
         );
@@ -1473,7 +1547,10 @@ mod tests {
         let said = refusal.to_string();
         assert!(matches!(refusal, Refusal::DoorMoved { .. }), "{refusal:?}");
         assert!(said.contains("base model signature"), "{said}");
-        assert!(said.contains("`sig-1`") && said.contains("`sig-2`"), "{said}");
+        assert!(
+            said.contains("`sig-1`") && said.contains("`sig-2`"),
+            "{said}"
+        );
     }
 
     #[test]
@@ -1487,9 +1564,15 @@ mod tests {
             })
             .collect();
         let refusal = refusal_of(review(Some(&before), &after, &rule()));
-        assert!(matches!(refusal, Refusal::PerturbationMoved { .. }), "{refusal:?}");
+        assert!(
+            matches!(refusal, Refusal::PerturbationMoved { .. }),
+            "{refusal:?}"
+        );
         let said = refusal.to_string();
-        assert!(said.contains("seed block 0") && said.contains("seed block 1"), "{said}");
+        assert!(
+            said.contains("seed block 0") && said.contains("seed block 1"),
+            "{said}"
+        );
     }
 
     #[test]
@@ -1511,9 +1594,15 @@ mod tests {
             })
             .collect();
         let refusal = refusal_of(review(Some(&before), &after, &rule()));
-        assert!(matches!(refusal, Refusal::QuestionsMoved { .. }), "{refusal:?}");
+        assert!(
+            matches!(refusal, Refusal::QuestionsMoved { .. }),
+            "{refusal:?}"
+        );
         let said = refusal.to_string();
-        assert!(said.contains("support-v2-v1") && said.contains("support-v2-v2"), "{said}");
+        assert!(
+            said.contains("support-v2-v1") && said.contains("support-v2-v2"),
+            "{said}"
+        );
         assert!(
             said.contains("a candidate against the same items"),
             "a reworded question is not a regression in the door: {said}"
@@ -1531,16 +1620,25 @@ mod tests {
             })
             .collect();
         let refusal = refusal_of(review(Some(&before), &after, &rule()));
-        assert!(matches!(refusal, Refusal::PerturbationMoved { .. }), "{refusal:?}");
+        assert!(
+            matches!(refusal, Refusal::PerturbationMoved { .. }),
+            "{refusal:?}"
+        );
         let said = refusal.to_string();
-        assert!(said.contains("8 draws") && said.contains("1 draws"), "{said}");
+        assert!(
+            said.contains("8 draws") && said.contains("1 draws"),
+            "{said}"
+        );
     }
 
     #[test]
     fn one_recorded_run_has_nothing_to_compare_against() {
         let refusal = refusal_of(review(None, &run_of(AFTER, 16), &rule()));
         assert!(matches!(refusal, Refusal::OneRun { .. }), "{refusal:?}");
-        assert!(refusal.to_string().contains("--against"), "it says what to do next");
+        assert!(
+            refusal.to_string().contains("--against"),
+            "it says what to do next"
+        );
     }
 
     #[test]
@@ -1560,7 +1658,10 @@ mod tests {
         rows.extend(run_of(AFTER, 16));
         let report = report_of(review(None, &rows, &rule()));
         assert_eq!(report.after, AFTER, "the newest run is this commit's");
-        assert_eq!(report.before, BEFORE, "and it is measured against the one before it");
+        assert_eq!(
+            report.before, BEFORE,
+            "and it is measured against the one before it"
+        );
     }
 
     #[test]
@@ -1580,11 +1681,23 @@ mod tests {
     fn each_family_is_judged_on_its_own() {
         let mut before = run_of(BEFORE, 16);
         before.extend((0..20).map(|index| {
-            answered_at(&format!("severity/{index:03}"), "severity", BEFORE, index < 18, 0.8)
+            answered_at(
+                &format!("severity/{index:03}"),
+                "severity",
+                BEFORE,
+                index < 18,
+                0.8,
+            )
         }));
         let mut after = run_of(AFTER, 16);
         after.extend((0..20).map(|index| {
-            answered_at(&format!("severity/{index:03}"), "severity", AFTER, index < 14, 0.8)
+            answered_at(
+                &format!("severity/{index:03}"),
+                "severity",
+                AFTER,
+                index < 14,
+                0.8,
+            )
         }));
 
         let report = report_of(review(Some(&before), &after, &rule()));
@@ -1600,7 +1713,11 @@ mod tests {
             "the substitution is named where it is used: {}",
             severity.detail
         );
-        assert_eq!(report.verdict, Verdict::Failed, "one family carries the report");
+        assert_eq!(
+            report.verdict,
+            Verdict::Failed,
+            "one family carries the report"
+        );
     }
 
     #[test]
@@ -1632,7 +1749,10 @@ mod tests {
             .collect();
         let report = report_of(review(Some(&before), &after, &rule()));
         let overall = report.overall().expect("the suite's movement");
-        assert_eq!(overall.after.scores.accuracy, None, "an average over nothing is not zero");
+        assert_eq!(
+            overall.after.scores.accuracy, None,
+            "an average over nothing is not zero"
+        );
         assert_eq!(overall.after.answered, 0);
         assert_eq!(overall.after.asked, 20);
         let rendered = render(&Finding::Compared(Box::new(report)));
@@ -1642,8 +1762,11 @@ mod tests {
 
     #[test]
     fn a_group_that_passed_leads_with_the_accuracy_rather_than_the_item_count() {
-        let report =
-            report_of(review(Some(&run_of(BEFORE, 14)), &run_of(AFTER, 16), &rule()));
+        let report = report_of(review(
+            Some(&run_of(BEFORE, 14)),
+            &run_of(AFTER, 16),
+            &rule(),
+        ));
         let overall = report.overall().expect("the suite's movement");
         assert_eq!(overall.verdict, Verdict::Passed);
         assert_eq!(
@@ -1660,21 +1783,37 @@ mod tests {
 
     #[test]
     fn the_report_carries_the_rule_that_set_its_floors() {
-        let report =
-            report_of(review(Some(&run_of(BEFORE, 16)), &run_of(AFTER, 16), &rule()));
+        let report = report_of(review(
+            Some(&run_of(BEFORE, 16)),
+            &run_of(AFTER, 16),
+            &rule(),
+        ));
         assert_eq!(report.rule_id, "ab-v2");
         assert_eq!(report.rule_digest, rule().digest());
-        assert!(report.rule_digest.starts_with("gate:"), "{}", report.rule_digest);
+        assert!(
+            report.rule_digest.starts_with("gate:"),
+            "{}",
+            report.rule_digest
+        );
     }
 
     #[test]
     fn the_limit_is_on_the_report_and_on_the_output() {
-        let report =
-            report_of(review(Some(&run_of(BEFORE, 16)), &run_of(AFTER, 16), &rule()));
+        let report = report_of(review(
+            Some(&run_of(BEFORE, 16)),
+            &run_of(AFTER, 16),
+            &rule(),
+        ));
         assert_eq!(report.limit, LIMIT);
         let rendered = render(&Finding::Compared(Box::new(report)));
-        assert!(rendered.contains("### What this does not catch"), "{rendered}");
-        assert!(rendered.contains(LIMIT), "the limit is printed verbatim: {rendered}");
+        assert!(
+            rendered.contains("### What this does not catch"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(LIMIT),
+            "the limit is printed verbatim: {rendered}"
+        );
         assert!(
             rendered.contains("openagents#9379") && rendered.contains("openagents#9381"),
             "and it names where the answer is: {rendered}"
@@ -1686,7 +1825,10 @@ mod tests {
         let findings = review(None, &run_of(AFTER, 16), &rule());
         let rendered = render(&findings[0]);
         assert!(rendered.contains("Refused:"), "{rendered}");
-        assert!(rendered.contains("neither a pass nor a regression"), "{rendered}");
+        assert!(
+            rendered.contains("neither a pass nor a regression"),
+            "{rendered}"
+        );
         assert_eq!(findings[0].verdict(), None, "a refusal reaches no verdict");
     }
 

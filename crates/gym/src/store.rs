@@ -1296,7 +1296,10 @@ mod tests {
         // One declaration of the string, and it is still a string: a reader
         // checks a name it read off disk, and never has to deserialize a row
         // into the type that wrote it to find out whether it may.
-        assert_eq!(KNOWN_ROW_SCHEMAS, &[crate::row::LEGACY_SCHEMA, crate::row::SCHEMA]);
+        assert_eq!(
+            KNOWN_ROW_SCHEMAS,
+            &[crate::row::LEGACY_SCHEMA, crate::row::SCHEMA]
+        );
         assert!(known_row_schema("openagents.gym.eval_row.v1"));
         assert!(known_row_schema("openagents.gym.eval_row.v2"));
         assert!(!known_row_schema("openagents.gym.eval_row.v3"));
@@ -1562,8 +1565,12 @@ mod tests {
         // re-scoring of the last one.
         let directory = tempfile::tempdir().expect("a temporary directory");
         let store = store_in(&directory);
-        store.append(&asked("q1", Some("questions:9745"))).expect("the baseline");
-        store.append(&asked("q1", Some("questions:0f3c"))).expect("the variant");
+        store
+            .append(&asked("q1", Some("questions:9745")))
+            .expect("the baseline");
+        store
+            .append(&asked("q1", Some("questions:0f3c")))
+            .expect("the variant");
         assert_eq!(store.rows().unwrap().len(), 2);
 
         let repeat = store.append(&asked("q1", Some("questions:0f3c")));

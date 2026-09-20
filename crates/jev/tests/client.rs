@@ -738,7 +738,11 @@ async fn the_budget_bounds_a_body_that_stalls() -> Outcome {
         timeout <= Duration::from_millis(60),
         "the read was capped by the remaining budget: {timeout:?}"
     );
-    assert!(began.elapsed() < Duration::from_secs(1), "{:?}", began.elapsed());
+    assert!(
+        began.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        began.elapsed()
+    );
     Ok(())
 }
 

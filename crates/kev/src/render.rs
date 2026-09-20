@@ -34,7 +34,11 @@ fn render_at(value: &Value, indent: usize) -> String {
     match value {
         Value::Null => String::new(),
         Value::Bool(b) => {
-            if *b { "True".to_string() } else { "False".to_string() }
+            if *b {
+                "True".to_string()
+            } else {
+                "False".to_string()
+            }
         }
         Value::Number(n) => n.to_string(),
         Value::String(s) => s.clone(),

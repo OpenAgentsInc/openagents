@@ -245,8 +245,7 @@ fn load_gate(options: &Options, suite: &Suite) -> Result<Gate, String> {
 /// The question set a run serves: `--questions`, else the suite's own field,
 /// else the text the items carry inline.
 fn load_questions(options: &Options, suite: &Suite) -> Result<QuestionSet, String> {
-    gym::questions::resolve(suite, options.questions.as_deref())
-        .map_err(|error| error.to_string())
+    gym::questions::resolve(suite, options.questions.as_deref()).map_err(|error| error.to_string())
 }
 
 /// Which partitions a run reads. The locked partition is never one of them:
@@ -256,9 +255,11 @@ fn partitions(options: &Options) -> Result<Vec<Partition>, String> {
         None => Ok(vec![Partition::Calibration, Partition::Development]),
         Some("calibration") => Ok(vec![Partition::Calibration]),
         Some("development") => Ok(vec![Partition::Development]),
-        Some("locked") => Err("the locked partition is spent through a ledger, not scored \
+        Some("locked") => Err(
+            "the locked partition is spent through a ledger, not scored \
              by a flag; see gym::suite::LockedLedger"
-            .to_string()),
+                .to_string(),
+        ),
         Some(other) => Err(format!("unknown partition {other}")),
     }
 }
@@ -309,7 +310,11 @@ fn items_of<'a>(
     }
     let mut items = Vec::new();
     for partition in wanted {
-        items.extend(suite.partition(*partition).map_err(|error| error.to_string())?);
+        items.extend(
+            suite
+                .partition(*partition)
+                .map_err(|error| error.to_string())?,
+        );
     }
     if let Some(named) = family {
         items.retain(|item: &&Item| item.family == named);
@@ -369,7 +374,10 @@ async fn ask_door(name: String, client: Client) -> Door {
         seed_base: None,
     };
     let published = published_facts(&client, unknown.clone()).await;
-    Door { client, facts: published }
+    Door {
+        client,
+        facts: published,
+    }
 }
 
 /// What `GET /v1/models` says, or what little is known without it.
@@ -383,18 +391,32 @@ async fn published_facts(client: &Client, unknown: Facts) -> Facts {
     let Some(model) = body.get("models").and_then(|models| models.get(0)) else {
         return unknown;
     };
-    let text = |key: &str| model.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+    let text = |key: &str| {
+        model
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     let number = |key: &str| model.get(key).and_then(Value::as_u64);
     let reported = text("name");
     let signature = text("base_model_signature");
     let estimator = text("estimator");
     Facts {
         identity: DoorIdentity::published(
-            if reported.is_empty() { unknown.name.clone() } else { reported },
+            if reported.is_empty() {
+                unknown.name.clone()
+            } else {
+                reported
+            },
             signature,
             text("adapter"),
         ),
-        estimator: if estimator.is_empty() { "unreported".to_string() } else { estimator },
+        estimator: if estimator.is_empty() {
+            "unreported".to_string()
+        } else {
+            estimator
+        },
         samples: number("samples"),
         seed_base: number("seed_base"),
         ..unknown
@@ -403,7 +425,9 @@ async fn published_facts(client: &Client, unknown: Facts) -> Facts {
 
 /// How many options a Choice question serves.
 fn option_count(question: &Value) -> usize {
-    eval::options_of(question).map(|options| options.len()).unwrap_or_default()
+    eval::options_of(question)
+        .map(|options| options.len())
+        .unwrap_or_default()
 }
 
 fn question_for(question: &Value) -> Questions {
@@ -464,8 +488,10 @@ async fn eval_command(options: Options) -> Result<(), String> {
     println!("{}\n", suite.description);
     let evidence = suite.evidence_counts();
     if evidence.len() > 1 {
-        let detail: Vec<String> =
-            evidence.iter().map(|(source, count)| format!("{count} {source}")).collect();
+        let detail: Vec<String> = evidence
+            .iter()
+            .map(|(source, count)| format!("{count} {source}"))
+            .collect();
         println!("Label evidence: {}.\n", detail.join(", "));
     }
     println!("Judged by `{}`, digest `{}`.\n", gate.id, gate.digest());
@@ -494,13 +520,23 @@ async fn eval_command(options: Options) -> Result<(), String> {
 
         let pass = score_pass(&door, &run, &questions, &items, store.as_ref()).await?;
         if let Some(store) = &store {
-            println!("Recorded {} rows in `{}`.\n", pass.rows.len(), store.path().display());
+            println!(
+                "Recorded {} rows in `{}`.\n",
+                pass.rows.len(),
+                store.path().display()
+            );
         }
         report_pass(&pass, items.len());
         report_scores(&pass.rows, &wanted);
 
         if options.fit {
-            fit_and_report(&suite, &gate, &door.facts, &pass.rows, options.records.as_deref())?;
+            fit_and_report(
+                &suite,
+                &gate,
+                &door.facts,
+                &pass.rows,
+                options.records.as_deref(),
+            )?;
         }
         println!();
     }
@@ -536,8 +572,14 @@ fn report_identity(facts: &Facts) {
                 format!(", adapter `{}`", facts.identity.adapter)
             },
             facts.estimator,
-            facts.samples.map(|n| format!(", {n} samples")).unwrap_or_default(),
-            facts.seed_base.map(|n| format!(", seed block {n}")).unwrap_or_default(),
+            facts
+                .samples
+                .map(|n| format!(", {n} samples"))
+                .unwrap_or_default(),
+            facts
+                .seed_base
+                .map(|n| format!(", seed block {n}"))
+                .unwrap_or_default(),
         );
     } else {
         // A hosted closed model publishes a name and no more, and the row
@@ -613,8 +655,13 @@ impl Held {
 
 /// One planned trial, with a placeholder outcome, for a lookup or a message.
 fn planned(run: &Run, item: &Item, permutation: Option<Vec<usize>>) -> Result<Row, String> {
-    run.row(item, permutation, &Disposition::Refused(gym::row::RefusalCode::Busy), None)
-        .ok_or_else(|| "a planned row failed to build".to_string())
+    run.row(
+        item,
+        permutation,
+        &Disposition::Refused(gym::row::RefusalCode::Busy),
+        None,
+    )
+    .ok_or_else(|| "a planned row failed to build".to_string())
 }
 
 /// What a recorded row says the door answered.
@@ -634,7 +681,10 @@ fn recorded_answer(row: &Row) -> Option<Disposition> {
         Some(option) => option,
         None => gym::calibrate::selected(&distribution).map(|(option, _)| option.to_string())?,
     };
-    Some(Disposition::Answered { chosen, distribution })
+    Some(Disposition::Answered {
+        chosen,
+        distribution,
+    })
 }
 
 /// Refuses a run whose rows the store already holds.
@@ -646,7 +696,10 @@ fn refuse_repeat(
     permutation: Option<Vec<usize>>,
 ) -> Result<(), String> {
     for item in items {
-        if held.row(&planned(run, item, permutation.clone())?).is_some() {
+        if held
+            .row(&planned(run, item, permutation.clone())?)
+            .is_some()
+        {
             return Err(format!(
                 "{} already records this perturbation for `{}` on item {}: same suite digest, \
                  question set, door identity, estimator, seed block, and option order. \
@@ -663,7 +716,8 @@ fn refuse_repeat(
 }
 
 fn append(store: &Store, row: &Row) -> Result<(), String> {
-    row.check().map_err(|error| format!("{}: {error}", row.item_id))?;
+    row.check()
+        .map_err(|error| format!("{}: {error}", row.item_id))?;
     match store.append(row) {
         Ok(_) => Ok(()),
         Err(StoreError::DuplicatePerturbation { index, detail }) => Err(format!(
@@ -686,8 +740,10 @@ fn report_pass(pass: &Pass, asked: usize) {
     );
     let refusals = eval::refusals(&pass.rows);
     if !refusals.is_empty() {
-        let detail: Vec<String> =
-            refusals.iter().map(|(code, count)| format!("`{code}` x{count}")).collect();
+        let detail: Vec<String> = refusals
+            .iter()
+            .map(|(code, count)| format!("`{code}` x{count}"))
+            .collect();
         println!("Door refusals: {}.\n", detail.join(", "));
     }
 }
@@ -766,8 +822,9 @@ fn fit_and_report(
     let calibration: Vec<Row> = partition_rows(rows, Partition::Calibration);
     let held: Vec<Row> = partition_rows(rows, Partition::Development);
     if held.is_empty() {
-        return Err("nothing to judge a map on: the development partition produced no rows"
-            .to_string());
+        return Err(
+            "nothing to judge a map on: the development partition produced no rows".to_string(),
+        );
     }
 
     println!(
@@ -777,9 +834,16 @@ fn fit_and_report(
     println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     let mut written: Vec<String> = Vec::new();
     for family in eval::families(rows) {
-        let fit_on: Vec<Row> =
-            calibration.iter().filter(|row| row.family == family).cloned().collect();
-        let score_on: Vec<Row> = held.iter().filter(|row| row.family == family).cloned().collect();
+        let fit_on: Vec<Row> = calibration
+            .iter()
+            .filter(|row| row.family == family)
+            .cloned()
+            .collect();
+        let score_on: Vec<Row> = held
+            .iter()
+            .filter(|row| row.family == family)
+            .cloned()
+            .collect();
         let fit = eval::fit_family(&family, &fit_on, &score_on, gate);
         println!(
             "| `{family}` | {} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3} | {} |",
@@ -803,7 +867,10 @@ fn fit_and_report(
 }
 
 fn partition_rows(rows: &[Row], partition: Partition) -> Vec<Row> {
-    rows.iter().filter(|row| row.split == partition.as_str()).cloned().collect()
+    rows.iter()
+        .filter(|row| row.split == partition.as_str())
+        .cloned()
+        .collect()
 }
 
 fn write_record(
@@ -883,13 +950,19 @@ impl View {
             return Err(format!("{path} holds no rows"));
         }
         let held = rows.len();
-        let mut view =
-            Self { path: path.to_string(), rows, held, narrowed: Vec::new() };
+        let mut view = Self {
+            path: path.to_string(),
+            rows,
+            held,
+            narrowed: Vec::new(),
+        };
         if !keep_permuted {
             view.rows.retain(|row| row.permutation.is_none());
             if view.rows.len() < held {
-                view.narrowed
-                    .push(format!("{} permuted trial(s) left out", held - view.rows.len()));
+                view.narrowed.push(format!(
+                    "{} permuted trial(s) left out",
+                    held - view.rows.len()
+                ));
             }
         }
         if let Some(wanted) = options.partition.as_deref() {
@@ -898,13 +971,16 @@ impl View {
                 ..Options::default()
             })?;
             let named: Vec<String> = wanted.iter().map(|p| p.as_str().to_string()).collect();
-            view.rows.retain(|row| named.iter().any(|split| split == &row.split));
-            view.narrowed.push(format!("the {} partition only", named.join(" and ")));
+            view.rows
+                .retain(|row| named.iter().any(|split| split == &row.split));
+            view.narrowed
+                .push(format!("the {} partition only", named.join(" and ")));
         }
         if let Some(listed) = options.items.as_deref() {
             let wanted = read_item_ids(listed)?;
             view.rows.retain(|row| wanted.contains(&row.item_id));
-            view.narrowed.push(format!("{} item ids from `{listed}`", wanted.len()));
+            view.narrowed
+                .push(format!("{} item ids from `{listed}`", wanted.len()));
         }
         if view.rows.is_empty() {
             return Err(format!("{path} holds no rows once the view is narrowed"));
@@ -972,8 +1048,11 @@ fn compare_command(options: &Options) -> Result<(), String> {
     let mut measured: BTreeMap<String, Metrics> = BTreeMap::new();
     let mut held: BTreeMap<String, Vec<Row>> = BTreeMap::new();
     for side in &sides {
-        let inside: Vec<Row> =
-            rows.iter().filter(|row| &Side::of(row) == side).cloned().collect();
+        let inside: Vec<Row> = rows
+            .iter()
+            .filter(|row| &Side::of(row) == side)
+            .cloned()
+            .collect();
         let metrics = gym::calibrate::score(&eval::observations(&inside));
         let refused = inside.iter().filter(|row| row.is_refused()).count();
         println!(
@@ -999,8 +1078,10 @@ fn compare_command(options: &Options) -> Result<(), String> {
 
     let refusals = eval::refusals(&rows);
     if !refusals.is_empty() {
-        let detail: Vec<String> =
-            refusals.iter().map(|(code, count)| format!("`{code}` x{count}")).collect();
+        let detail: Vec<String> = refusals
+            .iter()
+            .map(|(code, count)| format!("`{code}` x{count}"))
+            .collect();
         println!("Refusals across every door: {}.\n", detail.join(", "));
     }
 
@@ -1058,7 +1139,9 @@ fn compare_command(options: &Options) -> Result<(), String> {
     println!("| Candidate | Against | Comparing | Verdict | Deciding criterion |");
     println!("| --- | --- | --- | --- | --- |");
     for label in labels.iter().filter(|label| *label != &baseline) {
-        let Some(after) = measured.get(label) else { continue };
+        let Some(after) = measured.get(label) else {
+            continue;
+        };
         // The store decides what these two sides are before the gate judges
         // them. Two sides that did not score the same items are not a worse
         // result; they are a number about two different things, and the
@@ -1139,7 +1222,12 @@ fn identity_of(rows: &[Row]) -> String {
     let mut seen: Vec<String> = Vec::new();
     for row in rows {
         let identity = if row.door_identity.verified {
-            let base: String = row.door_identity.base_model_signature.chars().take(8).collect();
+            let base: String = row
+                .door_identity
+                .base_model_signature
+                .chars()
+                .take(8)
+                .collect();
             match row.door_identity.adapter.as_str() {
                 "" => format!("base `{base}`"),
                 adapter => format!("base `{base}`, adapter `{adapter}`"),
@@ -1184,7 +1272,11 @@ fn flips_command(options: &Options) -> Result<(), String> {
     println!("| Side | Items | Flips | Flip rate | Accuracy forward | Accuracy reversed |");
     println!("| --- | --- | --- | --- | --- | --- |");
     for side in view.sides() {
-        let mine: Vec<&Row> = view.rows.iter().filter(|row| Side::of(row) == side).collect();
+        let mine: Vec<&Row> = view
+            .rows
+            .iter()
+            .filter(|row| Side::of(row) == side)
+            .collect();
         // An item is a trial only when both passes are in the record and
         // both were answered. A pass that is missing is not a flip and not
         // an absence of one.
@@ -1203,7 +1295,9 @@ fn flips_command(options: &Options) -> Result<(), String> {
         let mut forward_rows: Vec<Row> = Vec::new();
         let mut reversed_rows: Vec<Row> = Vec::new();
         for (item, back) in &reversed {
-            let Some(front) = forward.get(item) else { continue };
+            let Some(front) = forward.get(item) else {
+                continue;
+            };
             let (Some(chosen), Some(other)) = (chosen_of(front), chosen_of(back)) else {
                 continue;
             };
@@ -1304,7 +1398,9 @@ async fn permute_command(options: Options) -> Result<(), String> {
         let mut flips = 0_usize;
         for (item, question) in &choices {
             let order = eval::reversed(option_count(question));
-            let Some(backward) = eval::permuted(question, &order) else { continue };
+            let Some(backward) = eval::permuted(question, &order) else {
+                continue;
+            };
 
             let recorded = held.row(&planned(&run, item, None)?).cloned();
             let forward_answer = match recorded.as_ref().and_then(recorded_answer) {
@@ -1334,8 +1430,12 @@ async fn permute_command(options: Options) -> Result<(), String> {
             }
 
             let (
-                Disposition::Answered { chosen: forward, .. },
-                Disposition::Answered { chosen: reversed, .. },
+                Disposition::Answered {
+                    chosen: forward, ..
+                },
+                Disposition::Answered {
+                    chosen: reversed, ..
+                },
             ) = (&forward_answer, &reversed_answer)
             else {
                 continue;
@@ -1410,11 +1510,18 @@ fn fit_command(options: &Options) -> Result<(), String> {
     }
 
     for name in doors {
-        let mine: Vec<Row> = scored.iter().filter(|row| row.door == name).cloned().collect();
+        let mine: Vec<Row> = scored
+            .iter()
+            .filter(|row| row.door == name)
+            .cloned()
+            .collect();
         // Only the suite's own option order is fitted on. A permuted trial is
         // a measurement of order sensitivity, not a second reading of the
         // item, and pooling the two doubles an item's weight in the table.
-        let mine: Vec<Row> = mine.into_iter().filter(|row| row.permutation.is_none()).collect();
+        let mine: Vec<Row> = mine
+            .into_iter()
+            .filter(|row| row.permutation.is_none())
+            .collect();
         let Some(first) = mine.first() else { continue };
         let facts = Facts::of(first);
         println!("## {name}\n");
@@ -1498,13 +1605,18 @@ fn merge_command(options: &Options) -> Result<(), String> {
         println!("| `{source}` | {} | {appended} | {duplicate} |", rows.len());
     }
     let after = store.verified_rows().map_err(|error| error.to_string())?;
-    println!("\n`{destination}` now holds {} rows, and the chain verifies.\n", after.len());
+    println!(
+        "\n`{destination}` now holds {} rows, and the chain verifies.\n",
+        after.len()
+    );
     Ok(())
 }
 
 /// Every row in a store, verified and typed.
 fn read_rows(path: &str) -> Result<Vec<Row>, String> {
-    let values = Store::at(path).verified_rows().map_err(|error| error.to_string())?;
+    let values = Store::at(path)
+        .verified_rows()
+        .map_err(|error| error.to_string())?;
     values
         .into_iter()
         .map(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
@@ -1549,7 +1661,11 @@ async fn latency_command(options: Options) -> Result<(), String> {
         },
         &suite.digest[..16]
     );
-    println!("Asked as `{}`, digest `{}`.\n", questions.id, &questions.digest()[..16]);
+    println!(
+        "Asked as `{}`, digest `{}`.\n",
+        questions.id,
+        &questions.digest()[..16]
+    );
 
     let mut measured: BTreeMap<String, Vec<Block>> = BTreeMap::new();
     for block in 0..blocks {
@@ -1582,7 +1698,11 @@ async fn latency_command(options: Options) -> Result<(), String> {
                 latencies.iter().sum::<f64>() / latencies.len() as f64
             };
             let profile = Profile::timed(&latencies).refusing(refusals);
-            measured.entry(name.clone()).or_default().push(Block { profile, mean_ms, lost });
+            measured.entry(name.clone()).or_default().push(Block {
+                profile,
+                mean_ms,
+                lost,
+            });
         }
     }
 
@@ -1603,14 +1723,19 @@ async fn latency_command(options: Options) -> Result<(), String> {
         }
         println!();
         let read = |pick: fn(&Profile) -> Option<f64>| -> Vec<f64> {
-            blocks.iter().filter_map(|block| pick(&block.profile)).collect()
+            blocks
+                .iter()
+                .filter_map(|block| pick(&block.profile))
+                .collect()
         };
         let p50 = read(|profile| profile.latency_p50_ms);
         let p95 = read(|profile| profile.latency_p95_ms);
         println!("| Statistic | Mean over blocks | Standard deviation | Relative | Range |");
         println!("| --- | --- | --- | --- | --- |");
         for (label, values) in [("p50", &p50), ("p95", &p95)] {
-            let Some(line) = spread_line(label, values) else { continue };
+            let Some(line) = spread_line(label, values) else {
+                continue;
+            };
             println!("{line}");
         }
         println!();
@@ -1628,11 +1753,19 @@ fn spread_line(label: &str, values: &[f64]) -> Option<String> {
     // The sample standard deviation, with the Bessel correction, because
     // eight blocks are a sample of the machine's moods rather than all of
     // them.
-    let variance = values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (count - 1.0);
+    let variance = values
+        .iter()
+        .map(|value| (value - mean).powi(2))
+        .sum::<f64>()
+        / (count - 1.0);
     let sigma = variance.sqrt();
     let low = values.iter().copied().fold(f64::INFINITY, f64::min);
     let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let relative = if mean > 0.0 { sigma / mean * 100.0 } else { f64::NAN };
+    let relative = if mean > 0.0 {
+        sigma / mean * 100.0
+    } else {
+        f64::NAN
+    };
     Some(format!(
         "| {label} | {mean:.1} ms | {sigma:.1} ms | {relative:.1}% | {low:.1} to {high:.1} ms |"
     ))
@@ -1700,8 +1833,10 @@ fn regress_command(options: &Options) -> Result<(), String> {
         println!("{}", regress::render(finding));
     }
 
-    let verdicts: Vec<gym::gate::Verdict> =
-        findings.iter().filter_map(regress::Finding::verdict).collect();
+    let verdicts: Vec<gym::gate::Verdict> = findings
+        .iter()
+        .filter_map(regress::Finding::verdict)
+        .collect();
     // The provenance belongs under numbers. A run that compared nothing has
     // none, and printing a page of floors under it would read as though
     // something had been judged.
@@ -1725,9 +1860,6 @@ fn regress_command(options: &Options) -> Result<(), String> {
     }
     Ok(())
 }
-
-
-
 
 /// Reports how far each metric moves when only the seed block moves.
 ///
@@ -1759,9 +1891,13 @@ fn spread_command(options: &Options) -> Result<(), String> {
             if draws.blocks(door, split).is_empty() {
                 continue;
             }
-            draws.complete(door, split).map_err(|error| error.to_string())?;
+            draws
+                .complete(door, split)
+                .map_err(|error| error.to_string())?;
         }
-        draws.is_a_spread(door, "evaluation").map_err(|error| error.to_string())?;
+        draws
+            .is_a_spread(door, "evaluation")
+            .map_err(|error| error.to_string())?;
     }
 
     println!("# The spread the calibration metrics carry across seed blocks\n");
@@ -2003,7 +2139,11 @@ fn strata_of(
             strata.push(inside);
         }
     }
-    if strata.is_empty() { vec![by_item] } else { strata }
+    if strata.is_empty() {
+        vec![by_item]
+    } else {
+        strata
+    }
 }
 
 /// The mean of one metric over blocks.
@@ -2161,7 +2301,11 @@ fn report_one_fixed_map(
         if bands.is_empty() {
             "none; every band fell back to the pooled table".to_string()
         } else {
-            bands.iter().map(|band| format!("`{band}`")).collect::<Vec<_>>().join(", ")
+            bands
+                .iter()
+                .map(|band| format!("`{band}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
         }
     );
     println!("| Seed block | Map | ECE | Brier | Log loss | Confident errors |");
@@ -2177,9 +2321,7 @@ fn report_one_fixed_map(
             .collect();
         let conditioned: Vec<Observation> = held
             .iter()
-            .map(|o| {
-                Observation::new(banded_map.apply_banded(o.raw, o.band.as_deref()), o.correct)
-            })
+            .map(|o| Observation::new(banded_map.apply_banded(o.raw, o.band.as_deref()), o.correct))
             .collect();
         for (label, set) in [
             ("raw", &held),
@@ -2209,9 +2351,16 @@ fn report_one_fixed_map(
 fn report_map_spread(raw: &[Metrics], pooled: &[Metrics], banded: &[Metrics]) {
     println!("| Metric | Map | Mean | Standard deviation | Paired gain over raw | Gain sd |");
     println!("| --- | --- | --- | --- | --- | --- |");
-    for metric in [Metric::Ece, Metric::Brier, Metric::Nll, Metric::ConfidentErrors] {
+    for metric in [
+        Metric::Ece,
+        Metric::Brier,
+        Metric::Nll,
+        Metric::ConfidentErrors,
+    ] {
         let read = |set: &[Metrics]| -> Vec<f64> {
-            set.iter().filter_map(|m| metric.read(&m.scores())).collect()
+            set.iter()
+                .filter_map(|m| metric.read(&m.scores()))
+                .collect()
         };
         let base = read(raw);
         if let Some(spread) = Spread::over(&base) {
@@ -2251,7 +2400,11 @@ mod tests {
     #[test]
     fn item_ids_skip_comments_and_blank_lines() {
         let path = std::env::temp_dir().join("gym-item-ids.txt");
-        std::fs::write(&path, "# where these came from\n\nrouting/001\n  urgency/002  \n").unwrap();
+        std::fs::write(
+            &path,
+            "# where these came from\n\nrouting/001\n  urgency/002  \n",
+        )
+        .unwrap();
         let ids = read_item_ids(path.to_str().unwrap()).unwrap();
         assert_eq!(ids.len(), 2);
         assert!(ids.contains("routing/001"));
@@ -2275,9 +2428,12 @@ mod tests {
             answered: true,
             correct: Some(true),
             distribution: Some(
-                [("billing".to_string(), 0.25), ("technical".to_string(), 0.75)]
-                    .into_iter()
-                    .collect(),
+                [
+                    ("billing".to_string(), 0.25),
+                    ("technical".to_string(), 0.75),
+                ]
+                .into_iter()
+                .collect(),
             ),
             ..Row::default()
         };

@@ -49,14 +49,16 @@ pub mod manifest;
 pub mod policy;
 pub mod render;
 pub mod schema;
-pub mod suite;
 #[cfg(feature = "serve")]
 pub mod serve;
+pub mod suite;
 
-pub use api::{Answer, Extensions, NoulCriteria, Question, SystemOneRequest, SystemOneResponse, Usage};
+pub use api::{
+    Answer, Extensions, NoulCriteria, Question, SystemOneRequest, SystemOneResponse, Usage,
+};
 pub use bridge::{Availability, Bridge, Call, Outcome, Sampling};
-pub use estimator::{Estimator, Raw, confidence};
 pub use error::{Refusal, RefusalCode, Result};
+pub use estimator::{Estimator, Raw, confidence};
 pub use manifest::{EvalRef, Manifest};
 pub use policy::{Clock, Policy, Revocation, Snapshot, Standing};
 pub use render::render;

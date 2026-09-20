@@ -53,7 +53,11 @@ fn golden_probabilities_reproduce() {
             );
         }
         eprintln!("{}: max probs delta {worst:.3e} ({worst_name})", variant.id);
-        assert!(worst < 1e-3, "{}: probs drifted {worst:.3e} on {worst_name}", variant.id);
+        assert!(
+            worst < 1e-3,
+            "{}: probs drifted {worst:.3e} on {worst_name}",
+            variant.id
+        );
     }
 }
 
@@ -96,7 +100,11 @@ fn packed_matches_separate() {
             "{}: packed-vs-separate delta {delta:.3e} (reference {reference_delta:.3e})",
             variant.id
         );
-        assert!(delta < 1e-3, "{}: packed vs separate drifted {delta:.3e}", variant.id);
+        assert!(
+            delta < 1e-3,
+            "{}: packed vs separate drifted {delta:.3e}",
+            variant.id
+        );
         assert!(
             max_delta(&got_separate, &separate) < 1e-3,
             "{}: separate probs drifted from the reference",
@@ -236,7 +244,9 @@ fn option_isolation_flag_matches_reference() {
             continue;
         };
         let manifest = fixture(&variant, "manifest.json");
-        let want = manifest["head_meta"]["option_isolation"].as_bool().unwrap_or(false);
+        let want = manifest["head_meta"]["option_isolation"]
+            .as_bool()
+            .unwrap_or(false);
         assert_eq!(
             model.option_isolation, want,
             "{}: option_isolation",

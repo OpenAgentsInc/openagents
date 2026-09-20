@@ -41,7 +41,11 @@ fn spread(values: &[f64]) -> (f64, f64, f64, f64) {
     let variance = if values.len() < 2 {
         0.0
     } else {
-        values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (n - 1.0)
+        values
+            .iter()
+            .map(|value| (value - mean).powi(2))
+            .sum::<f64>()
+            / (n - 1.0)
     };
     let low = values.iter().copied().fold(f64::INFINITY, f64::min);
     let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -58,12 +62,18 @@ fn draw(
     let request = SystemOneRequest {
         state: item.state.clone(),
         model: None,
-        questions: [("q".to_string(), item.question.clone())].into_iter().collect(),
+        questions: [("q".to_string(), item.question.clone())]
+            .into_iter()
+            .collect(),
         extensions: Extensions::default(),
     };
     let compiled = compile(&request).ok()?;
     let raw = l2_pool_with(pool, &compiled["q"], samples, seed_base, adapter).ok()?;
-    Some(Draw { top: raw.top(), correct: raw.choice == item.truth, choice: raw.choice })
+    Some(Draw {
+        top: raw.top(),
+        correct: raw.choice == item.truth,
+        choice: raw.choice,
+    })
 }
 
 fn main() {
@@ -94,7 +104,12 @@ fn main() {
     // rather than the first items of one.
     let evaluation: Vec<&Item> = suite.split("evaluation").collect();
     let stride = (evaluation.len() / items.max(1)).max(1);
-    let chosen: Vec<&Item> = evaluation.iter().copied().step_by(stride).take(items).collect();
+    let chosen: Vec<&Item> = evaluation
+        .iter()
+        .copied()
+        .step_by(stride)
+        .take(items)
+        .collect();
     let headline_item = match &headline {
         Some(id) => chosen
             .iter()
@@ -124,8 +139,14 @@ fn main() {
     println!("| Availability | `{}` |", availability.status);
     println!("| Suite | `{}`, {} items |", suite.name, suite.items.len());
     println!("| Samples per estimate | {samples} |");
-    println!("| Seed blocks | {bases}, drawing seeds 0 to {} |", bases * samples - 1);
-    println!("| Items swept | {} from the evaluation split |", chosen.len());
+    println!(
+        "| Seed blocks | {bases}, drawing seeds 0 to {} |",
+        bases * samples - 1
+    );
+    println!(
+        "| Items swept | {} from the evaluation split |",
+        chosen.len()
+    );
     println!("| Pool width | {} |", pool.width());
     println!("| Adapter | {} |\n", adapter.as_deref().unwrap_or("none"));
 
@@ -147,7 +168,10 @@ fn main() {
                 );
                 headline_tops.push(drawn.top);
             }
-            None => println!("| {base} | {first}–{} | `<refused>` | |", first + samples - 1),
+            None => println!(
+                "| {base} | {first}–{} | `<refused>` | |",
+                first + samples - 1
+            ),
         }
     }
     let (mean, sd, low, high) = spread(&headline_tops);
@@ -224,7 +248,11 @@ fn main() {
             "| `{}` | {} | {} | {:.3} |",
             item.id,
             tops.len(),
-            answers.iter().map(|a| format!("`{a}`")).collect::<Vec<_>>().join(", "),
+            answers
+                .iter()
+                .map(|a| format!("`{a}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
             high - low
         );
     }

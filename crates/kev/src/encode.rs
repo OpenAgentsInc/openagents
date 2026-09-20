@@ -136,8 +136,8 @@ pub fn encode(
             spans.push(span);
         }
         let mut branch_opt = vec![OPT_NONE; instr_len];
-        let mut branch_pos: Vec<i64> = (state_len as i64..state_len as i64 + instr_len as i64)
-            .collect();
+        let mut branch_pos: Vec<i64> =
+            (state_len as i64..state_len as i64 + instr_len as i64).collect();
         let mut ends = Vec::with_capacity(spans.len());
         let mut cursor = instr_len;
         let longest = spans.iter().map(Vec::len).max().unwrap_or(0);
@@ -149,10 +149,8 @@ pub fn encode(
                     (0..span.len() as i64).map(|i| state_len as i64 + instr_len as i64 + i),
                 );
             } else {
-                branch_pos.extend(
-                    (0..span.len() as i64)
-                        .map(|i| state_len as i64 + cursor as i64 + i),
-                );
+                branch_pos
+                    .extend((0..span.len() as i64).map(|i| state_len as i64 + cursor as i64 + i));
             }
             cursor += span.len();
             ends.push(cursor - 1);
@@ -207,13 +205,14 @@ pub fn branch_mask(segs: &[Vec<i64>], opts: Option<&[Vec<i64>]>) -> Vec<Vec<Vec<
     let batch = segs.len();
     let mut allow = vec![vec![vec![false; len]; len]; batch];
     for (b, seg) in segs.iter().enumerate() {
-        let opt_row: Vec<i64> = opts.map_or_else(
-            || vec![OPT_NONE; seg.len()],
-            |o| o[b].clone(),
-        );
+        let opt_row: Vec<i64> = opts.map_or_else(|| vec![OPT_NONE; seg.len()], |o| o[b].clone());
         for i in 0..len {
             let seg_i = if i < seg.len() { seg[i] } else { -1 };
-            let opt_i = if i < opt_row.len() { opt_row[i] } else { OPT_NONE };
+            let opt_i = if i < opt_row.len() {
+                opt_row[i]
+            } else {
+                OPT_NONE
+            };
             for j in 0..=i.min(len - 1) {
                 if j >= seg.len() {
                     break;

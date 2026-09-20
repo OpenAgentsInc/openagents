@@ -86,7 +86,10 @@ pub enum Error {
     /// profile cannot express. Writable paths stay disjoint from every
     /// protected and sealed path; the only permitted nesting is the
     /// checkout beneath a protected one, and never beneath a sealed one.
-    Overlap { writable: PathBuf, protected: PathBuf },
+    Overlap {
+        writable: PathBuf,
+        protected: PathBuf,
+    },
     /// The profile file or the owned scratch directory could not be made.
     Io(std::io::Error),
 }
@@ -111,7 +114,10 @@ impl fmt::Display for Error {
                 "{} cannot be written into a sandbox profile",
                 path.display()
             ),
-            Error::Overlap { writable, protected } => write!(
+            Error::Overlap {
+                writable,
+                protected,
+            } => write!(
                 f,
                 "writable path {} overlaps protected path {}",
                 writable.display(),
@@ -565,10 +571,7 @@ mod tests {
     fn a_missing_protected_path_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("absent");
-        assert!(matches!(
-            existing(&missing),
-            Err(Error::Resolve { .. })
-        ));
+        assert!(matches!(existing(&missing), Err(Error::Resolve { .. })));
     }
 
     /// The backend path is fixed, and this module's own tests reach the

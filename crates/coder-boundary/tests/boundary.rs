@@ -203,7 +203,10 @@ fn a_sealed_path_may_not_nest_under_the_checkout() {
     let checkout = dir.path().join("checkout");
     let inside = checkout.join("sealed");
     std::fs::create_dir_all(&inside).unwrap();
-    let error = Boundary::writing(&checkout).sealed(&inside).build().unwrap_err();
+    let error = Boundary::writing(&checkout)
+        .sealed(&inside)
+        .build()
+        .unwrap_err();
     assert!(
         matches!(error, Error::Overlap { .. }),
         "expected Overlap, got {error:?}"
@@ -256,12 +259,7 @@ mod enforced {
     /// Runs `/bin/sh -c <script> sh <args>` under the boundary,
     /// supervised and bounded at thirty seconds, and returns how the job
     /// ended plus whatever the child wrote to stderr.
-    fn run(
-        boundary: &Boundary,
-        script: &str,
-        args: &[PathBuf],
-        dir: &Path,
-    ) -> (Ending, String) {
+    fn run(boundary: &Boundary, script: &str, args: &[PathBuf], dir: &Path) -> (Ending, String) {
         let mut argv: Vec<OsString> = vec!["-c".into(), script.into(), "sh".into()];
         argv.extend(args.iter().map(|arg| arg.as_os_str().to_os_string()));
         let mut command = boundary.command("/bin/sh", &argv).unwrap();
@@ -325,10 +323,7 @@ mod enforced {
             return;
         }
         let dir = TempDir::new().unwrap();
-        let boundary = Boundary::readonly()
-            .protecting(dir.path())
-            .build()
-            .unwrap();
+        let boundary = Boundary::readonly().protecting(dir.path()).build().unwrap();
         let marker = dir.path().join("from-child");
         let (ending, _) = run(
             &boundary,
@@ -365,16 +360,9 @@ mod enforced {
             .owned_scratch_under(host.path())
             .build()
             .unwrap();
-        let scratch = boundary
-            .scratch()
-            .unwrap()
-            .canonicalize()
-            .unwrap();
+        let scratch = boundary.scratch().unwrap().canonicalize().unwrap();
 
-        let in_checkout = checkout
-            .canonicalize()
-            .unwrap()
-            .join("written.rs");
+        let in_checkout = checkout.canonicalize().unwrap().join("written.rs");
         let in_main = main.join("written.rs");
         let in_common = common.join("written");
         let in_host = host.path().join("marker");
@@ -399,11 +387,7 @@ mod enforced {
         assert_eq!(ending, Ending::Exited(Some(0)), "stderr: {stderr}");
         assert!(checkout.join("written.rs").exists());
         for denied in [&in_main, &in_common, &in_host] {
-            assert!(
-                !denied.exists(),
-                "a write landed in {}",
-                denied.display()
-            );
+            assert!(!denied.exists(), "a write landed in {}", denied.display());
         }
         assert!(in_scratch.exists());
     }

@@ -16,10 +16,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lev::api::{Extensions, SystemOneRequest};
-use lev::bridge::{Bridge, Call, Pool, Sampling};
 use gym::calibrate::{Map, Observation, score};
 use gym::gate;
+use lev::api::{Extensions, SystemOneRequest};
+use lev::bridge::{Bridge, Call, Pool, Sampling};
 use lev::schema::{BANDS, compile};
 use lev::suite::Suite;
 
@@ -84,17 +84,25 @@ fn main() {
         let request = SystemOneRequest {
             state: item.state.clone(),
             model: None,
-            questions: [("q".to_string(), item.question.clone())].into_iter().collect(),
+            questions: [("q".to_string(), item.question.clone())]
+                .into_iter()
+                .collect(),
             extensions: Extensions::default(),
         };
-        let Ok(compiled) = compile(&request) else { continue };
+        let Ok(compiled) = compile(&request) else {
+            continue;
+        };
         let call = Call::decide(&compiled["q"], Sampling::Greedy).with_band(bands.clone());
         let call = match adapter.as_deref() {
             Some(path) => call.with_adapter(path),
             None => call,
         };
-        let Ok(outcome) = bridge.decide(&call) else { continue };
-        let Some(choice) = outcome.choice else { continue };
+        let Ok(outcome) = bridge.decide(&call) else {
+            continue;
+        };
+        let Some(choice) = outcome.choice else {
+            continue;
+        };
         let band = outcome.band.unwrap_or_else(|| "<none>".to_string());
         let right = choice == item.truth;
         answered += 1;
@@ -109,7 +117,10 @@ fn main() {
     }
 
     println!("## {label} ({split} split)\n");
-    println!("Answered {answered}, correct {correct}, accuracy {:.2}.\n", correct as f64 / answered.max(1) as f64);
+    println!(
+        "Answered {answered}, correct {correct}, accuracy {:.2}.\n",
+        correct as f64 / answered.max(1) as f64
+    );
     println!(
         "{held_back} item(s) of this split are locked by `support-v2-three-way` and were not \
          read.\n"
@@ -119,12 +130,18 @@ fn main() {
     // Report in the band's own order, not alphabetically.
     for band in BANDS {
         if let Some((right, total)) = tally.get(band) {
-            println!("| `{band}` | {total} | {right} | {:.2} |", *right as f64 / (*total).max(1) as f64);
+            println!(
+                "| `{band}` | {total} | {right} | {:.2} |",
+                *right as f64 / (*total).max(1) as f64
+            );
         }
     }
     for (band, (right, total)) in &tally {
         if !BANDS.contains(&band.as_str()) {
-            println!("| `{band}` | {total} | {right} | {:.2} |", *right as f64 / (*total).max(1) as f64);
+            println!(
+                "| `{band}` | {total} | {right} | {:.2} |",
+                *right as f64 / (*total).max(1) as f64
+            );
         }
     }
 
@@ -160,10 +177,14 @@ fn main() {
         let request = SystemOneRequest {
             state: item.state.clone(),
             model: None,
-            questions: [("q".to_string(), item.question.clone())].into_iter().collect(),
+            questions: [("q".to_string(), item.question.clone())]
+                .into_iter()
+                .collect(),
             extensions: Extensions::default(),
         };
-        let Ok(compiled) = compile(&request) else { continue };
+        let Ok(compiled) = compile(&request) else {
+            continue;
+        };
         let Ok(raw) = l2_pool_adapted(&pool, &compiled["q"], 8, 0, adapter.as_deref()) else {
             continue;
         };
@@ -182,10 +203,16 @@ fn main() {
         rows.push((item.split.clone(), observation));
     }
 
-    let fit_on: Vec<Observation> =
-        rows.iter().filter(|(s, _)| s == "calibration").map(|(_, o)| o.clone()).collect();
-    let held: Vec<(String, Observation)> =
-        rows.iter().filter(|(s, _)| s == "evaluation").cloned().collect();
+    let fit_on: Vec<Observation> = rows
+        .iter()
+        .filter(|(s, _)| s == "calibration")
+        .map(|(_, o)| o.clone())
+        .collect();
+    let held: Vec<(String, Observation)> = rows
+        .iter()
+        .filter(|(s, _)| s == "evaluation")
+        .cloned()
+        .collect();
 
     let pooled_map = Map::fit_auto(&fit_on);
     let banded_map = Map::fit_banded(&fit_on);
@@ -204,7 +231,11 @@ fn main() {
 
     println!("| Map | ECE | Brier | NLL | Confident errors | Items |");
     println!("| --- | --- | --- | --- | --- | --- |");
-    for (name, set) in [("raw", &raw_scores), ("pooled", &pooled), ("band-conditioned", &conditioned)] {
+    for (name, set) in [
+        ("raw", &raw_scores),
+        ("pooled", &pooled),
+        ("band-conditioned", &conditioned),
+    ] {
         let m = score(set);
         println!(
             "| {name} | {:.3} | {:.3} | {:.3} | {} | {} |",

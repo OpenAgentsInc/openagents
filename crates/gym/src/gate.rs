@@ -393,14 +393,10 @@ impl Bound {
                     self.basis
                 ),
             }),
-            (Some(value), false) if !value.is_finite() || value < 0.0 => {
-                Err(GateError::Invalid {
-                    id: gate.to_string(),
-                    problem: format!(
-                        "{name} must be a finite number at or above zero, got {value}"
-                    ),
-                })
-            }
+            (Some(value), false) if !value.is_finite() || value < 0.0 => Err(GateError::Invalid {
+                id: gate.to_string(),
+                problem: format!("{name} must be a finite number at or above zero, got {value}"),
+            }),
             _ if self.why.trim().is_empty() => Err(GateError::Invalid {
                 id: gate.to_string(),
                 problem: format!("{name} has no provenance; say where the number came from"),
@@ -495,7 +491,11 @@ impl Pending {
                  into quantity, issue, and why"
                     .to_string(),
             )
-        } else if self.issue.as_deref().is_some_and(|issue| issue.trim().is_empty()) {
+        } else if self
+            .issue
+            .as_deref()
+            .is_some_and(|issue| issue.trim().is_empty())
+        {
             Some(
                 "pending_measurement carries an empty issue; name the issue that takes the \
                  measurement or drop the field"
@@ -505,7 +505,10 @@ impl Pending {
             None
         };
         match problem {
-            Some(problem) => Err(GateError::Invalid { id: gate.to_string(), problem }),
+            Some(problem) => Err(GateError::Invalid {
+                id: gate.to_string(),
+                problem,
+            }),
             None => Ok(()),
         }
     }
@@ -542,9 +545,7 @@ where
             issue: None,
             why: String::new(),
         }),
-        Some(other) => {
-            Some(serde_json::from_value(other).map_err(serde::de::Error::custom)?)
-        }
+        Some(other) => Some(serde_json::from_value(other).map_err(serde::de::Error::custom)?),
     })
 }
 
@@ -654,8 +655,11 @@ impl Profile {
     /// interpolates, so every number it reports is a call that happened.
     #[must_use]
     pub fn timed(latencies: &[f64]) -> Self {
-        let mut sorted: Vec<f64> =
-            latencies.iter().copied().filter(|ms| ms.is_finite()).collect();
+        let mut sorted: Vec<f64> = latencies
+            .iter()
+            .copied()
+            .filter(|ms| ms.is_finite())
+            .collect();
         sorted.sort_by(f64::total_cmp);
         Self {
             calls: sorted.len(),
@@ -783,7 +787,12 @@ impl Deployment {
     /// Two profiles over the same workload, with no budget stated yet.
     #[must_use]
     pub fn new(group: impl Into<String>, baseline: Profile, candidate: Profile) -> Self {
-        Self { group: group.into(), baseline, candidate, budget: None }
+        Self {
+            group: group.into(),
+            baseline,
+            candidate,
+            budget: None,
+        }
     }
 
     /// States what the workload can afford.
@@ -898,10 +907,7 @@ impl Rule {
                 gated_percentile: rule.gated_percentile,
                 latency_block_sigma_relative: rule.latency_block_sigma_relative.identity(),
                 regression_sigmas: rule.regression_sigmas.identity(),
-                pending_measurement: rule
-                    .pending_measurement
-                    .as_ref()
-                    .map(Pending::identity),
+                pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
             }),
         }
     }
@@ -959,7 +965,10 @@ impl Alias {
             });
         }
         if self.recorded_in.is_empty()
-            || self.recorded_in.iter().any(|record| record.trim().is_empty())
+            || self
+                .recorded_in
+                .iter()
+                .any(|record| record.trim().is_empty())
         {
             return Err(GateError::Invalid {
                 id: gate.to_string(),
@@ -1045,7 +1054,10 @@ impl Gate {
             source,
         })?;
         let gate = Self::from_json(&source, path)?;
-        let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default();
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default();
         if stem != gate.id {
             return Err(GateError::Invalid {
                 id: gate.id.clone(),
@@ -1111,18 +1123,22 @@ impl Gate {
         match &self.rule {
             Rule::Decision(rule) => {
                 rule.min_items.validate(&self.id, "min_items")?;
-                rule.gain_standard_errors.validate(&self.id, "gain_standard_errors")?;
+                rule.gain_standard_errors
+                    .validate(&self.id, "gain_standard_errors")?;
             }
             Rule::Probability(rule) => {
                 rule.min_items.validate(&self.id, "min_items")?;
-                rule.min_ece_reduction.validate(&self.id, "min_ece_reduction")?;
-                rule.max_brier_increase.validate(&self.id, "max_brier_increase")?;
+                rule.min_ece_reduction
+                    .validate(&self.id, "min_ece_reduction")?;
+                rule.max_brier_increase
+                    .validate(&self.id, "max_brier_increase")?;
             }
             Rule::Deployment(rule) => {
                 rule.min_calls.validate(&self.id, "min_calls")?;
                 rule.latency_block_sigma_relative
                     .validate(&self.id, "latency_block_sigma_relative")?;
-                rule.regression_sigmas.validate(&self.id, "regression_sigmas")?;
+                rule.regression_sigmas
+                    .validate(&self.id, "regression_sigmas")?;
             }
         }
         if let Some(pending) = self.rule.pending_measurement() {
@@ -1259,7 +1275,12 @@ impl Gate {
     /// precedence.
     #[must_use]
     pub fn judge_all_deployments(&self, deployments: &[Deployment]) -> Report {
-        self.report(deployments.iter().map(|one| self.judge_deployment(one)).collect())
+        self.report(
+            deployments
+                .iter()
+                .map(|one| self.judge_deployment(one))
+                .collect(),
+        )
     }
 
     fn report(&self, groups: Vec<Outcome>) -> Report {
@@ -1295,7 +1316,10 @@ pub fn load(id: &str) -> Result<Gate, GateError> {
     let dir = gates_dir();
     let path = dir.join(format!("{id}.json"));
     if !path.exists() {
-        return Err(GateError::NotFound { id: id.to_string(), dir });
+        return Err(GateError::NotFound {
+            id: id.to_string(),
+            dir,
+        });
     }
     Gate::load(&path)
 }
@@ -1349,7 +1373,12 @@ impl Comparison {
     /// A comparison of two doors, where nothing was fitted.
     #[must_use]
     pub fn new(group: impl Into<String>, baseline: Scores, candidate: Scores) -> Self {
-        Self { group: group.into(), baseline, candidate, fitted_on: None }
+        Self {
+            group: group.into(),
+            baseline,
+            candidate,
+            fitted_on: None,
+        }
     }
 
     /// Records how many items the candidate map was fitted on.
@@ -1437,7 +1466,9 @@ pub struct Outcome {
 impl Outcome {
     /// The criteria that kept the gate from passing.
     pub fn breaches(&self) -> impl Iterator<Item = &Criterion> {
-        self.criteria.iter().filter(|criterion| criterion.verdict != Verdict::Passed)
+        self.criteria
+            .iter()
+            .filter(|criterion| criterion.verdict != Verdict::Passed)
     }
 
     /// The highest-ranked criterion that carries the group's verdict.
@@ -1466,7 +1497,9 @@ pub struct Report {
 impl Report {
     /// The groups that kept the gate from passing.
     pub fn breaches(&self) -> impl Iterator<Item = &Outcome> {
-        self.groups.iter().filter(|group| group.verdict != Verdict::Passed)
+        self.groups
+            .iter()
+            .filter(|group| group.verdict != Verdict::Passed)
     }
 }
 
@@ -1644,30 +1677,49 @@ fn items_floor(name: &str, rank: u8, bound: &Bound, items: usize) -> (Criterion,
 }
 
 fn judge_decision(rule: &DecisionRule, comparison: &Comparison) -> Vec<Criterion> {
-    let (floor, blocked) =
-        items_floor("scored_items", 1, &rule.min_items, comparison.candidate.items);
+    let (floor, blocked) = items_floor(
+        "scored_items",
+        1,
+        &rule.min_items,
+        comparison.candidate.items,
+    );
     let mut criteria = vec![floor];
     let baseline = comparison.baseline;
     let candidate = comparison.candidate;
 
     if let Some(reason) = blocked {
         criteria.push(not_judged("accuracy_does_not_fall".into(), 1, &reason));
-        criteria.push(not_judged("accuracy_gain_clears_the_noise".into(), 2, &reason));
+        criteria.push(not_judged(
+            "accuracy_gain_clears_the_noise".into(),
+            2,
+            &reason,
+        ));
         return criteria;
     }
 
     let (Some(before), Some(after)) = (baseline.accuracy, candidate.accuracy) else {
         let reason = "accuracy was not measured on both sides";
         criteria.push(not_judged("accuracy_does_not_fall".into(), 1, reason));
-        criteria.push(not_judged("accuracy_gain_clears_the_noise".into(), 2, reason));
+        criteria.push(not_judged(
+            "accuracy_gain_clears_the_noise".into(),
+            2,
+            reason,
+        ));
         return criteria;
     };
 
     criteria.push(Criterion {
         name: "accuracy_does_not_fall".into(),
         rank: 1,
-        verdict: if after < before { Verdict::Failed } else { Verdict::Passed },
-        detail: format!("accuracy {before:.3} to {after:.3} over {} items", candidate.items),
+        verdict: if after < before {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
+        detail: format!(
+            "accuracy {before:.3} to {after:.3} over {} items",
+            candidate.items
+        ),
     });
 
     criteria.push(gain_criterion(rule, &baseline, &candidate, before, after));
@@ -1715,7 +1767,11 @@ fn gain_criterion(
     Criterion {
         name,
         rank: 2,
-        verdict: if gain >= bound { Verdict::Passed } else { Verdict::Unverifiable },
+        verdict: if gain >= bound {
+            Verdict::Passed
+        } else {
+            Verdict::Unverifiable
+        },
         detail,
     }
 }
@@ -1728,12 +1784,7 @@ fn gain_criterion(
 ///
 /// `None` when the normal approximation behind it does not hold, which needs
 /// at least five expected outcomes on each side of each door.
-fn standard_error(
-    baseline: &Scores,
-    before: f64,
-    candidate: &Scores,
-    after: f64,
-) -> Option<f64> {
+fn standard_error(baseline: &Scores, before: f64, candidate: &Scores, after: f64) -> Option<f64> {
     let variance = |items: usize, rate: f64| -> Option<f64> {
         if !(0.0..=1.0).contains(&rate) || items == 0 {
             return None;
@@ -1758,8 +1809,12 @@ fn judge_probability(rule: &ProbabilityRule, comparison: &Comparison) -> Vec<Cri
         criteria.push(criterion);
         blocked = blocked.or(reason);
     }
-    let (criterion, reason) =
-        items_floor("scored_items", 1, &rule.min_items, comparison.candidate.items);
+    let (criterion, reason) = items_floor(
+        "scored_items",
+        1,
+        &rule.min_items,
+        comparison.candidate.items,
+    );
     criteria.push(criterion);
     let blocked = blocked.or(reason);
 
@@ -1790,8 +1845,18 @@ fn judge_probability(rule: &ProbabilityRule, comparison: &Comparison) -> Vec<Cri
         candidate.ece,
         "ECE",
     ));
-    criteria.push(ece_reduction(rule, blocked.as_deref(), &baseline, &candidate));
-    criteria.push(brier_tolerance(rule, blocked.as_deref(), &baseline, &candidate));
+    criteria.push(ece_reduction(
+        rule,
+        blocked.as_deref(),
+        &baseline,
+        &candidate,
+    ));
+    criteria.push(brier_tolerance(
+        rule,
+        blocked.as_deref(),
+        &baseline,
+        &candidate,
+    ));
     criteria.push(direction(
         "accuracy_does_not_fall",
         3,
@@ -1826,7 +1891,11 @@ fn direction(
     Criterion {
         name: name.to_string(),
         rank,
-        verdict: if after > before { Verdict::Failed } else { Verdict::Passed },
+        verdict: if after > before {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
         detail: format!("{measure} {before:.3} to {after:.3}"),
     }
 }
@@ -1854,7 +1923,11 @@ fn count_direction(
     Criterion {
         name: name.to_string(),
         rank,
-        verdict: if after > before { Verdict::Failed } else { Verdict::Passed },
+        verdict: if after > before {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
         detail: format!("confident errors {before} to {after} over {items} items"),
     }
 }
@@ -1893,16 +1966,18 @@ fn ece_reduction(
             name,
             rank: 2,
             verdict: Verdict::Unverifiable,
-            detail: format!(
-                "the baseline ECE is {before:.3}, so there is no reduction to measure"
-            ),
+            detail: format!("the baseline ECE is {before:.3}, so there is no reduction to measure"),
         };
     }
     let reduction = (before - after) / before;
     Criterion {
         name,
         rank: 2,
-        verdict: if reduction >= margin { Verdict::Passed } else { Verdict::Unverifiable },
+        verdict: if reduction >= margin {
+            Verdict::Passed
+        } else {
+            Verdict::Unverifiable
+        },
         detail: format!(
             "ECE {before:.3} to {after:.3}, a reduction of {:.0}% against the {:.0}% a candidate \
              has to earn",
@@ -1927,7 +2002,10 @@ fn brier_tolerance(
             name,
             rank: 2,
             verdict: Verdict::Unverifiable,
-            detail: format!("no tolerance has been measured ({})", rule.max_brier_increase.why),
+            detail: format!(
+                "no tolerance has been measured ({})",
+                rule.max_brier_increase.why
+            ),
         };
     };
     let (Some(before), Some(after)) = (baseline.brier, candidate.brier) else {
@@ -1942,7 +2020,11 @@ fn brier_tolerance(
     Criterion {
         name,
         rank: 2,
-        verdict: if after > ceiling { Verdict::Failed } else { Verdict::Passed },
+        verdict: if after > ceiling {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
         detail: format!(
             "Brier {before:.3} to {after:.3} against a ceiling of {ceiling:.3}, the {:.0}% the \
              binning is allowed to cost",
@@ -1965,8 +2047,12 @@ fn wrong_measurement(gate: &str, judges: &str, and: &str) -> Criterion {
 }
 
 fn judge_deployment(rule: &DeploymentRule, deployment: &Deployment) -> Vec<Criterion> {
-    let (floor, blocked) =
-        items_floor("timed_calls", 1, &rule.min_calls, deployment.candidate.calls);
+    let (floor, blocked) = items_floor(
+        "timed_calls",
+        1,
+        &rule.min_calls,
+        deployment.candidate.calls,
+    );
     let blocked = blocked.as_deref();
     let budget = deployment.budget.as_ref();
     vec![
@@ -1992,7 +2078,10 @@ fn latency_band(rule: &DeploymentRule, of: f64) -> Option<f64> {
 /// What the band is worth saying about itself, every time it is used.
 fn band_note(rule: &DeploymentRule) -> String {
     let sigmas = rule.regression_sigmas.value().unwrap_or_default();
-    let sigma = rule.latency_block_sigma_relative.value().unwrap_or_default();
+    let sigma = rule
+        .latency_block_sigma_relative
+        .value()
+        .unwrap_or_default();
     format!(
         "the band is {sigmas:.1} block-to-block standard deviations of {:.1}% and was measured \
          on one door on one machine",
@@ -2013,7 +2102,12 @@ fn no_ceiling(name: String, rank: u8, budget: Option<&Budget>, what: &str) -> Cr
             budget.workload, budget.source
         ),
     };
-    Criterion { name, rank, verdict: Verdict::Unverifiable, detail }
+    Criterion {
+        name,
+        rank,
+        verdict: Verdict::Unverifiable,
+        detail,
+    }
 }
 
 fn latency_ceiling(
@@ -2072,11 +2166,7 @@ fn latency_ceiling(
     }
 }
 
-fn cost_ceiling(
-    blocked: Option<&str>,
-    budget: Option<&Budget>,
-    candidate: &Profile,
-) -> Criterion {
+fn cost_ceiling(blocked: Option<&str>, budget: Option<&Budget>, candidate: &Profile) -> Criterion {
     let name = "cost_per_decision_within_budget".to_string();
     if let Some(reason) = blocked {
         return not_judged(name, 1, reason);
@@ -2109,7 +2199,11 @@ fn cost_ceiling(
     Criterion {
         name,
         rank: 1,
-        verdict: if price > ceiling { Verdict::Failed } else { Verdict::Passed },
+        verdict: if price > ceiling {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
         detail: format!(
             "${price:.6} per decision against the {workload} ceiling of ${ceiling:.6}, which is \
              ${:.2} against ${:.2} per 100,000 decisions",
@@ -2148,7 +2242,10 @@ fn refusal_ceiling(
             name,
             rank: 1,
             verdict: Verdict::Unverifiable,
-            detail: format!("no effect size has been recorded ({})", rule.regression_sigmas.why),
+            detail: format!(
+                "no effect size has been recorded ({})",
+                rule.regression_sigmas.why
+            ),
         };
     };
     // The standard error of the ceiling rather than of the observed one, so
@@ -2223,7 +2320,11 @@ fn latency_regression(
     Criterion {
         name,
         rank: 2,
-        verdict: if after > before + band { Verdict::Failed } else { Verdict::Unverifiable },
+        verdict: if after > before + band {
+            Verdict::Failed
+        } else {
+            Verdict::Unverifiable
+        },
         detail: format!(
             "{percentile} {before:.0} ms to {after:.0} ms, a rise of {:.0} ms against a band of \
              {band:.0} ms; {}",
@@ -2258,11 +2359,21 @@ fn refusal_regression(
             name,
             rank: 2,
             verdict: Verdict::Passed,
-            detail: format!("refusal rate {:.1}% to {:.1}%", before * 100.0, after * 100.0),
+            detail: format!(
+                "refusal rate {:.1}% to {:.1}%",
+                before * 100.0,
+                after * 100.0
+            ),
         };
     }
-    let baseline_scores = Scores { items: baseline.calls, ..Scores::default() };
-    let candidate_scores = Scores { items: candidate.calls, ..Scores::default() };
+    let baseline_scores = Scores {
+        items: baseline.calls,
+        ..Scores::default()
+    };
+    let candidate_scores = Scores {
+        items: candidate.calls,
+        ..Scores::default()
+    };
     let (Some(error), Some(sigmas)) = (
         standard_error(&baseline_scores, before, &candidate_scores, after),
         rule.regression_sigmas.value(),
@@ -2286,7 +2397,11 @@ fn refusal_regression(
     Criterion {
         name,
         rank: 2,
-        verdict: if after > before + band { Verdict::Failed } else { Verdict::Unverifiable },
+        verdict: if after > before + band {
+            Verdict::Failed
+        } else {
+            Verdict::Unverifiable
+        },
         detail: format!(
             "refusal rate {:.1}% to {:.1}% against {sigmas:.1} standard errors of {:.1} points, \
              which is {:.1} points",
@@ -2410,7 +2525,11 @@ mod tests {
         if let Rule::Probability(rule) = &mut widened.rule {
             rule.max_brier_increase.value = Some(0.20);
         }
-        assert_ne!(before, widened.digest(), "a widened tolerance is a different rule");
+        assert_ne!(
+            before,
+            widened.digest(),
+            "a widened tolerance is a different rule"
+        );
 
         // Relabelling where a number came from is also a change to the rule.
         let mut relabelled = gate.clone();
@@ -2432,7 +2551,10 @@ mod tests {
             Verdict::over([Verdict::Passed, Verdict::Unverifiable]),
             Verdict::Unverifiable
         );
-        assert_eq!(Verdict::over([Verdict::Passed, Verdict::Passed]), Verdict::Passed);
+        assert_eq!(
+            Verdict::over([Verdict::Passed, Verdict::Passed]),
+            Verdict::Passed
+        );
         assert_eq!(
             Verdict::over([]),
             Verdict::Unverifiable,
@@ -2451,8 +2573,16 @@ mod tests {
             nll: Some(0.600),
             confident_errors: Some(2),
         };
-        let better = Scores { ece: Some(0.020), nll: Some(0.400), ..clean };
-        let worse = Scores { ece: Some(0.020), nll: Some(0.900), ..clean };
+        let better = Scores {
+            ece: Some(0.020),
+            nll: Some(0.400),
+            ..clean
+        };
+        let worse = Scores {
+            ece: Some(0.020),
+            nll: Some(0.900),
+            ..clean
+        };
 
         let mut comparisons: Vec<Comparison> = (0..7)
             .map(|index| Comparison::new(format!("family-{index}"), clean, better).fitted_on(40))
@@ -2479,15 +2609,23 @@ mod tests {
 
         let probabilities = probability().judge(&comparison);
         assert_eq!(probabilities.verdict, Verdict::Failed);
-        let deciding = probabilities.deciding().expect("a failed group has a deciding criterion");
-        assert_eq!(deciding.rank, 1, "log loss and confident errors decide this gate");
+        let deciding = probabilities
+            .deciding()
+            .expect("a failed group has a deciding criterion");
+        assert_eq!(
+            deciding.rank, 1,
+            "log loss and confident errors decide this gate"
+        );
         let failed: Vec<&str> = probabilities
             .breaches()
             .filter(|criterion| criterion.verdict == Verdict::Failed)
             .map(|criterion| criterion.name.as_str())
             .collect();
         assert!(failed.contains(&"log_loss_does_not_rise"), "{failed:?}");
-        assert!(failed.contains(&"confident_errors_do_not_rise"), "{failed:?}");
+        assert!(
+            failed.contains(&"confident_errors_do_not_rise"),
+            "{failed:?}"
+        );
         assert!(
             !failed.contains(&"accuracy_does_not_fall"),
             "accuracy rose, and it does not rescue the gate either"
@@ -2517,7 +2655,10 @@ mod tests {
     #[test]
     fn a_smaller_win_on_the_same_suite_is_unverifiable_rather_than_failed() {
         let baseline = base_calibrated();
-        let modest = Scores { accuracy: Some(0.82), ..adapted_calibrated() };
+        let modest = Scores {
+            accuracy: Some(0.82),
+            ..adapted_calibrated()
+        };
         let outcome = decision().judge(&Comparison::new("support-v2", baseline, modest));
         assert_eq!(
             outcome.verdict,
@@ -2559,11 +2700,18 @@ mod tests {
         let outcome = probability().judge(&Comparison::new("severity", raw, mapped).fitted_on(18));
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
         assert!(
-            outcome.criteria.iter().all(|criterion| criterion.verdict != Verdict::Failed),
+            outcome
+                .criteria
+                .iter()
+                .all(|criterion| criterion.verdict != Verdict::Failed),
             "nothing downstream of a missing floor is judged: {:?}",
             outcome.criteria
         );
-        assert!(outcome.deciding().is_some_and(|criterion| criterion.name == "fitted_on>=30"));
+        assert!(
+            outcome
+                .deciding()
+                .is_some_and(|criterion| criterion.name == "fitted_on>=30")
+        );
     }
 
     #[test]
@@ -2642,12 +2790,19 @@ mod tests {
             nll: Some(0.600),
             confident_errors: None,
         };
-        let mapped =
-            Scores { ece: Some(0.005), brier: Some(0.210), nll: Some(0.580), ..raw };
+        let mapped = Scores {
+            ece: Some(0.005),
+            brier: Some(0.210),
+            nll: Some(0.580),
+            ..raw
+        };
         let outcome = probability().judge(&Comparison::new("urgency", raw, mapped).fitted_on(30));
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
-        assert!(outcome.deciding().is_some_and(|criterion| criterion.name
-            == "confident_errors_do_not_rise"));
+        assert!(
+            outcome
+                .deciding()
+                .is_some_and(|criterion| criterion.name == "confident_errors_do_not_rise")
+        );
     }
 
     #[test]
@@ -2663,7 +2818,11 @@ mod tests {
             nll: Some(0.100),
             confident_errors: Some(0),
         };
-        let mapped = Scores { ece: Some(0.113), brier: Some(0.013), ..raw };
+        let mapped = Scores {
+            ece: Some(0.113),
+            brier: Some(0.013),
+            ..raw
+        };
         let outcome = probability().judge(&Comparison::new("routing", raw, mapped).fitted_on(12));
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
     }
@@ -2678,8 +2837,12 @@ mod tests {
             nll: Some(0.400),
             confident_errors: Some(2),
         };
-        let hedged =
-            Scores { ece: Some(0.010), brier: Some(0.155), nll: Some(0.900), ..raw };
+        let hedged = Scores {
+            ece: Some(0.010),
+            brier: Some(0.155),
+            nll: Some(0.900),
+            ..raw
+        };
         let outcome = probability().judge(&Comparison::new("hedged", raw, hedged).fitted_on(30));
         assert_eq!(outcome.verdict, Verdict::Failed);
         assert_eq!(
@@ -2701,12 +2864,19 @@ mod tests {
             nll: Some(1.713),
             confident_errors: Some(4),
         };
-        let mapped =
-            Scores { ece: Some(0.070), brier: Some(0.079), nll: Some(0.378), ..raw };
+        let mapped = Scores {
+            ece: Some(0.070),
+            brier: Some(0.079),
+            nll: Some(0.378),
+            ..raw
+        };
         let outcome = probability().judge(&Comparison::new("routing", raw, mapped).fitted_on(50));
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
-        assert!(outcome.deciding().is_some_and(|criterion| criterion.name
-            == "ece_reduction_clears_the_margin"));
+        assert!(
+            outcome
+                .deciding()
+                .is_some_and(|criterion| criterion.name == "ece_reduction_clears_the_margin")
+        );
     }
 
     #[test]
@@ -2740,7 +2910,9 @@ mod tests {
         ));
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
         assert_eq!(
-            gate.rule.pending_measurement().and_then(|pending| pending.issue.as_deref()),
+            gate.rule
+                .pending_measurement()
+                .and_then(|pending| pending.issue.as_deref()),
             Some("openagents#9370")
         );
     }
@@ -2757,7 +2929,10 @@ mod tests {
         };
         assert_eq!(rule.variance_basis, VarianceBasis::ItemSampling);
         assert_eq!(rule.gain_standard_errors.basis, Basis::Convention);
-        let pending = rule.pending_measurement.as_ref().expect("the gap is recorded");
+        let pending = rule
+            .pending_measurement
+            .as_ref()
+            .expect("the gap is recorded");
         assert_eq!(pending.issue.as_deref(), Some("openagents#9370"));
 
         let mut measured = gate.clone();
@@ -2774,7 +2949,11 @@ mod tests {
             let bounds: Vec<&Bound> = match &gate.rule {
                 Rule::Decision(rule) => vec![&rule.min_items, &rule.gain_standard_errors],
                 Rule::Probability(rule) => {
-                    vec![&rule.min_items, &rule.min_ece_reduction, &rule.max_brier_increase]
+                    vec![
+                        &rule.min_items,
+                        &rule.min_ece_reduction,
+                        &rule.max_brier_increase,
+                    ]
                 }
                 Rule::Deployment(rule) => vec![
                     &rule.min_calls,
@@ -2783,7 +2962,11 @@ mod tests {
                 ],
             };
             for bound in bounds {
-                assert!(bound.why.len() > 40, "{} carries a thin provenance", gate.id);
+                assert!(
+                    bound.why.len() > 40,
+                    "{} carries a thin provenance",
+                    gate.id
+                );
                 if bound.basis == Basis::Tuned {
                     assert!(
                         bound.why.contains("2026-09-19") || bound.why.contains("calibrate.rs"),
@@ -2928,10 +3111,13 @@ mod tests {
 
     /// An overnight batch job over the same items.
     fn batch_budget() -> Budget {
-        Budget::new("nightly batch", "stated by this test, for a workload nobody waits on")
-            .latency_ms(5_000.0)
-            .cost_usd(0.01)
-            .refusal_rate(0.10)
+        Budget::new(
+            "nightly batch",
+            "stated by this test, for a workload nobody waits on",
+        )
+        .latency_ms(5_000.0)
+        .cost_usd(0.01)
+        .refusal_rate(0.10)
     }
 
     fn criterion_named<'a>(outcome: &'a Outcome, name: &str) -> &'a Criterion {
@@ -2950,14 +3136,18 @@ mod tests {
         let wrong_way = deployment().judge(&comparison);
         assert_eq!(wrong_way.verdict, Verdict::Unverifiable);
         assert_eq!(
-            wrong_way.deciding().map(|criterion| criterion.name.as_str()),
+            wrong_way
+                .deciding()
+                .map(|criterion| criterion.name.as_str()),
             Some("measurement_matches_the_rule")
         );
 
         let other_way = decision().judge_deployment(&profiles);
         assert_eq!(other_way.verdict, Verdict::Unverifiable);
         assert_eq!(
-            other_way.deciding().map(|criterion| criterion.name.as_str()),
+            other_way
+                .deciding()
+                .map(|criterion| criterion.name.as_str()),
             Some("measurement_matches_the_rule")
         );
     }
@@ -2968,8 +3158,11 @@ mod tests {
         // at 240 ms is fast for one workload and too slow for another, and
         // the gate that does not know which one is being deployed has not
         // learned anything by looking at 240.
-        let outcome = deployment()
-            .judge_deployment(&Deployment::new("support-v2", ensemble_door(), quick_door()));
+        let outcome = deployment().judge_deployment(&Deployment::new(
+            "support-v2",
+            ensemble_door(),
+            quick_door(),
+        ));
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
         for name in [
             "latency_p95_within_budget",
@@ -2978,7 +3171,11 @@ mod tests {
         ] {
             let criterion = criterion_named(&outcome, name);
             assert_eq!(criterion.verdict, Verdict::Unverifiable, "{name}");
-            assert!(criterion.detail.contains("no budget was stated"), "{}", criterion.detail);
+            assert!(
+                criterion.detail.contains("no budget was stated"),
+                "{}",
+                criterion.detail
+            );
         }
     }
 
@@ -2986,18 +3183,28 @@ mod tests {
     fn an_unmetered_lane_is_not_a_price_of_zero() {
         // A lane with no meter on it cannot clear a price ceiling, however
         // low the ceiling is. Recording it as zero would clear every one.
-        let unmetered = Deployment::new("support-v2", ensemble_door(), quick_door())
-            .under(router_budget());
+        let unmetered =
+            Deployment::new("support-v2", ensemble_door(), quick_door()).under(router_budget());
         let outcome = deployment().judge_deployment(&unmetered);
         let cost = criterion_named(&outcome, "cost_per_decision_within_budget");
         assert_eq!(cost.verdict, Verdict::Unverifiable);
-        assert!(cost.detail.contains("unmetered_local_lane"), "{}", cost.detail);
-        assert!(cost.detail.contains("not a price of zero"), "{}", cost.detail);
+        assert!(
+            cost.detail.contains("unmetered_local_lane"),
+            "{}",
+            cost.detail
+        );
+        assert!(
+            cost.detail.contains("not a price of zero"),
+            "{}",
+            cost.detail
+        );
 
         let as_a_zero = Deployment::new(
             "support-v2",
             ensemble_door(),
-            quick_door().costing(Cost::Metered { usd_per_decision: 0.0 }),
+            quick_door().costing(Cost::Metered {
+                usd_per_decision: 0.0,
+            }),
         )
         .under(router_budget());
         let pretended = deployment().judge_deployment(&as_a_zero);
@@ -3013,9 +3220,11 @@ mod tests {
     fn a_metered_lane_over_its_ceiling_fails() {
         // The hosted lane at the rate openagents#9382 records for it,
         // $1.82 per 100,000 decisions, against two stated ceilings.
-        let hosted = quick_door().costing(Cost::Metered { usd_per_decision: 0.0000182 });
-        let under_router = Deployment::new("support-v2", ensemble_door(), hosted)
-            .under(router_budget());
+        let hosted = quick_door().costing(Cost::Metered {
+            usd_per_decision: 0.0000182,
+        });
+        let under_router =
+            Deployment::new("support-v2", ensemble_door(), hosted).under(router_budget());
         assert_eq!(
             criterion_named(
                 &deployment().judge_deployment(&under_router),
@@ -3026,8 +3235,7 @@ mod tests {
         );
 
         let tight = Budget::new("free tier", "stated by this test").cost_usd(0.000001);
-        let under_tight =
-            Deployment::new("support-v2", ensemble_door(), hosted).under(tight);
+        let under_tight = Deployment::new("support-v2", ensemble_door(), hosted).under(tight);
         let outcome = deployment().judge_deployment(&under_tight);
         assert_eq!(outcome.verdict, Verdict::Failed);
         assert_eq!(
@@ -3067,16 +3275,24 @@ mod tests {
         let baseline = quick_door();
         // Twelve milliseconds on a 240 ms p95, against a band of two 5%
         // standard deviations of both sides together.
-        let nudged = Profile { latency_p95_ms: Some(252.0), ..baseline };
-        let inside = gate
-            .judge_deployment(&Deployment::new("support-v2", baseline, nudged));
+        let nudged = Profile {
+            latency_p95_ms: Some(252.0),
+            ..baseline
+        };
+        let inside = gate.judge_deployment(&Deployment::new("support-v2", baseline, nudged));
         let criterion = criterion_named(&inside, "latency_p95_does_not_rise");
         assert_eq!(criterion.verdict, Verdict::Unverifiable);
-        assert!(criterion.detail.contains("on one door on one machine"), "{}", criterion.detail);
+        assert!(
+            criterion.detail.contains("on one door on one machine"),
+            "{}",
+            criterion.detail
+        );
 
-        let doubled = Profile { latency_p95_ms: Some(520.0), ..baseline };
-        let outside = gate
-            .judge_deployment(&Deployment::new("support-v2", baseline, doubled));
+        let doubled = Profile {
+            latency_p95_ms: Some(520.0),
+            ..baseline
+        };
+        let outside = gate.judge_deployment(&Deployment::new("support-v2", baseline, doubled));
         assert_eq!(
             criterion_named(&outside, "latency_p95_does_not_rise").verdict,
             Verdict::Failed
@@ -3087,19 +3303,29 @@ mod tests {
     fn a_door_that_declines_a_tenth_of_the_workload_fails_its_ceiling() {
         // The refusal criteria do not wait on the latency floor: metering
         // and counting are not clocks.
-        let declining = Profile { refusals: Some(10), ..quick_door() };
+        let declining = Profile {
+            refusals: Some(10),
+            ..quick_door()
+        };
         let outcome = deployment().judge_deployment(
             &Deployment::new("support-v2", quick_door(), declining).under(router_budget()),
         );
         assert_eq!(outcome.verdict, Verdict::Failed);
         let ceiling = criterion_named(&outcome, "refusal_rate_within_budget");
         assert_eq!(ceiling.verdict, Verdict::Failed);
-        assert!(ceiling.detail.contains("10 of 98 calls declined"), "{}", ceiling.detail);
+        assert!(
+            ceiling.detail.contains("10 of 98 calls declined"),
+            "{}",
+            ceiling.detail
+        );
     }
 
     #[test]
     fn an_uncounted_refusal_is_not_a_refusal_of_zero() {
-        let unknown = Profile { refusals: None, ..quick_door() };
+        let unknown = Profile {
+            refusals: None,
+            ..quick_door()
+        };
         let outcome = deployment().judge_deployment(
             &Deployment::new("support-v2", quick_door(), unknown).under(router_budget()),
         );
@@ -3117,14 +3343,24 @@ mod tests {
     fn fewer_than_twenty_timed_calls_cannot_produce_a_percentile() {
         // Nineteen calls put the 95th percentile on the slowest one, which
         // is a maximum wearing a percentile's name.
-        let thin = Profile { calls: 19, ..quick_door() };
+        let thin = Profile {
+            calls: 19,
+            ..quick_door()
+        };
         let outcome = deployment().judge_deployment(
             &Deployment::new("support-v2", quick_door(), thin).under(router_budget()),
         );
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
-        assert!(outcome.deciding().is_some_and(|criterion| criterion.name == "timed_calls>=20"));
         assert!(
-            outcome.criteria.iter().all(|criterion| criterion.verdict != Verdict::Failed),
+            outcome
+                .deciding()
+                .is_some_and(|criterion| criterion.name == "timed_calls>=20")
+        );
+        assert!(
+            outcome
+                .criteria
+                .iter()
+                .all(|criterion| criterion.verdict != Verdict::Failed),
             "nothing downstream of a missing floor is judged: {:?}",
             outcome.criteria
         );
@@ -3142,14 +3378,20 @@ mod tests {
         };
         assert_eq!(rule.gated_percentile, GatedPercentile::P95);
         assert_eq!(rule.latency_block_sigma_relative.basis, Basis::Unmeasured);
-        let pending = rule.pending_measurement.as_ref().expect("the gap is recorded");
-        assert!(pending.quantity.contains("uncontended"), "{}", pending.quantity);
+        let pending = rule
+            .pending_measurement
+            .as_ref()
+            .expect("the gap is recorded");
+        assert!(
+            pending.quantity.contains("uncontended"),
+            "{}",
+            pending.quantity
+        );
 
         // A door seven times over a router's ceiling still cannot be refused
         // on latency, because nobody knows how wide the band is.
         let outcome = gate.judge_deployment(
-            &Deployment::new("support-v2", quick_door(), ensemble_door())
-                .under(router_budget()),
+            &Deployment::new("support-v2", quick_door(), ensemble_door()).under(router_budget()),
         );
         let latency = criterion_named(&outcome, "latency_p95_within_budget");
         assert_eq!(latency.verdict, Verdict::Unverifiable);
@@ -3183,7 +3425,9 @@ mod tests {
         );
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
         assert!(
-            outcome.deciding().is_some_and(|criterion| criterion.name == "timed_calls>=20")
+            outcome
+                .deciding()
+                .is_some_and(|criterion| criterion.name == "timed_calls>=20")
                 || outcome
                     .criteria
                     .iter()
@@ -3260,7 +3504,10 @@ mod tests {
             let accuracy = raw.iter().filter(|(_, y)| *y).count() as f64 / raw.len() as f64;
             let loss = brier(&binned) - brier(&raw);
             let ceiling = 2.0 * width * accuracy;
-            assert!(loss <= ceiling, "{bins} bins lost {loss:.4} against {ceiling:.4}");
+            assert!(
+                loss <= ceiling,
+                "{bins} bins lost {loss:.4} against {ceiling:.4}"
+            );
         }
     }
 }

@@ -137,11 +137,17 @@ fn load_variant(
         .as_str()
         .map(str::to_string)
         .unwrap_or_else(|| base_dir.display().to_string());
-    eprintln!("kev-serve: loading {id}: {} + {}", base_dir.display(), adapter_dir.display());
+    eprintln!(
+        "kev-serve: loading {id}: {} + {}",
+        base_dir.display(),
+        adapter_dir.display()
+    );
     let model = DecisionModel::load_with_dtype(base_dir, adapter_dir, device.clone(), dtype)
         .map_err(|e| format!("{id}: {e}"))?;
-    let base_revision =
-        meta["base_revision"].as_str().map(str::to_string).unwrap_or_default();
+    let base_revision = meta["base_revision"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_default();
     Ok(Variant {
         model,
         model_id: id.to_string(),
@@ -245,7 +251,9 @@ async fn main() -> ExitCode {
                             .parse::<f64>()
                             .unwrap_or(0.0)
                     };
-                    size(a).partial_cmp(&size(b)).unwrap_or(std::cmp::Ordering::Equal)
+                    size(a)
+                        .partial_cmp(&size(b))
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 })
                 .map(|(i, _)| i)
         })

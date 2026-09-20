@@ -178,7 +178,11 @@ impl Bridge {
             })?;
         let stdin = child.stdin.take().expect("stdin was piped");
         let stdout = BufReader::new(child.stdout.take().expect("stdout was piped"));
-        Ok(Self { child, stdin, stdout })
+        Ok(Self {
+            child,
+            stdin,
+            stdout,
+        })
     }
 
     /// Starts the helper found by `helper_path`.
@@ -193,9 +197,15 @@ impl Bridge {
             id: String,
             op: &'static str,
         }
-        let wire = self.exchange(&Ask { id: next_id(), op: "availability" })?;
+        let wire = self.exchange(&Ask {
+            id: next_id(),
+            op: "availability",
+        })?;
         wire.availability.ok_or_else(|| {
-            Refusal::new(RefusalCode::BridgeError, "the helper reported no availability")
+            Refusal::new(
+                RefusalCode::BridgeError,
+                "the helper reported no availability",
+            )
         })
     }
 
@@ -212,9 +222,16 @@ impl Bridge {
             #[serde(rename = "adapterName")]
             adapter_name: &'a str,
         }
-        let wire = self.exchange(&Ask { id: next_id(), op: "adapter_compat", adapter_name: name })?;
+        let wire = self.exchange(&Ask {
+            id: next_id(),
+            op: "adapter_compat",
+            adapter_name: name,
+        })?;
         wire.compatible_adapters.ok_or_else(|| {
-            Refusal::new(RefusalCode::BridgeError, "the helper reported no adapter identifiers")
+            Refusal::new(
+                RefusalCode::BridgeError,
+                "the helper reported no adapter identifiers",
+            )
         })
     }
 
@@ -227,7 +244,10 @@ impl Bridge {
             .and_then(|id| id.rsplit('-').next())
             .map(str::to_string)
             .ok_or_else(|| {
-                Refusal::new(RefusalCode::BridgeError, "no identifier carried a signature prefix")
+                Refusal::new(
+                    RefusalCode::BridgeError,
+                    "no identifier carried a signature prefix",
+                )
             })
     }
 
@@ -255,28 +275,49 @@ impl Bridge {
     pub fn decide(&mut self, call: &Call) -> Result<Outcome> {
         let wire = self.exchange(call)?;
         let choice = wire.choice.ok_or_else(|| {
-            Refusal::new(RefusalCode::DecodingFailure, "the helper returned no choice")
+            Refusal::new(
+                RefusalCode::DecodingFailure,
+                "the helper returned no choice",
+            )
         })?;
-        Ok(Outcome { choice: Some(choice), band: wire.band, latency_ms: wire.latency_ms })
+        Ok(Outcome {
+            choice: Some(choice),
+            band: wire.band,
+            latency_ms: wire.latency_ms,
+        })
     }
 
     fn exchange<T: Serialize>(&mut self, request: &T) -> Result<Wire> {
         let line = serde_json::to_string(request).map_err(|error| {
-            Refusal::new(RefusalCode::BridgeError, format!("request did not encode: {error}"))
+            Refusal::new(
+                RefusalCode::BridgeError,
+                format!("request did not encode: {error}"),
+            )
         })?;
-        writeln!(self.stdin, "{line}").and_then(|()| self.stdin.flush()).map_err(|error| {
-            Refusal::new(RefusalCode::BridgeError, format!("the helper closed its input: {error}"))
-        })?;
+        writeln!(self.stdin, "{line}")
+            .and_then(|()| self.stdin.flush())
+            .map_err(|error| {
+                Refusal::new(
+                    RefusalCode::BridgeError,
+                    format!("the helper closed its input: {error}"),
+                )
+            })?;
 
         let mut response = String::new();
         let read = self.stdout.read_line(&mut response).map_err(|error| {
-            Refusal::new(RefusalCode::BridgeError, format!("the helper closed its output: {error}"))
+            Refusal::new(
+                RefusalCode::BridgeError,
+                format!("the helper closed its output: {error}"),
+            )
         })?;
         if read == 0 {
             return Err(Refusal::new(RefusalCode::BridgeError, "the helper exited"));
         }
         let wire: Wire = serde_json::from_str(response.trim()).map_err(|error| {
-            Refusal::new(RefusalCode::BridgeError, format!("the helper answered with {error}"))
+            Refusal::new(
+                RefusalCode::BridgeError,
+                format!("the helper answered with {error}"),
+            )
         })?;
         if wire.ok {
             return Ok(wire);
@@ -305,14 +346,22 @@ pub fn helper_path() -> Result<PathBuf> {
         } else {
             Err(Refusal::new(
                 RefusalCode::BridgeError,
-                format!("LEV_BRIDGE_BIN points at {}, which does not exist", path.display()),
+                format!(
+                    "LEV_BRIDGE_BIN points at {}, which does not exist",
+                    path.display()
+                ),
             ))
         };
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .ok_or_else(|| Refusal::new(RefusalCode::BridgeError, "the workspace root is not above this crate"))?;
+        .ok_or_else(|| {
+            Refusal::new(
+                RefusalCode::BridgeError,
+                "the workspace root is not above this crate",
+            )
+        })?;
     let built = root.join("swift/lev-bridge/.build/release/lev-bridge");
     if built.exists() {
         return Ok(built);
@@ -337,7 +386,10 @@ fn verify_signature(path: &Path) -> Result<()> {
         .arg(path)
         .output()
         .map_err(|error| {
-            Refusal::new(RefusalCode::BridgeError, format!("codesign did not run: {error}"))
+            Refusal::new(
+                RefusalCode::BridgeError,
+                format!("codesign did not run: {error}"),
+            )
         })?;
     if output.status.success() {
         return Ok(());
@@ -378,7 +430,9 @@ impl Pool {
     /// runtime happens to report.
     #[must_use]
     pub fn none() -> Self {
-        Self { helpers: Vec::new() }
+        Self {
+            helpers: Vec::new(),
+        }
     }
 
     /// Starts `size` helpers from the discovered path.
@@ -455,7 +509,10 @@ impl Pool {
             .into_iter()
             .map(|slot| {
                 slot.unwrap_or_else(|| {
-                    Err(Refusal::new(RefusalCode::BridgeError, "a lane dropped a call"))
+                    Err(Refusal::new(
+                        RefusalCode::BridgeError,
+                        "a lane dropped a call",
+                    ))
                 })
             })
             .collect()

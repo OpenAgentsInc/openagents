@@ -36,9 +36,14 @@ fn every_committed_manifest_loads_and_declares_this_build_of_the_contract() {
         let manifest = load(&path);
         assert_eq!(manifest.schema, MANIFEST_SCHEMA, "{}", path.display());
         assert_eq!(manifest.interface.contract, CONTRACT, "{}", path.display());
-        assert!(!manifest.release().starts_with('@'), "{} has no name", path.display());
+        assert!(
+            !manifest.release().starts_with('@'),
+            "{} has no name",
+            path.display()
+        );
         assert_eq!(
-            manifest.estimator.estimator, "l2",
+            manifest.estimator.estimator,
+            "l2",
             "{} names an estimator this door does not run",
             path.display()
         );
@@ -103,8 +108,10 @@ fn an_adapted_release_names_only_maps_fitted_against_itself() {
             .unwrap_or_else(|fault| panic!("{}: {fault}", path.display()));
         for family in manifest.admitted_families() {
             assert!(
-                manifest.eval_ref.iter().any(|reference| reference.family == family
-                    && reference.admitted),
+                manifest
+                    .eval_ref
+                    .iter()
+                    .any(|reference| reference.family == family && reference.admitted),
                 "{} admits {family} with no admitted measurement",
                 path.display()
             );
@@ -116,12 +123,21 @@ fn an_adapted_release_names_only_maps_fitted_against_itself() {
 fn the_base_release_admits_exactly_the_families_its_records_admit() {
     let manifest = load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests/lev-base-v1.json"));
     assert_eq!(manifest.release(), "lev-base@1");
-    assert!(manifest.artifact.is_none(), "the operating system ships the base");
+    assert!(
+        manifest.artifact.is_none(),
+        "the operating system ships the base"
+    );
     assert_eq!(manifest.admitted_families(), vec!["routing"]);
     for family in ["severity", "urgency"] {
-        let refused = manifest.eval_ref(family).expect("the record is still named");
+        let refused = manifest
+            .eval_ref(family)
+            .expect("the record is still named");
         assert!(!refused.admitted, "{family} admitted");
-        assert!(refused.verdict.contains("unverifiable"), "{}", refused.verdict);
+        assert!(
+            refused.verdict.contains("unverifiable"),
+            "{}",
+            refused.verdict
+        );
     }
 }
 
@@ -129,9 +145,14 @@ fn the_base_release_admits_exactly_the_families_its_records_admit() {
 fn the_package_is_checked_when_it_is_on_this_machine() {
     for path in committed() {
         let manifest = load(&path);
-        let Some(artifact) = &manifest.artifact else { continue };
+        let Some(artifact) = &manifest.artifact else {
+            continue;
+        };
         if !artifact.resolved_path().is_dir() {
-            eprintln!("{} is not on this machine; the artifact is not checked", artifact.path);
+            eprintln!(
+                "{} is not on this machine; the artifact is not checked",
+                artifact.path
+            );
             continue;
         }
         manifest

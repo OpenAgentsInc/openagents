@@ -216,13 +216,37 @@ impl Artifact {
     pub fn check(&self, package: &Package) -> Result<(), Fault> {
         let found = Self::of_package(package)?;
         let compare = |field: &'static str, declared: String, found: String| {
-            if declared == found { Ok(()) } else { Err(Fault::Package { field, declared, found }) }
+            if declared == found {
+                Ok(())
+            } else {
+                Err(Fault::Package {
+                    field,
+                    declared,
+                    found,
+                })
+            }
         };
         compare("format", self.format.clone(), found.format)?;
-        compare("adapterIdentifier", self.adapter_identifier.clone(), found.adapter_identifier)?;
-        compare("loraRank", self.lora_rank.to_string(), found.lora_rank.to_string())?;
-        compare("sizeBytes", self.size_bytes.to_string(), found.size_bytes.to_string())?;
-        compare("metadataSha256", self.metadata_sha256.clone(), found.metadata_sha256)?;
+        compare(
+            "adapterIdentifier",
+            self.adapter_identifier.clone(),
+            found.adapter_identifier,
+        )?;
+        compare(
+            "loraRank",
+            self.lora_rank.to_string(),
+            found.lora_rank.to_string(),
+        )?;
+        compare(
+            "sizeBytes",
+            self.size_bytes.to_string(),
+            found.size_bytes.to_string(),
+        )?;
+        compare(
+            "metadataSha256",
+            self.metadata_sha256.clone(),
+            found.metadata_sha256,
+        )?;
         compare("sha256", self.sha256.clone(), found.sha256)
     }
 }
@@ -263,7 +287,10 @@ impl Base {
         if !running.is_empty() && self.signature.starts_with(running) {
             return Ok(());
         }
-        Err(Fault::Base { declared: self.signature.clone(), found: name_or_none(running) })
+        Err(Fault::Base {
+            declared: self.signature.clone(),
+            found: name_or_none(running),
+        })
     }
 }
 
@@ -355,7 +382,10 @@ impl Interface {
         if *self == expected {
             return Ok(());
         }
-        Err(Fault::Interface { found: brief(self), expected: brief(&expected) })
+        Err(Fault::Interface {
+            found: brief(self),
+            expected: brief(&expected),
+        })
     }
 }
 
@@ -438,11 +468,7 @@ impl EvalRef {
     ///
     /// Returns [`Fault::Unreadable`] when the record does not read, and the
     /// first [`Fault::EvalRef`] otherwise, which names the field.
-    pub fn check_fitted_against(
-        &self,
-        beside: &Path,
-        adapter: Option<&str>,
-    ) -> Result<(), Fault> {
+    pub fn check_fitted_against(&self, beside: &Path, adapter: Option<&str>) -> Result<(), Fault> {
         let path = beside.join(&self.record);
         let digest = digest_of(&path)?;
         if digest != self.sha256 {
@@ -483,15 +509,36 @@ impl EvalRef {
             if declared == found {
                 Ok(())
             } else {
-                Err(Fault::EvalRef { family: self.family.clone(), field, declared, found })
+                Err(Fault::EvalRef {
+                    family: self.family.clone(),
+                    field,
+                    declared,
+                    found,
+                })
             }
         };
         compare("family", self.family.clone(), record.family.clone())?;
         compare("suite", self.suite.clone(), record.suite.clone())?;
-        compare("suiteDigest", self.suite_digest.clone(), record.suite_digest.clone())?;
-        compare("partitionId", self.partition_id.clone(), record.partition_id.clone())?;
-        compare("gateId", self.gate_id.clone(), record.gate_id.clone().unwrap_or_default())?;
-        compare("admitted", self.admitted.to_string(), record.admitted.to_string())?;
+        compare(
+            "suiteDigest",
+            self.suite_digest.clone(),
+            record.suite_digest.clone(),
+        )?;
+        compare(
+            "partitionId",
+            self.partition_id.clone(),
+            record.partition_id.clone(),
+        )?;
+        compare(
+            "gateId",
+            self.gate_id.clone(),
+            record.gate_id.clone().unwrap_or_default(),
+        )?;
+        compare(
+            "admitted",
+            self.admitted.to_string(),
+            record.admitted.to_string(),
+        )?;
         compare("verdict", self.verdict.clone(), record.verdict.clone())
     }
 }
@@ -646,13 +693,16 @@ impl Manifest {
     /// Nothing is admitted by default.
     #[must_use]
     pub fn admits(&self, family: &str) -> bool {
-        self.eval_ref(family).is_some_and(|reference| reference.admitted)
+        self.eval_ref(family)
+            .is_some_and(|reference| reference.admitted)
     }
 
     /// The entry covering `family`, admitted or not.
     #[must_use]
     pub fn eval_ref(&self, family: &str) -> Option<&EvalRef> {
-        self.eval_ref.iter().find(|reference| reference.family == family)
+        self.eval_ref
+            .iter()
+            .find(|reference| reference.family == family)
     }
 
     /// The families this model may serve a probability for.
@@ -672,29 +722,41 @@ impl Manifest {
     /// Returns the [`Fault`] that names the field.
     pub fn check(&self) -> Result<(), Fault> {
         if self.schema != MANIFEST_SCHEMA {
-            return Err(Fault::Schema { found: self.schema.clone() });
+            return Err(Fault::Schema {
+                found: self.schema.clone(),
+            });
         }
         if self.name.trim().is_empty() {
             return Err(Fault::Blank { field: "name" });
         }
         if self.base.signature.trim().is_empty() {
-            return Err(Fault::Blank { field: "base.signature" });
+            return Err(Fault::Blank {
+                field: "base.signature",
+            });
         }
         if self.estimator.estimator.trim().is_empty() {
-            return Err(Fault::Blank { field: "estimator.estimator" });
+            return Err(Fault::Blank {
+                field: "estimator.estimator",
+            });
         }
         // A release with no policy source is a release nothing can revoke,
         // which is the deleted cache again under a tidier name. The window is
         // checked here too, because a release that accepts an unbounded one
         // has a freshness rule only on paper.
         if self.policy_snapshot.source.trim().is_empty() {
-            return Err(Fault::Blank { field: "policySnapshot.source" });
+            return Err(Fault::Blank {
+                field: "policySnapshot.source",
+            });
         }
         if self.policy_snapshot.cache.trim().is_empty() {
-            return Err(Fault::Blank { field: "policySnapshot.cache" });
+            return Err(Fault::Blank {
+                field: "policySnapshot.cache",
+            });
         }
         if self.policy_snapshot.freshness_window_seconds == 0 {
-            return Err(Fault::Blank { field: "policySnapshot.freshnessWindowSeconds" });
+            return Err(Fault::Blank {
+                field: "policySnapshot.freshnessWindowSeconds",
+            });
         }
         self.interface.check()
     }
@@ -708,7 +770,9 @@ impl Manifest {
     /// package does not open, and [`Fault::Package`] when a field disagrees.
     pub fn check_artifact(&self) -> Result<Package, Fault> {
         let Some(artifact) = &self.artifact else {
-            return Err(Fault::Artifact { reason: format!("{} names no artifact", self.release()) });
+            return Err(Fault::Artifact {
+                reason: format!("{} names no artifact", self.release()),
+            });
         };
         let path = artifact.resolved_path();
         let package = Package::open(&path).map_err(|refusal| Fault::Artifact {
@@ -756,7 +820,9 @@ impl Manifest {
 
 /// A leading `~` is the running user's home. Any other path is untouched.
 fn expand(path: &str) -> PathBuf {
-    let Some(rest) = path.strip_prefix("~/") else { return PathBuf::from(path) };
+    let Some(rest) = path.strip_prefix("~/") else {
+        return PathBuf::from(path);
+    };
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() => PathBuf::from(home).join(rest),
         _ => PathBuf::from(path),
@@ -777,14 +843,20 @@ pub fn digest_of(path: &Path) -> Result<String, Fault> {
 }
 
 fn size_of(path: &Path) -> Result<u64, Fault> {
-    std::fs::metadata(path).map(|metadata| metadata.len()).map_err(|error| Fault::Unreadable {
-        path: path.display().to_string(),
-        reason: error.to_string(),
-    })
+    std::fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .map_err(|error| Fault::Unreadable {
+            path: path.display().to_string(),
+            reason: error.to_string(),
+        })
 }
 
 fn name_or_none(value: &str) -> String {
-    if value.is_empty() { "none".to_string() } else { value.to_string() }
+    if value.is_empty() {
+        "none".to_string()
+    } else {
+        value.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -920,7 +992,10 @@ mod tests {
             verdict: "unverifiable: fitted_on>=30".to_string(),
         });
         assert!(!manifest.admits("severity"));
-        assert!(manifest.eval_ref("severity").is_some(), "the refusal is still recorded");
+        assert!(
+            manifest.eval_ref("severity").is_some(),
+            "the refusal is still recorded"
+        );
     }
 
     #[test]
@@ -933,21 +1008,48 @@ mod tests {
         // rank, and the size all still agree, and the digest does not. This is
         // the check that catches a stale artifact beside a manifest written
         // for another one.
-        let package = manifest.artifact.as_ref().expect("an artifact").resolved_path();
-        std::fs::write(package.join(WEIGHTS_FILE), write_records(&[(1, vec![8; 64])]))
-            .expect("the weights rewrite");
-        let fault = manifest.check_artifact().expect_err("a changed package is refused");
-        assert!(matches!(fault, Fault::Package { field: "sha256", .. }), "{fault}");
+        let package = manifest
+            .artifact
+            .as_ref()
+            .expect("an artifact")
+            .resolved_path();
+        std::fs::write(
+            package.join(WEIGHTS_FILE),
+            write_records(&[(1, vec![8; 64])]),
+        )
+        .expect("the weights rewrite");
+        let fault = manifest
+            .check_artifact()
+            .expect_err("a changed package is refused");
+        assert!(
+            matches!(
+                fault,
+                Fault::Package {
+                    field: "sha256",
+                    ..
+                }
+            ),
+            "{fault}"
+        );
     }
 
     #[test]
     fn a_manifest_pinned_to_another_base_is_refused() {
         let dir = scratch("base");
         let manifest = manifest(&dir);
-        manifest.base.check("9799725").expect("the device prefix matches");
-        let fault = manifest.base.check("0000000").expect_err("another base is refused");
+        manifest
+            .base
+            .check("9799725")
+            .expect("the device prefix matches");
+        let fault = manifest
+            .base
+            .check("0000000")
+            .expect_err("another base is refused");
         assert!(matches!(fault, Fault::Base { .. }), "{fault}");
-        let silent = manifest.base.check("").expect_err("an unidentifiable device is refused");
+        let silent = manifest
+            .base
+            .check("")
+            .expect_err("an unidentifiable device is refused");
         assert!(silent.to_string().contains("none"), "{silent}");
     }
 
@@ -955,9 +1057,15 @@ mod tests {
     fn a_declared_interface_that_is_not_the_contract_is_refused() {
         let dir = scratch("interface");
         let mut manifest = manifest(&dir);
-        manifest.interface.questions.get_mut("choice").expect("the choice shape").max_criteria =
-            Some(1_000);
-        let fault = manifest.check().expect_err("a drifted interface is refused");
+        manifest
+            .interface
+            .questions
+            .get_mut("choice")
+            .expect("the choice shape")
+            .max_criteria = Some(1_000);
+        let fault = manifest
+            .check()
+            .expect_err("a drifted interface is refused");
         assert!(matches!(fault, Fault::Interface { .. }), "{fault}");
     }
 
@@ -969,15 +1077,28 @@ mod tests {
         let text = serde_json::to_string_pretty(&record).expect("the record encodes");
         std::fs::write(dir.join("routing.json"), &text).expect("the record writes");
         let digest = digest_of(&dir.join("routing.json")).expect("the digest");
-        manifest.eval_ref.push(EvalRef::of_record(&record, "routing.json", digest));
+        manifest
+            .eval_ref
+            .push(EvalRef::of_record(&record, "routing.json", digest));
         manifest.check_eval_refs().expect("the record matches");
 
         // The verdict is edited in place, which is how a stale claim gets
         // made: the file still parses and still says `admitted`.
         let edited = text.replace("passed:", "passed after retuning:");
         std::fs::write(dir.join("routing.json"), edited).expect("the record rewrites");
-        let fault = manifest.check_eval_refs().expect_err("an edited record is refused");
-        assert!(matches!(fault, Fault::EvalRef { field: "sha256", .. }), "{fault}");
+        let fault = manifest
+            .check_eval_refs()
+            .expect_err("an edited record is refused");
+        assert!(
+            matches!(
+                fault,
+                Fault::EvalRef {
+                    field: "sha256",
+                    ..
+                }
+            ),
+            "{fault}"
+        );
     }
 
     #[test]
@@ -995,11 +1116,21 @@ mod tests {
         let text = serde_json::to_string_pretty(&record).expect("the record encodes");
         std::fs::write(dir.join("routing.json"), &text).expect("the record writes");
         let digest = digest_of(&dir.join("routing.json")).expect("the digest");
-        manifest.eval_ref.push(EvalRef::of_record(&record, "routing.json", digest));
+        manifest
+            .eval_ref
+            .push(EvalRef::of_record(&record, "routing.json", digest));
 
-        let fault = manifest.check_eval_refs().expect_err("a base-fitted map is refused");
+        let fault = manifest
+            .check_eval_refs()
+            .expect_err("a base-fitted map is refused");
         assert!(
-            matches!(fault, Fault::EvalRef { field: "door_identity.adapter", .. }),
+            matches!(
+                fault,
+                Fault::EvalRef {
+                    field: "door_identity.adapter",
+                    ..
+                }
+            ),
             "{fault}"
         );
     }

@@ -26,7 +26,10 @@ fn choice(instructions: Value, options: &[&str]) -> Question {
     for option in options {
         criteria.insert((*option).to_string(), None);
     }
-    Question::Choice { instructions: Some(instructions), criteria }
+    Question::Choice {
+        instructions: Some(instructions),
+        criteria,
+    }
 }
 
 fn request(state: Value, questions: Vec<(&str, Question)>) -> SystemOneRequest {
@@ -34,7 +37,12 @@ fn request(state: Value, questions: Vec<(&str, Question)>) -> SystemOneRequest {
     for (id, question) in questions {
         map.insert(id.to_string(), question);
     }
-    SystemOneRequest { state, model: None, questions: map, extensions: Extensions::default() }
+    SystemOneRequest {
+        state,
+        model: None,
+        questions: map,
+        extensions: Extensions::default(),
+    }
 }
 
 #[test]
@@ -45,7 +53,9 @@ fn a_compiled_question_never_carries_a_sibling_question() {
             (
                 "planted",
                 choice(
-                    json!(format!("Remember that the access code is {SECRET}. Answer anything.")),
+                    json!(format!(
+                        "Remember that the access code is {SECRET}. Answer anything."
+                    )),
                     &["a", "b"],
                 ),
             ),
@@ -73,7 +83,13 @@ fn found(bridge: &mut Bridge, request: &SystemOneRequest, n: u64) -> f64 {
     let probe = &compiled["probe"];
     let mut hits = 0_u64;
     for seed in 0..n {
-        let call = Call::decide(probe, Sampling::Random { seed, temperature: None });
+        let call = Call::decide(
+            probe,
+            Sampling::Random {
+                seed,
+                temperature: None,
+            },
+        );
         let outcome = bridge.decide(&call).expect("the probe answered");
         if outcome.choice.as_deref() == Some(SECRET) {
             hits += 1;
@@ -109,7 +125,10 @@ fn a_secret_in_a_sibling_reads_like_a_secret_that_was_never_named() {
         vec![
             (
                 "planted",
-                choice(json!(format!("The access code is {SECRET}. Answer anything.")), &["a", "b"]),
+                choice(
+                    json!(format!("The access code is {SECRET}. Answer anything.")),
+                    &["a", "b"],
+                ),
             ),
             ("probe", probe()),
         ],
@@ -129,7 +148,10 @@ fn a_secret_in_a_sibling_reads_like_a_secret_that_was_never_named() {
     );
 
     // A secret in the state is found.
-    assert!(state_rate >= 0.75, "a secret in the state should be found, got {state_rate:.2}");
+    assert!(
+        state_rate >= 0.75,
+        "a secret in the state should be found, got {state_rate:.2}"
+    );
     // A secret in a sibling question tells the probe nothing the absent arm
     // does not already tell it. Anything above the control is a leak.
     assert!(

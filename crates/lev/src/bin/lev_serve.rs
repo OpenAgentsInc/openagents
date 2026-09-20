@@ -53,7 +53,12 @@ async fn main() {
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
         match flag.as_str() {
-            "--port" => port = args.next().and_then(|value| value.parse().ok()).unwrap_or(port),
+            "--port" => {
+                port = args
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(port)
+            }
             // The release this door serves. It supplies the adapter, the
             // estimator, and the sample count, so those flags are refused
             // beside it rather than silently overriding the document.
@@ -86,17 +91,26 @@ async fn main() {
                 };
             }
             "--helpers" => {
-                helpers = args.next().and_then(|value| value.parse().ok()).unwrap_or(helpers);
+                helpers = args
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(helpers);
             }
             "--samples" => {
-                samples = args.next().and_then(|value| value.parse().ok()).unwrap_or(samples);
+                samples = args
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(samples);
                 loose.push("--samples");
             }
             // Block 0 is the default and reproduces the recorded numbers.
             // Another block answers with seeds this door has not drawn, which
             // is what a confirmation run needs.
             "--seed-base" => {
-                seed_base = args.next().and_then(|value| value.parse().ok()).unwrap_or(seed_base);
+                seed_base = args
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(seed_base);
                 loose.push("--seed-base");
             }
             other => {
@@ -140,7 +154,11 @@ async fn main() {
                 .with_manifest(manifest)
         }
         None => {
-            let model = if adapter.is_some() { "lev-adapted" } else { "lev-base" };
+            let model = if adapter.is_some() {
+                "lev-adapted"
+            } else {
+                "lev-base"
+            };
             let mut door = Door::new(pool, model, samples).with_seed_base(seed_base);
             if let Some(path) = adapter {
                 match lev::adapter::Package::open(&path) {
@@ -168,7 +186,10 @@ async fn main() {
         if held.is_empty() {
             eprintln!("lev-serve: no record in {dir} may serve this door");
         } else {
-            eprintln!("lev-serve: serving fitted maps for {}", held.families().join(", "));
+            eprintln!(
+                "lev-serve: serving fitted maps for {}",
+                held.families().join(", ")
+            );
         }
         if let Some(trouble) = held.trouble() {
             eprintln!("lev-serve: {dir} could not be read: {trouble}");
@@ -185,7 +206,9 @@ async fn main() {
         if let Some(every) = refresh {
             tokio::spawn(refresher(policy.clone(), every));
         } else {
-            eprintln!("lev-serve: policy refresh is off; this door serves until its snapshot goes stale");
+            eprintln!(
+                "lev-serve: policy refresh is off; this door serves until its snapshot goes stale"
+            );
         }
     }
 
@@ -200,7 +223,9 @@ async fn main() {
          {seed_base} across {} helpers",
         door.pool_width()
     );
-    axum::serve(listener, door.router()).await.expect("the server runs");
+    axum::serve(listener, door.router())
+        .await
+        .expect("the server runs");
 }
 
 /// Fetches the snapshot and says where this door stands.
@@ -231,7 +256,9 @@ fn announce(policy: &Policy) {
         ),
         Err(refusal) => {
             eprintln!("lev-serve: {}", refusal.message);
-            eprintln!("lev-serve: starting anyway, and refusing every question, so the reason is on the wire");
+            eprintln!(
+                "lev-serve: starting anyway, and refusing every question, so the reason is on the wire"
+            );
         }
     }
 }

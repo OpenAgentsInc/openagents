@@ -139,7 +139,11 @@ fn a_threshold_change_is_a_different_gate() {
         let mut edited = gate.clone();
         let bound = bounds_mut(&mut edited.rule).swap_remove(0);
         bound.value = bound.value.map(|value| value + 1.0);
-        assert_ne!(gate.digest(), edited.digest(), "{id}: a new bound is a new rule");
+        assert_ne!(
+            gate.digest(),
+            edited.digest(),
+            "{id}: a new bound is a new rule"
+        );
     }
 }
 
@@ -173,7 +177,9 @@ fn changing_a_rules_evidence_is_a_different_gate() {
         let gate = gate(id);
         let mut edited = gate.clone();
         let bound = bounds_mut(&mut edited.rule).swap_remove(0);
-        bound.evidence.push(Evidence::Measurement { id: "a-record-the-bound-never-read".into() });
+        bound.evidence.push(Evidence::Measurement {
+            id: "a-record-the-bound-never-read".into(),
+        });
         assert_ne!(
             gate.digest(),
             edited.digest(),
@@ -195,7 +201,11 @@ fn changing_pending_identity_is_a_different_gate() {
         let mut edited = gate.clone();
         let pending = pending_mut(&mut edited.rule).expect("the gap is recorded");
         pending.issue = Some("openagents#9999".into());
-        assert_ne!(gate.digest(), edited.digest(), "{id}: the issue that takes it");
+        assert_ne!(
+            gate.digest(),
+            edited.digest(),
+            "{id}: the issue that takes it"
+        );
     }
 }
 
@@ -429,7 +439,10 @@ fn a_v2_pending_string_is_refused_for_carrying_no_why() {
 fn evidence_names_a_record_not_the_file_holding_it() {
     // A path is not an identity: moving the documentation tree must not
     // re-identify a rule, so the validator refuses one.
-    for bad in ["docs/gym/measurements/2026-09-19-suite-v2-scores.md", "measurements/foo"] {
+    for bad in [
+        "docs/gym/measurements/2026-09-19-suite-v2-scores.md",
+        "measurements/foo",
+    ] {
         let mut edited = gate("probability-v1");
         let bound = bounds_mut(&mut edited.rule).swap_remove(0);
         bound.evidence = vec![Evidence::Measurement { id: bad.into() }];
@@ -448,33 +461,50 @@ fn no_policy_edit_inherits_the_previous_encodings_identity() {
         unreachable!()
     };
     rule.min_ece_reduction.value = Some(0.2);
-    assert!(!edited.has_digest(PROBABILITY_V1_LEGACY), "a moved threshold");
+    assert!(
+        !edited.has_digest(PROBABILITY_V1_LEGACY),
+        "a moved threshold"
+    );
 
     let mut edited = gate("probability-v1");
     let Rule::Probability(rule) = &mut edited.rule else {
         unreachable!()
     };
     rule.min_ece_reduction.basis = Basis::Derived;
-    assert!(!edited.has_digest(PROBABILITY_V1_LEGACY), "a relabelled basis");
+    assert!(
+        !edited.has_digest(PROBABILITY_V1_LEGACY),
+        "a relabelled basis"
+    );
 
     let mut edited = gate("probability-v1");
     let Rule::Probability(rule) = &mut edited.rule else {
         unreachable!()
     };
-    rule.min_items
-        .evidence
-        .push(Evidence::Measurement { id: "a-record-the-bound-never-read".into() });
-    assert!(!edited.has_digest(PROBABILITY_V1_LEGACY), "a different evidence set");
+    rule.min_items.evidence.push(Evidence::Measurement {
+        id: "a-record-the-bound-never-read".into(),
+    });
+    assert!(
+        !edited.has_digest(PROBABILITY_V1_LEGACY),
+        "a different evidence set"
+    );
 
     let mut edited = gate("probability-v1");
-    pending_mut(&mut edited.rule).expect("the gap is recorded").quantity =
-        "a quantity nobody is missing".into();
-    assert!(!edited.has_digest(PROBABILITY_V1_LEGACY), "a different pending quantity");
+    pending_mut(&mut edited.rule)
+        .expect("the gap is recorded")
+        .quantity = "a quantity nobody is missing".into();
+    assert!(
+        !edited.has_digest(PROBABILITY_V1_LEGACY),
+        "a different pending quantity"
+    );
 
     let mut edited = gate("probability-v1");
-    pending_mut(&mut edited.rule).expect("the gap is recorded").issue =
-        Some("openagents#9999".into());
-    assert!(!edited.has_digest(PROBABILITY_V1_LEGACY), "a different pending issue");
+    pending_mut(&mut edited.rule)
+        .expect("the gap is recorded")
+        .issue = Some("openagents#9999".into());
+    assert!(
+        !edited.has_digest(PROBABILITY_V1_LEGACY),
+        "a different pending issue"
+    );
 }
 
 #[test]
@@ -487,8 +517,9 @@ fn prose_edits_keep_the_previous_encodings_identity() {
     for bound in bounds_mut(&mut gate.rule) {
         bound.why = "a different explanation".into();
     }
-    pending_mut(&mut gate.rule).expect("the gap is recorded").why =
-        "a different interim story".into();
+    pending_mut(&mut gate.rule)
+        .expect("the gap is recorded")
+        .why = "a different interim story".into();
     assert!(gate.has_digest(PROBABILITY_V1_LEGACY));
 }
 
@@ -521,8 +552,12 @@ fn a_pending_object_with_an_unknown_field_is_refused() {
 fn a_changed_policy_cannot_inherit_the_previous_encodings_identity() {
     let mut gate = gate("probability-v1");
     assert!(gate.has_digest(PROBABILITY_V1_LEGACY));
-    let Rule::Probability(rule) = &mut gate.rule else { unreachable!() };
+    let Rule::Probability(rule) = &mut gate.rule else {
+        unreachable!()
+    };
     rule.max_brier_increase.value = Some(rule.max_brier_increase.value.unwrap() + 0.01);
-    assert!(!gate.has_digest(PROBABILITY_V1_LEGACY),
-        "a new policy must not attribute historical rows through an unchanged alias list");
+    assert!(
+        !gate.has_digest(PROBABILITY_V1_LEGACY),
+        "a new policy must not attribute historical rows through an unchanged alias list"
+    );
 }

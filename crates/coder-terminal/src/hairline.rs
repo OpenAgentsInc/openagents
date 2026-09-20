@@ -121,7 +121,13 @@ mod tests {
         frame(area, &mut buf, Style::new());
         let loud = Style::new().add_modifier(Modifier::BOLD);
         let quiet = Style::new().fg(Color::Indexed(94));
-        rail(area, &mut buf, 0, Some(("left", quiet)), Some(("right", loud)));
+        rail(
+            area,
+            &mut buf,
+            0,
+            Some(("left", quiet)),
+            Some(("right", loud)),
+        );
         assert_eq!(text(&buf)[0], "┌─ left ─── right ─┐");
         assert_eq!(buf[(3u16, 0u16)].fg, Color::Indexed(94));
         assert!(buf[(14u16, 0u16)].modifier.contains(Modifier::BOLD));

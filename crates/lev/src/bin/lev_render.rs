@@ -18,7 +18,9 @@ fn main() {
         let request = SystemOneRequest {
             state: item.state.clone(),
             model: None,
-            questions: [(item.id.clone(), item.question.clone())].into_iter().collect(),
+            questions: [(item.id.clone(), item.question.clone())]
+                .into_iter()
+                .collect(),
             extensions: Extensions::default(),
         };
         let compiled = compile(&request).expect("the item compiles");

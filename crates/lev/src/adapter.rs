@@ -86,7 +86,11 @@ pub struct Metadata {
     )]
     pub draft_token_count: Option<u32>,
     /// Producer-defined lineage values, round-tripped whatever they hold.
-    #[serde(rename = "creatorDefined", default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        rename = "creatorDefined",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
     pub creator_defined: BTreeMap<String, Value>,
 }
 
@@ -129,15 +133,17 @@ impl Package {
         }
 
         let metadata_path = path.join(METADATA_FILE);
-        let text = std::fs::read_to_string(&metadata_path)
-            .map_err(|error| invalid(format!("{} did not read: {error}", metadata_path.display())))?;
+        let text = std::fs::read_to_string(&metadata_path).map_err(|error| {
+            invalid(format!("{} did not read: {error}", metadata_path.display()))
+        })?;
         let metadata: Metadata = serde_json::from_str(&text)
             .map_err(|error| invalid(format!("{METADATA_FILE} did not parse: {error}")))?;
         check_metadata(&metadata)?;
 
         let weights_path = path.join(WEIGHTS_FILE);
-        let bytes = std::fs::read(&weights_path)
-            .map_err(|error| invalid(format!("{} did not read: {error}", weights_path.display())))?;
+        let bytes = std::fs::read(&weights_path).map_err(|error| {
+            invalid(format!("{} did not read: {error}", weights_path.display()))
+        })?;
         let records = read_records(&bytes)?;
 
         let program = path.join(DRAFT_PROGRAM_FILE).exists();
@@ -145,12 +151,25 @@ impl Package {
         if program != draft_weights {
             return Err(invalid(format!(
                 "a draft model is both files or neither; this package has {} and {}",
-                if program { DRAFT_PROGRAM_FILE } else { "no program" },
-                if draft_weights { DRAFT_WEIGHTS_FILE } else { "no weights" }
+                if program {
+                    DRAFT_PROGRAM_FILE
+                } else {
+                    "no program"
+                },
+                if draft_weights {
+                    DRAFT_WEIGHTS_FILE
+                } else {
+                    "no weights"
+                }
             )));
         }
 
-        Ok(Self { path, metadata, records, has_draft: program })
+        Ok(Self {
+            path,
+            metadata,
+            records,
+            has_draft: program,
+        })
     }
 
     /// Whether this package may be attached against a running base.
@@ -186,7 +205,10 @@ fn check_metadata(metadata: &Metadata) -> Result<()> {
         return Err(invalid("`loraRank` is not positive".to_string()));
     }
     let signature = &metadata.base_model_signature;
-    if signature.len() != 40 || !signature.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    if signature.len() != 40
+        || !signature
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
     {
         return Err(invalid(format!(
             "`baseModelSignature` is 40 lowercase hex characters, and this one is `{signature}`"
@@ -236,7 +258,9 @@ pub fn read_records(bytes: &[u8]) -> Result<Vec<Record>> {
         let length = u64::from_le_bytes(header[8..16].try_into().expect("eight bytes"));
         let offset = u64::from_le_bytes(header[16..24].try_into().expect("eight bytes"));
         let payload_end = offset.checked_add(length).ok_or_else(|| {
-            invalid(format!("record {index} declares an offset and length that overflow"))
+            invalid(format!(
+                "record {index} declares an offset and length that overflow"
+            ))
         })?;
         if payload_end > bytes.len() as u64 {
             return Err(invalid(format!(
@@ -244,7 +268,11 @@ pub fn read_records(bytes: &[u8]) -> Result<Vec<Record>> {
                 bytes.len()
             )));
         }
-        records.push(Record { kind, length, offset });
+        records.push(Record {
+            kind,
+            length,
+            offset,
+        });
         cursor = align_up(payload_end as usize);
     }
     Ok(records)
@@ -270,10 +298,8 @@ pub fn write_records(payloads: &[(u32, Vec<u8>)]) -> Vec<u8> {
         let payload_at = out.len();
         out[header_at..header_at + 4].copy_from_slice(&RECORD_MAGIC.to_le_bytes());
         out[header_at + 4..header_at + 8].copy_from_slice(&kind.to_le_bytes());
-        out[header_at + 8..header_at + 16]
-            .copy_from_slice(&(payload.len() as u64).to_le_bytes());
-        out[header_at + 16..header_at + 24]
-            .copy_from_slice(&(payload_at as u64).to_le_bytes());
+        out[header_at + 8..header_at + 16].copy_from_slice(&(payload.len() as u64).to_le_bytes());
+        out[header_at + 16..header_at + 24].copy_from_slice(&(payload_at as u64).to_le_bytes());
         out.extend_from_slice(payload);
         out.resize(align_up(out.len()), 0);
     }
@@ -316,8 +342,11 @@ mod tests {
     fn write_package(dir: &Path, metadata: &Metadata, weights: &[u8]) -> PathBuf {
         let path = dir.join("lev.fmadapter");
         std::fs::create_dir_all(&path).expect("the package directory");
-        std::fs::write(path.join(METADATA_FILE), serde_json::to_vec_pretty(metadata).unwrap())
-            .expect("metadata");
+        std::fs::write(
+            path.join(METADATA_FILE),
+            serde_json::to_vec_pretty(metadata).unwrap(),
+        )
+        .expect("metadata");
         std::fs::write(path.join(WEIGHTS_FILE), weights).expect("weights");
         path
     }
@@ -331,14 +360,22 @@ mod tests {
 
     #[test]
     fn a_container_round_trips_through_the_writer_and_the_reader() {
-        let payloads = vec![(1_u32, vec![0xAB_u8; 130]), (1, vec![0xCD; 64]), (1, vec![0xEF; 3])];
+        let payloads = vec![
+            (1_u32, vec![0xAB_u8; 130]),
+            (1, vec![0xCD; 64]),
+            (1, vec![0xEF; 3]),
+        ];
         let bytes = write_records(&payloads);
         let records = read_records(&bytes).expect("the container parses");
         assert_eq!(records.len(), 3);
         for (record, (kind, payload)) in records.iter().zip(&payloads) {
             assert_eq!(record.kind, *kind);
             assert_eq!(record.length, payload.len() as u64);
-            assert_eq!(record.offset % ALIGNMENT as u64, 0, "payloads start aligned");
+            assert_eq!(
+                record.offset % ALIGNMENT as u64,
+                0,
+                "payloads start aligned"
+            );
             let start = record.offset as usize;
             assert_eq!(&bytes[start..start + payload.len()], payload.as_slice());
         }
@@ -352,7 +389,9 @@ mod tests {
         assert_eq!(package.metadata.lora_rank, 32);
         assert_eq!(package.records.len(), 1);
         assert!(!package.has_draft);
-        package.check_signature(SIGNATURE).expect("the signature matches");
+        package
+            .check_signature(SIGNATURE)
+            .expect("the signature matches");
     }
 
     #[test]
@@ -373,7 +412,11 @@ mod tests {
         bad.base_model_signature = "NOTHEX".to_string();
         let path = write_package(&dir, &bad, &write_records(&[(1, vec![7; 32])]));
         let refusal = Package::open(&path).expect_err("a malformed signature is refused");
-        assert!(refusal.message.contains("baseModelSignature"), "{}", refusal.message);
+        assert!(
+            refusal.message.contains("baseModelSignature"),
+            "{}",
+            refusal.message
+        );
     }
 
     #[test]
@@ -391,7 +434,11 @@ mod tests {
         let path = write_package(&dir, &metadata(), &write_records(&[(1, vec![7; 32])]));
         std::fs::write(path.join(DRAFT_PROGRAM_FILE), b"program").expect("the draft program");
         let refusal = Package::open(&path).expect_err("a half pair is refused");
-        assert!(refusal.message.contains("both files or neither"), "{}", refusal.message);
+        assert!(
+            refusal.message.contains("both files or neither"),
+            "{}",
+            refusal.message
+        );
 
         std::fs::write(path.join(DRAFT_WEIGHTS_FILE), b"weights").expect("the draft weights");
         let package = Package::open(&path).expect("a complete pair opens");
@@ -426,6 +473,9 @@ mod tests {
             .insert("suiteDigest".to_string(), serde_json::json!("35dfdf43"));
         let text = serde_json::to_string(&extended).expect("it encodes");
         let back: Metadata = serde_json::from_str(&text).expect("it decodes");
-        assert_eq!(back.creator_defined["suiteDigest"], serde_json::json!("35dfdf43"));
+        assert_eq!(
+            back.creator_defined["suiteDigest"],
+            serde_json::json!("35dfdf43")
+        );
     }
 }

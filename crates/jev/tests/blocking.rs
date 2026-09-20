@@ -20,10 +20,7 @@ const RECORDED_RESPONSE: &str = include_str!("fixtures/systemone-response.json")
 
 /// Serve `body` to the first request that arrives, after `delay`, recording
 /// what it carried.
-fn serve_after(
-    body: &'static str,
-    delay: Duration,
-) -> (String, std::sync::mpsc::Receiver<String>) {
+fn serve_after(body: &'static str, delay: Duration) -> (String, std::sync::mpsc::Receiver<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("the listener binds");
     let base = format!("http://{}", listener.local_addr().expect("the port reads"));
     let (send, received) = std::sync::mpsc::channel();

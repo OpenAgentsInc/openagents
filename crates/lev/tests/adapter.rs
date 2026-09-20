@@ -57,7 +57,9 @@ fn bridge() -> Option<Bridge> {
 #[test]
 fn the_device_reports_the_base_signature_it_will_accept() {
     let Some(mut bridge) = bridge() else { return };
-    let identifiers = bridge.compatible_adapters("lev").expect("the runtime answered");
+    let identifiers = bridge
+        .compatible_adapters("lev")
+        .expect("the runtime answered");
     eprintln!("compatible adapter identifiers: {identifiers:?}");
     assert!(!identifiers.is_empty());
     assert!(identifiers[0].starts_with("fmadapter-lev-"));
@@ -79,13 +81,18 @@ fn the_runtime_loads_a_package_this_repository_wrote() {
 
     // Our own reader accepts it first.
     let package = Package::open(&path).expect("our reader opens it");
-    package.check_signature(SIGNATURE).expect("the signature matches");
+    package
+        .check_signature(SIGNATURE)
+        .expect("the signature matches");
 
     // And so does Apple's, which is the part that proves the container layout
     // is right: metadata parsed, blob storage parsed, producer metadata
     // round-tripped.
     let metadata = bridge.load_adapter(&path).expect("the runtime loads it");
-    assert_eq!(metadata.get("purpose").map(String::as_str), Some("attach-path test"));
+    assert_eq!(
+        metadata.get("purpose").map(String::as_str),
+        Some("attach-path test")
+    );
 }
 
 #[test]
@@ -107,7 +114,10 @@ fn an_untrained_package_loads_and_then_fails_at_inference() {
     let mut questions = indexmap::IndexMap::new();
     questions.insert(
         "q".to_string(),
-        lev::api::Question::Choice { instructions: None, criteria },
+        lev::api::Question::Choice {
+            instructions: None,
+            criteria,
+        },
     );
     let request = lev::api::SystemOneRequest {
         state: serde_json::json!("I was charged twice."),
@@ -116,13 +126,16 @@ fn an_untrained_package_loads_and_then_fails_at_inference() {
         extensions: lev::api::Extensions::default(),
     };
     let compiled = lev::schema::compile(&request).expect("it compiles");
-    let call = Call::decide(&compiled["q"], Sampling::Greedy)
-        .with_adapter(path.display().to_string());
+    let call =
+        Call::decide(&compiled["q"], Sampling::Greedy).with_adapter(path.display().to_string());
 
     let outcome = bridge.decide(&call);
     assert!(
         outcome.is_err(),
         "an untrained adapter answered, which means these weights are no longer junk: {outcome:?}"
     );
-    eprintln!("untrained adapter refused as expected: {:?}", outcome.unwrap_err().code);
+    eprintln!(
+        "untrained adapter refused as expected: {:?}",
+        outcome.unwrap_err().code
+    );
 }

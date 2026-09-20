@@ -36,9 +36,7 @@ use gym::row::DoorIdentity;
 
 use lev::adapter::{Metadata, Package, write_package};
 use lev::bridge::Pool;
-use lev::manifest::{
-    Artifact, Base, EvalRef, Interface, MANIFEST_SCHEMA, Manifest, digest_of,
-};
+use lev::manifest::{Artifact, Base, EvalRef, Interface, MANIFEST_SCHEMA, Manifest, digest_of};
 use lev::policy::{Clock, DEFAULT_WINDOW_SECONDS, Revocation, Snapshot, SnapshotRef};
 use lev::serve::Door;
 
@@ -118,12 +116,17 @@ fn code(body: &Value) -> String {
 }
 
 fn message(body: &Value) -> String {
-    body["error"]["message"].as_str().unwrap_or_default().to_string()
+    body["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// The policy for the release written into `dir`.
 fn policy(dir: &Path) -> lev::policy::Policy {
-    Manifest::load(dir.join("manifest.json")).expect("the manifest loads").policy()
+    Manifest::load(dir.join("manifest.json"))
+        .expect("the manifest loads")
+        .policy()
 }
 
 /// Writes a package, a record, and a manifest, then starts a door over them.
@@ -191,7 +194,11 @@ async fn lane() -> Lane {
     )
     .expect("the manifest writes");
 
-    let lane = Lane { dir, clock: clock.clone(), base_url: String::new() };
+    let lane = Lane {
+        dir,
+        clock: clock.clone(),
+        base_url: String::new(),
+    };
     lane.publish(&Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS));
     lane.fetch().expect("the first snapshot fetches");
 
@@ -199,21 +206,32 @@ async fn lane() -> Lane {
     // `policySnapshot` block has to survive a round trip through the document
     // for any of this to be a property of the release.
     let manifest = Manifest::load(lane.dir.path().join("manifest.json")).expect("it loads");
-    manifest.check_eval_refs().expect("the record is the one the release names");
+    manifest
+        .check_eval_refs()
+        .expect("the record is the one the release names");
     let door = Door::new(Pool::none(), manifest.name.clone(), 8)
         .with_manifest(manifest)
         .with_os_build(OS_BUILD)
         .with_calibration(lane.dir.path().join("calibration"))
         .with_clock(clock.clone());
-    assert_eq!(door.calibration().families(), vec!["routing"], "the release serves its map");
+    assert_eq!(
+        door.calibration().families(),
+        vec!["routing"],
+        "the release serves its map"
+    );
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.expect("a port");
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("a port");
     let port = listener.local_addr().expect("an address").port();
     let door = Arc::new(door);
     tokio::spawn(async move {
         let _ = axum::serve(listener, door.router()).await;
     });
-    Lane { base_url: format!("http://127.0.0.1:{port}"), ..lane }
+    Lane {
+        base_url: format!("http://127.0.0.1:{port}"),
+        ..lane
+    }
 }
 
 /// A record fitted against the door this lane starts.
@@ -233,7 +251,10 @@ fn record(family: &str) -> Record {
         gate_digest: Some("gate:abc".to_string()),
         locked_reads: Vec::new(),
         fitted: "2026-09-19".to_string(),
-        map: Map::fit(&[Observation::new(1.0, true), Observation::new(1.0, false)], 2),
+        map: Map::fit(
+            &[Observation::new(1.0, true), Observation::new(1.0, false)],
+            2,
+        ),
         raw_metrics: Metrics::default(),
         calibrated_metrics: Metrics::default(),
         admitted: true,
@@ -249,10 +270,15 @@ async fn a_released_door_under_a_current_snapshot_serves() {
 
     let card = lane.card().await;
     assert_eq!(card["policy"]["state"], "current");
-    assert_eq!(card["policy"]["freshness_window_seconds"], DEFAULT_WINDOW_SECONDS);
+    assert_eq!(
+        card["policy"]["freshness_window_seconds"],
+        DEFAULT_WINDOW_SECONDS
+    );
     assert_eq!(card["serving"], json!(["routing"]));
     assert!(
-        card["policy"]["snapshot_sha256"].as_str().is_some_and(|digest| digest.len() == 64),
+        card["policy"]["snapshot_sha256"]
+            .as_str()
+            .is_some_and(|digest| digest.len() == 64),
         "the card names the snapshot it is serving under: {card}"
     );
 
@@ -270,14 +296,22 @@ async fn a_released_door_under_a_current_snapshot_serves() {
 async fn a_running_door_stops_serving_a_revoked_family() {
     let lane = lane().await;
     let (_, before) = lane.ask(Some("routing")).await;
-    assert_eq!(code(&before), "model_unavailable", "the door starts out serving");
+    assert_eq!(
+        code(&before),
+        "model_unavailable",
+        "the door starts out serving"
+    );
 
     // The service withdraws one family of the release. Nothing restarts;
     // nothing about the door's own files changes.
     lane.publish(
         &Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS).revoking(
-            Revocation::of(RELEASE, "the routing map was refitted and lost its gate", NOW)
-                .for_families(vec!["routing".to_string()]),
+            Revocation::of(
+                RELEASE,
+                "the routing map was refitted and lost its gate",
+                NOW,
+            )
+            .for_families(vec!["routing".to_string()]),
         ),
     );
     lane.fetch().expect("the revocation fetches");
@@ -285,7 +319,10 @@ async fn a_running_door_stops_serving_a_revoked_family() {
     let (status, body) = lane.ask(Some("routing")).await;
     assert_eq!(status, 410, "{body}");
     assert_eq!(code(&body), "revoked", "{body}");
-    assert!(message(&body).contains("refitted"), "the refusal carries the reason: {body}");
+    assert!(
+        message(&body).contains("refitted"),
+        "the refusal carries the reason: {body}"
+    );
 
     // A family the revocation did not name still reaches the runtime, which
     // is what "that family" in the issue means: a family-scoped revocation
@@ -295,7 +332,11 @@ async fn a_running_door_stops_serving_a_revoked_family() {
 
     let card = lane.card().await;
     assert_eq!(card["policy"]["state"], "revoked");
-    assert_eq!(card["serving"], json!([]), "the card stops listing the family");
+    assert_eq!(
+        card["serving"],
+        json!([]),
+        "the card stops listing the family"
+    );
     assert_eq!(card["policy"]["revoked"][0]["families"], "routing");
     assert_eq!(
         card["policy"]["detail"],
@@ -312,11 +353,13 @@ async fn a_running_door_stops_serving_a_revoked_family() {
 #[tokio::test]
 async fn revoking_a_base_signature_stops_the_whole_release() {
     let lane = lane().await;
-    lane.publish(&Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS).revoking(Revocation::of_base(
-        "9799725",
-        "25E246 replaced the base model, and every map fitted against it is invalid",
-        NOW,
-    )));
+    lane.publish(
+        &Snapshot::new(NOW, DEFAULT_WINDOW_SECONDS).revoking(Revocation::of_base(
+            "9799725",
+            "25E246 replaced the base model, and every map fitted against it is invalid",
+            NOW,
+        )),
+    );
     lane.fetch().expect("the revocation fetches");
 
     for family in [Some("routing"), Some("severity"), None] {
@@ -337,7 +380,11 @@ async fn revoking_a_base_signature_stops_the_whole_release() {
 async fn a_door_that_never_reaches_the_service_again_stops_within_the_window() {
     let lane = lane().await;
     let (_, before) = lane.ask(Some("routing")).await;
-    assert_eq!(code(&before), "model_unavailable", "the door starts out serving");
+    assert_eq!(
+        code(&before),
+        "model_unavailable",
+        "the door starts out serving"
+    );
 
     // The service goes away entirely — not unreachable, gone. A fetch from
     // here on fails, and failing changes nothing about when the door stops.
@@ -346,20 +393,31 @@ async fn a_door_that_never_reaches_the_service_again_stops_within_the_window() {
 
     lane.clock.advance(WINDOW);
     let (_, inside) = lane.ask(Some("routing")).await;
-    assert_eq!(code(&inside), "model_unavailable", "the last second inside the window serves");
+    assert_eq!(
+        code(&inside),
+        "model_unavailable",
+        "the last second inside the window serves"
+    );
 
     lane.clock.advance(1);
     let (status, body) = lane.ask(Some("routing")).await;
     assert_eq!(status, 503, "{body}");
     assert_eq!(code(&body), "policy_stale", "{body}");
-    assert!(message(&body).contains("86400"), "the refusal names the window: {body}");
+    assert!(
+        message(&body).contains("86400"),
+        "the refusal names the window: {body}"
+    );
 
     // Every family, and a request naming none. A stale snapshot stops the
     // managed release outright rather than family by family: the door cannot
     // say that any part of it is still allowed to serve.
     for family in [Some("routing"), Some("severity"), None] {
         let (_, body) = lane.ask(family).await;
-        assert_eq!(code(&body), "policy_stale", "{family:?} outlived the window: {body}");
+        assert_eq!(
+            code(&body),
+            "policy_stale",
+            "{family:?} outlived the window: {body}"
+        );
     }
 
     let card = lane.card().await;
@@ -370,7 +428,11 @@ async fn a_door_that_never_reaches_the_service_again_stops_within_the_window() {
         json!(["routing"]),
         "the map is still fitted and still matches; it is the policy that stopped it"
     );
-    assert!(card["policy"]["expires_in_seconds"].as_i64().is_some_and(|left| left < 0));
+    assert!(
+        card["policy"]["expires_in_seconds"]
+            .as_i64()
+            .is_some_and(|left| left < 0)
+    );
 
     // And the guarantee stated the way the issue asks for it: a revocation
     // published the instant after this door's snapshot was issued would have
@@ -384,7 +446,11 @@ async fn a_door_that_never_reaches_the_service_again_stops_within_the_window() {
 async fn deleting_the_cache_does_not_unmanage_a_running_door() {
     let lane = lane().await;
     let (_, before) = lane.ask(Some("routing")).await;
-    assert_eq!(code(&before), "model_unavailable", "the door starts out serving");
+    assert_eq!(
+        code(&before),
+        "model_unavailable",
+        "the door starts out serving"
+    );
 
     std::fs::remove_file(lane.dir.path().join("cache/current.json")).expect("the cache deletes");
 
@@ -395,7 +461,10 @@ async fn deleting_the_cache_does_not_unmanage_a_running_door() {
 
     let card = lane.card().await;
     assert_eq!(card["policy"]["state"], "absent");
-    assert_eq!(card["manifest"]["release"], RELEASE, "the release is still what it was");
+    assert_eq!(
+        card["manifest"]["release"], RELEASE,
+        "the release is still what it was"
+    );
     assert_eq!(card["serving"], json!([]));
 
     // And it comes back by fetching, rather than by the door forgetting it
@@ -415,7 +484,9 @@ async fn deleting_the_cache_does_not_unmanage_a_running_door() {
 async fn an_unreleased_door_carries_no_policy_and_admits_nothing() {
     let door = Arc::new(Door::new(Pool::none(), "lev-base", 8));
     assert!(door.policy().is_none());
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.expect("a port");
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("a port");
     let port = listener.local_addr().expect("an address").port();
     tokio::spawn(async move {
         let _ = axum::serve(listener, door.router()).await;
