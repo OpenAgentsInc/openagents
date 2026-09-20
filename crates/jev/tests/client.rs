@@ -676,6 +676,171 @@ async fn the_budget_stops_a_retry_before_it_waits() -> Outcome {
     Ok(())
 }
 
+/// A reply the loopback answers after about 200 milliseconds cannot succeed
+/// under a 50-millisecond budget, however long the attempt's own timeout is.
+/// This is the audit's reproduction: before the deadline applied, the call
+/// waited the reply out and returned `accepted=true`.
+#[tokio::test]
+async fn the_budget_is_a_deadline_the_first_attempt_cannot_outlive() -> Outcome {
+    let (base, _seen) = serve(vec![
+        Reply::new(200, RECORDED_RESPONSE).after(Duration::from_millis(200)),
+    ])
+    .await?;
+    let client = Client::new(
+        Config::new()
+            .api_key("ts-test-key-abcd1234")
+            .base_url(&base)
+            .timeout(Duration::from_secs(1))
+            .retry(RetryPolicy {
+                max_retries: 0,
+                budget: Some(Duration::from_millis(50)),
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let began = Instant::now();
+    let Err(Error::Timeout { timeout }) = client.system_one(asking()).await else {
+        unreachable!("a reply past the call's deadline cannot succeed");
+    };
+    assert!(
+        timeout <= Duration::from_millis(50),
+        "the attempt was capped by the remaining budget: {timeout:?}"
+    );
+    assert!(timeout > Duration::ZERO, "{timeout:?}");
+    assert!(
+        began.elapsed() < Duration::from_secs(1),
+        "the budget, not the attempt's own timeout, ended the call: {:?}",
+        began.elapsed()
+    );
+    Ok(())
+}
+
+/// A body that stalls reads inside the attempt's timeout, and the budget caps
+/// that timeout the same way it caps the head's arrival.
+#[tokio::test]
+async fn the_budget_bounds_a_body_that_stalls() -> Outcome {
+    let (base, _seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE).stalled()]).await?;
+    let client = Client::new(
+        Config::new()
+            .api_key("ts-test-key-abcd1234")
+            .base_url(&base)
+            .timeout(Duration::from_secs(1))
+            .retry(RetryPolicy {
+                max_retries: 0,
+                budget: Some(Duration::from_millis(60)),
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let began = Instant::now();
+    let Err(Error::Timeout { timeout }) = client.system_one(asking()).await else {
+        unreachable!("a stalled body runs out of budget");
+    };
+    assert!(
+        timeout <= Duration::from_millis(60),
+        "the read was capped by the remaining budget: {timeout:?}"
+    );
+    assert!(began.elapsed() < Duration::from_secs(1), "{:?}", began.elapsed());
+    Ok(())
+}
+
+/// A wait the server asks for that outlives the budget never runs: the call
+/// returns the failure it already holds.
+#[tokio::test]
+async fn a_server_wait_past_the_budget_never_runs() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(429, "{}").header("retry-after-ms", "60000"),
+    ])
+    .await?;
+    let client = Client::new(
+        Config::new()
+            .api_key("ts-test-key-abcd1234")
+            .base_url(&base)
+            .retry(RetryPolicy {
+                max_retries: 2,
+                budget: Some(Duration::from_millis(50)),
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let began = Instant::now();
+    let Err(Error::Api(error)) = client.system_one(asking()).await else {
+        unreachable!("a wait past the budget returns the last failure");
+    };
+    assert_eq!(error.status, 429);
+    assert_eq!(seen.lock().await.len(), 1, "no retry ran");
+    assert!(
+        began.elapsed() < Duration::from_secs(30),
+        "the call did not wait out the server's delay: {:?}",
+        began.elapsed()
+    );
+    Ok(())
+}
+
+/// A retry that runs gets only the time the call has left: its timeout is
+/// the remaining budget, not the call's own.
+#[tokio::test]
+async fn a_retry_gets_only_the_time_the_call_has_left() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(503, "{}"),
+        Reply::new(200, RECORDED_RESPONSE).after(Duration::from_millis(500)),
+    ])
+    .await?;
+    let client = Client::new(
+        Config::new()
+            .api_key("ts-test-key-abcd1234")
+            .base_url(&base)
+            .timeout(Duration::from_secs(5))
+            .retry(RetryPolicy {
+                max_retries: 1,
+                backoff_initial: Duration::from_millis(1),
+                backoff_max: Duration::from_millis(1),
+                backoff_jitter: 0.0,
+                budget: Some(Duration::from_millis(80)),
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let began = Instant::now();
+    let Err(Error::Timeout { timeout }) = client.system_one(asking()).await else {
+        unreachable!("the retry cannot outlive the call's deadline");
+    };
+    assert!(
+        timeout <= Duration::from_millis(80),
+        "the retry was capped by the remaining budget: {timeout:?}"
+    );
+    assert!(
+        began.elapsed() < Duration::from_millis(500),
+        "the call ended before the second reply arrived: {:?}",
+        began.elapsed()
+    );
+    assert_eq!(seen.lock().await.len(), 2);
+    Ok(())
+}
+
+/// The deadline holds on the unread path too: `system_one_raw` hands the
+/// response back with its body unread, and the reply still cannot arrive
+/// past the budget.
+#[tokio::test]
+async fn the_budget_bounds_the_raw_call_the_same_way() -> Outcome {
+    let (base, _) = serve(vec![
+        Reply::new(200, RECORDED_RESPONSE).after(Duration::from_millis(200)),
+    ])
+    .await?;
+    let client = Client::new(
+        Config::new()
+            .api_key("ts-test-key-abcd1234")
+            .base_url(&base)
+            .timeout(Duration::from_secs(1))
+            .retry(RetryPolicy {
+                max_retries: 0,
+                budget: Some(Duration::from_millis(50)),
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let Err(Error::Timeout { timeout }) = client.system_one_raw(asking()).await else {
+        unreachable!("a reply past the call's deadline cannot succeed");
+    };
+    assert!(timeout <= Duration::from_millis(50), "{timeout:?}");
+    Ok(())
+}
+
 #[tokio::test]
 async fn an_attempt_past_its_timeout_is_a_timeout() -> Outcome {
     let (base, _) = serve(vec![

@@ -162,7 +162,7 @@ means.
 | Longest honored server delay | 60 s | `max_retry_after: Duration` |
 | Retry connection errors | true | `connection_errors: bool` |
 | Retry timeouts | true | `timeouts: bool` |
-| Total budget | none | `budget: Option<Duration>`; Python defaults to 30 s, JavaScript has none; the Rust default is none, and the owner may prefer Python's |
+| Total budget | none | `budget: Option<Duration>`; Python defaults to 30 s, JavaScript has none; the Rust default is none, and the owner may prefer Python's. It is a monotonic deadline for the whole call, described below |
 | Predicate | none | `predicate: Option<Arc<dyn Fn(&Error) -> bool + Send + Sync>>` |
 
 The delay for attempt `n` is `min(initial * 2^n, cap) * (1 - random() *
@@ -172,6 +172,20 @@ HTTP date. Every retry is logged at `info` with the attempt number, the
 reason, and the delay. Every field is validated at construction:
 non-negative counts and durations, jitter between 0 and 1, statuses between
 100 and 999.
+
+`budget`, when set, is a monotonic deadline for the whole call rather than a
+check only retries pass. It starts when the call dispatches, and the first
+attempt, every retry, every wait between them, and the response body all
+share it. Each attempt's timeout is the smaller of the call's own `timeout`
+and the time the call has left, so a reply that arrives after the deadline
+ends the call as `Error::Timeout` instead of succeeding; a response body
+that stalls runs out of the same budget the connection does. A retry whose
+wait — including one the server asks for with `Retry-After` — would reach
+the deadline does not run, and the call returns the last failure it holds.
+`system_one_raw` hands back the response before its body is read, but the
+body stays under the same deadline: a read that runs past it fails rather
+than outliving the budget. `BlockingClient` runs the same loop, so the
+deadline holds there too.
 
 ### Errors
 
@@ -183,7 +197,7 @@ One `Error` enum with `thiserror`, matching both SDKs' hierarchies:
 | `Question { id, message }` | the question id | `TypeSafeError` from validation |
 | `Api(ApiError)` | `status`, `headers`, `body: Option<serde_json::Value or String>`, `request_id`, `endpoint`, `kind` | `APIError` and `TypeSafeAPIError` |
 | `Connection { message, source }` | the transport error | `APIConnectionError` |
-| `Timeout { timeout }` | the per-attempt timeout | `APITimeoutError` |
+| `Timeout { timeout }` | the timeout that expired: the attempt's own, or the budget's remaining time | `APITimeoutError` |
 | `ResponseValidation { status, field_path, body, request_id }` | the offending field | `TypeSafeAPIResponseValidationError` |
 | `AnswerType { id, expected, found }` | the typed accessor mismatch | none; Rust-only |
 | `MissingAnswer { id }` | the typed accessor miss | none; Rust-only |

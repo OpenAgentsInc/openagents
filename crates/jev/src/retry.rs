@@ -62,9 +62,14 @@ pub struct RetryPolicy {
     pub connection_errors: bool,
     /// Whether an attempt that ran past its timeout is retried.
     pub timeouts: bool,
-    /// The whole call's budget, including the first attempt and every delay.
-    /// `None`, the default, sets no budget. A retry whose delay would reach
-    /// the budget does not run, and the last failure is returned.
+    /// The whole call's budget, as a monotonic deadline measured from the
+    /// first attempt's dispatch: the first attempt, every retry, every wait
+    /// between them, and the body a read path consumes all share it. Each
+    /// attempt's timeout is capped at the time the call has left, so a reply
+    /// that arrives past the deadline ends as [`Error::Timeout`] rather than
+    /// succeeding, and a retry whose delay would reach the deadline does not
+    /// run — the last failure is returned. `None`, the default, sets no
+    /// budget.
     pub budget: Option<Duration>,
     /// A caller's own test, asked in addition to the rules above.
     pub predicate: Option<RetryPredicate>,

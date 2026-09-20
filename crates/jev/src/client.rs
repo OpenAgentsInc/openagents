@@ -239,12 +239,18 @@ impl Client {
 
     /// Ask questions about one state and read the answers.
     ///
+    /// The policy's `budget`, when set, is a monotonic deadline for the whole
+    /// call, including the first attempt, the body read, every wait, and
+    /// every retry; each attempt's timeout is capped at the time the call has
+    /// left.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::Question`] when the question set fails its checks,
     /// before any request. Returns [`Error::Api`], [`Error::Connection`], or
-    /// [`Error::Timeout`] when the call fails after its retries, and
-    /// [`Error::ResponseValidation`] when the answers do not read.
+    /// [`Error::Timeout`] when the call fails after its retries or runs out
+    /// of budget, and [`Error::ResponseValidation`] when the answers do not
+    /// read.
     pub async fn system_one(&self, request: SystemOneRequest) -> Result<SystemOneResponse> {
         let prepared = self.prepare_system_one(&request)?;
         let raw = self.send_read(&prepared).await?;
@@ -253,6 +259,12 @@ impl Client {
 
     /// Ask questions about one state and hand back the response unread, for a
     /// caller that wants the bytes.
+    ///
+    /// The call is bounded the way [`Client::system_one`] is, and the
+    /// returned response's body stays under the same deadline: the attempt's
+    /// timeout — capped by the remaining budget — still applies while the
+    /// caller reads the body, so a read past the deadline fails rather than
+    /// outliving the call's budget.
     ///
     /// # Errors
     ///
@@ -345,15 +357,50 @@ impl Client {
     }
 
     /// The retry loop both send paths share.
+    ///
+    /// `retry.budget`, when set, is a monotonic deadline for the whole call,
+    /// measured from the first attempt's dispatch: it covers the first
+    /// attempt, every retry, every wait between them, and the body a read
+    /// path consumes inside its attempt. Each attempt's timeout is the
+    /// smaller of the call's own timeout and the time the call has left, so
+    /// a reply that arrives after the deadline cannot succeed, and a retry
+    /// whose wait would reach the deadline never runs.
     async fn send_with<T>(
         &self,
         prepared: &Prepared,
-        attempt: impl AsyncFn(&Client, &Prepared, u32) -> std::result::Result<T, Failed>,
+        attempt: impl AsyncFn(&Client, &Prepared, u32, Duration) -> std::result::Result<T, Failed>,
     ) -> Result<T> {
         let started = Instant::now();
+        // A budget too large to name on this clock is no deadline at all.
+        let deadline = prepared
+            .retry
+            .budget
+            .and_then(|budget| started.checked_add(budget));
         let mut attempt_no: u32 = 0;
+        let mut last: Option<Failed> = None;
         loop {
-            match attempt(self, prepared, attempt_no).await {
+            let timeout = match deadline {
+                Some(deadline) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        // The call's time is spent. The failure already held
+                        // is the answer; a call that never ran an attempt
+                        // reports the bound it ran out of.
+                        return Err(match last {
+                            Some(failed) => failed.error,
+                            None => Error::Timeout {
+                                timeout: prepared
+                                    .retry
+                                    .budget
+                                    .map_or(prepared.timeout, |b| prepared.timeout.min(b)),
+                            },
+                        });
+                    }
+                    prepared.timeout.min(remaining)
+                }
+                None => prepared.timeout,
+            };
+            match attempt(self, prepared, attempt_no, timeout).await {
                 Ok(done) => return Ok(done),
                 Err(failed) => {
                     let retries_left = prepared.retry.max_retries.saturating_sub(attempt_no);
@@ -383,6 +430,7 @@ impl Client {
                     );
                     tokio::time::sleep(delay).await;
                     attempt_no += 1;
+                    last = Some(failed);
                 }
             }
         }
@@ -395,8 +443,9 @@ impl Client {
         &self,
         prepared: &Prepared,
         attempt: u32,
+        timeout: Duration,
     ) -> std::result::Result<RawResponse, Failed> {
-        let response = self.attempt(prepared, attempt).await?;
+        let response = self.attempt(prepared, attempt, timeout).await?;
         let status = response.status().as_u16();
         let headers = response.headers().clone();
         match response.bytes().await {
@@ -409,9 +458,7 @@ impl Client {
                 // A body that stalls past the timeout is a timeout, the way
                 // the Python SDK names a read timeout.
                 let error = if source.is_timeout() {
-                    Error::Timeout {
-                        timeout: prepared.timeout,
-                    }
+                    Error::Timeout { timeout }
                 } else {
                     Error::connection(source)
                 };
@@ -423,11 +470,15 @@ impl Client {
         }
     }
 
-    /// One HTTP round trip under one timeout.
+    /// One HTTP round trip under one timeout: the smaller of the call's own
+    /// and the time a budget leaves it. The reqwest timeout holds through the
+    /// body read, so a body that stalls past the deadline ends the attempt
+    /// the same way a stalled head does.
     async fn attempt(
         &self,
         prepared: &Prepared,
         attempt: u32,
+        timeout: Duration,
     ) -> std::result::Result<reqwest::Response, Failed> {
         let mut headers = prepared.headers.clone();
         if attempt > 0 {
@@ -447,7 +498,7 @@ impl Client {
             .http
             .request(prepared.method.clone(), &prepared.url)
             .headers(headers)
-            .timeout(prepared.timeout);
+            .timeout(timeout);
         if let Some(body) = prepared.body.clone() {
             builder = builder.body(body);
         }
@@ -457,9 +508,7 @@ impl Client {
             Err(error) => {
                 let timed_out = error.is_timeout();
                 let failure = if timed_out {
-                    Error::Timeout {
-                        timeout: prepared.timeout,
-                    }
+                    Error::Timeout { timeout }
                 } else {
                     Error::connection(error)
                 };

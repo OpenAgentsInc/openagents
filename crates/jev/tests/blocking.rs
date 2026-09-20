@@ -4,10 +4,12 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::time::Duration;
 
 use indexmap::IndexMap;
 use jev::{
-    BlockingClient, Choice, Config, Entry, ListOptions, Noul, Questions, Score, SystemOneRequest,
+    BlockingClient, Choice, Config, Entry, ListOptions, Noul, Questions, RetryPolicy, Score,
+    SystemOneRequest,
 };
 use serde_json::json;
 
@@ -16,8 +18,12 @@ type Outcome = Result<(), Box<dyn std::error::Error>>;
 /// The recorded response of a real `POST /v1/systemone`.
 const RECORDED_RESPONSE: &str = include_str!("fixtures/systemone-response.json");
 
-/// Serve `body` to the first request that arrives, recording what it carried.
-fn serve_once(body: &'static str) -> (String, std::sync::mpsc::Receiver<String>) {
+/// Serve `body` to the first request that arrives, after `delay`, recording
+/// what it carried.
+fn serve_after(
+    body: &'static str,
+    delay: Duration,
+) -> (String, std::sync::mpsc::Receiver<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("the listener binds");
     let base = format!("http://{}", listener.local_addr().expect("the port reads"));
     let (send, received) = std::sync::mpsc::channel();
@@ -48,6 +54,7 @@ fn serve_once(body: &'static str) -> (String, std::sync::mpsc::Receiver<String>)
         }
         request.push_str(&String::from_utf8_lossy(&body_bytes));
         let _ = send.send(request);
+        std::thread::sleep(delay);
         let head = format!(
             "HTTP/1.1 200 OK\r\ncontent-length: {}\r\ncontent-type: application/json\r\nconnection: close\r\n\r\n",
             body.len()
@@ -58,6 +65,11 @@ fn serve_once(body: &'static str) -> (String, std::sync::mpsc::Receiver<String>)
         let _ = socket.flush();
     });
     (base, received)
+}
+
+/// Serve `body` to the first request that arrives, recording what it carried.
+fn serve_once(body: &'static str) -> (String, std::sync::mpsc::Receiver<String>) {
+    serve_after(body, Duration::ZERO)
 }
 
 /// A client pointed at the base.
@@ -118,5 +130,41 @@ fn the_blocking_client_lists_models() -> Outcome {
 
     let request = received.recv()?;
     assert!(request.starts_with("GET /v1/models"), "{request}");
+    Ok(())
+}
+
+/// The blocking entry point runs the same loop, so the same whole-call
+/// deadline holds: a reply that arrives past the budget cannot succeed, and
+/// the attempt's own timeout gives way to the time the call has left.
+#[test]
+fn the_blocking_call_holds_the_same_whole_call_deadline() -> Outcome {
+    let (base, _seen) = serve_after(RECORDED_RESPONSE, Duration::from_millis(200));
+    let client = BlockingClient::new(
+        Config::new()
+            .api_key("ts-test-key")
+            .base_url(&base)
+            .timeout(Duration::from_secs(5))
+            .retry(RetryPolicy {
+                max_retries: 0,
+                budget: Some(Duration::from_millis(50)),
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let began = std::time::Instant::now();
+    let Err(jev::Error::Timeout { timeout }) = client.system_one(SystemOneRequest::new(
+        json!({"subject": "Double charge"}),
+        Questions::new().with("refund", Noul::new("Is a refund asked for?")),
+    )) else {
+        unreachable!("a reply past the call's deadline cannot succeed");
+    };
+    assert!(
+        timeout <= Duration::from_millis(50),
+        "the attempt was capped by the remaining budget: {timeout:?}"
+    );
+    assert!(
+        began.elapsed() < Duration::from_secs(5),
+        "the budget, not the attempt's own timeout, ended the call: {:?}",
+        began.elapsed()
+    );
     Ok(())
 }
