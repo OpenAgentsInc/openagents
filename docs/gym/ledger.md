@@ -34,6 +34,37 @@ A read that returned is therefore a read that was recorded durably, and two
 racing readers cannot both be first: the loser finds the winner's committed
 record and is refused with `AlreadyRead`.
 
+## An exposed partition is refused before the transaction
+
+A locked partition proves nothing about a door that trained on it. A
+suite whose held-back items were training data before the suite held them
+back carries a typed `exposure` record in its manifest:
+
+```json
+"exposure": {
+  "partition": "locked",
+  "items": 20,
+  "through": "training/lev-adapter/convert.py, ...",
+  "successor": "support-v2-unseen"
+}
+```
+
+`Spend` names the adapter the door serves — `DoorIdentity::adapter`, or
+empty for a base or hosted door — and both read paths check the exposure
+before the lock is taken: a spend for an adapter against an exposed
+locked partition is refused with `SuiteError::Exposed`, no ledger file
+is created, and no record is written. The error names the successor
+suite when the manifest has one. A base or hosted door, which trained on
+nothing, still reads the partition and its record carries no adapter.
+
+The record sits outside the item digest, beside `gate` and `questions`,
+because it says what happened to the items rather than what they are.
+Adding it to a suite leaves every row and record that pins the suite's
+digest valid, and leaves every read already in the ledger as it was.
+
+[`measurements/2026-09-20-relocking-support-v2.md`](measurements/2026-09-20-relocking-support-v2.md)
+records the one exposure so far and the suite that replaces it.
+
 ## One ledger, one lock
 
 The lock is taken on the ledger's canonical path, not the path the caller
