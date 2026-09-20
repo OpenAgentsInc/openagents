@@ -1024,3 +1024,73 @@ fn an_unapproved_decision_verifies_nothing() {
         capability::Verified::Unapproved(_)
     ));
 }
+
+/// Run with a private environment so parallel tests never race over HOME.
+#[test]
+fn devin_state_must_be_inside_the_approval() {
+    const CHILD: &str = "CAPABILITY_STATE_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("grant")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(home.path(), home.path().join("grant/escape")).unwrap();
+        for case in ["default", "relative", "excluded", "included", "symlink"] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "devin_state_must_be_inside_the_approval",
+                    "--nocapture",
+                ])
+                .env(CHILD, case)
+                .env("HOME", home.path())
+                .env_remove("XDG_DATA_HOME");
+            match case {
+                "relative" => {
+                    command.env("XDG_DATA_HOME", "relative");
+                }
+                "excluded" => {
+                    command.env("XDG_DATA_HOME", home.path().join("data"));
+                }
+                "included" => {
+                    command.env("XDG_DATA_HOME", home.path().join("grant/new/data"));
+                }
+                "symlink" => {
+                    command.env("XDG_DATA_HOME", home.path().join("grant/escape/data"));
+                }
+                _ => {}
+            }
+            assert!(command.status().unwrap().success(), "case {case}");
+        }
+        return;
+    }
+    let case = std::env::var(CHILD).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let grant = PathBuf::from(std::env::var_os("HOME").unwrap()).join("grant");
+    let adapter_path = adapter(outside.path(), "#!/bin/sh\necho stub 1.0.0\n");
+    let binary = adapter_path.to_str().unwrap();
+    let repository = repository(
+        "devin-local",
+        &manifest(
+            "devin-local",
+            binary,
+            json!([binary, "--version"]),
+            json!({}),
+        ),
+    );
+    let mut trust = trust_in(outside.path());
+    trust
+        .approve(Some(repository.path()), "devin-local", &[grant])
+        .unwrap();
+    let found = entry(repository.path(), "devin-local").probe(repository.path(), &trust);
+    if case == "included" {
+        assert!(found.available(), "{found:?}");
+    } else {
+        assert_eq!(found.presence.state(), "present_unavailable", "{found:?}");
+        assert!(!found.available());
+        assert_eq!(
+            found.call().extra["refused"]["name"],
+            "executor_state_not_writable"
+        );
+    }
+}

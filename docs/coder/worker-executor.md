@@ -159,8 +159,12 @@ executor's whole answer arrives.
   and the CLI's disagree about which list to read.
 - `writable path X overlaps protected path X` — the writable grant is the
   work directory; separate them.
-- `exited 101 ... Read-only file system` — the executor writes state
-  outside the grant; relocate its state directory into the grant.
+- `present and unavailable here: executor_state_not_writable` — the executor
+  state directory resolves outside every writable grant, or cannot be resolved.
+  Set `XDG_DATA_HOME` inside an approved writable directory before probing.
+  The probe checks the default `~/.local/share/devin` when `XDG_DATA_HOME`
+  is unset or relative, and resolves existing symlinks before comparing grants.
+  This check does not establish disk space or filesystem permissions.
 
 ## Troubleshooting
 

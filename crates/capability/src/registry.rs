@@ -192,7 +192,12 @@ impl Entry {
                     },
                 )
             }
-            Decision::Approved(proof) => (proof, self.manifest.presence(workspace, wall, ask)),
+            Decision::Approved(proof) => {
+                let presence = self.manifest.presence(workspace, wall, ask);
+                let presence =
+                    crate::probe::check_executor_state(&self.manifest.slug, &proof, presence);
+                (proof, presence)
+            }
         };
         Found {
             manifest: self.manifest.clone(),

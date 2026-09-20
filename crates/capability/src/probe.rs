@@ -334,3 +334,79 @@ pub(crate) fn argv(
     command.args(&argv[1..]).current_dir(workspace);
     bounded::run(command, wall)
 }
+
+/// Check the known executor's state before offering it as a route. Version
+/// detection alone cannot establish that its later bounded run can write logs.
+pub(crate) fn check_executor_state(slug: &str, proof: &Proof, presence: Presence) -> Presence {
+    if slug != "devin-local" {
+        return presence;
+    }
+    let Presence::Present {
+        version,
+        report,
+        path,
+    } = presence
+    else {
+        return presence;
+    };
+    let state = devin_state(
+        std::env::var_os("XDG_DATA_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    );
+    let failure = match state {
+        Some(state) => match canonical_future(&state) {
+            Ok(resolved) if proof.writable().iter().any(|grant| {
+                grant.canonicalize().is_ok_and(|grant| resolved.starts_with(grant))
+            }) => None,
+            Ok(_) => Some(format!("executor state {} is outside every writable grant; set XDG_DATA_HOME inside an approved writable directory", state.display())),
+            Err(error) => Some(format!("cannot resolve executor state {}: {error}", state.display())),
+        },
+        None => Some("executor state cannot be resolved: XDG_DATA_HOME and HOME name no absolute data directory".to_string()),
+    };
+    match failure {
+        Some(detail) => Presence::Unavailable {
+            version,
+            report,
+            path,
+            refusal: "executor_state_not_writable".to_string(),
+            detail,
+        },
+        None => Presence::Present {
+            version,
+            report,
+            path,
+        },
+    }
+}
+
+fn devin_state(xdg: Option<&std::ffi::OsStr>, home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    xdg.map(Path::new)
+        .filter(|path| path.is_absolute())
+        .map(Path::to_path_buf)
+        .or_else(|| {
+            home.map(Path::new)
+                .filter(|path| path.is_absolute())
+                .map(|home| home.join(".local/share"))
+        })
+        .map(|data| data.join("devin"))
+}
+
+/// Resolve existing ancestors, including symlinks, without creating state.
+/// Missing descendants are allowed because the executor creates them at startup.
+fn canonical_future(path: &Path) -> std::io::Result<PathBuf> {
+    match path.canonicalize() {
+        Ok(path) => Ok(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // A dangling symlink is not a missing directory we can create.
+            if std::fs::symlink_metadata(path).is_ok() {
+                return Err(error);
+            }
+            let parent = path.parent().ok_or(error)?;
+            let name = path
+                .file_name()
+                .ok_or_else(|| std::io::Error::other("invalid state directory"))?;
+            Ok(canonical_future(parent)?.join(name))
+        }
+        Err(error) => Err(error),
+    }
+}
