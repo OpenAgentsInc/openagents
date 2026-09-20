@@ -325,15 +325,35 @@ async fn main() {
     server.join().unwrap();
 
     let marker = dir.path().join("after-timeout");
+    let descendant = dir.path().join("shell-descendant-marker");
     let proposal = coder::Proposal {
-        command: format!("sleep 16; printf harmless > '{}'", marker.display()),
+        command: format!(
+            "(sleep 16; printf harmless > '{}') & sleep 20; printf harmless > '{}'",
+            descendant.display(),
+            marker.display()
+        ),
         why: "isolated timeout probe".into(),
     };
     let outcome = coder::shell::run(&proposal, coder::Permit::executing()).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
     println!(
-        "shell_status={} wrote_after_timeout={}",
+        "shell_status={} wrote_after_timeout={} descendant_wrote_after_timeout={}",
         outcome.status,
-        marker.exists()
+        marker.exists(),
+        descendant.exists()
+    );
+
+    // A03: four mebibytes offered to a command whose retained output is
+    // capped at sixteen kibibytes. The printed pair says whether the cap
+    // applies to what the process holds or only to what it reports.
+    let proposal = coder::Proposal {
+        command: "yes 0123456789abcde | head -n 262144".into(),
+        why: "isolated capture probe".into(),
+    };
+    let outcome = coder::shell::run(&proposal, coder::Permit::executing()).await;
+    println!(
+        "shell_printed_bytes={} shell_kept_bytes={}",
+        outcome.bytes,
+        outcome.output.len()
     );
 }

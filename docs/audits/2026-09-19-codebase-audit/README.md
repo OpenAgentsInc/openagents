@@ -112,6 +112,7 @@ This complements the routing work in #9395–#9397; those issues do not fix pars
 ### A02. Terminate and reap the process tree when execution ends
 
 Tracking: [#9416](https://github.com/OpenAgentsInc/openagents/issues/9416).
+Fixed by `a96845c40d`; see [A02 and A03 after the fix](verification.md#a02-and-a03-after-the-fix).
 
 The [shell runner](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/shell.rs#L194) wraps `Command::output()`
 in a 15-second timeout without `kill_on_drop`. The timeout cancels the wait, and
@@ -140,6 +141,7 @@ also kills only the direct child, so use the same supervisor there. Complete thi
 ### A03. Bound captured output while reading it
 
 Tracking: [#9417](https://github.com/OpenAgentsInc/openagents/issues/9417).
+Fixed by `a96845c40d`; see [A02 and A03 after the fix](verification.md#a02-and-a03-after-the-fix).
 
 Both [shell execution](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/shell.rs#L210) and
 [delegation](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/delegate.rs#L537) collect complete stdout and

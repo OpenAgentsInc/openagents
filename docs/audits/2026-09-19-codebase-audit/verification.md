@@ -274,6 +274,76 @@ does not establish the process-tree termination of A02, the capture bounds of
 A03, or the trusted executable probes of A17, and it does not verify that a
 delegated executor honors a bound.
 
+### A02 and A03 after the fix
+
+Commit `a96845c40d` puts both execution paths behind one subprocess
+supervisor, `crates/supervise`. A job's direct child leads a process group of
+its own, a deadline or a cancelled caller terminates that group and reaps the
+direct child before the job reports, and stdout and stderr are held to their
+caps as they are read rather than after a whole `output()` is in memory.
+
+The harness gained two observations for this, so the record can separate a
+shell that stopped from a shell whose descendants stopped with it, and can
+show where the output cap applies. The A02 shell probe now starts a
+background child that would write at sixteen seconds, and the new A03 probe
+offers four mebibytes to a command whose retained output is sixteen
+kibibytes.
+
+Before the fix, the harness reported the two A02 lines as the audit found
+them, at `81eb7fd31a` and again at `6b13bdba5d`:
+
+```text
+delegate_status=timed out descendant_wrote_after_timeout=true
+shell_status=timed out wrote_after_timeout=true
+```
+
+After it, at `a96845c40d`, with `cargo +1.97.1`:
+
+```text
+delegate_status=timed out descendant_wrote_after_timeout=false
+shell_status=timed out wrote_after_timeout=false descendant_wrote_after_timeout=false
+shell_printed_bytes=4194304 shell_kept_bytes=16419
+```
+
+The last line is an observation of the retained result: the command printed
+four mebibytes and the outcome kept sixteen kibibytes and the byte count of
+everything. It does not by itself establish that the cap applied during
+capture rather than after it. The tests do that, by asking a program for more
+output than its cap allows and reading back what was kept while the job was
+terminated for running too long.
+
+The A02 and A03 tests pass at `a96845c40d`: 24 in `supervise`, 16 in the
+shell runner, 12 in delegation, and 6 in CoderBench's driver.
+
+```sh
+cargo +1.97.1 test --locked -p supervise
+cargo +1.97.1 test --locked -p coder --lib shell::tests
+cargo +1.97.1 test --locked -p coder --lib delegate::tests
+cargo +1.97.1 test --locked -p coderbench --lib drive::tests
+```
+
+They cover a grandchild on a deadline, a cancelled future, a caller that
+stopped waiting, a child that exits while a descendant remains, two
+simultaneous jobs where only one is terminated, a child that ignores
+`SIGTERM`, unreaped children, a job that will not spawn, oversized output on
+both streams at once, a producer that never stops, a cap inside a multi-byte
+character, partial output kept on a timeout, and a probe that removes its
+temporary files however it ends. The whole workspace suite passes.
+
+Platform support is stated rather than assumed: process-tree ownership here
+is `process_group(0)` and `killpg`, and `supervise` does not compile on a
+platform where no equivalent is implemented.
+
+What this does not reach. It bounds time and captured output; it is not a
+sandbox, and it does not bound what a program reads, writes, or sends. A
+descendant that calls `setsid` leaves the group and is beyond it. The
+supervisor signals the group immediately after reaping its leader, which
+leaves a window of microseconds in which a host could recycle the group
+identifier; closing it needs `waitid(WNOWAIT)`, which is not on the
+asynchronous runtime's wait path. And process-tree termination does not
+establish the trusted probes of A17 or the verified enforcement of A18,
+which #9413 still waits on.
+
 ### Runtime admission and worktrees
 
 Commit `1eb60eccea31873af59fe2df65e16ce46b99b928` landed during this follow-up.

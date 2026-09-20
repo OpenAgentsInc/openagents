@@ -46,15 +46,19 @@ Created 19 issues with source evidence, acceptance criteria, and dependencies:
   [verification record](verification.md#a01-after-the-fix); A17 and A18 remain
   open. A model's independence/read-only judgment and a successful staged
   golden cannot waive these requirements. Process-tree cancellation and capture
-  bounds from A02–A03 also precede unattended work.
+  bounds from A02–A03 also precede unattended work; both have a verified fix in
+  `a96845c40d`, recorded in the
+  [verification record](verification.md#a02-and-a03-after-the-fix).
 - **#9409 delivered part of A18.** Commit `1eb60eccea` refuses unknown bounds and
   supports worktrees when configured. Admission still derives executor
   enforcement from the manifest's declaration. Verified executor enforcement,
   trusted executable probes, and read-only protection remain requirements of
   #9427; worktrees alone do not establish them.
-- **A02 supersedes the partial delegate deadline fix.** The existing
-  `kill_on_drop(true)` kills the direct delegate; it does not stop grandchildren,
-  and the shell runner still lacks that protection.
+- **A02 superseded the partial delegate deadline fix.** The `kill_on_drop(true)`
+  the audit found killed the direct delegate and left its grandchildren running,
+  and the shell runner lacked even that. Both paths now run through one
+  subprocess supervisor that owns the process group, so the finding is closed by
+  ownership rather than by a second call-site patch.
 - **A05 owns the post-fix #9376 re-derivation.** Review raw and mapped provenance,
   regenerate affected measurements, and state which numbers change. The quoted
   raw standard deviations did not pass through `mapped_observations`; unchanged
