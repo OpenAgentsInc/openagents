@@ -10,9 +10,20 @@
 //!
 //! [`StubGenerate`] answers with a canned line so the shell and tests run
 //! with no door at all.
+//!
+//! Every wait a door may keep is bounded, and the bounds are three rather
+//! than one: [`CONNECT_TIMEOUT`] for the connection, [`Patience::first_word`]
+//! for the response headers, and [`Patience::quiet`] for the silence
+//! between two events of a stream. Read [`Patience`] for why they are
+//! separate.
+//!
+//! This module is the only place in the crate a model name belongs. The
+//! names are on [`Lane`], and a caller that needs one names a lane or
+//! reads a variable rather than writing an identifier of its own.
 
 use std::env;
 use std::fmt;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use serde_json::{Value, json};
@@ -21,8 +32,158 @@ use serde_json::{Value, json};
 /// overrides it for a deployment's own endpoint.
 pub const DEFAULT_DOOR_URL: &str = "https://ai-gateway.vercel.sh";
 
-/// The default model the door runs. `CODER_MODEL` overrides it.
-pub const DEFAULT_MODEL: &str = "google/gemini-3.8-flash";
+/// A lane: a model the gateway serves, under a short name.
+///
+/// The gateway answers one Open Responses shape for every model in its
+/// catalog, so a second model is a configuration change rather than a
+/// second client. A lane is that configuration, and this enum is where
+/// every model name in the crate lives — the worker, the runtime, and a
+/// bench name a lane and ask for the model, so a name never spreads to a
+/// fourth place.
+///
+/// A model name is also door identity. `docs/gym/regression.md` refuses a
+/// comparison when door identity moves, so a run has to be able to say
+/// which lane answered it; [`Door::model`] is what a trace records, and it
+/// reports the model rather than the lane for exactly that reason.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lane {
+    /// Google's Gemini Flash, the lane a door runs when nothing names one.
+    Gemini,
+    /// Z.ai's GLM Flash.
+    Glm,
+}
+
+impl Lane {
+    /// Every lane, in the order the crate documents them.
+    pub const ALL: [Lane; 2] = [Lane::Gemini, Lane::Glm];
+
+    /// The lane's short name, which configuration may use in place of the
+    /// model id.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Lane::Gemini => "gemini",
+            Lane::Glm => "glm",
+        }
+    }
+
+    /// The gateway model the lane runs.
+    #[must_use]
+    pub const fn model(self) -> &'static str {
+        match self {
+            Lane::Gemini => "google/gemini-3.8-flash",
+            Lane::Glm => "zai/glm-5.3-flash",
+        }
+    }
+
+    /// The lane `asked` names, by short name or by model id. `None` when
+    /// it names neither.
+    #[must_use]
+    pub fn read(asked: &str) -> Option<Lane> {
+        let asked = asked.trim();
+        Lane::ALL
+            .into_iter()
+            .find(|lane| lane.name() == asked || lane.model() == asked)
+    }
+}
+
+/// The lane a door runs when nothing names one.
+pub const DEFAULT_LANE: Lane = Lane::Gemini;
+
+/// The model the default lane runs. `CODER_MODEL` overrides it, by lane
+/// name or by gateway model id.
+pub const DEFAULT_MODEL: &str = DEFAULT_LANE.model();
+
+/// The variable that names the model or lane the agent's door runs.
+pub const MODEL_VAR: &str = "CODER_MODEL";
+
+/// The variable that names the model or lane `coder-worker` answers
+/// through.
+///
+/// The worker reads this rather than [`MODEL_VAR`] because the model a
+/// service pays for is not automatically the model someone would pick at
+/// their own terminal, and one constant cannot be both.
+pub const WORKER_MODEL_VAR: &str = "CODER_WORKER_MODEL";
+
+/// The model `asked` names: the lane's model when it names a lane, and
+/// `asked` itself otherwise.
+///
+/// A value that names no lane is taken as a gateway model id, so the
+/// gateway's whole catalog stays reachable without a lane of its own.
+#[must_use]
+pub fn model_named(asked: &str) -> &str {
+    match Lane::read(asked) {
+        Some(lane) => lane.model(),
+        None => asked.trim(),
+    }
+}
+
+/// The model `variable` asks for, with a lane name resolved to the model
+/// it runs. `None` when the variable is unset or holds only blanks.
+#[must_use]
+pub fn model_from_env(variable: &str) -> Option<String> {
+    let asked = env::var(variable).ok()?;
+    let model = model_named(&asked);
+    (!model.is_empty()).then(|| model.to_string())
+}
+
+/// How long a door has to accept a connection.
+///
+/// Separate from [`Patience::first_word`] because a refused or
+/// unroutable endpoint is a different failure from a door that took the
+/// request and thought about it, and the second should not have to wait
+/// out the first.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long each wait on a streaming door lasts, and how the waits
+/// between attempts grow.
+///
+/// The bounds exist because a door that accepts a request and then sends
+/// nothing held the turn open with no limit at all: nothing bounded the
+/// wait for the first token, nothing bounded the silence between tokens,
+/// and nothing asked again. An unattended fan-out over such a door has no
+/// upper bound on anything.
+///
+/// Reimplemented from the `~/work/coder` service's `Patience`, whose
+/// values are these and whose record of the failure is an operator
+/// waiting three and five minutes between a tool result and the next
+/// token with nothing written down about where the time went.
+///
+/// The three are separate because they fail differently:
+///
+/// - [`Patience::first_word`] ends in a request that is sent again.
+/// - [`Patience::quiet`] ends the turn, because a caller has already seen
+///   part of the answer and a second attempt would repeat it.
+/// - [`Patience::retry_wait`] is neither; it is the pause between two
+///   attempts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Patience {
+    /// The wait for the door's response headers. A door that has not
+    /// answered by then is treated like one that dropped the connection,
+    /// and the request is sent again.
+    pub first_word: Duration,
+    /// The longest silence between two events of a stream.
+    ///
+    /// Measured between events rather than between bytes, because a
+    /// stream's silence is not a byte-level property: a door that keeps a
+    /// connection warm with blank lines is quiet, and a chunk that carries
+    /// half an event is not an event. A door that goes quiet for this long
+    /// has lost the turn, and the turn fails with a line saying how long
+    /// it waited and how much had arrived.
+    pub quiet: Duration,
+    /// The wait before the second attempt; the third waits twice as long.
+    pub retry_wait: Duration,
+}
+
+impl Default for Patience {
+    fn default() -> Self {
+        Patience {
+            first_word: Duration::from_secs(30),
+            quiet: Duration::from_secs(120),
+            retry_wait: Duration::from_secs(1),
+        }
+    }
+}
 
 /// One conversational turn, user or assistant.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +248,23 @@ pub enum GenerateError {
     Status(u16, String),
     /// The stream broke or carried an error event.
     Stream(String),
+    /// The door took the request and went quiet.
+    ///
+    /// `heard` draws the same line the relay door draws with
+    /// [`GenerateError::Silent`], because the two doors should fail in one
+    /// vocabulary rather than two: `false` means the door never sent
+    /// response headers, and `true` means it sent them and then stopped,
+    /// whether or not any of the answer had arrived. The first is asked
+    /// again and the second is not.
+    Quiet {
+        /// Whether anything came back before the wait ran out.
+        heard: bool,
+        /// What the wait was, in a sentence: how long it was, and how much
+        /// had arrived. "It hung" and "it sent 400 characters and stopped"
+        /// are different problems, and a turn that dies here should say
+        /// which one it met.
+        reason: String,
+    },
     /// The relay would not take the job: the socket never opened, the
     /// NIP-42 challenge went unanswered, or the relay rejected the
     /// request event.
@@ -128,12 +306,19 @@ impl GenerateError {
     /// judgment call — an ephemeral protocol gives a client no way to
     /// prove a worker is missing — and it is the judgment the short wait
     /// in [`crate::relay`] makes.
+    ///
+    /// `door_absent` and `door_stalled` are the streaming door's two words
+    /// for the same pair of problems, and they are named for the door
+    /// rather than for a worker because a direct door has no worker behind
+    /// it. A harness reads either pair as a field.
     #[must_use]
     pub fn cause(&self) -> &'static str {
         match self {
             GenerateError::Config(_) => "config",
             GenerateError::Transport(_) | GenerateError::Status(..) => "door",
             GenerateError::Stream(_) => "stream",
+            GenerateError::Quiet { heard: false, .. } => "door_absent",
+            GenerateError::Quiet { heard: true, .. } => "door_stalled",
             GenerateError::Relay(_) => "relay_unreachable",
             GenerateError::Silent { heard: false, .. } => "worker_absent",
             GenerateError::Silent { heard: true, .. } => "worker_stalled",
@@ -162,6 +347,18 @@ impl fmt::Display for GenerateError {
             GenerateError::Transport(error) => write!(f, "transport: {error}"),
             GenerateError::Status(status, body) => write!(f, "door answered {status}: {body}"),
             GenerateError::Stream(why) => write!(f, "stream: {why}"),
+            GenerateError::Quiet {
+                heard: false,
+                reason,
+            } => {
+                write!(f, "the door did not answer: {reason}")
+            }
+            GenerateError::Quiet {
+                heard: true,
+                reason,
+            } => {
+                write!(f, "the door went quiet mid-answer: {reason}")
+            }
             GenerateError::Relay(why) => write!(f, "relay: {why}"),
             GenerateError::Silent {
                 heard: false,
@@ -195,6 +392,16 @@ impl From<reqwest::Error> for GenerateError {
 /// connection — retry invisibly; a dead door still reports dead.
 const EMPTY_STREAM_ATTEMPTS: usize = 6;
 
+/// How many times a request goes to a door that never sends response
+/// headers.
+///
+/// A door that has not answered within [`Patience::first_word`] is
+/// treated like one that dropped the connection, so the request is sent
+/// again. Three attempts bounds the whole wait at roughly three times
+/// `first_word` plus the two pauses between them, which is a number an
+/// unattended run can be reasoned about with.
+const HEADER_ATTEMPTS: u32 = 3;
+
 /// One generation: instructions plus conversation in, text plus usage out.
 /// `sink` receives each text delta as it streams, so a caller can draw the
 /// answer as it forms. `meta` receives sideband items a door may emit —
@@ -210,6 +417,19 @@ pub trait Generate: Send + Sync {
     ) -> impl std::future::Future<Output = Result<(String, Option<Usage>), GenerateError>> + Send + 'a;
 }
 
+/// An HTTP client with the connect bound every door here shares.
+///
+/// The read bounds are not set on the client, because a client-wide read
+/// timeout bounds the whole request and a streaming turn is meant to be
+/// long. What has to be bounded is the silence inside it, and that is
+/// measured per stream against [`Patience::quiet`].
+fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 /// A `Generate` backed by an Open Responses endpoint.
 pub struct ResponsesDoor {
     http: reqwest::Client,
@@ -218,22 +438,27 @@ pub struct ResponsesDoor {
     /// The model the door runs.
     pub model: String,
     key: String,
+    patience: Patience,
 }
 
 impl ResponsesDoor {
     /// A door for `url` serving `model` behind `key`.
     pub fn new(url: impl Into<String>, model: impl Into<String>, key: impl Into<String>) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: client(),
             url: url.into().trim_end_matches('/').to_string(),
             model: model.into(),
             key: key.into(),
+            patience: Patience::default(),
         }
     }
 
     /// A door from the environment: `CODER_DOOR_URL` or the public gateway,
-    /// `CODER_MODEL` or the gateway's default model, `CODER_DOOR_KEY` or
+    /// `CODER_MODEL` or the default lane's model, `CODER_DOOR_KEY` or
     /// `CODER_AI_GATEWAY_KEY` for the bearer. `None` when no key is set.
+    ///
+    /// `CODER_MODEL` takes a lane's short name as readily as a model id,
+    /// so `glm` and `zai/glm-5.3-flash` ask for the same door.
     pub fn from_env() -> Option<Self> {
         let key = env::var("CODER_DOOR_KEY")
             .ok()
@@ -244,8 +469,23 @@ impl ResponsesDoor {
                     .filter(|k| !k.is_empty())
             })?;
         let url = env::var("CODER_DOOR_URL").unwrap_or_else(|_| DEFAULT_DOOR_URL.to_string());
-        let model = env::var("CODER_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        let model = model_from_env(MODEL_VAR).unwrap_or_else(|| DEFAULT_MODEL.to_string());
         Some(Self::new(url, model, key))
+    }
+
+    /// The same door running `model`, which may be named as a lane.
+    #[must_use]
+    pub fn serving(mut self, model: &str) -> Self {
+        self.model = model_named(model).to_string();
+        self
+    }
+
+    /// The same door with different waits, so a test can exercise a bound
+    /// without spending the real one.
+    #[must_use]
+    pub fn waiting(mut self, patience: Patience) -> Self {
+        self.patience = patience;
+        self
     }
 
     fn body(&self, instructions: &str, input: &[Message]) -> Value {
@@ -280,6 +520,95 @@ impl ResponsesDoor {
     }
 }
 
+/// The Server-Sent Events reader: bytes in, answer text and usage out.
+///
+/// One reader serves every lane, because the gateway sends one event shape
+/// for every model in its catalog. That is what makes the recorded streams
+/// under `crates/coder/fixtures/gateway/` worth pinning: a change in the
+/// gateway's event shape reaches a test here rather than a broken turn.
+#[derive(Default)]
+struct Reader {
+    /// Bytes that have not yet formed a whole line. Held as bytes rather
+    /// than as text, because a chunk boundary can fall inside a character
+    /// and decoding each chunk on its own puts replacement characters into
+    /// the answer.
+    buffer: Vec<u8>,
+    /// The answer as it has arrived.
+    text: String,
+    /// The token counts the completed event carried.
+    usage: Option<Usage>,
+    /// How many stream events have been read, which a timeout reports.
+    events: u32,
+}
+
+impl Reader {
+    /// Reads one chunk, handing each text delta to `sink`.
+    ///
+    /// Answers with how many events the chunk completed, so a caller can
+    /// measure a stream's silence between events rather than between
+    /// bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GenerateError::Stream`] when the stream carries a failure
+    /// event.
+    fn push(
+        &mut self,
+        chunk: &[u8],
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<u32, GenerateError> {
+        self.buffer.extend_from_slice(chunk);
+        let mut read = 0;
+        // `data: {json}` lines, blank-line separated. An SSE line never
+        // spans a newline, so decoding one whole line at a time is safe
+        // where decoding a chunk is not.
+        while let Some(end) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = self.buffer.drain(..=end).collect();
+            let line = String::from_utf8_lossy(&line);
+            let Some(data) = line.trim_end_matches(['\n', '\r']).strip_prefix("data:") else {
+                continue;
+            };
+            let data = data.trim();
+            if data.is_empty() || data == "[DONE]" {
+                continue;
+            }
+            let Ok(event) = serde_json::from_str::<Value>(data) else {
+                continue;
+            };
+            read += 1;
+            self.events += 1;
+            match event["type"].as_str().unwrap_or_default() {
+                "response.output_text.delta" => {
+                    if let Some(delta) = event["delta"].as_str() {
+                        self.text.push_str(delta);
+                        sink(delta);
+                    }
+                }
+                "response.completed" => {
+                    self.usage = event["response"]["usage"].as_object().map(|u| Usage {
+                        input_tokens: u["input_tokens"].as_u64().unwrap_or(0),
+                        output_tokens: u["output_tokens"].as_u64().unwrap_or(0),
+                    });
+                }
+                "response.failed" | "error" => {
+                    let message = event["response"]["error"]["message"]
+                        .as_str()
+                        .or_else(|| event["message"].as_str())
+                        .unwrap_or("the turn failed upstream");
+                    return Err(GenerateError::Stream(message.to_string()));
+                }
+                // Everything else is the shape around the answer:
+                // lifecycle events, content-part frames, and the reasoning
+                // deltas a thinking model streams. None of them is the
+                // answer, and a lane that sends them must not have them
+                // spliced into one.
+                _ => {}
+            }
+        }
+        Ok(read)
+    }
+}
+
 impl ResponsesDoor {
     /// One streaming attempt: the request plus the SSE read. On failure the
     /// error carries whatever text streamed before it died, so the caller
@@ -290,16 +619,30 @@ impl ResponsesDoor {
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
-        let response = self
+        let sent = self
             .http
             .post(format!("{}/v1/responses", self.url))
             .bearer_auth(&self.key)
             .json(&self.body(instructions, input))
-            .send()
-            .await;
-        let response = match response {
-            Ok(response) => response,
-            Err(error) => return Err((String::new(), GenerateError::Transport(error))),
+            .send();
+        let response = match tokio::time::timeout(self.patience.first_word, sent).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(error)) => return Err((String::new(), GenerateError::Transport(error))),
+            // No headers, so nothing was heard and the request may go
+            // again. The attempt count is added where the attempts are
+            // counted.
+            Err(_) => {
+                return Err((
+                    String::new(),
+                    GenerateError::Quiet {
+                        heard: false,
+                        reason: format!(
+                            "no response headers in {} seconds",
+                            self.patience.first_word.as_secs()
+                        ),
+                    },
+                ));
+            }
         };
         let status = response.status();
         if !status.is_success() {
@@ -310,62 +653,53 @@ impl ResponsesDoor {
             ));
         }
 
-        // The SSE stream: `data: {json}` lines, blank-line separated. Delta
-        // events feed the sink; the completed event carries usage.
-        let mut text = String::new();
-        let mut usage = None;
+        let mut reader = Reader::default();
         let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
-        while let Some(chunk) = stream.next().await {
-            let chunk = match chunk {
-                Ok(chunk) => chunk,
-                Err(error) => return Err((text, GenerateError::Transport(error))),
+        // The quiet clock runs from the last event rather than from the
+        // last byte, so a door that dribbles bytes without completing an
+        // event is still quiet.
+        let mut spoke = Instant::now();
+        loop {
+            let left = self.patience.quiet.saturating_sub(spoke.elapsed());
+            let chunk = match tokio::time::timeout(left, stream.next()).await {
+                Ok(Some(Ok(chunk))) => chunk,
+                Ok(Some(Err(error))) => {
+                    return Err((reader.text, GenerateError::Transport(error)));
+                }
+                Ok(None) => break,
+                Err(_) => return Err((reader.text.clone(), self.went_quiet(&reader))),
             };
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-            while let Some(end) = buffer.find('\n') {
-                let line = buffer[..end].trim_end_matches('\r').to_string();
-                buffer.drain(..end + 1);
-                let Some(data) = line.strip_prefix("data:") else {
-                    continue;
-                };
-                let data = data.trim();
-                if data.is_empty() || data == "[DONE]" {
-                    continue;
-                }
-                let Ok(event) = serde_json::from_str::<Value>(data) else {
-                    continue;
-                };
-                match event["type"].as_str().unwrap_or_default() {
-                    "response.output_text.delta" => {
-                        if let Some(delta) = event["delta"].as_str() {
-                            text.push_str(delta);
-                            sink(delta);
-                        }
-                    }
-                    "response.completed" => {
-                        usage = event["response"]["usage"].as_object().map(|u| Usage {
-                            input_tokens: u["input_tokens"].as_u64().unwrap_or(0),
-                            output_tokens: u["output_tokens"].as_u64().unwrap_or(0),
-                        });
-                    }
-                    "response.failed" | "error" => {
-                        let message = event["response"]["error"]["message"]
-                            .as_str()
-                            .or_else(|| event["message"].as_str())
-                            .unwrap_or("the turn failed upstream");
-                        return Err((text, GenerateError::Stream(message.to_string())));
-                    }
-                    _ => {}
-                }
+            match reader.push(&chunk, sink) {
+                Ok(0) => {}
+                Ok(_) => spoke = Instant::now(),
+                Err(error) => return Err((reader.text, error)),
             }
         }
-        if text.is_empty() {
+        if reader.text.is_empty() {
             return Err((
-                text,
+                reader.text,
                 GenerateError::Stream("the stream carried no text".to_string()),
             ));
         }
-        Ok((text, usage))
+        Ok((reader.text, reader.usage))
+    }
+
+    /// The failure a stream that stopped sending becomes.
+    ///
+    /// It names the wait and what had arrived, because a door that hung
+    /// before saying anything and a door that answered part way and
+    /// stopped are different problems, and a turn that dies here is often
+    /// the only record of which one happened.
+    fn went_quiet(&self, reader: &Reader) -> GenerateError {
+        GenerateError::Quiet {
+            heard: true,
+            reason: format!(
+                "{} seconds of silence after {} events and {} characters",
+                self.patience.quiet.as_secs(),
+                reader.events,
+                reader.text.chars().count()
+            ),
+        }
     }
 }
 
@@ -386,36 +720,58 @@ impl Generate for ResponsesDoor {
         sink: &'a mut (dyn FnMut(&str) + Send),
         _meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
+        // Two kinds of attempt are counted, because two kinds of failure
+        // earn another one.
+        //
         // A stream that fails before showing anything — empty, or holding
         // only a hidden plan — is safe to redo: the user saw nothing and
-        // the request is idempotent. Keep retrying with a growing wait;
-        // upstream flakes like a model-side malformed function call are
-        // transient, and the retry is invisible. A door that keeps failing
-        // after the last attempt still surfaces its error — hidden
-        // retries, honest failures.
-        for attempt in 0..EMPTY_STREAM_ATTEMPTS {
-            match self.once(instructions, input, sink).await {
-                Err((partial, error)) => {
-                    let visible = !partial.is_empty() && !planish(&partial);
-                    if visible
-                        || !matches!(
-                            error,
-                            GenerateError::Stream(_) | GenerateError::Transport(_)
-                        )
-                        || attempt + 1 == EMPTY_STREAM_ATTEMPTS
-                    {
+        // the request is idempotent. Upstream flakes like a model-side
+        // malformed function call are transient, and the retry is
+        // invisible.
+        //
+        // A door that never sent response headers is the other kind. It
+        // is indistinguishable from one that dropped the connection, so
+        // the request goes again after `Patience::retry_wait`, which
+        // doubles on the third attempt.
+        //
+        // Nothing else is redone. A door that sent headers and then went
+        // quiet has already shown the caller where the turn got to, and a
+        // second attempt would repeat it. A door that keeps failing after
+        // the last attempt surfaces its error — hidden retries, honest
+        // failures.
+        let mut empty: usize = 0;
+        let mut unanswered: u32 = 0;
+        loop {
+            let (partial, error) = match self.once(instructions, input, sink).await {
+                Ok(done) => return Ok(done),
+                Err(failed) => failed,
+            };
+            match &error {
+                GenerateError::Quiet { heard: false, .. } => {
+                    unanswered += 1;
+                    if unanswered >= HEADER_ATTEMPTS {
+                        return Err(GenerateError::Quiet {
+                            heard: false,
+                            reason: format!(
+                                "no response headers in {} seconds, over {unanswered} attempts",
+                                self.patience.first_word.as_secs()
+                            ),
+                        });
+                    }
+                    tokio::time::sleep(self.patience.retry_wait * (1 << (unanswered - 1))).await;
+                }
+                GenerateError::Stream(_) | GenerateError::Transport(_)
+                    if partial.is_empty() || planish(&partial) =>
+                {
+                    empty += 1;
+                    if empty >= EMPTY_STREAM_ATTEMPTS {
                         return Err(error);
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(
-                        300 * (attempt as u64 + 1),
-                    ))
-                    .await;
-                    continue;
+                    tokio::time::sleep(Duration::from_millis(300 * empty as u64)).await;
                 }
-                Ok(done) => return Ok(done),
+                _ => return Err(error),
             }
         }
-        unreachable!()
     }
 }
 
@@ -495,6 +851,37 @@ impl Door {
                 crate::relay::RelayDoor::from_env().map(|door| Door::Relay(Box::new(door)))
             }
             Asked::Stub => Ok(Door::Stub(StubGenerate::default())),
+        }
+    }
+
+    /// The same door running `model`, which may be named as a lane.
+    ///
+    /// This is how a caller whose lane is configured separately from the
+    /// agent's takes it: `coder-worker` reads [`WORKER_MODEL_VAR`] and
+    /// passes what it finds here.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the door does not pick its own model. A
+    /// relay door's worker picks, and the stub answers a fixed line, so a
+    /// lane named for either is refused rather than ignored — the same
+    /// reason [`Door::from_env`] refuses an environment that names two
+    /// doors.
+    pub fn serving(self, model: &str) -> Result<Self, String> {
+        // Resolved first, so a refusal names the model rather than the
+        // lane: what a person needs to read is what would have run.
+        let model = model_named(model);
+        match self {
+            Door::Live(door) => Ok(Door::Live(door.serving(model))),
+            Door::Relay(_) => Err(format!(
+                "{model} is named for a door that does not pick its model: \
+                 the relay carries the turn to a worker and the worker picks."
+            )),
+            Door::Stub(_) => Err(format!(
+                "{model} is named and no door key is set, so the stub door \
+                 would answer instead. Set {} or {}.",
+                KEY_VARS[0], KEY_VARS[1]
+            )),
         }
     }
 
@@ -711,6 +1098,89 @@ mod tests {
         assert_eq!(live.label(), "a/model");
         assert_eq!(Door::Stub(StubGenerate::default()).model(), "stub");
         assert_eq!(UNKNOWN_MODEL, "unknown");
+    }
+
+    /// Two lanes, two models, one client. A lane is readable by short
+    /// name and by model id, so a shell that says `glm` and one that says
+    /// `zai/glm-5.3-flash` ask for the same door.
+    #[test]
+    fn a_lane_is_a_model_under_a_short_name() {
+        assert_eq!(Lane::Gemini.model(), "google/gemini-3.8-flash");
+        assert_eq!(Lane::Glm.model(), "zai/glm-5.3-flash");
+        assert_eq!(DEFAULT_MODEL, Lane::Gemini.model());
+
+        assert_eq!(Lane::read("glm"), Some(Lane::Glm));
+        assert_eq!(Lane::read(" zai/glm-5.3-flash "), Some(Lane::Glm));
+        assert_eq!(Lane::read("gemini"), Some(Lane::Gemini));
+        assert_eq!(Lane::read("moonshot/kimi"), None);
+
+        // A name that is no lane is a model id, so the gateway's whole
+        // catalog stays reachable without a lane of its own.
+        assert_eq!(model_named("glm"), "zai/glm-5.3-flash");
+        assert_eq!(model_named(" moonshot/kimi "), "moonshot/kimi");
+
+        // Every lane's name and model are distinct, which is what lets
+        // one field carry either.
+        let mut seen: Vec<&str> = Lane::ALL
+            .iter()
+            .flat_map(|lane| [lane.name(), lane.model()])
+            .collect();
+        seen.sort_unstable();
+        let count = seen.len();
+        seen.dedup();
+        assert_eq!(seen.len(), count);
+    }
+
+    /// A door that picks its own model takes a lane; one that does not
+    /// refuses rather than dropping the request.
+    ///
+    /// A worker told to run `glm` while its door is the relay would answer
+    /// on whatever model the far end picked, and the trace would name that
+    /// model with nothing recording that the lane had been asked for and
+    /// ignored.
+    #[test]
+    fn only_a_door_that_picks_its_model_takes_a_lane() {
+        let live = Door::Live(ResponsesDoor::new(DEFAULT_DOOR_URL, DEFAULT_MODEL, "k"))
+            .serving("glm")
+            .expect("a live door takes a lane");
+        assert_eq!(live.model(), Lane::Glm.model());
+        assert_eq!(live.label(), Lane::Glm.model());
+
+        let Err(stub) = Door::Stub(StubGenerate::default()).serving("glm") else {
+            panic!("the stub door does not run a model");
+        };
+        assert!(stub.contains(Lane::Glm.model()), "{stub}");
+        assert!(stub.contains("CODER_DOOR_KEY"), "{stub}");
+    }
+
+    /// Four door failures, four causes, and the streaming door's two words
+    /// for silence sit beside the relay's rather than replacing them.
+    #[test]
+    fn a_quiet_door_files_under_two_causes() {
+        let absent = GenerateError::Quiet {
+            heard: false,
+            reason: "no response headers in 30 seconds, over 3 attempts".to_string(),
+        };
+        let stalled = GenerateError::Quiet {
+            heard: true,
+            reason: "120 seconds of silence after 12 events and 400 characters".to_string(),
+        };
+
+        assert_eq!(absent.cause(), "door_absent");
+        assert_eq!(stalled.cause(), "door_stalled");
+        assert_eq!(absent.refusal(), None);
+        assert_eq!(stalled.refusal(), None);
+        assert_eq!(
+            absent.to_string(),
+            "the door did not answer: no response headers in 30 seconds, over 3 attempts"
+        );
+        // How long it waited and how much had arrived: "it hung" and "it
+        // sent 400 characters and stopped" are different problems.
+        assert_eq!(
+            stalled.to_string(),
+            "the door went quiet mid-answer: 120 seconds of silence after 12 events \
+             and 400 characters"
+        );
     }
 
     #[test]

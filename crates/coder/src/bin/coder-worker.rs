@@ -17,8 +17,14 @@
 //! export CODER_WORKER_SECRET=<64 hex or nsec>
 //! export CODER_RELAY=wss://relay.openagents.com
 //! export CODER_DOOR_KEY=…            # the door the worker answers through
+//! export CODER_WORKER_MODEL=glm      # the lane this worker runs
 //! coder-worker --once
 //! ```
+//!
+//! The lane is the worker's own. [`coder::generate::WORKER_MODEL_VAR`]
+//! outranks `CODER_MODEL` because the model a service pays for is not
+//! automatically the model a local user would pick, and one constant
+//! cannot be both.
 //!
 //! | Flag | Effect |
 //! | --- | --- |
@@ -38,7 +44,9 @@ use std::env;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use coder::generate::{Door, Generate, GenerateError, Message, Role};
+use coder::generate::{
+    Door, Generate, GenerateError, Lane, Message, Role, WORKER_MODEL_VAR, model_from_env,
+};
 use coder::relay::{
     DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, REQUEST_KIND, RESULT_KIND, Socket, connect, send,
 };
@@ -68,7 +76,9 @@ Usage: coder-worker [--once] [--decline <CODE>]
 
 CODER_WORKER_SECRET names the worker identity, 64 hex or an nsec.
 CODER_RELAY picks the relay. The door the worker answers through comes
-from the environment exactly as it does for the agent.";
+from the environment exactly as it does for the agent, except for the
+lane: CODER_WORKER_MODEL names the model or lane this worker runs, and
+outranks CODER_MODEL.";
 
 /// What the command line asked for.
 struct Options {
@@ -125,11 +135,32 @@ async fn serve(options: &Options) -> Result<(), String> {
         .map_err(|_| "CODER_WORKER_SECRET is not set".to_string())?;
     let identity = Identity::from_text(&secret, "CODER_WORKER_SECRET")?;
     let url = env::var("CODER_RELAY").unwrap_or_else(|_| DEFAULT_RELAY_URL.to_string());
-    let door = Door::from_env()?;
+    // The worker's lane is its own. The model a service pays for is not
+    // automatically the model someone would pick at their own terminal, so
+    // `CODER_WORKER_MODEL` outranks the `CODER_MODEL` the door would
+    // otherwise read, and a lane named for a door that cannot run it is
+    // refused rather than quietly dropped.
+    let mut door = Door::from_env()?;
+    if let Some(model) = model_from_env(WORKER_MODEL_VAR) {
+        door = door
+            .serving(&model)
+            .map_err(|why| format!("{WORKER_MODEL_VAR}: {why}"))?;
+    }
 
     eprintln!("worker  {}", identity.pubkey());
     eprintln!("relay   {url}");
-    eprintln!("door    {} ({})", door.name(), door.model());
+    // The lane is named beside the model, and the model is always there:
+    // a run whose evidence cannot say which model answered cannot be
+    // compared against one that used another.
+    match Lane::read(door.model()) {
+        Some(lane) => eprintln!(
+            "door    {} ({}, lane {})",
+            door.name(),
+            door.model(),
+            lane.name()
+        ),
+        None => eprintln!("door    {} ({})", door.name(), door.model()),
+    }
     if let Some(code) = &options.decline {
         eprintln!("declining every job with {code}");
     }

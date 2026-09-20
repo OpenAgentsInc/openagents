@@ -109,8 +109,10 @@ report.
 Keys in the environment decide the door: `TYPESAFE_API_KEY` turns
 classify on; `CODER_DOOR_KEY`/`CODER_DOOR_URL`/`CODER_MODEL` take an
 own-key door; `CODER_WORKER` + `CODER_RELAY` route the turn through the
-relay; none of it falls back to the stub. An own-key door wins when both
-are set. To answer those jobs from the other side, run
+relay; none of it falls back to the stub. Naming two doors at once is
+refused rather than resolved. `CODER_MODEL` takes a lane — `gemini` for
+`google/gemini-3.8-flash`, `glm` for `zai/glm-5.3-flash` — or any model
+id the gateway serves. To answer those jobs from the other side, run
 `cargo run -p coder --bin coder-worker`; `docs/coder/relay-transport.md`
 has the walkthrough and what the round trip costs. To run a relay
 locally, `docs/deployment/runbook-local-dev.md` has the walkthrough.

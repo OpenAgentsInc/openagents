@@ -43,6 +43,52 @@ exactly as in the terminal: `CODER_SHELL=off` withdraws execution, and a
 headless turn then answers without running a command whatever its reply
 asks for. See [the shell loop](shell-loop.md#execution-intent).
 
+## Lanes
+
+The default door is the Vercel AI Gateway, which serves one Open
+Responses shape for every model in its catalog. A second model is
+therefore configuration rather than a second client, and `CODER_MODEL`
+takes either a lane's short name or a gateway model id:
+
+| Lane | Model |
+| --- | --- |
+| `gemini` | `google/gemini-3.8-flash`, the default |
+| `glm` | `zai/glm-5.3-flash` |
+
+```bash
+CODER_MODEL=glm cargo run -p coder -- -p "count the crates"
+```
+
+A name that is no lane is sent as a model id, so the rest of the
+gateway's catalog stays reachable. `coder-worker` reads
+`CODER_WORKER_MODEL` instead, and it outranks `CODER_MODEL`: the model a
+service pays for is not automatically the model someone would pick at
+their own terminal. A lane named for a door that does not pick its own
+model — the relay, the stub — is refused rather than ignored.
+
+Model names live in `crates/coder/src/generate.rs` and nowhere else in
+the crate. A model name is door identity, and `docs/gym/regression.md`
+refuses a comparison when door identity moves, so a lane switch has to be
+visible in a trace: the session header names the model for an own-key
+door, and each answer step names it for a relay door, where the worker
+picks. `docs/coder/traces.md` covers both.
+
+## Waits
+
+Every wait a streaming door can keep is bounded, in three places rather
+than one:
+
+| Bound | Value | What it covers |
+| --- | --- | --- |
+| Connect | 10 s | Accepting the connection. |
+| First word | 30 s | The response headers. A door that has not answered by then is treated like one that dropped the connection, and the request is sent again, up to three attempts, waiting one second and then two. |
+| Quiet | 120 s | The longest silence between two events of a stream, measured between events rather than between bytes. |
+
+A door that never sends headers is asked again. One that sent headers is
+not, because the caller may already have seen part of the answer and a
+second attempt would repeat it. The failure says which happened: read
+`door_absent` and `door_stalled` in the table below.
+
 ## What lands where
 
 **Standard output** is the reply and nothing else, or, with `--json`, one
@@ -79,6 +125,8 @@ its wording.
 | `worker_stalled` | Something came back from the worker — a judgment, a partial, a status — and then the answer never finished within the answer wait, 180 seconds. |
 | `worker_declined` | A worker answered with a typed refusal. `refusal` carries the NIP-CJ code, such as `quota_exhausted`. |
 | `door` | An own-key door answered with an error status, or the HTTP call failed. |
+| `door_absent` | An own-key door took the request and never sent response headers, on each of three attempts 30 seconds apart. |
+| `door_stalled` | An own-key door sent its headers and then went quiet for 120 seconds. The message names the wait and how much had arrived, because a door that hung before saying anything and one that answered part way and stopped are different problems. |
 | `stream` | The door's stream broke or carried an error event. |
 | `config` | The environment does not name one door: it names two, or it names one that cannot be built. The run ends before the turn. |
 | `trace` | A named trace could not be opened, so the run ended before the turn. |
@@ -88,6 +136,10 @@ words because they are two problems. NIP-CJ's kinds are ephemeral, so a
 client cannot prove a worker is missing — nothing is left on the relay to
 ask about. What it can do is wait for a sign of life on a much shorter
 clock than it waits for a model, and say which wait ran out.
+
+`door_absent` and `door_stalled` are the streaming door's two words for
+the same pair of problems, named for the door because a direct door has
+no worker behind it. A harness reads either pair as a field.
 
 `refusal` is non-null only for `worker_declined`, and it is read as a
 field rather than searched for in the message. That is the line

@@ -1,0 +1,33 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"gen_01M2YE8KY72G7P66MEPDV9W3J0","object":"response","created_at":1789875475,"status":"in_progress","completed_at":null,"incomplete_details":null,"error":null,"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}},"model":"google/gemini-3.8-flash","instructions":"You are terse. Answer with the words asked for and nothing else.","previous_response_id":null,"temperature":1,"top_p":1,"max_output_tokens":null,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_tool_calls":null,"text":{"format":{"type":"text"}},"truncation":"disabled","reasoning":null,"store":false,"background":false,"service_tier":"auto","metadata":{},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_retention":null}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"gen_01M2YE8KY72G7P66MEPDV9W3J0","object":"response","created_at":1789875475,"status":"in_progress","completed_at":null,"incomplete_details":null,"error":null,"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}},"model":"google/gemini-3.8-flash","instructions":"You are terse. Answer with the words asked for and nothing else.","previous_response_id":null,"temperature":1,"top_p":1,"max_output_tokens":null,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_tool_calls":null,"text":{"format":{"type":"text"}},"truncation":"disabled","reasoning":null,"store":false,"background":false,"service_tier":"auto","metadata":{},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_retention":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"type":"message","id":"msg_1789875475812_zzuzs8li47p","status":"in_progress","role":"assistant","content":[{"type":"output_text","text":"","annotations":[],"logprobs":[]}]}}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","sequence_number":3,"item_id":"msg_1789875475812_zzuzs8li47p","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[],"logprobs":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_1789875475812_zzuzs8li47p","output_index":0,"content_index":0,"delta":"One\n","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":5,"item_id":"msg_1789875475812_zzuzs8li47p","output_index":0,"content_index":0,"delta":"Two\nThree\nFour\nFive","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":6,"item_id":"msg_1789875475812_zzuzs8li47p","output_index":0,"content_index":0,"delta":"","logprobs":[]}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":7,"item_id":"msg_1789875475812_zzuzs8li47p","output_index":0,"content_index":0,"text":"One\nTwo\nThree\nFour\nFive","logprobs":[]}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","sequence_number":8,"item_id":"msg_1789875475812_zzuzs8li47p","output_index":0,"content_index":0,"part":{"type":"output_text","text":"One\nTwo\nThree\nFour\nFive","annotations":[],"logprobs":[]}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":9,"output_index":0,"item":{"type":"message","id":"msg_1789875475812_zzuzs8li47p","status":"completed","role":"assistant","content":[{"type":"output_text","text":"One\nTwo\nThree\nFour\nFive","annotations":[],"logprobs":[]}]}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":10,"response":{"id":"gen_01M2YE8KY72G7P66MEPDV9W3J0","object":"response","created_at":1789875475,"status":"completed","completed_at":1789875475,"incomplete_details":null,"error":null,"output":[{"type":"message","id":"msg_1789875475812_zzuzs8li47p","status":"completed","role":"assistant","content":[{"type":"output_text","text":"One\nTwo\nThree\nFour\nFive","annotations":[],"logprobs":[]}]}],"usage":{"input_tokens":25,"output_tokens":130,"total_tokens":155,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":121}},"model":"google/gemini-3.8-flash","instructions":"You are terse. Answer with the words asked for and nothing else.","previous_response_id":null,"temperature":1,"top_p":1,"max_output_tokens":null,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_tool_calls":null,"text":{"format":{"type":"text"}},"truncation":"disabled","reasoning":null,"store":false,"background":false,"service_tier":"auto","metadata":{},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_retention":null,"provider_metadata":{"vertex":{"promptFeedback":null,"groundingMetadata":null,"urlContextMetadata":null,"safetyRatings":null,"usageMetadata":{"thoughtsTokenCount":121,"promptTokenCount":25,"candidatesTokenCount":9,"totalTokenCount":155,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":25}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":9}]},"finishMessage":null,"serviceTier":null},"gateway":{"routing":{"originalModelId":"google/gemini-3.8-flash","resolvedProvider":"vertex","fallbacksAvailable":["google"],"planningReasoning":"BYOK credentials available for: vertex. System credentials planned for: vertex, google. Total execution order: vertex(BYOK) → vertex(system) → google(system)","canonicalSlug":"google/gemini-3.8-flash","finalProvider":"vertex","modelAttemptCount":1,"modelAttempts":[{"canonicalSlug":"google/gemini-3.8-flash","success":true,"providerAttemptCount":1,"providerAttempts":[{"provider":"vertex","credentialType":"byok","success":true,"startTime":1789875474481,"endTime":1789875475948,"statusCode":200,"providerResponseId":"ElWvaqP5KaDwqOYPtNnTgAU"}]}],"totalProviderAttemptCount":1},"cost":"0","marketCost":"0.00050625","surchargeCost":"0","gatewayCost":"0","generationId":"gen_01M2YE8KY72G7P66MEPDV9W3J0"}}}}
+

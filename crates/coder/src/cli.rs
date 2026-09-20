@@ -63,7 +63,9 @@ Exit codes with --print:
 The environment picks the door. TYPESAFE_API_KEY turns classify on;
 CODER_DOOR_KEY, CODER_DOOR_URL, and CODER_MODEL name an own-key door;
 CODER_WORKER and CODER_RELAY route the turn through the relay; with none
-of them set the stub door answers. CODER_SHELL=off runs no commands.";
+of them set the stub door answers. CODER_SHELL=off runs no commands.
+CODER_MODEL takes a lane — gemini or glm — or any model id the gateway
+serves.";
 
 /// Reads the command line.
 ///

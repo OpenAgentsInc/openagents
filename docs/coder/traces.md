@@ -89,6 +89,12 @@ workers records two models rather than one wrong one.
 Own-key doors are unchanged: the header names the model and the steps
 inherit it.
 
+Either way the trace names the model rather than the lane, because a model
+name is door identity and `docs/gym/regression.md` refuses a comparison
+when door identity moves. A run recorded on the `glm` lane says
+`zai/glm-5.3-flash`, and nothing reading it has to know what a lane is.
+`docs/coder/headless.md` lists the lanes.
+
 ## Three decisions worth stating
 
 ### A session is one terminal invocation
