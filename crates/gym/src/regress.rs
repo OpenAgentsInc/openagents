@@ -1403,6 +1403,7 @@ mod tests {
                 floor.block_sigma = Bound {
                     value: None,
                     basis: Basis::Unmeasured,
+                    evidence: Vec::new(),
                     why: "Nothing has measured this.".into(),
                 };
             }

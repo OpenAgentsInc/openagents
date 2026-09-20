@@ -5,26 +5,95 @@
     "A measure that rose is a measured loss and fails. A measure that moved the right way but short of its margin is unverifiable, because the move may be noise and calling it a loss overstates what the numbers say. A split below the floor leaves everything downstream unjudged.",
     "max_brier_increase is the constant that was widened from zero after a run refused it, and it stays a tuned constant here rather than becoming a derived one. The maximum Brier a binned monotone map can lose is computable — crates/gym/src/gate.rs carries the derivation — and it comes out around two bin widths times accuracy, which is roughly 0.73 in absolute Brier for a 30-item family fitted on two bins. That ceiling catches a bug and cannot serve as an acceptance threshold, so the number below is a judgment, and it is labelled one."
   ],
-  "schema": "openagents.gym.gate.v1",
+  "schema": "openagents.gym.gate.v2",
   "id": "probability-v1",
+  "previously": [
+    {
+      "digest": "gate:368cefd18f308119008db3099c8415af380c9d096d4cbcb6997196bfc6d82013",
+      "equivalent": {
+        "identity_schema": "openagents.gym.gate-identity.v1",
+        "schema": "openagents.gym.gate.v2",
+        "id": "probability-v1",
+        "rule": {
+          "decides": "probability",
+          "min_items": {
+            "value": 30.0,
+            "basis": "derived",
+            "evidence": [
+              { "kind": "code", "id": "gym::calibrate::Map::fit_auto" },
+              { "kind": "measurement", "id": "2026-09-19-suite-scores" }
+            ]
+          },
+          "min_ece_reduction": {
+            "value": 0.1,
+            "basis": "tuned",
+            "evidence": [
+              { "kind": "code", "id": "lev::calibrate::admit" }
+            ]
+          },
+          "max_brier_increase": {
+            "value": 0.1,
+            "basis": "tuned",
+            "evidence": [
+              { "kind": "measurement", "id": "2026-09-19-suite-v2-scores" }
+            ]
+          },
+          "pending_measurement": {
+            "quantity": "the suite's trial-to-trial resampling variance",
+            "issue": "openagents#9370"
+          }
+        }
+      },
+      "recorded_in": [
+        "crates/gym/results/support-v2-three-way.jsonl",
+        "crates/gym/results/coder-turns-v1.jsonl",
+        "crates/gym/results/coder-turns-v1-kev.jsonl",
+        "crates/gym/results/program-selection-v1.jsonl",
+        "crates/gym/results/restatement-v1.jsonl",
+        "crates/gym/results/routing-question-text-calibration.jsonl",
+        "crates/gym/results/routing-question-text-development.jsonl",
+        "crates/gym/results/routing-question-text-development-repeat.jsonl",
+        "crates/lev/calibration/lev-base/routing.json",
+        "crates/lev/calibration/lev-base/severity.json",
+        "crates/lev/calibration/lev-base/urgency.json",
+        "crates/lev/calibration/lev-adapted@1/routing.json",
+        "crates/lev/calibration/lev-adapted@1/severity.json",
+        "crates/lev/calibration/lev-adapted@1/urgency.json"
+      ]
+    }
+  ],
   "question": "May this candidate's probabilities be served in place of the baseline's?",
   "rule": {
     "decides": "probability",
     "min_items": {
       "value": 30,
       "basis": "derived",
+      "evidence": [
+        { "kind": "code", "id": "gym::calibrate::Map::fit_auto" },
+        { "kind": "measurement", "id": "2026-09-19-suite-scores" }
+      ],
       "why": "crates/lev/src/calibrate.rs fits one bin per fifteen observations and never fewer than two bins, so thirty items is the smallest split that fills the coarsest table the map is allowed to build. Below it the 52-item suite turned a raw ECE of 0.031 into 0.113 on twelve items, which is the evidence for the rule rather than an argument about it."
     },
     "min_ece_reduction": {
       "value": 0.1,
       "basis": "tuned",
+      "evidence": [
+        { "kind": "code", "id": "lev::calibrate::admit" }
+      ],
       "why": "Inherited from crates/lev/src/calibrate.rs::admit, where it reads as 'a marginal move is binning noise'. That is a claim about variance, and nothing has measured the variance; openagents#9370 does. Until then a shortfall reports unverifiable rather than failed, so the untested part of this number cannot condemn a candidate."
     },
     "max_brier_increase": {
       "value": 0.1,
       "basis": "tuned",
+      "evidence": [
+        { "kind": "measurement", "id": "2026-09-19-suite-v2-scores" }
+      ],
       "why": "Widened from zero on 2026-09-19 after a run on the 196-item suite refused a map that cut ECE from 0.157 to 0.005 over a Brier move of 5.5%. The argument for widening is in docs/lev/calibration.md and holds; the number is the smallest round one that admits that case, and the derived structural ceiling is an order of magnitude looser, so this stays a judgment."
     },
-    "pending_measurement": "openagents#9370 measures the suite's trial-to-trial resampling variance, which is what both margins here should eventually be derived from."
+    "pending_measurement": {
+      "quantity": "the suite's trial-to-trial resampling variance",
+      "issue": "openagents#9370",
+      "why": "Both margins here should eventually be derived from it."
+    }
   }
 }

@@ -2,9 +2,9 @@
 //! and answer with three values rather than two.
 //!
 //! The design is carried from `crates/coder-bench/src/gate.rs` in the coder
-//! repository and reimplemented here: a gate spec with a content digest, a
-//! `$comment` field that stays outside that digest, and a verdict where
-//! `failed` beats `unverifiable` beats `passed`.
+//! repository and reimplemented here: a gate spec with a content digest over
+//! the rule's identity — the prose that explains it stays outside — and a
+//! verdict where `failed` beats `unverifiable` beats `passed`.
 //!
 //! # Why a gate is a file
 //!
@@ -44,6 +44,20 @@
 //! digest pins what was run, and tightening a floor must not make historical
 //! runs read as drifted. Each row pins the gate it was judged by instead,
 //! through [`Outcome::gate_digest`].
+//!
+//! # What the digest covers
+//!
+//! The digest pins the rule, not the file: the schema, the id, the `decides`
+//! tag, every bound's value, basis, and evidence, the enums that say what a
+//! statistic covers, and the identity of any measurement the rule is still
+//! waiting on. It does not pin `question`, `$comment`, a bound's `why`, or a
+//! pending measurement's `why` — the sentence that explains a threshold is
+//! not the threshold, and editing one must not orphan the rows the rule
+//! already scored. A verdict recorded under an earlier encoding still
+//! attributes, through `previously` and [`Gate::has_digest`] — and the
+//! alias is bound to the identity it was reviewed against, so a rule whose
+//! policy moved cannot inherit it by keeping the string.
+//! `docs/gym/gate-digests.md` states the policy.
 //!
 //! # Why three verdicts
 //!
@@ -130,8 +144,11 @@
 //! # Where the constants come from
 //!
 //! Every threshold carries a [`Bound`], and every bound records its
-//! [`Basis`]: derived, tuned, convention, or unmeasured. The basis is inside
-//! the digest, so relabelling a constant produces a new rule.
+//! [`Basis`] — derived, tuned, convention, or unmeasured — and the records it
+//! rests on as [`Evidence`]. Both are inside the digest: relabelling a
+//! constant, or resting it on a different record, produces a new rule. The
+//! `why` that explains the number to a reader is outside it, so correcting a
+//! rationale never does.
 //!
 //! One bound is worth the space here, because it is the one the issue that
 //! owns this module asks about. The maximum Brier a `b`-bin monotone map can
@@ -169,21 +186,35 @@
 //! openagents#9370 makes the seed base a parameter and measures that spread,
 //! and that number is what an absolute effect-size floor should be derived
 //! from. Until it lands, no such floor is invented here. The gap is recorded
-//! on the gate itself, in [`DecisionRule::variance_basis`] and
-//! [`DecisionRule::pending_measurement`], both inside the digest, so adding
-//! the trial term produces `decision-v2` rather than quietly rewriting
-//! `decision-v1`'s history.
+//! on the gate itself — [`DecisionRule::variance_basis`] and the pending
+//! measurement's identity are inside the digest — so adding the trial term
+//! produces `decision-v2` rather than quietly rewriting `decision-v1`'s
+//! history.
 
 use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Number, Value};
 use sha2::{Digest, Sha256};
 
 /// The schema every gate file is tagged with.
-pub const SCHEMA: &str = "openagents.gym.gate.v1";
+///
+/// `v2` splits a bound's and a pending measurement's prose from their
+/// identity: `why` explains and stays outside the digest, while `basis`,
+/// `evidence`, and a pending measurement's `quantity` and `issue` are the
+/// rule and stay inside it. A `v1` document parses far enough to be refused
+/// by name rather than as a syntax error.
+pub const SCHEMA: &str = "openagents.gym.gate.v2";
+
+/// The schema the digest's projection is written in.
+///
+/// [`Gate::digest`] does not hash the gate file; it hashes a typed view of
+/// the rule, and this is that view's version. It moves when the view's shape
+/// moves, so an encoding change is a declared transition rather than a
+/// silent re-identification.
+pub const IDENTITY_SCHEMA: &str = "openagents.gym.gate-identity.v1";
 
 /// The environment variable that points at a directory of gate files.
 pub const GATES_DIR_VAR: &str = "GYM_GATES_DIR";
@@ -275,6 +306,43 @@ impl fmt::Display for Basis {
     }
 }
 
+/// A record a bound rests on, named rather than described.
+///
+/// This is inside the digest, like [`Basis`]: two bounds carrying the same
+/// number on different evidence are different rules. An `id` is a name, not
+/// a path — `2026-09-19-suite-v2-scores` names the same record after the
+/// measurements directory moves, where the path that held it would not.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Evidence {
+    /// A committed measurement record, named by its dated slug.
+    Measurement {
+        /// The record's name.
+        id: String,
+    },
+    /// A tracked issue, named the way the tracker names it.
+    Issue {
+        /// The record's name.
+        id: String,
+    },
+    /// An implementation a number derives from or was carried over from,
+    /// named as the item rather than the file that holds it.
+    Code {
+        /// The record's name.
+        id: String,
+    },
+}
+
+impl Evidence {
+    /// The record's name.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Measurement { id } | Self::Issue { id } | Self::Code { id } => id,
+        }
+    }
+}
+
 /// One threshold, with where it came from.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -283,9 +351,14 @@ pub struct Bound {
     pub value: Option<f64>,
     /// Where the number came from.
     pub basis: Basis,
-    /// The provenance, in one or two sentences. Unlike `$comment`, this is
-    /// inside the digest: it is the justification for a number, not
-    /// commentary on it.
+    /// The records the number rests on, named rather than described. Inside
+    /// the digest; empty when the number rests on a derivation or a
+    /// convention rather than a record.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<Evidence>,
+    /// The provenance, in one or two sentences. Prose for a reader, held
+    /// outside the digest: the structured provenance is `basis` and
+    /// `evidence`, and editing a paragraph never re-identifies the rule.
     pub why: String,
 }
 
@@ -332,7 +405,41 @@ impl Bound {
                 id: gate.to_string(),
                 problem: format!("{name} has no provenance; say where the number came from"),
             }),
+            _ if self.evidence.iter().any(|e| e.id().trim().is_empty()) => {
+                Err(GateError::Invalid {
+                    id: gate.to_string(),
+                    problem: format!(
+                        "{name} cites a record with no name; an evidence id names what the \
+                         number rests on"
+                    ),
+                })
+            }
+            _ if self
+                .evidence
+                .iter()
+                .any(|e| e.id().contains('/') || e.id().ends_with(".md")) =>
+            {
+                Err(GateError::Invalid {
+                    id: gate.to_string(),
+                    problem: format!(
+                        "{name} cites a path; evidence names the record rather than the file \
+                         holding it, so moving the documentation tree does not re-identify \
+                         the rule"
+                    ),
+                })
+            }
             _ => Ok(()),
+        }
+    }
+
+    /// This bound as the digest sees it: the number, its basis, and the
+    /// records it rests on. `why` explains them to a reader and is not part
+    /// of the rule's identity.
+    fn identity(&self) -> BoundIdentity<'_> {
+        BoundIdentity {
+            value: self.value,
+            basis: self.basis,
+            evidence: &self.evidence,
         }
     }
 }
@@ -359,6 +466,88 @@ impl VarianceBasis {
     }
 }
 
+/// A measurement the rule is missing, and what fills the gap meanwhile.
+///
+/// `quantity` and `issue` are the gap's identity and sit inside the digest:
+/// filling this gap, or recording a different one, is a different rule.
+/// `why` is prose for a reader and stays outside it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pending {
+    /// What is unmeasured, named as a quantity rather than described.
+    pub quantity: String,
+    /// The tracked issue that takes the measurement, when there is one.
+    pub issue: Option<String>,
+    /// What the rule does in the meantime, and why that is the safe
+    /// direction.
+    pub why: String,
+}
+
+impl Pending {
+    /// Rejects a gap record that says nothing.
+    fn validate(&self, gate: &str) -> Result<(), GateError> {
+        let problem = if self.quantity.trim().is_empty() {
+            Some("pending_measurement names no quantity; say what is unmeasured".to_string())
+        } else if self.why.trim().is_empty() {
+            Some(
+                "pending_measurement has no why; say what the rule does in the meantime and \
+                 why that is safe. A prose string from the v1 schema lands here: split it \
+                 into quantity, issue, and why"
+                    .to_string(),
+            )
+        } else if self.issue.as_deref().is_some_and(|issue| issue.trim().is_empty()) {
+            Some(
+                "pending_measurement carries an empty issue; name the issue that takes the \
+                 measurement or drop the field"
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+        match problem {
+            Some(problem) => Err(GateError::Invalid { id: gate.to_string(), problem }),
+            None => Ok(()),
+        }
+    }
+
+    /// This gap as the digest sees it: what is unmeasured and who takes it,
+    /// without the prose about what the rule does meanwhile.
+    fn identity(&self) -> PendingIdentity<'_> {
+        PendingIdentity {
+            quantity: &self.quantity,
+            issue: self.issue.as_deref(),
+        }
+    }
+}
+
+/// Reads `pending_measurement` in either form: the structured object this
+/// schema writes, or the bare prose string `openagents.gym.gate.v1` wrote.
+/// The string parses into a [`Pending`] whose `why` is empty, so a v1 file
+/// reaches the schema check and is refused by name rather than as a syntax
+/// error, and a v2 file that writes one fails validation for carrying no
+/// `why`.
+///
+/// The object form goes through `serde_json::from_value` rather than an
+/// untagged variant, because `deny_unknown_fields` is silently ignored
+/// inside untagged enums — and a pending object that quietly dropped a new
+/// field would be a semantic field discarded on the way to the digest.
+fn pending_field<'de, D>(deserializer: D) -> Result<Option<Pending>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Option::<Value>::deserialize(deserializer)? {
+        None => None,
+        Some(Value::String(text)) => Some(Pending {
+            quantity: text,
+            issue: None,
+            why: String::new(),
+        }),
+        Some(other) => {
+            Some(serde_json::from_value(other).map_err(serde::de::Error::custom)?)
+        }
+    })
+}
+
 /// The rule that decides which door should answer the question.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -372,7 +561,8 @@ pub struct DecisionRule {
     /// What that standard error accounts for.
     pub variance_basis: VarianceBasis,
     /// The measurement that would complete this rule, when one is missing.
-    pub pending_measurement: Option<String>,
+    #[serde(default, deserialize_with = "pending_field")]
+    pub pending_measurement: Option<Pending>,
 }
 
 /// The rule that decides whether a set of probabilities may be served.
@@ -388,7 +578,8 @@ pub struct ProbabilityRule {
     /// baseline.
     pub max_brier_increase: Bound,
     /// The measurement that would complete this rule, when one is missing.
-    pub pending_measurement: Option<String>,
+    #[serde(default, deserialize_with = "pending_field")]
+    pub pending_measurement: Option<Pending>,
 }
 
 /// What one decision costs, or the fact that nobody is metering it.
@@ -659,7 +850,8 @@ pub struct DeploymentRule {
     /// before the gate calls it a move rather than a busy machine.
     pub regression_sigmas: Bound,
     /// The measurement that would complete this rule, when one is missing.
-    pub pending_measurement: Option<String>,
+    #[serde(default, deserialize_with = "pending_field")]
+    pub pending_measurement: Option<Pending>,
 }
 
 /// Which product question a gate answers.
@@ -678,13 +870,119 @@ pub enum Rule {
 impl Rule {
     /// The measurement this rule is missing, when it is missing one.
     #[must_use]
-    pub fn pending_measurement(&self) -> Option<&str> {
+    pub fn pending_measurement(&self) -> Option<&Pending> {
         match self {
-            Self::Decision(rule) => rule.pending_measurement.as_deref(),
-            Self::Probability(rule) => rule.pending_measurement.as_deref(),
-            Self::Deployment(rule) => rule.pending_measurement.as_deref(),
+            Self::Decision(rule) => rule.pending_measurement.as_ref(),
+            Self::Probability(rule) => rule.pending_measurement.as_ref(),
+            Self::Deployment(rule) => rule.pending_measurement.as_ref(),
         }
     }
+
+    /// This rule as the digest sees it.
+    fn identity(&self) -> RuleIdentity<'_> {
+        match self {
+            Self::Decision(rule) => RuleIdentity::Decision(DecisionRuleIdentity {
+                min_items: rule.min_items.identity(),
+                gain_standard_errors: rule.gain_standard_errors.identity(),
+                variance_basis: rule.variance_basis,
+                pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
+            }),
+            Self::Probability(rule) => RuleIdentity::Probability(ProbabilityRuleIdentity {
+                min_items: rule.min_items.identity(),
+                min_ece_reduction: rule.min_ece_reduction.identity(),
+                max_brier_increase: rule.max_brier_increase.identity(),
+                pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
+            }),
+            Self::Deployment(rule) => RuleIdentity::Deployment(DeploymentRuleIdentity {
+                min_calls: rule.min_calls.identity(),
+                gated_percentile: rule.gated_percentile,
+                latency_block_sigma_relative: rule.latency_block_sigma_relative.identity(),
+                regression_sigmas: rule.regression_sigmas.identity(),
+                pending_measurement: rule
+                    .pending_measurement
+                    .as_ref()
+                    .map(Pending::identity),
+            }),
+        }
+    }
+}
+
+/// A digest an earlier encoding recorded for this rule, bound to the
+/// identity it was reviewed against.
+///
+/// The binding is content, not a claim: `equivalent` is the identity
+/// projection the recording was reviewed equal to, and the alias counts
+/// only while the live rule still projects to it. A policy edit moves the
+/// projection and the alias stops attributing, so a changed rule cannot
+/// inherit the earlier encoding's identity by leaving the digest in the
+/// list. Nothing recomputes `equivalent`; a rule whose policy changed gets
+/// a new gate, and the next alias is written by a reviewer who checked the
+/// new identity, never by a save.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Alias {
+    /// The digest the earlier encoding recorded, as `gate:<sha256>`.
+    pub digest: String,
+    /// The identity projection the recording was reviewed equal to — this
+    /// gate's `identity()` at migration time, committed as a JSON document
+    /// so a reviewer can diff it against `rule`.
+    pub equivalent: Value,
+    /// The committed records that pin the digest, so "it was recorded" is a
+    /// checkable claim rather than an asserted one. A digest-shaped string
+    /// is not proof a digest was ever recorded; the record is.
+    pub recorded_in: Vec<String>,
+}
+
+impl Alias {
+    /// Rejects a binding that is malformed, unverifiable, or stale.
+    ///
+    /// `identity` is the canonical form of the gate's live projection.
+    fn validate(&self, gate: &str, identity: &str) -> Result<(), GateError> {
+        if !is_digest(&self.digest) {
+            return Err(GateError::Invalid {
+                id: gate.to_string(),
+                problem: format!(
+                    "previously carries {}, which is not a recorded digest; the field holds \
+                     `gate:<sha256>` values an earlier encoding produced for this rule",
+                    self.digest
+                ),
+            });
+        }
+        if canonical(&self.equivalent) != identity {
+            return Err(GateError::Invalid {
+                id: gate.to_string(),
+                problem: format!(
+                    "previously binds {} to an identity this rule no longer projects to; a \
+                     changed policy is a new gate, not this one wearing the old digest",
+                    self.digest
+                ),
+            });
+        }
+        if self.recorded_in.is_empty()
+            || self.recorded_in.iter().any(|record| record.trim().is_empty())
+        {
+            return Err(GateError::Invalid {
+                id: gate.to_string(),
+                problem: format!(
+                    "previously binds {} without naming a record that carries it; a \
+                     digest-shaped string is not proof the digest was recorded",
+                    self.digest
+                ),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Whether a string is shaped like a recorded digest: `gate:` followed by
+/// sixty-four lowercase hex characters. Shape is a precondition, never the
+/// proof — what proves a digest was recorded is a record that carries it.
+fn is_digest(candidate: &str) -> bool {
+    candidate.starts_with("gate:")
+        && candidate.len() == 69
+        && candidate[5..]
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
 /// An acceptance rule, as committed to `crates/gym/gates/`.
@@ -701,7 +999,15 @@ pub struct Gate {
     /// The gate's id, which is also its file name. Versioned, because
     /// changing a threshold produces a new gate rather than new history.
     pub id: String,
-    /// The product question this gate answers, in one line.
+    /// The digests earlier encodings recorded for this same rule, each bound
+    /// to the identity it was reviewed equal to, so a verdict pinned to one
+    /// still attributes. This is history, not policy, and stays outside the
+    /// digest; `docs/gym/gate-digests.md` states the policy.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub previously: Vec<Alias>,
+    /// The product question this gate answers, in one line. Outside the
+    /// digest: it is prose for the reader, and rewording it does not change
+    /// what the rule decides.
     pub question: String,
     /// The thresholds, and what they decide.
     pub rule: Rule,
@@ -819,28 +1125,80 @@ impl Gate {
                 rule.regression_sigmas.validate(&self.id, "regression_sigmas")?;
             }
         }
+        if let Some(pending) = self.rule.pending_measurement() {
+            pending.validate(&self.id)?;
+        }
+        let identity = self.identity_canonical();
+        for alias in &self.previously {
+            alias.validate(&self.id, &identity)?;
+        }
         Ok(())
     }
 
-    /// `gate:<sha256>` over the canonical serialization of the rule.
+    /// `gate:<sha256>` over the canonical serialization of the rule's
+    /// identity — the parts that decide, without the prose that explains
+    /// them.
+    ///
+    /// The digest does not hash the file. It hashes a typed view of it: the
+    /// schema, the id, and the rule — every bound's value, basis, and
+    /// evidence, the enums that say what a statistic covers, and any pending
+    /// measurement's identity. `question`, every `why`, `$comment`, and
+    /// `previously` are outside it: a sentence that explains a threshold is
+    /// not the threshold, and editing one must not orphan the rows the rule
+    /// already scored.
     ///
     /// Object keys are sorted, so the digest does not move when fields are
-    /// reordered in a file or in this source. `$comment` is not serialized,
-    /// so prose stays outside. Everything else — including each bound's
-    /// basis and provenance — is inside, because a number whose
-    /// justification changed is a different rule.
+    /// reordered in a file or in this source. The view carries its own
+    /// schema, [`IDENTITY_SCHEMA`], so an encoding change is a declared
+    /// transition rather than a silent one: an earlier encoding's digests
+    /// live in `previously`, each bound to the identity it was reviewed
+    /// equal to, and [`Gate::has_digest`] attributes a verdict recorded
+    /// under either.
     #[must_use]
     pub fn digest(&self) -> String {
-        let value = serde_json::to_value(self).unwrap_or(Value::Null);
-        let mut canonical = String::new();
-        canonicalize(&value, &mut canonical);
-        let hash = Sha256::digest(canonical.as_bytes());
+        let hash = Sha256::digest(self.identity_canonical().as_bytes());
         let mut out = String::with_capacity(5 + hash.len() * 2);
         out.push_str("gate:");
         for byte in hash {
             let _ = write!(out, "{byte:02x}");
         }
         out
+    }
+
+    /// Whether `recorded` names this rule — the digest the current encoding
+    /// produces, or one an earlier encoding recorded whose `previously`
+    /// binding resolves to this rule's live identity.
+    ///
+    /// The check is against the identity as the rule projects it now, so a
+    /// gate mutated in place — a threshold moved, a bound relabelled —
+    /// stops attributing rows the earlier digest was recorded for. A string
+    /// staying in `previously` is not enough; the binding has to hold.
+    #[must_use]
+    pub fn has_digest(&self, recorded: &str) -> bool {
+        if recorded == self.digest() {
+            return true;
+        }
+        let identity = self.identity_canonical();
+        self.previously
+            .iter()
+            .any(|alias| alias.digest == recorded && canonical(&alias.equivalent) == identity)
+    }
+
+    /// The canonical form of this gate's identity projection — the string
+    /// [`Gate::digest`] hashes, and what a `previously` binding is checked
+    /// against.
+    fn identity_canonical(&self) -> String {
+        canonical(&serde_json::to_value(self.identity()).unwrap_or(Value::Null))
+    }
+
+    /// This gate as the digest sees it.
+    fn identity(&self) -> GateIdentity<'_> {
+        GateIdentity {
+            identity_schema: IDENTITY_SCHEMA,
+            schema: &self.schema,
+            id: &self.id,
+            rule: self.rule.identity(),
+        }
     }
 
     /// Judges one comparison of scores. Pure.
@@ -1112,6 +1470,86 @@ impl Report {
     }
 }
 
+/// What the digest sees of a [`Gate`]: the parts that decide, and nothing
+/// that only explains.
+///
+/// The gate file carries prose for a reader — `question`, every `why`, the
+/// `$comment` — and this view does not. The digest covers the schema, the
+/// id, and the rule: each bound's value, basis, and evidence, the enums
+/// that say what a statistic covers, and the identity of any pending
+/// measurement. Editing an explanation never re-identifies the rule;
+/// changing what it decides, or the records it rests on, always does.
+#[derive(Serialize)]
+struct GateIdentity<'a> {
+    /// This view's own schema, so the digest records what produced it.
+    identity_schema: &'static str,
+    /// The gate file's schema.
+    schema: &'a str,
+    /// The gate's id, which is also its file name.
+    id: &'a str,
+    /// The rule, projected the same way.
+    rule: RuleIdentity<'a>,
+}
+
+/// A rule as the digest sees it: the same `decides` tag the file writes,
+/// and the same fields minus the prose.
+#[derive(Serialize)]
+#[serde(tag = "decides", rename_all = "snake_case")]
+enum RuleIdentity<'a> {
+    /// The rule that decides which door answers.
+    Decision(DecisionRuleIdentity<'a>),
+    /// The rule that decides whether probabilities may be served.
+    Probability(ProbabilityRuleIdentity<'a>),
+    /// The rule that decides whether a door can be afforded.
+    Deployment(DeploymentRuleIdentity<'a>),
+}
+
+/// A decision rule's identity.
+#[derive(Serialize)]
+struct DecisionRuleIdentity<'a> {
+    min_items: BoundIdentity<'a>,
+    gain_standard_errors: BoundIdentity<'a>,
+    variance_basis: VarianceBasis,
+    pending_measurement: Option<PendingIdentity<'a>>,
+}
+
+/// A probability rule's identity.
+#[derive(Serialize)]
+struct ProbabilityRuleIdentity<'a> {
+    min_items: BoundIdentity<'a>,
+    min_ece_reduction: BoundIdentity<'a>,
+    max_brier_increase: BoundIdentity<'a>,
+    pending_measurement: Option<PendingIdentity<'a>>,
+}
+
+/// A deployment rule's identity.
+#[derive(Serialize)]
+struct DeploymentRuleIdentity<'a> {
+    min_calls: BoundIdentity<'a>,
+    gated_percentile: GatedPercentile,
+    latency_block_sigma_relative: BoundIdentity<'a>,
+    regression_sigmas: BoundIdentity<'a>,
+    pending_measurement: Option<PendingIdentity<'a>>,
+}
+
+/// A bound as the digest sees it: the number, where the number came from,
+/// and the records it rests on. `why` explains them to a reader and is not
+/// part of the rule's identity.
+#[derive(Serialize)]
+struct BoundIdentity<'a> {
+    value: Option<f64>,
+    basis: Basis,
+    evidence: &'a [Evidence],
+}
+
+/// A pending measurement as the digest sees it: what is unmeasured and who
+/// takes it, without the prose about what the rule does meanwhile.
+#[derive(Serialize)]
+struct PendingIdentity<'a> {
+    quantity: &'a str,
+    issue: Option<&'a str>,
+}
+
 fn canonicalize(value: &Value, out: &mut String) {
     match value {
         Value::Object(map) => {
@@ -1140,8 +1578,22 @@ fn canonicalize(value: &Value, out: &mut String) {
             }
             out.push(']');
         }
+        // Numbers normalize through f64 so `30` and `30.0` write the same
+        // way — an equivalence snapshot may carry either for what the
+        // projection serializes as a float.
+        Value::Number(number) => match number.as_f64().and_then(Number::from_f64) {
+            Some(float) => out.push_str(&float.to_string()),
+            None => out.push_str(&number.to_string()),
+        },
         other => out.push_str(&other.to_string()),
     }
+}
+
+/// The canonical form of a JSON document: sorted keys, normalized numbers.
+fn canonical(value: &Value) -> String {
+    let mut out = String::new();
+    canonicalize(value, &mut out);
+    out
 }
 
 /// A criterion nothing downstream of a missing floor is judged against.
@@ -1916,7 +2368,7 @@ mod tests {
     #[test]
     fn the_digest_is_stable_across_serialization_order() {
         let ordered = r#"{
-            "schema": "openagents.gym.gate.v1",
+            "schema": "openagents.gym.gate.v2",
             "id": "example-v1",
             "question": "Does key order change the rule?",
             "rule": {
@@ -1942,7 +2394,7 @@ mod tests {
             "question": "Does key order change the rule?",
             "id": "example-v1",
             "$comment": "prose that arrives first and still does not count",
-            "schema": "openagents.gym.gate.v1"
+            "schema": "openagents.gym.gate.v2"
         }"#;
         let path = Path::new("example-v1.json");
         let left = Gate::from_json(ordered, path).expect("the ordered document loads");
@@ -2260,7 +2712,7 @@ mod tests {
     #[test]
     fn an_unmeasured_bound_reports_unverifiable_and_never_passes() {
         let source = r#"{
-            "schema": "openagents.gym.gate.v1",
+            "schema": "openagents.gym.gate.v2",
             "id": "unmeasured-v1",
             "question": "What happens when nobody has measured the bound?",
             "rule": {
@@ -2272,7 +2724,11 @@ mod tests {
                     "why": "openagents#9370 measures the spread this bound needs"
                 },
                 "variance_basis": "item_sampling",
-                "pending_measurement": "openagents#9370"
+                "pending_measurement": {
+                    "quantity": "the suite's trial-to-trial resampling variance",
+                    "issue": "openagents#9370",
+                    "why": "the standard error covers item sampling only"
+                }
             }
         }"#;
         let gate = Gate::from_json(source, Path::new("unmeasured-v1.json"))
@@ -2283,7 +2739,10 @@ mod tests {
             adapted_calibrated(),
         ));
         assert_eq!(outcome.verdict, Verdict::Unverifiable);
-        assert_eq!(gate.rule.pending_measurement(), Some("openagents#9370"));
+        assert_eq!(
+            gate.rule.pending_measurement().and_then(|pending| pending.issue.as_deref()),
+            Some("openagents#9370")
+        );
     }
 
     #[test]
@@ -2298,8 +2757,8 @@ mod tests {
         };
         assert_eq!(rule.variance_basis, VarianceBasis::ItemSampling);
         assert_eq!(rule.gain_standard_errors.basis, Basis::Convention);
-        let pending = rule.pending_measurement.as_deref().expect("the gap is recorded");
-        assert!(pending.contains("9370"), "{pending}");
+        let pending = rule.pending_measurement.as_ref().expect("the gap is recorded");
+        assert_eq!(pending.issue.as_deref(), Some("openagents#9370"));
 
         let mut measured = gate.clone();
         if let Rule::Decision(rule) = &mut measured.rule {
@@ -2339,7 +2798,7 @@ mod tests {
     #[test]
     fn a_gate_with_an_unreadable_schema_is_refused() {
         let source = r#"{
-            "schema": "openagents.gym.gate.v2",
+            "schema": "openagents.gym.gate.v3",
             "id": "future-v1",
             "question": "Does a newer schema load?",
             "rule": {
@@ -2359,7 +2818,7 @@ mod tests {
     #[test]
     fn a_bound_with_a_value_and_no_basis_behind_it_is_refused() {
         let source = r#"{
-            "schema": "openagents.gym.gate.v1",
+            "schema": "openagents.gym.gate.v2",
             "id": "wrong-v1",
             "question": "Does an unmeasured bound get to carry a number?",
             "rule": {
@@ -2379,7 +2838,7 @@ mod tests {
     #[test]
     fn an_unknown_field_is_refused_rather_than_ignored() {
         let source = r#"{
-            "schema": "openagents.gym.gate.v1",
+            "schema": "openagents.gym.gate.v2",
             "id": "typo-v1",
             "question": "Does a misspelled threshold pass unnoticed?",
             "rule": {
@@ -2423,6 +2882,7 @@ mod tests {
             rule.latency_block_sigma_relative = Bound {
                 value: Some(sigma),
                 basis: Basis::Convention,
+                evidence: Vec::new(),
                 why: "A stand-in, used only by this test to show that a measured floor makes \
                       the latency criteria decidable."
                     .into(),
@@ -2682,8 +3142,8 @@ mod tests {
         };
         assert_eq!(rule.gated_percentile, GatedPercentile::P95);
         assert_eq!(rule.latency_block_sigma_relative.basis, Basis::Unmeasured);
-        let pending = rule.pending_measurement.as_deref().expect("the gap is recorded");
-        assert!(pending.contains("uncontended"), "{pending}");
+        let pending = rule.pending_measurement.as_ref().expect("the gap is recorded");
+        assert!(pending.quantity.contains("uncontended"), "{}", pending.quantity);
 
         // A door seven times over a router's ceiling still cannot be refused
         // on latency, because nobody knows how wide the band is.

@@ -160,10 +160,15 @@ fn kev_variant_rows_reconcile_against_the_pinned_suite() {
                 "{door} {}",
                 row.item_id
             );
-            assert_eq!(
-                row.gate_digest.as_deref(),
-                Some(gate.digest().as_str()),
-                "{door} {}",
+            // The rows carry the digest the earlier encoding produced.
+            // `previously` carries it forward, so it still attributes to
+            // this rule rather than passing only by equality with today's
+            // encoding.
+            assert!(
+                row.gate_digest
+                    .as_deref()
+                    .is_some_and(|recorded| gate.has_digest(recorded)),
+                "{door} {}: the recorded digest is not one this rule attributes",
                 row.item_id
             );
 

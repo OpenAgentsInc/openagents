@@ -471,6 +471,7 @@ impl Rule {
                     block_sigma: Bound {
                         value: Some(0.0197),
                         basis: Basis::Derived,
+                        evidence: Vec::new(),
                         why: "Eight disjoint seed blocks over the same 98 evaluation items, \
                               with the door, the items, and the machine held fixed, gave \
                               accuracies from 0.745 to 0.796: a standard deviation of 0.0197. \
@@ -487,6 +488,7 @@ impl Rule {
                     block_sigma: Bound {
                         value: Some(0.0266),
                         basis: Basis::Derived,
+                        evidence: Vec::new(),
                         why: "The same eight blocks gave ECEs from 0.097 to 0.166: a standard \
                               deviation of 0.0266. \
                               docs/lev/measurements/2026-09-19-calibration-variance.md, \
@@ -506,6 +508,7 @@ impl Rule {
                     block_sigma: Bound {
                         value: Some(0.0119),
                         basis: Basis::Derived,
+                        evidence: Vec::new(),
                         why: "The same eight blocks gave Briers from 0.150 to 0.182: a standard \
                               deviation of 0.0119. \
                               docs/lev/measurements/2026-09-19-calibration-variance.md, \
@@ -520,6 +523,7 @@ impl Rule {
                     block_sigma: Bound {
                         value: Some(0.6428),
                         basis: Basis::Derived,
+                        evidence: Vec::new(),
                         why: "The same eight blocks gave log losses from 1.436 to 3.019: a \
                               standard deviation of 0.6428, a third of the mean. \
                               docs/lev/measurements/2026-09-19-calibration-variance.md, \
@@ -536,6 +540,7 @@ impl Rule {
             effect_size_sigmas: Bound {
                 value: Some(2.0),
                 basis: Basis::Convention,
+                evidence: Vec::new(),
                 why: "Two standard deviations is the conventional bar for calling a difference \
                       real. It is a convention, and it is labelled one; the quantity it \
                       multiplies is the measurement. At one block a side it gives 0.056 \
@@ -548,6 +553,7 @@ impl Rule {
             family_regression_sigmas: Bound {
                 value: Some(2.0),
                 basis: Basis::Convention,
+                evidence: Vec::new(),
                 why: "The same bar the win has to clear, applied to a loss, so a candidate \
                       cannot win overall on a move smaller than the one that refuses it on a \
                       family. The standard deviation it multiplies was measured over the whole \
@@ -561,6 +567,7 @@ impl Rule {
             min_blocks_per_side: Bound {
                 value: Some(3.0),
                 basis: Basis::Derived,
+                evidence: Vec::new(),
                 why: "The median of one block is that block, and the median of two is their \
                       mean, so the criterion that the median agrees with the mean has no \
                       content below three blocks. Three is the fewest at which the two can \
@@ -2267,6 +2274,7 @@ mod tests {
                 floor.block_sigma = Bound {
                     value: None,
                     basis: Basis::Unmeasured,
+                    evidence: Vec::new(),
                     why: "Nothing has measured this.".into(),
                 };
             }
@@ -2340,6 +2348,7 @@ mod tests {
             block_sigma: Bound {
                 value: Some(0.5),
                 basis: Basis::Tuned,
+                evidence: Vec::new(),
                 why: "a number somebody liked".into(),
             },
         });
