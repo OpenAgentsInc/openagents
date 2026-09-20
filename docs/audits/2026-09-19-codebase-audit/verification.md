@@ -431,3 +431,29 @@ cargo +1.97.1 test -p gym --test kev_variant_rows
 
 The audit harness's typed-envelope line checks Gym's interpretation of an
 authored body. The HTTP tests above establish that Kev sends the envelope.
+
+
+### A05 after the wire-contract fix
+
+Commit `ed1cc8c8d3` preserves the selected answer across calibration, Lev's
+Noul and Score wire responses, Jev decoding, and Gym evaluation. Choice
+continues to carry its selection in `choice`; Noul and Score use optional
+`selected` provenance. The standard probability-of-yes and weighted-position
+fields retain their meanings. New evaluation rows use schema v2 because
+`raw_top` now records the selected answer's probability, which can be below
+the maximum. Historical v1 rows and their receipt chains are unchanged.
+
+The six public wire round trips cover binary and multiclass inversions,
+legacy fallback, a raw tie, and a band-conditioned map. They compare the
+served selection and stored correctness with a known label. SDK validation
+rejects invalid selections, and the mixed-schema store test verifies that
+appending v2 preserves existing v1 bytes and a valid receipt chain.
+
+The [post-fix re-derivation](../../gym/measurements/2026-09-20-raw-floors-and-mapped-claims.md)
+separates raw block standard deviations from comparison thresholds and
+inventories the retained mapped claims and six calibration records. Published
+rounded spreads and gate verdicts remain unchanged. Eight scalar comparisons
+differ by one representable floating-point step; the report records them
+without inferring their cause. Missing historical evidence remains
+unverifiable. The earlier reproduction above describes the pre-fix snapshot;
+it is retained as historical evidence.

@@ -279,11 +279,14 @@ test and a recording of something else doing what it should do.
 `1843fa6c18` and reproduced failures through public APIs **while the
 applicable test suites passed**. Its 25 findings are filed as #9415–#9433.
 
-A01 to A04 are fixed. A05 remains open: a follow-up wire round trip preserves
-Choice's raw selection but changes Noul and Score selections while mapped
-metrics retain the original outcome. See the
-[reproduction](audits/2026-09-19-codebase-audit/verification.md#a05-the-fixed-selection-does-not-survive-every-wire-shape).
-Historical metric re-derivation alone cannot close that contract gap.
+A01 to A04 are fixed. A05's wire-contract fix landed in `ed1cc8c8d3`:
+Noul and Score now carry optional selected-answer provenance through Lev,
+the Jev SDK, and Gym. New measurement rows use schema v2; historical rows
+and receipt chains remain unchanged. The retained metric re-derivation keeps
+published rounded spreads and gate verdicts unchanged, while reporting small
+floating-point differences and missing evidence explicitly. See the
+[post-fix verification](audits/2026-09-19-codebase-audit/verification.md#a05-after-the-wire-contract-fix).
+Check #9419 and #9394 for the final acceptance review.
 
 A06 is fixed in `9ec50704cb`; #9420 is closed. The locked-partition ledger
 holds a cross-process lock through eligibility, append, and durable commit.
