@@ -32,6 +32,8 @@ struct Args {
     default: String,
     device: String,
     dtype: String,
+    attention: String,
+    bucket_size: usize,
     /// Packed tokens one forward may hold; `None` keeps the default bound.
     max_tokens: Option<usize>,
     /// Working memory forwards may hold together, in MiB; `None` measures
@@ -48,6 +50,8 @@ fn parse_args() -> Result<Args, String> {
     let mut default = "kev-latest".to_string();
     let mut device = "cpu".to_string();
     let mut dtype = std::env::var("KEV_DTYPE").unwrap_or_else(|_| "fp32".to_string());
+    let mut attention = "eager".to_string();
+    let mut bucket_size = 0;
     let mut max_tokens = None;
     let mut memory_budget_mib = None;
     let mut args = std::env::args().skip(1);
@@ -66,6 +70,12 @@ fn parse_args() -> Result<Args, String> {
             "--default" => default = take("--default")?,
             "--device" => device = take("--device")?,
             "--dtype" => dtype = take("--dtype")?,
+            "--attention" => attention = take("--attention")?,
+            "--bucket-size" => {
+                bucket_size = take("--bucket-size")?
+                    .parse()
+                    .map_err(|_| "--bucket-size needs 0 or 64".to_string())?
+            }
             "--max-tokens" => {
                 max_tokens = Some(
                     take("--max-tokens")?
@@ -84,12 +94,21 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!(
                     "kev-serve --adapter-dir DIR --base-dir DIR [--host H] [--port P] [--device cpu|metal] [--dtype fp32|bf16]\n\
                      kev-serve --bundle-dir DIR [--default ID] [...]\n\
-                     [--max-tokens N] [--memory-budget-mib N]"
+                     [--max-tokens N] [--memory-budget-mib N] [--attention eager|sdpa] [--bucket-size 0|64]"
                 );
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument {other}")),
         }
+    }
+    if !matches!(attention.as_str(), "eager" | "sdpa") {
+        return Err("--attention needs eager or sdpa".to_string());
+    }
+    if !matches!(bucket_size, 0 | 64) {
+        return Err("--bucket-size needs 0 or 64".to_string());
+    }
+    if attention == "sdpa" && device != "metal" {
+        return Err("--attention sdpa requires --device metal".to_string());
     }
     if bundle_dir.is_none() && adapter_dir.is_none() {
         return Err("--adapter-dir or --bundle-dir is required".to_string());
@@ -106,6 +125,8 @@ fn parse_args() -> Result<Args, String> {
         default,
         device,
         dtype,
+        attention,
+        bucket_size,
         max_tokens,
         memory_budget_mib,
     })
@@ -238,7 +259,7 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let variants = match &args.bundle_dir {
+    let mut variants = match &args.bundle_dir {
         Some(bundle) => match load_bundle(bundle, &device, dtype) {
             Ok(v) => v,
             Err(e) => {
@@ -259,6 +280,25 @@ async fn main() -> ExitCode {
             }
         }
     };
+    let attention = match args.attention.as_str() {
+        "eager" => kev::model::AttentionBackend::Eager,
+        "sdpa" => kev::model::AttentionBackend::MetalSdpa,
+        _ => {
+            eprintln!("kev-serve: --attention needs eager or sdpa");
+            return ExitCode::from(2);
+        }
+    };
+    for variant in &mut variants {
+        if let Err(error) = variant
+            .model
+            .backbone
+            .set_attention(attention)
+            .and_then(|()| variant.model.set_bucket_size(args.bucket_size))
+        {
+            eprintln!("kev-serve: {error}");
+            return ExitCode::from(2);
+        }
+    }
     let default = variants
         .iter()
         .position(|v| v.model_id == args.default)

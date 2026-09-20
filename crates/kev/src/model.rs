@@ -16,6 +16,7 @@
 //! conformance, `bf16` when serving a large backbone.
 
 use std::path::Path;
+use std::time::Instant;
 
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 use serde::Deserialize;
@@ -149,6 +150,73 @@ impl Rotary {
     }
 }
 
+/// Attention implementation; eager remains the default correctness reference.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AttentionBackend {
+    /// Explicit scores, additive mask, softmax, and value multiplication.
+    #[default]
+    Eager,
+    /// Candle's fused Metal kernel with the complete block-causal mask.
+    MetalSdpa,
+}
+
+impl AttentionBackend {
+    /// Stable numerical execution identity.
+    #[must_use]
+    pub fn identity(self) -> &'static str {
+        match self {
+            Self::Eager => "eager-block-causal-v1",
+            Self::MetalSdpa => "metal-sdpa-block-causal-v1",
+        }
+    }
+}
+
+/// Intrusive stage timings: each stage synchronizes the device when enabled.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct ForwardProfile {
+    /// Aggregated stage timings; milliseconds include every decoder layer.
+    pub stages: std::collections::BTreeMap<&'static str, StageTiming>,
+    #[serde(skip)]
+    enabled: bool,
+}
+
+/// Host submission and completed wall time for one profiled stage.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct StageTiming {
+    /// How often the stage ran.
+    pub calls: usize,
+    /// Time before an explicit device synchronization.
+    pub submit_ms: f64,
+    /// Time including the device synchronization; not a GPU-only timer.
+    pub completed_ms: f64,
+}
+
+impl ForwardProfile {
+    pub(crate) fn enabled() -> Self {
+        Self {
+            enabled: true,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn mark(
+        &mut self,
+        name: &'static str,
+        start: Instant,
+        device: &Device,
+    ) -> CandleResult<()> {
+        if self.enabled {
+            let submit_ms = start.elapsed().as_secs_f64() * 1000.0;
+            device.synchronize()?;
+            let stage = self.stages.entry(name).or_default();
+            stage.calls += 1;
+            stage.submit_ms += submit_ms;
+            stage.completed_ms += start.elapsed().as_secs_f64() * 1000.0;
+        }
+        Ok(())
+    }
+}
+
 struct Attention {
     q_proj: Linear,
     k_proj: Linear,
@@ -171,7 +239,10 @@ impl Attention {
         rotary: &Rotary,
         pos: &[i64],
         mask: &Tensor,
+        backend: AttentionBackend,
+        profile: &mut ForwardProfile,
     ) -> CandleResult<Tensor> {
+        let start = Instant::now();
         let len = x.dim(0)?;
         let mut q = self
             .q_proj
@@ -191,24 +262,54 @@ impl Attention {
             .v_proj
             .forward(x)?
             .reshape((len, self.n_kv_heads, self.head_dim))?;
+        profile.mark("qkv_projection_and_norm", start, x.device())?;
+        let start = Instant::now();
         let q = rotary.apply(&q, pos)?.transpose(0, 1)?.contiguous()?; // [n_h, len, hd]
         let k = rotary.apply(&k, pos)?.transpose(0, 1)?.contiguous()?; // [n_kv, len, hd]
         let v = v.transpose(0, 1)?.contiguous()?; // [n_kv, len, hd]
-        let groups = self.n_heads / self.n_kv_heads;
-        let k = repeat_kv(&k, groups)?;
-        let v = repeat_kv(&v, groups)?;
-        // Metal's batched matmul requires contiguous operands.
-        let scores = q
-            .matmul(&k.transpose(1, 2)?.contiguous()?)?
-            .affine(1.0 / (self.head_dim as f64).sqrt(), 0.0)?; // [n_h, len, len]
-        let scores = scores.broadcast_add(mask)?;
-        let probs = candle_nn::ops::softmax_last_dim(&scores)?;
-        let out = probs.matmul(&v)?; // [n_h, len, hd]
+        profile.mark("rotary_and_contiguous_copies", start, x.device())?;
+        let start = Instant::now();
+        let out = match backend {
+            AttentionBackend::Eager => {
+                let groups = self.n_heads / self.n_kv_heads;
+                let k = repeat_kv(&k, groups)?;
+                let v = repeat_kv(&v, groups)?;
+                let scores = q
+                    .matmul(&k.transpose(1, 2)?.contiguous()?)?
+                    .affine(1.0 / (self.head_dim as f64).sqrt(), 0.0)?;
+                let scores = scores.broadcast_add(mask)?;
+                candle_nn::ops::softmax_last_dim(&scores)?.matmul(&v)?
+            }
+            AttentionBackend::MetalSdpa => {
+                if len < 2 {
+                    candle_core::bail!("masked Metal SDPA requires at least two tokens");
+                }
+                // Broadcast by stride: do not materialize one mask per head.
+                let mask =
+                    mask.unsqueeze(0)?
+                        .unsqueeze(0)?
+                        .broadcast_as((1, self.n_heads, len, len))?;
+                candle_nn::ops::sdpa(
+                    &q.unsqueeze(0)?,
+                    &k.unsqueeze(0)?,
+                    &v.unsqueeze(0)?,
+                    Some(&mask),
+                    false,
+                    1.0 / (self.head_dim as f32).sqrt(),
+                    1.0,
+                )?
+                .squeeze(0)?
+            }
+        };
+        profile.mark("attention_kernel", start, x.device())?;
+        let start = Instant::now();
         let out = out
             .transpose(0, 1)?
             .contiguous()?
             .reshape((len, self.n_heads * self.head_dim))?;
-        self.o_proj.forward(&out)
+        let out = self.o_proj.forward(&out)?;
+        profile.mark("attention_output_projection", start, x.device())?;
+        Ok(out)
     }
 }
 
@@ -251,6 +352,7 @@ pub struct Backbone {
     norm: Tensor,
     device: Device,
     dtype: DType,
+    attention: AttentionBackend,
 }
 
 fn take(map: &mut std::collections::HashMap<String, Tensor>, name: &str) -> Result<Tensor> {
@@ -400,7 +502,36 @@ impl Backbone {
             norm,
             device: device.clone(),
             dtype,
+            attention: AttentionBackend::Eager,
         })
+    }
+
+    /// Select an attention implementation before serving.
+    ///
+    /// # Errors
+    ///
+    /// Refuses Metal SDPA on other devices or unsupported head widths.
+    pub fn set_attention(&mut self, backend: AttentionBackend) -> Result<()> {
+        if backend == AttentionBackend::MetalSdpa
+            && (!self.device.is_metal()
+                || !matches!(
+                    self.config.head_dim(),
+                    32 | 64 | 72 | 80 | 96 | 128 | 256 | 512
+                )
+                || (self.config.head_dim() == 512 && self.dtype == DType::F32))
+        {
+            return Err(Error::Artifact(
+                "Metal SDPA does not support this device, dtype, or head width".to_string(),
+            ));
+        }
+        self.attention = backend;
+        Ok(())
+    }
+
+    /// Selected attention implementation.
+    #[must_use]
+    pub fn attention(&self) -> AttentionBackend {
+        self.attention
     }
 
     /// The compute dtype the weights were loaded in.
@@ -467,6 +598,17 @@ impl Backbone {
     ///
     /// Propagates candle errors from the forward pass.
     pub fn hidden(&self, ids: &[u32], pos: &[i64], mask: &Tensor) -> Result<Tensor> {
+        self.hidden_profiled(ids, pos, mask, &mut ForwardProfile::default())
+    }
+
+    pub(crate) fn hidden_profiled(
+        &self,
+        ids: &[u32],
+        pos: &[i64],
+        mask: &Tensor,
+        profile: &mut ForwardProfile,
+    ) -> Result<Tensor> {
+        let start = Instant::now();
         let len = ids.len();
         let ids_t = Tensor::from_vec(ids.to_vec(), len, &self.device)?;
         let mut x = self.embed.index_select(&ids_t, 0)?; // [len, d]
@@ -477,17 +619,29 @@ impl Backbone {
             rope_len,
             &self.device,
         )?;
+        profile.mark("embedding_and_rotary_setup", start, &self.device)?;
         for layer in &self.layers {
+            let start = Instant::now();
             let h = rms_norm(&x, &layer.input_layernorm, self.config.rms_norm_eps)?;
-            x = (x + layer.attn.forward(&h, &rotary, pos, mask)?)?;
+            profile.mark("input_norm", start, &self.device)?;
+            x = (x + layer
+                .attn
+                .forward(&h, &rotary, pos, mask, self.attention, profile)?)?;
+            let start = Instant::now();
             let h = rms_norm(
                 &x,
                 &layer.post_attention_layernorm,
                 self.config.rms_norm_eps,
             )?;
+            profile.mark("attention_residual_and_post_norm", start, &self.device)?;
+            let start = Instant::now();
             x = (x + layer.mlp.forward(&h)?)?;
+            profile.mark("mlp_and_residual", start, &self.device)?;
         }
-        Ok(rms_norm(&x, &self.norm, self.config.rms_norm_eps)?)
+        let start = Instant::now();
+        let out = rms_norm(&x, &self.norm, self.config.rms_norm_eps)?;
+        profile.mark("final_norm", start, &self.device)?;
+        Ok(out)
     }
 }
 

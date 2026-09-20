@@ -20,7 +20,9 @@ and verified in #9454–#9456. The [current program baseline](../decision-models
 completed #9457. The [replacement 4B evaluation](measurements/2026-09-20-candidate-4b.md)
 records conformance and 461 open items per door, with paired comparisons
 and per-family recommendations. It does not admit a general replacement.
-The findings below retain the state reviewed before those changes.
+The [Metal attention comparison](measurements/2026-09-20-metal-attention.md)
+adds selectable SDPA and padding experiments while retaining the eager exact
+default. The findings below retain the state reviewed before those changes.
 
 ## What changed upstream
 
@@ -116,6 +118,11 @@ This is a precision follow-up, not a missing LoRA-merge optimization: our
 runtime already merges the adapter at load time.
 
 ### Repeated state is recomputed
+
+**Attention experiment completed in [#9459](https://github.com/OpenAgentsInc/openagents/issues/9459):**
+SDPA and padding are selectable and measured separately. Bf16 SDPA changes
+one fixture's argmax; eager exact execution remains the default. The
+following description records the pre-experiment serving path.
 
 [`DecisionModel::probs`](../../crates/kev/src/decision.rs) builds a full
 mask and runs the complete packed sequence for every request.

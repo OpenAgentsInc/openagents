@@ -1,0 +1,44 @@
+[
+  {
+    "attention": "eager-block-causal-v1",
+    "bucket_size": 0,
+    "max_abs_probability_delta_vs_eager": 0,
+    "argmax_changes": [],
+    "packed_separate_delta": 0.0051087141036987305,
+    "sibling_absent_delta": 0.002393364906311035
+  },
+  {
+    "attention": "eager-block-causal-v1",
+    "bucket_size": 64,
+    "max_abs_probability_delta_vs_eager": 0.008227497339248657,
+    "argmax_changes": [],
+    "packed_separate_delta": 0.0060942769050598145,
+    "sibling_absent_delta": 0.0007424931973218918
+  },
+  {
+    "attention": "metal-sdpa-block-causal-v1",
+    "bucket_size": 0,
+    "max_abs_probability_delta_vs_eager": 0.03548210859298706,
+    "argmax_changes": [
+      [
+        "unicode",
+        0
+      ]
+    ],
+    "packed_separate_delta": 0.0019309818744659424,
+    "sibling_absent_delta": 0.0
+  },
+  {
+    "attention": "metal-sdpa-block-causal-v1",
+    "bucket_size": 64,
+    "max_abs_probability_delta_vs_eager": 0.03548210859298706,
+    "argmax_changes": [
+      [
+        "unicode",
+        0
+      ]
+    ],
+    "packed_separate_delta": 0.0019309818744659424,
+    "sibling_absent_delta": 0.0
+  }
+]

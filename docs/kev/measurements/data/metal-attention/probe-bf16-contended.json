@@ -1,0 +1,2304 @@
+{
+  "artifact_identity": {
+    "schema": "openagents.kev.artifacts.v1",
+    "digest": "sha256:5622bbba5cae1d35c4572ea382f76cbc4c4c63ef18452c916d80cf9e25a08991",
+    "files": {
+      "adapter/adapter_config.json": {
+        "sha256": "46d9f1113377e8d0032f0548ae03b270153b2b7ba6dd26b63b244d29487e00e6",
+        "bytes": 1183
+      },
+      "adapter/adapter_model.safetensors": {
+        "sha256": "3fa10d8646f567e884ea47841b2f3d5f2d135b81a4447a8ea79a6fc94e9c6ae1",
+        "bytes": 132184864
+      },
+      "adapter/head.safetensors": {
+        "sha256": "49d0cc8f2ccd6ace98be3e40fa497ee7ae9db8b1a221cd4b4a5377dc9f5beb5e",
+        "bytes": 5245232
+      },
+      "adapter/head_meta.json": {
+        "sha256": "756eee51bb981471917140e44c553d87fdb3bd336c7404ff8dd5acc437ce2f2d",
+        "bytes": 1117
+      },
+      "adapter/tokenizer.json": {
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "bytes": 11422654
+      },
+      "base/config.json": {
+        "sha256": "304b2545a258d35620f1d4bf46940c0471d9baa00715ff8e77f84c2fca5057c1",
+        "bytes": 727
+      },
+      "base/model-00001-of-00003.safetensors": {
+        "sha256": "4c807e2503d68ae373d508689d00a41f4b33f33c2536da97ab81a20caddc1241",
+        "bytes": 3957900840
+      },
+      "base/model-00002-of-00003.safetensors": {
+        "sha256": "f4707585548b2fc75a6b1d732e8465c62040a8699903c32850781beeb9b27826",
+        "bytes": 3987450520
+      },
+      "base/model-00003-of-00003.safetensors": {
+        "sha256": "c7b1aa8fb672de2e00423c99876926022e50b18d4f0d140670788510a27f9965",
+        "bytes": 99630640
+      }
+    }
+  },
+  "dtype": "bf16",
+  "backend": "metal",
+  "modes": [
+    {
+      "attention": "eager-block-causal-v1",
+      "bucket_size": 0,
+      "records": [
+        {
+          "name": "choice_single",
+          "tokens": 18,
+          "forward_tokens": 18,
+          "probs": [
+            [
+              1.0
+            ]
+          ],
+          "first_ms": 4664.935167000001,
+          "second_ms": 72.634625,
+          "intrusive_profile": null
+        },
+        {
+          "name": "forgery",
+          "tokens": 71,
+          "forward_tokens": 71,
+          "probs": [
+            [
+              0.22949738800525665,
+              0.04559406638145447,
+              0.7249085903167725
+            ]
+          ],
+          "first_ms": 116.89824999999999,
+          "second_ms": 127.28287499999999,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_absent",
+          "tokens": 70,
+          "forward_tokens": 70,
+          "probs": [
+            [
+              0.0004230814811307937,
+              0.9995768666267395
+            ],
+            [
+              0.021381434053182602,
+              0.019086929038167,
+              0.007861646823585033,
+              0.9516699314117432
+            ]
+          ],
+          "first_ms": 142.329,
+          "second_ms": 169.3955,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_sibling",
+          "tokens": 86,
+          "forward_tokens": 86,
+          "probs": [
+            [
+              0.000569542811717838,
+              0.9994304776191711
+            ],
+            [
+              0.021908899769186974,
+              0.020619641989469528,
+              0.008194888941943645,
+              0.9492765665054321
+            ]
+          ],
+          "first_ms": 268.715625,
+          "second_ms": 381.953958,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_state",
+          "tokens": 79,
+          "forward_tokens": 79,
+          "probs": [
+            [
+              0.0011299299076199532,
+              0.9988700747489929
+            ],
+            [
+              0.9077131152153015,
+              0.01150517724454403,
+              0.00496354466304183,
+              0.07581816613674164
+            ]
+          ],
+          "first_ms": 392.517167,
+          "second_ms": 366.684042,
+          "intrusive_profile": null
+        },
+        {
+          "name": "noul_only",
+          "tokens": 34,
+          "forward_tokens": 34,
+          "probs": [
+            [
+              0.004909559618681669,
+              0.9950904250144958
+            ]
+          ],
+          "first_ms": 213.712375,
+          "second_ms": 202.165917,
+          "intrusive_profile": null
+        },
+        {
+          "name": "score5",
+          "tokens": 49,
+          "forward_tokens": 49,
+          "probs": [
+            [
+              0.9693104028701782,
+              0.028699630871415138,
+              0.001866145059466362,
+              0.00006351719639496878,
+              0.00006036485137883574
+            ]
+          ],
+          "first_ms": 227.17375,
+          "second_ms": 214.098458,
+          "intrusive_profile": null
+        },
+        {
+          "name": "structured",
+          "tokens": 125,
+          "forward_tokens": 125,
+          "probs": [
+            [
+              0.9994939565658569,
+              0.00016631603648420423,
+              0.00033968983916565776
+            ],
+            [
+              0.01833389699459076,
+              0.9816661477088928
+            ],
+            [
+              0.013580315746366978,
+              0.8580869436264038,
+              0.12833280861377716
+            ]
+          ],
+          "first_ms": 364.40525,
+          "second_ms": 360.827292,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support",
+          "tokens": 101,
+          "forward_tokens": 101,
+          "probs": [
+            [
+              0.9209519624710083,
+              0.03401381894946098,
+              0.04503427445888519
+            ],
+            [
+              0.2688930928707123,
+              0.7311068773269653
+            ],
+            [
+              0.0004337023419793695,
+              0.6889503002166748,
+              0.31061598658561707
+            ]
+          ],
+          "first_ms": 290.719875,
+          "second_ms": 301.19225,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_department",
+          "tokens": 64,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9209519624710083,
+              0.03401381894946098,
+              0.04503427445888519
+            ]
+          ],
+          "first_ms": 193.18058299999998,
+          "second_ms": 184.75687499999998,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_escalate",
+          "tokens": 37,
+          "forward_tokens": 37,
+          "probs": [
+            [
+              0.2637844979763031,
+              0.7362155914306641
+            ]
+          ],
+          "first_ms": 159.06175,
+          "second_ms": 158.35975,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_frustration",
+          "tokens": 44,
+          "forward_tokens": 44,
+          "probs": [
+            [
+              0.00045551618677563965,
+              0.690742552280426,
+              0.30880194902420044
+            ]
+          ],
+          "first_ms": 178.611,
+          "second_ms": 171.007667,
+          "intrusive_profile": null
+        },
+        {
+          "name": "unicode",
+          "tokens": 43,
+          "forward_tokens": 43,
+          "probs": [
+            [
+              0.5004443526268005,
+              0.032528355717659,
+              0.4670272767543793
+            ]
+          ],
+          "first_ms": 167.87574999999998,
+          "second_ms": 165.600458,
+          "intrusive_profile": null
+        },
+        {
+          "name": "benchmark_short_1",
+          "tokens": 55,
+          "forward_tokens": 55,
+          "probs": [
+            [
+              0.9998502731323242,
+              0.00013054197188466787,
+              0.000019214072381146252
+            ]
+          ],
+          "first_ms": 158.480375,
+          "second_ms": 162.03229199999998,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 3.968667,
+                "completed_ms": 19.666251999999997
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 1.7155839999999998,
+                "completed_ms": 19.676917
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.3846260000000001,
+                "completed_ms": 7.783291999999996
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.097458,
+                "completed_ms": 0.237333
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.078292,
+                "completed_ms": 0.2375
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 3.2582899999999997,
+                "completed_ms": 9.908126
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 7.403333999999999,
+                "completed_ms": 81.62429000000002
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.148042,
+                "completed_ms": 0.2635
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.3615,
+                "completed_ms": 0.37095900000000004
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 5.531750000000001,
+                "completed_ms": 32.715708
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 4.79679,
+                "completed_ms": 34.815918
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_short_5",
+          "tokens": 171,
+          "forward_tokens": 171,
+          "probs": [
+            [
+              0.9998536109924316,
+              0.00012791837798431516,
+              0.000018477014236850664
+            ],
+            [
+              0.99985671043396,
+              0.00012403822620399296,
+              0.000019219418391003273
+            ],
+            [
+              0.9998596906661987,
+              0.00012271496234461665,
+              0.00001758072539814748
+            ],
+            [
+              0.999852180480957,
+              0.00012699217768386006,
+              0.000020913199477945454
+            ],
+            [
+              0.9998494386672974,
+              0.00013079028576612473,
+              0.000019772971427300945
+            ]
+          ],
+          "first_ms": 368.166542,
+          "second_ms": 418.32025,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 12.311418999999997,
+                "completed_ms": 54.582708000000004
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 4.351501000000001,
+                "completed_ms": 40.811167000000005
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.665081,
+                "completed_ms": 13.874459
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.113625,
+                "completed_ms": 0.31033299999999997
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.26329199999999997,
+                "completed_ms": 0.5772079999999999
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 7.470707000000001,
+                "completed_ms": 19.172041
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 16.679122999999993,
+                "completed_ms": 231.920164
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.334166,
+                "completed_ms": 0.8045
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 2.079875,
+                "completed_ms": 2.102541
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 15.941001999999997,
+                "completed_ms": 79.74937599999998
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 12.366751999999996,
+                "completed_ms": 80.234749
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_1",
+          "tokens": 607,
+          "forward_tokens": 607,
+          "probs": [
+            [
+              0.9999029636383057,
+              0.0000808039476396516,
+              0.000016206149666686542
+            ]
+          ],
+          "first_ms": 1557.500542,
+          "second_ms": 1608.282083,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 99.52204300000002,
+                "completed_ms": 332.2367920000001
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 19.693082999999994,
+                "completed_ms": 122.54179200000002
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.8338309999999999,
+                "completed_ms": 25.883415
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.227958,
+                "completed_ms": 0.597291
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.507167,
+                "completed_ms": 1.0228329999999999
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 25.804249,
+                "completed_ms": 49.109787999999995
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 66.094548,
+                "completed_ms": 556.5973769999999
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 1.2602920000000002,
+                "completed_ms": 1.388625
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.455917,
+                "completed_ms": 0.474958
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 53.68849800000002,
+                "completed_ms": 241.30108
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 35.83571299999999,
+                "completed_ms": 223.425999
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_5",
+          "tokens": 723,
+          "forward_tokens": 723,
+          "probs": [
+            [
+              0.9999034404754639,
+              0.0000808633558335714,
+              0.000015765917851240374
+            ],
+            [
+              0.9999051094055176,
+              0.00007870787521824241,
+              0.00001617075213289354
+            ],
+            [
+              0.9999053478240967,
+              0.00007933178858365864,
+              0.00001529288783785887
+            ],
+            [
+              0.999901533126831,
+              0.00008243767661042511,
+              0.00001600546238478273
+            ],
+            [
+              0.999893307685852,
+              0.00008997381519293413,
+              0.000016668445823597722
+            ]
+          ],
+          "first_ms": 1912.9215,
+          "second_ms": 1967.8915,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 83.764793,
+                "completed_ms": 408.7777489999999
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 19.457293999999997,
+                "completed_ms": 143.65646199999998
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.8810819999999998,
+                "completed_ms": 31.760706999999996
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.195833,
+                "completed_ms": 0.661583
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.701583,
+                "completed_ms": 1.400041
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 24.395248999999993,
+                "completed_ms": 52.28475000000001
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 61.637086999999994,
+                "completed_ms": 679.9374650000001
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 1.306417,
+                "completed_ms": 1.4250420000000001
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 1.8105,
+                "completed_ms": 1.832542
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 50.61820399999999,
+                "completed_ms": 280.83224700000005
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 34.550002000000006,
+                "completed_ms": 266.8648350000001
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "attention": "eager-block-causal-v1",
+      "bucket_size": 64,
+      "records": [
+        {
+          "name": "choice_single",
+          "tokens": 18,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              1.0
+            ]
+          ],
+          "first_ms": 155.991584,
+          "second_ms": 146.855708,
+          "intrusive_profile": null
+        },
+        {
+          "name": "forgery",
+          "tokens": 71,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.23256132006645203,
+              0.046150077134370804,
+              0.7212886214256287
+            ]
+          ],
+          "first_ms": 330.671625,
+          "second_ms": 274.356708,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_absent",
+          "tokens": 70,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.0004230814811307937,
+              0.9995768666267395
+            ],
+            [
+              0.02147943712770939,
+              0.01917874626815319,
+              0.008087953552603722,
+              0.9512539505958557
+            ]
+          ],
+          "first_ms": 288.270125,
+          "second_ms": 316.193167,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_sibling",
+          "tokens": 86,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.000569542811717838,
+              0.9994304776191711
+            ],
+            [
+              0.021177276968955994,
+              0.019921239465475082,
+              0.0077730449847877026,
+              0.9511284828186035
+            ]
+          ],
+          "first_ms": 302.986083,
+          "second_ms": 317.927042,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_state",
+          "tokens": 79,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.0011299299076199532,
+              0.9988700747489929
+            ],
+            [
+              0.905387282371521,
+              0.010979021899402142,
+              0.004949993919581175,
+              0.07868367433547974
+            ]
+          ],
+          "first_ms": 333.775583,
+          "second_ms": 344.00966700000004,
+          "intrusive_profile": null
+        },
+        {
+          "name": "noul_only",
+          "tokens": 34,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.004965381231158972,
+              0.9950346946716309
+            ]
+          ],
+          "first_ms": 187.808167,
+          "second_ms": 182.83625,
+          "intrusive_profile": null
+        },
+        {
+          "name": "score5",
+          "tokens": 49,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9693104028701782,
+              0.028699630871415138,
+              0.001866145059466362,
+              0.00006351719639496878,
+              0.00006036485137883574
+            ]
+          ],
+          "first_ms": 159.981792,
+          "second_ms": 151.154583,
+          "intrusive_profile": null
+        },
+        {
+          "name": "structured",
+          "tokens": 125,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.9994939565658569,
+              0.00016631603648420423,
+              0.00033968983916565776
+            ],
+            [
+              0.01833389699459076,
+              0.9816661477088928
+            ],
+            [
+              0.014075426384806633,
+              0.8600935935974121,
+              0.12583096325397491
+            ]
+          ],
+          "first_ms": 320.640709,
+          "second_ms": 305.65295799999996,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support",
+          "tokens": 101,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.9209519624710083,
+              0.03401381894946098,
+              0.04503427445888519
+            ],
+            [
+              0.2688930928707123,
+              0.7311068773269653
+            ],
+            [
+              0.00044278151472099125,
+              0.6971686482429504,
+              0.3023884892463684
+            ]
+          ],
+          "first_ms": 290.815125,
+          "second_ms": 291.88599999999997,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_department",
+          "tokens": 64,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9209519624710083,
+              0.03401381894946098,
+              0.04503427445888519
+            ]
+          ],
+          "first_ms": 150.57695900000002,
+          "second_ms": 155.42600000000002,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_escalate",
+          "tokens": 37,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.26279890537261963,
+              0.7372011542320251
+            ]
+          ],
+          "first_ms": 161.728625,
+          "second_ms": 169.191334,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_frustration",
+          "tokens": 44,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.00047011117567308247,
+              0.6912285089492798,
+              0.3083014190196991
+            ]
+          ],
+          "first_ms": 180.406041,
+          "second_ms": 185.821291,
+          "intrusive_profile": null
+        },
+        {
+          "name": "unicode",
+          "tokens": 43,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.4972548186779022,
+              0.032741837203502655,
+              0.47000330686569214
+            ]
+          ],
+          "first_ms": 162.380583,
+          "second_ms": 161.44108400000002,
+          "intrusive_profile": null
+        },
+        {
+          "name": "benchmark_short_1",
+          "tokens": 55,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9998536109924316,
+              0.00012791837798431516,
+              0.000018477014236850664
+            ]
+          ],
+          "first_ms": 176.31591699999998,
+          "second_ms": 180.107417,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 4.4338299999999995,
+                "completed_ms": 20.074498000000006
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 1.9248690000000002,
+                "completed_ms": 19.903915999999995
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.43320500000000006,
+                "completed_ms": 8.616416000000001
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.096833,
+                "completed_ms": 0.23116599999999998
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.10245800000000001,
+                "completed_ms": 0.287958
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 3.784958,
+                "completed_ms": 10.595292
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 8.479086,
+                "completed_ms": 93.212751
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.154291,
+                "completed_ms": 0.27337500000000003
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.41529099999999997,
+                "completed_ms": 0.428916
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 6.08446,
+                "completed_ms": 35.332125999999995
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 5.3659170000000005,
+                "completed_ms": 36.920207999999995
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_short_5",
+          "tokens": 171,
+          "forward_tokens": 192,
+          "probs": [
+            [
+              0.9998536109924316,
+              0.00012791837798431516,
+              0.000018477014236850664
+            ],
+            [
+              0.99985671043396,
+              0.00012403822620399296,
+              0.000019219418391003273
+            ],
+            [
+              0.9998596906661987,
+              0.00012271496234461665,
+              0.00001758072539814748
+            ],
+            [
+              0.999852180480957,
+              0.00012699217768386006,
+              0.000020913199477945454
+            ],
+            [
+              0.9998489618301392,
+              0.00013132240565028042,
+              0.000019640712707769126
+            ]
+          ],
+          "first_ms": 432.59237499999995,
+          "second_ms": 460.38045900000003,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 20.792834,
+                "completed_ms": 65.720709
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 5.813206,
+                "completed_ms": 38.836041000000016
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.664917,
+                "completed_ms": 12.590288999999997
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.11425,
+                "completed_ms": 0.293791
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.48275,
+                "completed_ms": 0.7764169999999999
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 8.843541,
+                "completed_ms": 19.070458000000006
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 19.334915000000002,
+                "completed_ms": 226.44679400000004
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.284625,
+                "completed_ms": 0.392917
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 1.923084,
+                "completed_ms": 1.9732500000000002
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 17.710288999999996,
+                "completed_ms": 75.935161
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 13.504254000000005,
+                "completed_ms": 81.05324999999998
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_1",
+          "tokens": 607,
+          "forward_tokens": 640,
+          "probs": [
+            [
+              0.9999034404754639,
+              0.0000808633558335714,
+              0.000015765917851240374
+            ]
+          ],
+          "first_ms": 1650.973041,
+          "second_ms": 1532.4847909999999,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 98.97903900000003,
+                "completed_ms": 349.14349899999996
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 21.081417,
+                "completed_ms": 127.99929399999999
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.8617520000000001,
+                "completed_ms": 25.912128000000003
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.26449999999999996,
+                "completed_ms": 0.674584
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.704542,
+                "completed_ms": 1.289917
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 24.691751999999994,
+                "completed_ms": 49.35078999999999
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 65.968215,
+                "completed_ms": 570.97617
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 1.435167,
+                "completed_ms": 1.579792
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.492583,
+                "completed_ms": 0.508333
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 51.92966800000001,
+                "completed_ms": 239.17904199999992
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 34.91974799999999,
+                "completed_ms": 225.25045700000004
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_5",
+          "tokens": 723,
+          "forward_tokens": 768,
+          "probs": [
+            [
+              0.9999034404754639,
+              0.0000808633558335714,
+              0.000015765917851240374
+            ],
+            [
+              0.9999051094055176,
+              0.00007870787521824241,
+              0.00001617075213289354
+            ],
+            [
+              0.9999053478240967,
+              0.00007933178858365864,
+              0.00001529288783785887
+            ],
+            [
+              0.999901533126831,
+              0.00008243767661042511,
+              0.00001600546238478273
+            ],
+            [
+              0.9998939037322998,
+              0.00008933871140470728,
+              0.000016717684047762305
+            ]
+          ],
+          "first_ms": 1686.9026250000002,
+          "second_ms": 1845.091375,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 144.90362500000003,
+                "completed_ms": 485.61704000000003
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 28.963998999999998,
+                "completed_ms": 149.61333199999996
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.9480010000000001,
+                "completed_ms": 32.586040999999994
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.217125,
+                "completed_ms": 1.2789590000000002
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.728834,
+                "completed_ms": 1.456125
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 24.442295999999995,
+                "completed_ms": 52.182672999999994
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 63.92316699999999,
+                "completed_ms": 653.969583
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 1.6912500000000001,
+                "completed_ms": 1.8094579999999998
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 1.908417,
+                "completed_ms": 1.9257499999999999
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 52.021330999999996,
+                "completed_ms": 280.235076
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 35.534169,
+                "completed_ms": 265.15321
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "attention": "metal-sdpa-block-causal-v1",
+      "bucket_size": 0,
+      "records": [
+        {
+          "name": "choice_single",
+          "tokens": 18,
+          "forward_tokens": 18,
+          "probs": [
+            [
+              1.0
+            ]
+          ],
+          "first_ms": 1797.004625,
+          "second_ms": 70.445875,
+          "intrusive_profile": null
+        },
+        {
+          "name": "forgery",
+          "tokens": 71,
+          "forward_tokens": 71,
+          "probs": [
+            [
+              0.22962114214897156,
+              0.04474406689405441,
+              0.7256348133087158
+            ]
+          ],
+          "first_ms": 110.481625,
+          "second_ms": 118.44487500000001,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_absent",
+          "tokens": 70,
+          "forward_tokens": 70,
+          "probs": [
+            [
+              0.0003772458294406533,
+              0.9996227025985718
+            ],
+            [
+              0.022148890420794487,
+              0.020146656781435013,
+              0.008476261049509048,
+              0.9492282271385193
+            ]
+          ],
+          "first_ms": 129.1795,
+          "second_ms": 147.759375,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_sibling",
+          "tokens": 86,
+          "forward_tokens": 86,
+          "probs": [
+            [
+              0.0005394662730395794,
+              0.9994605183601379
+            ],
+            [
+              0.022148890420794487,
+              0.020146656781435013,
+              0.008476261049509048,
+              0.9492282271385193
+            ]
+          ],
+          "first_ms": 196.01291700000002,
+          "second_ms": 237.62025,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_state",
+          "tokens": 79,
+          "forward_tokens": 79,
+          "probs": [
+            [
+              0.0011291645932942629,
+              0.9988707900047302
+            ],
+            [
+              0.9116256833076477,
+              0.010336033068597317,
+              0.004615464247763157,
+              0.07342278212308884
+            ]
+          ],
+          "first_ms": 244.476,
+          "second_ms": 258.92816600000003,
+          "intrusive_profile": null
+        },
+        {
+          "name": "noul_only",
+          "tokens": 34,
+          "forward_tokens": 34,
+          "probs": [
+            [
+              0.0039489916525781155,
+              0.996051013469696
+            ]
+          ],
+          "first_ms": 166.50837499999997,
+          "second_ms": 157.530417,
+          "intrusive_profile": null
+        },
+        {
+          "name": "score5",
+          "tokens": 49,
+          "forward_tokens": 49,
+          "probs": [
+            [
+              0.9720783233642578,
+              0.025889744982123375,
+              0.0019085969543084502,
+              0.00006288990698521957,
+              0.00006044117617420852
+            ]
+          ],
+          "first_ms": 184.461375,
+          "second_ms": 175.632584,
+          "intrusive_profile": null
+        },
+        {
+          "name": "structured",
+          "tokens": 125,
+          "forward_tokens": 125,
+          "probs": [
+            [
+              0.9994897842407227,
+              0.00015843668370507658,
+              0.00035171216586604714
+            ],
+            [
+              0.01900128275156021,
+              0.980998694896698
+            ],
+            [
+              0.013716086745262146,
+              0.857957124710083,
+              0.12832675874233246
+            ]
+          ],
+          "first_ms": 294.394584,
+          "second_ms": 305.048709,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support",
+          "tokens": 101,
+          "forward_tokens": 101,
+          "probs": [
+            [
+              0.9165005087852478,
+              0.033683691173791885,
+              0.04981585219502449
+            ],
+            [
+              0.2629721760749817,
+              0.7370278239250183
+            ],
+            [
+              0.0004438637988641858,
+              0.6911836266517639,
+              0.3083725571632385
+            ]
+          ],
+          "first_ms": 264.11258399999997,
+          "second_ms": 245.29625,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_department",
+          "tokens": 64,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9165005087852478,
+              0.033683691173791885,
+              0.04981585219502449
+            ]
+          ],
+          "first_ms": 210.707167,
+          "second_ms": 156.6585,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_escalate",
+          "tokens": 37,
+          "forward_tokens": 37,
+          "probs": [
+            [
+              0.26428642868995667,
+              0.7357136011123657
+            ]
+          ],
+          "first_ms": 140.910958,
+          "second_ms": 130.749292,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_frustration",
+          "tokens": 44,
+          "forward_tokens": 44,
+          "probs": [
+            [
+              0.0004470957792364061,
+              0.6931113600730896,
+              0.3064415752887726
+            ]
+          ],
+          "first_ms": 155.361541,
+          "second_ms": 139.148167,
+          "intrusive_profile": null
+        },
+        {
+          "name": "unicode",
+          "tokens": 43,
+          "forward_tokens": 43,
+          "probs": [
+            [
+              0.4649622440338135,
+              0.03312276303768158,
+              0.5019150376319885
+            ]
+          ],
+          "first_ms": 143.932709,
+          "second_ms": 151.219625,
+          "intrusive_profile": null
+        },
+        {
+          "name": "benchmark_short_1",
+          "tokens": 55,
+          "forward_tokens": 55,
+          "probs": [
+            [
+              0.9998475313186646,
+              0.000132666333229281,
+              0.000019827133655780926
+            ]
+          ],
+          "first_ms": 135.344333,
+          "second_ms": 129.04766700000002,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 1.6084159999999998,
+                "completed_ms": 6.201586999999997
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 1.7604169999999997,
+                "completed_ms": 17.93292
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.4817470000000001,
+                "completed_ms": 7.809542000000002
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.08608299999999999,
+                "completed_ms": 0.21870799999999999
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.09816599999999999,
+                "completed_ms": 0.269625
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 4.093749,
+                "completed_ms": 10.581374
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 9.013877,
+                "completed_ms": 75.30633499999999
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.132208,
+                "completed_ms": 0.250541
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.362208,
+                "completed_ms": 0.37404099999999996
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 6.3932069999999985,
+                "completed_ms": 31.44854200000001
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 5.636540000000002,
+                "completed_ms": 33.309628
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_short_5",
+          "tokens": 171,
+          "forward_tokens": 171,
+          "probs": [
+            [
+              0.9998475313186646,
+              0.000132666333229281,
+              0.000019827133655780926
+            ],
+            [
+              0.9998546838760376,
+              0.00012573369895108044,
+              0.000019511704522301443
+            ],
+            [
+              0.9998514652252197,
+              0.00012929171498399228,
+              0.00001917634654091671
+            ],
+            [
+              0.9998557567596436,
+              0.0001247648906428367,
+              0.00001946381598827429
+            ],
+            [
+              0.9998499155044556,
+              0.0001314957335125655,
+              0.000018604483557282947
+            ]
+          ],
+          "first_ms": 320.82466700000003,
+          "second_ms": 376.10445799999997,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 3.0536280000000002,
+                "completed_ms": 10.624752000000003
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 3.3534150000000005,
+                "completed_ms": 37.00704199999999
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.5052480000000001,
+                "completed_ms": 11.129165
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.11479199999999999,
+                "completed_ms": 0.322459
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.154,
+                "completed_ms": 0.402083
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 6.8442039999999995,
+                "completed_ms": 18.517829000000003
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 16.023662999999996,
+                "completed_ms": 207.478704
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.24108300000000002,
+                "completed_ms": 0.33925
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 1.613917,
+                "completed_ms": 1.627209
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 15.014709,
+                "completed_ms": 73.06042000000001
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 11.396331000000002,
+                "completed_ms": 76.12133000000001
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_1",
+          "tokens": 607,
+          "forward_tokens": 607,
+          "probs": [
+            [
+              0.9999043941497803,
+              0.0000790589620009996,
+              0.00001654298830544576
+            ]
+          ],
+          "first_ms": 1326.247667,
+          "second_ms": 1223.7808750000002,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 10.970706,
+                "completed_ms": 50.82141399999999
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 10.821837,
+                "completed_ms": 112.58803900000001
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.7710459999999998,
+                "completed_ms": 24.498707999999997
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.228125,
+                "completed_ms": 0.555875
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.6345,
+                "completed_ms": 1.204666
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 25.435875,
+                "completed_ms": 47.655581
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 63.32466799999999,
+                "completed_ms": 554.0022049999999
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.9592090000000001,
+                "completed_ms": 1.082792
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.49883299999999997,
+                "completed_ms": 0.513375
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 53.437626,
+                "completed_ms": 243.098374
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 35.94917,
+                "completed_ms": 218.97500400000004
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_5",
+          "tokens": 723,
+          "forward_tokens": 723,
+          "probs": [
+            [
+              0.9999043941497803,
+              0.0000790589620009996,
+              0.00001654298830544576
+            ],
+            [
+              0.999901533126831,
+              0.0000809821140137501,
+              0.000017556178136146627
+            ],
+            [
+              0.9998983144760132,
+              0.00008399094804190099,
+              0.00001764047374308575
+            ],
+            [
+              0.9998973608016968,
+              0.00008517073729308322,
+              0.00001737570528348442
+            ],
+            [
+              0.9998998641967773,
+              0.00008298676402773708,
+              0.000017195839973283
+            ]
+          ],
+          "first_ms": 1393.8125000000002,
+          "second_ms": 1459.150625,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 10.895250999999998,
+                "completed_ms": 63.893251
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 11.800168999999999,
+                "completed_ms": 131.863502
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.851039,
+                "completed_ms": 29.947121
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.225834,
+                "completed_ms": 0.601292
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 1.063791,
+                "completed_ms": 2.318708
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 26.637250999999992,
+                "completed_ms": 53.234833
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 67.643001,
+                "completed_ms": 641.565501
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 1.373958,
+                "completed_ms": 1.497541
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 2.4497910000000003,
+                "completed_ms": 2.480458
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 55.842248,
+                "completed_ms": 273.47991800000005
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 36.246584000000006,
+                "completed_ms": 251.30504100000005
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "attention": "metal-sdpa-block-causal-v1",
+      "bucket_size": 64,
+      "records": [
+        {
+          "name": "choice_single",
+          "tokens": 18,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              1.0
+            ]
+          ],
+          "first_ms": 130.160458,
+          "second_ms": 129.13120899999998,
+          "intrusive_profile": null
+        },
+        {
+          "name": "forgery",
+          "tokens": 71,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.22962114214897156,
+              0.04474406689405441,
+              0.7256348133087158
+            ]
+          ],
+          "first_ms": 250.307417,
+          "second_ms": 251.607208,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_absent",
+          "tokens": 70,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.0003772458294406533,
+              0.9996227025985718
+            ],
+            [
+              0.022148890420794487,
+              0.020146656781435013,
+              0.008476261049509048,
+              0.9492282271385193
+            ]
+          ],
+          "first_ms": 282.34079099999997,
+          "second_ms": 308.12004199999996,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_sibling",
+          "tokens": 86,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.0005394662730395794,
+              0.9994605183601379
+            ],
+            [
+              0.022148890420794487,
+              0.020146656781435013,
+              0.008476261049509048,
+              0.9492282271385193
+            ]
+          ],
+          "first_ms": 306.90075,
+          "second_ms": 319.981334,
+          "intrusive_profile": null
+        },
+        {
+          "name": "isolation_state_in_state",
+          "tokens": 79,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.0011291645932942629,
+              0.9988707900047302
+            ],
+            [
+              0.9116256833076477,
+              0.010336033068597317,
+              0.004615464247763157,
+              0.07342278212308884
+            ]
+          ],
+          "first_ms": 315.385375,
+          "second_ms": 313.90299999999996,
+          "intrusive_profile": null
+        },
+        {
+          "name": "noul_only",
+          "tokens": 34,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.0039489916525781155,
+              0.996051013469696
+            ]
+          ],
+          "first_ms": 164.77,
+          "second_ms": 152.463167,
+          "intrusive_profile": null
+        },
+        {
+          "name": "score5",
+          "tokens": 49,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9720783233642578,
+              0.025889744982123375,
+              0.0019085969543084502,
+              0.00006288990698521957,
+              0.00006044117617420852
+            ]
+          ],
+          "first_ms": 138.391333,
+          "second_ms": 144.459167,
+          "intrusive_profile": null
+        },
+        {
+          "name": "structured",
+          "tokens": 125,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.9994897842407227,
+              0.00015843668370507658,
+              0.00035171216586604714
+            ],
+            [
+              0.01900128275156021,
+              0.980998694896698
+            ],
+            [
+              0.013716086745262146,
+              0.857957124710083,
+              0.12832675874233246
+            ]
+          ],
+          "first_ms": 297.253166,
+          "second_ms": 277.11983299999997,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support",
+          "tokens": 101,
+          "forward_tokens": 128,
+          "probs": [
+            [
+              0.9165005087852478,
+              0.033683691173791885,
+              0.04981585219502449
+            ],
+            [
+              0.2629721760749817,
+              0.7370278239250183
+            ],
+            [
+              0.0004438637988641858,
+              0.6911836266517639,
+              0.3083725571632385
+            ]
+          ],
+          "first_ms": 265.20824999999996,
+          "second_ms": 274.967792,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_department",
+          "tokens": 64,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9165005087852478,
+              0.033683691173791885,
+              0.04981585219502449
+            ]
+          ],
+          "first_ms": 161.575208,
+          "second_ms": 167.632,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_escalate",
+          "tokens": 37,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.26428642868995667,
+              0.7357136011123657
+            ]
+          ],
+          "first_ms": 176.599917,
+          "second_ms": 162.796916,
+          "intrusive_profile": null
+        },
+        {
+          "name": "support_sep_frustration",
+          "tokens": 44,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.0004470957792364061,
+              0.6931113600730896,
+              0.3064415752887726
+            ]
+          ],
+          "first_ms": 149.37975,
+          "second_ms": 151.9695,
+          "intrusive_profile": null
+        },
+        {
+          "name": "unicode",
+          "tokens": 43,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.4649622440338135,
+              0.03312276303768158,
+              0.5019150376319885
+            ]
+          ],
+          "first_ms": 143.467375,
+          "second_ms": 156.421042,
+          "intrusive_profile": null
+        },
+        {
+          "name": "benchmark_short_1",
+          "tokens": 55,
+          "forward_tokens": 64,
+          "probs": [
+            [
+              0.9998475313186646,
+              0.000132666333229281,
+              0.000019827133655780926
+            ]
+          ],
+          "first_ms": 166.063208,
+          "second_ms": 170.68349999999998,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 1.3172510000000002,
+                "completed_ms": 5.888585000000001
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 1.6911679999999998,
+                "completed_ms": 19.433085999999992
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.4598770000000001,
+                "completed_ms": 7.6001270000000005
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.096042,
+                "completed_ms": 0.233417
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.089084,
+                "completed_ms": 0.252292
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 3.675539,
+                "completed_ms": 10.697666000000003
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 8.588043,
+                "completed_ms": 88.61537700000005
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.163041,
+                "completed_ms": 0.27795800000000004
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.380125,
+                "completed_ms": 0.392375
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 6.178125000000001,
+                "completed_ms": 35.364998
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 5.405503000000001,
+                "completed_ms": 34.447458
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_short_5",
+          "tokens": 171,
+          "forward_tokens": 192,
+          "probs": [
+            [
+              0.9998475313186646,
+              0.000132666333229281,
+              0.000019827133655780926
+            ],
+            [
+              0.9998546838760376,
+              0.00012573369895108044,
+              0.000019511704522301443
+            ],
+            [
+              0.9998514652252197,
+              0.00012929171498399228,
+              0.00001917634654091671
+            ],
+            [
+              0.9998557567596436,
+              0.0001247648906428367,
+              0.00001946381598827429
+            ],
+            [
+              0.9998499155044556,
+              0.0001314957335125655,
+              0.000018604483557282947
+            ]
+          ],
+          "first_ms": 353.062333,
+          "second_ms": 427.29925000000003,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 2.9475820000000006,
+                "completed_ms": 10.819834999999998
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 3.1667949999999996,
+                "completed_ms": 37.633796000000004
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.609244,
+                "completed_ms": 11.939955000000001
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.112083,
+                "completed_ms": 0.30574999999999997
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.148708,
+                "completed_ms": 0.425792
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 6.828291,
+                "completed_ms": 18.412124000000002
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 15.137585000000001,
+                "completed_ms": 230.79416899999998
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.24695799999999998,
+                "completed_ms": 0.35312499999999997
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 1.6997920000000002,
+                "completed_ms": 1.7135
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 14.226454999999998,
+                "completed_ms": 74.342207
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 10.804955999999999,
+                "completed_ms": 81.35587399999999
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_1",
+          "tokens": 607,
+          "forward_tokens": 640,
+          "probs": [
+            [
+              0.9999043941497803,
+              0.0000790589620009996,
+              0.00001654298830544576
+            ]
+          ],
+          "first_ms": 1135.656458,
+          "second_ms": 1235.121417,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 8.697373999999998,
+                "completed_ms": 50.74874900000001
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 10.219168000000002,
+                "completed_ms": 110.39649899999998
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.762462,
+                "completed_ms": 26.089705999999996
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.20149999999999998,
+                "completed_ms": 0.546542
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.532459,
+                "completed_ms": 1.3139589999999999
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 20.251668,
+                "completed_ms": 44.25925499999999
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 55.21591499999998,
+                "completed_ms": 532.4217030000001
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 0.9659169999999999,
+                "completed_ms": 1.085417
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 0.558584,
+                "completed_ms": 0.5765
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 46.16816499999999,
+                "completed_ms": 225.75258300000002
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 31.433331999999996,
+                "completed_ms": 215.779918
+              }
+            }
+          }
+        },
+        {
+          "name": "benchmark_long_5",
+          "tokens": 723,
+          "forward_tokens": 768,
+          "probs": [
+            [
+              0.9999043941497803,
+              0.0000790589620009996,
+              0.00001654298830544576
+            ],
+            [
+              0.999901533126831,
+              0.0000809821140137501,
+              0.000017556178136146627
+            ],
+            [
+              0.9998983144760132,
+              0.00008399094804190099,
+              0.00001764047374308575
+            ],
+            [
+              0.9998973608016968,
+              0.00008517073729308322,
+              0.00001737570528348442
+            ],
+            [
+              0.9998998641967773,
+              0.00008298676402773708,
+              0.000017195839973283
+            ]
+          ],
+          "first_ms": 1547.8981250000002,
+          "second_ms": 1443.662458,
+          "intrusive_profile": {
+            "stages": {
+              "attention_kernel": {
+                "calls": 36,
+                "submit_ms": 9.276918000000002,
+                "completed_ms": 65.694208
+              },
+              "attention_output_projection": {
+                "calls": 36,
+                "submit_ms": 10.231371,
+                "completed_ms": 128.50854
+              },
+              "attention_residual_and_post_norm": {
+                "calls": 36,
+                "submit_ms": 0.79592,
+                "completed_ms": 32.14429400000001
+              },
+              "embedding_and_rotary_setup": {
+                "calls": 1,
+                "submit_ms": 0.191667,
+                "completed_ms": 0.637792
+              },
+              "final_norm": {
+                "calls": 1,
+                "submit_ms": 0.606833,
+                "completed_ms": 1.81725
+              },
+              "input_norm": {
+                "calls": 36,
+                "submit_ms": 21.335585000000002,
+                "completed_ms": 48.97000299999999
+              },
+              "mlp_and_residual": {
+                "calls": 36,
+                "submit_ms": 56.976292000000015,
+                "completed_ms": 629.229583
+              },
+              "padding_mask_allocation_and_upload": {
+                "calls": 1,
+                "submit_ms": 1.227667,
+                "completed_ms": 1.348667
+              },
+              "pointer_head_and_readback": {
+                "calls": 1,
+                "submit_ms": 1.866916,
+                "completed_ms": 1.880583
+              },
+              "qkv_projection_and_norm": {
+                "calls": 36,
+                "submit_ms": 47.38237499999999,
+                "completed_ms": 271.43183400000004
+              },
+              "rotary_and_contiguous_copies": {
+                "calls": 36,
+                "submit_ms": 31.721335,
+                "completed_ms": 260.506751
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

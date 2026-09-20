@@ -1223,3 +1223,100 @@ fn an_invalid_serving_state_is_refused_at_construction() {
         "a well-formed state constructs"
     );
 }
+
+/// Padding must spend memory and token admission before any device allocation.
+#[test]
+fn padded_forwards_spend_the_rounded_allocation_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, adapter) = write_variant(dir.path(), "kev-pad", 64, HEADS);
+    let mut model = DecisionModel::load(&base, &adapter, Device::Cpu).unwrap();
+    assert!(
+        model
+            .backbone
+            .set_attention(kev::model::AttentionBackend::MetalSdpa)
+            .is_err()
+    );
+    assert!(model.set_bucket_size(63).is_err());
+    let mut variant = Variant {
+        model,
+        model_id: "kev-pad".to_string(),
+        run: "test".to_string(),
+        base: "test".to_string(),
+        base_revision: "test".to_string(),
+        lora: 0,
+    };
+    let exact_128 = variant.forward_bytes(128);
+    variant.model.set_bucket_size(64).unwrap();
+    assert_eq!(variant.forward_bytes(65), exact_128);
+    assert_eq!(variant.model.forward_tokens(64), 64);
+    let admission = Admission {
+        max_total_tokens: 100,
+        ..Admission::default()
+    };
+    assert!(admission.admit_tokens(65).is_ok());
+    assert!(
+        admission
+            .admit_tokens(variant.model.forward_tokens(65))
+            .is_err()
+    );
+    assert_eq!(variant.execution_identity()["bucket_size"], "64");
+}
+
+/// Every forward route checks the padded allocation, including separate mode.
+#[tokio::test]
+async fn padded_http_requests_refuse_before_the_embedding_lookup() {
+    let dir = tempfile::tempdir().unwrap();
+    // A too-small embedding table makes an accidental forward fail with 500.
+    let (base, adapter) = write_variant(dir.path(), "kev-pad", 4, HEADS);
+    let mut model = DecisionModel::load(&base, &adapter, Device::Cpu).unwrap();
+    model.set_bucket_size(64).unwrap();
+    let state = Arc::new(
+        ServeState::new(
+            vec![Variant {
+                model,
+                model_id: "kev-pad".to_string(),
+                run: "test".to_string(),
+                base: "test".to_string(),
+                base_revision: "test".to_string(),
+                lora: 0,
+            }],
+            0,
+            vec!["jev-latest".to_string()],
+            "cpu".to_string(),
+            Admission {
+                max_total_tokens: 100,
+                memory_budget_bytes: 4 * MIB,
+                ..Admission::default()
+            },
+        )
+        .unwrap(),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });
+    let client = reqwest::Client::new();
+    let systemone = json!({"state": "word ".repeat(60), "questions": {
+        "q": {"type": "choice", "instructions": "word", "criteria": {"word": "word"}}
+    }});
+    let raw = json!({"state": "word ".repeat(60), "questions": [
+        {"instr": "word", "options": ["word"], "label": 0}
+    ]});
+    for (path, body) in [
+        ("/v1/systemone", &systemone),
+        ("/v1/systemone/separate", &systemone),
+        ("/api/predict", &raw),
+    ] {
+        let response = client
+            .post(format!("http://{address}{path}"))
+            .json(body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 413, "{path}");
+        assert_eq!(
+            response.json::<Value>().await.unwrap()["error"]["code"],
+            "branch_too_long"
+        );
+    }
+    server.abort();
+}

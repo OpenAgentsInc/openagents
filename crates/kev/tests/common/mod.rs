@@ -198,11 +198,25 @@ pub fn model(variant: &Variant) -> Option<Arc<DecisionModel>> {
             ));
             let adapter = adapter_dir(variant)?;
             let base = base_dir(variant)?;
-            Some(Arc::new(
+            let mut model =
                 DecisionModel::load(&base, &adapter, device()).unwrap_or_else(|error| {
                     panic!("{}: present artifacts failed to load: {error}", variant.id)
-                }),
-            ))
+                });
+            let attention = match std::env::var("KEV_TEST_ATTENTION").as_deref() {
+                Ok("sdpa") => kev::model::AttentionBackend::MetalSdpa,
+                Ok("eager") | Err(_) => kev::model::AttentionBackend::Eager,
+                Ok(other) => panic!("unknown test attention: {other}"),
+            };
+            model
+                .backbone
+                .set_attention(attention)
+                .expect("test attention");
+            if let Ok(size) = std::env::var("KEV_TEST_BUCKET") {
+                model
+                    .set_bucket_size(size.parse().expect("bucket size"))
+                    .expect("test bucket");
+            }
+            Some(Arc::new(model))
         })
         .clone()
 }

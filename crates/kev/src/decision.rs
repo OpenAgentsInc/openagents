@@ -1,7 +1,9 @@
 //! The assembled decision model: backbone plus LoRA plus pointer head, and
 //! the request-in/probabilities-out path serving runs.
 
+use std::borrow::Cow;
 use std::path::Path;
+use std::time::Instant;
 
 use candle_core::{DType, Device, Tensor};
 use tokenizers::Tokenizer;
@@ -39,6 +41,7 @@ pub struct DecisionModel {
     pub device: Device,
     /// Content identity captured from the same bytes used to load the model.
     pub artifacts: ArtifactIdentity,
+    bucket_size: usize,
 }
 
 impl DecisionModel {
@@ -100,7 +103,50 @@ impl DecisionModel {
             option_isolation,
             device,
             artifacts: reader.finish()?,
+            bucket_size: 0,
         })
+    }
+
+    /// Set optional sequence padding independently of attention selection.
+    ///
+    /// # Errors
+    ///
+    /// Only exact lengths (`0`) and 64-token buckets are supported.
+    pub fn set_bucket_size(&mut self, size: usize) -> Result<()> {
+        if !matches!(size, 0 | 64) {
+            return Err(Error::Artifact("bucket size must be 0 or 64".to_string()));
+        }
+        self.bucket_size = size;
+        Ok(())
+    }
+
+    /// The configured padding multiple, or zero for exact lengths.
+    #[must_use]
+    pub fn bucket_size(&self) -> usize {
+        self.bucket_size
+    }
+
+    /// Actual sequence length whose allocations admission must bound.
+    #[must_use]
+    pub fn forward_tokens(&self, tokens: usize) -> usize {
+        if self.bucket_size == 0 {
+            tokens
+        } else {
+            tokens.div_ceil(64).saturating_mul(64)
+        }
+    }
+
+    fn padded<'a>(&self, enc: &'a Encoding) -> Cow<'a, Encoding> {
+        let len = self.forward_tokens(enc.ids.len());
+        if len == enc.ids.len() {
+            return Cow::Borrowed(enc);
+        }
+        let mut enc = enc.clone();
+        enc.ids.resize(len, 0);
+        enc.seg.resize(len, -1);
+        enc.pos.resize(len, 0);
+        enc.opt.resize(len, crate::encode::OPT_NONE);
+        Cow::Owned(enc)
     }
 
     /// Pack a rendered record the same way serving does.
@@ -138,9 +184,36 @@ impl DecisionModel {
     ///
     /// Propagates candle errors from the forward pass.
     pub fn probs(&self, enc: &Encoding) -> Result<Vec<Vec<f64>>> {
-        let mask = self.additive_mask(enc)?;
+        let enc = self.padded(enc);
+        let mask = self.additive_mask(&enc)?;
         let hidden = self.backbone.hidden(&enc.ids, &enc.pos, &mask)?;
-        self.head.probs(&hidden.to_dtype(DType::F32)?, enc)
+        self.head.probs(&hidden.to_dtype(DType::F32)?, &enc)
+    }
+
+    /// Profile one forward with synchronization between stages.
+    ///
+    /// These intrusive timings locate costs; use ordinary HTTP calls for latency.
+    ///
+    /// # Errors
+    ///
+    /// Propagates encoding, allocation, and device errors.
+    pub fn profile_probs(
+        &self,
+        enc: &Encoding,
+    ) -> Result<(Vec<Vec<f64>>, crate::model::ForwardProfile)> {
+        let mut profile = crate::model::ForwardProfile::enabled();
+        self.device.synchronize()?;
+        let start = Instant::now();
+        let enc = self.padded(enc);
+        let mask = self.additive_mask(&enc)?;
+        profile.mark("padding_mask_allocation_and_upload", start, &self.device)?;
+        let hidden = self
+            .backbone
+            .hidden_profiled(&enc.ids, &enc.pos, &mask, &mut profile)?;
+        let start = Instant::now();
+        let probs = self.head.probs(&hidden.to_dtype(DType::F32)?, &enc)?;
+        profile.mark("pointer_head_and_readback", start, &self.device)?;
+        Ok((probs, profile))
     }
 
     /// The full serving path: request in, typed answers out, in question-id

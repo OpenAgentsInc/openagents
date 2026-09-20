@@ -33,7 +33,9 @@ Two properties make the shape worth attention:
 
 - **Shared state, isolated questions.** Every question branch reads the
   same encoded state but cannot see a sibling question. One packed prefill
-  answers every question; packed and separate requests agree to `4e-6`.
+  answers every question. Packed and separate requests agree within the
+  recorded fp32 fixture bounds; bf16 shape changes have separately measured
+  rounding differences.
 - **Probabilities, not prose.** A pointer head scores each option's
   closing-delimiter hidden state against the question's decision token and
   applies softmax. The head trains with cross-entropy against labelled
@@ -56,6 +58,13 @@ calibration matches after a checkpoint or execution change. See
 [model identity](../gym/model-identity.md) for the record versions and
 verification limits.
 
+Eager attention and exact sequence lengths remain the default. Metal serving
+also accepts the independent experimental controls `--attention sdpa` and
+`--bucket-size 64`. The [attention measurements](measurements/2026-09-20-metal-attention.md)
+record their performance, memory, and numerical differences. In bf16, SDPA
+changes one fixture's winning answer, so it requires its own workload
+validation and calibration identity before adoption.
+
 When the server declines a request it answers with the refusal envelope the
 System One doors share: `{"detail": …, "error": {"code", "message",
 "question"}}`, at 422 for contract violations (`invalid_request`,
@@ -75,8 +84,8 @@ request's shape is bounded: at most 64 questions, 1,024 options summed
 over them, and the delimiter floor
 `1 + 2·questions + 2·options` against the 8,192-token budget. A floor
 over the budget answers `branch_too_long` at 413. After encoding and
-before the block-causal mask is built, the packed length is bounded to
-8,192 tokens, and its mask bytes `4 × tokens²` are bounded to 256 MiB;
+before the block-causal mask is built, the forward length (including any
+configured padding) is bounded to 8,192 tokens, and its mask bytes `4 × tokens²` are bounded to 256 MiB;
 either refusal answers `branch_too_long` at 413 and names the bytes.
 The forward permit is the final stage, and it is three bounds taken at
 once: a host slot, a slot of the variant the request resolved to, and the

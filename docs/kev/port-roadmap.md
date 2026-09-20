@@ -17,7 +17,9 @@ merging, and measure attention and state-cache improvements. Artifact
 pinning, identity, and merging are complete; the
 [new 4B evaluation](measurements/2026-09-20-candidate-4b.md) records the
 current workload baseline and conformance separately from this original
-port sequence.
+port sequence. The [Metal attention experiment](measurements/2026-09-20-metal-attention.md)
+adds optional SDPA and padding with separate numerical and latency evidence;
+the eager exact default remains unchanged.
 
 The deprecated `psionic` repository informed earlier drafts of this plan.
 Nothing is ported from there — the port pulls from the kev reference only.

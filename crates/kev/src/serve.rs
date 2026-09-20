@@ -86,7 +86,11 @@ impl Variant {
                 "head_dtype",
                 format!("{:?}", self.model.head.q.weight.dtype()).to_lowercase(),
             ),
-            ("attention", "eager-block-causal-v1".to_string()),
+            (
+                "attention",
+                self.model.backbone.attention().identity().to_string(),
+            ),
+            ("bucket_size", self.model.bucket_size().to_string()),
             ("lora_merge", "fp32-before-cast-v1".to_string()),
             ("option_isolation", self.model.option_isolation.to_string()),
             ("max_state", INFER_MAX_STATE.to_string()),
@@ -109,9 +113,13 @@ impl Variant {
     /// its normed copy, the query, key, and value projections after
     /// grouped-query expansion, the attention output, and the two SwiGLU
     /// intermediates. Weights are not counted; they are resident before any
-    /// request arrives.
+    /// request arrives. Padding is included before this calculation. SDPA
+    /// keeps this conservative eager allocation envelope: it removes score
+    /// tensors but does not increase admitted concurrency until allocator
+    /// retention has a separately established bound.
     #[must_use]
     pub fn forward_bytes(&self, tokens: usize) -> usize {
+        let tokens = self.model.forward_tokens(tokens);
         let config = self.model.backbone.config();
         let dtype = self.model.backbone.dtype().size_in_bytes();
         let square = tokens.saturating_mul(tokens);
@@ -812,7 +820,9 @@ async fn predict(
             .model
             .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
         let tokens = enc.ids.len();
-        state.admission.admit_tokens(tokens)?;
+        state
+            .admission
+            .admit_tokens(variant.model.forward_tokens(tokens))?;
         let state_tokens = enc.seg.iter().filter(|s| **s == 0).count();
         let start = Instant::now();
         let probs = variant.model.probs(&enc)?;
@@ -838,7 +848,9 @@ fn evaluate(state: &ServeState, request: &SystemOneRequest) -> Result<Value, Err
         .model
         .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
     let tokens = enc.ids.len();
-    state.admission.admit_tokens(tokens)?;
+    state
+        .admission
+        .admit_tokens(variant.model.forward_tokens(tokens))?;
     let start = Instant::now();
     let probs = variant.model.probs(&enc)?;
     let latency = start.elapsed().as_secs_f64() * 1000.0;
@@ -865,7 +877,9 @@ fn evaluate_separate(state: &ServeState, request: &SystemOneRequest) -> Result<V
         let enc = variant
             .model
             .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
-        state.admission.admit_tokens(enc.ids.len())?;
+        state
+            .admission
+            .admit_tokens(variant.model.forward_tokens(enc.ids.len()))?;
         tokens += enc.ids.len();
         let start = Instant::now();
         let probs = variant.model.probs(&enc)?;

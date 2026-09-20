@@ -1,0 +1,41 @@
+   Compiling kev v0.1.0 (/Users/christopherdavid/.codex/worktrees/kev-integration-issues/openagents/crates/kev)
+    Finished `release` profile [optimized] target(s) in 3.15s
+     Running tests/api.rs (target/release/deps/api-e21116cd12b45adf)
+
+running 5 tests
+test a_score_reports_the_weighted_mean_while_a_reader_argmaxes ... ok
+test every_corpus_request_reproduces_its_record ... ok
+test every_golden_answer_set_reproduces ... ok
+test sanitize_rewrites_delimiter_spans ... ok
+test validation_refuses_bad_requests ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (target/release/deps/conformance-842f21925412fdf1)
+
+running 6 tests
+test forgery_cannot_add_options ... ok
+test golden_probabilities_reproduce ... kev-4b-c4bfa11: max probs delta 2.563e-6 (forgery)
+ok
+test isolation_probe_holds ... kev-4b-c4bfa11: isolation state_in_sibling: 0.0219 (reference 0.0219)
+kev-4b-c4bfa11: isolation absent: 0.0219 (reference 0.0219)
+kev-4b-c4bfa11: isolation state_in_state: 0.9166 (reference 0.9166)
+ok
+test option_isolation_flag_matches_reference ... ok
+test packed_matches_separate ... kev-4b-c4bfa11: packed-vs-separate delta 1.609e-6 (reference 4.172e-7)
+ok
+test permutation_probe_reproduces ... kev-4b-c4bfa11: permutation argmaxes: ["returns", "returns", "returns", "returns"]
+ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.83s
+
+     Running tests/encode.rs (target/release/deps/encode-cc00eaec87348660)
+
+running 5 tests
+test every_fixture_encoding_reproduces ... ok
+test mask_isolates_sibling_questions ... ok
+test option_isolation_mask_keeps_spans_apart ... ok
+test sanitized_text_never_yields_delimiter_ids ... ok
+test tokenizer_cases_reproduce ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
