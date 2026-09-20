@@ -87,6 +87,12 @@ describes the migration.
 
 ### The bf16 merge differs from upstream
 
+**Resolved in [#9456](https://github.com/OpenAgentsInc/openagents/issues/9456):**
+the assembled loader now merges original weights in fp32 before casting.
+[Precision and memory measurements](measurements/2026-09-20-merge-precision.md)
+retain the cross-runtime deltas and actual host limits. The following
+paragraph describes the previous implementation.
+
 [`DecisionModel::load_with_dtype`](../../crates/kev/src/decision.rs)
 loads the backbone in the requested dtype, then applies LoRA.
 [`lora::merge`](../../crates/kev/src/lora.rs) computes the delta in fp32,

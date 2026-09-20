@@ -239,3 +239,7 @@ The adapter and head are Apache-2.0. The base models carry the Qwen license
 their own licenses; `MODEL_CARD.md` lists them. Jev itself is TypeSafe AI's
 closed product; nothing from it ships here — only the published API
 contract and Hume's published reconstruction inform the design.
+
+The [merge precision and loading-memory record](measurements/2026-09-20-merge-precision.md)
+compares fp32 and bf16 on pinned historical weights and states the measured
+Metal memory limits.

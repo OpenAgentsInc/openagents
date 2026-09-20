@@ -1,0 +1,50 @@
+{
+  "artifact_identity": {
+    "schema": "openagents.kev.artifacts.v1",
+    "digest": "sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9",
+    "files": {
+      "adapter/adapter_config.json": {
+        "sha256": "46d9f1113377e8d0032f0548ae03b270153b2b7ba6dd26b63b244d29487e00e6",
+        "bytes": 1183
+      },
+      "adapter/adapter_model.safetensors": {
+        "sha256": "c3101a8a563cff76b75a7f9cec94fe76c1ddbe1f03a5d249fa03abe733156f66",
+        "bytes": 132184864
+      },
+      "adapter/head.safetensors": {
+        "sha256": "246e86909fc90033dd078029fb2feb890766a681f13f8164f774d422b6cc0a8b",
+        "bytes": 5245232
+      },
+      "adapter/head_meta.json": {
+        "sha256": "ceada300f1c8cc4bab21eaf99e8036636f1220c93caec84b409ff0c9994e1e14",
+        "bytes": 1014
+      },
+      "adapter/tokenizer.json": {
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "bytes": 11422654
+      },
+      "base/config.json": {
+        "sha256": "304b2545a258d35620f1d4bf46940c0471d9baa00715ff8e77f84c2fca5057c1",
+        "bytes": 727
+      },
+      "base/model-00001-of-00003.safetensors": {
+        "sha256": "4c807e2503d68ae373d508689d00a41f4b33f33c2536da97ab81a20caddc1241",
+        "bytes": 3957900840
+      },
+      "base/model-00002-of-00003.safetensors": {
+        "sha256": "f4707585548b2fc75a6b1d732e8465c62040a8699903c32850781beeb9b27826",
+        "bytes": 3987450520
+      },
+      "base/model-00003-of-00003.safetensors": {
+        "sha256": "c7b1aa8fb672de2e00423c99876926022e50b18d4f0d140670788510a27f9965",
+        "bytes": 99630640
+      }
+    }
+  },
+  "backend": "metal",
+  "dtype": "bf16",
+  "head_dtype": "F32",
+  "merge": "fp32-before-cast-v1",
+  "load_ms": 18105.862875,
+  "records": []
+}

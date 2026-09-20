@@ -289,6 +289,7 @@ impl Backbone {
             device,
             dtype,
             &mut crate::artifacts::ArtifactReader::default(),
+            None,
         )
     }
 
@@ -297,9 +298,15 @@ impl Backbone {
         device: &Device,
         dtype: DType,
         reader: &mut crate::artifacts::ArtifactReader,
+        adapter: Option<&crate::lora::LoadedLora>,
     ) -> Result<Self> {
         let config: Config =
             serde_json::from_slice(&reader.read("base/config.json", &dir.join("config.json"))?)?;
+        let pairs = adapter
+            .map(|adapter| adapter.pairs(config.num_hidden_layers))
+            .transpose()?
+            .unwrap_or_default();
+        let scale = adapter.map_or(0.0, |adapter| adapter.scale);
         let entries = std::fs::read_dir(dir)
             .map_err(|e| Error::Artifact(format!("read_dir {}: {e}", dir.display())))?
             .collect::<std::io::Result<Vec<_>>>()
@@ -329,12 +336,25 @@ impl Backbone {
                     Error::Artifact("a base shard has a non-UTF-8 filename".to_string())
                 })?;
             let bytes = reader.read(&format!("base/{name}"), path)?;
-            let loaded = candle_core::safetensors::load_buffer(&bytes, device)
+            // Decode one shard in host memory. Transfer one tensor at a time
+            // so the device never holds an unmerged shard beside its final weights.
+            let loaded = candle_core::safetensors::load_buffer(&bytes, &Device::Cpu)
                 .map_err(|e| Error::Artifact(format!("load {}: {e}", path.display())))?;
             drop(bytes);
             for (k, v) in loaded {
                 let name = k.strip_prefix("model.").unwrap_or(&k).to_string();
-                tensors.insert(name, v.to_dtype(dtype)?);
+                let source = v.to_device(device)?;
+                let weight = match pairs.get(&name) {
+                    Some((a, b)) => crate::lora::merged_weight(&source, a, b, scale, dtype)?,
+                    None => source.to_dtype(dtype)?,
+                };
+                tensors.insert(name, weight);
+                // Complete the merge before the next projection allocates its
+                // fp32 temporaries. Metal also releases unused pooled buffers
+                // at synchronization; dropping tensors alone does not bound it.
+                drop(source);
+                drop(v);
+                device.synchronize()?;
             }
         }
         let embed = take(&mut tensors, "embed_tokens.weight")?;
@@ -468,5 +488,78 @@ impl Backbone {
             x = (x + layer.mlp.forward(&h)?)?;
         }
         Ok(rms_norm(&x, &self.norm, self.config.rms_norm_eps)?)
+    }
+}
+
+#[cfg(test)]
+mod loading_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn adapted_loading_preserves_source_precision_until_the_merge() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = serde_json::json!({
+            "architectures": ["Qwen2ForCausalLM"], "hidden_size": 2,
+            "intermediate_size": 2, "num_hidden_layers": 1,
+            "num_attention_heads": 1, "num_key_value_heads": 1,
+            "attention_bias": false, "rms_norm_eps": 1e-6,
+            "rope_theta": 10000.0, "vocab_size": 4, "max_position_embeddings": 32
+        });
+        std::fs::write(dir.path().join("config.json"), config.to_string()).unwrap();
+        let constant = |shape: &[usize]| {
+            Tensor::ones(shape, DType::F32, &Device::Cpu)
+                .unwrap()
+                .affine(1.003, 0.0)
+                .unwrap()
+        };
+        let mut weights = HashMap::new();
+        weights.insert("model.embed_tokens.weight".to_string(), constant(&[4, 2]));
+        weights.insert("model.norm.weight".to_string(), constant(&[2]));
+        for norm in ["input_layernorm", "post_attention_layernorm"] {
+            weights.insert(format!("model.layers.0.{norm}.weight"), constant(&[2]));
+        }
+        for (group, names) in [
+            ("self_attn", &["q_proj", "k_proj", "v_proj", "o_proj"][..]),
+            ("mlp", &["gate_proj", "up_proj", "down_proj"][..]),
+        ] {
+            for name in names {
+                weights.insert(
+                    format!("model.layers.0.{group}.{name}.weight"),
+                    constant(&[2, 2]),
+                );
+            }
+        }
+        candle_core::safetensors::save(&weights, dir.path().join("model.safetensors")).unwrap();
+        std::fs::write(
+            dir.path().join("adapter_config.json"),
+            r#"{"r":1,"lora_alpha":1.0,"target_modules":["q_proj"]}"#,
+        )
+        .unwrap();
+        let adapter = HashMap::from([
+            (
+                "base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight",
+                Tensor::new(&[[0.003f32, 0.003]], &Device::Cpu).unwrap(),
+            ),
+            (
+                "base_model.model.model.layers.0.self_attn.q_proj.lora_B.weight",
+                Tensor::new(&[[1.0f32], [1.0]], &Device::Cpu).unwrap(),
+            ),
+        ]);
+        candle_core::safetensors::save(&adapter, dir.path().join("adapter_model.safetensors"))
+            .unwrap();
+        let mut reader = crate::artifacts::ArtifactReader::default();
+        let adapter = crate::lora::LoadedLora::load(dir.path(), &Device::Cpu, &mut reader).unwrap();
+        let model = Backbone::load_tracked(
+            dir.path(),
+            &Device::Cpu,
+            DType::BF16,
+            &mut reader,
+            Some(&adapter),
+        )
+        .unwrap();
+        let read = |t: &Tensor| t.to_dtype(DType::F32).unwrap().to_vec2::<f32>().unwrap()[0][0];
+        assert_eq!(read(&model.layers[0].attn.q_proj.weight), 1.0078125);
+        assert_eq!(read(&model.layers[0].attn.k_proj.weight), 1.0);
     }
 }

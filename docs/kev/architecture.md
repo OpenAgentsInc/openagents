@@ -11,7 +11,9 @@ the TypeSafe shapes, and `serve.rs` the HTTP surface.
 This page describes the shared mechanism. Upstream's newer serving path
 also uses optimized attention, shape bucketing, and a state-prefix KV
 cache; the Rust port does not yet implement those optimizations. Both
-implementations merge LoRA at load time, but their bf16 cast order differs.
+implementations merge LoRA in fp32 before casting the combined weights.
+The [precision and memory measurements](measurements/2026-09-20-merge-precision.md)
+record the remaining bf16 differences across runtimes.
 See the [implementation review](2026-09-20-upstream-review.md#findings-in-this-repository)
 before applying upstream's latency or numerical-parity claims to the port.
 

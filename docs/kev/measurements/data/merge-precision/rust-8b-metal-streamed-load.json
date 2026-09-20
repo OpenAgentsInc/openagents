@@ -1,0 +1,58 @@
+{
+  "artifact_identity": {
+    "schema": "openagents.kev.artifacts.v1",
+    "digest": "sha256:f2424360e8c384907e899b7e6d5f333cee4dbc35b43e551113f81f4919c74daa",
+    "files": {
+      "adapter/adapter_config.json": {
+        "sha256": "97111686d731b0d31f253519726bc587fac46355127729fe4b6bd353728921b8",
+        "bytes": 1183
+      },
+      "adapter/adapter_model.safetensors": {
+        "sha256": "9de59714a5720ca60fd60871be1e30f5fcaece5f378971712f23173e7be2f07a",
+        "bytes": 174652512
+      },
+      "adapter/head.safetensors": {
+        "sha256": "02bab911cea314e6ee26ee0cca312c93e05f53f369f8d04bb674f963f6c47dc7",
+        "bytes": 8390960
+      },
+      "adapter/head_meta.json": {
+        "sha256": "5b2dc130403b392c596344f8e6b8d2cd48df045839fbb30adb99e05e74db2ea5",
+        "bytes": 1052
+      },
+      "adapter/tokenizer.json": {
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "bytes": 11422654
+      },
+      "base/config.json": {
+        "sha256": "3bd01d7ad7a2e203ecbbe84e24087a51c6d2a108ee4bcc42d0016bf49564983a",
+        "bytes": 729
+      },
+      "base/model-00001-of-00005.safetensors": {
+        "sha256": "9983f1b9ef2f60e7c3730d9bc11ada914e6ec630639b5b020a89bd158cd0446b",
+        "bytes": 3996250744
+      },
+      "base/model-00002-of-00005.safetensors": {
+        "sha256": "9aa12339835bf7a093d3d0b0a0d2d77f8538301cfc7f8e7ec7a585858ebf7a1f",
+        "bytes": 3993160032
+      },
+      "base/model-00003-of-00005.safetensors": {
+        "sha256": "c7dd5a191c8da555def0714550375b3c0117751add408fcdda0c2a79ac0186bc",
+        "bytes": 3959604768
+      },
+      "base/model-00004-of-00005.safetensors": {
+        "sha256": "ad8b708792105133e03fe19e2d56c89c709f677f01285f8b3ede8947d59fd9fe",
+        "bytes": 3187841392
+      },
+      "base/model-00005-of-00005.safetensors": {
+        "sha256": "fbf24915d47ea030bb68ab0b9488f4515a907185baa6dc26837c9c3f2326a550",
+        "bytes": 1244659840
+      }
+    }
+  },
+  "backend": "metal",
+  "dtype": "bf16",
+  "head_dtype": "F32",
+  "merge": "fp32-before-cast-v1",
+  "load_ms": 38485.339292,
+  "records": []
+}

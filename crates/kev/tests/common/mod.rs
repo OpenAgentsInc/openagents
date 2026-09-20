@@ -143,9 +143,11 @@ pub fn model(variant: &Variant) -> Option<Arc<DecisionModel>> {
         .or_insert_with(|| {
             let adapter = adapter_dir(variant)?;
             let base = base_dir(variant)?;
-            DecisionModel::load(&base, &adapter, device())
-                .map(Arc::new)
-                .ok()
+            Some(Arc::new(
+                DecisionModel::load(&base, &adapter, device()).unwrap_or_else(|error| {
+                    panic!("{}: present artifacts failed to load: {error}", variant.id)
+                }),
+            ))
         })
         .clone()
 }

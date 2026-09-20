@@ -11,7 +11,7 @@ use crate::artifacts::{ArtifactIdentity, ArtifactReader};
 use crate::encode::{Encoding, branch_mask, encode};
 use crate::error::{Error, Result};
 use crate::head::PointerHead;
-use crate::lora::apply_lora_tracked;
+use crate::lora::LoadedLora;
 use crate::model::Backbone;
 
 use indexmap::IndexMap;
@@ -54,7 +54,10 @@ impl DecisionModel {
         Self::load_with_dtype(base_dir, adapter_dir, device, DType::F32)
     }
 
-    /// Load the bundle with an explicit compute dtype.
+    /// Load the bundle with an explicit compute dtype. Each targeted base
+    /// weight is merged in fp32 before its only cast to the compute dtype.
+    /// Base shards are released in turn; no complete fp32 base is retained
+    /// beside the final bf16 model. The pointer head keeps its stored dtype.
     ///
     /// # Errors
     ///
@@ -67,8 +70,11 @@ impl DecisionModel {
         dtype: DType,
     ) -> Result<Self> {
         let mut reader = ArtifactReader::default();
-        let mut backbone = Backbone::load_tracked(base_dir, &device, dtype, &mut reader)?;
-        apply_lora_tracked(&mut backbone, adapter_dir, &device, &mut reader)?;
+        let adapter = LoadedLora::load(adapter_dir, &device, &mut reader)?;
+        let backbone =
+            Backbone::load_tracked(base_dir, &device, dtype, &mut reader, Some(&adapter))?;
+        drop(adapter);
+        device.synchronize()?;
         let head = PointerHead::load_tracked(adapter_dir, &device, &mut reader)?;
         let tokenizer_bytes = reader.read(
             "adapter/tokenizer.json",

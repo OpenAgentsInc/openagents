@@ -87,7 +87,7 @@ impl Variant {
                 format!("{:?}", self.model.head.q.weight.dtype()).to_lowercase(),
             ),
             ("attention", "eager-block-causal-v1".to_string()),
-            ("lora_merge", "cast-base-then-add-v1".to_string()),
+            ("lora_merge", "fp32-before-cast-v1".to_string()),
             ("option_isolation", self.model.option_isolation.to_string()),
             ("max_state", INFER_MAX_STATE.to_string()),
             ("max_branch", INFER_MAX_BRANCH.to_string()),
