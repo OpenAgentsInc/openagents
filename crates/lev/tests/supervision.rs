@@ -11,14 +11,10 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use std::sync::Arc;
-
 use indexmap::IndexMap;
 use lev::bridge::{Bridge, Call, MAX_RESPONSE_BYTES, Pool, Sampling};
 use lev::error::RefusalCode;
 use lev::schema::Compiled;
-use lev::serve::Door;
-use serde_json::{Value, json};
 
 /// The fake helper. `$FAKE_MODE` picks the fault; `$FAKE_STATE` is a file
 /// whose presence flips `hang-once` from hanging to answering, which is how
@@ -202,6 +198,7 @@ fn faults_retire_a_helper_and_the_lane_recovers() {
     }
     assert!(fake.state().exists(), "the first helper recorded its hang");
 
+    #[cfg(feature = "serve")]
     a_door_over_a_hung_helper_stays_responsive(&fake);
 }
 
@@ -211,7 +208,13 @@ fn faults_retire_a_helper_and_the_lane_recovers() {
 ///
 /// Runs inside the sequential test above's process but on its own runtime,
 /// so it is called from there rather than marked `#[tokio::test]`.
+#[cfg(feature = "serve")]
 fn a_door_over_a_hung_helper_stays_responsive(fake: &Fake) {
+    use std::sync::Arc;
+
+    use lev::serve::Door;
+    use serde_json::{Value, json};
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .enable_all()
