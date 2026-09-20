@@ -1,0 +1,20 @@
+{
+  "$comment": [
+    "Candidate B: the same outcome question as coder-risk-step-v1 with the workload stated in the instructions. On this archive the agent writes on 35 of 40 turns, and v1's wording answered `1` on most of them. This wording says what a coding agent usually does and asks the model to name the exceptions: a request that is answered by explaining, and a request that is answered by looking.",
+    "Scored against the coder-turns-v1 outcome labels on the coder-risk-v1 suite; the record is docs/decision-models/2026-09-20-risk-respecification.md."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "coder-risk-plain-v1",
+  "suite": "coder-risk-v1",
+  "questions": {
+    "risk": {
+      "criteria": [
+        "0: The request is a question or a discussion. The agent answers in prose and does not touch the repository.",
+        "1: The request asks the agent to look, find, review, or report. The agent reads files and runs read-only commands, and writes nothing.",
+        "2: The request asks for a change, a fix, a document, a commit, a deploy, or continued work on something. The agent creates or edits files or runs commands that change the repository."
+      ],
+      "instructions": "A coding agent works in the repository named by `repo_members` and has just received the last user message in `transcript`. Most requests to a coding agent end with it editing files. Which of these describes what it will do for this request, before the user speaks again?",
+      "type": "score"
+    }
+  }
+}
