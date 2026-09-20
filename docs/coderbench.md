@@ -147,12 +147,58 @@ means the candidate's pass rate clears the baseline's by two standard errors,
 own. Without `--against`, the exit code follows whether the candidate series
 has any persistent fault.
 
-Recorded-trace series can compare path faults and trace measurements, but
-they cannot observe the exit code or workspace writes. A live series records
-both facts for every run, and it refuses before the first run, with exit code
-`2`, on a machine that does not hold what the task requires, the same way
-`run` does. No live series has been recorded yet; the first one goes here
-with its command.
+A trace alone cannot say how the episode ended or whether the workspace
+changed. A live series observes both and writes them beside each trace as
+`<trace>.observed.json`, so a series read back with `--against` or `--trace`
+is judged as it was live. A trace without that file grades as it did before:
+its ending unstated and its writes unobserved. A live series refuses before
+the first run, with exit code `2`, on a machine that does not hold what the
+task requires, the same way `run` does.
+
+### The first live series
+
+The change under test was `coder` between `2ff484fbc` and `c34c1aa90`, run
+from a Linux terminal host with no Devin CLI on the path, over
+`wss://relay.openagents.com` to the deployed `coder-worker` at `bbd6c7e93`.
+Baseline first, then the candidate against it:
+
+```sh
+export CODER_RELAY=wss://relay.openagents.com \
+  CODER_WORKER=2854d7da72ded5d6b62fa6107ff464129d510235c5017980c40a27cc9134f9ef \
+  CODER_DELEGATE=devin-relay
+coderbench tune devin-fan-out-six --runs 10 --repository ~/bench-wt \
+  --coder ~/target-old/debug/coder --out ~/tune-run/baseline-2ff484fbc
+coderbench tune devin-fan-out-six --runs 10 --repository ~/bench-wt \
+  --coder ./target/debug/coder --against ~/tune-run/baseline-2ff484fbc \
+  --out ~/tune-run/candidate-main
+```
+
+| Series | Passed | Faults/run | Steps | Seconds | Verified |
+| --- | --- | --- | --- | --- | --- |
+| Baseline, 10 runs | 10 of 10 | 0.0, sd 0.00 | 15.0, sd 0.00 | 22.0, sd 2.76, 19.7–27.7 | 6.0, sd 0.00 |
+| Candidate, 10 runs | 10 of 10 | 0.0, sd 0.00 | 15.0, sd 0.00 | 24.9, sd 2.66, 20.5–29.5 | 6.0, sd 0.00 |
+
+No fault was fixed, introduced, or left. Seconds moved from 22.0 to 24.9,
+outside the baseline's spread; the wall clock is the slowest of six Devin
+turns on the worker, and the two series ran back to back on one worker, so
+the move describes the worker's afternoon as much as the terminal. The
+verdict is `unverifiable`: ten items a side meets the floor, accuracy did
+not fall, and the standard-error criterion needs at least five expected
+outcomes on each side, which 10 of 10 against 10 of 10 does not reach. That
+is the gate's answer and the report keeps it.
+
+The series before these found the fault the tool is for. An eight-run
+candidate series against the worker at `0757355c1d` passed 7 of 8: run 8
+raised `no worker answered ... in 30 seconds` while the worker's journal
+showed all six jobs received and answered, the slowest in 28.8 s. One run in
+eight is intermittent, and the attribution was the executor door answering
+in one piece with nothing crossing the relay before it. The worker at
+`bbd6c7e93` publishes one kind `27000` `status: processing` as it admits a
+delegation. An eight-run series against it, with the same terminal, passed
+8 of 8 and recorded one worker answer at 37.4 s that the terminal waited
+for. Those two series predate `<trace>.observed.json`, so read back they
+carry the two faults the sidecar exists to remove and are not compared
+here.
 
 ### Observe workspace contents independently
 
