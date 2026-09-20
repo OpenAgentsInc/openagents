@@ -834,6 +834,7 @@ mod tests {
             interface: crate::manifest::Interface::of_contract(Vec::new()),
             estimator: EstimatorConfig::new("l2", 8, 0),
             eval_ref: Vec::new(),
+            observation_ref: Vec::new(),
             source: dir.to_path_buf(),
         };
         for family in families {

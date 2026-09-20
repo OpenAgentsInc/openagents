@@ -160,3 +160,12 @@ fn the_package_is_checked_when_it_is_on_this_machine() {
             .unwrap_or_else(|fault| panic!("{}: {fault}", path.display()));
     }
 }
+
+#[test]
+fn every_observation_ref_matches_its_retained_rows() {
+    for path in committed() {
+        load(&path)
+            .check_observation_refs()
+            .unwrap_or_else(|fault| panic!("{}: {fault}", path.display()));
+    }
+}

@@ -184,6 +184,7 @@ impl Fixture {
                 "calibration/routing.json",
                 digest_of(&record_path).expect("the record hashes"),
             )],
+            observation_ref: Vec::new(),
             source: self.path().to_path_buf(),
         };
         std::fs::write(

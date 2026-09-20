@@ -595,6 +595,9 @@ pub struct Manifest {
     /// The measurements admission rests on, at most one per family.
     #[serde(default)]
     pub eval_ref: Vec<EvalRef>,
+    /// Raw evaluation evidence. These references never grant admission.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observation_ref: Vec<crate::observation::ObservationRef>,
     /// The directory the `evalRef` paths resolve against.
     ///
     /// Set from the file's own location by [`Manifest::load`], and not part
@@ -808,6 +811,18 @@ impl Manifest {
         Ok(())
     }
 
+    /// Checks observational evidence without granting probability admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a store or its declared provenance differs.
+    pub fn check_observation_refs(&self) -> Result<(), crate::observation::Fault> {
+        for reference in &self.observation_ref {
+            reference.check(&self.source)?;
+        }
+        Ok(())
+    }
+
     /// Writes the manifest as the committed files are written.
     ///
     /// # Errors
@@ -908,6 +923,7 @@ mod tests {
             interface: Interface::of_contract(vec!["routing".to_string()]),
             estimator: EstimatorConfig::new("l2", 8, 0),
             eval_ref: Vec::new(),
+            observation_ref: Vec::new(),
             source: dir.to_path_buf(),
         }
     }

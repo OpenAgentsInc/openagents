@@ -102,5 +102,22 @@
       "admitted": false,
       "verdict": "unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)"
     }
+  ],
+  "observationRef": [
+    {
+      "record": "../../gym/results/coder-turns-v1.jsonl",
+      "sha256": "772a046ee4dcd7f187fc99d7e16a3544406e3fd2a0be559e06147bc9f1a9518a",
+      "suite": "coder-turns-v1",
+      "suiteDigest": "f619db3613b83e45ea9c897341e6ba81964f8c983420a11bec5ee72e353f21d9",
+      "partitionId": "development",
+      "door": "lev-adapted",
+      "doorIdentity": {
+        "model": "lev-adapted",
+        "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+        "adapter": "/Users/christopherdavid/code/lev-adapter-work/runs/lev-v1/lev.fmadapter",
+        "verified": true
+      },
+      "rows": 130
+    }
   ]
 }

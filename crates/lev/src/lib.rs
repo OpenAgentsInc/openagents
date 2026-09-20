@@ -47,6 +47,7 @@ pub mod bridge;
 pub mod error;
 pub mod estimator;
 pub mod manifest;
+pub mod observation;
 pub mod policy;
 pub mod render;
 pub mod schema;

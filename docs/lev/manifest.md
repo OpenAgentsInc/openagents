@@ -38,6 +38,7 @@ identity to record.
 | `interface` | The System One question types with their bounds, the answer fields each returns, the response extensions, and the families this model was trained and measured on. |
 | `estimator` | Which estimator draws the raw signal, over how many draws, from which seed block. |
 | `evalRef` | One entry per measured family: the committed calibration record, its digest, its suite and partition, the gate that judged it, its `admitted` flag, and its verdict. |
+| `observationRef` | Digest-pinned raw Gym stores, with the suite, partition, run label, published door identity, and row count. These entries never grant admission. |
 | `policySnapshot` | The canonical service whose snapshot says whether this release may still serve, where the door keeps its copy, and the longest window the release accepts. Required. |
 
 Two of those are worth their own paragraph.
@@ -72,10 +73,10 @@ decision-model artifacts and set the rule that **a row without a measured
   serves does not serve either. A map fitted on eight draws describes an
   eight-draw signal.
 
-All three adapted releases therefore admit nothing today, because every
-committed map was fitted against the base model with no adapter attached.
-`lev-base@1` admits `routing` and names the refusals for `severity` and
-`urgency` with the gate's own words.
+`lev-base@1` and the choice release `lev-adapted@1` each admit `routing`
+through their own calibration records. The band and permutation releases
+`lev-adapted@2` and `@3` have no calibration references and admit nothing.
+An observational reference cannot change any of these grants.
 
 ## The checks, keyed off it
 
@@ -151,3 +152,26 @@ that. See
 [`../decision-models/research/2026-09-19-capability-sockets.md`](../decision-models/research/2026-09-19-capability-sockets.md)
 for the review that reached this conclusion, including the measured reason
 not to carry the rest of that toolchain.
+
+## Observations outside the calibration domain
+
+`observationRef` retains raw out-of-domain evidence separately from `evalRef`.
+The #9380 handoff requested raw rows under `evalRef`, but that field represents
+a fitted calibration record and an admission verdict. A raw evaluation has
+neither. Keeping two types avoids inventing a fitted map or an admission grant
+to attach an evaluation to a release.
+
+Each observational entry pins the complete store's SHA-256 and selects one
+suite, partition, and run label. `Manifest::check_observation_refs` checks the
+receipt chain, validates every row, requires matching suite and published door
+identity, rejects repeated selected items, and checks the selected count.
+`lev-adapter-check` and the committed-manifest tests run this check. Runtime
+admission continues to read only `evalRef`; observational files are not an
+additional runtime availability dependency.
+
+The identity is what the measured door published, without rewriting a package
+identifier or historical filesystem path into a release name. In particular,
+the original choice-adapter rows publish a machine-local package path. Their
+reference binds the retained observation, not a retrospective proof of the
+artifact bytes loaded during that run. New runs should retain artifact hashes
+in their measurement record as well as the identity returned by the door.

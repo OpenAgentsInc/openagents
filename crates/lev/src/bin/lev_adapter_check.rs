@@ -211,6 +211,10 @@ fn check_manifest(path: &Path) {
         eprintln!("evalRef      REFUSED: {fault}");
         std::process::exit(1);
     }
+    if let Err(fault) = manifest.check_observation_refs() {
+        eprintln!("observationRef REFUSED: {fault}");
+        std::process::exit(1);
+    }
     if manifest.eval_ref.is_empty() {
         println!("evalRef      none — no family admits a probability");
     }
@@ -350,6 +354,7 @@ fn emit(package: Option<Package>, release: &str, options: &Options) {
         interface: Interface::of_contract(options.families.clone()),
         estimator: EstimatorConfig::new(&options.estimator, options.samples, options.seed_base),
         eval_ref: eval_refs(options.calibration.as_deref()),
+        observation_ref: Vec::new(),
         source: PathBuf::from("."),
     };
     match manifest.to_json() {
