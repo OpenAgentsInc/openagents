@@ -835,19 +835,27 @@ impl Generate for RelayDoor {
     ) -> Result<(String, Option<Usage>), GenerateError> {
         // A turn gets the shared socket or opens a fresh one; any failure
         // drops it so the next turn reconnects cleanly.
+        //
+        // The socket is taken out of the door for the turn and put back
+        // only when the turn ends with it trustworthy. A caller that drops
+        // the turn midway, a cancellation, drops the socket with it, which
+        // closes the connection and every subscription on it at the relay.
+        // Cancelling leaves nothing behind for the next turn to find.
         let mut guard = self.socket.lock().await;
-        if guard.is_none() {
-            *guard = Some(self.connection().await?);
-        }
-        let socket = guard.as_mut().expect("a socket was just stored");
-        let answered = self.turn(socket, instructions, input, sink, meta).await;
+        let mut socket = match guard.take() {
+            Some(socket) => socket,
+            None => self.connection().await?,
+        };
+        let answered = self
+            .turn(&mut socket, instructions, input, sink, meta)
+            .await;
         // A wait that ran out or a socket that broke leaves a connection
         // nobody can trust: the subscription is still open and a late
         // answer would arrive in the middle of the next turn. A refusal
         // leaves the socket healthy, its subscription closed, and the
         // next turn reuses it.
-        if !keeps_socket(&answered) {
-            *guard = None;
+        if keeps_socket(&answered) {
+            *guard = Some(socket);
         }
         answered
     }

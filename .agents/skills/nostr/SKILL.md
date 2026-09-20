@@ -169,7 +169,9 @@ The flow, in the order the sockets speak it:
    for the next turn. A relay `CLOSED` on that subscription ends the job
    as a relay error with the relay's reason. A socket that broke, or a
    wait that ran out with a subscription that might still deliver, is
-   dropped, and the next turn opens a fresh one.
+   dropped, and the next turn opens a fresh one. A turn holds the socket
+   for its duration, so a caller that cancels the turn drops the socket
+   with it; the relay frees the subscription when the connection ends.
 
 Versions: a `v: 2` request gets `v: 2` feedback with sequenced partials;
 `v: 1` partials prove liveness but are never rendered; a request with no

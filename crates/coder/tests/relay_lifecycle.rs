@@ -46,12 +46,16 @@ enum Reply {
     Close,
     /// Hang up the socket without a word.
     Drop,
+    /// Accept it and say nothing more, as a worker still busy would.
+    Hold,
 }
 
 /// What the tests read back.
 #[derive(Default)]
 struct Ledger {
     connections: AtomicUsize,
+    /// Connections the client has hung up.
+    ended: AtomicUsize,
     /// The most subscriptions any one connection had open at once.
     peak_open: AtomicUsize,
     /// Subscriptions still open when a connection ended.
@@ -189,6 +193,7 @@ async fn serve(tcp: TcpStream, script: Arc<Mutex<Vec<Reply>>>, ledger: Arc<Ledge
                         open.remove(&label);
                         vec![json!(["CLOSED", label, "error: too many subscriptions"])]
                     }
+                    Reply::Hold => Vec::new(),
                     Reply::Drop => unreachable!(),
                 };
                 for frame in frames {
@@ -201,6 +206,7 @@ async fn serve(tcp: TcpStream, script: Arc<Mutex<Vec<Reply>>>, ledger: Arc<Ledge
         }
     }
     ledger.leaked.fetch_add(open.len(), Ordering::SeqCst);
+    ledger.ended.fetch_add(1, Ordering::SeqCst);
 }
 
 /// A relay on loopback that serves every connection it is offered.
@@ -255,6 +261,34 @@ async fn forty_jobs_share_one_socket_and_leave_no_subscription_open() {
     drop(door);
     settle().await;
     assert_eq!(ledger.leaked.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancelled_turn_takes_its_socket_and_subscription_with_it() {
+    let (url, ledger) = spawn_relay(vec![Reply::Answer, Reply::Hold]).await;
+    let door = Arc::new(door(url));
+    assert_eq!(turn(&door).await.unwrap(), "ok");
+    // The caller gives up on the second job while the relay is still
+    // holding it, the way a user interrupt or a program deadline would.
+    let held = Arc::clone(&door);
+    let cancelled = tokio::spawn(async move { turn(&held).await });
+    settle().await;
+    cancelled.abort();
+    assert!(cancelled.await.unwrap_err().is_cancelled());
+    settle().await;
+    // The dropped turn dropped its socket. The relay saw the connection
+    // end while the held job's subscription was open, which is how a
+    // relay frees a subscription nobody will `CLOSE`; the door keeps no
+    // socket with that subscription on it, and the next job opens a fresh
+    // one with nothing stale arriving on it.
+    assert_eq!(ledger.connections.load(Ordering::SeqCst), 1);
+    assert_eq!(ledger.ended.load(Ordering::SeqCst), 1);
+    assert_eq!(ledger.leaked.load(Ordering::SeqCst), 1);
+    assert_eq!(turn(&door).await.unwrap(), "ok");
+    settle().await;
+    assert_eq!(ledger.connections.load(Ordering::SeqCst), 2);
+    assert_eq!(ledger.peak_open.load(Ordering::SeqCst), 1);
+    assert_eq!(ledger.leaked.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
