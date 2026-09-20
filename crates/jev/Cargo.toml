@@ -1,10 +1,10 @@
 [package]
 name = "jev"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "Typed async client for TypeSafe AI's System One API, the door to the Jev model."
-publish = false
+publish.workspace = true
 
 [features]
 # A synchronous wrapper for a caller that runs no `tokio` runtime of its own.

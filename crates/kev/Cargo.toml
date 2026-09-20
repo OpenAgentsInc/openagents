@@ -1,10 +1,11 @@
 [package]
 name = "kev"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+# The standalone library retains Rust 1.94 support; workspace tests use 1.95.
 rust-version = "1.94"
 description = "Rust port of the kev decision model: packed prefill, block-causal question isolation, pointer readout, TypeSafe-compatible /v1/systemone."
-publish = false
+publish.workspace = true
 
 [features]
 # The `kev-serve` binary and its dependencies.

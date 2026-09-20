@@ -1,10 +1,10 @@
 [package]
 name = "nostr-relay"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "A hardened Nostr relay. One binary, one Postgres. Nothing else."
-publish = false
+publish.workspace = true
 
 [lib]
 name = "nostr_relay"
@@ -26,3 +26,6 @@ sha2 = "0.11.0"
 tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-postgres = "0.7.18"
 tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+
+[lints]
+workspace = true

@@ -1,10 +1,10 @@
 [package]
 name = "coder-boundary"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "A filesystem write boundary around one command, and the snapshots that check what a run left behind."
-publish = false
+publish.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -1,10 +1,10 @@
 [package]
 name = "supervise"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "One subprocess supervisor: a job owns its process tree, and its output is bounded while it is read."
-publish = false
+publish.workspace = true
 
 [dependencies]
 libc = "0.2"

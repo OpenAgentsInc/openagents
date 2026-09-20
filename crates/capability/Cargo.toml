@@ -1,10 +1,10 @@
 [package]
 name = "capability"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "The capability manifest contract: inert registry discovery, host-owned trust, and bounded probes."
-publish = false
+publish.workspace = true
 
 [dependencies]
 atif = { path = "../atif" }

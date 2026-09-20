@@ -14,6 +14,7 @@ cluster_dir="$(mktemp -d /tmp/nostr-relay-postgres.XXXXXX)"
 socket_dir="${cluster_dir}/socket"
 data_dir="${cluster_dir}/data"
 mkdir -p "${socket_dir}"
+relay_binary="${CARGO_TARGET_DIR:-target}/debug/nostr-relay"
 relay_pid=""
 relay_two_pid=""
 
@@ -71,7 +72,7 @@ DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_deploy
   NOSTR_RELAY_PORT=0 \
   NOSTR_RELAY_URL=ws://relay.test \
   NOSTR_RELAY_SUPPORTED_NIPS=11,1,50 \
-  target/debug/nostr-relay >"${relay_log}" 2>&1 &
+  "${relay_binary}" >"${relay_log}" 2>&1 &
 relay_pid=$!
 
 relay_port=""
@@ -95,7 +96,7 @@ NOSTR_RELAY_ACCEPTANCE_PORT="${relay_port}" python3 scripts/debian-acceptance-cl
 relay_two_log="${cluster_dir}/relay-two.log"
 DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_deploy_test" \
   NOSTR_RELAY_PORT=0 \
-  target/debug/nostr-relay >"${relay_two_log}" 2>&1 &
+  "${relay_binary}" >"${relay_two_log}" 2>&1 &
 relay_two_pid=$!
 relay_two_port=""
 for _ in $(seq 1 100); do

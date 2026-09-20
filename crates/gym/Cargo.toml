@@ -1,10 +1,10 @@
 [package]
 name = "gym"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "The measurement and control plane for decision models: pinned suites, a receipt-chained result store, digested gates, and the loop that decides what to keep."
-publish = false
+publish.workspace = true
 
 [features]
 default = []

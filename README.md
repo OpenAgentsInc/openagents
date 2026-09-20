@@ -121,12 +121,11 @@ locally, `docs/deployment/runbook-local-dev.md` has the walkthrough.
 ## Verify
 
 ```bash
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-./scripts/test-postgres.sh
-./scripts/check-dependencies.sh
+./scripts/verify-rust.sh
 ```
+
+Read [the Rust verification policy](docs/verification.md) for the toolchain,
+minimum versions, feature matrix, external prerequisites, and explicit skips.
 
 Read [the dependency policy](docs/dependencies.md) for the advisory exception,
 source and license checks, and the unresolved repository license conflict.

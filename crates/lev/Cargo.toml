@@ -1,10 +1,10 @@
 [package]
 name = "lev"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "The System One contract answered by Apple's on-device foundation model: guided generation, seeded estimators, and a fitted calibration map."
-publish = false
+publish.workspace = true
 
 [features]
 # The `lev-serve` binary and its dependencies.

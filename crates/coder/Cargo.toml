@@ -1,10 +1,10 @@
 [package]
 name = "coder"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "The Coder agent: Classify routes, Generate answers, the terminal draws it."
-publish = false
+publish.workspace = true
 
 [dependencies]
 atif = { path = "../atif" }

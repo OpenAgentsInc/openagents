@@ -1,10 +1,10 @@
 [package]
 name = "coderbench"
 version = "0.1.0"
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "Task manifests and recorded goldens for whole Coder episodes."
-publish = false
+publish.workspace = true
 
 [dependencies]
 atif = { path = "../atif" }

@@ -1,9 +1,16 @@
 # OpenAgents agent contract
 
-This repository is a Rust-only workspace. Do not add TypeScript. The one
-non-Rust source tree is `swift/lev-bridge`, the helper that reaches Apple's
+Product code in this workspace is Rust. Do not add TypeScript. The product
+exception is `swift/lev-bridge`, the helper that reaches Apple's
 `FoundationModels` framework, which has no Rust binding; it is built by a
-repo script and supervised as a child process.
+repo script and supervised as a child process. Retained Python training and
+acceptance tooling and shell orchestration are infrastructure exceptions,
+not permission to add another product implementation language.
+
+Use the pinned toolchain and `./scripts/verify-rust.sh` for the manual gate.
+Read `docs/verification.md` for minimum compiler versions, feature coverage,
+and external prerequisites. Use a separate Cargo target directory per
+worktree. Keep workspace formatting changes separate from behavior changes.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.

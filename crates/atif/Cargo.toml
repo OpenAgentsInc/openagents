@@ -1,10 +1,10 @@
 [package]
 name = "atif"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "The Agent Trajectory Interchange Format: a session as ordered steps, and the append-only log a running session writes them to."
-publish = false
+publish.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

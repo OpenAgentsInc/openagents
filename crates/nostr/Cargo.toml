@@ -1,10 +1,10 @@
 [package]
 name = "nostr"
 version.workspace = true
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 description = "Pure Nostr protocol and verification primitives"
-publish = false
+publish.workspace = true
 
 [lib]
 path = "src/lib.rs"
@@ -21,3 +21,6 @@ secp256k1 = { version = "0.31.1", features = ["recovery"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
+
+[lints]
+workspace = true
