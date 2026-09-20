@@ -111,8 +111,9 @@ the common Git directory itself and removes the empty checkout parents when
 the last checkout leaves, so the workspace comparison reads clean on a fresh
 clone. Read [`delegate.md`](../delegate.md#coordinate-checkout-creation-and-cleanup).
 
-Two environment facts the preflight depends on: the checkout's `origin` must
-read as the GitHub URL, so a host whose Git configuration rewrites URLs
-through a proxy needs `GIT_CONFIG_GLOBAL=/dev/null` for the run; and the
-Devin CLI's state directory must sit inside the approval's writable grant
-(`XDG_DATA_HOME`), as [`worker-executor.md`](../worker-executor.md) describes.
+One environment fact the preflight depends on remains: the Devin CLI's
+state directory must sit inside the approval's writable grant
+(`XDG_DATA_HOME`), as [`worker-executor.md`](../worker-executor.md)
+describes. The `origin` check reads the checkout's configured
+`remote.origin.url`, so a host whose Git configuration rewrites URLs
+through a proxy no longer needs `GIT_CONFIG_GLOBAL=/dev/null` for the run.

@@ -195,8 +195,10 @@ faults in the agent and spends an afternoon on it. So `run` checks the
 task's `requires` first and refuses with exit `2`, naming the requirement
 that failed:
 
-- the checkout is the repository the task names, at `requires.base`, with
-  nothing uncommitted — a delegate reads the working copy, and an edited
+- the checkout is the repository the task names — the configured
+  `remote.origin.url`, so a host-wide `insteadOf` rewrite cannot change
+  what the checkout says it is — at `requires.base`, with nothing
+  uncommitted, because a delegate reads the working copy, and an edited
   file is not the base commit however the commit reads;
 - every capability in `requires.capabilities` is installed, resolved from
   its manifest in the `capabilities/` registry and detected the way

@@ -160,9 +160,14 @@ fn capability(
 }
 
 /// Whether this checkout is the repository the task names.
+///
+/// The configured `remote.origin.url` is what the checkout says it is.
+/// `git remote get-url` would report the URL after `insteadOf` rewrites,
+/// so a host whose global configuration rewrites `github.com` through a
+/// proxy would refuse a checkout that matches.
 fn same_repository(wanted: &str, repository: &Path) -> Checked {
     let requirement = format!("repository {wanted}");
-    match git(repository, &["remote", "get-url", "origin"]) {
+    match git(repository, &["config", "--get", "remote.origin.url"]) {
         Ok(origin) => {
             let met = bare(&origin) == bare(wanted);
             Checked {
@@ -344,6 +349,54 @@ mod tests {
             assert_eq!(bare(same), bare(https), "{same}");
         }
         assert_ne!(bare("git@github.com:OpenAgentsInc/coder.git"), bare(https));
+    }
+
+    /// A host-wide `insteadOf` rewrite changes what `remote get-url`
+    /// reports, not what the checkout's own configuration names. The
+    /// check reads the configured URL, so a matching checkout still
+    /// passes — and a different repository still refuses.
+    #[test]
+    fn a_rewritten_remote_still_names_the_checkout() {
+        let dir = tempfile::tempdir().unwrap();
+        let repository = dir.path().join("checkout");
+        std::fs::create_dir(&repository).unwrap();
+        git(&repository, &["init"]).unwrap();
+        git(
+            &repository,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/OpenAgentsInc/openagents.git",
+            ],
+        )
+        .unwrap();
+        let global = dir.path().join("gitconfig");
+        std::fs::write(
+            &global,
+            "[url \"https://git-manager.devin.ai/proxy/github.com/\"]\n\tinsteadOf = https://github.com/\n",
+        )
+        .unwrap();
+
+        // The rewrite lives in a global configuration the test owns, and
+        // the variable is restored before the test ends. No other test
+        // here depends on GIT_CONFIG_GLOBAL.
+        let previous = std::env::var_os("GIT_CONFIG_GLOBAL");
+        unsafe { std::env::set_var("GIT_CONFIG_GLOBAL", &global) };
+        let rewritten = git(&repository, &["remote", "get-url", "origin"]).unwrap();
+        let same = same_repository("https://github.com/OpenAgentsInc/openagents", &repository);
+        let different = same_repository("https://github.com/OpenAgentsInc/coder", &repository);
+        match previous {
+            Some(value) => unsafe { std::env::set_var("GIT_CONFIG_GLOBAL", value) },
+            None => unsafe { std::env::remove_var("GIT_CONFIG_GLOBAL") },
+        }
+
+        assert!(
+            rewritten.starts_with("https://git-manager.devin.ai/proxy/"),
+            "the rewrite has to be in force for the check to mean anything: {rewritten}"
+        );
+        assert!(same.met, "{}", same.found);
+        assert!(!different.met, "{}", different.found);
     }
 
     /// The workspace registry answers for the executor the task names,
