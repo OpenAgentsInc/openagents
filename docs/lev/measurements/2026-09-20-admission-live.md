@@ -121,3 +121,74 @@ question is included. Capturing does not add model calls or change the floor.
 The file is written before the admission result is handled, including on a
 probe refusal. A file creation or write failure prevents startup. This option
 does not recover choices from the earlier run recorded above.
+
+## Supplemental choice-adapter startup
+
+A subsequent startup on 2026-09-20 retained the actual per-call answers for
+`lev-adapted@1`. This is a separate adapter observation. It does not recover
+individual answers for the earlier base observation or change its aggregate
+rates of 2/8, 2/8, and 8/8.
+
+The choice sweep's controller started at 18:52:23 UTC on the same Apple M5 Max,
+macOS 26.4 (25E246), with checkout `4edf4f1d16573801411a6f4b02d62e7e3d607045`.
+Its starting load averages were 5.25, 4.63, and 5.38. The startup command was:
+
+```sh
+LEV_OS_BUILD=25E246 \
+LEV_BRIDGE_BIN="$PWD/swift/lev-bridge/.build/release/lev-bridge" \
+  /tmp/openagents-supervision/root-target/debug/lev-serve \
+  --manifest crates/lev/manifests/lev-adapted-v1.json \
+  --port 11456 --policy-refresh off \
+  --admission-record /tmp/openagents-apple-handoff/state-sweep-choice-admission.jsonl
+```
+
+The retained model card identifies adapter `lev-adapted@1`, base signature
+`9799725ff8e851184037110b422d891ad3b92ec1`, eight samples, seed block zero,
+and four helpers. It reports the package digest
+`5668e4af683b66f458e8c87e6c79f12b36a53bc96a0c0643d079472846411a93`.
+No calibration directory was loaded: the admitted routing family in the
+manifest does not mean this invocation served fitted probabilities.
+
+| Probe arm | Recorded calls | Selected `FALCON7` | Rate |
+| --- | --- | --- | --- |
+| Planted question | 1 greedy call | Not scored; actual answer `a` | — |
+| Sibling | 8 seeded calls | 1 | 0.125 |
+| Absent control | 8 seeded calls | 1 | 0.125 |
+| State | 8 seeded calls | 8 | 1.000 |
+
+The unchanged floor passes. The offline validator found 25 unique call IDs,
+the expected arm ordering, seeds 0 through 7 in each scored arm, the expected
+option rotations, and an admitted choice with no refusal for every call.
+Reconstructing the three hit rates exactly matches this startup's model card.
+The JSON Lines file retains each exact call and answer. These are the existing
+startup calls; enabling the observer added no model calls.
+
+The files below are copied byte for byte from the captured startup evidence.
+Their machine-local package and policy paths are retained as provenance;
+they contain no credentials or workload prompts. `FALCON7` is the fixed test
+token, not a credential. The validation report's absolute paths identify the
+original inputs on this machine.
+
+| Supplemental evidence | SHA-256 |
+| --- | --- |
+| [calls.jsonl](2026-09-20-admission-live/choice/calls.jsonl) | `e21850846a677072417b330f61c1973a7dc84d83d51c8459053de9da971e95cb` |
+| [models.json](2026-09-20-admission-live/choice/models.json) | `c0b1c07e97a176228a0b076c268cf80f605eebe75cfacb6ae6a2e0c42bc4e87e` |
+| [validation.json](2026-09-20-admission-live/choice/validation.json) | `93a21456b731ca9d9f81d87289ee23555f544248c0c08277ec2aef12521eee0d` |
+| [validate-admission-capture.py](2026-09-20-admission-live/choice/validate-admission-capture.py) | `5a5096746adc9dc0db8c2f863e4a535d01f6698eab87cef22a640a63cfabbc0e` |
+
+To validate the retained copy offline, from this checkout run:
+
+```sh
+python3 docs/lev/measurements/2026-09-20-admission-live/choice/validate-admission-capture.py \
+  docs/lev/measurements/2026-09-20-admission-live/choice/calls.jsonl \
+  docs/lev/measurements/2026-09-20-admission-live/choice/models.json \
+  --source crates/lev/src/admission.rs
+```
+
+The observer buffers its rows in memory and writes them after the probe
+returns, before handling admission success or refusal. It does not checkpoint
+individual draws to disk. An interrupted or crashed startup can therefore
+leave an empty capture even after some calls ran; an empty file is not a
+completed probe. This retained capture is complete. It is startup evidence
+only, not proof that the surrounding choice sweep finished, and it is not a
+quiet latency measurement. No pending sweep result is included here.
