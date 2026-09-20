@@ -73,7 +73,11 @@ uses, and marks which are implemented and which are only specified.
   `program`, and `questions` read `capabilities/`, `programs/`, and
   `questions/`, so what a machine can reach is probed rather than
   hardcoded, and `runtime` runs a program's steps from the program.
-  `docs/programs.md` covers all four.
+  `docs/programs.md` covers all four. The crate's second binary,
+  `coder-worker`, is the other end of the relay door: it answers NIP-CJ
+  job requests from a relay through an Open Responses door.
+  `docs/coder/relay-transport.md` is the measured proof that the two ends
+  meet, and it holds the per-transport latency and the refusal causes.
 - `crates/lev` — the same contract answered by Apple's on-device foundation
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
   helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests

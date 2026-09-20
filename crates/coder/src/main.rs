@@ -327,7 +327,9 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
     .await;
     let _ = work
         .send(Work::Finished(
-            finished.map(|finished| (finished.reply, finished.usage)),
+            finished
+                .map(|finished| (finished.reply, finished.usage))
+                .map_err(|failure| failure.reason),
         ))
         .await;
 }

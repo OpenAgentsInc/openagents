@@ -216,6 +216,19 @@ impl Agent {
         }
     }
 
+    /// Records why a turn did not finish, so the trace says what the exit
+    /// code says.
+    ///
+    /// A failed turn writes no reply, and a reader holding only the trace
+    /// would find a session that stops mid-turn with no reason given: a
+    /// relay that would not take the job, a worker that never answered,
+    /// and a worker that declined all read as the same missing line.
+    pub fn record_failure(&mut self, cause: &str, reason: &str) {
+        if let Some(trace) = &mut self.trace {
+            trace.note(&format!("the turn did not finish ({cause}): {reason}"));
+        }
+    }
+
     /// Records a reply the terminal produced without generating one — the
     /// canned answers an `End` or a `Halt` route gives.
     pub fn record_reply(&mut self, text: &str) {

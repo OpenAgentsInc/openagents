@@ -51,7 +51,9 @@ Coder's backend is a relay, not a service.
   provider keys as deployment secrets; the terminal never does.
   Quotas, judgment, and streaming all live worker-side, expressed as
   events — application logic as NIPs, the pattern the Block lane uses
-  for Buzz.
+  for Buzz. `cargo run -p coder --bin coder-worker` is one;
+  `docs/coder/relay-transport.md` measures what it costs to route a turn
+  through it.
 - **One relay serves everything — and it's yours if you want it.**
   `wss://relay.openagents.com` runs the same `nostr-relay` binary this
   repo ships: Postgres-backed, NIP-42 auth, NIP-29/45/50/59/65/70/86/98,
@@ -76,7 +78,7 @@ tune, and test — not a paragraph you hope a bigger model got right.
 | Crate | What it is |
 | --- | --- |
 | `crates/atif` | The Agent Trajectory Interchange Format: a session as ordered steps, and the append-only log one writes as it runs. |
-| `crates/coder` | The agent: classify-then-generate turns, the shell loop, the relay client, and the binary that runs a turn in a terminal or headlessly with `-p`. Every conversation records itself to `~/.openagents/traces/`. |
+| `crates/coder` | The agent: classify-then-generate turns, the shell loop, the relay client, and the binary that runs a turn in a terminal or headlessly with `-p`. Every conversation records itself to `~/.openagents/traces/`. `coder-worker`, the second binary, answers NIP-CJ jobs from the other side of the relay. |
 | `crates/coder-terminal` | The amber terminal: composer, editor, spinner, intensity ladder, ratatui rendering. |
 | `crates/jev` | The TypeSafe Jev SDK — typed questions, `Choice`/`Noul`/`Score` answers. |
 | `crates/nostr` | Pure protocol primitives: events, filters, NIP-19/42/44/98, signers. No third-party Nostr crate. |
@@ -107,8 +109,11 @@ report.
 Keys in the environment decide the door: `TYPESAFE_API_KEY` turns
 classify on; `CODER_DOOR_KEY`/`CODER_DOOR_URL`/`CODER_MODEL` take an
 own-key door; `CODER_WORKER` + `CODER_RELAY` route the turn through the
-relay; none of it falls back to the stub. To run a relay locally,
-`docs/deployment/runbook-local-dev.md` has the walkthrough.
+relay; none of it falls back to the stub. An own-key door wins when both
+are set. To answer those jobs from the other side, run
+`cargo run -p coder --bin coder-worker`; `docs/coder/relay-transport.md`
+has the walkthrough and what the round trip costs. To run a relay
+locally, `docs/deployment/runbook-local-dev.md` has the walkthrough.
 
 ## Verify
 

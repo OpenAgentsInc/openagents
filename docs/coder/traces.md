@@ -178,3 +178,5 @@ seconds, and the repeated-work table.
   and judgments a trace records.
 - [`docs/coder/headless.md`](headless.md) — `coder -p`, which produces a
   trace from a script rather than from a person at a keyboard.
+- [`docs/coder/relay-transport.md`](relay-transport.md) — what the
+  session header's `door` field is for, read across two transports.

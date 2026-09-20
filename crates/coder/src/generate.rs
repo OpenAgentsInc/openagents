@@ -61,6 +61,14 @@ pub enum Meta {
 }
 
 /// What generation can fail with.
+///
+/// The relay door splits its failures into three, because they are three
+/// different states and a harness should not have to read prose to tell
+/// them apart: the relay would not take the job, the relay took it and no
+/// worker answered, or a worker answered by declining. `gym::eval::classify`
+/// draws the same line — a typed refusal is an answer, a failure with no
+/// code is the harness — and [`GenerateError::cause`] is where it is drawn
+/// here.
 #[derive(Debug)]
 pub enum GenerateError {
     /// The door URL, key, or model is missing or wrong.
@@ -71,6 +79,54 @@ pub enum GenerateError {
     Status(u16, String),
     /// The stream broke or carried an error event.
     Stream(String),
+    /// The relay would not take the job: the socket never opened, the
+    /// NIP-42 challenge went unanswered, or the relay rejected the
+    /// request event.
+    Relay(String),
+    /// The relay took the job and no worker answered before the deadline.
+    /// The worker is absent, or too slow to tell apart from absent.
+    Silent(String),
+    /// A worker answered with a typed refusal: NIP-CJ `status: error`
+    /// feedback carrying a machine-readable code. The job reached a
+    /// worker, and the worker said no.
+    Refused {
+        /// The NIP-CJ refusal code, such as `quota_exhausted`.
+        code: String,
+        /// The worker's display text for it.
+        message: String,
+    },
+}
+
+impl GenerateError {
+    /// The word a harness files this failure under.
+    ///
+    /// `worker_declined` is an answer in `gym::eval::classify`'s sense: the
+    /// job reached a worker and the worker refused it with a code. Every
+    /// other word is the harness.
+    #[must_use]
+    pub fn cause(&self) -> &'static str {
+        match self {
+            GenerateError::Config(_) => "config",
+            GenerateError::Transport(_) | GenerateError::Status(..) => "door",
+            GenerateError::Stream(_) => "stream",
+            GenerateError::Relay(_) => "relay_unreachable",
+            GenerateError::Silent(_) => "worker_silent",
+            GenerateError::Refused { .. } => "worker_declined",
+        }
+    }
+
+    /// The typed refusal code, when the failure carries one.
+    ///
+    /// Read as a field rather than searched for in the message, so a door
+    /// whose prose mentions a code is not recorded as having refused with
+    /// it.
+    #[must_use]
+    pub fn refusal(&self) -> Option<&str> {
+        match self {
+            GenerateError::Refused { code, .. } => Some(code),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for GenerateError {
@@ -80,6 +136,11 @@ impl fmt::Display for GenerateError {
             GenerateError::Transport(error) => write!(f, "transport: {error}"),
             GenerateError::Status(status, body) => write!(f, "door answered {status}: {body}"),
             GenerateError::Stream(why) => write!(f, "stream: {why}"),
+            GenerateError::Relay(why) => write!(f, "relay: {why}"),
+            GenerateError::Silent(why) => write!(f, "no worker answered: {why}"),
+            GenerateError::Refused { code, message } => {
+                write!(f, "the worker declined ({code}): {message}")
+            }
         }
     }
 }
@@ -459,6 +520,36 @@ mod tests {
         assert_eq!(text, stub.line);
         assert_eq!(seen, stub.line);
         assert!(usage.is_none());
+    }
+
+    /// Three relay failures, three causes. A typed refusal carries its
+    /// code as a field; the two that never reached a worker carry none.
+    #[test]
+    fn the_three_relay_failures_file_under_three_causes() {
+        let unreachable = GenerateError::Relay("connect: refused".to_string());
+        let silent = GenerateError::Silent("nothing came back in 180 seconds".to_string());
+        let declined = GenerateError::Refused {
+            code: "quota_exhausted".to_string(),
+            message: "free allowance used".to_string(),
+        };
+
+        assert_eq!(unreachable.cause(), "relay_unreachable");
+        assert_eq!(silent.cause(), "worker_silent");
+        assert_eq!(declined.cause(), "worker_declined");
+
+        assert_eq!(unreachable.refusal(), None);
+        assert_eq!(silent.refusal(), None);
+        assert_eq!(declined.refusal(), Some("quota_exhausted"));
+
+        assert_eq!(
+            declined.to_string(),
+            "the worker declined (quota_exhausted): free allowance used"
+        );
+        // A door failure is not a relay failure, whatever the prose says.
+        assert_eq!(
+            GenerateError::Stream("the relay went away".to_string()).cause(),
+            "stream"
+        );
     }
 
     #[test]

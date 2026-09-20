@@ -21,7 +21,7 @@
 
 use std::io::Write;
 
-use coder::turn::{self, Completion, Event};
+use coder::turn::{self, Completion, Event, Failure};
 use coder::{Agent, ShellEvent};
 use serde_json::json;
 
@@ -50,7 +50,7 @@ pub async fn print(options: Print) -> u8 {
     // unrecorded turn that looks like a recorded one.
     if let Some(error) = agent.trace_error() {
         if named {
-            return fail(&options, None, error);
+            return fail(&options, None, &Failure::host("trace", error));
         }
         eprintln!("no trace — {error}");
     } else {
@@ -93,6 +93,8 @@ pub async fn print(options: Print) -> u8 {
                     "route": finished.route.word(),
                     "usage": usage,
                     "error": Option::<String>::None,
+                    "cause": Option::<String>::None,
+                    "refusal": Option::<String>::None,
                 }));
             } else {
                 say(&finished.reply);
@@ -105,7 +107,12 @@ pub async fn print(options: Print) -> u8 {
 
 /// Reports a turn that did not finish, in whichever shape the caller asked
 /// for, and hands back the exit code.
-fn fail(options: &Print, trace: Option<&str>, why: &str) -> u8 {
+///
+/// `cause` and `refusal` ride along with the sentence because a relay that
+/// would not take the job, a worker that never answered, and a worker that
+/// declined are three states, and a harness that could only read the
+/// sentence would be matching on prose to tell them apart.
+fn fail(options: &Print, trace: Option<&str>, why: &Failure) -> u8 {
     if options.json {
         say(&json!({
             "reply": Option::<String>::None,
@@ -113,7 +120,9 @@ fn fail(options: &Print, trace: Option<&str>, why: &str) -> u8 {
             "outcome": "failed",
             "route": Option::<String>::None,
             "usage": Option::<String>::None,
-            "error": why,
+            "error": why.reason,
+            "cause": why.cause,
+            "refusal": why.refusal,
         }));
     } else {
         eprintln!("coder: {why}");

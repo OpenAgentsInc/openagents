@@ -207,3 +207,84 @@ async fn a_job_turn_streams_feedback_and_a_result() {
     assert_eq!(text, "hello there");
     assert_eq!(usage.unwrap().input_tokens, 10);
 }
+
+/// A worker that declines: auths as key byte 0xAB and answers the first
+/// job request with NIP-CJ `status: error` feedback carrying a code.
+async fn declining_worker(url: String) {
+    let worker_secret = SecretKey::from_byte_array([0xab; 32]).unwrap();
+    let mut socket = authenticated_socket(&url, 0xab).await;
+    send(
+        &mut socket,
+        json!(["REQ", "refusals", {"kinds": [REQUEST_KIND], "#p": [xonly(0xab).to_string()]}]),
+    )
+    .await;
+
+    let request = loop {
+        let frame = read_json(&mut socket).await;
+        if frame[0] == "EVENT" {
+            break serde_json::from_value::<Event>(frame[2].clone()).unwrap();
+        }
+    };
+    let customer_bytes: [u8; 32] = hex::decode(&request.pubkey).try_into().unwrap();
+    let customer = XOnlyPublicKey::from_byte_array(customer_bytes).unwrap();
+    let conversation = nip44::conversation_key(&worker_secret, &customer);
+    let content = json!({
+        "v": 1,
+        "type": "status",
+        "status": "error",
+        "code": "quota_exhausted",
+        "message": "free allowance used",
+    })
+    .to_string();
+    let ciphertext = nip44::encrypt(
+        &content,
+        &conversation,
+        secp256k1::rand::random::<[u8; 32]>(),
+    )
+    .unwrap();
+    let event = signer(0xab).sign(
+        unix_now(),
+        FEEDBACK_KIND,
+        vec![
+            Tag::new(vec!["e".into(), request.id.clone()]),
+            Tag::new(vec!["p".into(), request.pubkey.clone()]),
+        ],
+        ciphertext,
+    );
+    send(&mut socket, json!(["EVENT", event])).await;
+}
+
+/// A worker that declines is not a transport that broke.
+///
+/// The turn reaches a worker, the worker says no with a code, and the
+/// caller gets a `GenerateError::Refused` carrying that code as a field.
+/// An unreachable relay and an absent worker both answer `refusal()` with
+/// `None`, which is the line `gym::eval::classify` draws.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_declining_worker_refuses_with_a_code() {
+    let Ok(url) = std::env::var("CODER_RELAY") else {
+        eprintln!("skipped: set CODER_RELAY (and the secret envs) to run");
+        return;
+    };
+    unsafe { std::env::set_var("CODER_SECRET_KEY", hex_secret(0x0c)) };
+
+    tokio::spawn(declining_worker(url.clone()));
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let door = RelayDoor::new(url, xonly(0xab), Identity::load().unwrap());
+    let input = vec![Message {
+        role: Role::User,
+        text: "say hi in one word".to_string(),
+    }];
+    let error = door
+        .generate("be terse", &input, &mut |_| {}, &mut |_| {})
+        .await
+        .expect_err("the worker declined");
+
+    assert_eq!(error.cause(), "worker_declined");
+    assert_eq!(error.refusal(), Some("quota_exhausted"));
+    assert_eq!(
+        error.to_string(),
+        "the worker declined (quota_exhausted): free allowance used"
+    );
+}

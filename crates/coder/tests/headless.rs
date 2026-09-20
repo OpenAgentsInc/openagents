@@ -100,6 +100,8 @@ fn a_headless_turn_reports_one_json_object() {
     assert_eq!(report["outcome"], "answered");
     assert_eq!(report["route"], "respond");
     assert!(report["error"].is_null());
+    assert!(report["cause"].is_null());
+    assert!(report["refusal"].is_null());
 
     // The trace the report names is a trace, and it holds this turn.
     let trace = report["trace"].as_str().expect("a trace path");
@@ -149,6 +151,36 @@ fn a_named_trace_that_cannot_be_opened_ends_the_run() {
         String::from_utf8_lossy(&output.stderr).contains("cannot record"),
         "{output:?}"
     );
+}
+
+/// A failed turn says why in a field, not only in a sentence.
+///
+/// A relay that would not take the job, a worker that never answered, and
+/// a worker that declined are three states, and a harness that had to read
+/// prose to tell them apart would be matching on wording.
+#[test]
+fn a_failed_turn_reports_its_cause_as_a_field() {
+    let dir = tempfile::tempdir().unwrap();
+    let trace = dir.path().join("taken.atif.jsonl");
+    std::fs::write(&trace, "").unwrap();
+    let output = coder(
+        &[
+            "-p",
+            "--json",
+            "hello",
+            "--trace",
+            &trace.display().to_string(),
+        ],
+        dir.path(),
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).expect("one JSON object");
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["cause"], "trace");
+    assert!(report["refusal"].is_null());
+    assert!(report["reply"].is_null());
+    assert!(report["error"].as_str().unwrap().contains("cannot record"));
 }
 
 /// A wrong command line is its own kind of wrong, and its exit code says

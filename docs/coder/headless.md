@@ -50,13 +50,42 @@ object:
   "outcome": "answered",
   "route": "respond",
   "usage": { "input_tokens": 812, "output_tokens": 24 },
-  "error": null
+  "error": null,
+  "cause": null,
+  "refusal": null
 }
 ```
 
 The keys are always present. `reply`, `route`, and `usage` are null when
-the turn did not finish; `error` is null when it did. A script parses one
-thing.
+the turn did not finish; `error`, `cause`, and `refusal` are null when it
+did. A script parses one thing.
+
+## Why a turn did not finish
+
+`error` is the sentence a person reads. `cause` and `refusal` are what a
+harness reads, because several different states produce the same exit code
+and telling them apart by matching on the sentence would mean depending on
+its wording.
+
+| `cause` | What happened |
+| --- | --- |
+| `relay_unreachable` | The relay would not take the job: the socket never opened, the NIP-42 challenge went unanswered, or the relay rejected the request event. Nothing reached a worker. |
+| `worker_silent` | The relay took the job and no worker answered before the deadline. The worker is absent, or too slow to tell apart from absent. |
+| `worker_declined` | A worker answered with a typed refusal. `refusal` carries the NIP-CJ code, such as `quota_exhausted`. |
+| `door` | An own-key door answered with an error status, or the HTTP call failed. |
+| `stream` | The door's stream broke or carried an error event. |
+| `config` | The door's URL, key, or model is missing or wrong. |
+| `trace` | A named trace could not be opened, so the run ended before the turn. |
+
+`refusal` is non-null only for `worker_declined`, and it is read as a
+field rather than searched for in the message. That is the line
+`gym::eval::classify` draws: a typed refusal is an answer, a failure with
+no code is the harness.
+
+The trace says the same thing. A failed turn records a `System` step
+reading `the turn did not finish (<cause>): <reason>` before the log
+closes, so a reader holding only the trace does not find a session that
+stops mid-turn with no reason given.
 
 **Standard error** carries where the trace went, every shell command the
 turn ran, and the reason a turn failed. Reply deltas do not stream to
@@ -103,3 +132,6 @@ judging whichever copy the harness happened to call.
 
 - [`traces.md`](traces.md) — what a trace holds and where it goes.
 - [`shell-loop.md`](shell-loop.md) — the command loop a turn may run.
+- [`relay-transport.md`](relay-transport.md) — the same turn over a direct
+  door and over the relay, with the latency and the refusal causes
+  measured.

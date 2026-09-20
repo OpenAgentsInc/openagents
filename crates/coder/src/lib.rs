@@ -59,4 +59,4 @@ pub use runtime::{Enforcement, Host, Inputs, Refused, Run, Runtime};
 pub use shell::{Outcome, Proposal, ShellEvent, Status};
 pub use survey::Survey;
 pub use trace::Recorder;
-pub use turn::{Completion, Event, Finished};
+pub use turn::{Completion, Event, Failure, Finished};

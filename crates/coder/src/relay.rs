@@ -11,6 +11,19 @@
 //! job requests encrypt to — without it the door does not build.
 //! `CODER_RELAY` picks the relay, defaulting to the production relay.
 //! `CODER_SECRET_KEY` or `CODER_NSEC` overrides the on-disk identity.
+//!
+//! [`Identity`], [`connect`], [`send`], and the kind constants are public
+//! because the fulfillment side needs the same pieces: `coder-worker` is
+//! the other end of this door, and a second copy of the connect-and-
+//! authenticate dance would be a second thing to keep in step with the
+//! relay.
+//!
+//! A turn that does not finish says which of three things happened, as a
+//! field rather than as prose: [`GenerateError::Relay`] when nothing
+//! reached a worker, [`GenerateError::Silent`] when the relay took the job
+//! and no worker answered, and [`GenerateError::Refused`] when a worker
+//! answered by declining. `docs/coder/relay-transport.md` measures all
+//! three.
 
 use std::env;
 use std::fs;
@@ -31,16 +44,21 @@ use crate::generate::{Generate, GenerateError, Message, Meta, Role, Usage};
 /// The production relay the door defaults to.
 pub const DEFAULT_RELAY_URL: &str = "wss://relay.openagents.com";
 
-/// NIP-CJ kinds. All ephemeral: the relay fans them out and stores none.
-const REQUEST_KIND: u16 = 25_900;
-const RESULT_KIND: u16 = 26_900;
-const FEEDBACK_KIND: u16 = 27_000;
+/// The NIP-CJ job request, terminal to worker. Ephemeral: the relay fans
+/// it out and stores none of it.
+pub const REQUEST_KIND: u16 = 25_900;
+/// The NIP-CJ job result, worker to terminal. Ephemeral.
+pub const RESULT_KIND: u16 = 26_900;
+/// NIP-CJ job feedback — judgment, partial, status — worker to terminal.
+/// Ephemeral.
+pub const FEEDBACK_KIND: u16 = 27_000;
 const AUTH_KIND: u16 = 22_242;
 
 /// How long one turn waits for the worker before failing.
 const TURN_TIMEOUT: Duration = Duration::from_secs(180);
 
-type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+/// An authenticated relay connection. Both ends of NIP-CJ hold one.
+pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// The terminal's Nostr identity: a secp256k1 keypair kept on disk so the
 /// `npub` — and therefore the worker's allowance ledger — is stable.
@@ -50,7 +68,12 @@ pub struct Identity {
 }
 
 impl Identity {
-    fn from_secret(secret: SecretKey) -> Result<Self, String> {
+    /// The identity for a secret key.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the key would not load.
+    pub fn from_secret(secret: SecretKey) -> Result<Self, String> {
         let hex: String = secret
             .secret_bytes()
             .iter()
@@ -60,21 +83,36 @@ impl Identity {
         Ok(Self { secret, signer })
     }
 
+    /// The identity for a secret key written as 64 lowercase hex or as an
+    /// `nsec`. `what` names the source in any error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the text is not a secret key.
+    pub fn from_text(text: &str, what: &str) -> Result<Self, String> {
+        let text = text.trim();
+        let bytes = if text.starts_with("nsec1") {
+            nip19::decode_nsec(text).map_err(|error| format!("{what} does not decode: {error}"))?
+        } else {
+            parse_hex(text).ok_or_else(|| format!("{what} must be 64 lowercase hex or an nsec"))?
+        };
+        let secret = SecretKey::from_byte_array(bytes)
+            .map_err(|_| format!("{what} is not a valid secret key"))?;
+        Self::from_secret(secret)
+    }
+
     /// The identity from the environment or `~/.openagents/nostr-secret`,
     /// generating and installing a fresh keypair (mode 0600) on first run.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why no identity could be loaded.
     pub fn load() -> Result<Self, String> {
         if let Ok(hex) = env::var("CODER_SECRET_KEY") {
-            let bytes = parse_hex(&hex).ok_or("CODER_SECRET_KEY must be 64 lowercase hex")?;
-            let secret = SecretKey::from_byte_array(bytes)
-                .map_err(|_| "CODER_SECRET_KEY is not a valid secret key".to_string())?;
-            return Self::from_secret(secret);
+            return Self::from_text(&hex, "CODER_SECRET_KEY");
         }
         if let Ok(nsec) = env::var("CODER_NSEC") {
-            let secret_bytes = nip19::decode_nsec(&nsec)
-                .map_err(|error| format!("CODER_NSEC does not decode: {error}"))?;
-            let secret = SecretKey::from_byte_array(secret_bytes)
-                .map_err(|_| "CODER_NSEC is not a valid secret key".to_string())?;
-            return Self::from_secret(secret);
+            return Self::from_text(&nsec, "CODER_NSEC");
         }
 
         let home = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
@@ -119,6 +157,89 @@ impl Identity {
     pub fn pubkey(&self) -> &str {
         self.signer.pubkey()
     }
+
+    /// The identity's secret key, for the NIP-44 conversation key a job
+    /// payload is encrypted under.
+    pub fn secret(&self) -> &SecretKey {
+        &self.secret
+    }
+
+    /// The signer that puts this identity on an event.
+    pub fn signer(&self) -> &RelaySigner {
+        &self.signer
+    }
+}
+
+/// Connects to `url` and answers the relay's NIP-42 challenge as
+/// `identity`.
+///
+/// Both ends of NIP-CJ open a socket the same way: the relay sends
+/// `["AUTH", challenge]` on connect whenever it has a configured URL, and
+/// the challenge is answered before any other traffic. A relay that sends
+/// something else first is open, and the socket is handed back as it is.
+///
+/// # Errors
+///
+/// Returns a [`GenerateError::Relay`] naming what the connection or the
+/// authentication did instead. Nothing reached a worker, so nothing here
+/// is a refusal.
+pub async fn connect(url: &str, identity: &Identity) -> Result<Socket, GenerateError> {
+    let (mut socket, _) = connect_async(url)
+        .await
+        .map_err(|error| GenerateError::Relay(format!("connect: {error}")))?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        let frame = match tokio::time::timeout_at(deadline, socket.next()).await {
+            Ok(Some(Ok(message))) => message,
+            Ok(Some(Err(error))) => {
+                return Err(GenerateError::Relay(format!("socket: {error}")));
+            }
+            Ok(None) => {
+                return Err(GenerateError::Relay("socket closed during auth".into()));
+            }
+            Err(_) => {
+                return Err(GenerateError::Relay("no AUTH challenge received".into()));
+            }
+        };
+        let tungstenite::Message::Text(text) = frame else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
+        match value[0].as_str().unwrap_or_default() {
+            "AUTH" => {
+                let Some(challenge) = value[1].as_str() else {
+                    return Err(GenerateError::Relay("malformed AUTH challenge".into()));
+                };
+                let event = identity.signer.sign(
+                    unix_now(),
+                    AUTH_KIND,
+                    vec![
+                        Tag::new(vec!["relay".into(), url.to_string()]),
+                        Tag::new(vec!["challenge".into(), challenge.to_string()]),
+                    ],
+                    String::new(),
+                );
+                let auth_id = event.id.clone();
+                send(&mut socket, json!(["AUTH", event]))
+                    .await
+                    .map_err(as_relay)?;
+                // The relay confirms with ["OK", auth_id, true, ""].
+                let ok = wait_for_ok(&mut socket, &auth_id, deadline)
+                    .await
+                    .map_err(as_relay)?;
+                if !ok {
+                    return Err(GenerateError::Relay("NIP-42 authentication refused".into()));
+                }
+                return Ok(socket);
+            }
+            // AUTH_REQUIRED relays challenge first; open relays may send
+            // nothing before traffic. Any other frame means no challenge
+            // is coming on this socket.
+            _ => return Ok(socket),
+        }
+    }
 }
 
 /// A `Generate` over the relay: each turn publishes a NIP-CJ job request
@@ -157,62 +278,7 @@ impl RelayDoor {
 
     /// The socket, connecting and authenticating when needed.
     async fn connection(&self) -> Result<Socket, GenerateError> {
-        let (mut socket, _) = connect_async(&self.url)
-            .await
-            .map_err(|error| GenerateError::Stream(format!("connect: {error}")))?;
-        // The relay sends ["AUTH", challenge] on connect whenever it has a
-        // configured URL; answer it before any other traffic.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-        loop {
-            let frame = match tokio::time::timeout_at(deadline, socket.next()).await {
-                Ok(Some(Ok(message))) => message,
-                Ok(Some(Err(error))) => {
-                    return Err(GenerateError::Stream(format!("socket: {error}")));
-                }
-                Ok(None) => {
-                    return Err(GenerateError::Stream("socket closed during auth".into()));
-                }
-                Err(_) => {
-                    return Err(GenerateError::Stream("no AUTH challenge received".into()));
-                }
-            };
-            let tungstenite::Message::Text(text) = frame else {
-                continue;
-            };
-            let Ok(value) = serde_json::from_str::<Value>(&text) else {
-                continue;
-            };
-            match value[0].as_str().unwrap_or_default() {
-                "AUTH" => {
-                    let Some(challenge) = value[1].as_str() else {
-                        return Err(GenerateError::Stream("malformed AUTH challenge".into()));
-                    };
-                    let event = self.identity.signer.sign(
-                        unix_now(),
-                        AUTH_KIND,
-                        vec![
-                            Tag::new(vec!["relay".into(), self.url.clone()]),
-                            Tag::new(vec!["challenge".into(), challenge.to_string()]),
-                        ],
-                        String::new(),
-                    );
-                    let auth_id = event.id.clone();
-                    send(&mut socket, json!(["AUTH", event])).await?;
-                    // The relay confirms with ["OK", auth_id, true, ""].
-                    let ok = wait_for_ok(&mut socket, &auth_id, deadline).await?;
-                    if !ok {
-                        return Err(GenerateError::Stream(
-                            "NIP-42 authentication refused".into(),
-                        ));
-                    }
-                    return Ok(socket);
-                }
-                // AUTH_REQUIRED relays challenge first; open relays may send
-                // nothing before traffic. Any other frame means no challenge
-                // is coming on this socket.
-                _ => return Ok(socket),
-            }
-        }
+        connect(&self.url, &self.identity).await
     }
 
     /// Runs one job over `socket`: subscribe, publish, stream the answer.
@@ -295,8 +361,8 @@ impl RelayDoor {
                     && !value[2].as_bool().unwrap_or(false) =>
                 {
                     let reason = value[3].as_str().unwrap_or("refused");
-                    return Err(GenerateError::Stream(format!(
-                        "relay refused the job request: {reason}"
+                    return Err(GenerateError::Relay(format!(
+                        "the relay refused the job request: {reason}"
                     )));
                 }
                 "EVENT" if value[1].as_str() == Some(subscription.as_str()) => {
@@ -326,9 +392,15 @@ impl RelayDoor {
                         && kind == "status"
                         && feedback["status"].as_str() == Some("error")
                     {
+                        // A typed refusal is an answer: a worker read the
+                        // job and said no, with a reason a caller can act
+                        // on. It is not the transport failing.
                         let code = feedback["code"].as_str().unwrap_or("internal");
                         let message = feedback["message"].as_str().unwrap_or(code);
-                        return Err(GenerateError::Stream(format!("{code}: {message}")));
+                        return Err(GenerateError::Refused {
+                            code: code.to_string(),
+                            message: message.to_string(),
+                        });
                     } else if event.kind == RESULT_KIND {
                         let text = feedback["text"].as_str().unwrap_or_default().to_string();
                         let text = if text.is_empty() { partials } else { text };
@@ -347,8 +419,8 @@ impl RelayDoor {
                 _ => {}
             }
         }
-        Err(GenerateError::Stream(
-            "socket closed before the worker answered".into(),
+        Err(GenerateError::Silent(
+            "the socket closed before the worker answered".into(),
         ))
     }
 }
@@ -377,11 +449,22 @@ impl Generate for RelayDoor {
             Ok(result) => result,
             Err(_) => {
                 *guard = None;
-                Err(GenerateError::Stream(
-                    "the worker did not answer in time".into(),
-                ))
+                Err(GenerateError::Silent(format!(
+                    "nothing came back from {} in {} seconds",
+                    self.worker_hex,
+                    TURN_TIMEOUT.as_secs()
+                )))
             }
         }
+    }
+}
+
+/// Refiles a socket failure raised while the connection was being opened.
+/// Nothing had reached a worker yet, so the relay owns it.
+fn as_relay(error: GenerateError) -> GenerateError {
+    match error {
+        GenerateError::Stream(why) => GenerateError::Relay(why),
+        other => GenerateError::Relay(other.to_string()),
     }
 }
 
@@ -415,7 +498,12 @@ fn unix_now() -> u64 {
         .unwrap_or(0)
 }
 
-async fn send(socket: &mut Socket, value: Value) -> Result<(), GenerateError> {
+/// Writes one relay frame.
+///
+/// # Errors
+///
+/// Returns a [`GenerateError::Stream`] when the socket will not take it.
+pub async fn send(socket: &mut Socket, value: Value) -> Result<(), GenerateError> {
     socket
         .send(tungstenite::Message::Text(value.to_string().into()))
         .await

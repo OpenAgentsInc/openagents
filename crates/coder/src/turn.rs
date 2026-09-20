@@ -55,6 +55,53 @@ impl Completion {
     }
 }
 
+/// A turn that did not finish.
+///
+/// The sentence is what a person reads. `cause` and `refusal` are what a
+/// harness reads, and they exist because a relay that would not take the
+/// job, a worker that never answered, and a worker that declined all look
+/// the same in prose. `gym::eval::classify` draws the line this carries: a
+/// typed refusal is an answer, a failure with no code is the harness.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Failure {
+    /// Why the turn did not finish, in one sentence.
+    pub reason: String,
+    /// The word a harness files this failure under. See
+    /// [`crate::generate::GenerateError::cause`].
+    pub cause: &'static str,
+    /// The typed refusal code, when the failure carried one.
+    pub refusal: Option<String>,
+}
+
+impl Failure {
+    /// A failure the host raised rather than a door: a trace that would not
+    /// open, a prompt that would not read.
+    #[must_use]
+    pub fn host(cause: &'static str, reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            cause,
+            refusal: None,
+        }
+    }
+}
+
+impl From<&crate::generate::GenerateError> for Failure {
+    fn from(error: &crate::generate::GenerateError) -> Self {
+        Self {
+            reason: error.to_string(),
+            cause: error.cause(),
+            refusal: error.refusal().map(str::to_string),
+        }
+    }
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.reason)
+    }
+}
+
 /// A turn that finished.
 pub struct Finished {
     /// What the agent said.
@@ -72,13 +119,13 @@ pub struct Finished {
 ///
 /// # Errors
 ///
-/// Returns the sentence the door failed with. The turn did not finish, and
-/// the caller has nothing to show but the reason.
+/// Returns the [`Failure`] the door failed with. The turn did not finish,
+/// and the caller has nothing to show but the reason and its cause.
 pub async fn run(
     agent: &mut Agent,
     draft: String,
     event: &mut (dyn FnMut(Event) + Send),
-) -> Result<Finished, String> {
+) -> Result<Finished, Failure> {
     agent.push_user(&draft);
     let classified = agent.classify().await;
     event(Event::Classified(classified.clone()));
@@ -119,7 +166,7 @@ pub async fn run(
                     },
                 )
                 .await
-                .map_err(|error| error.to_string())
+                .map_err(|error| Failure::from(&error))
         }
         Route::End => Ok(("goodbye.".to_string(), None)),
         Route::Halt(_) => Ok((
@@ -131,6 +178,9 @@ pub async fn run(
     // it. The trace should still say what the user was told.
     if canned && let Ok((text, _)) = &result {
         agent.record_reply(text);
+    }
+    if let Err(failure) = &result {
+        agent.record_failure(failure.cause, &failure.reason);
     }
     result.map(|(reply, usage)| Finished {
         reply,
