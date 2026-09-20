@@ -4,6 +4,8 @@
 
 Support-desk judgments authored in this repository. Three families with difficulty mixed on purpose: clear cases, near-boundary cases, and some that are genuinely arguable. Labels are the author's best reading, not the only defensible one, and they are not drawn from an external dataset. Sized so a calibration map has enough evidence per bin to be worth fitting.
 
+**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`../decision-models/2026-09-20-instrument-validity.md`](../decision-models/2026-09-20-instrument-validity.md).
+
 ## jev (hosted)
 
 | Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |

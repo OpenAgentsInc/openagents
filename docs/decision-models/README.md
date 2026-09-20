@@ -50,6 +50,7 @@ No answer becomes context for another.
 | What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
 | What the newest production question costs, and what it buys | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) |
 | Whether a model should be able to say it does not know, and how that would be scored | [`abstention.md`](abstention.md) |
+| How far the labels themselves can be trusted, and one door on items we did not write | [`2026-09-20-instrument-validity.md`](2026-09-20-instrument-validity.md) |
 
 ## The rule this directory keeps
 
@@ -65,6 +66,28 @@ page next to the claim rather than replacing it quietly.
 The machinery that enforces this lives in `crates/gym` and is surveyed in
 [`../gym.md`](../gym.md).
 
+### The ceiling stands beside the score
+
+An accuracy is bounded by how far two careful readers agree on the labels,
+and that bound is measured, not assumed. Every record that publishes a
+per-family accuracy on `support-v2` carries the family's agreement ceiling
+on the same page, and a suite whose labels a second reader disputed lists
+those items under a `disputes` field rather than correcting them. The
+measurement, the disputed items, and one door scored on a suite nobody here
+authored are in
+[`2026-09-20-instrument-validity.md`](2026-09-20-instrument-validity.md).
+
+| Family | Sample | Agreement | Wilson 95% | Cohen's kappa |
+| --- | --- | --- | --- | --- |
+| `routing` | 51 | 0.980 | 0.897 to 0.997 | 0.971 |
+| `urgency` | 31 | 0.935 | 0.793 to 0.982 | 0.870 |
+| `severity` | 18 | 1.000 | 0.824 to 1.000 | 1.000 |
+
+The second reader was an automated session, not a person, so the table says
+the labels are reproducible by a reader who did not write them and not that
+they are correct. External suites carry their sources' published agreement
+instead: BoolQ 0.90, MultiNLI 0.887.
+
 ## Measurements that cross the implementations
 
 A run about one door stays with that door, as `lev/measurements/` does. A run
@@ -78,6 +101,7 @@ that compares them lives here, so it does not have to be written three times.
 | [`2026-09-20-frozen-embedding-door.md`](2026-09-20-frozen-embedding-door.md) | The same baseline served as a `POST /v1/systemone` door and scored by the unchanged Gym into the store: 0.95 on the 40 routing items, 38 typed refusals and zero harness losses, paired against every recorded door and read against the 0.056 floor. Clear of the small Kevs; not separable from Jev, `kev-8b`, or Lev. |
 | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) | `crates/coder`'s own question set, scored on real turns from recorded sessions rather than on authored support-desk items: what the workload looks like, what each question is worth against a constant, which door can afford ten-kilobyte states, and the four thresholds checked. |
 | [`2026-09-19-restatement-and-polarity.md`](2026-09-19-restatement-and-polarity.md) | Whether a door can repeat a fact its state asserts, on four doors over a factorial panel: hosted Jev answers all 128, `kev-4b` gives a proposition and its negation the same probability, and every local door passes delegation plans that collide. Also why the recorded call in `devin-fan-out-six` does not replay. |
+| [`2026-09-20-instrument-validity.md`](2026-09-20-instrument-validity.md) | Whether the suite can be trusted before the doors are: a blind second reading of 100 `support-v2` items with kappa per family and every disagreement kept, and hosted Jev on `external-v1`, 200 BoolQ and MultiNLI items with their own crowd labels, at 0.90 and 0.81 against published ceilings of 0.90 and 0.887. |
 | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) | The question every turn now asks — which program, or none. Its baseline and headroom before its accuracy, its false positives and false negatives counted apart because they cost different amounts, and where the error mass sits. |
 
 ## Other implementations

@@ -193,6 +193,8 @@ which scored the same 50 `routing` items of `support-v2`. `lev, calibrated` is
 the admitted map — the only family map in this repository that has ever passed
 the admission gate.
 
+**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`2026-09-20-instrument-validity.md`](2026-09-20-instrument-validity.md).
+
 | Door | Accuracy | SE | ECE | Brier | NLL |
 | --- | --- | --- | --- | --- | --- |
 | jev (hosted) | 0.940 | 0.034 | 0.060 | 0.039 | 0.122 |
