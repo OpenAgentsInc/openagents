@@ -36,6 +36,7 @@ fn short() -> Patience {
     Patience {
         first_word: Duration::from_millis(200),
         quiet: Duration::from_millis(400),
+        whole: Duration::from_secs(5),
         retry_wait: Duration::from_millis(10),
     }
 }
@@ -51,6 +52,10 @@ enum Stub {
     Mute,
     /// Send response headers and the first few events, then nothing.
     Halfway,
+    /// Send the first few events and close, as if the door died.
+    Truncated,
+    /// Send keepalive events forever, never completing.
+    Endless,
 }
 
 /// A stub door on loopback. Dropping it stops the server.
@@ -148,6 +153,24 @@ async fn answer(mut socket: TcpStream, stub: Stub) {
             let _ = socket.write_all(&GEMINI.as_bytes()[..cut]).await;
             let _ = socket.flush().await;
             forever(socket).await;
+        }
+        Stub::Truncated => {
+            let cut = GEMINI
+                .match_indices("event: response.output_text.delta")
+                .nth(1)
+                .map(|(at, _)| at)
+                .expect("the recording has two text deltas");
+            let _ = socket.write_all(&GEMINI.as_bytes()[..cut]).await;
+            let _ = socket.shutdown().await;
+        }
+        Stub::Endless => {
+            let event = b"data: {\"type\":\"response.in_progress\"}\n\n";
+            loop {
+                if socket.write_all(event).await.is_err() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
         }
         Stub::Mute | Stub::Deaf => forever(socket).await,
     }
@@ -299,6 +322,51 @@ async fn a_partial_answer_says_how_much_arrived_and_is_not_repeated() {
     );
 }
 
+/// A door that streams part of an answer and closes did not answer: the
+/// stream ended before `response.completed`, and what arrived is in the
+/// failure rather than presented as the reply.
+#[tokio::test]
+async fn a_stream_that_closes_before_completing_is_not_an_answer() {
+    let server = Server::start(Stub::Truncated).await;
+    let (seen, outcome) = ask(&server.door(Lane::Gemini.model())).await;
+    let error = outcome.expect_err("a stream that ends early fails");
+
+    assert_eq!(error.cause(), "stream");
+    assert_eq!(
+        error.to_string(),
+        "stream: the stream ended before response.completed, after 5 events"
+    );
+    assert_eq!(seen, "One\n");
+    assert_eq!(server.asked(), 1, "a partial answer is not asked for twice");
+}
+
+/// A door that never stops sending events is bounded by the whole-attempt
+/// wait, not only by the silence between events.
+#[tokio::test]
+async fn a_door_that_talks_forever_is_bounded() {
+    let server = Server::start(Stub::Endless).await;
+    let door =
+        ResponsesDoor::new(server.url.as_str(), Lane::Gemini.model(), "a-key").waiting(Patience {
+            whole: Duration::from_millis(500),
+            ..short()
+        });
+    let started = Instant::now();
+    let (_, outcome) = ask(&door).await;
+    let error = outcome.expect_err("an endless stream fails");
+
+    assert_eq!(error.cause(), "door_stalled");
+    assert!(
+        error.to_string().contains("0 seconds without completing"),
+        "{error}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(server.asked(), 1);
+}
+
 /// Model names live in one file.
 ///
 /// `generate.rs` is where a lane's model id is written, and a caller that
@@ -340,6 +408,7 @@ fn the_bounds_are_thirty_seconds_two_minutes_and_a_second() {
     let patience = Patience::default();
     assert_eq!(patience.first_word, Duration::from_secs(30));
     assert_eq!(patience.quiet, Duration::from_secs(120));
+    assert_eq!(patience.whole, Duration::from_secs(600));
     assert_eq!(patience.retry_wait, Duration::from_secs(1));
     assert_eq!(coder::generate::CONNECT_TIMEOUT, Duration::from_secs(10));
 }

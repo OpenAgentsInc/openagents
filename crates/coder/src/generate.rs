@@ -171,6 +171,11 @@ pub struct Patience {
     /// has lost the turn, and the turn fails with a line saying how long
     /// it waited and how much had arrived.
     pub quiet: Duration,
+    /// The longest one streaming attempt may run from its request to its
+    /// completed event, however talkative the door is. A door that keeps
+    /// sending events forever, or dribbles one every minute, would
+    /// otherwise hold the turn for as long as it liked.
+    pub whole: Duration,
     /// The wait before the second attempt; the third waits twice as long.
     pub retry_wait: Duration,
 }
@@ -180,10 +185,17 @@ impl Default for Patience {
         Patience {
             first_word: Duration::from_secs(30),
             quiet: Duration::from_secs(120),
+            whole: Duration::from_secs(600),
             retry_wait: Duration::from_secs(1),
         }
     }
 }
+
+/// The most bytes one SSE line or one event's data may hold before the
+/// stream is a failure rather than an answer. A completed event carries
+/// the whole response, so the bound is wide; a door that never ends a line
+/// would otherwise grow the buffer for as long as the wait allowed.
+pub const MAX_EVENT_BYTES: usize = 4 * 1024 * 1024;
 
 /// One conversational turn, user or assistant.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -526,19 +538,29 @@ impl ResponsesDoor {
 /// for every model in its catalog. That is what makes the recorded streams
 /// under `crates/coder/fixtures/gateway/` worth pinning: a change in the
 /// gateway's event shape reaches a test here rather than a broken turn.
+///
+/// The reader frames the stream the way the SSE specification does: bytes
+/// split into lines at CR, LF, or CRLF, lines gathered into an event by
+/// field name until a blank line, and `data:` lines joined with a newline.
+/// Text is decoded per line, never per chunk, so a character split across
+/// two chunks arrives whole. A completed stream is one that carried
+/// `response.completed`; anything short of that is a failure, and the text
+/// it streamed is kept for the failure to describe rather than answered
+/// with.
 #[derive(Default)]
 struct Reader {
-    /// Bytes that have not yet formed a whole line. Held as bytes rather
-    /// than as text, because a chunk boundary can fall inside a character
-    /// and decoding each chunk on its own puts replacement characters into
-    /// the answer.
+    /// Bytes that have not yet formed a whole line.
     buffer: Vec<u8>,
+    /// The `data:` lines of the event under construction, joined.
+    data: String,
     /// The answer as it has arrived.
     text: String,
     /// The token counts the completed event carried.
     usage: Option<Usage>,
     /// How many stream events have been read, which a timeout reports.
     events: u32,
+    /// Whether `response.completed` has been read.
+    completed: bool,
 }
 
 impl Reader {
@@ -551,7 +573,8 @@ impl Reader {
     /// # Errors
     ///
     /// Returns [`GenerateError::Stream`] when the stream carries a failure
-    /// event.
+    /// event, an event that is not JSON, a line that is not UTF-8, a line
+    /// or event past [`MAX_EVENT_BYTES`], or events after the completed one.
     fn push(
         &mut self,
         chunk: &[u8],
@@ -559,53 +582,146 @@ impl Reader {
     ) -> Result<u32, GenerateError> {
         self.buffer.extend_from_slice(chunk);
         let mut read = 0;
-        // `data: {json}` lines, blank-line separated. An SSE line never
-        // spans a newline, so decoding one whole line at a time is safe
-        // where decoding a chunk is not.
-        while let Some(end) = self.buffer.iter().position(|byte| *byte == b'\n') {
-            let line: Vec<u8> = self.buffer.drain(..=end).collect();
-            let line = String::from_utf8_lossy(&line);
-            let Some(data) = line.trim_end_matches(['\n', '\r']).strip_prefix("data:") else {
-                continue;
+        loop {
+            let Some(end) = self
+                .buffer
+                .iter()
+                .position(|byte| *byte == b'\n' || *byte == b'\r')
+            else {
+                if self.buffer.len() > MAX_EVENT_BYTES {
+                    return Err(GenerateError::Stream(format!(
+                        "a stream line ran past {MAX_EVENT_BYTES} bytes without ending"
+                    )));
+                }
+                return Ok(read);
             };
-            let data = data.trim();
-            if data.is_empty() || data == "[DONE]" {
+            // CRLF is one line ending; a CR that ends the chunk has to wait
+            // for the next chunk to say whether an LF follows it.
+            let ending = if self.buffer[end] == b'\r' {
+                match self.buffer.get(end + 1) {
+                    Some(b'\n') => 2,
+                    Some(_) => 1,
+                    None => return Ok(read),
+                }
+            } else {
+                1
+            };
+            let line: Vec<u8> = self.buffer.drain(..end + ending).collect();
+            let line = std::str::from_utf8(&line[..end])
+                .map_err(|_| GenerateError::Stream("a stream line was not UTF-8".to_string()))?;
+            if line.is_empty() {
+                if self.dispatch(sink)? {
+                    read += 1;
+                }
                 continue;
             }
-            let Ok(event) = serde_json::from_str::<Value>(data) else {
+            if line.starts_with(':') {
                 continue;
-            };
-            read += 1;
-            self.events += 1;
-            match event["type"].as_str().unwrap_or_default() {
-                "response.output_text.delta" => {
-                    if let Some(delta) = event["delta"].as_str() {
-                        self.text.push_str(delta);
-                        sink(delta);
-                    }
-                }
-                "response.completed" => {
-                    self.usage = event["response"]["usage"].as_object().map(|u| Usage {
-                        input_tokens: u["input_tokens"].as_u64().unwrap_or(0),
-                        output_tokens: u["output_tokens"].as_u64().unwrap_or(0),
-                    });
-                }
-                "response.failed" | "error" => {
-                    let message = event["response"]["error"]["message"]
-                        .as_str()
-                        .or_else(|| event["message"].as_str())
-                        .unwrap_or("the turn failed upstream");
-                    return Err(GenerateError::Stream(message.to_string()));
-                }
-                // Everything else is the shape around the answer:
-                // lifecycle events, content-part frames, and the reasoning
-                // deltas a thinking model streams. None of them is the
-                // answer, and a lane that sends them must not have them
-                // spliced into one.
-                _ => {}
             }
+            let (field, value) = line.split_once(':').unwrap_or((line, ""));
+            let value = value.strip_prefix(' ').unwrap_or(value);
+            if field == "data" {
+                if !self.data.is_empty() {
+                    self.data.push('\n');
+                }
+                self.data.push_str(value);
+                if self.data.len() > MAX_EVENT_BYTES {
+                    return Err(GenerateError::Stream(format!(
+                        "a stream event ran past {MAX_EVENT_BYTES} bytes"
+                    )));
+                }
+            }
+            // `event`, `id`, and `retry` carry nothing this door reads: the
+            // event's type is inside its JSON.
         }
-        Ok(read)
+    }
+
+    /// Reads the event whose blank line just arrived. Answers whether one
+    /// was there: a blank line after nothing is a keepalive.
+    fn dispatch(&mut self, sink: &mut (dyn FnMut(&str) + Send)) -> Result<bool, GenerateError> {
+        let data = std::mem::take(&mut self.data);
+        if data.is_empty() || data == "[DONE]" {
+            return Ok(false);
+        }
+        if self.completed {
+            return Err(GenerateError::Stream(
+                "the stream went on after response.completed".to_string(),
+            ));
+        }
+        let event = serde_json::from_str::<Value>(&data)
+            .map_err(|_| GenerateError::Stream("a stream event was not JSON".to_string()))?;
+        self.events += 1;
+        match event["type"].as_str().unwrap_or_default() {
+            "response.output_text.delta" => {
+                if let Some(delta) = event["delta"].as_str() {
+                    self.text.push_str(delta);
+                    sink(delta);
+                }
+            }
+            "response.completed" => {
+                self.completed = true;
+                self.usage = event["response"]["usage"].as_object().map(|u| Usage {
+                    input_tokens: u["input_tokens"].as_u64().unwrap_or(0),
+                    output_tokens: u["output_tokens"].as_u64().unwrap_or(0),
+                });
+            }
+            "response.incomplete" => {
+                let reason = event["response"]["incomplete_details"]["reason"]
+                    .as_str()
+                    .unwrap_or("no reason given");
+                return Err(GenerateError::Stream(format!(
+                    "the door stopped short of an answer: {reason}"
+                )));
+            }
+            "response.failed" | "error" => {
+                let message = event["response"]["error"]["message"]
+                    .as_str()
+                    .or_else(|| event["message"].as_str())
+                    .unwrap_or("the turn failed upstream");
+                return Err(GenerateError::Stream(message.to_string()));
+            }
+            // Everything else is the shape around the answer:
+            // lifecycle events, content-part frames, and the reasoning
+            // deltas a thinking model streams. None of them is the
+            // answer, and a lane that sends them must not have them
+            // spliced into one.
+            _ => {}
+        }
+        Ok(true)
+    }
+
+    /// What the end of the stream means: an answer, or a stream that
+    /// stopped before saying it was done. A last event the door did not
+    /// follow with a blank line still counts, as it does for a reader that
+    /// takes the end of the stream as the end of the event.
+    fn finish(
+        mut self,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
+        let mut ended = Vec::new();
+        if !self.buffer.is_empty() {
+            ended.push(b'\n');
+        }
+        ended.push(b'\n');
+        if let Err(error) = self.push(&ended, sink) {
+            return Err((self.text, error));
+        }
+        if !self.completed {
+            return Err((
+                self.text,
+                GenerateError::Stream(format!(
+                    "the stream ended before response.completed, after {} events",
+                    self.events
+                )),
+            ));
+        }
+        if self.text.is_empty() {
+            return Err((
+                self.text,
+                GenerateError::Stream("the stream carried no text".to_string()),
+            ));
+        }
+        Ok((self.text, self.usage))
     }
 }
 
@@ -619,6 +735,7 @@ impl ResponsesDoor {
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
+        let ends = Instant::now() + self.patience.whole;
         let sent = self
             .http
             .post(format!("{}/v1/responses", self.url))
@@ -658,15 +775,24 @@ impl ResponsesDoor {
         // The quiet clock runs from the last event rather than from the
         // last byte, so a door that dribbles bytes without completing an
         // event is still quiet.
+        // The whole-attempt clock runs alongside it, so a door that never
+        // stops talking ends too.
         let mut spoke = Instant::now();
         loop {
-            let left = self.patience.quiet.saturating_sub(spoke.elapsed());
+            let left = self
+                .patience
+                .quiet
+                .saturating_sub(spoke.elapsed())
+                .min(ends.saturating_duration_since(Instant::now()));
             let chunk = match tokio::time::timeout(left, stream.next()).await {
                 Ok(Some(Ok(chunk))) => chunk,
                 Ok(Some(Err(error))) => {
                     return Err((reader.text, GenerateError::Transport(error)));
                 }
                 Ok(None) => break,
+                Err(_) if Instant::now() >= ends => {
+                    return Err((reader.text.clone(), self.ran_long(&reader)));
+                }
                 Err(_) => return Err((reader.text.clone(), self.went_quiet(&reader))),
             };
             match reader.push(&chunk, sink) {
@@ -675,13 +801,20 @@ impl ResponsesDoor {
                 Err(error) => return Err((reader.text, error)),
             }
         }
-        if reader.text.is_empty() {
-            return Err((
-                reader.text,
-                GenerateError::Stream("the stream carried no text".to_string()),
-            ));
+        reader.finish(sink)
+    }
+
+    /// The failure a stream that outlived the whole-attempt bound becomes.
+    fn ran_long(&self, reader: &Reader) -> GenerateError {
+        GenerateError::Quiet {
+            heard: true,
+            reason: format!(
+                "{} seconds without completing, after {} events and {} characters",
+                self.patience.whole.as_secs(),
+                reader.events,
+                reader.text.chars().count()
+            ),
         }
-        Ok((reader.text, reader.usage))
     }
 
     /// The failure a stream that stopped sending becomes.
@@ -1259,5 +1392,164 @@ mod tests {
         // door cannot be built. When a key IS set the test still passes: the
         // door exists. What matters is it never panics.
         let _ = ResponsesDoor::from_env();
+    }
+
+    /// A short stream with a multibyte answer, CRLF line endings, a
+    /// comment, an `event:` field, a keepalive, and a completed event.
+    const STREAM: &str = "event: response.created\r\n\
+        data: {\"type\":\"response.created\"}\r\n\r\n\
+        : keepalive\r\n\r\n\
+        event: response.output_text.delta\r\n\
+        data: {\"type\":\"response.output_text.delta\",\"delta\":\"héllo \"}\r\n\r\n\
+        data:{\"type\":\"response.output_text.delta\",\"delta\":\"wörld 日本\"}\r\n\r\n\
+        data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":4}}}\r\n\r\n\
+        data: [DONE]\r\n\r\n";
+
+    /// Feeds `stream` split at `at` and reads it to the end.
+    fn read_split(
+        stream: &[u8],
+        at: usize,
+    ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
+        let mut reader = Reader::default();
+        let mut seen = String::new();
+        let mut sink = |delta: &str| seen.push_str(delta);
+        for chunk in [&stream[..at], &stream[at..]] {
+            if let Err(error) = reader.push(chunk, &mut sink) {
+                return Err((reader.text, error));
+            }
+        }
+        let answered = reader.finish(&mut sink)?;
+        assert_eq!(seen, answered.0, "the sink saw what was answered");
+        Ok(answered)
+    }
+
+    #[test]
+    fn a_chunk_boundary_anywhere_leaves_the_answer_whole() {
+        let bytes = STREAM.as_bytes();
+        for at in 0..=bytes.len() {
+            let (text, usage) =
+                read_split(bytes, at).unwrap_or_else(|(_, error)| panic!("split at {at}: {error}"));
+            assert_eq!(text, "héllo wörld 日本", "split at {at}");
+            assert_eq!(
+                usage,
+                Some(Usage {
+                    input_tokens: 3,
+                    output_tokens: 4
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn a_stream_arriving_one_byte_at_a_time_reads_the_same() {
+        let mut reader = Reader::default();
+        let mut sink = |_: &str| {};
+        for byte in STREAM.as_bytes() {
+            reader.push(&[*byte], &mut sink).unwrap();
+        }
+        let (text, _) = reader
+            .finish(&mut sink)
+            .unwrap_or_else(|(_, error)| panic!("{error}"));
+        assert_eq!(text, "héllo wörld 日本");
+    }
+
+    #[test]
+    fn data_lines_of_one_event_join_with_a_newline() {
+        let stream = "data: {\"type\":\"response.output_text.delta\",\n\
+                      data: \"delta\":\"two lines\"}\n\n\
+                      data: {\"type\":\"response.completed\"}\n\n";
+        let mut reader = Reader::default();
+        let mut sink = |_: &str| {};
+        reader.push(stream.as_bytes(), &mut sink).unwrap();
+        let (text, _) = reader
+            .finish(&mut sink)
+            .unwrap_or_else(|(_, error)| panic!("{error}"));
+        assert_eq!(text, "two lines");
+    }
+
+    #[test]
+    fn a_last_event_without_a_blank_line_still_counts() {
+        let stream = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"x\"}\n\n\
+                      data: {\"type\":\"response.completed\"}";
+        let mut reader = Reader::default();
+        let mut sink = |_: &str| {};
+        reader.push(stream.as_bytes(), &mut sink).unwrap();
+        let (text, _) = reader
+            .finish(&mut sink)
+            .unwrap_or_else(|(_, error)| panic!("{error}"));
+        assert_eq!(text, "x");
+    }
+
+    #[test]
+    fn a_stream_that_ends_before_completing_is_a_failure_that_keeps_the_text() {
+        let cut = STREAM
+            .find("data: {\"type\":\"response.completed\"")
+            .unwrap();
+        let (partial, error) =
+            read_split(&STREAM.as_bytes()[..cut], 10).expect_err("no completed event");
+        assert_eq!(partial, "héllo wörld 日本");
+        assert!(matches!(error, GenerateError::Stream(_)), "{error}");
+        assert_eq!(
+            error.to_string(),
+            "stream: the stream ended before response.completed, after 3 events"
+        );
+    }
+
+    #[test]
+    fn an_incomplete_response_is_a_failure_with_its_reason() {
+        let stream = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"x\"}\n\n\
+                      data: {\"type\":\"response.incomplete\",\"response\":{\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n";
+        let (partial, error) = read_split(stream.as_bytes(), 5).expect_err("incomplete");
+        assert_eq!(partial, "x");
+        assert!(error.to_string().ends_with("max_output_tokens"), "{error}");
+    }
+
+    #[test]
+    fn a_record_that_is_not_json_or_not_utf8_is_a_failure_not_a_skip() {
+        let mut sink = |_: &str| {};
+        let mut reader = Reader::default();
+        let error = reader
+            .push(b"data: {not json\n\n", &mut sink)
+            .expect_err("not JSON");
+        assert!(error.to_string().contains("not JSON"), "{error}");
+
+        let mut reader = Reader::default();
+        let error = reader
+            .push(b"data: \"\xff\xfe\"\n\n", &mut sink)
+            .expect_err("not UTF-8");
+        assert!(error.to_string().contains("not UTF-8"), "{error}");
+    }
+
+    #[test]
+    fn events_after_completed_are_a_failure() {
+        let stream = "data: {\"type\":\"response.completed\"}\n\n\
+                      data: {\"type\":\"response.output_text.delta\",\"delta\":\"late\"}\n\n";
+        let mut sink = |_: &str| {};
+        let mut reader = Reader::default();
+        let error = reader
+            .push(stream.as_bytes(), &mut sink)
+            .expect_err("late event");
+        assert!(
+            error.to_string().contains("after response.completed"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_line_that_never_ends_is_bounded() {
+        let mut sink = |_: &str| {};
+        let mut reader = Reader::default();
+        let chunk = vec![b'a'; MAX_EVENT_BYTES / 2 + 1];
+        reader.push(&chunk, &mut sink).unwrap();
+        let error = reader.push(&chunk, &mut sink).expect_err("past the bound");
+        assert!(error.to_string().contains("without ending"), "{error}");
+    }
+
+    #[test]
+    fn a_keepalive_is_not_an_event() {
+        let mut sink = |_: &str| {};
+        let mut reader = Reader::default();
+        assert_eq!(reader.push(b": ping\n\n\n\n", &mut sink).unwrap(), 0);
+        assert_eq!(reader.events, 0);
     }
 }

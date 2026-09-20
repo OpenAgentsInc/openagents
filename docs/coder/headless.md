@@ -135,8 +135,8 @@ its wording.
 | `worker_declined` | A worker answered with a typed refusal. `refusal` carries the NIP-CJ code, such as `quota_exhausted`. |
 | `door` | An own-key door answered with an error status, or the HTTP call failed. |
 | `door_absent` | An own-key door took the request and never sent response headers, on each of three attempts 30 seconds apart. |
-| `door_stalled` | An own-key door sent its headers and then went quiet for 120 seconds. The message names the wait and how much had arrived, because a door that hung before saying anything and one that answered part way and stopped are different problems. |
-| `stream` | The door's stream broke or carried an error event. |
+| `door_stalled` | An own-key door sent its headers and then went quiet for 120 seconds, or kept sending without completing for 600 seconds. The message names the wait and how much had arrived, because a door that hung before saying anything and one that answered part way and stopped are different problems. |
+| `stream` | The door's stream broke, ended before `response.completed`, said the response was incomplete, carried an error event, or carried a record that was not UTF-8 or not JSON. A stream that ends short of completion is never presented as an answer; the text that arrived is named in the failure. |
 | `config` | The environment does not name one door: it names two, or it names one that cannot be built. The run ends before the turn. |
 | `trace` | A named trace could not be opened, so the run ended before the turn. |
 
