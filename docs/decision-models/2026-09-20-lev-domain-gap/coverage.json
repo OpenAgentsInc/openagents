@@ -1,0 +1,30 @@
+{
+  "ood-band": {
+    "expected_items": 130,
+    "retained_items": 130,
+    "unique_items": 130,
+    "exact_open_item_coverage": true,
+    "sha256": "bc7d017b4fb2a8d55aeda188effa4352daf08073630c5b2fb7c06a3e7b0951e7"
+  },
+  "ood-permutation": {
+    "expected_items": 130,
+    "retained_items": 130,
+    "unique_items": 130,
+    "exact_open_item_coverage": true,
+    "sha256": "af71a8649fe9b2cfc885b0d0c85dbc4a03100b9caef13a480946991320d5c178"
+  },
+  "ood-external": {
+    "expected_items": 160,
+    "retained_items": 160,
+    "unique_items": 160,
+    "exact_open_item_coverage": true,
+    "sha256": "b06562ba82cbe99e54e12a7d363b5726a9cb5e98ddd30b1573659b6c71f37665"
+  },
+  "in-domain-permutation": {
+    "expected_items": 157,
+    "retained_items": 157,
+    "unique_items": 157,
+    "exact_open_item_coverage": true,
+    "sha256": "c0a522b3bbcfe9756ff657fac8298d307e13731cfd22a2485f26cfa4a92eb3e0"
+  }
+}

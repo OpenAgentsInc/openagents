@@ -1,0 +1,46 @@
+{
+  "case": "permutation",
+  "started_utc": "2026-09-20T18:48:08.919123+00:00",
+  "source": "4edf4f1d16573801411a6f4b02d62e7e3d607045",
+  "load_before": [
+    3.392578125,
+    4.08154296875,
+    5.5244140625
+  ],
+  "chip": "Apple M5 Max",
+  "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "server_command": [
+    "/tmp/openagents-supervision/root-target/debug/lev-serve",
+    "--port",
+    "11459",
+    "--adapter",
+    "/Users/christopherdavid/code/lev-adapter-work/runs/lev-perm/levperm.fmadapter"
+  ],
+  "command": [
+    "/tmp/openagents-supervision/root-target/debug/gym",
+    "eval",
+    "--suite",
+    "/Users/christopherdavid/work/openagents/crates/gym/suites/support-v2-three-way.json",
+    "--timeout",
+    "300",
+    "--door",
+    "lev-permutation=http://127.0.0.1:11459",
+    "--record",
+    "/tmp/openagents-apple-handoff/in-domain-permutation.jsonl"
+  ],
+  "artifact_hashes": {
+    "sha256": "80e9e0f9a6627ffa4006a346d1dc4b0a20b7536175a01d8f6b59094e29fdd83e",
+    "metadataSha256": "df6738a740e97c484e476c8333933fc177b556f60476d2aad42ea97c256fc4cc"
+  },
+  "artifact_manifest": "crates/lev/manifests/lev-adapted-v3.json",
+  "lev-serve_sha256": "ea1d0bb06fe7f8a515aaa912b527a6f0a529a553d04db2f6ea75dfcf4795a3d9",
+  "gym_sha256": "e8ef33bfd6982b959300825e9a79d9368cd8a670d2383f1f4457b691dc17c06c",
+  "exit_code": 0,
+  "wall_seconds": 250.777116291,
+  "load_after": [
+    5.24560546875,
+    4.6298828125,
+    5.3798828125
+  ],
+  "finished_utc": "2026-09-20T18:52:19.714983+00:00"
+}

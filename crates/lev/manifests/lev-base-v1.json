@@ -93,5 +93,35 @@
       "admitted": false,
       "verdict": "unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)"
     }
+  ],
+  "observationRef": [
+    {
+      "record": "../../../docs/decision-models/2026-09-20-lev-domain-gap/ood-external.jsonl",
+      "sha256": "b06562ba82cbe99e54e12a7d363b5726a9cb5e98ddd30b1573659b6c71f37665",
+      "suite": "external-v1",
+      "suiteDigest": "137b27d89c6851944539ab6182f0b112993169d630290ec4cd8e94f0c6eab652",
+      "partitionId": "calibration",
+      "door": "lev-base",
+      "doorIdentity": {
+        "model": "lev-base",
+        "base_model_signature": "9799725",
+        "verified": true
+      },
+      "rows": 80
+    },
+    {
+      "record": "../../../docs/decision-models/2026-09-20-lev-domain-gap/ood-external.jsonl",
+      "sha256": "b06562ba82cbe99e54e12a7d363b5726a9cb5e98ddd30b1573659b6c71f37665",
+      "suite": "external-v1",
+      "suiteDigest": "137b27d89c6851944539ab6182f0b112993169d630290ec4cd8e94f0c6eab652",
+      "partitionId": "development",
+      "door": "lev-base",
+      "doorIdentity": {
+        "model": "lev-base",
+        "base_model_signature": "9799725",
+        "verified": true
+      },
+      "rows": 80
+    }
   ]
 }

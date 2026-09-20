@@ -101,20 +101,31 @@ waits through.
 
 **Read every line below as a statement about a release, not about "Lev".**
 There are four, and they differ in what they may serve.
-`crates/lev/manifests/` holds them: `lev-base@1`, the operating system's own
-weights, which admits `routing`; and `lev-adapted@1`, `@2`, and `@3`, the
-choice, band, and permutation adapters, which carry `evalRef: []` and admit
-nothing at all. Every committed calibration map was fitted against the base
-door, so an adapted door serves typed answers with uncalibrated frequencies
-and refuses `require_calibration`. The probability paragraphs here are about
-`lev-base@1`.
+`crates/lev/manifests/` holds them. The operating system's own weights,
+`lev-base@1`, and the choice adapter, `lev-adapted@1`, each grant `routing`
+through their own in-domain calibration records. The band and permutation
+adapters, `lev-adapted@2` and `@3`, carry `evalRef: []` and grant no calibrated
+families. The earlier statement that every map described the base door was
+stale: the choice release has matching adapter-specific calibration records.
+
+Those calibration grants rest on in-domain evidence. They do not establish
+transfer to coding questions or external labels. The
+[domain-gap record](../decision-models/2026-09-20-lev-domain-gap.md) retains
+out-of-domain observations separately from the calibration grants; adding an
+`observationRef` never admits a family. On `coder-turns-v1`, choice answers
+67/95 correctly and band and permutation each answer 69/95 correctly, with
+35 refusals per door out of 130 requests. Their full-workload scores are
+67/130, 69/130, and 69/130. The base answers 79/121 correctly on `external-v1`,
+with 39 guardrail refusals out of 160 requests. These are measured coverage
+limits, not evidence of calibrated probabilities outside support routing.
 
 Admitted:
 
 - **Routing and triage inside an application**, where a wrong answer costs a
   re-route rather than a person. On the 80 open routing items of the
-  three-way suite `lev-base@1` scores 0.825, and its `routing` map is the
-  only admitted map on any door this repository has rows for.
+  three-way suite `lev-base@1` scores 0.825. Both the base and choice releases
+  name an admitted `routing` map fitted against their own door; this is an
+  in-domain grant, not a claim about routing in every application.
 - **Anything that must not leave the machine.** Nothing is sent anywhere.
 - **Anything that must not be billed.** There is no marginal cost, so a
   judgment can run in front of every metered call.
@@ -124,10 +135,10 @@ Admitted:
 
 Refused:
 
-- **Anything where an adapted door's probability gates the action.**
-  `lev-adapted@1`, `@2`, and `@3` admit nothing, so their numbers are
-  uncalibrated frequencies. On `lev-base@1` the one exception is `routing`;
-  see below.
+- **A probability outside the release's admitted family.** Band and
+  permutation admit no families. Base and choice admit only `routing` under
+  their retained in-domain records; their other numbers are uncalibrated
+  frequencies. Out-of-domain observations do not expand those grants.
 - **Moderation, safety, and abuse review.** Apple's guardrails fire on the
   inputs most worth judging, and they refuse rather than answer.
 - **Latency-sensitive paths that need a distribution.** Eight samples is two

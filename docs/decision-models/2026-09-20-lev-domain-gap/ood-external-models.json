@@ -1,0 +1,33 @@
+{
+  "models": [
+    {
+      "name": "lev-base",
+      "release_date": "2026-09-19",
+      "description": "Apple's on-device foundation model, answering the System One contract. Its probabilities are seeded-sampling frequencies, not calibrated predictive probabilities.",
+      "availability": "available",
+      "unavailable_reason": null,
+      "estimator": "l2",
+      "samples": 8,
+      "seed_base": 0,
+      "pool_width": 4,
+      "resolution": 0.125,
+      "adapter": "",
+      "manifest": null,
+      "base_model_signature": "9799725",
+      "os_build": "25E246",
+      "policy": null,
+      "isolation": null,
+      "calibration": "none",
+      "calibrated_families": [],
+      "serving": [],
+      "calibration_refused": [],
+      "question_types": [
+        "noul",
+        "choice",
+        "score"
+      ],
+      "max_options": 255,
+      "max_levels": 10
+    }
+  ]
+}

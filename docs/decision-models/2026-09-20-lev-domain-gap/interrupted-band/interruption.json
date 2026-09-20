@@ -1,0 +1,6 @@
+{
+  "observed_utc": "2026-09-20T17:53:12.580512+00:00",
+  "retained_rows": 125,
+  "reason": "User interrupted the active tool wait; queue controller and Gym client no longer existed. Server remained orphaned and was terminated. No terminal result was produced.",
+  "action": "Retain partial attempt unchanged; rerun full unchanged suite in fresh store."
+}

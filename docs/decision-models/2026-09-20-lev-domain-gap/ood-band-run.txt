@@ -1,0 +1,32 @@
+# Suite scores: `coder-turns-v1`
+
+325 items, 130 calibration, 130 development, 65 locked and unread, digest `f619db3613b83e45`.
+
+Real turns and shell rounds from coding-agent sessions on this repository, asked the questions crates/coder/src/classify.rs sends, in the state shapes classify::state_of and shell::state_of build. Every item names its label_source: `outcome` labels are what happened next in the same session, read by the rule in label_rule; `author` labels are a reading of the state. The two are never pooled without saying so.
+
+Label evidence: 95 author, 230 outcome.
+
+Judged by `probability-v2`, digest `gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758`.
+
+Asked as `coder-turns-v1`, digest `4d0aaf39558294e7`. The suite digest covers the items and the question set covers the text, so a reword is a candidate against these items rather than another suite.
+
+## lev-band
+
+Identity: base `9799725ff8e851184037110b422d891ad3b92ec1`, adapter `fmadapter-levband-9799725`. Estimator `l2`, 8 samples, seed block 0.
+
+Recorded 130 rows in `/tmp/openagents-apple-handoff/ood-band.jsonl`.
+
+130 items asked: 95 scored, 35 refused by the door, 0 lost to the harness and unrecorded.
+
+Door refusals: `branch_too_long` x32, `invalid_request` x3.
+
+| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| development, raw | 0.73 | 0.180 | 0.213 | 2.432 | 7 | 95 |
+
+| Label evidence | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| outcome | 0.82 | 0.110 | 0.139 | 1.529 | 3 | 66 |
+| author | 0.52 | 0.341 | 0.381 | 4.487 | 4 | 29 |
+
+An `outcome` label is what happened next in the session the state came from. An `author` label is a reading of the state. They are not the same evidence, so they are not pooled.

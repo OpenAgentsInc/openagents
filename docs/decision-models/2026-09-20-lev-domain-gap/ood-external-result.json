@@ -1,0 +1,39 @@
+{
+  "case": "external",
+  "started_utc": "2026-09-20T18:39:56.001485+00:00",
+  "source": "8ffdae9becd1c2e7b0662caafe200c8a46000713",
+  "load_before": [
+    3.58837890625,
+    5.77587890625,
+    6.92041015625
+  ],
+  "chip": "Apple M5 Max",
+  "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "server_command": [
+    "/tmp/openagents-supervision/root-target/debug/lev-serve",
+    "--port",
+    "11457"
+  ],
+  "command": [
+    "/tmp/openagents-supervision/root-target/debug/gym",
+    "eval",
+    "--suite",
+    "/Users/christopherdavid/work/openagents/crates/gym/suites/external-v1.json",
+    "--timeout",
+    "300",
+    "--door",
+    "lev-base=http://127.0.0.1:11457",
+    "--record",
+    "/tmp/openagents-apple-handoff/ood-external.jsonl"
+  ],
+  "lev-serve_sha256": "ea1d0bb06fe7f8a515aaa912b527a6f0a529a553d04db2f6ea75dfcf4795a3d9",
+  "gym_sha256": "e8ef33bfd6982b959300825e9a79d9368cd8a670d2383f1f4457b691dc17c06c",
+  "exit_code": 0,
+  "wall_seconds": 238.37447995899998,
+  "load_after": [
+    3.9501953125,
+    4.8095703125,
+    6.20654296875
+  ],
+  "finished_utc": "2026-09-20T18:43:54.401158+00:00"
+}

@@ -1,0 +1,24 @@
+# Suite scores: `external-v1`
+
+200 items, 80 calibration, 80 development, 40 locked and unread, digest `137b27d89c685194`.
+
+Two hundred items nobody in this repository wrote or labelled: 100 BoolQ validation items as a noul family and 100 MultiNLI validation_matched items as a choice family, drawn with a seeded shuffle from the Hugging Face Parquet files at the revisions named in `provenance`. The question text is ours and is the only authored part; the labels are the sets' own crowd labels, unchanged. A door's score here is the one number in this repository our own authorship cannot have fitted. Built by build_external_v1.py.
+
+Judged by `probability-v2`, digest `gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758`.
+
+Asked as `external-v1-authored`, digest `1dd21545b34fc60f`. The suite digest covers the items and the question set covers the text, so a reword is a candidate against these items rather than another suite.
+
+## lev-base
+
+Identity: base `9799725`. Estimator `l2`, 8 samples, seed block 0.
+
+Recorded 160 rows in `/tmp/openagents-apple-handoff/ood-external.jsonl`.
+
+160 items asked: 121 scored, 39 refused by the door, 0 lost to the harness and unrecorded.
+
+Door refusals: `guardrail` x39.
+
+| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| calibration, raw | 0.64 | 0.229 | 0.253 | 3.029 | 6 | 64 |
+| development, raw | 0.67 | 0.215 | 0.240 | 3.282 | 6 | 57 |

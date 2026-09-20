@@ -55,6 +55,7 @@ questions before changing the default.
 | Whether a Score's ordering means anything, door by door | [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) |
 | What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
 | How big a `coder` state may be, and what shrinking it cost | [`2026-09-20-state-budget.md`](2026-09-20-state-budget.md) |
+| Whether the Lev adapters transfer beyond support items, including their refusals | [`2026-09-20-lev-domain-gap.md`](2026-09-20-lev-domain-gap.md) |
 | What the newest production question costs, and what it buys | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) |
 | Whether a local door can answer that question instead of hosted Jev | [`2026-09-20-program-selection-local-doors.md`](2026-09-20-program-selection-local-doors.md) |
 | Which production questions to stop asking, and why | [`2026-09-20-coder-question-baselines.md`](2026-09-20-coder-question-baselines.md) |

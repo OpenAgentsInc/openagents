@@ -68,5 +68,22 @@
     "samples": 8,
     "seed_base": 0
   },
-  "evalRef": []
+  "evalRef": [],
+  "observationRef": [
+    {
+      "record": "../../../docs/decision-models/2026-09-20-lev-domain-gap/ood-band.jsonl",
+      "sha256": "bc7d017b4fb2a8d55aeda188effa4352daf08073630c5b2fb7c06a3e7b0951e7",
+      "suite": "coder-turns-v1",
+      "suiteDigest": "f619db3613b83e45ea9c897341e6ba81964f8c983420a11bec5ee72e353f21d9",
+      "partitionId": "development",
+      "door": "lev-band",
+      "doorIdentity": {
+        "model": "lev-adapted",
+        "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+        "adapter": "fmadapter-levband-9799725",
+        "verified": true
+      },
+      "rows": 130
+    }
+  ]
 }

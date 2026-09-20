@@ -1,0 +1,2 @@
+lev-serve: adapter fmadapter-levperm-9799725 pinned to base 9799725ff8e851184037110b422d891ad3b92ec1, and no manifest names it
+lev-serve on http://127.0.0.1:11459, 8 samples per question from seed block 0 across 4 helpers

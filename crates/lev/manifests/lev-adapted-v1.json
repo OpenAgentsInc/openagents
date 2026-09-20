@@ -105,7 +105,7 @@
   ],
   "observationRef": [
     {
-      "record": "../../gym/results/coder-turns-v1.jsonl",
+      "record": "../../../docs/decision-models/2026-09-20-lev-domain-gap/historical-coder-turns-v1.jsonl",
       "sha256": "772a046ee4dcd7f187fc99d7e16a3544406e3fd2a0be559e06147bc9f1a9518a",
       "suite": "coder-turns-v1",
       "suiteDigest": "f619db3613b83e45ea9c897341e6ba81964f8c983420a11bec5ee72e353f21d9",
