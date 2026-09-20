@@ -135,9 +135,16 @@ stderr. So an `Executor` carries the phrases it declares and matches them.
 That is a bounded field of a named executor's description rather than intent
 routing: the route is already chosen and the executor is already named.
 
-A bound that expires kills the delegate. Without that the host stops waiting
-while the executor keeps running against the repository, which makes the
-bound a timer rather than a bound.
+A bound that expires kills the delegate **and everything it started**.
+Without that the host stops waiting while the executor keeps running against
+the repository, which makes the bound a timer rather than a bound; killing
+only the direct delegate leaves its background children doing the same
+thing. `crates/supervise` runs each delegation in a process group of its
+own, terminates that group on the bound or on a cancelled caller, and reaps
+the direct child before the delegation reports — which is also why the
+worktree is removed after the executor is gone rather than while it is still
+writing to it. A timed-out delegation keeps the bounded output the executor
+managed to print. Read [`subprocesses.md`](subprocesses.md).
 
 ## Isolation is provided or refused, never pretended
 

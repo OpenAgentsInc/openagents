@@ -61,14 +61,19 @@ use std::time::{Duration, Instant};
 use futures_util::StreamExt;
 use futures_util::stream;
 use serde_json::{Value, json};
+use supervise::{Ending, Job, Limits};
 use tokio::process::Command;
-use tokio::time::timeout;
 
 /// The most delegations one fan-out runs at once, unless a caller says
 /// otherwise. Six is the width the first recorded episode ran at.
 pub const CONCURRENT_MAX: usize = 6;
 
 /// The most output one delegation keeps, per stream, in bytes.
+///
+/// The cap is applied as the bytes arrive rather than to the string at the
+/// end, so it bounds what this process holds and not only what the trace
+/// records. Bytes past it are counted and dropped, and
+/// [`Delegation::bytes`] says how many there were.
 pub const OUTPUT_MAX: usize = 64 * 1024;
 
 /// The capability slug the Devin CLI on this computer answers to, as
@@ -369,12 +374,16 @@ pub struct Delegation {
     pub concurrent_max: usize,
     /// How it ended.
     pub status: Status,
-    /// What the executor printed on stdout, capped at [`OUTPUT_MAX`].
+    /// What the executor printed on stdout, capped at [`OUTPUT_MAX`] and
+    /// marked when the cap cut it.
     pub output: String,
-    /// What it printed on stderr, capped at [`OUTPUT_MAX`]. A refusal
-    /// arrives here.
+    /// What it printed on stderr, capped the same way. A refusal arrives
+    /// here.
     pub detail: String,
-    /// Wall time the delegation took.
+    /// How many bytes the executor printed across both streams, before
+    /// the caps.
+    pub bytes: u64,
+    /// Wall time the delegation took, cleanup included.
     pub elapsed: Duration,
 }
 
@@ -536,9 +545,7 @@ impl Delegator {
         if let Some(code) = self.unisolated(&task) {
             return self.ended(
                 task,
-                Status::Refused(code.to_string()),
-                String::new(),
-                String::new(),
+                Reported::of(Status::Refused(code.to_string())),
                 Duration::ZERO,
                 self.workdir.clone(),
             );
@@ -553,53 +560,59 @@ impl Delegator {
             Err(why) => {
                 return self.ended(
                     task,
-                    Status::Harness(why.clone()),
-                    String::new(),
-                    why,
+                    Reported::of(Status::Harness(why.clone())).detailing(why),
                     started.elapsed(),
                     self.workdir.clone(),
                 );
             }
         };
         let workdir = checkout.path(&self.workdir).to_path_buf();
-        let running = Command::new(&self.executor.binary)
-            .args(&self.executor.arguments)
+        // A bound the host cannot enforce is a timer. [`supervise`] makes
+        // this one a bound: the executor runs in a process group of its
+        // own, an expired bound or a cancelled caller terminates that
+        // group rather than abandoning the wait, and the direct child is
+        // reaped before this returns — which is also why the checkout
+        // below is removed after the executor is gone rather than while it
+        // is still writing to it.
+        let ended = Job::new(&self.executor.binary)
+            .args(self.executor.arguments.iter().map(String::as_str))
             .arg(&task.prompt)
-            .current_dir(&workdir)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // A bound that expires kills the delegate. Without this the
-            // host stops waiting and the executor keeps running against
-            // the repository, which makes the bound a timer rather than a
-            // bound — and leaves a process nobody is reaping behind every
-            // timed-out delegation.
-            .kill_on_drop(true)
-            .output();
-        let finished = timeout(task.bounds.wall(), running).await;
+            .in_directory(&workdir)
+            .bounded(Limits::within(task.bounds.wall()).keeping(OUTPUT_MAX))
+            .run()
+            .await;
         let elapsed = started.elapsed();
-        let (status, output, detail) = match finished {
-            Ok(Ok(done)) => {
-                let output = cap(&String::from_utf8_lossy(&done.stdout));
-                let detail = cap(&String::from_utf8_lossy(&done.stderr));
-                let status = match self.executor.refusal(&format!("{detail}{output}")) {
+        let said = Reported {
+            status: Status::Answered,
+            output: ended.stdout.marked(),
+            detail: ended.stderr.marked(),
+            bytes: ended.bytes(),
+        };
+        let reported = match ended.ending {
+            Ending::Exited(code) => {
+                let status = match self
+                    .executor
+                    .refusal(&format!("{}{}", said.detail, said.output))
+                {
                     Some(code) => Status::Refused(code),
-                    None if done.status.success() => Status::Answered,
-                    None => Status::Failed(done.status.code().unwrap_or(-1)),
+                    None if code == Some(0) => Status::Answered,
+                    None => Status::Failed(code.unwrap_or(-1)),
                 };
-                (status, output, detail)
+                Reported { status, ..said }
             }
+            // The bound expired, and what the executor printed before it
+            // did is kept: a timed-out delegation's partial output is
+            // often the only account of what it was doing.
+            Ending::TimedOut => Reported {
+                status: Status::TimedOut,
+                ..said
+            },
             // The process never became a result. That is the harness, not
             // the executor, and nothing about it is the executor's answer.
-            Ok(Err(error)) => (
-                Status::Harness(error.to_string()),
-                String::new(),
-                error.to_string(),
-            ),
-            Err(_) => (Status::TimedOut, String::new(), String::new()),
+            Ending::Failed(why) => Reported::of(Status::Harness(why.clone())).detailing(why),
         };
         drop(checkout);
-        self.ended(task, status, output, detail, elapsed, workdir)
+        self.ended(task, reported, elapsed, workdir)
     }
 
     /// The checkout one task runs in.
@@ -631,9 +644,7 @@ impl Delegator {
     fn ended(
         &self,
         task: Task,
-        status: Status,
-        output: String,
-        detail: String,
+        reported: Reported,
         elapsed: Duration,
         workdir: PathBuf,
     ) -> Delegation {
@@ -643,11 +654,41 @@ impl Delegator {
             binary: self.executor.binary.clone(),
             workdir,
             concurrent_max: self.concurrent_max,
-            status,
-            output,
-            detail,
+            status: reported.status,
+            output: reported.output,
+            detail: reported.detail,
+            bytes: reported.bytes,
             elapsed,
         }
+    }
+}
+
+/// What one delegation came back as, before it is paired with the task
+/// and the host that ran it.
+#[derive(Debug)]
+struct Reported {
+    status: Status,
+    output: String,
+    detail: String,
+    bytes: u64,
+}
+
+impl Reported {
+    /// A delegation that ended before the executor printed anything, or
+    /// before it ran at all.
+    fn of(status: Status) -> Self {
+        Reported {
+            status,
+            output: String::new(),
+            detail: String::new(),
+            bytes: 0,
+        }
+    }
+
+    /// The same, with the reason on the stream a reason arrives on.
+    fn detailing(mut self, detail: String) -> Self {
+        self.detail = detail;
+        self
     }
 }
 
@@ -761,20 +802,6 @@ fn head(text: &str, max: usize) -> &str {
             &text[..end]
         }
     }
-}
-
-/// One stream of output, bounded. The bound is on what the process holds,
-/// which is the only place a cap can be applied without losing the fact
-/// that there was more.
-fn cap(text: &str) -> String {
-    if text.len() <= OUTPUT_MAX {
-        return text.to_string();
-    }
-    let mut end = OUTPUT_MAX;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}\n…truncated", &text[..end])
 }
 
 /// An answer as it is compared: trimmed, lowercased, and with runs of
@@ -926,6 +953,65 @@ mod tests {
         assert_eq!(missing.correct(), None);
     }
 
+    /// The audit's delegation probe: an executor that starts a background
+    /// child and is killed on its bound. Killing the direct delegate is
+    /// not enough — the child has its own process, and it writes its
+    /// marker a second later.
+    #[tokio::test]
+    async fn a_timed_out_delegation_ends_its_descendants() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("descendant-marker");
+        let binary = stub(
+            dir.path(),
+            "backgrounding",
+            &format!(
+                "(sleep 3; printf harmless > '{}') & printf 'partway through'; wait",
+                marker.display()
+            ),
+        );
+        let delegation = Delegator::new(executor(&binary))
+            .in_directory(dir.path())
+            .run(Task::reading("anything", "a.rs").bounded(Bounds::within(Duration::from_secs(1))))
+            .await;
+
+        assert_eq!(delegation.status, Status::TimedOut);
+        // What the executor printed before the bound expired is the only
+        // account of what it was doing, so the record keeps it.
+        assert_eq!(delegation.output, "partway through");
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(
+            !marker.exists(),
+            "a delegate's background child outlived the bound the delegation ran under"
+        );
+    }
+
+    /// The cap holds what the host keeps, and the count says what the
+    /// executor wrote.
+    #[tokio::test]
+    async fn a_noisy_delegate_is_bounded_while_it_prints() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stub(
+            dir.path(),
+            "noisy",
+            "yes 0123456789abcde | head -n 8192\nyes 0123456789abcde | head -n 8192 >&2",
+        );
+        let delegation = Delegator::new(executor(&binary))
+            .in_directory(dir.path())
+            .run(Task::reading("anything", "a.rs").bounded(Bounds::within(BOUND)))
+            .await;
+
+        assert_eq!(delegation.status, Status::Answered);
+        assert_eq!(delegation.bytes, 2 * 8192 * 16);
+        for kept in [&delegation.output, &delegation.detail] {
+            assert!(
+                kept.len() <= OUTPUT_MAX + 64,
+                "a stream ran past its cap: {} bytes",
+                kept.len()
+            );
+            assert!(kept.ends_with("131072 bytes in all"));
+        }
+    }
+
     /// A refusal is not an answer, so a graded task that was refused is
     /// wrong rather than unjudged.
     #[tokio::test]
@@ -955,11 +1041,17 @@ mod tests {
             .fan_out(six_tasks())
             .await;
         let parallel = started.elapsed();
+        let summed: Duration = wide.iter().map(|delegation| delegation.elapsed).sum();
         assert_eq!(wide.len(), 6);
         assert!(wide.iter().all(Delegation::answered));
+        // Wall clock against summed delegation time, which is the
+        // measurement the recorded episode reports and the one a busy
+        // machine does not move: contention inflates both together, while
+        // a fixed ceiling on the wall clock alone turns a loaded test
+        // machine into a failure about concurrency.
         assert!(
-            parallel < Duration::from_millis(1_500),
-            "six 0.4s delegations at a width of six should not take {parallel:?}"
+            parallel * 2 < summed,
+            "a width of six is not concurrent: {parallel:?} of wall clock against {summed:?} summed"
         );
 
         let started = Instant::now();

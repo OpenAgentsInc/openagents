@@ -39,7 +39,14 @@ The trace is named rather than searched for, which is what
 [`--trace`](coder/headless.md) is for, and the path must not already exist:
 a session never writes over another session's record. Standard output and
 standard error land beside it as `<trace>.stdout` and `<trace>.stderr`, so
-what the agent said is readable next to what it did.
+what the agent said is readable next to what it did. Those two files are
+part of the run's record and are kept; a preflight probe's output is
+temporary, read back under a 64 KiB cap, and removed whether the probe
+answered, failed, or timed out.
+
+A run that passes its timeout takes its whole process tree with it, so an
+agent stopped on one task is not still running against the repository
+during the next one. Read [`coder/subprocesses.md`](coder/subprocesses.md).
 
 | Exit code | Meaning |
 | --- | --- |

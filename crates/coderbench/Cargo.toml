@@ -14,6 +14,7 @@ atif = { path = "../atif" }
 gym = { path = "../gym" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+supervise = { path = "../supervise", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

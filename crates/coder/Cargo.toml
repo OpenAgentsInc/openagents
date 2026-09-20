@@ -17,6 +17,7 @@ ratatui = "0.30"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }

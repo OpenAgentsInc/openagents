@@ -149,6 +149,7 @@ fn record_and_block(dir: &Path) -> ! {
         },
         status: Status::Exit(0),
         output: "atif\ncoder".to_string(),
+        bytes: 10,
         elapsed: Duration::from_millis(9),
     });
     loop {

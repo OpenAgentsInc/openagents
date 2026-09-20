@@ -9,17 +9,21 @@
 //! quotes a plan is prose, and a plan that arrives on a turn permitted to
 //! run nothing is refused and stands as the answer. Each [`Proposal`]
 //! then runs through [`run`], which reads the permit again before it
-//! spawns anything: a bounded `sh -c` with a timeout, an output cap, and
+//! spawns anything: a bounded `sh -c` with a deadline, an output cap, and
 //! a short deny list for the commands that end a machine, not a
 //! conversation. [`Outcome`]s fold into the transcript and into the state
 //! the shell questions in [`crate::classify`] read.
-
+//!
+//! The deadline and the cap are [`supervise`]'s, which is what makes them
+//! bounds rather than intentions: the command runs in a process group of
+//! its own, [`TIMEOUT`] terminates that group rather than abandoning the
+//! wait, and the output is held to [`OUTPUT_MAX`] as it is read instead of
+//! after a whole `output()` is already in memory.
 use std::fmt;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::{Value, json};
-use tokio::process::Command;
-use tokio::time::timeout;
+use supervise::{Captured, Ending, Job, Limits};
 
 use crate::permit::Permit;
 
@@ -29,11 +33,16 @@ use crate::permit::Permit;
 pub const COMMANDS_MAX: usize = 10;
 /// The most plan rounds one turn allows before the model must answer.
 pub const ROUNDS_MAX: usize = 3;
-/// How long one command may run before it is killed.
-const TIMEOUT: Duration = Duration::from_secs(15);
-/// The most output one command keeps, bytes of stdout and stderr. This is
-/// the ceiling on what a trace can record for a command, because it is the
-/// ceiling on what the process ever holds.
+/// How long one command may run before the supervisor ends it and
+/// everything it started.
+pub const TIMEOUT: Duration = Duration::from_secs(15);
+/// The most output one command keeps, bytes per stream.
+///
+/// This is the ceiling on what a trace records for a command. It is not
+/// the ceiling on what the command may print: bytes past it are counted
+/// and dropped as they arrive, and [`Outcome::bytes`] says how many there
+/// were in all. Capture memory for one command is this twice over, once
+/// for each stream.
 pub const OUTPUT_MAX: usize = 16 * 1024;
 /// The output of one command a judge or transcript sees.
 pub const HEAD_MAX: usize = 2048;
@@ -82,9 +91,13 @@ pub struct Outcome {
     pub proposal: Proposal,
     /// How it ended.
     pub status: Status,
-    /// stdout and stderr together, capped at [`OUTPUT_MAX`].
+    /// stdout and stderr together, capped at [`OUTPUT_MAX`] and marked
+    /// when the cap cut them.
     pub output: String,
-    /// Wall time the command took.
+    /// How many bytes the command printed across both streams, before the
+    /// cap.
+    pub bytes: u64,
+    /// Wall time the command took, cleanup included.
     pub elapsed: Duration,
 }
 
@@ -372,11 +385,23 @@ pub fn state_of(task: &str, outcomes: &[Outcome]) -> Value {
 /// the function that spawns a process. A caller cannot reach a shell by
 /// holding a [`Proposal`]; it has to hold a permit that runs one.
 pub async fn run(proposal: &Proposal, permit: Permit) -> Outcome {
+    run_within(proposal, permit, TIMEOUT).await
+}
+
+/// The same run under a deadline the caller names, which is what [`run`]
+/// is with [`TIMEOUT`].
+///
+/// A command that reaches its deadline is not abandoned: the supervisor
+/// terminates the process group the command ran in, reaps it, and hands
+/// back whatever it printed first. A timed-out command's partial output is
+/// often the most useful thing it produced.
+pub async fn run_within(proposal: &Proposal, permit: Permit, wall: Duration) -> Outcome {
     if let Some(why) = permit.refusal() {
         return Outcome {
             proposal: proposal.clone(),
             status: Status::Refused(why),
             output: String::new(),
+            bytes: 0,
             elapsed: Duration::ZERO,
         };
     }
@@ -385,48 +410,55 @@ pub async fn run(proposal: &Proposal, permit: Permit) -> Outcome {
             proposal: proposal.clone(),
             status: Status::Denied(why),
             output: String::new(),
+            bytes: 0,
             elapsed: Duration::ZERO,
         };
     }
-    let started = Instant::now();
-    let child = Command::new("sh")
+    let ended = Job::new("sh")
         .arg("-c")
         .arg(&proposal.command)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .stdin(std::process::Stdio::null())
-        .output();
-    let result = timeout(TIMEOUT, child).await;
-    let elapsed = started.elapsed();
-    let (status, output) = match result {
-        Ok(Ok(done)) => {
-            let mut output = String::from_utf8_lossy(&done.stdout).into_owned();
-            let stderr = String::from_utf8_lossy(&done.stderr);
-            if !stderr.is_empty() {
-                if !output.is_empty() {
-                    output.push('\n');
-                }
-                output.push_str(&stderr);
-            }
-            if output.len() > OUTPUT_MAX {
-                let mut end = OUTPUT_MAX;
-                while !output.is_char_boundary(end) {
-                    end -= 1;
-                }
-                output.truncate(end);
-                output.push_str("\n…truncated");
-            }
-            (Status::Exit(done.status.code().unwrap_or(-1)), output)
-        }
-        Ok(Err(error)) => (Status::Failed(error.to_string()), String::new()),
-        Err(_) => (Status::TimedOut, String::new()),
+        .bounded(Limits::within(wall).keeping(OUTPUT_MAX))
+        .run()
+        .await;
+    let status = match &ended.ending {
+        Ending::Exited(code) => Status::Exit(code.unwrap_or(-1)),
+        Ending::TimedOut => Status::TimedOut,
+        Ending::Failed(why) => Status::Failed(why.clone()),
     };
     Outcome {
         proposal: proposal.clone(),
         status,
-        output,
-        elapsed,
+        output: joined(&ended.stdout, &ended.stderr),
+        bytes: ended.bytes(),
+        elapsed: ended.elapsed,
     }
+}
+
+/// The two streams as the one block a transcript records: stdout, then
+/// stderr, held together to [`OUTPUT_MAX`] and marked when anything was
+/// dropped.
+fn joined(stdout: &Captured, stderr: &Captured) -> String {
+    let mut output = stdout.text.clone();
+    if !stderr.text.is_empty() {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&stderr.text);
+    }
+    let mut cut = stdout.truncated || stderr.truncated;
+    if output.len() > OUTPUT_MAX {
+        let mut end = OUTPUT_MAX;
+        while !output.is_char_boundary(end) {
+            end -= 1;
+        }
+        output.truncate(end);
+        cut = true;
+    }
+    if cut {
+        let bytes = stdout.bytes + stderr.bytes;
+        output.push_str(&format!("\n…truncated, {bytes} bytes in all"));
+    }
+    output
 }
 
 /// The deny list: commands that end a machine, a shell session, or the
@@ -612,6 +644,66 @@ mod tests {
         .await;
         assert!(matches!(outcome.status, Status::Exit(0)));
         assert_eq!(outcome.output, "hello");
+    }
+
+    /// The audit's shape: a command that writes a harmless marker after
+    /// its deadline, and a background child of it that does the same. The
+    /// deadline is the caller's here so the test costs a second rather
+    /// than sixteen; [`run`] is this with [`TIMEOUT`].
+    #[tokio::test]
+    async fn a_timed_out_command_leaves_nothing_behind() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let marker = dir.path().join("after-timeout");
+        let descendant = dir.path().join("descendant");
+        let outcome = run_within(
+            &Proposal {
+                command: format!(
+                    "(sleep 3; printf harmless > '{}') & printf 'read this'; sleep 9; printf harmless > '{}'",
+                    descendant.display(),
+                    marker.display()
+                ),
+                why: "the audit's timeout probe".to_string(),
+            },
+            Permit::executing(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(matches!(outcome.status, Status::TimedOut));
+        // A timed-out command's partial output is often the most useful
+        // thing it produced.
+        assert_eq!(outcome.output, "read this");
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(!marker.exists(), "the command outlived its deadline");
+        assert!(
+            !descendant.exists(),
+            "a descendant outlived the command's deadline"
+        );
+    }
+
+    /// The cap holds what a command keeps, and the count says what it
+    /// wrote.
+    #[tokio::test]
+    async fn output_is_bounded_and_the_rest_is_counted() {
+        let outcome = run(
+            &Proposal {
+                command:
+                    "yes 0123456789abcde | head -n 4096; yes fedcba987654321 | head -n 4096 >&2"
+                        .to_string(),
+                why: "a noisy pair of streams".to_string(),
+            },
+            Permit::executing(),
+        )
+        .await;
+
+        assert!(matches!(outcome.status, Status::Exit(0)));
+        assert_eq!(outcome.bytes, 2 * 4096 * 16);
+        assert!(outcome.output.ends_with("131072 bytes in all"));
+        assert!(
+            outcome.output.len() <= OUTPUT_MAX + 64,
+            "the joined output ran past the cap: {} bytes",
+            outcome.output.len()
+        );
     }
 
     #[tokio::test]

@@ -87,11 +87,18 @@ Each proposal runs as `sh -c` in the terminal's working directory:
 
 | Bound | Value |
 | --- | --- |
-| Per-command timeout | 15 s |
-| Captured output (stdout + stderr) | 16 KiB, truncated with a marker |
+| Per-command timeout | 15 s, which ends the command's whole process tree |
+| Captured output | 16 KiB per stream, held as it is read, marked when cut |
+| Retained output (stdout + stderr) | 16 KiB, with the byte count of everything printed |
 | Output the judge and transcript see | 2 KiB head per command |
 | Commands per plan | 10 |
 | Plan rounds per turn | 3 |
+
+The timeout and the cap are `crates/supervise`'s, which is what makes them
+bounds rather than intentions: the command runs in a process group of its
+own, the deadline terminates that group and reaps the child rather than
+abandoning the wait, and a command that reached its deadline still reports
+what it printed first. Read [`subprocesses.md`](subprocesses.md).
 
 A deny list refuses commands that end a machine or a session rather than
 answer a question — `sudo`/`doas` (they would hang on a password

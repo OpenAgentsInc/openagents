@@ -7,10 +7,33 @@
 //! the exit code rather than treating anything non-zero as a failure —
 //! declining is a result, and a harness that could not tell it from a dead
 //! door would score the two the same.
+//!
+//! # What a run is allowed to take
+//!
+//! Waiting and killing are [`supervise::blocking`]'s, so a run that passes
+//! its timeout takes its whole process tree with it rather than leaving an
+//! agent running against the repository being measured. A benchmark that
+//! left one behind would charge the next task for it.
+//!
+//! Output goes to files rather than pipes here, because this waits rather
+//! than reads and a pipe nobody is reading fills and stops the child. The
+//! disk policy follows from what each file is for: a run's `stdout` and
+//! `stderr` sit beside its trace and are kept as part of the record, and a
+//! probe's files are temporary, read back under [`PROBE_MAX`], and removed
+//! whether the probe answered, failed, or timed out.
 
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
+
+use supervise::{Ending, blocking};
+
+/// The bytes of a probe's output this reads back. A probe answers with a
+/// version line or a path; anything past this is a program that has
+/// misunderstood the question, and reading all of it into memory to say so
+/// would be the same mistake twice.
+pub const PROBE_MAX: u64 = 64 * 1024;
 
 /// How the turn ended, as the exit code reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,14 +194,24 @@ pub fn coder(
         .stdin(Stdio::null())
         .stdout(Stdio::from(create(&stdout)?))
         .stderr(Stdio::from(create(&stderr)?));
+    blocking::own_group(&mut command);
 
     let started = Instant::now();
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("{} will not start — {error}", binary.display()))?;
-    let outcome = match wait(&mut child, timeout) {
-        Some(code) => Outcome::of(code),
-        None => Outcome::TimedOut,
+    let mut child = command.spawn().map_err(|error| {
+        // A run that never started has no record to leave behind.
+        let _ = std::fs::remove_file(&stdout);
+        let _ = std::fs::remove_file(&stderr);
+        format!("{} will not start — {error}", binary.display())
+    })?;
+    let outcome = match blocking::wait(&mut child, timeout) {
+        Ending::Exited(code) => Outcome::of(code),
+        Ending::TimedOut => Outcome::TimedOut,
+        Ending::Failed(why) => {
+            return Err(format!(
+                "{} could not be waited on — {why}",
+                binary.display()
+            ));
+        }
     };
     Ok(Run {
         outcome,
@@ -206,44 +239,71 @@ pub struct Said {
 pub fn output(mut command: Command, timeout: Duration) -> Result<Said, String> {
     // Output goes to temporary files rather than pipes, because a pipe
     // nobody is reading fills and stops the child, and this waits rather
-    // than reads.
-    let directory = std::env::temp_dir().join(format!("coderbench-{}", std::process::id()));
-    std::fs::create_dir_all(&directory).map_err(|error| format!("{error}"))?;
-    let stem = format!("{:x}-{}", now_nanos(), next());
-    let out = directory.join(format!("{stem}.out"));
-    let err = directory.join(format!("{stem}.err"));
+    // than reads. The files are the probe's and nobody else's: `Probe`
+    // removes them on the way out of this function, whichever way that is.
+    let probe = Probe::new()?;
     command
         .stdin(Stdio::null())
-        .stdout(Stdio::from(create(&out)?))
-        .stderr(Stdio::from(create(&err)?));
+        .stdout(Stdio::from(create(&probe.out)?))
+        .stderr(Stdio::from(create(&probe.err)?));
+    blocking::own_group(&mut command);
     let mut child = command.spawn().map_err(|error| format!("{error}"))?;
-    let code = wait(&mut child, timeout).ok_or_else(|| format!("no answer in {timeout:?}"))?;
-    let said = Said {
-        code,
-        out: std::fs::read_to_string(&out).unwrap_or_default(),
-        err: std::fs::read_to_string(&err).unwrap_or_default(),
-    };
-    let _ = std::fs::remove_file(&out);
-    let _ = std::fs::remove_file(&err);
-    Ok(said)
+    match blocking::wait(&mut child, timeout) {
+        Ending::Exited(code) => Ok(Said {
+            code,
+            out: read_bounded(&probe.out),
+            err: read_bounded(&probe.err),
+        }),
+        Ending::TimedOut => Err(format!("no answer in {timeout:?}")),
+        Ending::Failed(why) => Err(why),
+    }
 }
 
-/// Waits for a child, stopping it when `timeout` passes. `None` means it
-/// was stopped.
-fn wait(child: &mut std::process::Child, timeout: Duration) -> Option<Option<i32>> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Some(status.code()),
-            Ok(None) => {}
-            Err(_) => return Some(None),
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(25));
+/// Where one probe's output goes, and what removes it.
+///
+/// In `Drop` rather than at the end of the wait, because a probe that would
+/// not spawn, was refused, or ran past its timeout leaves a file behind
+/// just as surely as one that answered, and a preflight check runs these by
+/// the dozen.
+struct Probe {
+    out: PathBuf,
+    err: PathBuf,
+}
+
+impl Probe {
+    fn new() -> Result<Self, String> {
+        let directory = std::env::temp_dir().join(format!("coderbench-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).map_err(|error| format!("{error}"))?;
+        let stem = format!("{:x}-{}", now_nanos(), next());
+        Ok(Probe {
+            out: directory.join(format!("{stem}.out")),
+            err: directory.join(format!("{stem}.err")),
+        })
+    }
+}
+
+impl Drop for Probe {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.out);
+        let _ = std::fs::remove_file(&self.err);
+    }
+}
+
+/// Reads a probe's file, up to [`PROBE_MAX`] bytes of it, and says so when
+/// there was more.
+fn read_bounded(path: &Path) -> String {
+    let Ok(file) = std::fs::File::open(path) else {
+        return String::new();
+    };
+    let bytes = file.metadata().map(|about| about.len()).unwrap_or_default();
+    let mut kept = Vec::new();
+    if file.take(PROBE_MAX).read_to_end(&mut kept).is_err() {
+        return String::new();
+    }
+    let text = String::from_utf8_lossy(&kept).into_owned();
+    match bytes > PROBE_MAX {
+        false => text,
+        true => format!("{text}\n…truncated, {bytes} bytes in all"),
     }
 }
 
@@ -308,6 +368,54 @@ mod tests {
         let mut forever = Command::new("sh");
         forever.args(["-c", "sleep 30"]);
         assert!(output(forever, Duration::from_millis(200)).is_err());
+    }
+
+    /// A probe that ran past its timeout takes its background children
+    /// with it, and leaves neither a process nor a file behind.
+    #[test]
+    fn a_stopped_probe_leaves_nothing_behind() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("after-timeout");
+        let mut backgrounding = Command::new("sh");
+        backgrounding.args([
+            "-c",
+            &format!("(sleep 3; printf harmless > '{}') & wait", marker.display()),
+        ]);
+        assert!(output(backgrounding, Duration::from_secs(1)).is_err());
+
+        std::thread::sleep(Duration::from_secs(4));
+        assert!(
+            !marker.exists(),
+            "a probe's background child outlived the probe's timeout"
+        );
+    }
+
+    /// A probe that answers with far more than a version line is read back
+    /// under the cap, and says how much there was.
+    #[test]
+    fn an_oversized_probe_answer_is_bounded() {
+        let mut noisy = Command::new("sh");
+        noisy.args(["-c", "yes 0123456789abcde | head -n 8192"]);
+        let said = output(noisy, Duration::from_secs(30)).unwrap();
+
+        assert_eq!(said.code, Some(0));
+        assert!(said.out.len() as u64 <= PROBE_MAX + 64);
+        assert!(said.out.ends_with("131072 bytes in all"));
+    }
+
+    /// A probe's files go when the probe does, whether it answered or
+    /// failed. The failing paths leave through `?`, so the removal is in
+    /// `Drop` rather than at the end of the function.
+    #[test]
+    fn a_probe_removes_its_files_however_it_ends() {
+        let probe = Probe::new().unwrap();
+        let (out, err) = (probe.out.clone(), probe.err.clone());
+        create(&out).unwrap();
+        create(&err).unwrap();
+        assert!(out.exists() && err.exists());
+
+        drop(probe);
+        assert!(!out.exists() && !err.exists());
     }
 
     /// A trace path that is taken is refused before anything runs, because

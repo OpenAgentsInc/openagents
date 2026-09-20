@@ -469,6 +469,7 @@ mod tests {
             },
             status,
             output: output.to_string(),
+            bytes: output.len() as u64,
             elapsed: Duration::from_millis(40),
         }
     }

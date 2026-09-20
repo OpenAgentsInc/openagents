@@ -83,6 +83,13 @@ uses, and marks which are implemented and which are only specified.
   job requests from a relay through an Open Responses door.
   `docs/coder/relay-transport.md` is the measured proof that the two ends
   meet, and it holds the per-transport latency and the refusal causes.
+- `crates/supervise` — the one subprocess supervisor `coder` and
+  `coderbench` run other programs through. A job runs in a process group of
+  its own, a deadline or a cancelled caller terminates that group and reaps
+  the direct child before the job reports, and stdout and stderr are held
+  to their caps as they are read. Unix only, stated rather than assumed.
+  Read `docs/coder/subprocesses.md` before changing a deadline, a cap, or a
+  call site that spawns a process.
 - `crates/lev` — the same contract answered by Apple's on-device foundation
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
   helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests
