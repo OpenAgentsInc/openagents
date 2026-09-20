@@ -25,6 +25,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use coder::classify::{questions, shell_questions};
+use coder::delegate::boundary_supported;
 use coder::questions::Fill;
 use coder::runtime::{PROGRAM_QUESTION, Runtime};
 use serde_json::Value;
@@ -64,6 +65,18 @@ fn wire_questions() -> BTreeMap<String, Value> {
 /// `programs/` the selection question is built from.
 fn repository() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Whether this host can put a delegation inside an enforced filesystem
+/// boundary. A host without a backend offers no program with a `delegate`
+/// step, so the option set it would send is not the production one; the case
+/// says so and returns.
+fn boundary() -> bool {
+    if boundary_supported() {
+        return true;
+    }
+    eprintln!("skipping: this host has no filesystem boundary backend (bwrap on Linux)");
+    false
 }
 
 /// The program-selection question, exactly as `runtime::select` sends it
@@ -117,6 +130,9 @@ fn committed_selection() -> BTreeMap<String, Value> {
 /// wording still in `questions/program.json`.
 #[test]
 fn the_selection_question_is_the_production_text() {
+    if !boundary() {
+        return;
+    }
     assert_eq!(
         committed_selection(),
         wire_selection(),
@@ -131,6 +147,9 @@ fn the_selection_question_is_the_production_text() {
 /// suite scoring an option nothing can run.
 #[test]
 fn the_selection_question_offers_none_and_the_resolved_programs() {
+    if !boundary() {
+        return;
+    }
     let wire = wire_selection();
     let criteria = wire["program"]["criteria"]
         .as_object()

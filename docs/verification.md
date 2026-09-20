@@ -52,6 +52,12 @@ FoundationModels tests require the Swift helper, an eligible Apple host, and
 model availability. Build the helper with `./scripts/build-lev-bridge.sh` and
 follow `docs/lev/` for model-backed verification. Tests that conditionally
 return without an available model are not evidence of live inference.
+Coder delegation tests need an enforceable filesystem boundary, `bwrap` on
+Linux with user namespaces enabled. On a host without one, the cases in
+`crates/coder/tests/program_run.rs` and
+`crates/coder/tests/suite_questions.rs` that run or offer a `delegate` step
+print `skipping:` and return, which is not evidence that delegation works.
+Install `bubblewrap` to run them.
 Kev checkpoint conformance, model experiments, hosted Jev calls, and production
 relay/worker proofs require their own documented inputs and records. The
 routine gate does not download weights or authorize new paid measurements.

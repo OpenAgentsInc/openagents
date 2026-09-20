@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use coder::capability::Trust;
-use coder::delegate::WORKTREE_DIR;
+use coder::delegate::{WORKTREE_DIR, boundary_supported};
 use coder::program::Program;
 use coder::questions;
 use coder::runtime::{Host, Inputs, Runtime};
@@ -69,6 +69,18 @@ const QUESTIONS: &[(&str, &str, &str)] = &[
 /// the test runs from.
 fn checkout() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Whether this host can put a delegation inside an enforced filesystem
+/// boundary. A host without a backend refuses every `delegate` step, so a
+/// case that runs one cannot run here; it says so and returns rather than
+/// failing for a tool the machine lacks.
+fn boundary() -> bool {
+    if boundary_supported() {
+        return true;
+    }
+    eprintln!("skipping: this host has no filesystem boundary backend (bwrap on Linux)");
+    false
 }
 
 /// A checkout with one commit, the repository's programs and questions,
@@ -726,6 +738,9 @@ async fn the_host_holds_minutes_even_when_the_executor_does_not() {
 /// by whom.
 #[tokio::test]
 async fn the_check_records_who_holds_each_bound() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let traces = tempfile::tempdir().unwrap();
@@ -761,6 +776,9 @@ async fn the_check_records_who_holds_each_bound() {
 /// and the step that needed it refuses rather than failing six times.
 #[tokio::test]
 async fn an_absent_executor_refuses_the_delegate_step() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let mut inputs = inputs();
@@ -777,6 +795,9 @@ async fn an_absent_executor_refuses_the_delegate_step() {
 /// A program that fans out over nothing is not a fan-out.
 #[tokio::test]
 async fn a_lookup_that_found_no_work_refuses() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let mut inputs = inputs();
@@ -792,6 +813,9 @@ async fn a_lookup_that_found_no_work_refuses() {
 /// that truncates says which work it dropped.
 #[tokio::test]
 async fn the_lookup_holds_to_its_own_bound() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let mut program = fan_out(root);
@@ -858,6 +882,9 @@ async fn the_lookup_holds_to_its_own_bound() {
 /// nobody reviewed.
 #[tokio::test]
 async fn a_lookup_over_its_bound_refuses_rather_than_choosing() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let mut program = fan_out(root);
@@ -1038,6 +1065,9 @@ async fn a_file_source_is_the_path_an_explicit_list_takes() {
 /// #9414 measured stay comparable to the ones this asks for now.
 #[tokio::test]
 async fn a_plan_with_no_collisions_says_nothing_about_collisions() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let traces = tempfile::tempdir().unwrap();
@@ -1073,6 +1103,9 @@ async fn a_plan_with_no_collisions_says_nothing_about_collisions() {
 /// ambition.
 #[tokio::test]
 async fn the_fan_out_runs_at_the_width_the_step_states() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let mut program = fan_out(root);
@@ -1120,6 +1153,9 @@ async fn a_question_with_no_wording_refuses() {
 /// refusal stops the program.
 #[tokio::test]
 async fn an_answer_below_the_floor_stops_the_program() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let mut program = fan_out(root);
@@ -1174,6 +1210,9 @@ async fn agent(root: &Path, program: &'static str) -> Agent {
 /// exercised by the tests above and by nothing a person typed.
 #[tokio::test]
 async fn a_sentence_runs_the_program_through_a_turn() {
+    if !boundary() {
+        return;
+    }
     let machine = machine();
     let root = machine.path();
     let mut agent = agent(root, "delegate-fan-out").await;
@@ -1246,6 +1285,9 @@ async fn a_turn_that_asks_for_no_program_is_unchanged() {
 /// ordinary turn lists none.
 #[tokio::test]
 async fn a_program_chosen_for_a_request_with_no_work_delegates_nothing() {
+    if !boundary() {
+        return;
+    }
     // Both shapes a wrong selection takes: the program that looks the work
     // up first, and the one that hands it straight over. Hosted Jev picked
     // the second one for two of thirty-one real turns, so this is the case
