@@ -1,0 +1,159 @@
+{
+  "door": "kev-4b",
+  "started_utc": "2026-09-20T21:20:21.353565+00:00",
+  "cost": "unmetered_local_lane",
+  "outer_deadline_seconds": 7200,
+  "device": "metal",
+  "dtype": "fp32",
+  "source": "5301b2141e9a24704fdc3bd6e0180361ebb60a78",
+  "git_status": "?? .claude/\n",
+  "chip": "Apple M5 Max",
+  "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "load_before": [
+    2.3369140625,
+    3.49755859375,
+    3.96240234375
+  ],
+  "head_meta": {
+    "base": "Qwen/Qwen3-4B-Base",
+    "base_revision": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+    "lora": 16,
+    "head_dim": 256,
+    "option_isolation": false,
+    "special_embeddings": false,
+    "holdout": [],
+    "args": {
+      "base": "Qwen/Qwen3-4B-Base",
+      "n_per_source": 1000,
+      "epochs": 2,
+      "lr": 5e-05,
+      "lora": 16,
+      "accum": 2,
+      "holdout": "",
+      "perm_kl": 0.0,
+      "perm_frac": 0.3,
+      "ord_w": 0.0,
+      "suite": "/root/evals/v4/decision-v4",
+      "train_sources": "",
+      "device": "cuda",
+      "batch": 4,
+      "dtype": "bf16",
+      "checkpointing": 1,
+      "option_isolation": 0,
+      "special_embeddings": 0,
+      "head_dim": 256,
+      "lora_targets": "all",
+      "base_revision": "",
+      "p_none": 0.1,
+      "p_none_distract": 0.12,
+      "p_distract": 0.15,
+      "p_none_pair": 0.25,
+      "synthetic_repeat": 1,
+      "public_frac": 1.0,
+      "out": "/runs/lowdrift-4b-v4/01-trial-1/checkpoint",
+      "seed": 0
+    },
+    "suite_sha256": "1b33e566d114f9eafeff55b36c221fadb2a4ae358a1b9cc68006e82c7cfad8f1"
+  },
+  "hashes": {
+    "/tmp/openagents-supervision/root-target/release/kev-serve": "4a5659b2147d6154c1d54d315253cf720bd18742a00b4d0466c56f9b084b2216",
+    "/tmp/openagents-supervision/root-target/debug/gym": "bdf59567fc4ebd5e68702be109a4d04f1a02be1cbeccc07765ad1f473d102dee",
+    "/Users/christopherdavid/work/kev-artifacts/kev-4b/head_meta.json": "ceada300f1c8cc4bab21eaf99e8036636f1220c93caec84b409ff0c9994e1e14",
+    "/Users/christopherdavid/work/openagents/crates/gym/suites/support-v2-three-way.json": "226d6d096667fa0968e8641500e81acf5dbe4b5705bec25fcee7e61b019b335b",
+    "/Users/christopherdavid/work/openagents/crates/gym/questions/support-v2-three-way-v1.json": "df85215146ab453c3c38198fafd310b6fe4e2ae316205fd9160ec2a117352f9a"
+  },
+  "server_command": [
+    "/tmp/openagents-supervision/root-target/release/kev-serve",
+    "--adapter-dir",
+    "/Users/christopherdavid/work/kev-artifacts/kev-4b",
+    "--base-dir",
+    "/Users/christopherdavid/work/kev-artifacts/qwen3-4b",
+    "--default",
+    "kev-4b",
+    "--device",
+    "metal",
+    "--dtype",
+    "fp32",
+    "--port",
+    "11459"
+  ],
+  "eval_command": [
+    "/tmp/openagents-supervision/root-target/debug/gym",
+    "eval",
+    "--suite",
+    "crates/gym/suites/support-v2-three-way.json",
+    "--door",
+    "kev-4b=http://127.0.0.1:11459",
+    "--timeout",
+    "300",
+    "--record",
+    "/tmp/openagents-apple-handoff/quiet-kev-4b.jsonl",
+    "--fit"
+  ],
+  "loaded_content_identity": {
+    "schema": "openagents.kev.artifacts.v1",
+    "digest": "sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9",
+    "files": {
+      "adapter/adapter_config.json": {
+        "sha256": "46d9f1113377e8d0032f0548ae03b270153b2b7ba6dd26b63b244d29487e00e6",
+        "bytes": 1183
+      },
+      "adapter/adapter_model.safetensors": {
+        "sha256": "c3101a8a563cff76b75a7f9cec94fe76c1ddbe1f03a5d249fa03abe733156f66",
+        "bytes": 132184864
+      },
+      "adapter/head.safetensors": {
+        "sha256": "246e86909fc90033dd078029fb2feb890766a681f13f8164f774d422b6cc0a8b",
+        "bytes": 5245232
+      },
+      "adapter/head_meta.json": {
+        "sha256": "ceada300f1c8cc4bab21eaf99e8036636f1220c93caec84b409ff0c9994e1e14",
+        "bytes": 1014
+      },
+      "adapter/tokenizer.json": {
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "bytes": 11422654
+      },
+      "base/config.json": {
+        "sha256": "304b2545a258d35620f1d4bf46940c0471d9baa00715ff8e77f84c2fca5057c1",
+        "bytes": 727
+      },
+      "base/model-00001-of-00003.safetensors": {
+        "sha256": "4c807e2503d68ae373d508689d00a41f4b33f33c2536da97ab81a20caddc1241",
+        "bytes": 3957900840
+      },
+      "base/model-00002-of-00003.safetensors": {
+        "sha256": "f4707585548b2fc75a6b1d732e8465c62040a8699903c32850781beeb9b27826",
+        "bytes": 3987450520
+      },
+      "base/model-00003-of-00003.safetensors": {
+        "sha256": "c7b1aa8fb672de2e00423c99876926022e50b18d4f0d140670788510a27f9965",
+        "bytes": 99630640
+      }
+    }
+  },
+  "execution_identity": {
+    "attention": "eager-block-causal-v1",
+    "backend": "metal",
+    "dtype": "f32",
+    "head_dtype": "f32",
+    "lora_merge": "fp32-before-cast-v1",
+    "max_branch": "8192",
+    "max_state": "8192",
+    "option_isolation": "false"
+  },
+  "eval_started_utc": "2026-09-20T21:20:41.602860+00:00",
+  "eval_exit_code": 0,
+  "rows": 157,
+  "refused": 0,
+  "rows_sha256": "98b877c5917cda74633415040cee5dcf454e02d552533e56911a68f10b855cf0",
+  "validated_complete_pass": true,
+  "cleanup_errors": [],
+  "finished_utc": "2026-09-20T21:21:05.708241+00:00",
+  "wall_seconds": 44.355925208,
+  "load_after": [
+    2.33447265625,
+    3.34521484375,
+    3.8818359375
+  ]
+}

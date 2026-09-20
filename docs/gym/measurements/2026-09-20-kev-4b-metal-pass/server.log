@@ -1,0 +1,5 @@
+kev-serve: loading kev-4b: /Users/christopherdavid/work/kev-artifacts/qwen3-4b + /Users/christopherdavid/work/kev-artifacts/kev-4b
+kev-serve: 1 variants loaded, default kev-4b
+kev-serve: memory budget 69260 MiB, 2 forwards at once across variants
+kev-serve: kev-4b: one forward at 8192 tokens needs 26112 MiB, 2 at once
+kev-serve: listening on http://127.0.0.1:11459

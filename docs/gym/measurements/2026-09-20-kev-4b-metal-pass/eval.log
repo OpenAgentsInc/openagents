@@ -1,0 +1,33 @@
+# Suite scores: `support-v2-three-way`
+
+196 items, 79 calibration, 78 development, 39 locked and unread, digest `54fbf4137c3de538`.
+
+The 196 items of support-v2, repartitioned three ways: calibration fits a map, development chooses between maps, and locked is read once and recorded. The items and their labels are unchanged from support-v2; only the partition field differs, so this file carries its own digest and its own name. A 100-item sample was relabelled by an independent second reader on 2026-09-20 (support-v2-three-way-second-annotator.json); the items the two readers split on are listed under `disputes` rather than relabelled.
+
+Exposure: 20 of the locked partition's items were training data, through training/lev-adapter/convert.py, which trained every Lev adapter from the support-v2 calibration split before this suite locked 20 of those 98 items; fixed forward on 2026-09-20 (openagents#9399). The ledger refuses that partition to any door that serves an adapter. Confirm adapted doors on `support-v2-unseen` instead.
+
+Judged by `probability-v2`, digest `gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758`.
+
+Asked as `support-v2-three-way-v1`, digest `9745b1d9a0f38288`. The suite digest covers the items and the question set covers the text, so a reword is a candidate against these items rather than another suite.
+
+## kev-4b
+
+Checkpoint: `sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9`. Execution: `{"attention": "eager-block-causal-v1", "backend": "metal", "dtype": "f32", "head_dtype": "f32", "lora_merge": "fp32-before-cast-v1", "max_branch": "8192", "max_state": "8192", "option_isolation": "false"}`.
+Identity: base `906bfd4b4dc7f14ee4320094d8b41684abff8539`. Estimator `unreported`.
+
+Recorded 157 rows in `/tmp/openagents-apple-handoff/quiet-kev-4b.jsonl`.
+
+157 items asked: 157 scored, 0 refused by the door, 0 lost to the harness and unrecorded.
+
+| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| calibration, raw | 0.71 | 0.122 | 0.165 | 0.483 | 3 | 79 |
+| development, raw | 0.78 | 0.050 | 0.131 | 0.703 | 2 | 78 |
+
+
+| Family | Fitted on | Raw ECE | Mapped ECE | Raw NLL | Mapped NLL | Raw Brier | Mapped Brier | Verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `routing` | 40 | 0.121 | 0.084 | 1.032 | 0.575 | 0.143 | 0.193 | failed: brier_stays_within_tolerance (Brier 0.143 to 0.193 against a ceiling of 0.157, the 10% the binning is allowed to cost) |
+| `urgency` | 24 | 0.085 | 0.133 | 0.337 | 0.498 | 0.113 | 0.157 | unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell) |
+| `severity` | 15 | 0.102 | 0.100 | 0.391 | 0.514 | 0.129 | 0.167 | unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell) |
+
