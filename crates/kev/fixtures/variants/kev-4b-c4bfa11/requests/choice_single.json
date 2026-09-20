@@ -1,0 +1,36 @@
+{
+  "request": {
+    "state": "The button is greyed out.",
+    "model": "kev-latest",
+    "questions": {
+      "only": {
+        "type": "choice",
+        "instructions": "Pick the only option.",
+        "criteria": {
+          "sole": null
+        }
+      }
+    }
+  },
+  "record": {
+    "state": "The button is greyed out.",
+    "questions": [
+      {
+        "instr": "Pick the only option.",
+        "options": [
+          "sole"
+        ],
+        "label": 0
+      }
+    ]
+  },
+  "meta": [
+    {
+      "id": "only",
+      "type": "choice",
+      "keys": [
+        "sole"
+      ]
+    }
+  ]
+}

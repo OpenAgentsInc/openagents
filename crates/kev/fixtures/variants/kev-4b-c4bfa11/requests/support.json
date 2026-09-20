@@ -1,0 +1,85 @@
+{
+  "request": {
+    "state": "Shoes arrived two weeks late and in the wrong size. Also I see two charges on my card.",
+    "model": "kev-latest",
+    "questions": {
+      "department": {
+        "type": "choice",
+        "instructions": "Which team should handle this?",
+        "criteria": {
+          "returns": "Exchanges, refunds, wrong or damaged items",
+          "shipping": "Delivery status, delays, lost packages",
+          "billing": "Charges, invoices, payment problems"
+        }
+      },
+      "escalate": {
+        "type": "noul",
+        "instructions": "Does this need urgent human attention?"
+      },
+      "frustration": {
+        "type": "score",
+        "instructions": "How frustrated is the customer?",
+        "criteria": [
+          "Calm",
+          "Frustrated",
+          "Very angry"
+        ]
+      }
+    }
+  },
+  "record": {
+    "state": "Shoes arrived two weeks late and in the wrong size. Also I see two charges on my card.",
+    "questions": [
+      {
+        "instr": "Which team should handle this?",
+        "options": [
+          "returns: Exchanges, refunds, wrong or damaged items",
+          "shipping: Delivery status, delays, lost packages",
+          "billing: Charges, invoices, payment problems"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "Does this need urgent human attention?",
+        "options": [
+          "no",
+          "yes"
+        ],
+        "label": 0
+      },
+      {
+        "instr": "How frustrated is the customer?",
+        "options": [
+          "Calm",
+          "Frustrated",
+          "Very angry"
+        ],
+        "label": 0
+      }
+    ]
+  },
+  "meta": [
+    {
+      "id": "department",
+      "type": "choice",
+      "keys": [
+        "returns",
+        "shipping",
+        "billing"
+      ]
+    },
+    {
+      "id": "escalate",
+      "type": "noul"
+    },
+    {
+      "id": "frustration",
+      "type": "score",
+      "legend": {
+        "0": "Calm",
+        "1": "Frustrated",
+        "2": "Very angry"
+      }
+    }
+  ]
+}

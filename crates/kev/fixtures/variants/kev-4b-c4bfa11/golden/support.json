@@ -1,0 +1,51 @@
+{
+  "probs": [
+    [
+      0.9194620251655579,
+      0.032693326473236084,
+      0.04784464091062546
+    ],
+    [
+      0.2687229514122009,
+      0.7312770485877991
+    ],
+    [
+      0.0004218154645059258,
+      0.6964182257652283,
+      0.3031599521636963
+    ]
+  ],
+  "answers": {
+    "department": {
+      "type": "choice",
+      "choice": "returns",
+      "confidence": 0.88,
+      "probabilities": {
+        "returns": 0.92,
+        "shipping": 0.03,
+        "billing": 0.05
+      }
+    },
+    "escalate": {
+      "type": "noul",
+      "noul": 0.73
+    },
+    "frustration": {
+      "type": "score",
+      "score": 1.3,
+      "legend": {
+        "0": "Calm",
+        "1": "Frustrated",
+        "2": "Very angry"
+      },
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.7,
+        "2": 0.3
+      },
+      "confidence": 0.85
+    }
+  },
+  "tokens": 101,
+  "output_tokens": 158
+}
