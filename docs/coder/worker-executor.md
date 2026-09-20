@@ -143,6 +143,12 @@ task, N min` per admitted job, then `answered in N ms` or `declined:
 <code>` for each; the job IDs are the request event IDs the terminal's
 trace records under `relayed.request`.
 
+An admitted delegation is announced before it runs: the door publishes one
+encrypted kind `27000` status feedback event, `status: processing`, as it
+admits the job and before the executor starts, so a terminal waiting on
+its contact deadline hears the worker at admission and not only when the
+executor's whole answer arrives.
+
 ## Failures you will meet
 
 - `names no capability this host can see` — the workdir is outside the

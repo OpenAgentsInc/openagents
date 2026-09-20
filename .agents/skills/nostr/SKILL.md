@@ -188,6 +188,14 @@ Opening a socket, handshake and AUTH together, is bounded by
 looks identical to an absent worker from the terminal — check the
 worker's stderr before blaming the relay.
 
+A worker whose door is a local executor (`CODER_EXECUTOR`) publishes one
+encrypted kind-`27000` feedback event,
+`{"type": "status", "status": "processing"}`, as soon as it admits a
+delegation and before the executor starts. The terminal counts any
+well-formed kind-`27000` status of `queued`, `processing`, or `error` as
+contact, so its 30-second contact deadline ends at admission rather than
+at the executor's answer.
+
 Environment, terminal side: `CODER_WORKER` (worker `npub` or hex pubkey)
 and `CODER_RELAY` (`ws://` or `wss://` URL). The identity is
 `CODER_SECRET_KEY` or `CODER_NSEC`, or, when neither is set, the key at
@@ -210,8 +218,12 @@ worker prints its pubkey on start; that value is what the terminal's
 refusal path. `CODER_WORKER_ALLOW` (comma-separated `npub` or hex keys)
 limits which customers the worker answers; anyone else gets a typed
 `not_admitted` status, never silence. Unset admits everyone, which is
-right only on a local relay. The worker's key and the terminal's key must
-differ.
+right only on a local relay. `CODER_WORKER_JOBS` bounds how many jobs
+the worker runs at once; unset, an executor door runs as many as its
+manifest's `concurrent_max` and a model door runs four. A request past
+the bound is refused before anything runs, with a typed `busy` status,
+and the refusal releases the slot. The worker's key and the terminal's
+key must differ.
 
 `docs/coder/relay-transport.md` is the measured proof that both ends
 meet, with per-transport latency and refusal causes.
