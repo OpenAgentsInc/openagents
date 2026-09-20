@@ -164,19 +164,22 @@ gateway and model, on a machine that was again not quiet:
 
 | Relay round trip | p50 | min | max | n |
 | --- | --- | --- | --- | --- |
-| Client-observed minus worker-observed | 470 ms | 441 ms | 514 ms | 6 |
-| Deployed worker (`deploy/systemd/coder-worker.service`, `coder -p` from another machine) | pending | pending | pending | — |
-
-The deployed row is pending until the service in
-[`deploy/README.md`](../../deploy/README.md) runs on the operator's host
-and a run from a machine that is not that host is recorded here with its
-command; nothing above is extrapolated to it
-([#9435](https://github.com/OpenAgentsInc/openagents/issues/9435)).
+| Client-observed minus worker-observed, one host | 470 ms | 441 ms | 514 ms | 6 |
+| Deployed worker (`deploy/systemd/coder-worker.service`, `coder -p` from another machine) | 4.0 s | 3.9 s | 5.1 s | 6 |
 
 470 ms against the earlier 471 ms. The two runs are a day apart with
 different code on the client, so the agreement is worth more than either
 number: splitting the waits and carrying the model back did not move the
 price of the transport.
+
+The deployed row is a different measurement from the one above it and is
+not comparable to it: the worker answers through `devin-local`, so the
+worker-observed time is a Devin CLI turn (7.9–21.9 s), not a gateway
+generation, and the client and worker are on different machines and
+networks. What the row holds is the price of the public relay round trip
+for a single turn: `coder -p` wall clock minus the worker's own `answered
+in` line, in the setup under [Deployed](#deployed) below
+([#9435](https://github.com/OpenAgentsInc/openagents/issues/9435)).
 
 All six relay answer steps name `google/gemini-3.8-flash`, which is what
 the worker was answering through. Before the fix all six would have read
@@ -449,13 +452,61 @@ busy` in the worker's log, and in the trace four delegations with
 reported `2 verified` and four faults, which is the correct grade for a
 worker that could not take the work.
 
+## Deployed
+
+On 2026-09-20 the worker in [`deploy/README.md`](../../deploy/README.md)
+ran as `coder-worker.service` on a GCE VM (`e2-standard-4`, Debian 12,
+`us-central1-a`, beside the Cloud Run relay) at `0757355c1d`, with
+`CODER_EXECUTOR=devin-local`, its own Devin CLI login, its own
+`capability-trust` approval, `CODER_WORKER_JOBS=6`, and a `CODER_WORKER_ALLOW`
+of one Coder public key. The driving machine was a different host on a
+different network with `CODER_RELAY=wss://relay.openagents.com` and
+`CODER_WORKER=2854d7da72ded5d6b62fa6107ff464129d510235c5017980c40a27cc9134f9ef`.
+
+Six single turns, `coder -p --json "In one sentence, what does a Nostr
+relay do?"`, each answered. Client wall clock against the worker's
+`answered in` line:
+
+| Turn | Client wall | Worker `answered in` | Round trip |
+| --- | --- | --- | --- |
+| 1 | 27.0 s | 21.9 s | 5.1 s |
+| 2 | 22.7 s | 18.8 s | 3.9 s |
+| 3 | 13.8 s | 9.8 s | 4.0 s |
+| 4 | 19.4 s | 15.3 s | 4.1 s |
+| 5 | 12.2 s | 8.3 s | 3.9 s |
+| 6 | 12.0 s | 7.9 s | 4.1 s |
+
+The client wall clock includes the terminal's own start (identity load,
+Jev classification, trace open) as well as the relay hop each way, so the
+round-trip column is an upper bound on the transport.
+
+Then the fan-out, `coderbench run devin-fan-out-six` with
+`CODER_DELEGATE=devin-relay` from a checkout at the task's pinned commit:
+`6 started, 6 verified`, no faults, workspace unchanged, 23.4 s for the
+turn. The worker's journal shows one `probed`, six `delegated: reading
+task` admitted within two seconds of each other, and six `answered in`
+lines of 10.1–18.8 s. Against the same six tasks through a local relay and
+worker on one host (17.8 s, above), the deployed path costs about 6 s
+more, which is the public relay and the VM's Devin CLI rather than
+anything in Coder.
+
+Two deployment defects surfaced and are fixed in the assets:
+
+- A trust store at `/var/lib/coder-worker/capability-trust.json` made the
+  boundary seal `/var/lib/coder-worker`, which contains the writable grant,
+  and every job was refused `boundary_unavailable`. The store now lives
+  under `/var/lib/coder-worker/.openagents/`.
+- The base unit's `ProcSubset=pid` and `@system-service` syscall filter
+  stopped `bwrap` (`Can't read /proc/sys/kernel/overflowuid`). The
+  executor drop-in now sets `ProcSubset=all` and adds `@mount`.
+
 ## What this does not prove
 
-- **No worker is deployed.** `relay.openagents.com` had nothing listening
-  for kind `25900` before this proof and has nothing listening after it.
-  The worker that answered was `coder-worker` run from a laptop for the
-  length of the measurement. The transport is proven; the service is not
-  deployed.
+- **One worker, one customer.** The deployed worker admits one Coder
+  public key. Nothing here measures the relay under several customers or
+  a worker under load beyond six concurrent jobs.
+- **Wall clock, not p50.** Six turns and one fan-out are enough to place
+  the round trip in the 4–5 s band; they are not a distribution.
 - **The golden did not pass.** It failed identically on both transports,
   which is the transport claim and not a claim about the path Coder takes.
   Making `devin-fan-out-six` pass needs the program runtime,

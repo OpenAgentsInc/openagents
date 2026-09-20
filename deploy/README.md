@@ -173,15 +173,23 @@ same paths the unit sees:
 
 ```sh
 sudo install -d -o coder-worker -g coder-worker -m 0750 \
-  /var/lib/coder-worker/exec /var/lib/coder-worker/jobs
+  /var/lib/coder-worker/exec /var/lib/coder-worker/jobs \
+  /var/lib/coder-worker/.openagents
 sudo -u coder-worker env HOME=/var/lib/coder-worker \
-  CODER_CAPABILITY_TRUST=/var/lib/coder-worker/capability-trust.json \
+  CODER_CAPABILITY_TRUST=/var/lib/coder-worker/.openagents/capability-trust.json \
   /opt/coder-worker/current/capability-trust approve devin-local \
     --in /opt/openagents --writable /var/lib/coder-worker/jobs
 sudo -u coder-worker env HOME=/var/lib/coder-worker \
-  CODER_CAPABILITY_TRUST=/var/lib/coder-worker/capability-trust.json \
+  CODER_CAPABILITY_TRUST=/var/lib/coder-worker/.openagents/capability-trust.json \
   /opt/coder-worker/current/capability-trust list
 ```
+
+Keep the trust store in its own directory. The delegation boundary seals
+the directory that holds the store, and a writable grant inside a sealed
+directory is refused with `boundary_unavailable: writable path
+/var/lib/coder-worker/jobs overlaps protected path /var/lib/coder-worker`.
+A store at `/var/lib/coder-worker/capability-trust.json` seals the whole
+state directory; one under `.openagents/` seals only that subdirectory.
 
 `/opt/openagents` stands for the checkout that holds the manifest; the
 adapter it names must be installed where the manifest expects it and
