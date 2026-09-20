@@ -1,2 +1,7 @@
 /target
 /.coder/
+
+# Local build products; measurement records and fixtures stay tracked.
+/swift/lev-bridge/.build/
+/training/**/__pycache__/
+/training/**/*.py[co]
