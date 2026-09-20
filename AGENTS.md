@@ -31,6 +31,9 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
   question set, a threshold, or a client call. The Rust SDK lives in
   `crates/jev`.
 
+[`docs/glossary.md`](docs/glossary.md) defines the terms this repository
+uses, and marks which are implemented and which are only specified.
+
 ## Crates
 
 - `crates/gym` — the measurement and control plane for decision models:
