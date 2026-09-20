@@ -102,6 +102,45 @@ No property test found a defect in the crate; the directory holds only
 bech32 payload that legitimately exceeds 90 characters, and a wrong bound
 for the padding slack) and were fixed in the tests, not kept as fixtures.
 
+## Search equivalence with the relay
+
+NIP-50 `search` is judged twice in production: live delivery calls
+`nostr::domain::search_matches` through `Filter::matches`, and replay and
+COUNT run the relay's SQL predicate
+(`position(term IN lower(content COLLATE "C"))` over the term array, with
+the excluded kind list inlined) in `crates/nostr-relay/src/store/statements.rs`.
+A19 under #9428 gave both one contract; this fixture makes the contract a
+test that both crates read.
+
+`tests/fixtures/nip50/search-equivalence.json` is the oracle: a corpus of
+32 `(kind, content)` entries and 38 searches, each with its validity and
+the corpus indices it must match. The corpus covers ASCII case folding,
+substring rather than lexeme matching (`cat` in `catwalk` and
+`concatenate`), punctuation, a newline in the content, `%`, `_`, and `\`
+(literal under `position`, unlike `LIKE`), precomposed and combining
+accents, `ß` against `SS`, Cyrillic, an emoji, the Kelvin sign against
+`k`, every kind in `SEARCH_EXCLUDED_KINDS` beside kind 30023, `key:value`
+extensions, and the 256-character bound.
+
+- `crates/nostr/tests/search_equivalence.rs` judges every pair with
+  `search_matches` and with `Filter::matches`, and checks `Filter::validate`
+  against the fixture's `valid` flag. It also reads the older
+  `tests/fixtures/nip50/search.json`, which no test read before.
+- `search_equivalence` in `crates/nostr-relay/tests/store_postgres.rs`
+  admits the corpus into a disposable Postgres through historical
+  admission, so the excluded kinds land in the table and the query
+  predicate rather than admission decides them. For each search it
+  requires: every replayed row satisfies `Filter::matches`; the corpus
+  members replay equals the fixture list; `search_matches` over the corpus
+  equals the same list; `count_filters` equals the replay length; and an
+  invalid search is refused by the store as a domain error.
+
+Run on 2026-09-20 against PostgreSQL 16 (`initdb --no-locale -E UTF8`):
+both halves pass, so no divergence was found between the SQL and the Rust
+rule on this corpus, and no regression fixture was needed. Changing any
+expected index list fails the Postgres half with the search named (checked
+by editing `dog` to also expect index 5).
+
 ## Miri
 
 Nightly installs on this machine, so Miri ran on the pure primitive tests
@@ -146,5 +185,6 @@ export CARGO_TARGET_DIR=$HOME/target-nostr
 cargo fmt --all --check
 cargo clippy -p nostr --all-targets -- -D warnings
 cargo test -p nostr
+PATH=/usr/lib/postgresql/16/bin:$PATH ./scripts/test-postgres.sh  # relay half of the search oracle
 PROPTEST_CASES=3000 cargo test -p nostr --test properties --test nip44_differential
 ```

@@ -184,6 +184,7 @@ async fn m2_store_contract_against_postgres() {
     deletion_before_event(&database_url, &mut store).await;
     concurrent_deletion_race(&database_url, &mut store).await;
     concurrent_media_quota(&database_url, &mut store).await;
+    search_equivalence(&mut store).await;
     policy_and_fts(&database_url, &mut store).await;
 
     let high_water = store.latest_ingest_seq().await.unwrap();
@@ -630,6 +631,100 @@ async fn policy_and_fts(database_url: &str, store: &mut Store) {
 
     drop(admin);
     driver.await.unwrap().unwrap();
+}
+
+/// Judge the shared NIP-50 corpus through the replay and COUNT SQL and
+/// require the verdicts to equal `search_matches`, the rule live delivery
+/// applies. `crates/nostr/tests/search_equivalence.rs` holds the pure
+/// crate's half of the same fixture.
+async fn search_equivalence(store: &mut Store) {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/nip50/search-equivalence.json"
+    ))
+    .unwrap();
+    let corpus = fixture["corpus"].as_array().unwrap();
+    let searches = fixture["searches"].as_array().unwrap();
+
+    let mut events = Vec::with_capacity(corpus.len());
+    for (index, entry) in corpus.iter().enumerate() {
+        let kind = u16::try_from(entry["kind"].as_u64().unwrap()).unwrap();
+        let content = entry["content"].as_str().unwrap();
+        let mut tags = Vec::new();
+        if (30_000..40_000).contains(&kind) {
+            tags.push(Tag::new(vec!["d".into(), format!("search-{index}")]));
+        }
+        if kind == 1_059 {
+            tags.push(Tag::new(vec!["p".into(), "2".repeat(64)]));
+        }
+        let created_at = 5_000 + u64::try_from(index).unwrap();
+        let event = signed_event(40, created_at, kind, tags, content);
+        // The corpus carries every search-excluded kind; historical
+        // admission stores them without the Block ingest validators so the
+        // query predicate, not admission, decides whether they match.
+        let outcome = store.admit_historical(&event, NOW).await.unwrap();
+        assert!(
+            matches!(outcome, AdmissionOutcome::Stored { .. }),
+            "corpus entry {index} ({kind}, {content:?}) was not stored: {outcome:?}"
+        );
+        events.push(event);
+    }
+
+    for case in searches {
+        let search = case["search"].as_str().unwrap();
+        let filter = Filter {
+            search: Some(search.to_owned()),
+            ..Filter::default()
+        };
+        let expected = case["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|index| usize::try_from(index.as_u64().unwrap()).unwrap())
+            .collect::<Vec<_>>();
+        let replayed = store.query_filter(&filter, NOW, 1_000).await;
+        if !case["valid"].as_bool().unwrap() {
+            assert!(
+                matches!(replayed, Err(StoreError::Domain(_))),
+                "replay accepted invalid search {search:?}: {replayed:?}"
+            );
+            continue;
+        }
+        let replayed = replayed.unwrap();
+        for stored in &replayed {
+            assert!(
+                filter.matches(&stored.event),
+                "replay returned an event live delivery rejects for search {search:?}: kind {} content {:?}",
+                stored.event.kind,
+                stored.event.content
+            );
+        }
+        let from_corpus = events
+            .iter()
+            .enumerate()
+            .filter(|(_, event)| replayed.iter().any(|stored| stored.event.id == event.id))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            from_corpus, expected,
+            "replay membership for search {search:?}"
+        );
+        let live = events
+            .iter()
+            .enumerate()
+            .filter(|(_, event)| filter.matches(event))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        assert_eq!(live, expected, "live membership for search {search:?}");
+        let counted = store
+            .count_filters(std::slice::from_ref(&filter), NOW, 1_000, &[])
+            .await
+            .unwrap();
+        assert_eq!(
+            counted,
+            Some(replayed.len()),
+            "COUNT disagrees with replay for search {search:?}"
+        );
+    }
 }
 
 async fn least_privilege_runtime(database_url: &str) {
