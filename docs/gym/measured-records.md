@@ -11,14 +11,14 @@ can check rather than trust.
 
 The flow is three commands, each one verifiable on its own:
 
-1. Build the suite. `crates/gym/suites/build_caller_v1.py` takes a JSONL
-   file of the caller's records — `family`, `kind`, `state`, `truth`, and
-   the `question` the item asks — and writes a suite and a question set
-   under one name. The caller names the label source, the labelling rule,
-   the data's origin, and the licence the measurement runs under:
+1. Build the suite. `gym build` takes a JSONL file of the caller's
+   records — `family`, `kind`, `state`, `truth`, and the `question` the
+   item asks — and writes a suite and a question set under one name. The
+   caller names the label source, the labelling rule, the data's origin,
+   and the licence the measurement runs under:
 
    ```text
-   python3 crates/gym/suites/build_caller_v1.py \
+   cargo run -p gym --bin gym -- build \
        --input acme-records.jsonl \
        --name caller-acme-v1 \
        --label-source acme \

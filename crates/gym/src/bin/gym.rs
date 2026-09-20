@@ -120,6 +120,28 @@ struct Options {
     draws: Option<String>,
     /// Where `report` writes the record; stdout by default.
     out: Option<String>,
+    /// The caller's JSONL file `build` reads.
+    input: Option<String>,
+    /// The suite's name, and the question set's id.
+    name: Option<String>,
+    /// Who the caller's labels are.
+    label_source: Option<String>,
+    /// How the caller's labels were produced.
+    label_rule: Option<String>,
+    /// Where the caller's data came from.
+    source: Option<String>,
+    /// The caller's licence statement for measurement use.
+    licence: Option<String>,
+    /// The suite's creation date; today by default.
+    created: Option<String>,
+    /// A description to use instead of the generated one.
+    description: Option<String>,
+    /// `family=ceiling` pairs for the provenance's agreement map.
+    agreement: Vec<String>,
+    /// Where `build` writes the suite.
+    suite_out: Option<String>,
+    /// Where `build` writes the question set.
+    questions_out: Option<String>,
 }
 
 fn main() {
@@ -138,6 +160,7 @@ fn main() {
         "latency" => run(latency_command(options)),
         "report" => run(report_command(&options)),
         "verify" => run(verify_command(&options)),
+        "build" => run(build_command(&options)),
         "regress" => run(regress_command(&options)),
         "" | "help" | "--help" | "-h" => {
             println!("{USAGE}");
@@ -160,6 +183,7 @@ gym permute  measure how much option order moves the answer, or read it back
 gym latency  measure how much wall clock moves when nothing else does
 gym report   render a measured record from recorded rows
 gym verify   walk a store's receipt chain and say where it breaks
+gym build    turn a caller's labelled JSONL into a suite and question set
 gym regress  compare a door with its own last recorded run
 
   --door name=url     a door to ask; repeatable
@@ -181,6 +205,17 @@ gym regress  compare a door with its own last recorded run
   --from path         a store `merge` folds into `--store`; repeatable
   --blocks n          how many passes `latency` makes; 8 by default
   --out path          the file `report` writes; stdout by default
+  --input path        the caller's JSONL `build` reads
+  --name id           the suite's name, and the question set's id
+  --label-source who  whose labels the records carry
+  --label-rule rule   how the labels were produced, in one sentence
+  --source text       where the caller's data came from
+  --licence text      the caller's licence statement for measurement use
+  --created date      the suite's creation date; today by default
+  --description text  a description to use instead of the generated one
+  --agreement f=c     the ceiling a family's labels rest on; repeatable
+  --suite-out path    where `build` writes the suite; `<name>.json` here
+  --questions-out p   where `build` writes the question set
   --timeout seconds   how long one call to a `--door` may take; the client's
                       ten seconds by default, and worth raising on a busy
                       machine, because a timeout loses the item entirely
@@ -224,6 +259,17 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--items" => options.items = args.next(),
             "--from" => options.from.extend(args.next()),
             "--out" => options.out = args.next(),
+            "--input" => options.input = args.next(),
+            "--name" => options.name = args.next(),
+            "--label-source" => options.label_source = args.next(),
+            "--label-rule" => options.label_rule = args.next(),
+            "--source" => options.source = args.next(),
+            "--licence" => options.licence = args.next(),
+            "--created" => options.created = args.next(),
+            "--description" => options.description = args.next(),
+            "--agreement" => options.agreement.extend(args.next()),
+            "--suite-out" => options.suite_out = args.next(),
+            "--questions-out" => options.questions_out = args.next(),
             "--timeout" => options.timeout = args.next().and_then(|value| value.parse().ok()),
             other => eprintln!("unknown flag {other}"),
         }
@@ -1583,6 +1629,61 @@ fn verify_command(options: &Options) -> Result<(), String> {
             Err(detail)
         }
     }
+}
+
+/// A caller's labelled file becomes a pinned suite and its question set.
+///
+/// The validation and partitioning live in [`gym::build`]; this is the
+/// file handling around it. The default output paths are the directories
+/// the committed suites and question sets live in, so a suite built from a
+/// checkout lands where `gym eval` looks for it.
+fn build_command(options: &Options) -> Result<(), String> {
+    fn needed(flag: &str, value: &Option<String>) -> Result<String, String> {
+        value.clone().ok_or_else(|| format!("build needs --{flag}"))
+    }
+    let mut spec = gym::build::Spec::new(
+        needed("input", &options.input)?,
+        needed("name", &options.name)?,
+        needed("label-source", &options.label_source)?,
+        needed("label-rule", &options.label_rule)?,
+        needed("source", &options.source)?,
+        needed("licence", &options.licence)?,
+    );
+    if let Some(created) = &options.created {
+        spec.created = created.clone();
+    }
+    spec.description = options.description.clone();
+    if let Some(gate) = &options.gate {
+        spec.gate = gate.clone();
+    }
+    spec.agreement = options.agreement.clone();
+
+    let built = gym::build::build(&spec)?;
+    let suite_out = options
+        .suite_out
+        .clone()
+        .unwrap_or_else(|| format!("crates/gym/suites/{}.json", spec.name));
+    let questions_out = options
+        .questions_out
+        .clone()
+        .unwrap_or_else(|| format!("crates/gym/questions/{}.json", spec.name));
+    for (path, document) in [
+        (&suite_out, &built.suite),
+        (&questions_out, &built.questions),
+    ] {
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            std::fs::create_dir_all(parent).map_err(|error| format!("{path}: {error}"))?;
+        }
+        let text = serde_json::to_string_pretty(document).map_err(|error| error.to_string())?;
+        std::fs::write(path, text + "\n").map_err(|error| format!("{path}: {error}"))?;
+        println!("wrote {path}");
+    }
+    println!("digest {}", built.digest);
+    println!(
+        "{} items, {} shared and {} per-item question families",
+        built.items, built.family_keyed, built.item_keyed
+    );
+    Ok(())
 }
 
 /// One side of a comparison: a door, and the question set it was asked.

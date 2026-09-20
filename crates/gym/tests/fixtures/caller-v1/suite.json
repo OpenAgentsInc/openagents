@@ -1,244 +1,245 @@
 {
- "schema": "openagents.gym.suite.v1",
- "name": "caller-v1",
- "created": "2026-09-20",
- "description": "A caller suite: 22 decisions across 3 families, labelled by fixture-caller under the rule each item's `label_rule` records, from the committed fixture records. Partitions are drawn per family at 40/40/20 under a fixed seed, and a paraphrase group stays in one partition because two spellings of a scenario are one item of evidence. The question text lives in the question set of the same name — keyed by family where a family shares one wording, by item id where items carry their own option sets. Built by build_caller_v1.py.",
- "tier": "scored",
- "gate": "probability-v2",
- "questions": "caller-v1",
- "provenance": {
-  "caller": "fixture-caller",
-  "source": "the committed fixture records",
-  "licence": "test fixture, no caller",
-  "input": {
-   "file": "records.jsonl",
-   "sha256": "6e41fdc971541d7607a4d95e44bccfec1fa91376524235b0083e89e137db468e"
+  "schema": "openagents.gym.suite.v1",
+  "name": "caller-v1",
+  "created": "2026-09-20",
+  "description": "A caller suite: 22 decisions across 3 families, labelled by fixture-caller under the rule each item's `label_rule` records, from the committed fixture records. Partitions are drawn per family at 40/40/20 under a fixed seed, and a paraphrase group stays in one partition because two spellings of a scenario are one item of evidence. The question text lives in the question set of the same name — keyed by family where a family shares one wording, by item id where items carry their own option sets. Built by `gym build`.",
+  "tier": "scored",
+  "gate": "probability-v2",
+  "questions": "caller-v1",
+  "provenance": {
+    "caller": "fixture-caller",
+    "source": "the committed fixture records",
+    "licence": "fixture",
+    "input": {
+      "file": "records.jsonl",
+      "sha256": "6e41fdc971541d7607a4d95e44bccfec1fa91376524235b0083e89e137db468e"
+    },
+    "partition_rule": "per family, paraphrase groups whole, seeded shuffle (seed 9464), 40% calibration / 40% development / 20% locked",
+    "agreement": {}
   },
-  "partition_rule": "per family, paraphrase groups whole, random.Random(9464).shuffle, 40% calibration / 40% development / 20% locked"
- },
- "digest": "ea00961656b2dac6ff9fb38297330f9946c38425250c33a65eb05097bf757572",
- "items": [
-  {
-   "id": "routing/001",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 0",
-   "truth": "billing",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration",
-   "group": "para-a"
-  },
-  {
-   "id": "routing/002",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 1",
-   "truth": "technical",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration",
-   "group": "para-a"
-  },
-  {
-   "id": "routing/003",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 2",
-   "truth": "sales",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "routing/004",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 3",
-   "truth": "billing",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration"
-  },
-  {
-   "id": "routing/005",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 4",
-   "truth": "technical",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "routing/006",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 5",
-   "truth": "sales",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "routing/007",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 6",
-   "truth": "billing",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "locked"
-  },
-  {
-   "id": "routing/008",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 7",
-   "truth": "technical",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "locked"
-  },
-  {
-   "id": "routing/009",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 8",
-   "truth": "sales",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration"
-  },
-  {
-   "id": "routing/010",
-   "family": "routing",
-   "kind": "choice",
-   "state": "caller message 9",
-   "truth": "billing",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "severity/001",
-   "family": "severity",
-   "kind": "score",
-   "state": "incident 0",
-   "truth": "0",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "severity/002",
-   "family": "severity",
-   "kind": "score",
-   "state": "incident 1",
-   "truth": "1",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration"
-  },
-  {
-   "id": "severity/003",
-   "family": "severity",
-   "kind": "score",
-   "state": "incident 2",
-   "truth": "2",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "locked"
-  },
-  {
-   "id": "severity/004",
-   "family": "severity",
-   "kind": "score",
-   "state": "incident 3",
-   "truth": "0",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "severity/005",
-   "family": "severity",
-   "kind": "score",
-   "state": "incident 4",
-   "truth": "1",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration"
-  },
-  {
-   "id": "severity/006",
-   "family": "severity",
-   "kind": "score",
-   "state": "incident 5",
-   "truth": "2",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "facts/001",
-   "family": "facts",
-   "kind": "noul",
-   "state": "claim 0",
-   "truth": "yes",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "facts/002",
-   "family": "facts",
-   "kind": "noul",
-   "state": "claim 1",
-   "truth": "no",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration"
-  },
-  {
-   "id": "facts/003",
-   "family": "facts",
-   "kind": "noul",
-   "state": "claim 2",
-   "truth": "yes",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "locked"
-  },
-  {
-   "id": "facts/004",
-   "family": "facts",
-   "kind": "noul",
-   "state": "claim 3",
-   "truth": "no",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  },
-  {
-   "id": "facts/005",
-   "family": "facts",
-   "kind": "noul",
-   "state": "claim 4",
-   "truth": "yes",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "calibration"
-  },
-  {
-   "id": "facts/006",
-   "family": "facts",
-   "kind": "noul",
-   "state": "claim 5",
-   "truth": "no",
-   "label_source": "fixture-caller",
-   "label_rule": "written for the intake test",
-   "partition": "development"
-  }
- ]
+  "digest": "ea00961656b2dac6ff9fb38297330f9946c38425250c33a65eb05097bf757572",
+  "items": [
+    {
+      "id": "routing/001",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 0",
+      "truth": "billing",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "group": "para-a",
+      "partition": "calibration"
+    },
+    {
+      "id": "routing/002",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 1",
+      "truth": "technical",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "group": "para-a",
+      "partition": "calibration"
+    },
+    {
+      "id": "routing/003",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 2",
+      "truth": "sales",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "routing/004",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 3",
+      "truth": "billing",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "calibration"
+    },
+    {
+      "id": "routing/005",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 4",
+      "truth": "technical",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "routing/006",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 5",
+      "truth": "sales",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "routing/007",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 6",
+      "truth": "billing",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "locked"
+    },
+    {
+      "id": "routing/008",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 7",
+      "truth": "technical",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "locked"
+    },
+    {
+      "id": "routing/009",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 8",
+      "truth": "sales",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "calibration"
+    },
+    {
+      "id": "routing/010",
+      "family": "routing",
+      "kind": "choice",
+      "state": "caller message 9",
+      "truth": "billing",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "severity/001",
+      "family": "severity",
+      "kind": "score",
+      "state": "incident 0",
+      "truth": "0",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "severity/002",
+      "family": "severity",
+      "kind": "score",
+      "state": "incident 1",
+      "truth": "1",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "calibration"
+    },
+    {
+      "id": "severity/003",
+      "family": "severity",
+      "kind": "score",
+      "state": "incident 2",
+      "truth": "2",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "locked"
+    },
+    {
+      "id": "severity/004",
+      "family": "severity",
+      "kind": "score",
+      "state": "incident 3",
+      "truth": "0",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "severity/005",
+      "family": "severity",
+      "kind": "score",
+      "state": "incident 4",
+      "truth": "1",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "calibration"
+    },
+    {
+      "id": "severity/006",
+      "family": "severity",
+      "kind": "score",
+      "state": "incident 5",
+      "truth": "2",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "facts/001",
+      "family": "facts",
+      "kind": "noul",
+      "state": "claim 0",
+      "truth": "yes",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "facts/002",
+      "family": "facts",
+      "kind": "noul",
+      "state": "claim 1",
+      "truth": "no",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "calibration"
+    },
+    {
+      "id": "facts/003",
+      "family": "facts",
+      "kind": "noul",
+      "state": "claim 2",
+      "truth": "yes",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "locked"
+    },
+    {
+      "id": "facts/004",
+      "family": "facts",
+      "kind": "noul",
+      "state": "claim 3",
+      "truth": "no",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    },
+    {
+      "id": "facts/005",
+      "family": "facts",
+      "kind": "noul",
+      "state": "claim 4",
+      "truth": "yes",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "calibration"
+    },
+    {
+      "id": "facts/006",
+      "family": "facts",
+      "kind": "noul",
+      "state": "claim 5",
+      "truth": "no",
+      "label_source": "fixture-caller",
+      "label_rule": "written for the intake test",
+      "partition": "development"
+    }
+  ]
 }
