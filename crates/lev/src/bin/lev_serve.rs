@@ -34,10 +34,11 @@
 
 use std::sync::Arc;
 
+use lev::admission::{Floor, Gate};
 use lev::bridge::Pool;
 use lev::manifest::Manifest;
 use lev::policy::Policy;
-use lev::serve::{DEFAULT_SAMPLES, Door};
+use lev::serve::{Calibration, DEFAULT_SAMPLES, Door};
 
 #[tokio::main]
 async fn main() {
@@ -136,12 +137,13 @@ async fn main() {
         }
     };
 
-    // Check the release before serving it. Every one of these is a deployment
-    // error rather than a caller error, so the door does not start, rather
-    // than refusing every request at run time.
+    // The admission floor, before the port is bound. Every step it runs is a
+    // deployment fact rather than a caller error, so a release that fails one
+    // does not start, and the step it failed is on the console.
     let mut door = match &manifest {
         Some(path) => {
-            let manifest = checked(path, &pool);
+            let floor = admitted(path, &pool, calibration.as_deref());
+            let manifest = floor.manifest();
             eprintln!(
                 "lev-serve: serving {} — {}",
                 manifest.release(),
@@ -150,8 +152,8 @@ async fn main() {
                     None => "no artifact; the operating system ships the weights".to_string(),
                 }
             );
-            Door::new(pool, manifest.name.clone(), manifest.estimator.samples)
-                .with_manifest(manifest)
+            eprintln!("lev-serve: isolation probe passed: {}", floor.isolation());
+            Door::new(pool, manifest.name.clone(), manifest.estimator.samples).with_floor(floor)
         }
         None => {
             let model = if adapter.is_some() {
@@ -180,23 +182,11 @@ async fn main() {
         }
     };
 
-    if let Some(dir) = calibration {
-        door = door.with_calibration(&dir);
-        let held = door.calibration();
-        if held.is_empty() {
-            eprintln!("lev-serve: no record in {dir} may serve this door");
-        } else {
-            eprintln!(
-                "lev-serve: serving fitted maps for {}",
-                held.families().join(", ")
-            );
+    if let Some(dir) = &calibration {
+        if manifest.is_none() {
+            door = door.with_calibration(dir);
         }
-        if let Some(trouble) = held.trouble() {
-            eprintln!("lev-serve: {dir} could not be read: {trouble}");
-        }
-        for (named, reason) in held.refusals() {
-            eprintln!("lev-serve: {named} refused — {reason}");
-        }
+        report_calibration(dir, door.calibration());
     }
     // The policy, before the port is bound: one fetch, then whatever the
     // cache says. A door that cannot reach the service starts anyway and
@@ -289,8 +279,13 @@ async fn refresher(policy: Policy, every: u64) {
     }
 }
 
-/// Reads a manifest and checks every claim it makes, or exits.
-fn checked(path: &str, pool: &Pool) -> Manifest {
+/// Runs the admission floor over the release at `path`, or exits.
+///
+/// [`Gate::run`] is the one function that says whether a door may serve.
+/// Its denial names the step that failed, and that line is the whole
+/// diagnosis: the console says `admission step 2 (base signature) failed`
+/// rather than leaving an operator to work out which of four checks refused.
+fn admitted(path: &str, pool: &Pool, calibration: Option<&str>) -> Floor {
     let manifest = match Manifest::load(path) {
         Ok(manifest) => manifest,
         Err(fault) => {
@@ -298,20 +293,33 @@ fn checked(path: &str, pool: &Pool) -> Manifest {
             std::process::exit(2);
         }
     };
-    if manifest.artifact.is_some()
-        && let Err(fault) = manifest.check_artifact()
-    {
-        eprintln!("lev-serve: {path}: {fault}");
-        std::process::exit(2);
+    let mut gate = Gate::new(manifest);
+    if let Some(dir) = calibration {
+        gate = gate.with_calibration(dir);
     }
-    if let Err(fault) = manifest.check_eval_refs() {
-        eprintln!("lev-serve: {path}: {fault}");
-        std::process::exit(2);
+    match gate.run(pool) {
+        Ok(floor) => floor,
+        Err(denied) => {
+            eprintln!("lev-serve: {path}: {denied}");
+            std::process::exit(2);
+        }
     }
-    let running = pool.base_signature_prefix().unwrap_or_default();
-    if let Err(fault) = manifest.base.check(&running) {
-        eprintln!("lev-serve: {path}: {fault}");
-        std::process::exit(2);
+}
+
+/// Says which records in `dir` this door serves, and why it refused the rest.
+fn report_calibration(dir: &str, held: &Calibration) {
+    if held.is_empty() {
+        eprintln!("lev-serve: no record in {dir} may serve this door");
+    } else {
+        eprintln!(
+            "lev-serve: serving fitted maps for {}",
+            held.families().join(", ")
+        );
     }
-    manifest
+    if let Some(trouble) = held.trouble() {
+        eprintln!("lev-serve: {dir} could not be read: {trouble}");
+    }
+    for (named, reason) in held.refusals() {
+        eprintln!("lev-serve: {named} refused — {reason}");
+    }
 }
