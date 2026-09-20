@@ -50,6 +50,7 @@ No answer becomes context for another.
 | What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
 | How big a `coder` state may be, and what shrinking it cost | [`2026-09-20-state-budget.md`](2026-09-20-state-budget.md) |
 | What the newest production question costs, and what it buys | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) |
+| Which production questions to stop asking, and why | [`2026-09-20-coder-question-baselines.md`](2026-09-20-coder-question-baselines.md) |
 | Whether a model should be able to say it does not know, and how that would be scored | [`abstention.md`](abstention.md) |
 | How far the labels themselves can be trusted, and one door on items we did not write | [`2026-09-20-instrument-validity.md`](2026-09-20-instrument-validity.md) |
 
@@ -104,6 +105,7 @@ that compares them lives here, so it does not have to be written three times.
 | [`2026-09-20-state-budget.md`](2026-09-20-state-budget.md) | The state budget `classify::state_of` now holds to: what the 40 real turn states weigh and where the bytes are, the on-device door's refusal boundary read from retained rows, hosted Jev scored at eleven rungs of truncation with no measurable fall, and the caps derived from both. |
 | [`2026-09-19-restatement-and-polarity.md`](2026-09-19-restatement-and-polarity.md) | Whether a door can repeat a fact its state asserts, on four doors over a factorial panel: hosted Jev answers all 128, `kev-4b` gives a proposition and its negation the same probability, and every local door passes delegation plans that collide. Also why the recorded call in `devin-fan-out-six` does not replay. |
 | [`2026-09-20-instrument-validity.md`](2026-09-20-instrument-validity.md) | Whether the suite can be trusted before the doors are: a blind second reading of 100 `support-v2` items with kappa per family and every disagreement kept, and hosted Jev on `external-v1`, 200 BoolQ and MultiNLI items with their own crowd labels, at 0.90 and 0.81 against published ceilings of 0.90 and 0.887. |
+| [`2026-09-20-coder-question-baselines.md`](2026-09-20-coder-question-baselines.md) | Each of the seven production questions against the constant that would replace it, on both open partitions of the real-turn suite: `shell_outcome` beats its constant by +0.227 twice, `action` loses to it on 32 turns, and the other five are retired. The result is `coder-turns-v2`, two questions with a suite and 76 rows, and a re-specified `risk` that waits for labels. |
 | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) | The question every turn now asks — which program, or none. Its baseline and headroom before its accuracy, its false positives and false negatives counted apart because they cost different amounts, and where the error mass sits. |
 
 ## Other implementations
