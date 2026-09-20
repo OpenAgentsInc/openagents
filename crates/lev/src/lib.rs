@@ -41,6 +41,7 @@
 //! runtime, and the calibration rule.
 
 pub mod adapter;
+pub mod admission;
 pub mod api;
 pub mod bridge;
 pub mod error;

@@ -230,17 +230,23 @@ pub enum Answer {
     Choice {
         /// The option that won.
         choice: String,
-        /// How sharp the distribution is.
-        confidence: f64,
-        /// A probability per option.
-        probabilities: IndexMap<String, f64>,
+        /// How sharp the distribution is. Omitted, with `probabilities`, on
+        /// an answer for a family no admitted calibration record covers.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        confidence: Option<f64>,
+        /// A probability per option. Omitted for a family no admitted
+        /// calibration record covers; see `docs/lev/calibration.md`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        probabilities: Option<IndexMap<String, f64>>,
     },
     /// A position on an ordered rubric.
     Score {
         /// The probability-weighted mean level.
         score: f64,
-        /// How sharp the distribution is.
-        confidence: f64,
+        /// How sharp the distribution is. Omitted, with `probabilities`, on
+        /// an answer for a family no admitted calibration record covers.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        confidence: Option<f64>,
         /// The level the estimator's distribution picked before any map
         /// ran. A map can leave a runner-up numerically larger in
         /// `probabilities`; this field is then the only place the pick
@@ -249,9 +255,54 @@ pub enum Answer {
         selected: Option<String>,
         /// The rubric, keyed by level index.
         legend: IndexMap<String, Value>,
-        /// A probability per level index.
-        probabilities: IndexMap<String, f64>,
+        /// A probability per level index. Omitted for a family no admitted
+        /// calibration record covers; see `docs/lev/calibration.md`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        probabilities: Option<IndexMap<String, f64>>,
     },
+}
+
+impl Answer {
+    /// The same answer with `probabilities` and `confidence` left off.
+    ///
+    /// This is what a door serves for a named family that has no admitted
+    /// calibration record: the typed pick stands, and the numbers behind it,
+    /// which no measurement backs, do not travel. A Noul carries its one
+    /// number as the answer itself and is unchanged.
+    #[must_use]
+    pub fn without_probabilities(self) -> Self {
+        match self {
+            Self::Choice { choice, .. } => Self::Choice {
+                choice,
+                confidence: None,
+                probabilities: None,
+            },
+            Self::Score {
+                score,
+                selected,
+                legend,
+                ..
+            } => Self::Score {
+                score,
+                confidence: None,
+                selected,
+                legend,
+                probabilities: None,
+            },
+            noul @ Self::Noul { .. } => noul,
+        }
+    }
+
+    /// The distribution this answer carries, when it carries one.
+    #[must_use]
+    pub fn probabilities(&self) -> Option<&IndexMap<String, f64>> {
+        match self {
+            Self::Choice { probabilities, .. } | Self::Score { probabilities, .. } => {
+                probabilities.as_ref()
+            }
+            Self::Noul { .. } => None,
+        }
+    }
 }
 
 /// What a request cost, as far as the runtime honestly reports it.

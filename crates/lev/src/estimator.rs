@@ -449,8 +449,8 @@ pub fn answer(
         }
         Kind::Choice => Ok(Answer::Choice {
             choice: selected.to_string(),
-            confidence: confidence_in(probabilities, selected),
-            probabilities: probabilities.clone(),
+            confidence: Some(confidence_in(probabilities, selected)),
+            probabilities: Some(probabilities.clone()),
         }),
         Kind::Score => {
             let mut score = 0.0;
@@ -471,10 +471,10 @@ pub fn answer(
             }
             Ok(Answer::Score {
                 score,
-                confidence: confidence(probabilities),
+                confidence: Some(confidence(probabilities)),
                 selected: Some(selected.to_string()),
                 legend: legend.clone(),
-                probabilities: probabilities.clone(),
+                probabilities: Some(probabilities.clone()),
             })
         }
     }
@@ -576,7 +576,7 @@ mod tests {
             panic!("expected a Choice");
         };
         assert_eq!(choice, "technical");
-        assert!(confidence > 0.7);
+        assert!(confidence.expect("a confidence") > 0.7);
     }
 
     #[test]
@@ -605,6 +605,7 @@ mod tests {
             choice, "yes",
             "the map rescaled the answer rather than replacing it"
         );
+        let confidence = confidence.expect("a confidence");
         assert!(
             (confidence - 0.0).abs() < 1e-12,
             "confidence was {confidence}"

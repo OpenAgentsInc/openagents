@@ -163,16 +163,18 @@ fn an_uncalibrated_answer_reads_the_same_either_way() {
     // say. Old wire shapes and doors that never fit a map keep working.
     let wire = serde_json::to_value(lev::api::Answer::Score {
         score: 0.62,
-        confidence: 0.5,
+        confidence: Some(0.5),
         selected: None,
         legend: IndexMap::new(),
-        probabilities: [
-            ("0".to_string(), 0.5),
-            ("1".to_string(), 0.375),
-            ("2".to_string(), 0.125),
-        ]
-        .into_iter()
-        .collect(),
+        probabilities: Some(
+            [
+                ("0".to_string(), 0.5),
+                ("1".to_string(), 0.375),
+                ("2".to_string(), 0.125),
+            ]
+            .into_iter()
+            .collect(),
+        ),
     })
     .unwrap();
     assert!(

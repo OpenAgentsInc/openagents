@@ -43,7 +43,6 @@
 //! serving its managed release whether or not it ever hears from the service
 //! again. See [`crate::policy`] and `docs/lev/revocation.md`.
 
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -55,227 +54,25 @@ use axum::routing::{get, post};
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 
-use gym::calibrate::{EstimatorConfig, Mismatch, Record};
+use gym::calibrate::{Mismatch, Record};
 use gym::row::DoorIdentity;
 
 use crate::adapter::Metadata;
+use crate::admission::{Floor, Isolation};
 use crate::api::{
     MAX_CHOICE_OPTIONS, MAX_SCORE_LEVELS, SystemOneRequest, SystemOneResponse, Usage,
 };
 use crate::bridge::Pool;
 use crate::error::{Refusal, RefusalCode};
 use crate::estimator::{Estimator, answer, argmax, l2_pool_with};
-use crate::manifest::{Fault, Manifest};
+use crate::manifest::Manifest;
 use crate::policy::{Clock, Policy};
 use crate::schema::compile;
 
 /// How many seeded samples one question draws by default.
 pub const DEFAULT_SAMPLES: u64 = 8;
 
-/// The environment variable naming the operating system build a record was
-/// fitted on, and the one this door runs.
-///
-/// A build is not an identity — it is the same for every door on one machine,
-/// which is exactly why the records that carried only a build went stale
-/// unnoticed — but it is a real part of the runtime and a record names it.
-pub const OS_BUILD_VAR: &str = "LEV_OS_BUILD";
-
-/// Why a record may not serve this door.
-///
-/// [`Mismatch`] answers for the runtime: the operating system build, the base
-/// model signature, the adapter. The rest answer for the manifest, which is
-/// the document that says which measurements a release rests on. Both halves
-/// name one field, because "the record does not match" is not an answer
-/// anybody can act on.
-#[derive(Debug, thiserror::Error)]
-pub enum Refused {
-    /// The record does not match the runtime.
-    #[error("{0}")]
-    Door(#[from] Mismatch),
-    /// The manifest does not name this measurement.
-    ///
-    /// The rule from `docs/kev/mesh-plan.md`, read from the serving side: a
-    /// family without a measured `evalRef` does not admit, so a record that
-    /// happens to be in the directory and is not in the document does not
-    /// serve. Dropping a file into a directory is not a measurement.
-    #[error(
-        "evalRef: {release} does not name a measurement for this family, and a family without \
-         one does not admit"
-    )]
-    Unnamed {
-        /// The release the door is serving.
-        release: String,
-    },
-    /// The record on disk is not the one the manifest recorded.
-    #[error("{release} recorded this measurement differently — {fault}")]
-    Changed {
-        /// The release the door is serving.
-        release: String,
-        /// The field that disagrees.
-        fault: Fault,
-    },
-    /// The map was fitted under a different estimator than the door runs.
-    ///
-    /// A map fitted on eight draws describes an eight-draw signal. Serving it
-    /// over sixteen rescales a distribution the map never saw.
-    #[error("estimator_config: the map was fitted with {fitted} and {release} serves {serving}")]
-    Estimator {
-        /// The release the door is serving.
-        release: String,
-        /// What the record was fitted with.
-        fitted: String,
-        /// What the manifest says this door runs.
-        serving: String,
-    },
-}
-
-/// One estimator configuration, in one line.
-fn estimator_line(config: &EstimatorConfig) -> String {
-    let EstimatorConfig {
-        estimator,
-        samples,
-        seed_base,
-    } = config;
-    format!("{estimator} over {samples} draws from seed block {seed_base}")
-}
-
-/// What the door found in its calibration directory.
-///
-/// Both halves are kept. A record that may serve is indexed by its family; a
-/// record that may not is kept with the reason, because "this door serves no
-/// calibrated probabilities" and "this door holds three maps fitted against
-/// another model" are different facts and a caller should be able to tell
-/// them apart.
-#[derive(Debug, Default)]
-pub struct Calibration {
-    serving: BTreeMap<String, Record>,
-    refused: Vec<(String, Refused)>,
-    trouble: Option<String>,
-}
-
-impl Calibration {
-    /// Sorts every record in `dir` into the ones this door may serve and the
-    /// ones it may not, with the field that refused each.
-    #[must_use]
-    pub fn load(dir: &Path, os_build: &str, identity: &DoorIdentity) -> Self {
-        Self::load_for(dir, os_build, identity, None)
-    }
-
-    /// The same, with the manifest that says which measurements this release
-    /// rests on.
-    ///
-    /// A record has to pass the runtime check and then be the record the
-    /// manifest names. Without a manifest only the runtime check runs, which
-    /// is the state every door was in before a release had a document.
-    #[must_use]
-    pub fn load_for(
-        dir: &Path,
-        os_build: &str,
-        identity: &DoorIdentity,
-        manifest: Option<&Manifest>,
-    ) -> Self {
-        let mut calibration = Self::default();
-        let records = match Record::load_dir(dir) {
-            Ok(records) => records,
-            // A directory that cannot be read is not a record that does not
-            // match. It is reported as itself, and the door serves nothing
-            // rather than quietly serving the records it managed to open.
-            Err(trouble) => {
-                calibration.trouble = Some(trouble);
-                return calibration;
-            }
-        };
-        for (path, record) in records {
-            let named = if record.family.is_empty() {
-                path.display().to_string()
-            } else {
-                record.family.clone()
-            };
-            if let Err(mismatch) = record.serve_to(os_build, identity) {
-                calibration.refused.push((named, mismatch.into()));
-                continue;
-            }
-            match against_manifest(&record, manifest) {
-                Ok(()) => {
-                    calibration.serving.insert(record.family.clone(), record);
-                }
-                Err(refused) => calibration.refused.push((named, refused)),
-            }
-        }
-        calibration
-    }
-
-    /// The families this door serves calibrated probabilities for.
-    #[must_use]
-    pub fn families(&self) -> Vec<&str> {
-        self.serving.keys().map(String::as_str).collect()
-    }
-
-    /// The record covering `family`, when one survived the check.
-    #[must_use]
-    pub fn record(&self, family: &str) -> Option<&Record> {
-        self.serving.get(family)
-    }
-
-    /// Why a record was refused, by the family or file it named.
-    #[must_use]
-    pub fn refusal(&self, family: &str) -> Option<&Refused> {
-        self.refused
-            .iter()
-            .find(|(named, _)| named == family)
-            .map(|(_, reason)| reason)
-    }
-
-    /// Every record that may not serve, with the field that refused it.
-    pub fn refusals(&self) -> impl Iterator<Item = (&str, &Refused)> {
-        self.refused
-            .iter()
-            .map(|(named, reason)| (named.as_str(), reason))
-    }
-
-    /// What stopped the directory from being read at all, when something
-    /// did.
-    #[must_use]
-    pub fn trouble(&self) -> Option<&str> {
-        self.trouble.as_deref()
-    }
-
-    /// Whether any record may serve.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.serving.is_empty()
-    }
-}
-
-/// Whether the manifest names this record, and names it as it stands.
-///
-/// This is the third of the four checks that used to answer to nobody. It
-/// asks the document rather than the directory: the record has to be the
-/// measurement the release rests on, unchanged since the release was written,
-/// and fitted under the estimator the release serves.
-fn against_manifest(record: &Record, manifest: Option<&Manifest>) -> Result<(), Refused> {
-    let Some(manifest) = manifest else {
-        return Ok(());
-    };
-    let release = manifest.release();
-    let Some(reference) = manifest.eval_ref(&record.family) else {
-        return Err(Refused::Unnamed { release });
-    };
-    reference
-        .matches(record)
-        .map_err(|fault| Refused::Changed {
-            release: release.clone(),
-            fault,
-        })?;
-    if record.estimator_config != manifest.estimator {
-        return Err(Refused::Estimator {
-            release,
-            fitted: estimator_line(&record.estimator_config),
-            serving: estimator_line(&manifest.estimator),
-        });
-    }
-    Ok(())
-}
+pub use crate::admission::{Calibration, OS_BUILD_VAR, Refused};
 
 /// What the door serves.
 pub struct Door {
@@ -290,6 +87,7 @@ pub struct Door {
     os_build: String,
     base_signature: String,
     calibration: Calibration,
+    isolation: Option<Isolation>,
     in_flight: Arc<tokio::sync::Semaphore>,
     max_in_flight: usize,
 }
@@ -325,6 +123,7 @@ impl Door {
             os_build: std::env::var(OS_BUILD_VAR).unwrap_or_default(),
             base_signature,
             calibration: Calibration::default(),
+            isolation: None,
             in_flight: Arc::new(tokio::sync::Semaphore::new(DEFAULT_IN_FLIGHT)),
             max_in_flight: DEFAULT_IN_FLIGHT,
         }
@@ -363,6 +162,22 @@ impl Door {
         self.policy = Some(manifest.policy());
         self.manifest = Some(manifest);
         self
+    }
+
+    /// Serves a release that cleared the admission floor.
+    ///
+    /// This is how `lev-serve` builds a door: [`crate::admission::Gate::run`]
+    /// decides whether the release may serve at all, and the door takes what
+    /// it found rather than checking anything again. [`Door::with_manifest`]
+    /// and [`Door::with_calibration`] remain for a door built over
+    /// [`Pool::none`], which no probe can run against.
+    #[must_use]
+    pub fn with_floor(self, floor: Floor) -> Self {
+        let (manifest, isolation, calibration) = floor.into_parts();
+        let mut door = self.with_manifest(manifest);
+        door.calibration = calibration;
+        door.isolation = Some(isolation);
+        door
     }
 
     /// Reads the clock this door judges its policy snapshot against.
@@ -462,6 +277,21 @@ impl Door {
     #[must_use]
     pub fn calibration(&self) -> &Calibration {
         &self.calibration
+    }
+
+    /// The record that lets `family` serve a probability here, when one
+    /// exists. [`Calibration::fitted`] is the rule; this is the door asking
+    /// it.
+    #[must_use]
+    pub fn fitted(&self, family: &str) -> Option<&Record> {
+        self.calibration.fitted(family)
+    }
+
+    /// What the isolation probe measured when this door cleared the floor,
+    /// when it ran one.
+    #[must_use]
+    pub fn isolation(&self) -> Option<&Isolation> {
+        self.isolation.as_ref()
     }
 
     /// The base signature this door is pinned to.
@@ -629,6 +459,9 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
                     })).collect::<Vec<Value>>(),
                 })
             }),
+            // What the floor measured before this door bound its port. Absent
+            // on a door that was not started through the gate.
+            "isolation": door.isolation,
             // Read from the records this door actually opened, not declared.
             "calibration": if door.calibration.is_empty() { "none" } else { "fitted" },
             "calibrated_families": door.calibration.families(),
@@ -639,8 +472,7 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
             // that refused it. A door holding maps it may not serve says so.
             "calibration_refused": door
                 .calibration
-                .refused
-                .iter()
+                .refusals()
                 .map(|(named, reason)| json!({
                     "record": named,
                     "reason": reason.to_string(),
@@ -718,11 +550,12 @@ fn answer_request(
     if let Some(policy) = &door.policy {
         policy.admits(family)?;
     }
-    let fitted = if family.is_empty() {
-        None
-    } else {
-        door.calibration.record(family)
-    };
+    // Step 4 of the floor, asked once per request. A named family with no
+    // record is served without a probability; a request that names no family
+    // asked for no family's map and gets the seeded frequency, which is what a
+    // measurement run reads to fit one.
+    let fitted = door.fitted(family);
+    let omit = fitted.is_none() && !family.is_empty();
     if fitted.is_none() && request.extensions.require_calibration {
         return Err(Refusal::new(
             RefusalCode::Uncalibrated,
@@ -774,6 +607,11 @@ fn answer_request(
         };
         let typed = answer(question.kind, &distribution, &question.legend, &selected)
             .map_err(|refusal| with_question(refusal, id))?;
+        let typed = if omit {
+            typed.without_probabilities()
+        } else {
+            typed
+        };
         answers.insert(id.clone(), typed);
         if request.extensions.estimator {
             estimates.insert(
@@ -798,7 +636,7 @@ fn answer_request(
         // Apple bills no tokens and the runtime surfaces no counts, so this
         // stays empty rather than carrying a character-count fiction.
         usage: Usage::default(),
-        extensions: extensions(request, fitted, estimates),
+        extensions: extensions(request, family, fitted, estimates),
     })
 }
 
@@ -847,6 +685,7 @@ fn uncalibrated_reason(calibration: &Calibration, family: &str) -> String {
 
 fn extensions(
     request: &SystemOneRequest,
+    family: &str,
     fitted: Option<&Record>,
     estimates: IndexMap<String, Value>,
 ) -> Option<Value> {
@@ -865,6 +704,14 @@ fn extensions(
             "meaning": "probabilities are the frequency with which the model selected each \
                         option, rescaled by a reliability table fitted against labelled \
                         outcomes for this family on the door named in the record.",
+        }),
+        None if !family.is_empty() => json!({
+            "state": "uncalibrated",
+            "family": family,
+            "meaning": "no admitted calibration record covers this family on this door, so \
+                        `probabilities` and `confidence` are omitted. Send \
+                        `extensions.require_calibration` to be refused instead. See \
+                        docs/lev/calibration.md.",
         }),
         None => json!({
             "state": "uncalibrated",
@@ -1098,7 +945,7 @@ mod tests {
         let absent = Path::new("/nonexistent/calibration");
         let calibration = Calibration::load(absent, "25E246", &identity);
         assert!(calibration.is_empty());
-        assert!(calibration.refused.is_empty());
+        assert_eq!(calibration.refusals().count(), 0);
     }
 
     #[test]
@@ -1147,7 +994,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let carried = extensions(&request, Some(&fitted), IndexMap::new())
+        let carried = extensions(&request, "routing", Some(&fitted), IndexMap::new())
             .expect("a response carries its calibration");
         let calibration = &carried["calibration"];
         assert_eq!(calibration["state"], "calibrated");
@@ -1155,8 +1002,13 @@ mod tests {
         assert_eq!(calibration["gate_id"], "probability-v1");
         assert_eq!(calibration["suite_digest"], "54fbf4137c");
 
-        let raw =
-            extensions(&request, None, IndexMap::new()).expect("and so does an uncalibrated one");
+        let omitted = extensions(&request, "routing", None, IndexMap::new())
+            .expect("and so does an uncalibrated one");
+        assert_eq!(omitted["calibration"]["state"], "uncalibrated");
+        assert_eq!(omitted["calibration"]["family"], "routing");
+        let raw = extensions(&request, "", None, IndexMap::new())
+            .expect("and a request that named no family");
         assert_eq!(raw["calibration"]["state"], "uncalibrated");
+        assert!(raw["calibration"].get("family").is_none());
     }
 }
