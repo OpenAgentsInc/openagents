@@ -27,6 +27,46 @@ use candle_core::Device;
 use kev::DecisionModel;
 use serde_json::Value;
 
+/// A progress span for a test phase, without recording request contents.
+pub struct Progress {
+    test: String,
+    phase: String,
+    started: std::time::Instant,
+}
+
+impl Progress {
+    /// Prints the phase before potentially slow work begins.
+    pub fn start(phase: impl Into<String>) -> Self {
+        let test = std::thread::current()
+            .name()
+            .unwrap_or("unnamed test")
+            .to_string();
+        let phase = phase.into();
+        eprintln!("conformance progress: test={test} phase={phase} started");
+        Self {
+            test,
+            phase,
+            started: std::time::Instant::now(),
+        }
+    }
+}
+
+impl Drop for Progress {
+    fn drop(&mut self) {
+        let status = if std::thread::panicking() {
+            "unwinding"
+        } else {
+            "finished"
+        };
+        eprintln!(
+            "conformance progress: test={} phase={} {status} elapsed={:.3}s",
+            self.test,
+            self.phase,
+            self.started.elapsed().as_secs_f64()
+        );
+    }
+}
+
 /// One checkpoint under test: a fixture root plus the artifact ids it
 /// resolves to.
 pub struct Variant {
@@ -137,10 +177,25 @@ pub fn device() -> Device {
 pub fn model(variant: &Variant) -> Option<Arc<DecisionModel>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<DecisionModel>>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let waiting = Progress::start(format!("variant={} model cache wait", variant.id));
     let mut cache = cache.lock().unwrap();
+    drop(waiting);
+    eprintln!(
+        "conformance progress: variant={} model cache {}",
+        variant.id,
+        if cache.contains_key(&variant.id) {
+            "hit"
+        } else {
+            "miss"
+        }
+    );
     cache
         .entry(variant.id.clone())
         .or_insert_with(|| {
+            let _loading = Progress::start(format!(
+                "variant={} model resolution, hashing, and load",
+                variant.id
+            ));
             let adapter = adapter_dir(variant)?;
             let base = base_dir(variant)?;
             Some(Arc::new(

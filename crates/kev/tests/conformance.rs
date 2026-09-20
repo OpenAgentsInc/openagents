@@ -10,7 +10,7 @@ mod common;
 use kev::{Record, SystemOneRequest, to_answers, to_record};
 use serde_json::Value;
 
-use common::{fixture, model, names, variants};
+use common::{Progress, fixture, model, names, variants};
 
 /// Max absolute difference between two probability tables.
 fn max_delta(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
@@ -22,7 +22,9 @@ fn max_delta(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
 
 #[test]
 fn golden_probabilities_reproduce() {
+    let _test_progress = Progress::start("test");
     for variant in variants() {
+        let _variant_progress = Progress::start(format!("variant={}", variant.id));
         let Some(model) = model(&variant) else {
             eprintln!("{}: skipping, no artifacts", variant.id);
             continue;
@@ -30,6 +32,7 @@ fn golden_probabilities_reproduce() {
         let mut worst = 0.0f64;
         let mut worst_name = String::new();
         for name in names(&variant, "requests") {
+            let _case_progress = Progress::start(format!("variant={} case={name}", variant.id));
             let body = fixture(&variant, &format!("requests/{name}.json"));
             let golden = fixture(&variant, &format!("golden/{name}.json"));
             let want: Vec<Vec<f64>> = serde_json::from_value(golden["probs"].clone()).unwrap();
@@ -63,7 +66,9 @@ fn golden_probabilities_reproduce() {
 
 #[test]
 fn packed_matches_separate() {
+    let _test_progress = Progress::start("test");
     for variant in variants() {
+        let _variant_progress = Progress::start(format!("variant={}", variant.id));
         let Some(model) = model(&variant) else {
             eprintln!("{}: skipping, no artifacts", variant.id);
             continue;
@@ -77,7 +82,9 @@ fn packed_matches_separate() {
         let request: SystemOneRequest = serde_json::from_value(body["request"].clone()).unwrap();
         let (record, _) = to_record(&request).unwrap();
         let enc = model.encode(&record, 8192, 8192).unwrap();
+        let packed_progress = Progress::start(format!("variant={} packed forward", variant.id));
         let got_packed = model.probs(&enc).unwrap();
+        drop(packed_progress);
         assert!(
             max_delta(&got_packed, &packed) < 1e-3,
             "{}: packed probs drifted from the reference",
@@ -87,6 +94,8 @@ fn packed_matches_separate() {
         // Rust-side separate forwards, one record per question.
         let mut got_separate = Vec::new();
         for (qid, q) in &request.questions {
+            let _case_progress =
+                Progress::start(format!("variant={} separate question={qid}", variant.id));
             let mut one = request.clone();
             one.questions.retain(|id, _| id == qid);
             let _ = q;
@@ -115,13 +124,16 @@ fn packed_matches_separate() {
 
 #[test]
 fn isolation_probe_holds() {
+    let _test_progress = Progress::start("test");
     for variant in variants() {
+        let _variant_progress = Progress::start(format!("variant={}", variant.id));
         let Some(model) = model(&variant) else {
             eprintln!("{}: skipping, no artifacts", variant.id);
             continue;
         };
         let probe = fixture(&variant, "probes/isolation.json");
         for cond in ["state_in_sibling", "absent", "state_in_state"] {
+            let _case_progress = Progress::start(format!("variant={} case={cond}", variant.id));
             let body = fixture(&variant, &format!("encodings/isolation_{cond}.json"));
             let record: Record = serde_json::from_value(body["record"].clone()).unwrap();
             let enc = model.encode(&record, 8192, 8192).unwrap();
@@ -158,7 +170,9 @@ fn isolation_probe_holds() {
 
 #[test]
 fn permutation_probe_reproduces() {
+    let _test_progress = Progress::start("test");
     for variant in variants() {
+        let _variant_progress = Progress::start(format!("variant={}", variant.id));
         let Some(model) = model(&variant) else {
             eprintln!("{}: skipping, no artifacts", variant.id);
             continue;
@@ -168,7 +182,9 @@ fn permutation_probe_reproduces() {
         let body = fixture(&variant, "requests/support.json");
         let request: SystemOneRequest = serde_json::from_value(body["request"].clone()).unwrap();
         let mut argmaxes = Vec::new();
-        for run in probe["runs"].as_array().unwrap() {
+        for (case, run) in probe["runs"].as_array().unwrap().iter().enumerate() {
+            let _case_progress =
+                Progress::start(format!("variant={} permutation={case}", variant.id));
             // Reorder the choice criteria to the run's recorded order.
             let order: Vec<String> = serde_json::from_value(run["order"].clone()).unwrap();
             let mut one = request.clone();
@@ -211,11 +227,14 @@ fn permutation_probe_reproduces() {
 
 #[test]
 fn forgery_cannot_add_options() {
+    let _test_progress = Progress::start("test");
     for variant in variants() {
+        let _variant_progress = Progress::start(format!("variant={}", variant.id));
         let Some(model) = model(&variant) else {
             eprintln!("{}: skipping, no artifacts", variant.id);
             continue;
         };
+        let _case_progress = Progress::start(format!("variant={} case=forgery", variant.id));
         let probe = fixture(&variant, "probes/forgery.json");
         let body = fixture(&variant, "encodings/forgery.json");
         let record: Record = serde_json::from_value(body["record"].clone()).unwrap();
@@ -238,11 +257,15 @@ fn forgery_cannot_add_options() {
 /// the loaded model, and its encodings must agree with the flag.
 #[test]
 fn option_isolation_flag_matches_reference() {
+    let _test_progress = Progress::start("test");
     for variant in variants() {
+        let _variant_progress = Progress::start(format!("variant={}", variant.id));
         let Some(model) = model(&variant) else {
             eprintln!("{}: skipping, no artifacts", variant.id);
             continue;
         };
+        let _case_progress =
+            Progress::start(format!("variant={} case=option isolation flag", variant.id));
         let manifest = fixture(&variant, "manifest.json");
         let want = manifest["head_meta"]["option_isolation"]
             .as_bool()
