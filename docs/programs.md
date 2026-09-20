@@ -201,6 +201,17 @@ unverifiable`) and the acceptance state carries each requirement's
 correct" because its items stated nothing to judge
 ([#9413](https://github.com/OpenAgentsInc/openagents/issues/9413)).
 
+The answer is what follows the last `Final answer:` in the delegate's
+output, or the whole output when it carries none. The Devin CLI prints
+every text block the agent emits with nothing between them, so a writing
+task's stdout runs narration and answer together
+(`…Verifying the scratch repo is clean.done`); the briefing asks the
+delegate to end with a `Final answer:` line, the narration before it is
+recorded under the call's `transcript`, and `accept` judges only the
+answer. The second episode reported "0 passed, 2 failed" for two items
+that were done, because the whole stream was judged against `done`
+([#9451](https://github.com/OpenAgentsInc/openagents/issues/9451)).
+
 ### An explicit list is a source, not a shortcut
 
 `request` is reached through the same code every other source is, and that

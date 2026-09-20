@@ -858,11 +858,39 @@ pub struct Delegation {
     pub relayed: Option<Relayed>,
 }
 
+/// The mark a delegate puts before its answer when its output also
+/// carries narration.
+///
+/// The Devin CLI prints every text block the agent emits, tool calls
+/// between them, with no separator, so a writing task's stdout reads
+/// `…Committed. Verifying the scratch repo is clean.done`. Nothing in that
+/// stream says where the narration ends and the answer begins, so the
+/// briefing asks the delegate to say: the answer is what follows the last
+/// occurrence of this mark. Output without the mark is the answer whole,
+/// which is what an executor that prints only its final message gives.
+pub const ANSWER_MARK: &str = "Final answer:";
+
 impl Delegation {
     /// Whether the executor answered.
     #[must_use]
     pub fn answered(&self) -> bool {
         self.status == Status::Answered
+    }
+
+    /// The delegate's answer: what follows the last [`ANSWER_MARK`] in
+    /// its output, or the whole output when it carries none. Trimmed.
+    #[must_use]
+    pub fn answer(&self) -> &str {
+        answer_in(&self.output)
+    }
+
+    /// The narration the delegate printed before its answer, when its
+    /// output carried an [`ANSWER_MARK`]. `None` when the output was the
+    /// answer alone.
+    #[must_use]
+    pub fn transcript(&self) -> Option<&str> {
+        let at = self.output.rfind(ANSWER_MARK)?;
+        Some(self.output[..at].trim())
     }
 
     /// Whether the delegate answered correctly, when the task said what to
@@ -871,7 +899,7 @@ impl Delegation {
     #[must_use]
     pub fn correct(&self) -> Option<bool> {
         let expected = self.task.expected.as_deref()?;
-        Some(self.answered() && normalize(&self.output) == normalize(expected))
+        Some(self.answered() && normalize(self.answer()) == normalize(expected))
     }
 
     /// What the delegation comes to, judged against the answer the task
@@ -891,7 +919,7 @@ impl Delegation {
     #[must_use]
     pub fn recorded_output(&self) -> String {
         if self.answered() {
-            return self.output.trim().to_string();
+            return self.answer().to_string();
         }
         match self.detail.trim() {
             "" => self.status.to_string(),
@@ -1855,6 +1883,15 @@ fn head(text: &str, max: usize) -> &str {
     }
 }
 
+/// The answer in an executor's output: what follows the last
+/// [`ANSWER_MARK`], or all of it when there is none. Trimmed.
+fn answer_in(output: &str) -> &str {
+    match output.rfind(ANSWER_MARK) {
+        Some(at) => output[at + ANSWER_MARK.len()..].trim(),
+        None => output.trim(),
+    }
+}
+
 /// An answer as it is compared: trimmed, lowercased, and with runs of
 /// whitespace flattened, so `L1, L2, L3` and `l1,  l2, l3` do not differ.
 fn normalize(text: &str) -> String {
@@ -2034,6 +2071,43 @@ mod tests {
         assert_eq!(ungraded.status, Status::Answered);
         assert_eq!(ungraded.correct(), None);
         assert_eq!(ungraded.verdict(), Verdict::Unverifiable);
+    }
+
+    /// An executor that narrates before it answers is graded on what
+    /// follows the answer mark, and the narration is kept apart from it.
+    #[tokio::test]
+    async fn a_narrating_delegate_is_graded_on_what_follows_the_mark() {
+        if !boundary_supported() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stub(
+            dir.path(),
+            "devin",
+            "printf 'Reading the file.Counting: the answer is not 4.Committed.Final answer: done'",
+        );
+        let delegator = Delegator::new(executor(&binary)).in_directory(dir.path());
+
+        let graded = delegator
+            .run(Task::reading("do it", "crates/atif/src/document.rs").expecting("done"))
+            .await;
+        assert_eq!(graded.status, Status::Answered);
+        assert_eq!(graded.answer(), "done");
+        assert_eq!(graded.recorded_output(), "done");
+        assert_eq!(
+            graded.transcript(),
+            Some("Reading the file.Counting: the answer is not 4.Committed.")
+        );
+        assert_eq!(graded.correct(), Some(true));
+        assert_eq!(graded.verdict(), Verdict::Passed);
+    }
+
+    #[test]
+    fn the_answer_is_what_follows_the_last_mark() {
+        assert_eq!(answer_in("5\n"), "5");
+        assert_eq!(answer_in("Final answer: 5\n"), "5");
+        assert_eq!(answer_in("Final answer: no, wait.Final answer: 5"), "5");
+        assert_eq!(answer_in("narration.Final answer:"), "");
     }
 
     /// A refusal, a timeout, and a non-zero exit are three different

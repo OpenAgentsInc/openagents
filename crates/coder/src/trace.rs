@@ -332,6 +332,9 @@ impl Recorder {
         if let Some(correct) = delegation.correct() {
             extra.insert("correct".to_string(), json!(correct));
         }
+        if let Some(transcript) = delegation.transcript() {
+            extra.insert("transcript".to_string(), json!(transcript));
+        }
         // Null rather than absent, and null rather than false: the
         // boundary record below says what a write would have had to pass
         // through, and what a delegate actually changed is the workspace
