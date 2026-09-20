@@ -10,11 +10,24 @@
 //! can read another question's text. That isolation is structural, and
 //! `tests/isolation.rs` proves it with a planted secret rather than trusting
 //! the claim.
+//!
+//! The helper is a child process, and a child process can hang, flood its
+//! diagnostics, answer with the wrong line, or exit. A [`Bridge`] therefore
+//! owns a reader thread for stdout and a drainer thread for stderr, caps the
+//! size of one response, checks the response `id` against the request it
+//! sent, and gives every exchange a deadline. A helper that misses any of
+//! those is retired — killed and reaped — and the next call through its
+//! [`Pool`] lane starts a fresh one. `tests/supervision.rs` drives each of
+//! those faults through a fake helper.
 
-use std::io::{BufRead, BufReader, Write};
+use std::collections::VecDeque;
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -55,6 +68,12 @@ pub struct Call {
 }
 
 impl Call {
+    /// The correlation id the helper echoes back.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
     /// Builds a decision call from a compiled question.
     #[must_use]
     pub fn decide(compiled: &Compiled, sampling: Sampling) -> Self {
@@ -120,6 +139,8 @@ impl Availability {
 
 #[derive(Deserialize)]
 struct Wire {
+    #[serde(default)]
+    id: Option<String>,
     ok: bool,
     #[serde(default)]
     availability: Option<Availability>,
@@ -149,11 +170,116 @@ fn next_id() -> String {
     format!("c{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
 }
 
+/// The most bytes one response line may carry.
+///
+/// A response is one JSON object holding a choice, a band, and a latency, or
+/// an availability report, or a short list of adapter identifiers. A megabyte
+/// is orders of magnitude above any of them; a line that reaches it is a
+/// helper that has stopped speaking the protocol.
+pub const MAX_RESPONSE_BYTES: usize = 1 << 20;
+
+/// How many bytes of the helper's most recent diagnostics are kept.
+pub const STDERR_TAIL_BYTES: usize = 4 << 10;
+
+/// The environment variable that sets the per-exchange deadline in
+/// milliseconds.
+pub const DEADLINE_VAR: &str = "LEV_BRIDGE_DEADLINE_MS";
+
+/// The per-exchange deadline when [`DEADLINE_VAR`] is unset.
+///
+/// A decision call on the device runs in a few hundred milliseconds and an
+/// adapter load in a few seconds; thirty seconds is a hung helper, not a slow
+/// one.
+pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(30);
+
+/// The deadline one exchange runs under, from the environment or the default.
+#[must_use]
+pub fn deadline() -> Duration {
+    std::env::var(DEADLINE_VAR)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|millis| *millis > 0)
+        .map_or(DEFAULT_DEADLINE, Duration::from_millis)
+}
+
+/// The last [`STDERR_TAIL_BYTES`] the helper wrote to stderr.
+#[derive(Default)]
+struct Tail {
+    bytes: VecDeque<u8>,
+}
+
+impl Tail {
+    fn push(&mut self, chunk: &[u8]) {
+        for byte in chunk {
+            if self.bytes.len() == STDERR_TAIL_BYTES {
+                self.bytes.pop_front();
+            }
+            self.bytes.push_back(*byte);
+        }
+    }
+
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.bytes.iter().copied().collect::<Vec<_>>())
+            .trim()
+            .to_string()
+    }
+}
+
+/// What the reader thread hands back for one line of stdout.
+enum Frame {
+    Line(String),
+    /// The line passed [`MAX_RESPONSE_BYTES`] without ending.
+    Oversized,
+    /// Stdout closed or failed.
+    Closed(Option<io::Error>),
+}
+
+/// Reads stdout one capped line at a time and forwards each to the bridge.
+fn read_frames(mut stdout: impl BufRead, frames: &mpsc::Sender<Frame>) {
+    loop {
+        let mut line = Vec::new();
+        let read = stdout
+            .by_ref()
+            .take(MAX_RESPONSE_BYTES as u64 + 1)
+            .read_until(b'\n', &mut line);
+        let frame = match read {
+            Ok(0) => Frame::Closed(None),
+            Ok(_) if line.last() != Some(&b'\n') && line.len() > MAX_RESPONSE_BYTES => {
+                Frame::Oversized
+            }
+            Ok(_) if line.last() != Some(&b'\n') => Frame::Closed(None),
+            Ok(_) => Frame::Line(String::from_utf8_lossy(&line).into_owned()),
+            Err(error) => Frame::Closed(Some(error)),
+        };
+        let last = !matches!(frame, Frame::Line(_));
+        if frames.send(frame).is_err() || last {
+            return;
+        }
+    }
+}
+
+/// Drains stderr so the helper never blocks on a full pipe, keeping a tail.
+fn drain_stderr(mut stderr: impl Read, tail: &Mutex<Tail>) {
+    let mut buffer = [0_u8; 4096];
+    loop {
+        match stderr.read(&mut buffer) {
+            Ok(0) | Err(_) => return,
+            Ok(read) => tail
+                .lock()
+                .expect("the stderr tail lock is not poisoned")
+                .push(&buffer[..read]),
+        }
+    }
+}
+
 /// A supervised helper process.
 pub struct Bridge {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    frames: Receiver<Frame>,
+    stderr: Arc<Mutex<Tail>>,
+    deadline: Duration,
+    retired: bool,
 }
 
 impl Bridge {
@@ -163,7 +289,14 @@ impl Bridge {
     /// on-device model on the owner's behalf, and an earlier lane in this
     /// workspace only made the signature authoritative after the integration
     /// was already shipping.
+    ///
+    /// Exchanges run under [`deadline`].
     pub fn start(path: &Path) -> Result<Self> {
+        Self::start_with_deadline(path, deadline())
+    }
+
+    /// Starts the helper at `path` with an explicit per-exchange deadline.
+    pub fn start_with_deadline(path: &Path, deadline: Duration) -> Result<Self> {
         verify_signature(path)?;
         let mut child = Command::new(path)
             .stdin(Stdio::piped())
@@ -178,11 +311,66 @@ impl Bridge {
             })?;
         let stdin = child.stdin.take().expect("stdin was piped");
         let stdout = BufReader::new(child.stdout.take().expect("stdout was piped"));
+        let stderr_pipe = child.stderr.take().expect("stderr was piped");
+        let (sender, frames) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("lev-bridge-stdout".to_string())
+            .spawn(move || read_frames(stdout, &sender))
+            .map_err(|error| {
+                Refusal::new(
+                    RefusalCode::BridgeError,
+                    format!("the helper's reader thread did not start: {error}"),
+                )
+            })?;
+        let stderr = Arc::new(Mutex::new(Tail::default()));
+        let tail = Arc::clone(&stderr);
+        std::thread::Builder::new()
+            .name("lev-bridge-stderr".to_string())
+            .spawn(move || drain_stderr(stderr_pipe, &tail))
+            .map_err(|error| {
+                Refusal::new(
+                    RefusalCode::BridgeError,
+                    format!("the helper's stderr drainer did not start: {error}"),
+                )
+            })?;
         Ok(Self {
             child,
             stdin,
-            stdout,
+            frames,
+            stderr,
+            deadline,
+            retired: false,
         })
+    }
+
+    /// Whether a fault retired this helper, so a caller should replace it.
+    #[must_use]
+    pub fn is_retired(&self) -> bool {
+        self.retired
+    }
+
+    /// The most recent diagnostics the helper wrote to stderr.
+    #[must_use]
+    pub fn stderr_tail(&self) -> String {
+        self.stderr
+            .lock()
+            .expect("the stderr tail lock is not poisoned")
+            .text()
+    }
+
+    /// Kills and reaps the helper and marks it unusable, returning a refusal
+    /// that carries `why` and the diagnostics tail.
+    fn retire(&mut self, why: String) -> Refusal {
+        self.retired = true;
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let tail = self.stderr_tail();
+        let message = if tail.is_empty() {
+            why
+        } else {
+            format!("{why}; the helper's last diagnostics: {tail}")
+        };
+        Refusal::new(RefusalCode::BridgeError, message)
     }
 
     /// Starts the helper found by `helper_path`.
@@ -197,10 +385,14 @@ impl Bridge {
             id: String,
             op: &'static str,
         }
-        let wire = self.exchange(&Ask {
-            id: next_id(),
-            op: "availability",
-        })?;
+        let id = next_id();
+        let wire = self.exchange(
+            &id,
+            &Ask {
+                id: id.clone(),
+                op: "availability",
+            },
+        )?;
         wire.availability.ok_or_else(|| {
             Refusal::new(
                 RefusalCode::BridgeError,
@@ -222,11 +414,15 @@ impl Bridge {
             #[serde(rename = "adapterName")]
             adapter_name: &'a str,
         }
-        let wire = self.exchange(&Ask {
-            id: next_id(),
-            op: "adapter_compat",
-            adapter_name: name,
-        })?;
+        let id = next_id();
+        let wire = self.exchange(
+            &id,
+            &Ask {
+                id: id.clone(),
+                op: "adapter_compat",
+                adapter_name: name,
+            },
+        )?;
         wire.compatible_adapters.ok_or_else(|| {
             Refusal::new(
                 RefusalCode::BridgeError,
@@ -263,17 +459,21 @@ impl Bridge {
             #[serde(rename = "adapterPath")]
             adapter_path: String,
         }
-        let wire = self.exchange(&Ask {
-            id: next_id(),
-            op: "adapter_load",
-            adapter_path: path.display().to_string(),
-        })?;
+        let id = next_id();
+        let wire = self.exchange(
+            &id,
+            &Ask {
+                id: id.clone(),
+                op: "adapter_load",
+                adapter_path: path.display().to_string(),
+            },
+        )?;
         Ok(wire.adapter_metadata.unwrap_or_default())
     }
 
     /// Runs one decision call.
     pub fn decide(&mut self, call: &Call) -> Result<Outcome> {
-        let wire = self.exchange(call)?;
+        let wire = self.exchange(&call.id, call)?;
         let choice = wire.choice.ok_or_else(|| {
             Refusal::new(
                 RefusalCode::DecodingFailure,
@@ -287,38 +487,55 @@ impl Bridge {
         })
     }
 
-    fn exchange<T: Serialize>(&mut self, request: &T) -> Result<Wire> {
+    fn exchange<T: Serialize>(&mut self, id: &str, request: &T) -> Result<Wire> {
+        if self.retired {
+            return Err(Refusal::new(
+                RefusalCode::BridgeError,
+                "the helper was retired after an earlier fault",
+            ));
+        }
         let line = serde_json::to_string(request).map_err(|error| {
             Refusal::new(
                 RefusalCode::BridgeError,
                 format!("request did not encode: {error}"),
             )
         })?;
-        writeln!(self.stdin, "{line}")
-            .and_then(|()| self.stdin.flush())
-            .map_err(|error| {
-                Refusal::new(
-                    RefusalCode::BridgeError,
-                    format!("the helper closed its input: {error}"),
-                )
-            })?;
-
-        let mut response = String::new();
-        let read = self.stdout.read_line(&mut response).map_err(|error| {
-            Refusal::new(
-                RefusalCode::BridgeError,
-                format!("the helper closed its output: {error}"),
-            )
-        })?;
-        if read == 0 {
-            return Err(Refusal::new(RefusalCode::BridgeError, "the helper exited"));
+        if let Err(error) = writeln!(self.stdin, "{line}").and_then(|()| self.stdin.flush()) {
+            return Err(self.retire(format!("the helper closed its input: {error}")));
         }
-        let wire: Wire = serde_json::from_str(response.trim()).map_err(|error| {
-            Refusal::new(
-                RefusalCode::BridgeError,
-                format!("the helper answered with {error}"),
-            )
-        })?;
+
+        let response = match self.frames.recv_timeout(self.deadline) {
+            Ok(Frame::Line(line)) => line,
+            Ok(Frame::Oversized) => {
+                return Err(self.retire(format!(
+                    "the helper answered with a line over {MAX_RESPONSE_BYTES} bytes"
+                )));
+            }
+            Ok(Frame::Closed(Some(error))) => {
+                return Err(self.retire(format!("the helper closed its output: {error}")));
+            }
+            Ok(Frame::Closed(None)) | Err(RecvTimeoutError::Disconnected) => {
+                return Err(self.retire("the helper exited".to_string()));
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                return Err(self.retire(format!(
+                    "the helper did not answer within {} ms",
+                    self.deadline.as_millis()
+                )));
+            }
+        };
+        let wire: Wire = match serde_json::from_str(response.trim()) {
+            Ok(wire) => wire,
+            Err(error) => {
+                return Err(self.retire(format!("the helper answered with {error}")));
+            }
+        };
+        if wire.id.as_deref() != Some(id) {
+            return Err(self.retire(format!(
+                "the helper answered call {} when {id} was asked",
+                wire.id.as_deref().unwrap_or("with no id")
+            )));
+        }
         if wire.ok {
             return Ok(wire);
         }
@@ -415,8 +632,33 @@ fn verify_signature(path: &Path) -> Result<()> {
 /// Sessions are already independent — that is what gives question isolation
 /// — so nothing about a sample depends on the helper that drew it. Spreading
 /// the draws over `k` helpers divides the wall clock by `k`.
+///
+/// Each lane owns one helper. A helper that a fault retires is replaced the
+/// next time its lane is used, so one hung or crashed process costs the
+/// calls it was holding and nothing after them.
 pub struct Pool {
-    helpers: Vec<std::sync::Mutex<Bridge>>,
+    lanes: Vec<Lane>,
+}
+
+/// One helper's slot in the pool: where to start it from, and the running
+/// process when there is one.
+struct Lane {
+    path: PathBuf,
+    deadline: Duration,
+    helper: Mutex<Option<Bridge>>,
+}
+
+impl Lane {
+    /// Runs `f` on this lane's helper, starting or replacing it first when
+    /// the lane is empty or the last call retired it.
+    fn with<T>(&self, f: impl FnOnce(&mut Bridge) -> Result<T>) -> Result<T> {
+        let mut slot = self.helper.lock().expect("a helper lock is not poisoned");
+        if slot.as_ref().is_none_or(Bridge::is_retired) {
+            *slot = Some(Bridge::start_with_deadline(&self.path, self.deadline)?);
+        }
+        let helper = slot.as_mut().expect("the slot was just filled");
+        f(helper)
+    }
 }
 
 impl Pool {
@@ -430,25 +672,35 @@ impl Pool {
     /// runtime happens to report.
     #[must_use]
     pub fn none() -> Self {
-        Self {
-            helpers: Vec::new(),
-        }
+        Self { lanes: Vec::new() }
     }
 
     /// Starts `size` helpers from the discovered path.
     pub fn discover(size: usize) -> Result<Self> {
-        let path = helper_path()?;
-        let mut helpers = Vec::with_capacity(size.max(1));
+        Self::start(&helper_path()?, size, deadline())
+    }
+
+    /// Starts `size` helpers from `path`, each exchange under `deadline`.
+    ///
+    /// Every helper is started here rather than on first use, so a pool that
+    /// cannot start is refused before a door is built over it.
+    pub fn start(path: &Path, size: usize, deadline: Duration) -> Result<Self> {
+        let mut lanes = Vec::with_capacity(size.max(1));
         for _ in 0..size.max(1) {
-            helpers.push(std::sync::Mutex::new(Bridge::start(&path)?));
+            let helper = Bridge::start_with_deadline(path, deadline)?;
+            lanes.push(Lane {
+                path: path.to_path_buf(),
+                deadline,
+                helper: Mutex::new(Some(helper)),
+            });
         }
-        Ok(Self { helpers })
+        Ok(Self { lanes })
     }
 
     /// How many helpers the pool holds.
     #[must_use]
     pub fn width(&self) -> usize {
-        self.helpers.len()
+        self.lanes.len()
     }
 
     /// Asks the first helper for the base model signature prefix the device
@@ -458,50 +710,59 @@ impl Pool {
     /// running, which is what a calibration record has to match before it may
     /// serve.
     pub fn base_signature_prefix(&self) -> Result<String> {
-        let mut helper = self.first()?;
-        helper.base_signature_prefix()
+        self.first()?.with(Bridge::base_signature_prefix)
     }
 
     /// Asks the first helper whether the runtime will answer.
     pub fn availability(&self) -> Result<Availability> {
-        let mut helper = self.first()?;
-        helper.availability()
+        self.first()?.with(Bridge::availability)
     }
 
-    /// The first helper, or the refusal an empty pool answers with.
-    fn first(&self) -> Result<std::sync::MutexGuard<'_, Bridge>> {
-        let helper = self.helpers.first().ok_or_else(|| {
-            Refusal::new(RefusalCode::ModelUnavailable, "this door holds no helper")
-        })?;
-        Ok(helper.lock().expect("a helper lock is not poisoned"))
+    /// The first lane, or the refusal an empty pool answers with.
+    fn first(&self) -> Result<&Lane> {
+        self.lanes
+            .first()
+            .ok_or_else(|| Refusal::new(RefusalCode::ModelUnavailable, "this door holds no helper"))
     }
 
     /// Runs `calls` across the pool, preserving input order.
     ///
     /// A call that the runtime refuses comes back as its refusal rather than
     /// failing the batch, so a caller can decide what a partial result means.
+    /// A call whose helper is retired mid-batch comes back as that fault; the
+    /// lane's remaining calls run on a fresh helper.
     pub fn decide_all(&self, calls: &[Call]) -> Vec<Result<Outcome>> {
         let mut results: Vec<Option<Result<Outcome>>> = (0..calls.len()).map(|_| None).collect();
-        let width = self.helpers.len();
+        let width = self.lanes.len();
+        if width == 0 {
+            return calls
+                .iter()
+                .map(|_| {
+                    Err(Refusal::new(
+                        RefusalCode::ModelUnavailable,
+                        "this door holds no helper",
+                    ))
+                })
+                .collect();
+        }
         std::thread::scope(|scope| {
             let mut handles = Vec::new();
-            for (lane, helper) in self.helpers.iter().enumerate() {
+            for (index, lane) in self.lanes.iter().enumerate() {
                 let slice: Vec<(usize, &Call)> = calls
                     .iter()
                     .enumerate()
-                    .filter(|(index, _)| index % width == lane)
+                    .filter(|(position, _)| position % width == index)
                     .collect();
                 handles.push(scope.spawn(move || {
-                    let mut helper = helper.lock().expect("a helper lock is not poisoned");
                     slice
                         .into_iter()
-                        .map(|(index, call)| (index, helper.decide(call)))
+                        .map(|(position, call)| (position, lane.with(|helper| helper.decide(call))))
                         .collect::<Vec<_>>()
                 }));
             }
             for handle in handles {
-                for (index, outcome) in handle.join().expect("a lane finished") {
-                    results[index] = Some(outcome);
+                for (position, outcome) in handle.join().expect("a lane finished") {
+                    results[position] = Some(outcome);
                 }
             }
         });

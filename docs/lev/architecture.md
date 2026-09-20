@@ -240,6 +240,32 @@ estimator ran, `N` and the seeds for L2, the selected band for L3, the
 calibration record the map came from, and the base model signature the
 answer was produced against.
 
+## The helper as a process that can fail
+
+Between the door and the framework sits `swift/lev-bridge`, a child process
+that speaks line-delimited JSON over its pipes. `bridge::Bridge` treats it as
+something that can hang, flood its diagnostics, answer the wrong call, or
+exit, and survives each:
+
+- A reader thread owns stdout, so a call waits on a channel with a deadline
+  rather than on an uninterruptible read. The deadline is
+  `LEV_BRIDGE_DEADLINE_MS` (default 30 000).
+- A drainer thread owns stderr and keeps the last 4 KiB, so a helper that
+  writes a megabyte of diagnostics neither wedges on a full pipe nor grows the
+  door's memory; the tail rides on the refusal when the helper dies.
+- One response line is capped at 1 MiB (`bridge::MAX_RESPONSE_BYTES`).
+- Every response carries the request's `id`, and a response to a different
+  call is a fault, not an answer.
+
+A helper that misses any of those is *retired*: killed, reaped, and marked so
+it refuses everything after. `bridge::Pool` keeps a lane per helper and
+starts a fresh process the next time a retired lane is used, so a fault costs
+the calls that helper was holding and nothing after them. In the door, helper
+work runs on Tokio's blocking threads under `Door::with_in_flight` slots
+(default 4); a request that finds no slot is refused `busy` at once rather
+than queueing behind work its caller may have abandoned.
+`crates/lev/tests/supervision.rs` drives each fault through a fake helper.
+
 ## Untrusted state, guardrails, and refusals
 
 The state is data, never instruction. Apple's session splits developer

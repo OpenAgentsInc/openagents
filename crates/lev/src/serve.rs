@@ -290,7 +290,18 @@ pub struct Door {
     os_build: String,
     base_signature: String,
     calibration: Calibration,
+    in_flight: Arc<tokio::sync::Semaphore>,
+    max_in_flight: usize,
 }
+
+/// How many requests a door lets wait on its helpers at once when
+/// [`Door::with_in_flight`] is not called.
+///
+/// Every request holds a blocking thread while its samples run, so this is
+/// also the most blocking threads a door occupies. Beyond it the door answers
+/// `busy` at once rather than queueing behind work a caller may already have
+/// abandoned.
+pub const DEFAULT_IN_FLIGHT: usize = 4;
 
 impl Door {
     /// Builds a door over a pool of helper processes.
@@ -314,7 +325,18 @@ impl Door {
             os_build: std::env::var(OS_BUILD_VAR).unwrap_or_default(),
             base_signature,
             calibration: Calibration::default(),
+            in_flight: Arc::new(tokio::sync::Semaphore::new(DEFAULT_IN_FLIGHT)),
+            max_in_flight: DEFAULT_IN_FLIGHT,
         }
+    }
+
+    /// Bounds how many requests may wait on the helpers at once; at least one.
+    #[must_use]
+    pub fn with_in_flight(mut self, requests: usize) -> Self {
+        let requests = requests.max(1);
+        self.in_flight = Arc::new(tokio::sync::Semaphore::new(requests));
+        self.max_in_flight = requests;
+        self
     }
 
     /// Serves the release a manifest describes.
@@ -530,7 +552,10 @@ impl IntoResponse for Wire {
 }
 
 async fn models(State(door): State<Arc<Door>>) -> Response {
-    let availability = door.pool.availability();
+    let availability = {
+        let door = Arc::clone(&door);
+        blocking(move || door.pool.availability()).await
+    };
     let (status, reason) = match availability {
         Ok(availability) => (availability.status, availability.reason),
         Err(refusal) => ("unknown".to_string(), Some(refusal.message)),
@@ -641,10 +666,44 @@ async fn system_one(State(door): State<Arc<Door>>, body: String) -> Response {
         }
     };
 
-    match answer_request(&door, &request) {
+    let Ok(slot) = Arc::clone(&door.in_flight).try_acquire_owned() else {
+        return Wire(Refusal::new(
+            RefusalCode::Busy,
+            format!(
+                "busy: {} requests already wait on this door's helpers",
+                door.max_in_flight
+            ),
+        ))
+        .into_response();
+    };
+    let answered = blocking(move || {
+        let _slot = slot;
+        answer_request(&door, &request)
+    })
+    .await;
+    match answered {
         Ok(response) => Json(response).into_response(),
         Err(refusal) => Wire(refusal).into_response(),
     }
+}
+
+/// Runs helper work off the async runtime's threads.
+///
+/// The helpers are synchronous pipes, and a pool lane blocks until its
+/// helper answers or its deadline retires it. That wait belongs on a
+/// blocking thread, bounded by the door's in-flight slots, not on a Tokio
+/// worker.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> crate::error::Result<T> + Send + 'static,
+) -> crate::error::Result<T> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .unwrap_or_else(|error| {
+            Err(Refusal::new(
+                RefusalCode::BridgeError,
+                format!("the door's worker did not finish: {error}"),
+            ))
+        })
 }
 
 fn answer_request(
