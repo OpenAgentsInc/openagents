@@ -421,10 +421,20 @@ impl Worker<'_> {
                         Some("EVENT") => {}
                         _ => continue,
                     }
-                    let Ok(request) = serde_json::from_value::<Event>(value[2].clone()) else {
-                        continue;
+                    // What the relay delivered is checked before it is
+                    // trusted for anything, its label included. Something
+                    // that is not a signed request to this worker is set
+                    // aside with one line saying why; there is no one to
+                    // answer, because nothing proved who sent it.
+                    let request = match serde_json::from_value::<Event>(value[2].clone()) {
+                        Ok(request) => request,
+                        Err(error) => {
+                            eprintln!("ignored an event that does not parse: {error}");
+                            continue;
+                        }
                     };
-                    if request.kind != REQUEST_KIND || request.validate_crypto().is_err() {
+                    if let Err(why) = addressed(&request, self.identity.pubkey()) {
+                        eprintln!("ignored {}: {why}", &request.id[..request.id.len().min(16)]);
                         continue;
                     }
                     // Admission is decided here, before anything is spawned:
@@ -445,6 +455,24 @@ impl Worker<'_> {
             }
         }
     }
+}
+
+/// Whether `request` is a signed job request naming this worker.
+///
+/// The relay's filter asked for exactly this, and the relay is transport,
+/// not authority: a relay that is wrong or lying delivers something else,
+/// and the worker checks rather than assumes.
+fn addressed(request: &Event, worker: &str) -> Result<(), String> {
+    if request.kind != REQUEST_KIND {
+        return Err(format!("kind {} is not a job request", request.kind));
+    }
+    request
+        .validate_crypto()
+        .map_err(|error| format!("the signature does not verify: {error}"))?;
+    if !request.tag_values("p").any(|key| key == worker) {
+        return Err("the request is not addressed to this worker".to_string());
+    }
+    Ok(())
 }
 
 /// How many jobs run at once.
@@ -484,15 +512,17 @@ struct Job {
 
 impl Job {
     /// Answers one job request: decrypt, generate, publish.
+    ///
+    /// The request arrives signed by the customer and addressed to this
+    /// worker; [`addressed`] saw to that. What is inside may still be
+    /// unreadable, and that is answered, not dropped: the customer proved
+    /// who they are, so a typed `malformed` tells them what to fix,
+    /// where a silence would tell them the worker is down.
     async fn answer(self, request: &Event) -> Result<(), String> {
         let customer = parse_hex(&request.pubkey)
             .and_then(|bytes| XOnlyPublicKey::from_byte_array(bytes).ok())
             .ok_or("the request's pubkey does not parse")?;
         let conversation = nip44::conversation_key(self.identity.secret(), &customer);
-        let plaintext = nip44::decrypt(&request.content, &conversation)
-            .map_err(|error| format!("decrypt: {error}"))?;
-        let payload: Value =
-            serde_json::from_str(&plaintext).map_err(|error| format!("payload: {error}"))?;
         let label = &request.id[..16];
 
         let publish = |kind: u16, content: Value| -> Result<(), String> {
@@ -528,6 +558,23 @@ impl Job {
             )?;
             eprintln!("job {label} declined: {code}");
             Ok(())
+        };
+
+        let payload = match nip44::decrypt(&request.content, &conversation)
+            .map_err(|error| format!("the content does not decrypt under NIP-44: {error}"))
+            .and_then(|plaintext| {
+                serde_json::from_str::<Value>(&plaintext)
+                    .map_err(|error| format!("the payload is not JSON: {error}"))
+            }) {
+            Ok(payload) if payload.is_object() => payload,
+            Ok(_) => {
+                return refuse(
+                    PAYLOAD_VERSION,
+                    "malformed",
+                    "the payload is not a JSON object".to_string(),
+                );
+            }
+            Err(why) => return refuse(PAYLOAD_VERSION, "malformed", why),
         };
 
         // The worker answers at the version the request named, so a
@@ -843,9 +890,20 @@ mod tests {
         allow: Option<Vec<String>>,
         admitted: bool,
     ) -> Value {
+        let (_, _, conversation) = identities();
+        let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+        response_to_content(door, content, decline, allow, admitted).await
+    }
+
+    async fn response_to_content(
+        door: Door,
+        content: String,
+        decline: Option<&str>,
+        allow: Option<Vec<String>>,
+        admitted: bool,
+    ) -> Value {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let (worker, client, conversation) = identities();
-            let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
             let request = client.signer().sign(
                 unix_now(),
                 REQUEST_KIND,
@@ -887,6 +945,66 @@ mod tests {
         let door =
             coder::relay::RelayDoor::new(url, public, client).connecting(Duration::from_secs(3600));
         (Door::Relay(Box::new(door)), listener)
+    }
+
+    /// Content the worker cannot read is answered with a typed
+    /// `malformed`: the request was signed and addressed to this worker,
+    /// so the customer is known and hears what went wrong.
+    #[tokio::test]
+    async fn unreadable_content_is_refused_malformed() {
+        let (_, _, conversation) = identities();
+        let stub = || Door::Stub(StubGenerate::default());
+        let not_nip44 = "not ciphertext at all".to_string();
+        let not_json = nip44::encrypt("{this is not json", &conversation, [43; 32]).unwrap();
+        let not_object = nip44::encrypt("[1, 2, 3]", &conversation, [43; 32]).unwrap();
+        for (content, why) in [
+            (not_nip44, "NIP-44"),
+            (not_json, "not JSON"),
+            (not_object, "not a JSON object"),
+        ] {
+            let refused = response_to_content(stub(), content, None, None, true).await;
+            assert_eq!(refused["v"], PAYLOAD_VERSION, "{refused}");
+            assert_eq!(refused["type"], "status");
+            assert_eq!(refused["status"], "error");
+            assert_eq!(refused["code"], "malformed", "{refused}");
+            assert!(
+                refused["message"].as_str().unwrap().contains(why),
+                "{refused}"
+            );
+        }
+    }
+
+    /// An event that is not a signed job request naming this worker is
+    /// set aside before decryption: nothing proved who sent it, so there
+    /// is no one to answer.
+    #[test]
+    fn events_that_are_not_requests_to_this_worker_are_set_aside() {
+        let (worker, client, _) = identities();
+        let to_us = Tag::new(vec!["p".into(), worker.pubkey().to_string()]);
+        let to_them = Tag::new(vec!["p".into(), client.pubkey().to_string()]);
+        let sign = |kind: u16, tags: Vec<Tag>| {
+            client
+                .signer()
+                .sign(unix_now(), kind, tags, "ciphertext".to_string())
+        };
+        assert!(addressed(&sign(REQUEST_KIND, vec![to_us.clone()]), worker.pubkey()).is_ok());
+        assert!(
+            addressed(&sign(RESULT_KIND, vec![to_us.clone()]), worker.pubkey())
+                .unwrap_err()
+                .contains("not a job request")
+        );
+        assert!(
+            addressed(&sign(REQUEST_KIND, vec![to_them]), worker.pubkey())
+                .unwrap_err()
+                .contains("not addressed")
+        );
+        let mut forged = sign(REQUEST_KIND, vec![to_us]);
+        forged.content = "other ciphertext".to_string();
+        assert!(
+            addressed(&forged, worker.pubkey())
+                .unwrap_err()
+                .contains("does not verify")
+        );
     }
 
     /// A delegation whose run outlasts its stated minutes plus the grace
