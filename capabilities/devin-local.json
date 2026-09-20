@@ -15,6 +15,7 @@
   "cost": "operator_account",
   "isolation": ["worktree", "directory"],
   "invoke": ["devin", "-p", "--"],
+  "invoke_writing": ["devin", "-p", "--permission-mode", "dangerous", "--"],
   "workspace_probe": {
     "argv": ["devin", "-p", "capability probe", "--model", "openagents-capability-probe"],
     "accepts": ["openagents-capability-probe"],

@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "id": "openagents.independence.v2",
+  "name": "Can these tasks run at once",
+  "summary": "Asks whether a set of tasks may be fanned out in parallel. Supersedes v1 for lists of any length: v1's wording names six tasks, which is the golden's count and not the work list's.",
+  "gate": "independent",
+  "questions": {
+    "independent": {
+      "type": "noul",
+      "instructions": "The listed tasks can run at the same time without colliding: no two of them edit the same file, and none depends on another finishing first."
+    },
+    "readonly": {
+      "type": "noul",
+      "instructions": "Every listed task is read-only and writes no file."
+    },
+    "needs_tool_restriction": {
+      "type": "noul",
+      "instructions": "At least one listed task requires restricting which tools the delegate may use."
+    }
+  }
+}

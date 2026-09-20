@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "The question crates/coder/src/runtime.rs sends before every turn, lifted out of the crate and given a name a row can pin. The wording is questions/program.json; the options are the programs in programs/ that this host would admit, which is what Runtime::select builds an option set from.",
+    "This set supersedes program-selection-v1: it adds the `burn-down` option the repository gained on 2026-09-20, and nothing else changed. A new option is a new question, so it carries a new id rather than an edit to v1, whose measurement stays about v1. Two of the repository's five programs are missing on purpose. `run-suite` names a check this host does not run and `review-changes` names a question set it has no wording for, so neither is a route and neither is offered.",
+    "This file is generated, not written. `cargo test -p coder --test suite_questions -- --ignored --nocapture print_wire_selection` prints it, and `the_selection_question_is_the_production_text` fails when the repository and this file drift, so a reword is a new question set with a new id rather than an edit to this one.",
+    "`none` is an option on the question rather than a floor a caller applies to the confidence afterwards. Almost every turn answers it, and a question that can only name programs has to name one.",
+    "Not yet scored. Until a run on program-selection-v1's items records this set, the 2026-09-19 numbers describe the three-option question, not this one."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "program-selection-v2",
+  "suite": "program-selection-v1",
+  "questions": {
+    "program": {
+      "type": "choice",
+      "instructions": "Which program does this request ask this machine to run? Almost every request asks for none: a question to answer, an instruction to follow, a remark to reply to. Answer none unless the request asks for the work one of the other options describes.",
+      "criteria": {
+        "none": "This request asks for no program. It is an ordinary turn - a question, an instruction, or a remark - and the agent answers it itself.",
+        "answer-question": "Answers a question about the repository from its own contents.",
+        "burn-down": "Runs one delegated session per item of the work list this checkout carries (.coder/work-list.json), each in a worktree of its own, and keeps every worktree for review.",
+        "delegate-fan-out": "Runs one delegated session per task, in parallel."
+      }
+    }
+  }
+}

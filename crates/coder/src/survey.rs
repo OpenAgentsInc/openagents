@@ -133,8 +133,11 @@ pub fn executor(found: &Found) -> Option<Executor> {
     // The approval's own material — manifest, adapter, store — is sealed
     // against the delegate it approves, and a manifest's `enforces` list
     // is a claim about bounds and never becomes a grant.
-    let executor = Executor::new(&manifest.slug, path.clone(), arguments.to_vec())
+    let mut executor = Executor::new(&manifest.slug, path.clone(), arguments.to_vec())
         .under(Policy::of(found, path));
+    if let Some((_, writing)) = manifest.invoke_writing.split_first() {
+        executor = executor.writing_with(writing.to_vec());
+    }
     Some(manifest.refuses.iter().fold(executor, |executor, refusal| {
         executor.refusing(&refusal.name, &refusal.matches)
     }))
@@ -284,6 +287,7 @@ mod tests {
             cost: "local".to_string(),
             isolation: vec!["directory".to_string()],
             invoke: vec!["sh".to_string(), "-c".to_string()],
+            invoke_writing: vec!["sh".to_string(), "-e".to_string(), "-c".to_string()],
             workspace_probe: None,
             refuses: vec![capability::Refusal {
                 name: "untrusted_workspace".to_string(),
@@ -304,6 +308,18 @@ mod tests {
             "the delegation runs the path the probe resolved, not a name"
         );
         assert_eq!(executor.arguments, ["-c"]);
+        let mut writing = crate::delegate::Task::asking("change a file");
+        writing.writes = true;
+        assert_eq!(
+            executor.arguments_for(&writing),
+            ["-e", "-c"],
+            "a writing task runs the manifest's invoke_writing"
+        );
+        assert_eq!(
+            executor.arguments_for(&crate::delegate::Task::asking("what is here")),
+            ["-c"],
+            "a reading task runs invoke"
+        );
         assert_eq!(
             executor.refusal("Refusing to run in an untrusted workspace: /tmp"),
             Some("untrusted_workspace".to_string()),

@@ -732,6 +732,7 @@ impl Trust {
             digest: record.manifest,
             manifest: entry.path.clone(),
             invoke: entry.manifest.invoke.clone(),
+            invoke_writing: entry.manifest.invoke_writing.clone(),
             adapter: record.adapter,
             pinned: record.pinned,
             writable: record.writable,
@@ -764,14 +765,15 @@ impl Trust {
 }
 
 /// Every argv tail word the manifest declares — across `detect.version`,
-/// `detect.probe`, `workspace_probe.argv`, and `invoke` — so approval and
-/// verification look at exactly the same words.
+/// `detect.probe`, `workspace_probe.argv`, `invoke`, and `invoke_writing`
+/// — so approval and verification look at exactly the same words.
 fn argv_tails<'a>(manifest: &'a Manifest) -> impl Iterator<Item = &'a String> + 'a {
     [
         Some(&manifest.detect.version),
         manifest.detect.probe.as_ref(),
         manifest.workspace_probe.as_ref().map(|probe| &probe.argv),
         Some(&manifest.invoke).filter(|argv| !argv.is_empty()),
+        Some(&manifest.invoke_writing).filter(|argv| !argv.is_empty()),
     ]
     .into_iter()
     .flatten()
@@ -797,7 +799,7 @@ fn resolve_word(word: &str, cwd: &Path) -> Result<PathBuf, String> {
 
 /// The files an approval pins beyond the adapter itself: every argv word
 /// — from `detect.version`, `detect.probe`, `workspace_probe.argv`, and
-/// `invoke` — that names a file. An interpreted script is the adapter as
+/// `invoke`, and `invoke_writing` — that names a file. An interpreted script is the adapter as
 /// surely as the binary is; an inline `-c` script is pinned already, by
 /// the manifest digest that covers it.
 ///
@@ -872,6 +874,9 @@ pub struct Approval {
     /// The argv the manifest says drives the executor, so the operator
     /// sees what was approved rather than what was asked for.
     pub invoke: Vec<String>,
+    /// The argv a writing task runs instead, when the manifest declares
+    /// one; empty when a writing task runs `invoke`.
+    pub invoke_writing: Vec<String>,
     /// The canonical adapter path the record pins.
     pub adapter: PathBuf,
     /// The argv files the record pins — each word as the manifest spells
@@ -898,6 +903,9 @@ impl std::fmt::Display for Approval {
             self.invoke.join(" "),
             self.store.display(),
         )?;
+        if !self.invoke_writing.is_empty() {
+            write!(f, "\n  writing  {}", self.invoke_writing.join(" "))?;
+        }
         for pinned in &self.pinned {
             if pinned.word.is_empty() {
                 write!(f, "\n  pinned   {}", pinned.path.display())?;

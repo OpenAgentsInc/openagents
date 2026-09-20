@@ -443,6 +443,7 @@ mod tests {
             [
                 "openagents.completion.v1",
                 "openagents.independence.v1",
+                "openagents.independence.v2",
                 "openagents.program.v1"
             ]
         );

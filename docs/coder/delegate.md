@@ -120,6 +120,17 @@ the ones its `refuses` list declares. A binary name and an argv written
 into the source would be a second source of truth beside the manifest that
 exists to be the first, and the two would drift.
 
+A task that writes runs the manifest's `invoke_writing` argv when it
+declares one, and `invoke` otherwise. `devin-local` declares
+`--permission-mode dangerous` there: the CLI's default non-interactive mode
+rejects every tool call that would edit a file or run a command, so three
+writing delegations under it came back "answered" with three unchanged
+worktrees. The mode turns off the executor's own confirmation, not the
+host's: the delegate still runs inside the boundary, which lets it write its
+own worktree and its granted adapter state and nothing else. The approval
+pins `invoke_writing` beside `invoke`, so a manifest that changes either one
+loses its approval until the operator approves it again.
+
 The executor also carries a filesystem `Policy`, built from the proof the
 probe ran under: the adapter-state directories the operator's approval
 granted, and the approval's own material — the manifest, the resolved

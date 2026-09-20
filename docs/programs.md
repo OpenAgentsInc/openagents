@@ -98,7 +98,7 @@ carries both, and `crates/coder` reads them:
 | --- | --- |
 | `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first. |
 | `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `burn-down`, `review-changes`, `answer-question`, `run-suite`. |
-| `questions/` | One question set per file, addressed by identifier: `openagents.program.v1`, `openagents.independence.v1`, `openagents.completion.v1`. |
+| `questions/` | One question set per file, addressed by identifier: `openagents.program.v1`, `openagents.independence.v1`, `openagents.independence.v2`, `openagents.completion.v1`. |
 | `sources/` | One task source per file. `work-list` is the first; `request` is built in. |
 
 A host reads `CODER_CAPABILITY_DIR` first, then the repository's directory,
@@ -510,7 +510,14 @@ that was there before. Three rules hold the path together:
   place of `request`, `isolation: worktree`, and thirty minutes per item:
   the program the backlog runs through, where the work is written to
   `.coder/work-list.json` by inspection and every delegate's worktree is
-  kept for review.
+  kept for review. It gates on `openagents.independence.v2`, whose
+  wording speaks of the listed tasks; v1 says "the six tasks", which is
+  the golden's count, and a three-item list asked v1 came back at 0.06
+  on the first real run. A writing task runs the manifest's
+  `invoke_writing` argv — for `devin-local`, `--permission-mode dangerous`
+  — because an executor that stops to confirm each edit answers a fan-out
+  with nothing done; the worktree boundary, not the executor's own
+  confirmation, is what holds it.
 - **The work the request carries is the list the sentence writes out.** One
   task per bulleted or numbered line, in the order written. That is what the
   `request` source reads, and a `query` step naming a file source reads a

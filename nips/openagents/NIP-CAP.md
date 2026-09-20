@@ -196,11 +196,13 @@ There MUST be exactly one `d` tag. The `transport` tag duplicates
 | `cost` | Who pays: `operator_account`, `metered`, `local`. Never a number; prices go stale in a signed event. |
 | `isolation` | Which checkout shapes it accepts. |
 | `invoke` | The argv that hands the executor one task, with the prompt appended as the final argument. A fixed argv, like `detect`. |
+| `invoke_writing` | Optional. The argv for a task that writes, when it differs from `invoke`: an executor that stops to confirm each edit or command cannot be confirmed from a fan-out, so the manifest states the argv that lets it work unattended. The host's filesystem boundary, not the executor's own confirmation, is what holds a writing task. Absent means a writing task runs `invoke`. |
 | `workspace_probe` | A fixed argv a host runs **in a candidate working directory** to find out whether the executor will accept it. `accepts` names output that proves acceptance — for a probe that exits non-zero either way, the word only an accepted workspace reaches. |
 | `refuses` | What the executor declines while installed, each with the text that identifies it. |
 
-`detect` and `invoke` are both fixed argv, and a host replaces the first
-element of each with the absolute path it resolved. A manifest with no
+`detect`, `invoke`, and `invoke_writing` are fixed argv, and a host
+replaces the first element of each with the absolute path it resolved.
+`invoke_writing` without `invoke` is invalid. A manifest with no
 `invoke` says how to find an executor and not how to drive one, so a host
 that reads one can report the capability present and MUST NOT delegate
 through it.

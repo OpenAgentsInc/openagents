@@ -38,10 +38,14 @@ option. On this repository that is two of the four:
 | `review-changes` | no | Names `openagents.review-finding.v1`, which this host has no wording for. |
 | `run-suite` | no | Names a `check` this host does not run. |
 
-The committed copy is `crates/gym/questions/program-selection-v1.json`, and
-`cargo test -p coder --test suite_questions` fails when it drifts from the
-repository's own files, so this report is about the wording still in
-production rather than about a copy of it.
+The committed copy is `crates/gym/questions/program-selection-v1.json`.
+On 2026-09-20 the repository gained a fifth program, `burn-down`, which
+this host admits, so the question in production became
+`program-selection-v2.json`: the same wording with a fourth offered option.
+`cargo test -p coder --test suite_questions` fails when v2 drifts from the
+repository's own files. The numbers in this report are about v1, the
+three-option question; v2 has not been scored, and a row that pins it
+would be the first measurement of the four-option one.
 
 ## What it was asked about
 

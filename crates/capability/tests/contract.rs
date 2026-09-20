@@ -92,6 +92,12 @@ fn the_checked_in_manifest_parses() {
     assert!(!manifest.summary.is_empty());
     assert_eq!(manifest.cost, "operator_account");
     assert_eq!(manifest.concurrent_max, Some(6));
+    assert_eq!(manifest.invoke, ["devin", "-p", "--"]);
+    assert_eq!(
+        manifest.invoke_writing,
+        ["devin", "-p", "--permission-mode", "dangerous", "--"],
+        "a writing task runs the executor unattended; the boundary holds it"
+    );
     let probe = manifest.workspace_probe.expect("a workspace probe");
     assert!(
         probe
@@ -651,15 +657,35 @@ fn a_mismatched_argv_is_refused_at_load() {
     )
     .unwrap();
     std::fs::write(capabilities.join("not-json.json"), b"{ not json").unwrap();
+    std::fs::write(
+        capabilities.join("contract-writing.json"),
+        serde_json::to_vec_pretty(&json!({
+            "v": 1,
+            "slug": "contract-writing",
+            "transport": "subprocess",
+            "detect": { "binary": "sh", "version": ["sh", "--version"] },
+            "invoke": ["sh", "-c"],
+            "invoke_writing": ["bash", "-c"],
+        }))
+        .unwrap(),
+    )
+    .unwrap();
 
     let registry = Registry::open(&[SourceDir::repository(
         repository.path().join("capabilities"),
     )]);
     assert!(registry.entry("contract-mismatched").is_none());
+    assert!(registry.entry("contract-writing").is_none());
     let refused = registry.refused();
-    assert_eq!(refused.len(), 2);
+    assert_eq!(refused.len(), 3);
     assert!(
         refused.iter().any(|(_, why)| why.contains("curl")),
+        "{refused:?}"
+    );
+    assert!(
+        refused
+            .iter()
+            .any(|(_, why)| why.contains("invoke_writing") && why.contains("bash")),
         "{refused:?}"
     );
 }

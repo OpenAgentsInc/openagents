@@ -72,6 +72,14 @@ pub struct Manifest {
     /// without saying how to use it.
     #[serde(default)]
     pub invoke: Vec<String>,
+    /// The argv that hands this executor a task that writes, when it
+    /// differs from `invoke`. An executor that asks for confirmation
+    /// before it edits or runs a command cannot be confirmed from a
+    /// fan-out, so the manifest states the argv that lets it work
+    /// unattended, and the host's filesystem boundary is the wall. Empty
+    /// means a writing task runs `invoke` unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invoke_writing: Vec<String>,
     /// What to run in a candidate working directory to find out whether
     /// the executor will accept it.
     #[serde(default)]
@@ -230,6 +238,12 @@ impl Manifest {
         }
         if !self.invoke.is_empty() {
             self.check_argv(&self.invoke, "invoke")?;
+        }
+        if !self.invoke_writing.is_empty() {
+            if self.invoke.is_empty() {
+                return Err("invoke_writing without invoke drives nothing".to_string());
+            }
+            self.check_argv(&self.invoke_writing, "invoke_writing")?;
         }
         let claims: BTreeSet<&String> = self.enforces.iter().collect();
         let overlap: Vec<&str> = self

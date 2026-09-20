@@ -159,6 +159,12 @@ pub struct Executor {
     /// The arguments that go before the prompt, as an argv. A manifest is
     /// untrusted input, so nothing here is ever a shell string.
     pub arguments: Vec<String>,
+    /// The arguments a writing task runs with instead, when the manifest
+    /// declares `invoke_writing`. An executor that stops to confirm each
+    /// edit answers a fan-out with nothing done, so the manifest names the
+    /// argv that lets it work unattended and the boundary is what holds
+    /// it. `None` runs `arguments` for every task.
+    pub writing_arguments: Option<Vec<String>>,
     /// What this executor declares it refuses, beyond being absent.
     pub refuses: Vec<Refusal>,
     /// The host's filesystem policy for this executor's delegations.
@@ -178,8 +184,27 @@ impl Executor {
             capability: capability.to_string(),
             binary: binary.into(),
             arguments,
+            writing_arguments: None,
             refuses: Vec::new(),
             policy: Policy::empty(),
+        }
+    }
+
+    /// Sets the arguments a writing task runs with, from the manifest's
+    /// `invoke_writing`.
+    #[must_use]
+    pub fn writing_with(mut self, arguments: Vec<String>) -> Self {
+        self.writing_arguments = Some(arguments);
+        self
+    }
+
+    /// The arguments one task runs with: the writing argv for a task that
+    /// writes and has one, `arguments` otherwise.
+    #[must_use]
+    pub fn arguments_for(&self, task: &Task) -> &[String] {
+        match (&self.writing_arguments, task.writes) {
+            (Some(writing), true) => writing,
+            _ => &self.arguments,
         }
     }
 
@@ -287,6 +312,9 @@ struct Approved {
     /// The `invoke` argv the surveyed manifest declared — the digest
     /// check implies it, and the comparison keeps the binding explicit.
     invoke: Vec<String>,
+    /// The `invoke_writing` argv the surveyed manifest declared, bound
+    /// the same way.
+    invoke_writing: Vec<String>,
 }
 
 impl Policy {
@@ -348,6 +376,7 @@ impl Policy {
                     .canonicalize()
                     .unwrap_or_else(|_| adapter.to_path_buf()),
                 invoke: found.manifest.invoke.clone(),
+                invoke_writing: found.manifest.invoke_writing.clone(),
             });
         }
         policy
@@ -385,7 +414,10 @@ impl Policy {
         // survey. The invoke comparison is the digest check's explicit
         // half: equal bytes imply it, and it is stated so the binding
         // does not rest on that implication.
-        if entry.digest != approval.digest || entry.manifest.invoke != approval.invoke {
+        if entry.digest != approval.digest
+            || entry.manifest.invoke != approval.invoke
+            || entry.manifest.invoke_writing != approval.invoke_writing
+        {
             return Err(format!(
                 "the manifest at {} changed since this executor was surveyed — \
                  survey again so the executor the approval names is the one that runs",
@@ -1276,7 +1308,7 @@ impl Delegator {
         let boundary = self.boundary(task, checkout, policy).await?;
         let argv: Vec<&OsStr> = self
             .executor
-            .arguments
+            .arguments_for(task)
             .iter()
             .map(OsStr::new)
             .chain(std::iter::once(OsStr::new(&task.prompt)))
