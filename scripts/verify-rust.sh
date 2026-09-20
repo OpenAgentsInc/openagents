@@ -23,6 +23,7 @@ phase() {
 features='kev/serve,lev/serve,gym/tui,jev/blocking'
 echo 'Gate: Rust 1.97.1, rustfmt style edition 2024.'
 phase "Artifact acquisition tests" python3 scripts/test_fetch_kev_artifacts.py
+phase "Caller-suite builder tests" python3 crates/gym/suites/test_build_caller_v1.py
 phase "Workspace formatting" cargo fmt --all --check
 phase "Default workspace Clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
 phase "Feature workspace Clippy" cargo clippy --locked --workspace --all-targets --features "$features" -- -D warnings
