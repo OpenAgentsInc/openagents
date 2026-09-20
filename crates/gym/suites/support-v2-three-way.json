@@ -4,7 +4,7 @@
  "created": "2026-09-19",
  "description": "The 196 items of support-v2, repartitioned three ways: calibration fits a map, development chooses between maps, and locked is read once and recorded. The items and their labels are unchanged from support-v2; only the partition field differs, so this file carries its own digest and its own name.",
  "tier": "scored",
- "gate": "probability-v1",
+ "gate": "probability-v2",
  "questions": "support-v2-three-way-v1",
  "items": [
   {

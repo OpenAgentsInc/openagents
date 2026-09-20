@@ -21,7 +21,12 @@ const PROBABILITY_V1_LEGACY: &str =
     "gate:368cefd18f308119008db3099c8415af380c9d096d4cbcb6997196bfc6d82013";
 
 /// The gates committed to `crates/gym/gates/`.
-const SHIPPED: [&str; 3] = ["decision-v1", "deployment-v1", "probability-v1"];
+const SHIPPED: [&str; 4] = [
+    "decision-v1",
+    "deployment-v1",
+    "probability-v1",
+    "probability-v2",
+];
 
 fn gate(id: &str) -> Gate {
     gate::load(id).unwrap_or_else(|error| panic!("{id} loads: {error}"))
@@ -72,7 +77,7 @@ fn every_shipped_gate_loads_under_v2_and_digests() {
 }
 
 #[test]
-fn the_shipped_gates_are_three_different_rules() {
+fn the_shipped_gates_are_different_rules() {
     let digests: Vec<String> = SHIPPED.iter().map(|id| gate(id).digest()).collect();
     for (index, digest) in digests.iter().enumerate() {
         assert!(
@@ -285,7 +290,7 @@ fn decision_and_deployment_carried_no_recorded_digest_forward() {
     // The v1 store pinned rows to probability-v1's digest alone; the other
     // two gates recorded no digest under the old encoding, so they carry no
     // aliases and nothing written before this schema attributes to them.
-    for id in ["decision-v1", "deployment-v1"] {
+    for id in ["decision-v1", "deployment-v1", "probability-v2"] {
         let gate = gate(id);
         assert!(gate.previously.is_empty(), "{id}");
         assert!(!gate.has_digest(PROBABILITY_V1_LEGACY), "{id}");

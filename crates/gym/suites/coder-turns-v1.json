@@ -4,7 +4,7 @@
  "created": "2026-09-19",
  "description": "Real turns and shell rounds from coding-agent sessions on this repository, asked the questions crates/coder/src/classify.rs sends, in the state shapes classify::state_of and shell::state_of build. Every item names its label_source: `outcome` labels are what happened next in the same session, read by the rule in label_rule; `author` labels are a reading of the state. The two are never pooled without saying so.",
  "tier": "scored",
- "gate": "probability-v1",
+ "gate": "probability-v2",
  "questions": "coder-turns-v1",
  "sampling": {
   "turns": 40,

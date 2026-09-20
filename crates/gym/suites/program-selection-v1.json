@@ -4,7 +4,7 @@
  "created": "2026-09-19",
  "description": "Requests, asked which program they want, in the state shape coder::runtime::select sends: one field, the operator's sentence. `turn/…` items are real turns, reused from coder-turns-v1's `action` family, partitions and all; `authored/…` items are written, because real traffic holds almost no program requests and nothing harvested would say whether the question recognises one. Every label is a reading and says so. The two sources are never pooled without saying which is which, and the false-positive and false-negative rates are reported apart: a missed program costs a retry and a spurious one runs a program nobody asked for.",
  "tier": "scored",
- "gate": "probability-v1",
+ "gate": "probability-v2",
  "questions": "program-selection-v1",
  "sampling": {
   "turns": 40,

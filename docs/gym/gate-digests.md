@@ -24,7 +24,11 @@ The projection is a schema of its own,
 - the enums that say what a statistic covers, such as `variance_basis`
   and `gated_percentile`;
 - a pending measurement's `quantity` and `issue`, so filling a recorded
-  gap — or recording a different one — is a different rule.
+  gap — or recording a different one — is a different rule;
+- an optional sub-rule's bounds, such as a probability rule's
+  `confident_error_floor`, projected only when the rule carries it. A
+  rule without the field projects exactly as it did before the field
+  existed, so adding a floor to a new gate does not move an old one.
 
 ## What the digest leaves out
 
@@ -96,6 +100,16 @@ The one migration on record:
   `crates/lev/calibration/`.
 - `decision-v1` and `deployment-v1` recorded no digest under v1, so their
   `previously` is empty and nothing written before v2 attributes to them.
+
+One versioned successor is on record. `probability-v1` compares the two
+confident-error counts directly, and openagents#9401 showed that refuses an
+unchanged door on one direction of every pair of seed blocks whose counts
+differ. `probability-v2` is the same rule with a measured
+`confident_error_floor`: the count's seed spread, the items it was
+measured on, and how many sigmas of the difference a rise may use. `v1`
+keeps its file and its digest because recorded verdicts name it; the
+suites under `crates/gym/suites/` and the `gym` binary's default now name
+`v2`.
 
 The old value stays an alias — the current digest is the v2 encoding's
 output, and `previously` never renames it. Archived rows, measurements,

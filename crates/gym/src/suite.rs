@@ -1136,7 +1136,7 @@ mod tests {
         assert_eq!(suite.name, "support-v2-three-way");
         assert_eq!(suite.items.len(), 196);
         assert_eq!(suite.tier.as_deref(), Some("scored"));
-        assert_eq!(suite.gate.as_deref(), Some("probability-v1"));
+        assert_eq!(suite.gate.as_deref(), Some("probability-v2"));
     }
 
     #[test]
@@ -1236,7 +1236,7 @@ mod tests {
     #[test]
     fn the_manifest_names_its_gate_and_does_not_restate_it() {
         let suite = suite();
-        assert_eq!(suite.gate.as_deref(), Some("probability-v1"));
+        assert_eq!(suite.gate.as_deref(), Some("probability-v2"));
         crate::gate::load(suite.gate.as_deref().expect("the manifest names a gate"))
             .expect("the named gate is a committed rule");
         assert!(
@@ -1255,7 +1255,7 @@ mod tests {
         // it. That is what lets this change land without moving
         // 54fbf4137c…, and the assertion below is the promise.
         let repointed = SUPPORT_V2_THREE_WAY
-            .replace("\"gate\": \"probability-v1\"", "\"gate\": \"decision-v1\"");
+            .replace("\"gate\": \"probability-v2\"", "\"gate\": \"decision-v1\"");
         assert_ne!(repointed, SUPPORT_V2_THREE_WAY, "the gate was in the file");
         let judged_by_another = Suite::load(&repointed).expect("a repointed gate is not drift");
         assert_eq!(judged_by_another.gate.as_deref(), Some("decision-v1"));

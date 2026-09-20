@@ -4,7 +4,7 @@
  "created": "2026-09-19",
  "description": "Twenty-four delegation plans, each stating three facts \u2014 six tasks or not, different files or not, writing or not \u2014 crossed with eight question texts about those same facts. Seven of the eight are restatements, whose answer the state asserts; the eighth is the independence inference delegate-fan-out gates on. The panel separates polarity, conjunction, and restatement in general as explanations for openagents#9414. Labels are read off the state by the rule each item carries.",
  "tier": "scored",
- "gate": "probability-v1",
+ "gate": "probability-v2",
  "questions": "restatement-v1",
  "items": [
   {

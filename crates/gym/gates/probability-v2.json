@@ -1,0 +1,70 @@
+{
+  "$comment": [
+    "Answers one question: may this candidate's probabilities be served in place of the baseline's? It judges a fitted map against the raw signal it rescales, and it judges one door's probabilities against another's.",
+    "Log loss and confident errors are rank 1, ECE and Brier are rank 2, and accuracy is rank 3, because a candidate that is right more often does not buy its way past being confidently wrong more often. The measured case for keeping calibration in its own gate is openagents#9373: the adapter's log loss falls on all 157 open items and rises on the 79 items no adapter trained on, so contamination flipped the sign of a calibration conclusion that accuracy alone could not see.",
+    "What this rule adds over probability-v1 is a seed noise floor under the confident-error count. docs/lev/measurements/2026-09-19-calibration-variance.md ran an unchanged door over eight seed blocks of 98 items and counted 6, 6, 10, 4, 4, 10, 6, 4 confident errors, a standard deviation of 2.4928. probability-v1 compares the two counts directly, so it refuses a door compared against itself about half the time (openagents#9401). Here a rise fails only when it exceeds two standard deviations of the difference of the two counts, the spread scaled to the items under judgment by the square root of the item ratio: 7.05 on 98 items against 98, which is the bound the record already published as seven. A rise inside the floor passes, because the criterion is a floor and not a prize.",
+    "A measure that rose is a measured loss and fails. A measure that moved the right way but short of its margin is unverifiable, because the move may be noise and calling it a loss overstates what the numbers say. A split below the floor leaves everything downstream unjudged.",
+    "max_brier_increase is the constant that was widened from zero after a run refused it, and it stays a tuned constant here rather than becoming a derived one. The maximum Brier a binned monotone map can lose is computable - crates/gym/src/gate.rs carries the derivation - and it comes out around two bin widths times accuracy, which is roughly 0.73 in absolute Brier for a 30-item family fitted on two bins. That ceiling catches a bug and cannot serve as an acceptance threshold, so the number below is a judgment, and it is labelled one.",
+    "This gate carries no previously binding. Every recorded verdict names probability-v1's digest and stays attributed to that rule; nothing written before this file attributes here."
+  ],
+  "schema": "openagents.gym.gate.v2",
+  "id": "probability-v2",
+  "question": "May this candidate's probabilities be served in place of the baseline's?",
+  "rule": {
+    "decides": "probability",
+    "min_items": {
+      "value": 30,
+      "basis": "derived",
+      "evidence": [
+        { "kind": "code", "id": "gym::calibrate::Map::fit_auto" },
+        { "kind": "measurement", "id": "2026-09-19-suite-scores" }
+      ],
+      "why": "crates/lev/src/calibrate.rs fits one bin per fifteen observations and never fewer than two bins, so thirty items is the smallest split that fills the coarsest table the map is allowed to build. Below it the 52-item suite turned a raw ECE of 0.031 into 0.113 on twelve items, which is the evidence for the rule rather than an argument about it."
+    },
+    "min_ece_reduction": {
+      "value": 0.1,
+      "basis": "tuned",
+      "evidence": [
+        { "kind": "code", "id": "lev::calibrate::admit" }
+      ],
+      "why": "Inherited from crates/lev/src/calibrate.rs::admit, where it reads as 'a marginal move is binning noise'. That is a claim about variance, and nothing has measured the variance; openagents#9370 does. Until then a shortfall reports unverifiable rather than failed, so the untested part of this number cannot condemn a candidate."
+    },
+    "max_brier_increase": {
+      "value": 0.1,
+      "basis": "tuned",
+      "evidence": [
+        { "kind": "measurement", "id": "2026-09-19-suite-v2-scores" }
+      ],
+      "why": "Widened from zero on 2026-09-19 after a run on the 196-item suite refused a map that cut ECE from 0.157 to 0.005 over a Brier move of 5.5%. The argument for widening is in docs/lev/calibration.md and holds; the number is the smallest round one that admits that case, and the derived structural ceiling is an order of magnitude looser, so this stays a judgment."
+    },
+    "confident_error_floor": {
+      "block_sigma": {
+        "value": 2.4928,
+        "basis": "derived",
+        "evidence": [
+          { "kind": "measurement", "id": "2026-09-19-calibration-variance" }
+        ],
+        "why": "The standard deviation of the confident-error count across eight seed blocks of lev-base on support-v2's 98 evaluation items: 6, 6, 10, 4, 4, 10, 6, 4. crates/gym/tests/rederived_floors.rs recomputes it from the committed draws. It is one door on one suite; a candidate that changes how often the door is confident at all changes this spread too, and the number does not know that."
+      },
+      "block_items": {
+        "value": 98,
+        "basis": "derived",
+        "evidence": [
+          { "kind": "measurement", "id": "2026-09-19-calibration-variance" }
+        ],
+        "why": "The items each of those blocks scored. The spread is scaled to the items under judgment by the square root of the ratio, which is how the spread of a count of rare events grows; on a 40-item family the floor is 1.59 per side rather than 2.49."
+      },
+      "sigmas": {
+        "value": 2.0,
+        "basis": "convention",
+        "evidence": [],
+        "why": "Two standard deviations of the difference, the same convention decision-v1 and deployment-v1 carry. On the eight measured blocks the largest rise between any two, 4 to 10, is inside it, where probability-v1 refused about one pair in two."
+      }
+    },
+    "pending_measurement": {
+      "quantity": "the suite's trial-to-trial resampling variance",
+      "issue": "openagents#9370",
+      "why": "Both margins here should eventually be derived from it."
+    }
+  }
+}

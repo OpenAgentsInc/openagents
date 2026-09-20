@@ -578,9 +578,77 @@ pub struct ProbabilityRule {
     /// How much Brier may degrade to buy that reduction, as a share of the
     /// baseline.
     pub max_brier_increase: Bound,
+    /// The noise a rise in confident errors has to clear before it is a
+    /// rise. Absent in `probability-v1`, which compares the two counts
+    /// directly and so refuses an unchanged door about half the time;
+    /// `probability-v2` carries the measured floor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confident_error_floor: Option<Box<ConfidentErrorFloor>>,
     /// The measurement that would complete this rule, when one is missing.
     #[serde(default, deserialize_with = "pending_field")]
     pub pending_measurement: Option<Pending>,
+}
+
+/// The seed noise on a confident-error count, and how much of it a rise has
+/// to clear.
+///
+/// A count of confident errors is not a rate. On an unchanged door the count
+/// ran 6, 6, 10, 4, 4, 10, 6, 4 across eight seed blocks of 98 items, a
+/// standard deviation of 2.49, so "the count must not rise" fails a door
+/// compared against itself whenever the seed lands the wrong way. The floor
+/// scales that spread to the items under judgment as
+/// `block_sigma · √(items / block_items)` — the spread of a count of rare
+/// events grows with the square root of the count — and a rise fails only
+/// when it exceeds `sigmas` standard deviations of the difference of the two
+/// counts. A rise inside the floor passes: the criterion is a floor and not
+/// a prize, so there is no margin to fall short of.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfidentErrorFloor {
+    /// One standard deviation of the count across seed blocks, with one
+    /// door and one item set held fixed. Unmeasured leaves the criterion
+    /// [`Verdict::Unverifiable`].
+    pub block_sigma: Bound,
+    /// How many items each of those blocks scored.
+    pub block_items: Bound,
+    /// How many standard deviations of the difference a rise has to exceed
+    /// to count as a rise.
+    pub sigmas: Bound,
+}
+
+impl ConfidentErrorFloor {
+    /// The largest rise that is still inside the noise for a comparison of
+    /// `baseline_items` against `candidate_items`, when the floor is
+    /// measured.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn allowance(&self, baseline_items: usize, candidate_items: usize) -> Option<f64> {
+        let sigma = self.block_sigma.value()?;
+        let block_items = self.block_items.value()?;
+        let sigmas = self.sigmas.value()?;
+        if block_items <= 0.0 {
+            return None;
+        }
+        let variance = |items: usize| sigma * sigma * (items as f64 / block_items);
+        Some(sigmas * (variance(baseline_items) + variance(candidate_items)).sqrt())
+    }
+
+    fn validate(&self, gate: &str) -> Result<(), GateError> {
+        self.block_sigma
+            .validate(gate, "confident_error_floor.block_sigma")?;
+        self.block_items
+            .validate(gate, "confident_error_floor.block_items")?;
+        self.sigmas.validate(gate, "confident_error_floor.sigmas")?;
+        if self.block_items.value().is_some_and(|items| items < 1.0) {
+            return Err(GateError::Invalid {
+                id: gate.to_string(),
+                problem: "confident_error_floor.block_items must be at least one item; a spread \
+                          measured over no items scales nothing"
+                    .into(),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// What one decision costs, or the fact that nobody is metering it.
@@ -900,6 +968,13 @@ impl Rule {
                 min_items: rule.min_items.identity(),
                 min_ece_reduction: rule.min_ece_reduction.identity(),
                 max_brier_increase: rule.max_brier_increase.identity(),
+                confident_error_floor: rule.confident_error_floor.as_deref().map(|floor| {
+                    ConfidentErrorFloorIdentity {
+                        block_sigma: floor.block_sigma.identity(),
+                        block_items: floor.block_items.identity(),
+                        sigmas: floor.sigmas.identity(),
+                    }
+                }),
                 pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
             }),
             Self::Deployment(rule) => RuleIdentity::Deployment(DeploymentRuleIdentity {
@@ -1132,6 +1207,9 @@ impl Gate {
                     .validate(&self.id, "min_ece_reduction")?;
                 rule.max_brier_increase
                     .validate(&self.id, "max_brier_increase")?;
+                if let Some(floor) = &rule.confident_error_floor {
+                    floor.validate(&self.id)?;
+                }
             }
             Rule::Deployment(rule) => {
                 rule.min_calls.validate(&self.id, "min_calls")?;
@@ -1437,10 +1515,10 @@ impl fmt::Display for Verdict {
 pub struct Criterion {
     /// The criterion, written as the condition it checks.
     pub name: String,
-    /// How much this criterion decides, with 1 the most. In
-    /// `probability-v1`, log loss and confident errors are rank 1 and
-    /// accuracy is rank 3: a candidate that is right more often does not buy
-    /// its way past being confidently wrong more often.
+    /// How much this criterion decides, with 1 the most. In the probability
+    /// gates, log loss and confident errors are rank 1 and accuracy is rank
+    /// 3: a candidate that is right more often does not buy its way past
+    /// being confidently wrong more often.
     pub rank: u8,
     /// What the gate concluded.
     pub verdict: Verdict,
@@ -1547,12 +1625,26 @@ struct DecisionRuleIdentity<'a> {
 }
 
 /// A probability rule's identity.
+///
+/// `confident_error_floor` is written only when the rule carries one, so
+/// `probability-v1`, which carries none, projects exactly as it did before
+/// the field existed and keeps the digest its records name.
 #[derive(Serialize)]
 struct ProbabilityRuleIdentity<'a> {
     min_items: BoundIdentity<'a>,
     min_ece_reduction: BoundIdentity<'a>,
     max_brier_increase: BoundIdentity<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confident_error_floor: Option<ConfidentErrorFloorIdentity<'a>>,
     pending_measurement: Option<PendingIdentity<'a>>,
+}
+
+/// A confident-error floor's identity: its three bounds, minus their prose.
+#[derive(Serialize)]
+struct ConfidentErrorFloorIdentity<'a> {
+    block_sigma: BoundIdentity<'a>,
+    block_items: BoundIdentity<'a>,
+    sigmas: BoundIdentity<'a>,
 }
 
 /// A deployment rule's identity.
@@ -1829,13 +1921,11 @@ fn judge_probability(rule: &ProbabilityRule, comparison: &Comparison) -> Vec<Cri
         candidate.nll,
         "log loss",
     ));
-    criteria.push(count_direction(
-        "confident_errors_do_not_rise",
-        1,
+    criteria.push(confident_errors_within_floor(
+        rule.confident_error_floor.as_deref(),
         blocked.as_deref(),
-        baseline.confident_errors,
-        candidate.confident_errors,
-        candidate.items,
+        &baseline,
+        &candidate,
     ));
     criteria.push(direction(
         "ece_does_not_rise",
@@ -1900,35 +1990,72 @@ fn direction(
     }
 }
 
-/// A count that must not rise, reported as a count rather than a rate.
-fn count_direction(
-    name: &str,
-    rank: u8,
+/// The confident-error count must not rise beyond its seed noise.
+///
+/// Without a floor the two counts are compared directly, which is what
+/// `probability-v1` recorded and what openagents#9401 measured refusing an
+/// unchanged door half the time. With a floor whose spread is unmeasured the
+/// criterion is unverifiable rather than judged on a number nobody took.
+#[allow(clippy::cast_precision_loss)]
+fn confident_errors_within_floor(
+    floor: Option<&ConfidentErrorFloor>,
     blocked: Option<&str>,
-    before: Option<usize>,
-    after: Option<usize>,
-    items: usize,
+    baseline: &Scores,
+    candidate: &Scores,
 ) -> Criterion {
+    let name = "confident_errors_do_not_rise".to_string();
+    let rank = 1;
     if let Some(reason) = blocked {
-        return not_judged(name.to_string(), rank, reason);
+        return not_judged(name, rank, reason);
     }
-    let (Some(before), Some(after)) = (before, after) else {
+    let (Some(before), Some(after)) = (baseline.confident_errors, candidate.confident_errors)
+    else {
         return Criterion {
-            name: name.to_string(),
+            name,
             rank,
             verdict: Verdict::Unverifiable,
             detail: "confident errors were not counted on both sides".into(),
         };
     };
+    let items = candidate.items;
+    let Some(floor) = floor else {
+        return Criterion {
+            name,
+            rank,
+            verdict: if after > before {
+                Verdict::Failed
+            } else {
+                Verdict::Passed
+            },
+            // Recorded verdict lines regenerate from this text; do not change it.
+            detail: format!("confident errors {before} to {after} over {items} items"),
+        };
+    };
+    let Some(allowance) = floor.allowance(baseline.items, items) else {
+        return Criterion {
+            name,
+            rank,
+            verdict: Verdict::Unverifiable,
+            detail: format!(
+                "confident errors {before} to {after} over {items} items; no seed noise floor has \
+                 been measured for the count ({})",
+                floor.block_sigma.why
+            ),
+        };
+    };
+    let rise = after as f64 - before as f64;
     Criterion {
-        name: name.to_string(),
+        name,
         rank,
-        verdict: if after > before {
+        verdict: if rise > allowance {
             Verdict::Failed
         } else {
             Verdict::Passed
         },
-        detail: format!("confident errors {before} to {after} over {items} items"),
+        detail: format!(
+            "confident errors {before} to {after} over {items} items; a rise of {rise:+.0} against \
+             a seed noise floor of {allowance:.2}"
+        ),
     }
 }
 
@@ -2425,6 +2552,258 @@ mod tests {
         load("probability-v1").expect("probability-v1 loads")
     }
 
+    fn probability_v2() -> Gate {
+        load("probability-v2").expect("probability-v2 loads")
+    }
+
+    /// One seed block of the unchanged `lev-base` door on `support-v2`'s
+    /// evaluation split, with the confident-error count the block drew.
+    /// `docs/lev/measurements/2026-09-19-calibration-variance.md`.
+    fn unchanged_block(confident_errors: usize) -> Scores {
+        Scores {
+            items: 98,
+            accuracy: Some(0.77),
+            ece: Some(0.120),
+            brier: Some(0.182),
+            nll: Some(2.036),
+            confident_errors: Some(confident_errors),
+        }
+    }
+
+    fn confident_errors_criterion(gate: &Gate, comparison: &Comparison) -> Criterion {
+        gate.judge(comparison)
+            .criteria
+            .into_iter()
+            .find(|criterion| criterion.name == "confident_errors_do_not_rise")
+            .expect("the probability gate judges confident errors")
+    }
+
+    /// The eight confident-error counts the unchanged door drew.
+    const UNCHANGED_DOOR_BLOCKS: [usize; 8] = [6, 6, 10, 4, 4, 10, 6, 4];
+
+    #[test]
+    fn probability_v1_refuses_the_unchanged_door_about_half_the_time() {
+        // Every ordered pair of blocks is one comparison of the door against
+        // itself. Under a raw count comparison, the pairs where the second
+        // block drew more confident errors fail: 21 of 56, which is one
+        // direction of every pair whose counts differ.
+        let mut failed = 0;
+        let mut pairs = 0;
+        for (left, before) in UNCHANGED_DOOR_BLOCKS.iter().enumerate() {
+            for (right, after) in UNCHANGED_DOOR_BLOCKS.iter().enumerate() {
+                if left == right {
+                    continue;
+                }
+                pairs += 1;
+                let comparison = Comparison::new(
+                    "support-v2",
+                    unchanged_block(*before),
+                    unchanged_block(*after),
+                );
+                if confident_errors_criterion(&probability(), &comparison).verdict
+                    == Verdict::Failed
+                {
+                    failed += 1;
+                }
+            }
+        }
+        assert_eq!(pairs, 56);
+        assert_eq!(failed, 21, "the raw count refuses the door against itself");
+    }
+
+    #[test]
+    fn probability_v2_passes_the_unchanged_door_on_every_pair_of_blocks() {
+        for before in UNCHANGED_DOOR_BLOCKS {
+            for after in UNCHANGED_DOOR_BLOCKS {
+                let comparison = Comparison::new(
+                    "support-v2",
+                    unchanged_block(before),
+                    unchanged_block(after),
+                );
+                let criterion = confident_errors_criterion(&probability_v2(), &comparison);
+                assert_eq!(
+                    criterion.verdict,
+                    Verdict::Passed,
+                    "{before} to {after}: {}",
+                    criterion.detail
+                );
+                // Two sigmas of the difference of two 98-item counts at a
+                // block spread of 2.4928 is 7.05, the bound the record
+                // published as seven.
+                assert!(
+                    criterion.detail.contains("floor of 7.05"),
+                    "{}",
+                    criterion.detail
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_rise_beyond_the_seed_floor_still_fails_probability_v2() {
+        let comparison = Comparison::new("support-v2", unchanged_block(1), unchanged_block(9));
+        let criterion = confident_errors_criterion(&probability_v2(), &comparison);
+        assert_eq!(criterion.verdict, Verdict::Failed, "{}", criterion.detail);
+
+        let inside = Comparison::new("support-v2", unchanged_block(6), unchanged_block(8));
+        let criterion = confident_errors_criterion(&probability_v2(), &inside);
+        assert_eq!(
+            criterion.verdict,
+            Verdict::Passed,
+            "six to eight is two items inside a spread of 2.49: {}",
+            criterion.detail
+        );
+        assert_eq!(
+            confident_errors_criterion(&probability(), &inside).verdict,
+            Verdict::Failed,
+            "the same two items fail the raw count"
+        );
+    }
+
+    #[test]
+    fn the_seed_floor_scales_with_the_items_under_judgment() {
+        // 2.4928 · √(40/98) is 1.5926 a side; two sigmas of the difference
+        // is 4.50. Five more confident errors on forty items fail, four pass.
+        let forty = |confident_errors: usize| Scores {
+            items: 40,
+            confident_errors: Some(confident_errors),
+            ..unchanged_block(0)
+        };
+        let four = Comparison::new("routing", forty(2), forty(6)).fitted_on(40);
+        let criterion = confident_errors_criterion(&probability_v2(), &four);
+        assert_eq!(criterion.verdict, Verdict::Passed, "{}", criterion.detail);
+        assert!(
+            criterion.detail.contains("floor of 4.50"),
+            "{}",
+            criterion.detail
+        );
+        let five = Comparison::new("routing", forty(2), forty(7)).fitted_on(40);
+        assert_eq!(
+            confident_errors_criterion(&probability_v2(), &five).verdict,
+            Verdict::Failed
+        );
+
+        let Rule::Probability(rule) = &probability_v2().rule else {
+            panic!("probability-v2 carries a probability rule");
+        };
+        let floor = rule
+            .confident_error_floor
+            .as_ref()
+            .expect("probability-v2 carries the floor");
+        let allowance = floor.allowance(98, 98).expect("the floor is measured");
+        assert!((allowance - 2.0 * 2.4928 * 2.0_f64.sqrt()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_unmeasured_seed_floor_leaves_confident_errors_unverifiable() {
+        // A rule that names the floor and has not measured it judges nothing
+        // on the count: neither the raw comparison v1 recorded nor a pass.
+        let mut gate = probability_v2();
+        let Rule::Probability(rule) = &mut gate.rule else {
+            panic!("probability-v2 carries a probability rule");
+        };
+        let floor = rule
+            .confident_error_floor
+            .as_mut()
+            .expect("probability-v2 carries the floor");
+        floor.block_sigma.value = None;
+        floor.block_sigma.basis = Basis::Unmeasured;
+        floor.block_sigma.evidence.clear();
+        gate.validate()
+            .expect("an unmeasured floor is a valid rule");
+        for (before, after) in [(6, 8), (8, 6)] {
+            let comparison = Comparison::new(
+                "support-v2",
+                unchanged_block(before),
+                unchanged_block(after),
+            );
+            let criterion = confident_errors_criterion(&gate, &comparison);
+            assert_eq!(
+                criterion.verdict,
+                Verdict::Unverifiable,
+                "{}",
+                criterion.detail
+            );
+            assert!(
+                criterion
+                    .detail
+                    .contains("no seed noise floor has been measured"),
+                "{}",
+                criterion.detail
+            );
+        }
+    }
+
+    #[test]
+    fn uncounted_confident_errors_are_unverifiable_under_both_probability_gates() {
+        let uncounted = Scores {
+            confident_errors: None,
+            ..unchanged_block(0)
+        };
+        let comparison = Comparison::new("support-v2", uncounted, uncounted);
+        for gate in [probability(), probability_v2()] {
+            assert_eq!(
+                confident_errors_criterion(&gate, &comparison).verdict,
+                Verdict::Unverifiable,
+                "{}",
+                gate.id
+            );
+        }
+    }
+
+    #[test]
+    fn the_seed_floor_is_inside_probability_v2s_identity_and_absent_from_v1s() {
+        let v1 = probability();
+        assert!(
+            !v1.identity_canonical().contains("confident_error_floor"),
+            "a rule without a floor projects as it did before the field existed"
+        );
+        let v2 = probability_v2();
+        assert!(v2.identity_canonical().contains("confident_error_floor"));
+        assert_ne!(v1.digest(), v2.digest());
+
+        let mut widened = v2.clone();
+        let Rule::Probability(rule) = &mut widened.rule else {
+            panic!("probability-v2 carries a probability rule");
+        };
+        rule.confident_error_floor
+            .as_mut()
+            .expect("the floor")
+            .sigmas
+            .value = Some(3.0);
+        assert_ne!(v2.digest(), widened.digest(), "a wider floor is a new rule");
+
+        let mut reworded = v2.clone();
+        let Rule::Probability(rule) = &mut reworded.rule else {
+            panic!("probability-v2 carries a probability rule");
+        };
+        rule.confident_error_floor
+            .as_mut()
+            .expect("the floor")
+            .block_sigma
+            .why = "a different sentence about the same eight blocks".into();
+        assert_eq!(
+            v2.digest(),
+            reworded.digest(),
+            "the floor's prose is outside the digest"
+        );
+    }
+
+    #[test]
+    fn a_seed_floor_measured_over_no_items_is_refused() {
+        let mut gate = probability_v2();
+        let Rule::Probability(rule) = &mut gate.rule else {
+            panic!("probability-v2 carries a probability rule");
+        };
+        rule.confident_error_floor
+            .as_mut()
+            .expect("the floor")
+            .block_items
+            .value = Some(0.0);
+        let error = gate.validate().unwrap_err();
+        assert!(matches!(error, GateError::Invalid { .. }), "{error}");
+    }
+
     /// The base door on the evaluation split, with its one admitted map.
     /// `docs/lev/measurements/2026-09-19-adapter-v1.md`.
     fn base_calibrated() -> Scores {
@@ -2458,7 +2837,15 @@ mod tests {
     fn every_committed_gate_loads_and_validates() {
         let gates = load_all().expect("the committed gates load");
         let ids: Vec<&str> = gates.iter().map(|gate| gate.id.as_str()).collect();
-        assert_eq!(ids, vec!["decision-v1", "deployment-v1", "probability-v1"]);
+        assert_eq!(
+            ids,
+            vec![
+                "decision-v1",
+                "deployment-v1",
+                "probability-v1",
+                "probability-v2"
+            ]
+        );
         for gate in &gates {
             assert_eq!(gate.schema, SCHEMA);
             assert!(gate.schema.starts_with(crate::SCHEMA_PREFIX));
@@ -2949,11 +3336,15 @@ mod tests {
             let bounds: Vec<&Bound> = match &gate.rule {
                 Rule::Decision(rule) => vec![&rule.min_items, &rule.gain_standard_errors],
                 Rule::Probability(rule) => {
-                    vec![
+                    let mut bounds = vec![
                         &rule.min_items,
                         &rule.min_ece_reduction,
                         &rule.max_brier_increase,
-                    ]
+                    ];
+                    if let Some(floor) = rule.confident_error_floor.as_deref() {
+                        bounds.extend([&floor.block_sigma, &floor.block_items, &floor.sigmas]);
+                    }
+                    bounds
                 }
                 Rule::Deployment(rule) => vec![
                     &rule.min_calls,

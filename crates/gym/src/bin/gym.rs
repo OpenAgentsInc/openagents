@@ -52,7 +52,7 @@ use jev::{Client, Config, Questions, SystemOneRequest};
 use serde_json::Value;
 
 /// The gate a run is judged by when the suite names none.
-const DEFAULT_GATE: &str = "probability-v1";
+const DEFAULT_GATE: &str = "probability-v2";
 
 /// How many passes `gym latency` makes when the caller names no number.
 ///
