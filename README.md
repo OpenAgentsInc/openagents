@@ -75,7 +75,8 @@ tune, and test — not a paragraph you hope a bigger model got right.
 
 | Crate | What it is |
 | --- | --- |
-| `crates/coder` | The agent: classify-then-generate turns, the shell loop, the relay client, the TUI binary. |
+| `crates/atif` | The Agent Trajectory Interchange Format: a session as ordered steps, and the append-only log one writes as it runs. |
+| `crates/coder` | The agent: classify-then-generate turns, the shell loop, the relay client, the TUI binary. Every conversation records itself to `~/.openagents/traces/`. |
 | `crates/coder-terminal` | The amber terminal: composer, editor, spinner, intensity ladder, ratatui rendering. |
 | `crates/jev` | The TypeSafe Jev SDK — typed questions, `Choice`/`Noul`/`Score` answers. |
 | `crates/nostr` | Pure protocol primitives: events, filters, NIP-19/42/44/98, signers. No third-party Nostr crate. |

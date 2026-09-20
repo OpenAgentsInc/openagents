@@ -7,8 +7,12 @@
 //! folds each side in as it lands.
 
 use std::env;
+use std::path::Path;
+use std::time::Instant;
 
+use atif::Decision;
 use jev::SystemOneRequest;
+use serde_json::Value;
 
 use crate::classify::{
     Judgment, Route, ShellRoute, judgment_of, questions, route, shell_questions, shell_verdict_of,
@@ -17,6 +21,7 @@ use crate::classify::{
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::repo::Repo;
 use crate::shell::{self, Outcome, ShellEvent};
+use crate::trace::{Recorder, answers_value};
 
 /// The instructions Generate hears for a plain answer.
 pub const INSTRUCTIONS: &str = "You are Coder, an assistant that lives in a terminal. \
@@ -75,19 +80,40 @@ pub struct Agent {
     /// The draft the current turn is classifying, kept until the reply
     /// lands.
     task: String,
+    /// The session's trace, when this machine is recording one.
+    trace: Option<Recorder>,
+    /// Why there is no trace, when there should have been one.
+    trace_error: Option<String>,
 }
 
 impl Agent {
     /// An agent from the environment: `TYPESAFE_API_KEY` builds the
     /// classifier, the door builds itself. A missing key degrades — the
     /// conversation still runs, without judgments.
+    ///
+    /// The session's trace opens here, so a conversation is recorded without
+    /// anybody asking it to be. A trace that cannot be opened is reported
+    /// through [`Agent::trace_error`] and costs the conversation nothing.
     pub fn from_env() -> Self {
+        let generate = Door::from_env();
+        let repo = Repo::discover(&env::current_dir().unwrap_or_default());
+        let where_it_ran = repo
+            .as_ref()
+            .map(|repo| repo.root().display().to_string())
+            .unwrap_or_default();
+        let (trace, trace_error) =
+            match Recorder::start(generate.model(), generate.name(), &where_it_ran) {
+                Ok(recorder) => (recorder, None),
+                Err(error) => (None, Some(error)),
+            };
         Self {
             classify: jev::Client::from_env().ok(),
-            generate: Door::from_env(),
+            generate,
             transcript: Vec::new(),
-            repo: Repo::discover(&env::current_dir().unwrap_or_default()),
+            repo,
             task: String::new(),
+            trace,
+            trace_error,
         }
     }
 
@@ -99,6 +125,8 @@ impl Agent {
             transcript: Vec::new(),
             repo: None,
             task: String::new(),
+            trace: None,
+            trace_error: None,
         }
     }
 
@@ -106,6 +134,42 @@ impl Agent {
     pub fn with_repo(mut self, repo: Option<Repo>) -> Self {
         self.repo = repo;
         self
+    }
+
+    /// The recorder this session writes to, for tests and for a caller that
+    /// wants to name the directory.
+    pub fn with_trace(mut self, trace: Option<Recorder>) -> Self {
+        self.trace = trace;
+        self
+    }
+
+    /// Where this session is being recorded, when it is.
+    pub fn trace_path(&self) -> Option<&Path> {
+        self.trace.as_ref().map(Recorder::path)
+    }
+
+    /// Why this session is not being recorded, or why its recording
+    /// stopped.
+    pub fn trace_error(&self) -> Option<&str> {
+        self.trace_error
+            .as_deref()
+            .or_else(|| self.trace.as_ref().and_then(Recorder::failure))
+    }
+
+    /// Closes the session's trace, so the document says the session ended
+    /// rather than that it was interrupted.
+    pub fn finish_trace(&mut self) {
+        if let Some(trace) = &mut self.trace {
+            trace.finish(atif::log::ENDED);
+        }
+    }
+
+    /// Records a reply the terminal produced without generating one — the
+    /// canned answers an `End` or a `Halt` route gives.
+    pub fn record_reply(&mut self, text: &str) {
+        if let Some(trace) = &mut self.trace {
+            trace.answer(text, None, 0);
+        }
     }
 
     /// The model the door serves, for the token rail.
@@ -131,30 +195,75 @@ impl Agent {
             role: Role::User,
             text: draft.to_string(),
         });
+        if let Some(trace) = &mut self.trace {
+            trace.user(draft);
+        }
     }
 
     /// Classifies the current state: the questions over the task and the
     /// bounded transcript.
-    pub async fn classify(&self) -> Classified {
-        let Some(classify) = &self.classify else {
-            return Classified::Skipped("no TYPESAFE_API_KEY — generating unrouted".to_string());
+    ///
+    /// The call is recorded whether it answers or not, with the state's
+    /// digest, the question set, the typed answers, and the route the table
+    /// made of them. That is the record the Gym's rows cannot hold: a row
+    /// says what one door answered, and this says what the agent did next.
+    pub async fn classify(&mut self) -> Classified {
+        let Some(classify) = self.classify.clone() else {
+            let note = "no TYPESAFE_API_KEY — generating unrouted".to_string();
+            if let Some(trace) = &mut self.trace {
+                trace.note(&note);
+            }
+            return Classified::Skipped(note);
         };
         let members: &[String] = self.repo.as_ref().map_or(&[], |repo| repo.members());
         let state = state_of(&self.task, &self.transcript, members);
-        match classify
-            .system_one(SystemOneRequest::new(state, questions()))
-            .await
-        {
+        let request = SystemOneRequest::new(state, questions());
+        // The body is what goes on the wire; reading it here is what a
+        // recorded exchange means.
+        let asked = request
+            .body(classify.default_model())
+            .map_or(Value::Null, Value::Object);
+        let started = Instant::now();
+        let answered = classify.system_one(request).await;
+        let milliseconds = started.elapsed().as_millis() as u64;
+        match answered {
             Ok(response) => {
                 let judgment = judgment_of(&response);
-                Classified::Judged(Verdict {
-                    route: route(&judgment),
-                    judgment,
-                })
+                let route = route(&judgment);
+                self.record_decision(Decision {
+                    id: String::new(),
+                    name: "classify".to_string(),
+                    door: classify.base_url().to_string(),
+                    model: response.model.clone(),
+                    request: asked,
+                    answers: answers_value(&response.answers),
+                    route: Some(route.word().to_string()),
+                    error: None,
+                    milliseconds,
+                });
+                Classified::Judged(Verdict { route, judgment })
             }
             Err(error) => {
+                self.record_decision(Decision {
+                    id: String::new(),
+                    name: "classify".to_string(),
+                    door: classify.base_url().to_string(),
+                    model: classify.default_model().to_string(),
+                    request: asked,
+                    answers: Value::Null,
+                    route: None,
+                    error: Some(error.to_string()),
+                    milliseconds,
+                });
                 Classified::Skipped(format!("classify failed ({error}) — generating unrouted"))
             }
+        }
+    }
+
+    /// Puts one decision call in the trace, when there is one.
+    fn record_decision(&mut self, decision: Decision) {
+        if let Some(trace) = &mut self.trace {
+            trace.decision(decision);
         }
     }
 
@@ -170,10 +279,18 @@ impl Agent {
         meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         let instructions = self.instructions(clarify, false);
+        if let Some(trace) = &mut self.trace {
+            trace.instructions(&instructions);
+        }
+        let started = Instant::now();
         let (text, usage) = self
             .generate
             .generate(&instructions, &self.transcript, sink, meta)
             .await?;
+        let milliseconds = started.elapsed().as_millis() as u64;
+        if let Some(trace) = &mut self.trace {
+            trace.answer(&text, usage, milliseconds);
+        }
         self.transcript.push(Message {
             role: Role::Assistant,
             text: text.clone(),
@@ -197,10 +314,18 @@ impl Agent {
         let mut final_only = false;
         loop {
             let instructions = self.instructions(clarify, final_only);
+            if let Some(trace) = &mut self.trace {
+                trace.instructions(&instructions);
+            }
+            let started = Instant::now();
             let (text, usage) = self
                 .generate
                 .generate(&instructions, &self.transcript, sink, meta)
                 .await?;
+            let milliseconds = started.elapsed().as_millis() as u64;
+            if let Some(trace) = &mut self.trace {
+                trace.answer(&text, usage, milliseconds);
+            }
             if let Some(usage) = usage {
                 let entry = total.get_or_insert(Usage {
                     input_tokens: 0,
@@ -230,6 +355,9 @@ impl Agent {
             for proposal in proposals.into_iter().take(shell::COMMANDS_MAX) {
                 shell(ShellEvent::Proposed(proposal.clone()));
                 let outcome = shell::run(&proposal).await;
+                if let Some(trace) = &mut self.trace {
+                    trace.command(&outcome);
+                }
                 shell(ShellEvent::Ran(outcome.clone()));
                 outcomes.push(outcome);
             }
@@ -266,24 +394,53 @@ impl Agent {
     /// classifier, the verdict's route otherwise, with the display line
     /// reported to `shell` either way.
     async fn judge(
-        &self,
+        &mut self,
         outcomes: &[Outcome],
         shell: &mut (dyn FnMut(ShellEvent) + Send),
     ) -> ShellRoute {
-        let Some(classify) = &self.classify else {
+        let Some(classify) = self.classify.clone() else {
             return ShellRoute::Pass;
         };
         let state = shell::state_of(&self.task, outcomes);
-        match classify
-            .system_one(SystemOneRequest::new(state, shell_questions()))
-            .await
-        {
+        let request = SystemOneRequest::new(state, shell_questions());
+        let asked = request
+            .body(classify.default_model())
+            .map_or(Value::Null, Value::Object);
+        let started = Instant::now();
+        let answered = classify.system_one(request).await;
+        let milliseconds = started.elapsed().as_millis() as u64;
+        match answered {
             Ok(response) => {
                 let verdict = shell_verdict_of(&response);
+                let route = verdict.route();
+                self.record_decision(Decision {
+                    id: String::new(),
+                    name: "shell_judge".to_string(),
+                    door: classify.base_url().to_string(),
+                    model: response.model.clone(),
+                    request: asked,
+                    answers: answers_value(&response.answers),
+                    route: Some(route.word().to_string()),
+                    error: None,
+                    milliseconds,
+                });
                 shell(ShellEvent::Verdict(verdict.line()));
-                verdict.route()
+                route
             }
-            Err(_) => ShellRoute::Pass,
+            Err(error) => {
+                self.record_decision(Decision {
+                    id: String::new(),
+                    name: "shell_judge".to_string(),
+                    door: classify.base_url().to_string(),
+                    model: classify.default_model().to_string(),
+                    request: asked,
+                    answers: Value::Null,
+                    route: None,
+                    error: Some(error.to_string()),
+                    milliseconds,
+                });
+                ShellRoute::Pass
+            }
         }
     }
 }
@@ -295,7 +452,7 @@ mod tests {
 
     #[tokio::test]
     async fn classify_without_a_key_skips_with_a_note() {
-        let agent = Agent::new(None, Door::Stub(StubGenerate::default()));
+        let mut agent = Agent::new(None, Door::Stub(StubGenerate::default()));
         let Classified::Skipped(note) = agent.classify().await else {
             panic!("expected a skipped classify");
         };

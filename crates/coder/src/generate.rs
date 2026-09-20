@@ -382,6 +382,17 @@ impl Door {
             Door::Stub(_) => "stub",
         }
     }
+
+    /// Which kind of door this is, which a trace records beside the model:
+    /// the same model answered through a relay and through an own-key
+    /// endpoint is two different paths.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Door::Live(_) => "live",
+            Door::Relay(_) => "relay",
+            Door::Stub(_) => "stub",
+        }
+    }
 }
 
 impl Generate for Door {

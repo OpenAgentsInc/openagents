@@ -1,0 +1,21 @@
+[package]
+name = "atif"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "The Agent Trajectory Interchange Format: a session as ordered steps, and the append-only log a running session writes them to."
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# A decision call records the digest of the state it read, and a digest
+# computed two ways is two digests. The rule is the one `gym` already
+# follows: sort object keys at every depth, then SHA-256 the text.
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

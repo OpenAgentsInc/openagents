@@ -38,7 +38,7 @@ The Gym has existed three times. Only the second is alive.
 | --- | --- | --- |
 | `openagents gym` CLI plus the Phoenix record store | This repository's previous shape, and the `openagents.com` app | Deleted here by `dabc08102f` on 2026-09-18; readable in history |
 | The Terminal Gym | `~/work/coder`: `crates/coder-bench`, `bins/coder-terminal`, `bins/coder-serve`, `ops/` | Active; the rest of this document describes it |
-| This repository | — | Nothing yet. The pull-in plan is below |
+| This repository | `crates/gym`, `crates/atif` | Underway. The pull-in plan is below |
 
 ## The first Gym, in this repository's history
 
@@ -243,6 +243,16 @@ Ordered, each independently shippable:
    the committed suite manifests, starting with `tb2-quick` and
    `tb2-cross-section`. The ATIF document type (`coder_contract::atif`)
    comes with it or is reimplemented — it is a schema, not service code.
+
+   **Landed, in part.** `crates/atif` is the reimplemented format, and
+   Coder Terminal already writes a trace per conversation to local disk
+   (`docs/coder/traces.md`, issue #9400). That gives the port its first
+   standing consumer — our own agent's episodes, with every `classify`
+   and `shell_judge` call recorded as a first-class decision call — and
+   a crate `crates/gym` can read traces from. Harvesting those traces
+   into a suite is deliberately separate: #9379 dropped 151 states whose
+   commands reached into private sibling checkouts, and that filtering
+   question needs its own answer.
 2. **The task table and the Docker backend.** Port `gym_tasks.rs`'s
    pinned data (the twelve tasks, verifier files, limits, image names)
    and a container environment in the shape of `gym_process.rs`: fresh

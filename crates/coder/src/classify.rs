@@ -75,6 +75,19 @@ pub enum Route {
     Halt(String),
 }
 
+impl Route {
+    /// The word a trace records this route as. A halt's reason is on the
+    /// judgment beside it, so the word names the route and nothing else.
+    pub fn word(&self) -> &'static str {
+        match self {
+            Route::Respond => "respond",
+            Route::Clarify => "clarify",
+            Route::End => "end",
+            Route::Halt(_) => "halt",
+        }
+    }
+}
+
 /// The question set, in the order the state object names them.
 pub fn questions() -> Questions {
     Questions::new()
@@ -247,6 +260,17 @@ pub enum ShellRoute {
     Stop,
 }
 
+impl ShellRoute {
+    /// The word a trace and the transcript record this route as.
+    pub fn word(self) -> &'static str {
+        match self {
+            ShellRoute::Pass => "pass",
+            ShellRoute::Retry => "retry",
+            ShellRoute::Stop => "stop",
+        }
+    }
+}
+
 /// What the judge read of a shell round.
 #[derive(Clone, Debug)]
 pub struct ShellVerdict {
@@ -275,11 +299,7 @@ impl ShellVerdict {
 
     /// The display line: `pass 0.91 · useful 0.8 · damage 0.0`.
     pub fn line(&self) -> String {
-        let route = match self.route() {
-            ShellRoute::Pass => "pass",
-            ShellRoute::Retry => "retry",
-            ShellRoute::Stop => "stop",
-        };
+        let route = self.route().word();
         let confidence = self
             .outcome
             .as_ref()

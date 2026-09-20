@@ -22,8 +22,10 @@ pub const COMMANDS_MAX: usize = 10;
 pub const ROUNDS_MAX: usize = 3;
 /// How long one command may run before it is killed.
 const TIMEOUT: Duration = Duration::from_secs(15);
-/// The most output one command keeps, bytes of stdout and stderr.
-const OUTPUT_MAX: usize = 16 * 1024;
+/// The most output one command keeps, bytes of stdout and stderr. This is
+/// the ceiling on what a trace can record for a command, because it is the
+/// ceiling on what the process ever holds.
+pub const OUTPUT_MAX: usize = 16 * 1024;
 /// The output of one command a judge or transcript sees.
 pub const HEAD_MAX: usize = 2048;
 

@@ -119,6 +119,12 @@ impl Repo {
         })
     }
 
+    /// The directory the repo sits in, which a trace records as the place
+    /// the session ran.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// The member names, for the classify state.
     pub fn members(&self) -> &[String] {
         &self.members

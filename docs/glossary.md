@@ -97,7 +97,9 @@ from the reference material in `~/work/coder`.
 | Coder Terminal | Implemented | The terminal interface in `crates/coder-terminal`: the amber intensity ladder, the framed composer, and the shell they draw. |
 | Shell round | Implemented | One cycle of the shell loop. The model proposes a plan, the terminal runs the commands, and the outcomes return for the next judgment. |
 | Plan | Implemented | A reply that is one JSON object carrying commands and the reason for each, rather than prose. |
-| ATIF | Designed | The Agent Trajectory Interchange Format, at version `ATIF-v1.7`. A trajectory records a session as ordered steps so a tool can read it. `Call.extra` carries decision-model calls, which makes a System One call first-class in a trace. |
+| ATIF | Implemented | The Agent Trajectory Interchange Format, at version `ATIF-v1.7`, in `crates/atif`. A trajectory records a session as ordered steps so a tool can read it. `Call.extra` carries decision-model calls, which makes a System One call first-class in a trace. |
+| Trace | Implemented | One Coder session as an ATIF document, written to `~/.openagents/traces/` as the session runs. A session is one terminal invocation. Steps append and the document is rendered on read, so a session that is killed still reads back. `CODER_TRACE=off` turns recording off. See [`coder/traces.md`](coder/traces.md). |
+| Decision call | Implemented | A question put to a door, recorded in a trace as a `Call` carrying `openagents.decision-call.v1`: which door answered, the state and questions that went out, the typed answers, the digest of that state, and the route the host made of them. |
 
 ## Capabilities and programs
 

@@ -13,6 +13,12 @@
 //! turn through the NIP-CJ job protocol on the relay; otherwise the stub
 //! door answers.
 //!
+//! Every conversation records itself to
+//! `~/.openagents/traces/<session>.atif.jsonl` as it runs, one file per
+//! terminal invocation. `CODER_TRACE_DIR` moves that directory and
+//! `CODER_TRACE=off` turns it off; the session's first detail line says
+//! which. See `docs/coder/traces.md`.
+//!
 //! ```sh
 //! cargo run -p coder
 //! ```
@@ -269,6 +275,7 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
         Classified::Judged(verdict) => verdict.route,
         Classified::Skipped(_) => Route::Respond,
     };
+    let canned = matches!(route, Route::End | Route::Halt(_));
     let result = match route {
         Route::Respond | Route::Clarify => {
             let tx = work.clone();
@@ -297,6 +304,11 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
             None,
         )),
     };
+    // A canned answer never went through Generate, so nothing has recorded
+    // it. The trace should still say what the user was told.
+    if canned && let Ok((text, _)) = &result {
+        agent.record_reply(text);
+    }
     let _ = work.send(Work::Finished(result)).await;
 }
 
@@ -323,6 +335,14 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
     let mut turn: Option<tokio::task::JoinHandle<Agent>> = None;
     // The door's model name rides the composer's location rail.
     let model = agent_slot.as_ref().unwrap().model().to_string();
+    // Where this conversation is being written down, so nobody has to guess.
+    if let Some(agent) = agent_slot.as_ref() {
+        match (agent.trace_path(), agent.trace_error()) {
+            (Some(path), _) => app.push_detail("  ", format!("trace → {}", path.display())),
+            (None, Some(error)) => app.push_detail("  ", format!("no trace — {error}")),
+            (None, None) => app.push_detail("  ", "no trace — CODER_TRACE is off"),
+        }
+    }
 
     let mut events = EventStream::new();
     let mut spinner = interval(Duration::from_millis(50));
@@ -462,6 +482,11 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
                 }
             }
         }
+    }
+    // The session closes its own trace, so the document says the session
+    // ended rather than that it was cut off.
+    if let Some(agent) = agent_slot.as_mut() {
+        agent.finish_trace();
     }
     Ok(())
 }

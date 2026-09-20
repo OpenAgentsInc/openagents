@@ -36,6 +36,13 @@ uses, and marks which are implemented and which are only specified.
 
 ## Crates
 
+- `crates/atif` — the Agent Trajectory Interchange Format (`ATIF-v1.7`):
+  a session as ordered steps, the append-only log a running session
+  writes them to, and the document a reader renders from it. A decision
+  call is a first-class `Call`, so a Jev, Kev, or Lev question and a
+  shell command record the same way. Reimplemented from the Harbor
+  trajectory RFC's reference implementation; `serde` and `sha2` only, no
+  network. Read `docs/coder/traces.md`.
 - `crates/gym` — the measurement and control plane for decision models:
   pinned suites, a receipt-chained result store, digested acceptance gates,
   and the terminal that reads them. It scores whatever answers
@@ -54,7 +61,9 @@ uses, and marks which are implemented and which are only specified.
   rebuild plan lives in `docs/coder/`.
 - `crates/coder` — the agent: `classify` routes each turn through Jev,
   `generate` answers through an Open Responses door, and the `coder`
-  binary draws the conversation in the terminal.
+  binary draws the conversation in the terminal. Every conversation
+  records itself to `~/.openagents/traces/` as it runs; `docs/coder/traces.md`
+  covers the location, the opt-out, and what a trace holds.
 - `crates/lev` — the same contract answered by Apple's on-device foundation
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
   helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests
