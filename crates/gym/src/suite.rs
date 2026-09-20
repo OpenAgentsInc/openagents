@@ -73,6 +73,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::row::LabelSource;
+
 /// The schema tag a three-way suite carries.
 pub const SUITE_SCHEMA: &str = "openagents.gym.suite.v1";
 
@@ -247,6 +249,29 @@ pub struct Item {
     pub truth: String,
     /// Which partition this item belongs to. Inside the digest.
     pub partition: Partition,
+    /// What kind of evidence the label rests on. Inside the digest, so a
+    /// label that changes from a reading to an outcome is a different suite.
+    ///
+    /// Absent means [`LabelSource::Author`], which is what every item
+    /// written before `coder-turns-v1` is. It is absent rather than written
+    /// out so that adding this field left the earlier suites' digests alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_source: Option<LabelSource>,
+    /// The rule that produced the label, in one sentence.
+    ///
+    /// Per item rather than per family, because the digest covers items and
+    /// a rule kept anywhere else can be rewritten without the suite
+    /// noticing. The repetition is the point.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_rule: Option<String>,
+}
+
+impl Item {
+    /// What kind of evidence this item's label rests on.
+    #[must_use]
+    pub fn evidence(&self) -> LabelSource {
+        self.label_source.clone().unwrap_or_default()
+    }
 }
 
 /// A suite of labelled items in three partitions.
@@ -295,6 +320,19 @@ pub struct Suite {
     /// asserts the two agree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub questions: Option<String>,
+    /// What the suite's states were drawn from, when they were not taken
+    /// whole.
+    ///
+    /// A suite harvested from a record is a sample of a population, and a
+    /// sample drawn to put failures in front of a door does not carry the
+    /// population's rates. This names the counts the sample came from, so a
+    /// reader can put the per-class rates back on the population instead of
+    /// reading the suite's own mix as the workload's.
+    ///
+    /// Outside the digest: it describes where the items came from, not what
+    /// they are.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sampling: Option<Value>,
     /// The items.
     pub items: Vec<Item>,
 }
@@ -407,6 +445,20 @@ impl Suite {
             }
         }
         out
+    }
+
+    /// How many items rest on each kind of evidence.
+    ///
+    /// A suite that mixes outcome labels and read labels is stronger than
+    /// one that has only the second, and weaker than it looks if nobody
+    /// prints the mix. Counting does not read the locked partition.
+    #[must_use]
+    pub fn evidence_counts(&self) -> BTreeMap<String, usize> {
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for item in &self.items {
+            *counts.entry(item.evidence().label().to_string()).or_insert(0) += 1;
+        }
+        counts
     }
 
     /// How many items of each family one partition holds. Like
@@ -672,6 +724,64 @@ mod tests {
 
     fn suite() -> Suite {
         support_v2_three_way().expect("the committed suite loads")
+    }
+
+    /// The `coder` suite, loaded from the file rather than compiled in.
+    ///
+    /// It is 3.7 MB of real states. `support-v2-three-way` is small enough
+    /// to embed and this is not, and a suite does not have to be embedded to
+    /// be scored: `gym eval --suite` takes a path.
+    fn coder_turns() -> Suite {
+        Suite::load_file(concat!(env!("CARGO_MANIFEST_DIR"), "/suites/coder-turns-v1.json"))
+            .expect("the committed coder suite loads")
+    }
+
+    #[test]
+    fn the_coder_suite_loads_and_its_digest_matches() {
+        let suite = coder_turns();
+        assert_eq!(suite.name, "coder-turns-v1");
+        assert_eq!(suite.questions.as_deref(), Some("coder-turns-v1"));
+        let counts = suite.counts();
+        assert!(counts.values().all(|count| *count > 0));
+        assert_eq!(counts.values().sum::<usize>(), suite.items.len());
+    }
+
+    #[test]
+    fn the_coder_suite_carries_both_kinds_of_evidence_and_says_which() {
+        let suite = coder_turns();
+        let counts = suite.evidence_counts();
+        assert!(counts["outcome"] > 0, "no outcome-labelled items");
+        assert!(counts["author"] > 0, "no author-labelled items");
+        for item in &suite.items {
+            assert!(
+                item.label_source.is_some(),
+                "{} does not say what its label rests on",
+                item.id
+            );
+            assert!(item.label_rule.is_some(), "{} does not name its label rule", item.id);
+        }
+    }
+
+    #[test]
+    fn one_state_never_straddles_two_partitions() {
+        // The families share states: one turn is asked four questions. An
+        // item of that turn in `calibration` and another in `development`
+        // would put the same state on both sides of a fit.
+        let suite = coder_turns();
+        let mut seen: BTreeMap<String, Partition> = BTreeMap::new();
+        for item in &suite.items {
+            let state = item.id.split_once('/').map_or("", |(_, rest)| rest).to_string();
+            match seen.get(&state) {
+                Some(partition) => assert_eq!(
+                    *partition, item.partition,
+                    "the state behind {} is in two partitions",
+                    item.id
+                ),
+                None => {
+                    seen.insert(state, item.partition);
+                }
+            }
+        }
     }
 
     fn ledger() -> (tempfile::TempDir, LockedLedger) {

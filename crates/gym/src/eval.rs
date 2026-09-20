@@ -239,6 +239,11 @@ impl Run {
         row.latency_ms = latency_ms;
         row.gate_id = self.gate_id.clone();
         row.gate_digest = self.gate_digest.clone();
+        // The item says what kind of evidence its label rests on, and the
+        // row carries it. Without this a reader of the store cannot tell an
+        // outcome-labelled result from a read one, and pooling them silently
+        // is the fault the field exists to stop.
+        row.label_source = item.evidence();
         match disposition {
             Disposition::Answered { chosen, distribution } => {
                 Some(row.scored(distribution.clone(), *chosen == item.truth))
@@ -495,6 +500,8 @@ mod tests {
             })),
             truth: truth.to_string(),
             partition: Partition::Development,
+            label_source: None,
+            label_rule: None,
         }
     }
 

@@ -418,6 +418,12 @@ async fn eval_command(options: Options) -> Result<(), String> {
         &suite.digest[..16]
     );
     println!("{}\n", suite.description);
+    let evidence = suite.evidence_counts();
+    if evidence.len() > 1 {
+        let detail: Vec<String> =
+            evidence.iter().map(|(source, count)| format!("{count} {source}")).collect();
+        println!("Label evidence: {}.\n", detail.join(", "));
+    }
     println!("Judged by `{}`, digest `{}`.\n", gate.id, gate.digest());
     println!(
         "Asked as `{}`, digest `{}`. The suite digest covers the items and the question set \
@@ -652,6 +658,11 @@ fn metrics_row(label: &str, metrics: Metrics) -> String {
 }
 
 /// The table, as a view over the rows the run just wrote.
+///
+/// Split by partition, then by what kind of evidence the labels rest on. A
+/// suite whose labels are half outcomes and half readings has one accuracy
+/// number that means two things, and printing only that number is how the
+/// ambiguity reaches every figure downstream.
 fn report_scores(rows: &[Row], wanted: &[Partition]) {
     println!("| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |");
     println!("| --- | --- | --- | --- | --- | --- | --- |");
@@ -665,6 +676,37 @@ fn report_scores(rows: &[Row], wanted: &[Partition]) {
         println!("{}", metrics_row(&format!("{partition}, raw"), metrics));
     }
     println!();
+    let sources = evidence_of(rows);
+    if sources.len() > 1 {
+        println!("| Label evidence | Accuracy | ECE | Brier | NLL | Confident errors | Items |");
+        println!("| --- | --- | --- | --- | --- | --- | --- |");
+        for source in &sources {
+            let inside: Vec<Row> = rows
+                .iter()
+                .filter(|row| row.label_source.label() == source)
+                .cloned()
+                .collect();
+            let metrics = gym::calibrate::score(&eval::observations(&inside));
+            println!("{}", metrics_row(source, metrics));
+        }
+        println!(
+            "\nAn `outcome` label is what happened next in the session the state came from. An \
+             `author` label is a reading of the state. They are not the same evidence, so they \
+             are not pooled.\n"
+        );
+    }
+}
+
+/// Every kind of label evidence the rows carry, in first-seen order.
+fn evidence_of(rows: &[Row]) -> Vec<String> {
+    let mut sources: Vec<String> = Vec::new();
+    for row in rows {
+        let source = row.label_source.label().to_string();
+        if !sources.contains(&source) {
+            sources.push(source);
+        }
+    }
+    sources
 }
 
 fn fit_and_report(
@@ -843,6 +885,35 @@ fn compare_command(options: &Options) -> Result<(), String> {
         let detail: Vec<String> =
             refusals.iter().map(|(code, count)| format!("`{code}` x{count}")).collect();
         println!("Refusals across every door: {}.\n", detail.join(", "));
+    }
+
+    let sources = evidence_of(&rows);
+    if sources.len() > 1 {
+        println!("## By what the labels rest on\n");
+        println!("| Side | Evidence | Accuracy | ECE | Brier | NLL | Confident errors | Items |");
+        println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
+        for side in &sides {
+            for source in &sources {
+                let inside: Vec<Row> = held
+                    .get(&side.label())
+                    .map(Vec::as_slice)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|row| row.label_source.label() == source)
+                    .cloned()
+                    .collect();
+                if inside.is_empty() {
+                    continue;
+                }
+                let metrics = gym::calibrate::score(&eval::observations(&inside));
+                println!("| {} {}", side.label(), metrics_row(source, metrics));
+            }
+        }
+        println!(
+            "\nAn `outcome` label is what happened next in the session the state came from. An \
+             `author` label is a reading of the state. A side that is better on one and worse on \
+             the other is telling you something the pooled row hides.\n"
+        );
     }
 
     let labels: Vec<String> = sides.iter().map(Side::label).collect();

@@ -187,23 +187,32 @@ impl From<RefusalCode> for String {
     }
 }
 
-/// Who wrote the label this row was scored against.
+/// What kind of evidence the label this row was scored against rests on.
 ///
-/// Every suite in this repository is `author`: the label is written by the
-/// same person who reads the results, and there is no independent verifier.
-/// That is a real limit on every number the Gym prints, and it travels with
-/// each row so it cannot be left behind in a paragraph of prose.
+/// `support-v2` is entirely `author`: the label is written by the same
+/// person who reads the results, and there is no independent verifier. That
+/// is a real limit on every number the Gym prints, and it travels with each
+/// row so it cannot be left behind in a paragraph of prose.
 ///
-/// There is one named value because there is one true value. A suite that a
-/// verifier labels earns a variant when a verifier exists; until then
-/// [`LabelSource::Other`] keeps an unrecognised source readable rather than
-/// letting it read as `author`.
+/// `coder-turns-v1` is the first suite that is not all one thing. Its states
+/// are turns from recorded sessions, and for some of its questions the
+/// answer is in the session: whether the agent asked a clarifying question,
+/// whether it opened the repository, whether anything was undone afterwards.
+/// Those are [`LabelSource::Outcome`]. The questions the record cannot
+/// settle stay [`LabelSource::Author`].
+///
+/// **The two are different evidence and a row says which it carries.** An
+/// accuracy figure over both pooled is a number whose meaning changes with
+/// the mix, and nothing downstream can recover the mix once it is gone.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
 pub enum LabelSource {
     /// The person who reads the results wrote the label.
     #[default]
     Author,
+    /// The label is what happened next in the session the state was taken
+    /// from, read by a rule the suite states and applies mechanically.
+    Outcome,
     /// A source this crate does not name, kept as it was written.
     Other(String),
 }
@@ -214,6 +223,7 @@ impl LabelSource {
     pub fn label(&self) -> &str {
         match self {
             Self::Author => "author",
+            Self::Outcome => "outcome",
             Self::Other(source) => source,
         }
     }
@@ -223,6 +233,7 @@ impl From<String> for LabelSource {
     fn from(source: String) -> Self {
         match source.as_str() {
             "author" => Self::Author,
+            "outcome" => Self::Outcome,
             _ => Self::Other(source),
         }
     }
@@ -232,7 +243,7 @@ impl From<LabelSource> for String {
     fn from(source: LabelSource) -> Self {
         match source {
             LabelSource::Other(source) => source,
-            LabelSource::Author => "author".to_string(),
+            named => named.label().to_string(),
         }
     }
 }
