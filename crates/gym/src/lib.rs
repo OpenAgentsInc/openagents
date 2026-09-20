@@ -31,6 +31,8 @@
 //! - [`views`] — rendering where unknown reads as unknown and never as zero.
 //! - [`calibrate`] — the reliability table that turns a raw signal into a
 //!   probability, and the record that says what it was fitted against.
+//! - [`coverage`] — the declared selection a run was meant to ask, and the
+//!   accounting of whether the recorded rows cover it.
 //! - [`eval`] — one run over a suite: what a door's answer becomes, and what
 //!   a table of rows says afterwards.
 //! - [`regress`] — one door against its own last recorded run, which is the
@@ -45,6 +47,7 @@
 pub mod ab;
 pub mod build;
 pub mod calibrate;
+pub mod coverage;
 pub mod eval;
 pub mod gate;
 pub mod questions;

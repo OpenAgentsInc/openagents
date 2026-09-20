@@ -40,6 +40,7 @@ use std::time::Instant;
 
 use gym::ab::Metric;
 use gym::calibrate::{EstimatorConfig, Map, Metrics, Observation, Record, score};
+use gym::coverage::{Coverage, Expected, RunKey, run_groups};
 use gym::eval::{self, Disposition, Run};
 use gym::gate::{self, Gate, Profile};
 use gym::questions::QuestionSet;
@@ -120,6 +121,8 @@ struct Options {
     draws: Option<String>,
     /// Where `report` writes the record; stdout by default.
     out: Option<String>,
+    /// A door `report` was told the run was meant to ask; repeatable.
+    expect: Vec<String>,
     /// The caller's JSONL file `build` reads.
     input: Option<String>,
     /// The suite's name, and the question set's id.
@@ -193,6 +196,8 @@ gym regress  compare a door with its own last recorded run
   --questions id      the question set to serve; the suite's own by default
   --partition name    calibration or development; both by default
   --family name       the one family to ask; every family by default
+  --expect name       a door `report` was told the run was meant to ask;
+                      repeatable
   --fit               fit one map per family and judge it
   --record path       append every row to this store
   --records dir       write one calibration record per family here
@@ -258,6 +263,7 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--family" => options.family = args.next(),
             "--items" => options.items = args.next(),
             "--from" => options.from.extend(args.next()),
+            "--expect" => options.expect.extend(args.next()),
             "--out" => options.out = args.next(),
             "--input" => options.input = args.next(),
             "--name" => options.name = args.next(),
@@ -1329,6 +1335,34 @@ fn report_command(options: &Options) -> Result<(), String> {
         None => None,
     };
 
+    // The declared selection is the other half of completeness: which items
+    // the run was meant to ask, and of which doors. `--partition`,
+    // `--family`, and `--items` carry the same narrowing `eval` accepts;
+    // `--expect` names a door the run was meant to ask even if it left no
+    // rows. Without a suite the selection cannot be reconstructed and the
+    // record is unverifiable as a completed evaluation — it still renders,
+    // because a partial record is evidence, but it says so first.
+    let declared = match provenance.as_ref() {
+        Some((suite, _)) => {
+            let subset = options.items.as_deref().map(read_item_ids).transpose()?;
+            let wanted = declared_partitions(options)?;
+            let mut doors = options.expect.clone();
+            for door in doors_of(&rows) {
+                if !doors.contains(&door) {
+                    doors.push(door);
+                }
+            }
+            Some(Expected::of(
+                suite,
+                &wanted,
+                options.family.as_deref(),
+                subset.as_ref(),
+                doors,
+            )?)
+        }
+        None => None,
+    };
+
     let mut record = format!("# `{}` — the measured record\n\n", rows[0].suite);
     record.push_str(&format!(
         "Store `{path}` holds {held} rows; the receipt chain verifies{head}.\n",
@@ -1341,10 +1375,19 @@ fn report_command(options: &Options) -> Result<(), String> {
     let first = rows.iter().map(|row| &row.recorded_at).min().unwrap();
     let last = rows.iter().map(|row| &row.recorded_at).max().unwrap();
     record.push_str(&format!("Recorded {first} through {last}.\n\n"));
+    if declared.is_none() {
+        record.push_str(
+            "**Coverage is not declared** — no `--suite` was passed, so what this run was \
+             meant to ask is unknown and this record is **unverifiable as a completed \
+             evaluation**. Pass `--suite` with `--partition`, `--family`, `--items`, and \
+             `--expect` as the run used them.\n\n",
+        );
+    }
     record.push_str(
         "A row the harness never wrote is not here: items lost to timeouts or dead \
-         doors leave no row, so the counts below are over what the chain carries, \
-         and a refused item counts against the door that refused it.\n\n",
+         doors leave no row, and where the selection is declared they are named as \
+         missing — never scored as wrong answers. A refused item counts against the \
+         door that refused it.\n\n",
     );
 
     for (suite, digest) in suite_groups(&rows) {
@@ -1353,11 +1396,20 @@ fn report_command(options: &Options) -> Result<(), String> {
             .filter(|row| row.suite == suite && row.suite_digest == digest)
             .cloned()
             .collect();
+        // The declaration applies to the suite it was declared against. Rows
+        // pinning a different digest — another run folded into the store —
+        // report their own coverage state rather than borrow this one's.
+        let expected = declared.as_ref().filter(|_| {
+            provenance
+                .as_ref()
+                .is_some_and(|(suite, _)| suite.digest == digest)
+        });
         record.push_str(&suite_section(
             &suite,
             &digest,
             &inside,
             provenance.as_ref(),
+            expected,
         ));
     }
 
@@ -1366,7 +1418,11 @@ fn report_command(options: &Options) -> Result<(), String> {
          and the gate digest, and carries a receipt over its contents chained to the row \
          before it. Every store-reading command walks that chain and refuses a broken one; \
          `gym verify --store` walks it without rendering the tables. The suite digests \
-         itself on load, and the named gate lives in `crates/gym/gates/`.\n",
+         itself on load, and the named gate lives in `crates/gym/gates/`.\n\n\
+         A verified chain proves these rows were not edited or resequenced inside this \
+         file; it does not prove the file is whole or that this is the only store. \
+         Completeness comes from the declared selection above, and permanence comes \
+         from a commitment held apart from the store.\n",
     );
 
     match options.out.as_deref() {
@@ -1377,6 +1433,26 @@ fn report_command(options: &Options) -> Result<(), String> {
         None => println!("{record}"),
     }
     Ok(())
+}
+
+/// The partitions a report's declared selection covers: `--partition` as a
+/// comma list, defaulting to the open partitions `eval` asks. The locked
+/// partition is declarable here — a run that spent it through the ledger
+/// wrote rows, and coverage over them is the point of the check.
+fn declared_partitions(options: &Options) -> Result<Vec<Partition>, String> {
+    match options.partition.as_deref() {
+        None => Ok(vec![Partition::Calibration, Partition::Development]),
+        Some(list) => list
+            .split(',')
+            .map(|name| match name.trim() {
+                "calibration" => Ok(Partition::Calibration),
+                "development" => Ok(Partition::Development),
+                "locked" => Ok(Partition::Locked),
+                "" => Err("empty partition name".to_string()),
+                other => Err(format!("unknown partition {other}")),
+            })
+            .collect(),
+    }
 }
 
 /// The suites a store's rows name, in first-seen order: a store can hold
@@ -1392,13 +1468,15 @@ fn suite_groups(rows: &[Row]) -> Vec<(String, String)> {
     groups
 }
 
-/// One suite's section of the record: the digests it pins, then a table
-/// per door it was asked of.
+/// One suite's section of the record: the digests it pins, the declared
+/// selection and the coverage verdict over it, then a table per door it
+/// was asked of.
 fn suite_section(
     suite: &str,
     digest: &str,
     rows: &[Row],
     provenance: Option<&(Suite, Option<Value>)>,
+    expected: Option<&Expected>,
 ) -> String {
     let mut section = String::new();
     let pinned = rows.iter().find_map(|row| {
@@ -1425,85 +1503,296 @@ fn suite_section(
     }
     section.push('\n');
 
-    for door in doors_of(rows) {
+    // The verdict is computed once and quoted beside the declaration, so a
+    // reader learns whether this is a completed evaluation before the tables
+    // that would otherwise let them assume it.
+    match expected {
+        Some(expected) => {
+            let mut faults: Vec<String> = Vec::new();
+            for door in &expected.doors {
+                let asked: Vec<Row> = rows
+                    .iter()
+                    .filter(|row| row.door == *door && row.permutation.is_none())
+                    .cloned()
+                    .collect();
+                if asked.is_empty() {
+                    faults.push(format!("`{door}` left no rows"));
+                    continue;
+                }
+                let groups = run_groups(&asked);
+                if groups.len() > 1 {
+                    faults.push(format!(
+                        "`{door}` recorded under {} run identities, rendered apart below",
+                        groups.len()
+                    ));
+                }
+                for (_, group) in &groups {
+                    let coverage = Coverage::of(group, expected.items());
+                    if !coverage.missing.is_empty() {
+                        faults.push(format!(
+                            "`{door}` is missing {} of the expected items",
+                            coverage.missing.len()
+                        ));
+                    }
+                    if !coverage.duplicates.is_empty() {
+                        faults.push(format!(
+                            "`{door}` recorded {} of the expected items twice",
+                            coverage.duplicates.len()
+                        ));
+                    }
+                    if !coverage.unexpected.is_empty() {
+                        faults.push(format!(
+                            "`{door}` holds {} rows outside the declared selection",
+                            coverage.unexpected.len()
+                        ));
+                    }
+                }
+            }
+            if faults.is_empty() {
+                section.push_str(
+                    "**Coverage: complete** — every expected item of every expected door \
+                     recorded exactly once.\n\n",
+                );
+            } else {
+                section.push_str(&format!(
+                    "**Coverage: incomplete** — {}. This is a partial record, not a \
+                     completed evaluation.\n\n",
+                    faults.join("; ")
+                ));
+            }
+            let doors: Vec<String> = expected
+                .doors
+                .iter()
+                .map(|door| format!("`{door}`"))
+                .collect();
+            section.push_str(&format!(
+                "Declared selection: {} items, doors {}.\n\n",
+                expected.items().len(),
+                doors.join(", ")
+            ));
+        }
+        None => section.push_str(
+            "**Coverage: not declared** — the expected selection is unknown for these \
+             rows, so this section cannot claim a completed evaluation.\n\n",
+        ),
+    }
+
+    let doors = match expected {
+        Some(expected) => expected.doors.clone(),
+        None => doors_of(rows),
+    };
+    for door in doors {
         let asked: Vec<Row> = rows
             .iter()
             .filter(|row| row.door == door)
             .cloned()
             .collect();
         section.push_str(&format!("## `{door}`\n\n"));
-        section.push_str(&format!("Identity: {}.\n\n", identity_of(&asked)));
-        let scored = asked.iter().filter(|row| row.is_scored()).count();
-        let refused = asked.iter().filter(|row| row.is_refused()).count();
-        section.push_str(&format!(
-            "{} items recorded: {scored} scored, {refused} refused by the door.\n",
-            asked.len(),
-        ));
-        let refusals = eval::refusals(&asked);
-        if !refusals.is_empty() {
-            let detail: Vec<String> = refusals
-                .iter()
-                .map(|(code, count)| format!("`{code}` x{count}"))
-                .collect();
-            section.push_str(&format!("Door refusals: {}.\n", detail.join(", ")));
-        }
-        section.push_str(&format!("Median latency {}.\n\n", median_latency(&asked)));
-
-        section.push_str("| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |\n");
-        section.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
-        for split in splits_of(&asked) {
-            let inside: Vec<Row> = asked
-                .iter()
-                .filter(|row| row.split == split)
-                .cloned()
-                .collect();
-            let metrics = score(&eval::observations(&inside));
-            section.push_str(&metrics_row(&split, metrics));
-            section.push('\n');
-        }
-        section.push('\n');
-
-        let ceilings = ceilings_of(rows, provenance);
-        let ruled = ruled_families(&asked, provenance);
-        section.push_str(
-            "| Family | Accuracy | ECE | Brier | NLL | Confident errors | Items | Ceiling |\n",
-        );
-        section.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
-        for family in eval::families(&asked) {
-            let inside: Vec<Row> = asked
-                .iter()
-                .filter(|row| row.family == family)
-                .cloned()
-                .collect();
-            let metrics = score(&eval::observations(&inside));
-            let ceiling = ceilings
-                .get(&family)
-                .map(String::as_str)
-                .unwrap_or("unstated");
+        if asked.is_empty() {
+            let count = expected.map(|e| e.items().len()).unwrap_or(0);
             section.push_str(&format!(
-                "| `{family}` | {:.2} | {:.3} | {:.3} | {:.3} | {} | {} | {ceiling} |\n",
-                metrics.accuracy,
-                metrics.ece,
-                metrics.brier,
-                metrics.nll,
-                metrics.confident_errors,
-                metrics.items,
+                "No rows — the door was expected to answer {count} items and the store \
+                 holds none of them.\n\n"
+            ));
+            continue;
+        }
+        // Permutation probes are a second asking of the same item: evidence
+        // about option order, not a second trial of the pass. They are
+        // counted apart from the pass they accompany.
+        let pass: Vec<Row> = asked
+            .iter()
+            .filter(|row| row.permutation.is_none())
+            .cloned()
+            .collect();
+        let probes = asked.len() - pass.len();
+        let groups = run_groups(&pass);
+        if groups.len() > 1 {
+            section.push_str(&format!(
+                "These rows were recorded under {} distinct run identities — different \
+                 artifacts, digests, or trial configurations. Each renders apart and \
+                 they are never pooled.\n\n",
+                groups.len()
             ));
         }
-        section.push('\n');
-        if !ruled.is_empty() {
-            section.push_str("Label evidence:\n\n");
-            for (family, source, rule) in &ruled {
-                let rule = match rule {
-                    Some(rule) => format!(" — rule \"{rule}\""),
-                    None => String::new(),
-                };
-                section.push_str(&format!("- `{family}` — {source}{rule}\n"));
+        for (index, (key, group)) in groups.iter().enumerate() {
+            if groups.len() > 1 {
+                section.push_str(&format!(
+                    "### Run identity {} of {}\n\n",
+                    index + 1,
+                    groups.len()
+                ));
             }
-            section.push('\n');
+            section.push_str(&format!("Identity: {}.\n", identity_of(group)));
+            section.push_str(&format!("Trials: {}.\n", trials_of(key)));
+            if let Some(expected) = expected {
+                let coverage = Coverage::of(group, expected.items());
+                section.push_str(&coverage_line(&coverage));
+                if !coverage.missing.is_empty() {
+                    section.push_str(&format!("Missing: {}.\n", name_items(&coverage.missing)));
+                }
+                if !coverage.duplicates.is_empty() {
+                    section.push_str(&format!(
+                        "Recorded twice: {}.\n",
+                        name_items(&coverage.duplicates)
+                    ));
+                }
+                if !coverage.unexpected.is_empty() {
+                    section.push_str(&format!(
+                        "Outside the declared selection: {}.\n",
+                        name_items(&coverage.unexpected)
+                    ));
+                }
+                section.push('\n');
+            }
+            section.push_str(&door_tables(group, expected, provenance));
+        }
+        if probes > 0 {
+            section.push_str(&format!(
+                "{probes} option-order probe rows sit beside this pass, counted apart from it.\n\n"
+            ));
         }
     }
     section
+}
+
+/// One run group's tables: the per-split metrics, then the per-family
+/// metrics with their label ceilings, and coverage per family when the
+/// selection was declared.
+fn door_tables(
+    asked: &[Row],
+    expected: Option<&Expected>,
+    provenance: Option<&(Suite, Option<Value>)>,
+) -> String {
+    let mut section = String::new();
+    let scored = asked.iter().filter(|row| row.is_scored()).count();
+    let refused = asked.iter().filter(|row| row.is_refused()).count();
+    section.push_str(&format!(
+        "{} items recorded: {scored} scored, {refused} refused by the door.\n",
+        asked.len(),
+    ));
+    let refusals = eval::refusals(asked);
+    if !refusals.is_empty() {
+        let detail: Vec<String> = refusals
+            .iter()
+            .map(|(code, count)| format!("`{code}` x{count}"))
+            .collect();
+        section.push_str(&format!("Door refusals: {}.\n", detail.join(", ")));
+    }
+    section.push_str(&format!("Median latency {}.\n\n", median_latency(asked)));
+
+    section.push_str("| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |\n");
+    section.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
+    for split in splits_of(asked) {
+        let inside: Vec<Row> = asked
+            .iter()
+            .filter(|row| row.split == split)
+            .cloned()
+            .collect();
+        let metrics = score(&eval::observations(&inside));
+        section.push_str(&metrics_row(&split, metrics));
+        section.push('\n');
+    }
+    section.push('\n');
+
+    let ceilings = ceilings_of(asked, provenance);
+    let ruled = ruled_families(asked, provenance);
+    section.push_str(
+        "| Family | Accuracy | ECE | Brier | NLL | Confident errors | Items | Ceiling |\n",
+    );
+    section.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    for family in eval::families(asked) {
+        let inside: Vec<Row> = asked
+            .iter()
+            .filter(|row| row.family == family)
+            .cloned()
+            .collect();
+        let metrics = score(&eval::observations(&inside));
+        let ceiling = ceilings
+            .get(&family)
+            .map(String::as_str)
+            .unwrap_or("unstated");
+        section.push_str(&format!(
+            "| `{family}` | {:.2} | {:.3} | {:.3} | {:.3} | {} | {} | {ceiling} |\n",
+            metrics.accuracy,
+            metrics.ece,
+            metrics.brier,
+            metrics.nll,
+            metrics.confident_errors,
+            metrics.items,
+        ));
+    }
+    section.push('\n');
+    if let Some(expected) = expected {
+        section.push_str("| Family | Expected | Recorded | Answered | Refused | Missing |\n");
+        section.push_str("| --- | --- | --- | --- | --- | --- |\n");
+        for family in expected.families() {
+            let inside: Vec<Row> = asked
+                .iter()
+                .filter(|row| row.family == *family)
+                .cloned()
+                .collect();
+            let coverage = Coverage::of(&inside, &expected.for_family(family));
+            section.push_str(&format!(
+                "| `{family}` | {} | {} | {} | {} | {} |\n",
+                coverage.expected,
+                coverage.recorded(),
+                coverage.answered,
+                coverage.refused,
+                coverage.missing.len(),
+            ));
+        }
+        section.push('\n');
+    }
+    if !ruled.is_empty() {
+        section.push_str("Label evidence:\n\n");
+        for (family, source, rule) in &ruled {
+            let rule = match rule {
+                Some(rule) => format!(" — rule \"{rule}\""),
+                None => String::new(),
+            };
+            section.push_str(&format!("- `{family}` — {source}{rule}\n"));
+        }
+        section.push('\n');
+    }
+    section
+}
+
+/// The trial configuration a run group shares, stated plainly.
+fn trials_of(key: &RunKey) -> String {
+    let mut parts = vec![format!("estimator `{}`", key.estimator)];
+    if let Some(samples) = key.samples {
+        parts.push(format!("{samples} draws each"));
+    }
+    if let Some(seed) = key.seed_base {
+        parts.push(format!("seed base `{seed}`"));
+    }
+    parts.join(", ")
+}
+
+/// The coverage sentence a run group earns against the selection.
+fn coverage_line(coverage: &Coverage) -> String {
+    format!(
+        "Coverage: {} of {} expected items recorded — {} answered, {} refused; \
+         {} missing or unattempted.\n",
+        coverage.recorded(),
+        coverage.expected,
+        coverage.answered,
+        coverage.refused,
+        coverage.missing.len(),
+    )
+}
+
+/// Up to eight `(partition, item)` names, then a count of the rest.
+fn name_items(items: &[(String, String)]) -> String {
+    let named: Vec<String> = items
+        .iter()
+        .take(8)
+        .map(|(split, id)| format!("`{split}/{id}`"))
+        .collect();
+    match items.len() - named.len() {
+        0 => named.join(", "),
+        rest => format!("{}, and {rest} more", named.join(", ")),
+    }
 }
 
 /// The doors a suite's rows name, in first-seen order.
@@ -3150,6 +3439,284 @@ mod tests {
         })
         .unwrap_err();
         assert!(trouble.contains("edited"), "{trouble}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The committed caller fixture gives report tests a real suite: its
+    /// digest is what the rows pin, and its ten development items are the
+    /// declared selection these tests run against.
+    fn caller_suite() -> (Suite, String) {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/caller-v1/suite.json");
+        let suite = Suite::load_file(path.to_str().unwrap()).unwrap();
+        (suite, path.to_str().unwrap().to_string())
+    }
+
+    /// One row of the shape `eval` writes over a fixture item.
+    fn fixture_row(suite: &Suite, item: &Item, door: &str) -> Row {
+        Row {
+            recorded_at: "2026-09-20T00:00:00Z".to_string(),
+            suite: suite.name.clone(),
+            suite_digest: suite.digest.clone(),
+            question_set: Some("caller-v1".to_string()),
+            question_digest: Some("question-digest".to_string()),
+            split: item.partition.as_str().to_string(),
+            family: item.family.clone(),
+            item_id: item.id.clone(),
+            door: door.to_string(),
+            estimator: "greedy".to_string(),
+            answered: true,
+            distribution: Some(
+                [("yes".to_string(), 0.9), ("no".to_string(), 0.1)]
+                    .into_iter()
+                    .collect(),
+            ),
+            selected: Some("yes".to_string()),
+            correct: Some(true),
+            ..Row::default()
+        }
+    }
+
+    /// The fixture's development rows for one door, minus any skipped items.
+    fn dev_rows(suite: &Suite, door: &str, skip: &[usize]) -> Vec<Row> {
+        suite
+            .items
+            .iter()
+            .filter(|item| item.partition == Partition::Development)
+            .enumerate()
+            .filter(|(index, _)| !skip.contains(index))
+            .map(|(_, item)| fixture_row(suite, item, door))
+            .collect()
+    }
+
+    /// A receipt-chained store holding exactly `rows`.
+    fn chained(dir: &std::path::Path, name: &str, rows: &[Row]) -> String {
+        let path = dir.join(name);
+        let store = Store::at(path.to_str().unwrap());
+        for row in rows {
+            store.append(row).unwrap();
+        }
+        path.to_str().unwrap().to_string()
+    }
+
+    /// Render the record for a store and return it.
+    fn render(dir: &std::path::Path, store: &str, options: Options) -> String {
+        let out = dir.join("record.md");
+        report_command(&Options {
+            store: Some(store.to_string()),
+            out: Some(out.to_str().unwrap().to_string()),
+            ..options
+        })
+        .unwrap();
+        std::fs::read_to_string(&out).unwrap()
+    }
+
+    /// A full pass over the declared selection reports complete coverage.
+    #[test]
+    fn report_marks_a_covered_selection_complete() {
+        let dir = std::env::temp_dir().join(format!("gym-report-full-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, path) = caller_suite();
+        let store = chained(&dir, "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let record = render(
+            &dir,
+            &store,
+            Options {
+                suite: Some(path),
+                partition: Some("development".to_string()),
+                ..Options::default()
+            },
+        );
+        assert!(record.contains("**Coverage: complete**"), "{record}");
+        assert!(!record.contains("Coverage: incomplete"), "{record}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An item the harness never wrote is named as missing — not scored
+    /// wrong, and not allowed to pass silently.
+    #[test]
+    fn report_names_a_missing_middle_item() {
+        let dir = std::env::temp_dir().join(format!("gym-report-gap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, path) = caller_suite();
+        let store = chained(&dir, "store.jsonl", &dev_rows(&suite, "stub", &[4]));
+        let missing = suite
+            .items
+            .iter()
+            .filter(|item| item.partition == Partition::Development)
+            .nth(4)
+            .unwrap()
+            .id
+            .clone();
+        let record = render(
+            &dir,
+            &store,
+            Options {
+                suite: Some(path),
+                partition: Some("development".to_string()),
+                ..Options::default()
+            },
+        );
+        assert!(record.contains("**Coverage: incomplete**"), "{record}");
+        assert!(
+            record.contains("missing 1 of the expected items"),
+            "{record}"
+        );
+        assert!(record.contains(&missing), "{record}");
+        assert!(record.contains("not a completed evaluation"), "{record}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A dropped tail is the same finding: the last item's absence is named.
+    #[test]
+    fn report_names_a_missing_final_item() {
+        let dir = std::env::temp_dir().join(format!("gym-report-tail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, path) = caller_suite();
+        let store = chained(&dir, "store.jsonl", &dev_rows(&suite, "stub", &[9]));
+        let record = render(
+            &dir,
+            &store,
+            Options {
+                suite: Some(path),
+                partition: Some("development".to_string()),
+                ..Options::default()
+            },
+        );
+        assert!(record.contains("**Coverage: incomplete**"), "{record}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An item-id file declares a subset, and covering exactly it is
+    /// complete — the selection is the declaration, not the whole suite.
+    #[test]
+    fn report_treats_a_declared_subset_as_the_selection() {
+        let dir = std::env::temp_dir().join(format!("gym-report-sub-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, path) = caller_suite();
+        let chosen: Vec<Item> = suite
+            .items
+            .iter()
+            .filter(|item| item.partition == Partition::Development)
+            .take(3)
+            .cloned()
+            .collect();
+        let ids = dir.join("ids.txt");
+        std::fs::write(
+            &ids,
+            chosen
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+        let rows: Vec<Row> = chosen
+            .iter()
+            .map(|item| fixture_row(&suite, item, "stub"))
+            .collect();
+        let store = chained(&dir, "store.jsonl", &rows);
+        let record = render(
+            &dir,
+            &store,
+            Options {
+                suite: Some(path),
+                partition: Some("development".to_string()),
+                items: Some(ids.to_str().unwrap().to_string()),
+                ..Options::default()
+            },
+        );
+        assert!(record.contains("**Coverage: complete**"), "{record}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A second recording of an item under the same run identity never
+    /// reaches a report: the store refuses it on append, and `merge` folds
+    /// it as a duplicate. The report's own naming of a duplicated item is
+    /// coverage.rs's defense for stores written before that guard existed.
+    #[test]
+    fn the_store_refuses_a_second_recording_of_an_item() {
+        let dir = std::env::temp_dir().join(format!("gym-report-dup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, _) = caller_suite();
+        let path = dir.join("store.jsonl");
+        let store = Store::at(path.to_str().unwrap());
+        let rows = dev_rows(&suite, "stub", &[]);
+        for row in &rows {
+            store.append(row).unwrap();
+        }
+        let trouble = store.append(&rows[0]).unwrap_err();
+        assert!(
+            matches!(trouble, StoreError::DuplicatePerturbation { .. }),
+            "{trouble}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Rows under two door identities render as two run groups and the
+    /// verdict refuses to call either a complete pass.
+    #[test]
+    fn report_separates_mixed_run_identities() {
+        let dir = std::env::temp_dir().join(format!("gym-report-mix-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, path) = caller_suite();
+        let mut rows = dev_rows(&suite, "stub", &[]);
+        for row in rows.iter_mut().skip(5) {
+            row.door_identity.model = "swapped".to_string();
+        }
+        let store = chained(&dir, "store.jsonl", &rows);
+        let record = render(
+            &dir,
+            &store,
+            Options {
+                suite: Some(path),
+                partition: Some("development".to_string()),
+                ..Options::default()
+            },
+        );
+        assert!(record.contains("2 run identities"), "{record}");
+        assert!(record.contains("### Run identity 2 of 2"), "{record}");
+        assert!(record.contains("**Coverage: incomplete**"), "{record}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A door the run was meant to ask but that left no rows is missing
+    /// work, not an absent expectation.
+    #[test]
+    fn report_counts_an_expected_door_that_left_nothing() {
+        let dir = std::env::temp_dir().join(format!("gym-report-door-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, path) = caller_suite();
+        let store = chained(&dir, "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let record = render(
+            &dir,
+            &store,
+            Options {
+                suite: Some(path),
+                partition: Some("development".to_string()),
+                expect: vec!["ghost".to_string()],
+                ..Options::default()
+            },
+        );
+        assert!(record.contains("`ghost` left no rows"), "{record}");
+        assert!(record.contains("**Coverage: incomplete**"), "{record}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Without a suite the record renders, but says first that it cannot
+    /// claim a completed evaluation.
+    #[test]
+    fn report_without_a_declared_selection_says_so_first() {
+        let dir = std::env::temp_dir().join(format!("gym-report-open-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (suite, _) = caller_suite();
+        let store = chained(&dir, "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let record = render(&dir, &store, Options::default());
+        assert!(record.contains("**Coverage is not declared**"), "{record}");
+        assert!(
+            record.contains("unverifiable as a completed evaluation"),
+            "{record}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }
