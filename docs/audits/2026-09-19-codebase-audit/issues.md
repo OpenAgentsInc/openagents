@@ -8,7 +8,11 @@ of missing functionality is not treated as proof that it remains missing.
 
 The [audit findings](README.md#priorities) use A01–A25. “Related” means the issue
 provides context or depends on the fix; it does not mean that the issue already
-covers the defect. This document creates no new issues and changes no issue state.
+covers the defect. This table preserves the original review snapshot.
+
+The subsequent implementation issues and explicit roadmap blockers are listed
+in the [remediation register](remediation.md). The follow-up also checks closed
+#9376 and #9384 because A05 and A07 affect the interpretation of their measurements.
 
 ## Agent and program roadmap
 

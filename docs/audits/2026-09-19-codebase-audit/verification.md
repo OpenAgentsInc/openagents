@@ -158,3 +158,80 @@ For fixes, run the negative regression for the affected contract, its consumer's
 integration test, and the agreed Rust gates. Run expensive live-model, soak, and
 performance checks in a declared environment where skips and resource contention
 are visible. Preserve the repository's ban on GitHub-billed automation.
+
+## Follow-up evidence review
+
+The implementation author's review identified consequences for closed issues
+#9376 and #9384. The following read-only checks ran against the same source and
+measurement files before creating remediation issues. They qualify the scope of
+the findings; they do not replace the required post-fix rechecks.
+
+### A05 and the calibration floors
+
+The three quoted values in `Rule::v2` are raw block standard deviations:
+ECE `0.0266`, Brier `0.0119`, and NLL `0.6428`. The corresponding one-block-per-side
+two-sigma comparisons are approximately `0.075`, `0.034`, and `1.818`.
+
+The raw path is
+[`report_blocks`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/gym/src/bin/gym.rs#L1822)
+→ `Draws::observations` →
+[`Draw::observation`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/gym/src/spread.rs#L123)
+→ `calibrate::score`. It uses recorded `top` and `correct` values, without calling
+`eval::mapped_observations`. The original feedback's claim that those three raw
+values passed through that function is therefore not supported by the code.
+
+The A05 fix still needs to regenerate the measurement record and review each
+mapped claim against the chosen serving contract. Raw values may reproduce
+unchanged. Mapped confidence for a fixed original choice and confidence for a
+newly selected choice are different quantities and must be identified. Changes
+to semantics or adopted values require updated gate provenance and digests;
+unchanged values need an explicit derivation check, not an automatic withdrawal.
+
+### A07 and the Kev comparison rows
+
+A direct comparison of `crates/gym/results/support-v2-three-way.jsonl` with the
+non-locked `(id, partition)` pairs in the pinned suite produced:
+
+| Door | Expected pairs | Rows | Unique pairs | Missing | Unexpected | Matching suite digest | Answered, scored, and no refusal |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `kev-0.5b` | 157 | 157 | 157 | 0 | 0 | All | 157 |
+| `kev-0.6b` | 157 | 157 | 157 | 0 | 0 | All | 157 |
+| `kev-4b` | 157 | 157 | 157 | 0 | 0 | All | 157 |
+| `kev-8b` | 157 | 157 | 157 | 0 | 0 | All | 157 |
+
+This establishes coverage in the committed artifact. It does not verify the
+receipt chain, every upstream attempt, or independently reproduce the inference.
+The [runner](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/gym/src/bin/gym.rs#L552)
+increments `lost` when classification produces no row. Thus A07 mislabels a
+door refusal and excludes it from scored/refused rows; it does not silently turn
+that failure into a scored row or prove that this historical panel omitted items.
+
+The remediation issue must re-check these records after fixing the contract,
+verify receipt and run provenance, and correct #9384's assertion that the old
+classifier established correct refusal accounting. Report any evidence that was
+not retained rather than reconstructing a historical error response. The
+published numerical comparisons should change only if that reconciliation or a
+properly scoped rerun supplies a reason.
+
+### Runtime admission and worktrees
+
+Commit `1eb60eccea31873af59fe2df65e16ce46b99b928` landed during this follow-up.
+At `1f78b260e2`, the following targeted checks passed: four tests total, no
+failures or ignored tests.
+
+```sh
+cargo +1.95.0 test --locked -p coder --test program_run a_bound_nobody_claims_is_refused
+cargo +1.95.0 test --locked -p coder --test program_run the_check_records_who_holds_each_bound
+cargo +1.95.0 test --locked -p coder --lib worktree
+```
+
+They exercise unknown-bound refusal, the recorded host/executor distinction,
+one separate checkout, and six concurrent distinct checkouts with cleanup.
+They use test executors and temporary repositories, without live delegated work.
+
+The [runtime admission code](https://github.com/OpenAgentsInc/openagents/blob/1eb60eccea31873af59fe2df65e16ce46b99b928/crates/coder/src/runtime.rs#L918)
+still derives `Enforcement::Executor` from `manifest.enforces`. The passing
+recording test proves that this claim is recorded; it does not independently
+verify executor enforcement. The worktree tests establish separate checkouts,
+not a read-only boundary. These checks credit partial progress on A18 and do not
+replace the negative acceptance tests in #9427 or a review of the entire runtime.

@@ -13,6 +13,12 @@ clear the backlog or using CoderBench results to tune the agent. Passing the
 current tests does not establish those properties: the audit reproduced failures
 through public APIs while the applicable test suites passed.
 
+**Release blocker:** #9413 must not start unattended backlog fan-out until A01,
+A17, and A18 have verified fixes. Execution intent, trusted executable probes,
+and enforced admission bounds are prerequisites, not optional follow-up work.
+The [remediation register](remediation.md) links the implementation issues and
+the additional recommendations outside A01–A25.
+
 ## Scope and evidence
 
 The reviewed source snapshot is
@@ -22,7 +28,8 @@ totaling 71,819 lines including tests and comments. Source links below point to
 that commit. The snapshot includes the restored CoderBench golden, its provenance
 sidecar, headless turns, delegation, the capability and program registries, and
 the CoderBench driver and preflight checks.
-Later changes on `main` are outside this snapshot.
+Later changes on `main` are outside this snapshot unless explicitly identified
+as follow-up evidence in the [remediation register](remediation.md).
 
 This is a risk-based review across the workspace, public interfaces, deployment
 assets, migrations, training tooling, and documentation. It is not a claim that
@@ -80,6 +87,8 @@ describe engineering impact, not a vulnerability scoring system.
 
 ### A01. Require an execution intent before parsing a shell plan
 
+Tracking: [#9415](https://github.com/OpenAgentsInc/openagents/issues/9415).
+
 The [plan parser](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/shell.rs#L119) extracts fenced JSON from
 anywhere in an answer and accepts a `commands` array without requiring the
 documented version. The [turn loop](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/agent.rs#L357) calls it
@@ -101,10 +110,16 @@ This complements the routing work in #9395–#9397; those issues do not fix pars
 
 ### A02. Terminate and reap the process tree when execution ends
 
+Tracking: [#9416](https://github.com/OpenAgentsInc/openagents/issues/9416).
+
 The [shell runner](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/shell.rs#L194) wraps `Command::output()`
 in a 15-second timeout without `kill_on_drop`. The timeout cancels the wait, and
 the command continues. The [delegate runner](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/delegate.rs#L523)
 sets `kill_on_drop(true)`, but it does not establish or terminate a process group.
+
+This finding supersedes the partial deadline fix in `f2a4bc79cb`; it does not
+duplicate an already-completed fix. That change kills the direct delegate, but
+leaves descendants alive, and the shell runner still lacks even that behavior.
 
 The harness records `timed out` for a shell that writes a harmless marker at
 16 seconds; the marker appears afterward. A delegated shell is killed after
@@ -123,6 +138,8 @@ also kills only the direct child, so use the same supervisor there. Complete thi
 
 ### A03. Bound captured output while reading it
 
+Tracking: [#9417](https://github.com/OpenAgentsInc/openagents/issues/9417).
+
 Both [shell execution](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/shell.rs#L210) and
 [delegation](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/delegate.rs#L537) collect complete stdout and
 stderr with `output()` and only then truncate the resulting strings. The 16 KiB
@@ -138,6 +155,8 @@ that continues until cancelled. Correct comments that describe the current cap
 as a bound on everything the process holds.
 
 ### A04. Make benchmark success require verified evidence
+
+Tracking: [#9418](https://github.com/OpenAgentsInc/openagents/issues/9418).
 
 [`Task::judge`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coderbench/src/lib.rs#L278) checks the delegation
 count but does not enforce `grade.delegations_correct`. It faults only
@@ -163,6 +182,8 @@ returns the trace grade without making that execution outcome a grading fault.
 
 ### A05. Align calibration, served choices, and correctness labels
 
+Tracking: [#9419](https://github.com/OpenAgentsInc/openagents/issues/9419).
+
 [`Map::apply_distribution`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/gym/src/calibrate.rs#L233) rescales the
 original winner to its calibrated probability and redistributes the remainder.
 This can change the winner. [`mapped_observations`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/gym/src/eval.rs#L275)
@@ -182,7 +203,20 @@ Use that contract consistently in fitting, gates, metrics, and serving. Test
 binary and multiclass winner changes and ties. This is a separate implementation
 defect from #9381, #9394, and #9401, although their measurements depend on it.
 
+The fix also requires a provenance review and regeneration of #9376's metric
+derivations and mapped-calibration claims. The adopted ECE `0.0266`, Brier
+`0.0119`, and NLL `0.6428` values are **raw block standard deviations**, not the
+two-sigma comparison thresholds. Inspection of `gym::spread::Draw::observation`
+and `gym`'s `report_blocks` shows that their raw derivation does not call
+`mapped_observations`. A05 therefore does not by itself prove these three numbers
+wrong. Re-derive them after settling the predictor/label contract, distinguish
+raw from mapped paths, and report whether each value and dependent claim changes.
+Recompute the affected mapped results; publish a new gate digest if its semantics
+or numeric basis changes. See the [follow-up evidence](verification.md#follow-up-evidence-review).
+
 ### A06. Make the locked-partition read a transaction
+
+Tracking: [#9420](https://github.com/OpenAgentsInc/openagents/issues/9420).
 
 [`LockedLedger::read_locked`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/gym/src/suite.rs#L593) reads the ledger
 and later appends a spend record without holding a lock across both operations.
@@ -200,6 +234,8 @@ multiple processes and interrupted writes. This is distinct from #9399's
 training-data contamination: a clean partition still needs a reliable read budget.
 
 ### A07. Give Kev refusals the contract Gym consumes
+
+Tracking: [#9421](https://github.com/OpenAgentsInc/openagents/issues/9421).
 
 [Kev's refusal helper](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/kev/src/serve.rs#L97) returns HTTP `422` with
 `{"detail": "..."}` for request and inference errors.
@@ -219,7 +255,27 @@ needed. Do not compensate by parsing English error strings. Include over-budget
 states, unknown models, invalid requests, and inference failures. This complements
 #9398's capacity measurements.
 
+This invalidates relying on `gym::eval::classify` to establish that Kev's
+door-owned refusals were counted as refusals in #9384 and the
+[variant-score record](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/docs/kev/measurements/2026-09-19-variant-scores.md#L124).
+It does not establish that the published scores lost items. A follow-up comparison
+of committed rows against the suite finds exactly the 157 expected open item/split
+pairs for each of the four Kev variants, with no duplicates, missing pairs,
+unexpected pairs, or refusal rows. That is independent coverage evidence; the
+classifier could not distinguish a Kev refusal from a harness failure, but the
+runner does count unrecorded harness outcomes as lost.
+
+After the fix, re-check #9384's rows, suite and receipt integrity, run provenance,
+and any retained failed-response evidence. Explicitly distinguish complete
+scored-row coverage from correct classification of failures. Correct the wording
+and any affected statistics or downstream comparisons; preserve the numbers when
+the independent reconciliation supports them. Do not infer historical omissions
+solely from this classifier bug, or infer correct refusal accounting solely from
+zero recorded refusals.
+
 ### A08. Verify the signed response's job binding locally
+
+Tracking: [#9422](https://github.com/OpenAgentsInc/openagents/issues/9422).
 
 The [relay receive loop](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/relay.rs#L302) verifies the worker
 pubkey and event signature, then decrypts the content. It trusts the surrounding
@@ -240,6 +296,8 @@ negative cases part of #9410's transport proof.
 
 ### A09. Treat streaming as a byte protocol with explicit completion
 
+Tracking: [#9423](https://github.com/OpenAgentsInc/openagents/issues/9423).
+
 [HTTP streaming](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/generate.rs#L210) runs
 `String::from_utf8_lossy` on each network chunk. Network chunks need not end at
 character boundaries. The harness splits `é` across two chunks and receives
@@ -255,6 +313,8 @@ plan. Test every byte boundary, multiple data lines, malformed records, early
 EOF, an explicit incomplete event, and a stalled connection.
 
 ### A10. Close relay subscriptions and discard broken connections
+
+Tracking: [#9423](https://github.com/OpenAgentsInc/openagents/issues/9423).
 
 Each [relay turn](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/relay.rs#L268) creates a new subscription
 and never sends `CLOSE`. The relay's default is
@@ -274,6 +334,8 @@ Include these lifetime tests in #9410.
 
 ### A11. Create persistent identities atomically
 
+Tracking: [#9423](https://github.com/OpenAgentsInc/openagents/issues/9423).
+
 [`Identity::load`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/relay.rs#L83) treats every file-read
 error as absence and generates a new key. It writes with truncation and sets
 permissions afterward. Two first-time processes can each adopt a different key,
@@ -287,6 +349,8 @@ Test simultaneous startup, permission errors, and interrupted creation. Do not
 log the key while diagnosing any of these cases.
 
 ### A12. Validate numeric answer invariants at the SDK boundary
+
+Tracking: [#9424](https://github.com/OpenAgentsInc/openagents/issues/9424).
 
 [`SystemOneResponse::decode`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/jev/src/answers.rs#L148) validates
 deserialization shape without establishing the numeric contract. A Noul value
@@ -303,6 +367,8 @@ three answer types. The public contract is documented in the
 
 ### A13. Recover the valid prefix of a torn trace
 
+Tracking: [#9425](https://github.com/OpenAgentsInc/openagents/issues/9425).
+
 The [ATIF reader](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/atif/src/log.rs#L231) skips malformed JSON lines,
 but `BufRead::lines()` fails before parsing when a final record ends in partial
 UTF-8. A valid session and step followed by a torn two-byte character cause the
@@ -316,6 +382,8 @@ session headers, records after an end record, and malformed interior records.
 Test truncation at every byte of a non-ASCII final record.
 
 ### A14. Bound and supervise Lev's blocking helper calls
+
+Tracking: [#9426](https://github.com/OpenAgentsInc/openagents/issues/9426).
 
 The [async HTTP handler](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/lev/src/serve.rs#L611) directly calls the
 synchronous estimator and bridge pool. The pool uses blocking mutexes and scoped
@@ -335,6 +403,8 @@ these failure modes.
 
 ### A15. Admit Kev work against total compute and memory bounds
 
+Tracking: [#9426](https://github.com/OpenAgentsInc/openagents/issues/9426).
+
 [Encoding](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/kev/src/encode.rs#L105) bounds state and individual
 branches, but appends all question branches into one sequence. The
 [attention mask](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/kev/src/encode.rs#L205) allocates quadratically in
@@ -351,6 +421,8 @@ local service is exposed through the planned mesh.
 
 ### A16. Resolve every advertised model alias
 
+Tracking: [#9426](https://github.com/OpenAgentsInc/openagents/issues/9426).
+
 [`ServeState::select`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/kev/src/serve.rs#L70) resolves an exact model
 ID, `kev-latest`, or an empty string. It never reads `aliases`, although the
 model listing advertises `jev-latest` for the default model. A Jev client using
@@ -362,6 +434,8 @@ with its default model unchanged, explicit variant IDs, and genuinely unknown
 names. Avoid publishing aliases that the serving path cannot honor.
 
 ### A17. Separate registry discovery from trusted executable probes
+
+Tracking: [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427).
 
 [`Survey::read`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/survey.rs#L43) loads repository manifests
 and probes all of them. A manifest controls the executable and its arguments;
@@ -386,6 +460,8 @@ Share the validated manifest contract so the two implementations do not drift.
 
 ### A18. Treat unknown enforcement and unobserved writes explicitly
 
+Tracking: [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427).
+
 [`Manifest::ignored_bounds`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/coder/src/capability.rs#L449) only
 intersects required bounds with `cannot_enforce`. A bound absent from both lists
 is admitted by this helper. The harness asks the checked-in manifest about
@@ -401,12 +477,27 @@ For every required bound, record whether the host enforces it, the executor
 verifiably enforces it, or enforcement is unknown. Refuse unsupported requirements.
 Use filesystem isolation or an explicit trusted-executor contract for read-only
 work, and record actual workspace changes for grading. Worktrees separate edits;
-they do not themselves prohibit writes. Add negative acceptance cases to #9409
+they do not themselves prohibit writes. At this snapshot, the runner refuses
+worktree isolation outright with `isolation_unavailable`: every admitted
+delegation runs in the shared directory. There is no implemented isolated
+execution option, and `Task::reading` supplies only a declaration.
+
+Add negative acceptance cases to #9409
 and #9413 before claiming that fan-out preserves these constraints. Issue #9414 now
 tracks a related model judgment failure; that experiment cannot replace host
 enforcement of permissions.
 
+**Publication update:** [commit `1eb60eccea`](https://github.com/OpenAgentsInc/openagents/commit/1eb60eccea31873af59fe2df65e16ce46b99b928)
+landed during this follow-up. It refuses unknown bounds at runtime admission and
+implements worktrees when the delegator has a repository configured. The
+shared-directory-only limitation above describes the original snapshot. A18
+remains open: runtime admission still treats a manifest's `enforces` declaration
+as executor enforcement, and a worktree does not enforce read-only access. See
+the [follow-up checks](verification.md#runtime-admission-and-worktrees).
+
 ### A19. Use the same search semantics for history and live events
+
+Tracking: [#9428](https://github.com/OpenAgentsInc/openagents/issues/9428).
 
 [`Filter::matches`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/nostr/src/domain/filter.rs#L84) lowercases content
 and checks substrings. The [historical SQL](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/nostr-relay/src/store/statements.rs#L194)
@@ -422,6 +513,8 @@ does not establish this equivalence.
 
 ### A20. Reject unauthenticated uploads before writing their bodies
 
+Tracking: [#9428](https://github.com/OpenAgentsInc/openagents/issues/9428).
+
 The [upload handler](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/nostr-relay/src/gateway/media.rs#L185) creates a
 temporary file and streams the entire body before checking for an authorization
 header at line 216. Per-pubkey rate and quota checks happen later still. Existing
@@ -436,6 +529,8 @@ upload and that rejected authenticated uploads release reservations.
 
 ### A21. Make a restorable database-and-media backup unit
 
+Tracking: [#9428](https://github.com/OpenAgentsInc/openagents/issues/9428).
+
 The [backup script](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/deploy/backup/nostr-relay-backup#L26) completes
 `pg_dump`, then archives the live media directory. A media deletion between those
 operations can leave a database record in the dump whose blob is absent from the
@@ -448,6 +543,8 @@ restore into an isolated database and media root, including concurrent upload an
 deletion scenarios. This audit did not execute production backup or restore jobs.
 
 ### A22. Enforce the advertised whole-call retry budget
+
+Tracking: [#9424](https://github.com/OpenAgentsInc/openagents/issues/9424).
 
 [`RetryPolicy::budget`](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/jev/src/retry.rs#L65) is documented as the
 whole call's budget, including its first attempt. The
@@ -463,6 +560,8 @@ setting as a retry-admission budget if that narrower contract is intended.
 Test delayed success, body stalls, and a retry with little time remaining.
 
 ### A23. Establish a clean, repeatable Rust verification baseline
+
+Tracking: [#9429](https://github.com/OpenAgentsInc/openagents/issues/9429).
 
 At the audited snapshot, Rust 1.95.0 reports formatting differences in 51 files.
 Strict Clippy with serving and TUI features fails on three findings:
@@ -487,6 +586,8 @@ repository contract requires. Do not introduce GitHub workflows.
 
 ### A24. Remove tracked build products from the source baseline
 
+Tracking: [#9430](https://github.com/OpenAgentsInc/openagents/issues/9430).
+
 Git tracks 80 generated paths under `swift/lev-bridge/.build` and
 `training/lev-adapter/__pycache__` combined. They include compiled products and
 machine-specific build state. The root [ignore file](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/.gitignore#L1) ignores
@@ -499,6 +600,8 @@ binary must be distributed, publish it as a versioned release artifact with its
 source revision, target, and digest rather than an incidental build-directory file.
 
 ### A25. Make dependency maintenance decisions explicit
+
+Tracking: [#9431](https://github.com/OpenAgentsInc/openagents/issues/9431).
 
 `cargo deny check advisories` fails under its default policy on transitive
 `paste 1.0.15`, [RUSTSEC-2024-0436](https://rustsec.org/advisories/RUSTSEC-2024-0436).
@@ -585,12 +688,16 @@ an unrelated rewrite. Preserve `docs/transcripts/` as instructed.
 
 ## Order of work
 
-1. **Make execution bounded and explicit:** A01–A03, then A17–A18 before wiring
-   repository capabilities into #9409. Include cancellation and no-write evidence
-   in acceptance criteria for #9413.
+1. **Make execution bounded and explicit:** A01–A03, then complete A17–A18 for
+   the runtime introduced in #9409. A01, A17, and A18 are hard blockers on
+   #9413; a passing golden or an independence judgment does not waive them.
+   Include process-tree cancellation and actual no-write evidence in its
+   acceptance criteria.
 2. **Repair the evidence used to choose models and programs:** A04–A07, A12–A13,
    and A22. Then address contamination, variance, and question quality in the
    existing Gym and decision-model issues. Do not optimize against an unsound grade.
+   Re-derive #9376's measurement basis after A05 and reconcile #9384's rows and
+   refusal-accounting claims after A07.
 3. **Prove transport and serving failure behavior:** A08–A11 and A14–A16. Extend
    #9410 beyond a successful episode to replay, disconnect, saturation, timeout,
    and refusal cases.
