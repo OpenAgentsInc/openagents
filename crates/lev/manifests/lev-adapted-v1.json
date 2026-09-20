@@ -68,5 +68,39 @@
     "samples": 8,
     "seed_base": 0
   },
-  "evalRef": []
+  "evalRef": [
+    {
+      "family": "routing",
+      "record": "../calibration/lev-adapted@1/routing.json",
+      "sha256": "a5b7b034f0bdcca1f2ffef1dae70411879a3f85618470a049ec0d09072a29f21",
+      "suite": "support-v2-three-way",
+      "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+      "partitionId": "calibration",
+      "gateId": "probability-v1",
+      "admitted": true,
+      "verdict": "passed: log loss 1.397 to 0.200, confident errors 2 to 2 over 40 items"
+    },
+    {
+      "family": "severity",
+      "record": "../calibration/lev-adapted@1/severity.json",
+      "sha256": "23c5a027243e0d855aeb611c583e78aaf3dd8ecafe3d4704c95f521f8651990c",
+      "suite": "support-v2-three-way",
+      "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+      "partitionId": "calibration",
+      "gateId": "probability-v1",
+      "admitted": false,
+      "verdict": "unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)"
+    },
+    {
+      "family": "urgency",
+      "record": "../calibration/lev-adapted@1/urgency.json",
+      "sha256": "5f68f6daa48809b63d0bf359fc544ab5f8aa28653ee48de619d3ba4b16685a0d",
+      "suite": "support-v2-three-way",
+      "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+      "partitionId": "calibration",
+      "gateId": "probability-v1",
+      "admitted": false,
+      "verdict": "unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)"
+    }
+  ]
 }

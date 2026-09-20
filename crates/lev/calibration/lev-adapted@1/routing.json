@@ -1,0 +1,61 @@
+{
+  "schema": "openagents.gym.calibration_record.v1",
+  "family": "routing",
+  "estimator_config": {
+    "estimator": "l2",
+    "samples": 8,
+    "seed_base": 0
+  },
+  "language": "en",
+  "suite": "support-v2-three-way",
+  "suite_digest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+  "partition_id": "calibration",
+  "os_build": "25E246",
+  "door": "lev-adapted@1",
+  "door_identity": {
+    "model": "lev-adapted",
+    "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+    "adapter": "lev-adapted@1",
+    "verified": true
+  },
+  "gate_id": "probability-v1",
+  "gate_digest": "gate:368cefd18f308119008db3099c8415af380c9d096d4cbcb6997196bfc6d82013",
+  "locked_reads": [],
+  "fitted": "2026-09-20",
+  "map": {
+    "bins": [
+      {
+        "lo": 0.0,
+        "hi": 0.5,
+        "fitted": 0.95,
+        "count": 0
+      },
+      {
+        "lo": 0.5,
+        "hi": 1.0,
+        "fitted": 0.9390243902439024,
+        "count": 40
+      }
+    ],
+    "base_rate": 0.95,
+    "fitted_on": 40
+  },
+  "raw_metrics": {
+    "accuracy": 0.95,
+    "ece": 0.06250000000000004,
+    "brier": 0.05390625,
+    "nll": 1.3966394313431838,
+    "confident_errors": 2,
+    "items": 40
+  },
+  "calibrated_metrics": {
+    "accuracy": 0.95,
+    "ece": 0.010975609756098237,
+    "brier": 0.047620464009518124,
+    "nll": 0.1996322008815484,
+    "confident_errors": 2,
+    "items": 40
+  },
+  "admitted": true,
+  "verdict": "passed: log loss 1.397 to 0.200, confident errors 2 to 2 over 40 items"
+}

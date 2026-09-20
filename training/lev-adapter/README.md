@@ -177,11 +177,21 @@ otherwise:
 | Setting | Value | Why |
 | --- | --- | --- |
 | LoRA rank | 32 | the toolkit's own default; no evidence yet to move it |
-| Epochs | 4 | 98 training records is very little; more epochs on less data overfits |
+| Epochs | 4 | 78 training records is very little; more epochs on less data overfits |
 | Learning rate | 1e-4 | kev's research log found that too high a rate erodes the base knowledge the task depends on, which is the single largest quality effect it recorded |
 | Seed | 0 | recorded so a run reproduces |
 
-**The corpus is the weak point, not the recipe.** 98 training records is
+**The corpus is the weak point, not the recipe.** 78 training records is
 still below what a fine-tune wants. Growing `support-v1` to 150–200 items per
 family is the same work that unblocks calibration, and it should happen
 before anyone tunes a hyperparameter.
+
+It is 78 and not 98 from 2026-09-19. `convert.py` reads the two-way
+`support-v2.json`, and `support-v2-three-way.json` locks 20 of that file's 98
+calibration items — the same items under a later partitioning. The three
+adapters that already exist were trained on all 98, so half of the locked
+partition is training data for them and a confirmation run against any of
+them proves less than it looks like. The next adapter does not repeat it:
+`convert.py` holds those items back and prints how many it held. The finding
+is in
+[`../../docs/gym/measurements/2026-09-19-reproducing-the-week.md`](../../docs/gym/measurements/2026-09-19-reproducing-the-week.md).

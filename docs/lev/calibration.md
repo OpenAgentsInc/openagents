@@ -68,6 +68,24 @@ ledger that records the read. `crates/lev/suites/support-v2.json` is the
 two-way file it was built from, and it stays for the adapter training
 pipeline that reads it.
 
+**The locked partition is clean for the base model and half spent for every
+adapted door.** A lock is a property of an item, not of the file that names
+it, and the two files name the same 196 items. The three adapters were
+trained before the three-way partitioning existed, from the 98 calibration
+items of the two-way file — and 20 of those items are what the three-way
+file locks. So a confirmation run against `lev-adapted@1`, `@2`, or `@3`
+would spend a partition that is half training data, and the ledger would
+record a read that proves less than it appears to. Nineteen of the 39 locked
+items are unseen by every door and are the only fully held-out evidence in
+the repository.
+
+Two tools read the two-way file and could have caused this again.
+`training/lev-adapter/convert.py` now holds back whatever the three-way file
+locks and says how many items it held back; the next adapter trains on 78
+records rather than 98. `lev-band` does the same. Found while reproducing the
+week's claims:
+[`../gym/measurements/2026-09-19-reproducing-the-week.md`](../gym/measurements/2026-09-19-reproducing-the-week.md).
+
 It replaced a 52-item first attempt, and the reason is the whole argument for
 sizing a suite properly: **every map fitted on the small suite was refused.**
 Fitting five bins on twelve items turned a raw ECE of 0.031 into 0.113. The

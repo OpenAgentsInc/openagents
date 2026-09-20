@@ -21,7 +21,7 @@ stops a door that stops reaching the service. See
 | File | Release | Artifact | Admits |
 | --- | --- | --- | --- |
 | `lev-base-v1.json` | `lev-base@1` | none; the operating system ships the weights | `routing` |
-| `lev-adapted-v1.json` | `lev-adapted@1` | `runs/lev-v1/lev.fmadapter`, the choice objective | nothing |
+| `lev-adapted-v1.json` | `lev-adapted@1` | `runs/lev-v1/lev.fmadapter`, the choice objective | `routing` |
 | `lev-adapted-v2.json` | `lev-adapted@2` | `runs/lev-band/levband.fmadapter`, choice and the certainty band | nothing |
 | `lev-adapted-v3.json` | `lev-adapted@3` | `runs/lev-perm/levperm.fmadapter`, the band over three option-order permutations | nothing |
 
@@ -34,19 +34,29 @@ calibration record fitted against one of them could not name which one.
 publishes as its adapter identity in `GET /v1/models` and what every row and
 record carries.
 
-## Why the adapted releases admit nothing
+## Why two of the adapted releases still admit nothing
 
 Every committed calibration map was fitted against the base model with no
-adapter attached, so no map describes an adapted door. A family without a
-measured `evalRef` does not admit — the rule `docs/kev/mesh-plan.md` set for
-decision-model artifacts — so all three adapted releases serve typed answers
-with uncalibrated frequencies and refuse `require_calibration`.
+adapter attached, so no map described an adapted door and all three adapted
+releases carried `evalRef: []`. A family without a measured reference does
+not admit — the rule `docs/kev/mesh-plan.md` set for decision-model artifacts
+— so those releases serve typed answers with uncalibrated frequencies and
+refuse `require_calibration`.
 
 That is the rule working rather than a gap in these files. A map fitted on
 the base sat on disk through two adapter runs that changed which families are
 admitted at all, and the manifest is what makes that impossible to repeat:
 the record is named, digested, and checked on every start and on every
 `cargo test -p lev`.
+
+`lev-adapted@1` is no longer one of them. It was scored on 2026-09-19 while
+the week's claims were being reproduced, its three maps were fitted from the
+recorded rows with `gym fit --records`, and its `routing` map passed
+`probability-v1` at log loss 1.397 to 0.200 on 40 fitted items. What closes a
+release this way is not a second live pass: the rows carry the whole trace,
+so a door is asked once and fitted any number of times afterwards.
+`lev-adapted@2` and `lev-adapted@3` have no rows on this suite yet, and until
+they do they admit nothing.
 
 ## Every release names a policy, and it is not optional
 

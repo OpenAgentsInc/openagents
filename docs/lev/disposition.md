@@ -94,11 +94,22 @@ waits through.
 
 ## Where Lev should be used today
 
+**Read every line below as a statement about a release, not about "Lev".**
+There are four, and they differ in what they may serve.
+`crates/lev/manifests/` holds them: `lev-base@1`, the operating system's own
+weights, which admits `routing`; and `lev-adapted@1`, `@2`, and `@3`, the
+choice, band, and permutation adapters, which carry `evalRef: []` and admit
+nothing at all. Every committed calibration map was fitted against the base
+door, so an adapted door serves typed answers with uncalibrated frequencies
+and refuses `require_calibration`. The probability paragraphs here are about
+`lev-base@1`.
+
 Admitted:
 
 - **Routing and triage inside an application**, where a wrong answer costs a
-  re-route rather than a person. Lev scored 1.00 on the routing family with a
-  raw ECE of 0.031.
+  re-route rather than a person. On the 80 open routing items of the
+  three-way suite `lev-base@1` scores 0.825, and its `routing` map is the
+  only admitted map on any door this repository has rows for.
 - **Anything that must not leave the machine.** Nothing is sent anywhere.
 - **Anything that must not be billed.** There is no marginal cost, so a
   judgment can run in front of every metered call.
@@ -108,8 +119,10 @@ Admitted:
 
 Refused:
 
-- **Anything where the probability gates the action.** No calibration map is
-  admitted; see below.
+- **Anything where an adapted door's probability gates the action.**
+  `lev-adapted@1`, `@2`, and `@3` admit nothing, so their numbers are
+  uncalibrated frequencies. On `lev-base@1` the one exception is `routing`;
+  see below.
 - **Moderation, safety, and abuse review.** Apple's guardrails fire on the
   inputs most worth judging, and they refuse rather than answer.
 - **Latency-sensitive paths that need a distribution.** Eight samples is two

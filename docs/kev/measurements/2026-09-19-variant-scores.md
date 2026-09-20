@@ -247,25 +247,36 @@ map passes on a family with enough items to fit one.
 
 ## What this run does not say
 
-**Hosted Jev has no rows on this suite.** `TYPESAFE_API_KEY` is not set in
-this environment, so the door could not be asked and the comparison the
-issue wants — best Kev against hosted Jev, same items, same pass — is not in
-this record. It is the one gap here, and it is named rather than papered
-over.
+**Hosted Jev had no rows on this suite when this ran. It has them now, and
+the gap it left open is closed the other way.** The key was present on the
+machine all along, in a file outside the repository that nothing exported
+into the process environment — `crates/jev` reads the environment and loads
+no dotenv of its own, so the door reported no API key rather than being
+down. Hosted Jev answered the same 157 items a few hours later, recorded to
+this same store; the run is in
+[`../../gym/measurements/2026-09-19-reproducing-the-week.md`](../../gym/measurements/2026-09-19-reproducing-the-week.md).
 
-What can be said is indirect and worth exactly what an indirect reading is
-worth. The 98-item evaluation split of the older `support-v2` file holds the
-same items with the same labels; 79 of them are open in the three-way
-partitioning. On those 79 items `kev-0.5b` scores 0.722 against the 0.72 its
-published table reports, and `lev-base` scores 0.772 against 0.77, so the
-two records line up. `kev-8b` scores 0.848 on the same 79. Hosted Jev's
-published 0.94 came from all 98 items, so this is not an item-matched
-comparison, but the arithmetic puts the remaining gap near 0.09 — about 1.6
-floors, which is below the threshold this suite can resolve. **On our own
-rule, the gap between `kev-8b` and hosted Jev is no longer established as
-real, and it is not established as closed either.** Closing that question
-needs a Jev pass on these items with a key present, recorded to the same
-store.
+| Side | All 157 | The 79 items no adapter trained on |
+| --- | --- | --- |
+| `jev (hosted)` | 0.936 | 0.949 |
+| `kev-8b` | 0.879 | 0.848 |
+
+**The gap is real, and it is smaller than the published numbers suggested.**
+On all 157 items it is 0.057, which is one floor, and the doors disagree on
+15 items, 12 of them in Jev's favor: a paired exact test puts that at
+*p* = 0.035. On the 79 items this record read indirectly it is 0.101, 8
+discordant items to 0, *p* = 0.008. The indirect reading above guessed 0.09
+and guessed that the gap was no longer established; the first half was close
+and the second was wrong, because an unpaired floor is the wrong test for two
+doors answering the same items.
+
+What the store still refuses is the *verdict*. These Kev rows predate
+[#9386](https://github.com/OpenAgentsInc/openagents/issues/9386) and do not
+name the question set they served; the Jev rows do. `gym compare` will not
+call two such sides a comparison, so the numbers above are quoted from the
+per-side table and the paired test is computed beside it rather than read off
+a gate. Re-scoring the four Kev doors under the current build would produce a
+judged comparison and costs about fifteen minutes of CPU.
 
 **No latency question is settled.** The section above says why: the four
 passes ran on a machine carrying nine concurrent agents, and the numbers are

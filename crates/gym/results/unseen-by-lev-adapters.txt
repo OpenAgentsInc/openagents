@@ -1,0 +1,95 @@
+# The items no Lev adapter was trained on, and that are not locked.
+#
+# `training/lev-adapter/convert.py` writes `train.jsonl` from the `support-v2`
+# calibration split, so every adapter in `docs/lev/` learned those 98 items.
+# `support-v2-three-way` reshuffled the same 196 items into new partitions
+# before the adapters existed, and 39 of the items it calls `development` are
+# training records. An adapter scored on that partition is scored half on its
+# own training set.
+#
+# This file is the other half: the 98 `support-v2` evaluation items, minus the
+# 19 of them the three-way suite locked, which are not read here. Derived from
+# the two committed suites, not from any result.
+#
+#   support-v2 evaluation, three-way calibration:   40
+#   support-v2 evaluation, three-way development:   39
+#   total:                                          79
+routing/001
+routing/003
+routing/005
+routing/007
+routing/011
+routing/013
+routing/015
+routing/017
+routing/021
+routing/023
+routing/025
+routing/027
+routing/031
+routing/033
+routing/035
+routing/037
+routing/041
+routing/043
+routing/045
+routing/047
+routing/051
+routing/053
+routing/055
+routing/057
+routing/061
+routing/063
+routing/065
+routing/067
+routing/071
+routing/073
+routing/075
+routing/077
+routing/081
+routing/083
+routing/085
+routing/087
+routing/091
+routing/093
+routing/095
+routing/097
+severity/001
+severity/003
+severity/005
+severity/007
+severity/011
+severity/013
+severity/015
+severity/017
+severity/021
+severity/023
+severity/025
+severity/027
+severity/031
+severity/033
+severity/035
+urgency/001
+urgency/003
+urgency/005
+urgency/007
+urgency/011
+urgency/013
+urgency/015
+urgency/017
+urgency/021
+urgency/023
+urgency/025
+urgency/027
+urgency/031
+urgency/033
+urgency/035
+urgency/037
+urgency/041
+urgency/043
+urgency/045
+urgency/047
+urgency/051
+urgency/053
+urgency/055
+urgency/057

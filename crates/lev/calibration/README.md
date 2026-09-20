@@ -29,6 +29,14 @@ maps fitted against the base model with no adapter attached; an adapted door
 gets its own directory, because an adapter changes the door and a map fitted
 on the base must not survive the change.
 
+`lev-adapted@1/` is the first of those, fitted on 2026-09-19 from recorded
+rows rather than from a live pass — `gym fit --store --records` re-fits and
+re-judges what a door already answered, so a record costs no device time once
+its rows exist. Its `routing` map is admitted; `severity` and `urgency` are
+unverifiable on 15 and 24 fitted items against a floor of 30, which is the
+same shortfall every door on this suite hits. The run is
+[`../../../docs/gym/measurements/2026-09-19-reproducing-the-week.md`](../../../docs/gym/measurements/2026-09-19-reproducing-the-week.md).
+
 ## What was here before
 
 Three records — `routing.json`, `severity.json`, `urgency.json` — fitted on

@@ -418,6 +418,31 @@ impl EvalRef {
     /// Returns [`Fault::Unreadable`] when the record does not read, and the
     /// first [`Fault::EvalRef`] otherwise, which names the field.
     pub fn check(&self, beside: &Path) -> Result<(), Fault> {
+        self.check_fitted_against(beside, None)
+    }
+
+    /// Whether the record is the one this entry describes, and whether it was
+    /// fitted against the door `adapter` names.
+    ///
+    /// This is the check that made the emptiness rule unnecessary. Until
+    /// 2026-09-19 no calibration map had been fitted against an adapter, so
+    /// "an adapted release names no measurement" stood in for "an adapted
+    /// release names no measurement fitted against something else" — which is
+    /// the rule actually worth keeping, and the one a first adapted record
+    /// turned from a tautology into a test.
+    ///
+    /// `adapter` is the release id an adapted door publishes, or `None` for a
+    /// base release, whose records carry no adapter at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fault::Unreadable`] when the record does not read, and the
+    /// first [`Fault::EvalRef`] otherwise, which names the field.
+    pub fn check_fitted_against(
+        &self,
+        beside: &Path,
+        adapter: Option<&str>,
+    ) -> Result<(), Fault> {
         let path = beside.join(&self.record);
         let digest = digest_of(&path)?;
         if digest != self.sha256 {
@@ -436,6 +461,15 @@ impl EvalRef {
             path: path.display().to_string(),
             reason: error.to_string(),
         })?;
+        let declared = adapter.unwrap_or_default();
+        if record.door_identity.adapter != declared {
+            return Err(Fault::EvalRef {
+                family: self.family.clone(),
+                field: "door_identity.adapter",
+                declared: declared.to_string(),
+                found: record.door_identity.adapter.clone(),
+            });
+        }
         self.matches(&record)
     }
 
@@ -699,8 +733,13 @@ impl Manifest {
     ///
     /// Returns the first [`Fault`] found, which names the family and field.
     pub fn check_eval_refs(&self) -> Result<(), Fault> {
+        // A record fitted against a different door is the fault this whole
+        // directory exists to stop, so the release id travels into the check
+        // rather than being compared afterwards by a caller who might not.
+        let release = self.release();
+        let adapter = self.artifact.as_ref().map(|_| release.as_str());
         for reference in &self.eval_ref {
-            reference.check(&self.source)?;
+            reference.check_fitted_against(&self.source, adapter)?;
         }
         Ok(())
     }
@@ -813,10 +852,15 @@ mod tests {
             "suite_digest": "54fbf413",
             "partition_id": "calibration",
             "os_build": "25E246",
-            "door": "lev-base",
+            // Fitted against the release the test fixture describes, which is
+            // what `check_eval_refs` compares. A record naming another door is
+            // the fault the check exists for, and one test below is exactly
+            // that case.
+            "door": "lev-adapted@1",
             "door_identity": {
-                "model": "lev-base",
+                "model": "lev-adapted",
                 "base_model_signature": "9799725",
+                "adapter": "lev-adapted@1",
                 "verified": true
             },
             "gate_id": "probability-v1",
@@ -934,5 +978,29 @@ mod tests {
         std::fs::write(dir.join("routing.json"), edited).expect("the record rewrites");
         let fault = manifest.check_eval_refs().expect_err("an edited record is refused");
         assert!(matches!(fault, Fault::EvalRef { field: "sha256", .. }), "{fault}");
+    }
+
+    #[test]
+    fn a_map_fitted_against_another_door_may_not_be_named() {
+        // The stale-map fault in its own words. Three base-fitted records sat
+        // on disk through two adapter runs, and nothing could tell that they
+        // described a different door, because a record could not name one.
+        // Now it can, so a release that points at one is refused by field.
+        let dir = scratch("eval-ref-door");
+        let mut manifest = manifest(&dir);
+        let mut record = record();
+        record.door = "lev-base".to_string();
+        record.door_identity.model = "lev-base".to_string();
+        record.door_identity.adapter = String::new();
+        let text = serde_json::to_string_pretty(&record).expect("the record encodes");
+        std::fs::write(dir.join("routing.json"), &text).expect("the record writes");
+        let digest = digest_of(&dir.join("routing.json")).expect("the digest");
+        manifest.eval_ref.push(EvalRef::of_record(&record, "routing.json", digest));
+
+        let fault = manifest.check_eval_refs().expect_err("a base-fitted map is refused");
+        assert!(
+            matches!(fault, Fault::EvalRef { field: "door_identity.adapter", .. }),
+            "{fault}"
+        );
     }
 }

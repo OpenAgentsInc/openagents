@@ -85,27 +85,30 @@ fn every_eval_ref_matches_the_record_it_names() {
 }
 
 #[test]
-fn an_adapted_release_admits_nothing_until_a_map_is_fitted_against_it() {
-    // Three adapters exist and every committed calibration map was fitted
-    // against the base model with no adapter attached. A map fitted on the
-    // base does not describe an adapted door, so no adapted release names one
-    // and none of them serves a probability. That is the rule working, not a
-    // gap in the files.
+fn an_adapted_release_names_only_maps_fitted_against_itself() {
+    // Until 2026-09-19 every committed calibration map was fitted against the
+    // base model with no adapter attached, and this test read "an adapted
+    // release names no measurement at all". That was the rule standing in for
+    // itself: the thing worth refusing is a map fitted against a *different*
+    // door, and with no adapted map in existence the two were the same
+    // assertion. `lev-adapted@1` now names three maps fitted against
+    // `lev-adapted@1`, so the test says what it meant.
+    //
+    // `check_eval_refs` does the comparison, because a rule a caller has to
+    // remember to apply is a rule that gets skipped.
     for path in committed() {
         let manifest = load(&path);
-        if manifest.artifact.is_none() {
-            continue;
+        manifest
+            .check_eval_refs()
+            .unwrap_or_else(|fault| panic!("{}: {fault}", path.display()));
+        for family in manifest.admitted_families() {
+            assert!(
+                manifest.eval_ref.iter().any(|reference| reference.family == family
+                    && reference.admitted),
+                "{} admits {family} with no admitted measurement",
+                path.display()
+            );
         }
-        assert!(
-            manifest.eval_ref.is_empty(),
-            "{} names a measurement; check it was fitted against this adapter",
-            path.display()
-        );
-        assert!(
-            manifest.admitted_families().is_empty(),
-            "{} admits a family with no measurement",
-            path.display()
-        );
     }
 }
 

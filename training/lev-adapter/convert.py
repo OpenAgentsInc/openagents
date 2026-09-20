@@ -31,6 +31,7 @@ from pydantic import Field
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SUITE = REPO / "crates" / "lev" / "suites" / "support-v2.json"
+THREE_WAY = REPO / "crates" / "gym" / "suites" / "support-v2-three-way.json"
 
 BANDS = [
     "almost certainly not",
@@ -39,6 +40,22 @@ BANDS = [
     "likely",
     "almost certain",
 ]
+
+
+def locked_items():
+    """The item ids `support-v2-three-way` holds back.
+
+    `support-v2` and `support-v2-three-way` are the same 196 items under two
+    partitionings, and a lock is a property of the item rather than of the
+    file that names it. This script reads the older file, so without this it
+    trains on whatever the newer file locks — which is what happened: every
+    adapter in `docs/lev/` learned 20 of the 39 locked items, so half of the
+    partition kept back to confirm a door is training data for three of them.
+    """
+    if not THREE_WAY.exists():
+        return set()
+    three_way = json.loads(THREE_WAY.read_text())
+    return {item["id"] for item in three_way["items"] if item["partition"] == "locked"}
 
 
 def render(value, depth=0):
@@ -290,6 +307,7 @@ def main():
     args = parser.parse_args()
 
     suite = json.loads(pathlib.Path(args.suite).read_text())
+    locked = locked_items()
     base_rates = {}
     if args.base_rates:
         base_rates = json.loads(pathlib.Path(args.base_rates).read_text())
@@ -299,6 +317,14 @@ def main():
     counts = {}
     for split, name in (("calibration", "train"), ("evaluation", "valid")):
         items = [item for item in suite["items"] if item["split"] == split]
+        held_back = [item for item in items if item["id"] in locked]
+        items = [item for item in items if item["id"] not in locked]
+        if held_back:
+            print(
+                f"{name}: held back {len(held_back)} item(s) that "
+                "support-v2-three-way locks",
+                file=sys.stderr,
+            )
         # Only the training split is augmented. Permuting the evaluation
         # split would score the same judgment several times and quietly
         # reweight the suite.

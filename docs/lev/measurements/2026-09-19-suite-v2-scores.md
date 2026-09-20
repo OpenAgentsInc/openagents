@@ -108,6 +108,19 @@ scored 0.85 and kev-0.5b 0.88. On 196 items with a third of them near a
 boundary, Lev is 0.77 and kev-0.5b 0.72, against hosted Jev's 0.94. The
 earlier numbers were compressed by easy items.
 
+**Correction: it separated Jev from the other two, and it did not separate
+those two from each other.** Added on 2026-09-19 after the three numbers in
+that sentence were re-derived from rows in
+[`../../gym/measurements/2026-09-19-reproducing-the-week.md`](../../gym/measurements/2026-09-19-reproducing-the-week.md).
+All three reproduce: on the 79 items of this evaluation split that the
+three-way suite leaves open, hosted Jev scores 0.949, `kev-0.5b` 0.722, and
+`lev-base` 0.772. But Lev over `kev-0.5b` is 0.050 against a floor of 0.056,
+and the two doors disagree on 20 items, 12 to 8 — a paired exact test puts
+that at *p* = 0.50. On all 157 open items the gap is 0.070 at *p* = 0.13.
+**Lev and `kev-0.5b` are indistinguishable on this suite**, and the sentence
+above reads a five-point difference as a separation. Hosted Jev over Lev is
+0.177 at *p* = 0.003, which is the separation this suite did buy.
+
 That separation is between Lev and the *smallest* Kev checkpoint, and it does
 not survive being asked of the others: on the three-way partitioning of these
 same items, `kev-8b` scores 0.879 and Lev 0.783. Nothing about Lev's number

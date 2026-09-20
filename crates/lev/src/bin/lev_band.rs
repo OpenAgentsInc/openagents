@@ -14,7 +14,7 @@
 //!     --label lev-band --adapter ~/code/lev-adapter-work/runs/lev-band/levband.fmadapter
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lev::api::{Extensions, SystemOneRequest};
 use lev::bridge::{Bridge, Call, Pool, Sampling};
@@ -24,6 +24,27 @@ use lev::schema::{BANDS, compile};
 use lev::suite::Suite;
 
 const SUITE: &str = include_str!("../../suites/support-v2.json");
+
+/// The items `support-v2-three-way` holds back, which this probe must not
+/// read.
+///
+/// `support-v2` and `support-v2-three-way` are the same 196 items under two
+/// partitionings. A lock is a property of the item, not of the file that
+/// names it, so a probe reading the older suite spends the newer suite's
+/// locked partition without ever passing the flag that would have refused.
+/// Thirty-nine of these items are locked; this probe skips them and says how
+/// many it skipped.
+fn locked_items() -> BTreeSet<String> {
+    let Ok(three_way) = gym::suite::support_v2_three_way() else {
+        return BTreeSet::new();
+    };
+    three_way
+        .items
+        .iter()
+        .filter(|item| item.partition == gym::suite::Partition::Locked)
+        .map(|item| item.id.clone())
+        .collect()
+}
 
 fn main() {
     let mut adapter: Option<String> = None;
@@ -42,6 +63,7 @@ fn main() {
     }
 
     let suite = Suite::load(SUITE).expect("the shipped suite loads");
+    let locked = locked_items();
     let mut bridge = Bridge::discover().expect("a helper starts");
     let bands: Vec<String> = BANDS.iter().map(|band| (*band).to_string()).collect();
 
@@ -49,9 +71,14 @@ fn main() {
     let mut tally: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut answered = 0_usize;
     let mut correct = 0_usize;
+    let mut held_back = 0_usize;
 
     for item in &suite.items {
         if split != "all" && item.split != split {
+            continue;
+        }
+        if locked.contains(&item.id) {
+            held_back += 1;
             continue;
         }
         let request = SystemOneRequest {
@@ -83,6 +110,10 @@ fn main() {
 
     println!("## {label} ({split} split)\n");
     println!("Answered {answered}, correct {correct}, accuracy {:.2}.\n", correct as f64 / answered.max(1) as f64);
+    println!(
+        "{held_back} item(s) of this split are locked by `support-v2-three-way` and were not \
+         read.\n"
+    );
     println!("| Band | Items | Correct | Accuracy |");
     println!("| --- | --- | --- | --- |");
     // Report in the band's own order, not alphabetically.
@@ -114,10 +145,18 @@ fn main() {
     // a table fitted per band should beat one fitted over everything — and
     // if it does not, the band is decoration.
     println!("\n## Band-conditioned calibration\n");
+    println!(
+        "Fitted on the `support-v2` calibration split and scored on its evaluation split, both \
+         with the {} items `support-v2-three-way` locks left out.\n",
+        locked.len()
+    );
     let pool = Pool::discover(4).expect("a pool starts");
     let mut rows: Vec<(String, Observation)> = Vec::new();
 
     for item in &suite.items {
+        if locked.contains(&item.id) {
+            continue;
+        }
         let request = SystemOneRequest {
             state: item.state.clone(),
             model: None,

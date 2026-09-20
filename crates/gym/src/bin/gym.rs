@@ -110,6 +110,9 @@ struct Options {
     blocks: Option<usize>,
     /// The one family to ask. Every family the suite holds by default.
     family: Option<String>,
+    items: Option<String>,
+    /// The stores `merge` folds into `--store`.
+    from: Vec<String>,
     timeout: Option<u64>,
 }
 
@@ -121,6 +124,9 @@ fn main() {
         "eval" => run(eval_command(options)),
         "compare" => run(compare_command(&options)),
         "fit" => run(fit_command(&options)),
+        "merge" => run(merge_command(&options)),
+        // One name, two sources: a store to read, or doors to ask.
+        "permute" if options.store.is_some() => run(flips_command(&options)),
         "permute" => run(permute_command(options)),
         "latency" => run(latency_command(options)),
         "regress" => run(regress_command(&options)),
@@ -138,7 +144,9 @@ const USAGE: &str = "\
 gym eval     score doors against a suite, fit maps, and record the rows
 gym compare  compare doors from recorded rows
 gym fit      fit and judge from recorded rows, asking no door
-gym permute  measure how much option order moves the answer
+gym merge    fold one store's rows into another, re-sealing the chain
+gym permute  measure how much option order moves the answer, or read it back
+             from a store with --store
 gym latency  measure how much wall clock moves when nothing else does
 gym regress  compare a door with its own last recorded run
 
@@ -152,10 +160,12 @@ gym regress  compare a door with its own last recorded run
   --fit               fit one map per family and judge it
   --record path       append every row to this store
   --records dir       write one calibration record per family here
-  --store path        the store `compare`, `fit`, and `regress` read
+  --store path        the store `compare`, `fit`, `permute`, and `regress` read
   --baseline name     the side `compare` measures the others against
   --against path      the store `regress` measures the rows in `--store`
                       against; the same store by default
+  --items path        narrow a view to the item ids listed in this file
+  --from path         a store `merge` folds into `--store`; repeatable
   --blocks n          how many passes `latency` makes; 8 by default
   --timeout seconds   how long one call to a `--door` may take; the client's
                       ten seconds by default, and worth raising on a busy
@@ -196,6 +206,8 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--partition" => options.partition = args.next(),
             "--blocks" => options.blocks = args.next().and_then(|n| n.parse().ok()),
             "--family" => options.family = args.next(),
+            "--items" => options.items = args.next(),
+            "--from" => options.from.extend(args.next()),
             "--timeout" => options.timeout = args.next().and_then(|value| value.parse().ok()),
             other => eprintln!("unknown flag {other}"),
         }
@@ -241,6 +253,26 @@ fn partitions(options: &Options) -> Result<Vec<Partition>, String> {
             .to_string()),
         Some(other) => Err(format!("unknown partition {other}")),
     }
+}
+
+/// The item ids a view is narrowed to, one per line.
+///
+/// A blank line and a line beginning with `#` are skipped, so the file can
+/// say where its ids came from. That provenance is the point: a subset chosen
+/// after the numbers are in is how a result gets talked into existence, and a
+/// file that names its rule before it is applied can be checked.
+fn read_item_ids(path: &str) -> Result<std::collections::BTreeSet<String>, String> {
+    let text = std::fs::read_to_string(path).map_err(|error| format!("{path}: {error}"))?;
+    let ids: std::collections::BTreeSet<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+        .collect();
+    if ids.is_empty() {
+        return Err(format!("{path} names no item ids"));
+    }
+    Ok(ids)
 }
 
 /// The items a run asks: the wanted partitions, narrowed to one family when
@@ -296,6 +328,10 @@ fn open_doors(options: &Options) -> Result<Vec<(String, Client)>, String> {
         // asked. Two runs that lost different items are two measurements,
         // which is what `gym regress` refuses to compare. So the timeout is
         // a flag, and a busy machine buys a complete record with wall time.
+        //
+        // Measured on 2026-09-19: with nine agents sharing one device, a Lev
+        // call that answers in five seconds queued for twenty-five, and the
+        // default turned a 157-item run into an empty file with 157 timeouts.
         if let Some(seconds) = options.timeout {
             config = config.timeout(std::time::Duration::from_secs(seconds));
         }
@@ -806,33 +842,102 @@ fn write_record(
     Ok(path)
 }
 
+/// Rows read from a store, with the narrowing flags applied.
+///
+/// Every view a command prints goes through this, so a narrowed table always
+/// carries the sentence that says what it left out.
+struct View {
+    path: String,
+    rows: Vec<Row>,
+    /// How many rows the store held before narrowing.
+    held: usize,
+    /// What the narrowing did, for the line under the heading.
+    narrowed: Vec<String>,
+}
+
+impl View {
+    /// Reads and narrows, keeping permuted trials or dropping them.
+    ///
+    /// A permuted trial measures order sensitivity; it is not a second
+    /// reading of the item. A table that scores rows pools the two and counts
+    /// the Choice items twice, so `keep_permuted` is false for those and true
+    /// for the one view whose subject is the permutation itself.
+    fn read(options: &Options, keep_permuted: bool) -> Result<Self, String> {
+        let path = options
+            .store
+            .as_deref()
+            .ok_or_else(|| "this view reads recorded rows; pass --store path".to_string())?;
+        let rows = read_rows(path)?;
+        if rows.is_empty() {
+            return Err(format!("{path} holds no rows"));
+        }
+        let held = rows.len();
+        let mut view =
+            Self { path: path.to_string(), rows, held, narrowed: Vec::new() };
+        if !keep_permuted {
+            view.rows.retain(|row| row.permutation.is_none());
+            if view.rows.len() < held {
+                view.narrowed
+                    .push(format!("{} permuted trial(s) left out", held - view.rows.len()));
+            }
+        }
+        if let Some(wanted) = options.partition.as_deref() {
+            let wanted = partitions(&Options {
+                partition: Some(wanted.to_string()),
+                ..Options::default()
+            })?;
+            let named: Vec<String> = wanted.iter().map(|p| p.as_str().to_string()).collect();
+            view.rows.retain(|row| named.iter().any(|split| split == &row.split));
+            view.narrowed.push(format!("the {} partition only", named.join(" and ")));
+        }
+        if let Some(listed) = options.items.as_deref() {
+            let wanted = read_item_ids(listed)?;
+            view.rows.retain(|row| wanted.contains(&row.item_id));
+            view.narrowed.push(format!("{} item ids from `{listed}`", wanted.len()));
+        }
+        if view.rows.is_empty() {
+            return Err(format!("{path} holds no rows once the view is narrowed"));
+        }
+        Ok(view)
+    }
+
+    /// The sides that appear, in the order they first do.
+    fn sides(&self) -> Vec<Side> {
+        let mut sides: Vec<Side> = Vec::new();
+        for row in &self.rows {
+            let side = Side::of(row);
+            if !sides.contains(&side) {
+                sides.push(side);
+            }
+        }
+        sides
+    }
+
+    /// Says what the table is not.
+    ///
+    /// A narrowed view that reads like the whole store is the paste this
+    /// crate exists to replace.
+    fn report_narrowing(&self) {
+        if !self.narrowed.is_empty() {
+            println!(
+                "This is a view over {} recorded rows, narrowed to {}.\n",
+                self.held,
+                self.narrowed.join(", ")
+            );
+        }
+    }
+}
+
 /// The comparison, read back from the store rather than run again.
 ///
 /// A live four-way table is a measurement nobody else can check: it exists
 /// while the four doors are up and then only as a paste. The rows are the
 /// evidence, and this is a view over them.
 fn compare_command(options: &Options) -> Result<(), String> {
-    let path = options
-        .store
-        .as_deref()
-        .ok_or_else(|| "compare reads recorded rows; pass --store path".to_string())?;
-    let store = Store::at(path);
-    let values = store.verified_rows().map_err(|error| error.to_string())?;
-    if values.is_empty() {
-        return Err(format!("{path} holds no rows"));
-    }
-    let mut rows: Vec<Row> = Vec::with_capacity(values.len());
-    for value in values {
-        rows.push(serde_json::from_value(value).map_err(|error| error.to_string())?);
-    }
-
-    let mut sides: Vec<Side> = Vec::new();
-    for row in &rows {
-        let side = Side::of(row);
-        if !sides.contains(&side) {
-            sides.push(side);
-        }
-    }
+    let view = View::read(options, false)?;
+    let path = view.path.clone();
+    let rows = view.rows.clone();
+    let sides = view.sides();
 
     println!(
         "# One contract, {} implementation{}\n",
@@ -846,6 +951,7 @@ fn compare_command(options: &Options) -> Result<(), String> {
         sides.len(),
         if sides.len() == 1 { "" } else { "s" }
     );
+    view.report_narrowing();
 
     println!(
         "| Side | Identity | Accuracy | ECE | Brier | NLL | Confident errors | Scored | Refused \
@@ -1046,6 +1152,81 @@ fn median_latency(rows: &[Row]) -> String {
     }
     measured.sort_by(f64::total_cmp);
     format!("{:.0} ms", measured[measured.len() / 2])
+}
+
+/// The flip rate, read back from the store rather than run again.
+///
+/// `permute` writes both passes as rows, so which answers moved under
+/// reversal is a query over the record. Reading it back is how a flip rate
+/// can be narrowed the way an accuracy can — to one partition, or to the
+/// items a door was not trained on — instead of being a single number that
+/// arrived with the run that produced it.
+fn flips_command(options: &Options) -> Result<(), String> {
+    let view = View::read(options, true)?;
+    println!("# Option order, from the record\n");
+    println!(
+        "Read from `{}`: {} rows. The chain verified, and no door was asked.\n",
+        view.path,
+        view.rows.len()
+    );
+    view.report_narrowing();
+    println!("| Side | Items | Flips | Flip rate | Accuracy forward | Accuracy reversed |");
+    println!("| --- | --- | --- | --- | --- | --- |");
+    for side in view.sides() {
+        let mine: Vec<&Row> = view.rows.iter().filter(|row| Side::of(row) == side).collect();
+        // An item is a trial only when both passes are in the record and
+        // both were answered. A pass that is missing is not a flip and not
+        // an absence of one.
+        let forward: BTreeMap<&str, &Row> = mine
+            .iter()
+            .filter(|row| row.permutation.is_none())
+            .map(|row| (row.item_id.as_str(), *row))
+            .collect();
+        let reversed: BTreeMap<&str, &Row> = mine
+            .iter()
+            .filter(|row| row.permutation.is_some())
+            .map(|row| (row.item_id.as_str(), *row))
+            .collect();
+        let mut trials = 0_usize;
+        let mut flips = 0_usize;
+        let mut forward_rows: Vec<Row> = Vec::new();
+        let mut reversed_rows: Vec<Row> = Vec::new();
+        for (item, back) in &reversed {
+            let Some(front) = forward.get(item) else { continue };
+            let (Some(chosen), Some(other)) = (chosen_of(front), chosen_of(back)) else {
+                continue;
+            };
+            trials += 1;
+            if chosen != other {
+                flips += 1;
+            }
+            forward_rows.push((*front).clone());
+            reversed_rows.push((*back).clone());
+        }
+        if trials == 0 {
+            continue;
+        }
+        println!(
+            "| `{}` | {trials} | {flips} | {:.3} | {:.2} | {:.2} |",
+            side.label(),
+            flips as f64 / trials as f64,
+            gym::calibrate::score(&eval::observations(&forward_rows)).accuracy,
+            gym::calibrate::score(&eval::observations(&reversed_rows)).accuracy,
+        );
+    }
+    println!(
+        "\nBoth accuracy columns are over the items that carry both passes, so the two are \
+         measured on the same items and the flip rate is their disagreement.\n"
+    );
+    Ok(())
+}
+
+/// The option a recorded row's distribution puts first.
+fn chosen_of(row: &Row) -> Option<String> {
+    match recorded_answer(row) {
+        Some(Disposition::Answered { chosen, .. }) => Some(chosen),
+        _ => None,
+    }
 }
 
 /// Measures how much option order moves the answer.
@@ -1250,6 +1431,63 @@ fn asked_as(row: &Row, suite: &Suite, questions: &QuestionSet) -> bool {
             .map(|authored| authored.digest() == questions.digest())
             .unwrap_or(false),
     }
+}
+
+/// Folds one store's rows into another, re-sealing them onto its chain.
+///
+/// Two runs cannot append to one chain at the same time, and two branches
+/// cannot merge one as text: a receipt names the row before it, so rows that
+/// were written in parallel are two chains from a shared root and neither
+/// verifies after a concatenation. Recording each run to its own store and
+/// folding them afterwards is the way to hold every door's rows in one chain,
+/// and this is that fold. The rows are unchanged; only their place in the
+/// file, and therefore their receipts, is new.
+///
+/// A row whose perturbation the destination already holds is left where it
+/// is and counted, because the destination already records that trial and a
+/// second copy of it is not a second trial.
+fn merge_command(options: &Options) -> Result<(), String> {
+    let destination = options
+        .store
+        .as_deref()
+        .ok_or_else(|| "merge appends into a store; pass --store path".to_string())?;
+    let sources = if options.from.is_empty() {
+        return Err("merge reads stores; pass --from path, repeatable".to_string());
+    } else {
+        options.from.clone()
+    };
+    let store = Store::at(destination);
+    // Verify the destination before writing to it, so a merge into a broken
+    // chain fails before it lengthens one.
+    let held = store.verified_rows().map_err(|error| error.to_string())?;
+    let mut keys: std::collections::BTreeSet<String> =
+        held.iter().map(gym::store::perturbation_key).collect();
+
+    println!("# Merged rows\n");
+    println!(
+        "`{destination}` held {} verified row(s) before this merge.\n",
+        held.len()
+    );
+    println!("| From | Rows | Appended | Already held |");
+    println!("| --- | --- | --- | --- |");
+    for source in &sources {
+        let rows = read_rows(source)?;
+        let mut appended = 0_usize;
+        let mut duplicate = 0_usize;
+        for row in &rows {
+            let value = serde_json::to_value(row).map_err(|error| error.to_string())?;
+            if !keys.insert(gym::store::perturbation_key(&value)) {
+                duplicate += 1;
+                continue;
+            }
+            append(&store, row)?;
+            appended += 1;
+        }
+        println!("| `{source}` | {} | {appended} | {duplicate} |", rows.len());
+    }
+    let after = store.verified_rows().map_err(|error| error.to_string())?;
+    println!("\n`{destination}` now holds {} rows, and the chain verifies.\n", after.len());
+    Ok(())
 }
 
 /// Every row in a store, verified and typed.
@@ -1474,4 +1712,63 @@ fn regress_command(options: &Options) -> Result<(), String> {
         std::process::exit(2);
     }
     Ok(())
+}
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A file of item ids reads back without its provenance.
+    ///
+    /// The comments are the point of the format. A subset chosen after the
+    /// numbers are in is how a result gets talked into existence, so the file
+    /// says where its ids came from and the reader skips that.
+    #[test]
+    fn item_ids_skip_comments_and_blank_lines() {
+        let path = std::env::temp_dir().join("gym-item-ids.txt");
+        std::fs::write(&path, "# where these came from\n\nrouting/001\n  urgency/002  \n").unwrap();
+        let ids = read_item_ids(path.to_str().unwrap()).unwrap();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("routing/001"));
+        assert!(ids.contains("urgency/002"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// A file that names nothing is refused rather than narrowing to nothing.
+    #[test]
+    fn a_file_of_comments_names_no_items() {
+        let path = std::env::temp_dir().join("gym-item-ids-empty.txt");
+        std::fs::write(&path, "# nothing here\n").unwrap();
+        assert!(read_item_ids(path.to_str().unwrap()).is_err());
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// The flip view reads the winning option out of a recorded row.
+    #[test]
+    fn a_recorded_row_names_the_option_it_chose() {
+        let row = Row {
+            answered: true,
+            correct: Some(true),
+            distribution: Some(
+                [("billing".to_string(), 0.25), ("technical".to_string(), 0.75)]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Row::default()
+        };
+        assert_eq!(chosen_of(&row).as_deref(), Some("technical"));
+    }
+
+    /// A refused row names no option, so it is neither a flip nor a match.
+    #[test]
+    fn a_refused_row_names_no_option() {
+        let row = Row {
+            refusal: Some(gym::row::RefusalCode::Guardrail),
+            ..Row::default()
+        };
+        assert_eq!(chosen_of(&row), None);
+    }
 }

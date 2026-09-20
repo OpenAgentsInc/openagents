@@ -238,3 +238,70 @@ direction of four statistics that all point the same way and none of which
 clears its own floor. Settling it needs about 360 Choice items against this
 suite's 40, or about 70 to settle the base against it. That is the price of
 the claim, and it was not paid.
+
+## Re-measured: the band still orders correctly, and the spread is narrower
+
+Added on 2026-09-19 while reproducing the week's claims from rows,
+[`../../gym/measurements/2026-09-19-reproducing-the-week.md`](../../gym/measurements/2026-09-19-reproducing-the-week.md).
+Both doors were asked again for a certainty band, greedy, one call per item,
+on the 79 evaluation items the three-way suite leaves open — 19 of the 98 in
+the tables above are locked and were not read.
+
+| Band | `lev-base` | `lev-adapted@2` |
+| --- | --- | --- |
+| `almost certainly not` | 11 of 12, 0.92 | — |
+| `unlikely` | 2 of 2, 1.00 | 8 of 11, **0.73** |
+| `likely` | 52 of 64, 0.81 | 27 of 34, **0.79** |
+| `almost certain` | 1 of 1, 1.00 | 32 of 34, **0.94** |
+
+**The base model's band is anti-informative in the same shape as before**,
+and the adapter's three bands are still in the right order. What does not
+survive is "with real spread". The published 0.64 / 0.82 / 0.95 comes back as
+0.73 / 0.79 / 0.94, and the bottom two bands are 0.06 apart on 11 and 34
+items.
+
+Measured against chance rather than against each other:
+
+| Test | Result |
+| --- | --- |
+| Adapter, `almost certain` against the other two bands | 0.94 against 0.78, Fisher exact *p* = 0.060 |
+| Adapter, `unlikely` against `likely` | 0.73 against 0.79, *p* = 0.69 |
+| Base, its two low bands against `likely` | 0.93 against 0.81, *p* = 0.44 |
+
+So the categorical claim holds and the size of it does not. The band orders
+correctly on every pair, separates its top band from the rest at about one
+part in twenty, and separates nothing else. The base model's inversion is not
+established either — it is a shape rather than a measured effect. **A caller
+can use this band to find the answers most likely to be right; it cannot yet
+use it to find the ones most likely to be wrong.**
+
+The `unlikely` bucket rests on 11 items here and 14 there. Both are too few,
+and that was said at the time.
+
+## Re-measured: the band-conditioned map reproduces
+
+`lev-band --calibrate` ran again on 2026-09-19 against the same door, fitting
+on the 78 calibration items and scoring on the 79 evaluation items the
+three-way suite leaves open:
+
+| Map | ECE | Brier | Log loss | Confident errors | This page reported |
+| --- | --- | --- | --- | --- | --- |
+| raw, no map | 0.112 | 0.118 | 2.847 | 8 | 2.601 |
+| pooled | 0.123 | 0.127 | 0.588 | 8 | 0.499 |
+| **band-conditioned** | **0.066** | **0.101** | **0.372** | 8 | 0.388 |
+
+**Every part of the claim holds**, including the part that makes it worth
+something: the pooled map leaves ECE worse than the raw signal and would be
+refused, and the band-conditioned map passes `probability-v1` on all eight
+criteria. The same two bands earn their own table and `unlikely` falls back
+to the pool. The one number that moved is confident errors, 8 before and 8
+after rather than nine and eleven; the explanation this page gives for that
+rise still stands and the rise did not recur.
+
+**And the map is still not in a file.** `lev-band` prints it and records
+nothing — no calibration record, no rows, no digest — so this is a paragraph
+both times, and `crates/lev/manifests/lev-adapted-v2.json` carries
+`evalRef: []`. The best-calibrated Lev probability measured anywhere in this
+repository is one no door can serve. Fitting it the way `lev-adapted@1`'s
+maps were fitted, from recorded rows through `gym fit --records`, needs the
+band on the wire and in `gym::row::Row`, and it is in neither.
