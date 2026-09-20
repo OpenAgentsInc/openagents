@@ -308,6 +308,12 @@ a second pass on which the paired test against `kev-8b` reads *p* = 0.077
 rather than 0.035 because one near-tie item moved. The run, its conditions,
 and what it leaves open are in
 [`../../gym/measurements/2026-09-20-hosted-jev-quiet-latency.md`](../../gym/measurements/2026-09-20-hosted-jev-quiet-latency.md).
+The same kind of box, with the two small Kev doors on it, re-timed them
+later the same day: `kev-0.5b` at a 329 ms median and 407 ms p95,
+`kev-0.6b` at 337 and 448, CPU only, with the same accuracies to the item;
+[`../../gym/measurements/2026-09-20-kev-quiet-latency.md`](../../gym/measurements/2026-09-20-kev-quiet-latency.md)
+has the sweeps. `kev-4b` and `kev-8b` are still timed only here, under
+load.
 
 The rest of the limits are the ones every run here carries. The locked
 partition is unread. The labels are the author's. Every door ran once on one
