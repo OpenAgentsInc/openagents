@@ -32,6 +32,8 @@ the burndown that goal exists for.
 | CoderBench | Runs an episode, refuses when the machine is wrong, judges the trace three-valued. |
 | Execution boundary | The host decides whether a turn may run commands. |
 | Doors | Two gateway lanes, bounded streams, and model ids in exactly one file. |
+| Subprocesses | One supervisor owns a job, its process tree, and what it prints. |
+| Finding work | A `query` step resolves a named source, bounded and ordered, and records what it dropped. |
 
 ## What to do next, in order
 
@@ -72,7 +74,10 @@ work). Check which landed before starting anything.
 
 Read-only is declared and not enforced. It was held because it rewrites
 `crates/coder/src/delegate.rs`, which #9416 was rewriting at the same time.
-Start it once #9416 lands, and not before.
+**#9416 has landed and that file is free — this is the next thing to start.**
+
+Note `shell::run` gained a `Permit` parameter from #9415 and the bounded
+form is now `run_within(proposal, permit, wall)`.
 
 ### 3. Re-record the golden as observed
 
@@ -121,6 +126,20 @@ Hosted Jev is the only door measured that this gate can rest on.
 Several open issues touch `crates/gym`, and #9391 must land before #9401. A
 `select` that returns the top N open issues hands a known-unsafe gate exactly
 the input it fails on.
+
+### The supervisor is not a sandbox, and says so
+
+#9416 gives a job its own process group and terminates the tree on a
+deadline or a cancellation — the audit's probe went from
+`descendant_wrote_after_timeout=true` to `false`. Three limits are written
+down rather than implied, and they matter before anything runs unattended:
+
+- **It is not a sandbox.** It bounds what a job costs, not what it may reach.
+- A descendant that calls `setsid` **escapes the group**. The output drains
+  are bounded for exactly that case.
+- The group is signalled microseconds after its leader is reaped, which is a
+  pid-recycle window. `waitid(WNOWAIT)` would close it and is not on Tokio's
+  wait path.
 
 ### Prefer an enforced boundary over a decision
 
@@ -173,7 +192,7 @@ test and a recording of something else doing what it should do.
 - **Credentials:** hosted Jev is `set -a; . ~/work/.secrets/typesafe.env; set +a`, and a local door key is at `~/work/.secrets/coder-local-door.env`. Both are machine-local and gitignored; never print either. `crates/jev`'s `Config` reads the process environment and loads **no** dotenv, so exporting first is required, and a missing key and a missing `model` field in the body produce different errors.
 - **Local doors:** `~/work/kev-artifacts/` holds four kev checkpoints and their bases. `kev-serve` takes about 45 seconds to load on CPU and answers in roughly 2 seconds.
 - **Devin:** at `~/.local/bin/devin`, **not on a spawned subshell's `PATH`**. It also refuses a workspace it does not trust, including a git worktree under `/private/tmp` — which is where agent worktrees live, so live delegation from one is refused.
-- **Two flakes, and they look like one problem.** `program_run::the_recorded_run_is_the_path_the_task_expects` and `delegate::tests::the_fan_out_is_concurrent_under_its_bound` have each failed once **under overlapping `cargo test` processes** and passed alone on repeats. Neither was touched by the change that saw it. Two concurrency flakes in the crates an unattended burndown depends on is a pattern worth chasing rather than waiting out — especially since #9418's new tests found a real instance of exactly that shape: two concurrent `drive::output` calls could read the same nanosecond, share a temp filename, and delete each other's file, which reads as a command that answered with nothing.
+- **One flake is explained, one is not.** `delegate::tests::the_fan_out_is_concurrent_under_its_bound` was asserting a fixed 1.5-second ceiling, so under a busy suite it failed **about the machine rather than about concurrency**; #9416 changed it to compare wall clock against summed delegation time. `program_run::the_recorded_run_is_the_path_the_task_expects` is still unexplained — it failed once under overlapping `cargo test` processes and passed alone on repeats. Worth chasing, because #9418's new tests found a real defect of that shape: two concurrent `drive::output` calls could read the same nanosecond, share a temp filename, and delete each other's file, which reads as a command that answered with nothing.
 
 ## The audit
 
@@ -181,11 +200,13 @@ test and a recording of something else doing what it should do.
 `1843fa6c18` and reproduced failures through public APIs **while the
 applicable test suites passed**. Its 25 findings are filed as #9415–#9433.
 
-A01 and A04 are fixed. A09's UTF-8 half is fixed for the direct door as a
+A01 to A04 are fixed. A09's UTF-8 half is fixed for the direct door as a
 side effect of bounding it — the old loop ran `String::from_utf8_lossy` per
 byte chunk, so a character split across a chunk boundary became replacement
 characters in the answer **and in every trace of it**. The rest of A09–A11
-is still #9423. A02 and A03 were in flight when this was written. The rest are
+is still #9423. The retained harness now reports the A01 to A03 probes closed, and the
+record says plainly that a harness line observes a result while the tests
+establish when a bound applies. The rest are
 intended as burndown fodder — they are the first real workload for the system
 this brief describes.
 
