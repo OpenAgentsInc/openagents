@@ -58,6 +58,19 @@ during the next one. Read [`coder/subprocesses.md`](coder/subprocesses.md).
 | `4` | The evidence a judgment needs is missing. Not a pass. |
 | `64` | The command line was wrong. |
 
+A run that times out with a readable, complete trace still fails its
+allowed-ending check and exits `1`. If it times out before creating any
+trace, it exits `3`: there is nothing to judge. Both cases terminate the
+supervised process group before returning. A complete trace does not turn
+a timeout into a successful run.
+
+The complete-trace timeout regression supplies the finished driver result
+at the observation boundary. A separate CLI test starts a process that
+never writes a trace and checks exit `3`. This keeps trace publication
+from racing a one-second deadline, which caused the original combined
+fixture to fail under parallel workspace tests
+([#9462](https://github.com/OpenAgentsInc/openagents/issues/9462)).
+
 ## A grade answers with three values
 
 `failed` beats `unverifiable` beats `passed`. The vocabulary and the

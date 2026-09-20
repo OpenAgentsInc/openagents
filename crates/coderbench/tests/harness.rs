@@ -48,17 +48,20 @@ fn fake_coder(directory: &Path, trace: &Path, exit: u8) -> PathBuf {
 /// The same stand-in with one more line of shell after the copy, for a run
 /// that takes too long or writes where it should not.
 fn fake_coder_that(directory: &Path, trace: &Path, exit: u8, then: &str) -> PathBuf {
-    let script = directory.join("fake-coder");
-    std::fs::write(
-        &script,
-        format!(
+    fake_coder_script(
+        directory,
+        &format!(
             "#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    --trace) named=\"$2\"; \
              shift 2;;\n    *) shift;;\n  esac\ndone\ncp '{}' \"$named\"\n{then}\necho \
              '{{\"reply\":\"done\",\"outcome\":\"answered\"}}'\nexit {exit}\n",
             trace.display()
         ),
     )
-    .unwrap();
+}
+
+fn fake_coder_script(directory: &Path, contents: &str) -> PathBuf {
+    let script = directory.join("fake-coder");
+    std::fs::write(&script, contents).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -354,20 +357,17 @@ fn the_right_commit_holds_the_requirement() {
     assert!(report.contains("No faults"), "{report}");
 }
 
-/// A run that ran past the task's timeout is not a clean run, however
-/// complete the trace it left behind looks.
-///
-/// This is the case the driver used to print and drop: it said "ran past
-/// the timeout" on one line and handed back the trace grade on the next.
-/// The trace here is the whole golden, so every name the task asks for is
-/// present and the only thing wrong is how the episode ended.
+/// A timeout before any trace exists reports that there is nothing to judge.
+/// The complete-trace timeout is tested at the driver's result boundary in
+/// the binary, where fixture publication does not race the process deadline.
 #[test]
-fn a_timed_out_run_is_not_a_clean_run() {
+fn a_timeout_before_any_trace_exits_with_no_trace() {
     let directory = tempfile::tempdir().unwrap();
     let task = task_with(directory.path(), r#"{}"#, "slow");
-    let coder = fake_coder_that(directory.path(), &golden(), 0, "sleep 30");
+    let coder = fake_coder_script(directory.path(), "#!/bin/sh\nexec sleep 30\n");
     let trace = directory.path().join("run.atif.jsonl");
 
+    let started = std::time::Instant::now();
     let output = coderbench(&[
         "run",
         &task.display().to_string(),
@@ -382,11 +382,10 @@ fn a_timed_out_run_is_not_a_clean_run() {
     ]);
 
     let report = said(&output);
-    assert_eq!(output.status.code(), Some(1), "{report}");
-    assert!(
-        report.contains("the episode timed_out; the task allows answered"),
-        "{report}"
-    );
+    assert_eq!(output.status.code(), Some(3), "{report}");
+    assert!(report.contains("nothing to judge"), "{report}");
+    assert!(!trace.exists());
+    assert!(started.elapsed() < std::time::Duration::from_secs(20));
 }
 
 /// A file the run wrote and never mentioned is still a write, because the

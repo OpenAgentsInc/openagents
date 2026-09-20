@@ -348,6 +348,15 @@ fn episode(
 ) -> Result<(Observed, drive::Run, Option<String>), String> {
     let before = Snapshot::observe(repository);
     let ran = drive::coder(binary, repository, &task.request, trace, timeout)?;
+    observe_episode(before, repository, ran)
+}
+
+/// Combine a finished driver's outcome with its trace and workspace evidence.
+fn observe_episode(
+    before: Snapshot,
+    repository: &Path,
+    ran: drive::Run,
+) -> Result<(Observed, drive::Run, Option<String>), String> {
     let mut run = observe(&ran.trace).map_err(|why| format!("nothing to judge — {why}"))?;
     run.ending = ran.outcome.into();
     let after = Snapshot::observe(repository);
@@ -776,6 +785,43 @@ fn complain(why: &str, code: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The driver's timeout must override even a complete, clean trace.
+    /// Publish the fixture before observing the result so process startup
+    /// cannot decide whether this test has a trace to grade.
+    #[test]
+    fn a_timed_out_run_is_not_a_clean_run() {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = directory.path().join("checkout");
+        std::fs::create_dir(&repository).unwrap();
+        let trace = directory.path().join("run.atif.jsonl");
+        std::fs::copy(
+            coderbench::goldens_dir().join("devin-fan-out-six.atif.jsonl"),
+            &trace,
+        )
+        .unwrap();
+        let before = Snapshot::observe(&repository);
+        let ran = drive::Run {
+            outcome: Outcome::TimedOut,
+            trace: trace.clone(),
+            stdout: directory.path().join("stdout"),
+            stderr: directory.path().join("stderr"),
+            seconds: 1.0,
+        };
+        let (run, _, workspace_error) = observe_episode(before, &repository, ran).unwrap();
+        assert!(workspace_error.is_none());
+        assert!(run.closed);
+        assert_eq!(run.ending, coderbench::Ending::TimedOut);
+        let task = load_task("devin-fan-out-six").unwrap();
+        assert_eq!(
+            task.judge(&run).faults,
+            vec![coderbench::Fault::Ended {
+                found: "timed_out".to_string(),
+                allowed: vec!["answered".to_string()],
+            }]
+        );
+        assert_eq!(report(&task, &run, &trace), EXIT_FAULTS);
+    }
 
     fn parse_of(arguments: &[&str]) -> Result<Command, String> {
         let arguments: Vec<String> = arguments.iter().map(|a| (*a).to_string()).collect();
