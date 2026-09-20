@@ -178,6 +178,7 @@ revision.
 | [`mesh-plan.md`](mesh-plan.md) | The proposed path to serving and training decision models on the earn mesh: Pylon manifests, a psionic decision-model lane, the fleet `systemone` work shape, and the TypeSafe-compatible fan-out API. |
 | [`jev-comparison.md`](jev-comparison.md) | Side-by-side answers from the local port and hosted Jev on identical requests, with the divergence analysis: where the port tracks Jev and where the weights' limits show. |
 | [`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md) | All four checkpoints scored on `support-v2-three-way` through the Gym: the panel, what clears the suite's noise floor, why no calibration map is admitted, and why the latency column settles nothing yet. |
+| [`measurements/2026-09-20-program-selection-latency.md`](measurements/2026-09-20-program-selection-latency.md) | `kev-0.5b`, `kev-0.6b`, and `kev-4b` answering the program-selection question on a quiet CPU, eight blocks each: per-block p50 and p95 and the conditions behind the latency column in the cross-door record. |
 
 ## Licensing
 

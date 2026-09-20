@@ -50,6 +50,7 @@ No answer becomes context for another.
 | What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
 | How big a `coder` state may be, and what shrinking it cost | [`2026-09-20-state-budget.md`](2026-09-20-state-budget.md) |
 | What the newest production question costs, and what it buys | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) |
+| Whether a local door can answer that question instead of hosted Jev | [`2026-09-20-program-selection-local-doors.md`](2026-09-20-program-selection-local-doors.md) |
 | Which production questions to stop asking, and why | [`2026-09-20-coder-question-baselines.md`](2026-09-20-coder-question-baselines.md) |
 | Whether any rewording of `risk` beats the constant, and why none is in production | [`2026-09-20-risk-respecification.md`](2026-09-20-risk-respecification.md) |
 | Whether a model should be able to say it does not know, and how that would be scored | [`abstention.md`](abstention.md) |
@@ -110,6 +111,7 @@ that compares them lives here, so it does not have to be written three times.
 | [`2026-09-20-risk-respecification.md`](2026-09-20-risk-respecification.md) | Three rewordings of the retired `risk` question and the v1 control, paired on the same 32 open items of `coder-turns-v1` under hosted Jev. The best candidate moves the door from 0.375 to 0.562 pooled and clears the floor against v1, and still sits 0.188 and 0.438 below the 0.875 constant on the two partitions. No `coder-turns-v3`; the reach rubric waits for labels. |
 | [`2026-09-20-compiled-functions.md`](2026-09-20-compiled-functions.md) | What our 98 `routing` labels bought against an adapter compiled from the question text with zero labels: 0.90 against the LoRA's 0.92 on the 50 evaluation items, inside the 0.056 floor, with four inline examples adding nothing. The compiler wrote its own six labelled examples, so the guide's no-labels branch gains a leaf with three conditions rather than losing its root. |
 | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) | The question every turn now asks — which program, or none. Its baseline and headroom before its accuracy, its false positives and false negatives counted apart because they cost different amounts, and where the error mass sits. |
+| [`2026-09-20-program-selection-local-doors.md`](2026-09-20-program-selection-local-doors.md) | The same 44 program-selection items asked of `kev-0.5b`, `kev-0.6b`, and `kev-4b` beside hosted Jev, in one store: accuracy, missed and spurious programs counted apart, and latency across eight blocks. `kev-4b` sits inside the accuracy floor but misses four of nine program requests; the small Kevs are below it; no local door suffices yet. |
 
 ## Other implementations
 
