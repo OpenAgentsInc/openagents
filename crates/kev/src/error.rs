@@ -1,7 +1,66 @@
-//! The errors a request or an artifact can raise.
+//! The errors a request or an artifact can raise, and the refusal code each
+//! publishes when a handler answers with it.
 
 /// The most options one question may carry.
 pub const MAX_OPTIONS: usize = 255;
+
+/// The refusal class an [`Error`] publishes on the wire.
+///
+/// The labels are the vocabulary `gym::row::RefusalCode` records and
+/// `gym::eval::classify` reads, and the statuses match the ones `crates/lev`
+/// answers the same classes with, so a reader of either door meets one
+/// contract. Kev never sheds load — a request that reaches the door is
+/// evaluated or refused for a reason the request or the deployment carries —
+/// so it never answers `busy`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RefusalCode {
+    /// The request fails contract validation, before any call.
+    InvalidRequest,
+    /// A `choice` or `score` names more options than the contract admits.
+    TooManyOptions,
+    /// The `model` field names no loaded variant, or the loaded artifact
+    /// cannot serve.
+    ModelUnavailable,
+    /// The state, or a question branch plus the state, exceeds the serving
+    /// token budget.
+    BranchTooLong,
+    /// The HTTP request body exceeds the server's byte limit.
+    PayloadTooLarge,
+    /// The door's own runtime failed on a request it accepted: the
+    /// tokenizer, the tensor runtime, or the weights it loaded.
+    InferenceFailure,
+}
+
+impl RefusalCode {
+    /// The wire label, which is what `error.code` carries.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::InvalidRequest => "invalid_request",
+            Self::TooManyOptions => "too_many_options",
+            Self::ModelUnavailable => "model_unavailable",
+            Self::BranchTooLong => "branch_too_long",
+            Self::PayloadTooLarge => "payload_too_large",
+            Self::InferenceFailure => "inference_failure",
+        }
+    }
+
+    /// The HTTP status a refusal of this class answers with.
+    ///
+    /// `model_unavailable` answers `503` rather than `422` because what is
+    /// missing is the door's deployment, not the request's shape, and it can
+    /// arrive with the next one. `inference_failure` answers `500` because
+    /// the door accepted the request and its own runtime failed it.
+    #[must_use]
+    pub const fn status(self) -> u16 {
+        match self {
+            Self::InvalidRequest | Self::TooManyOptions => 422,
+            Self::BranchTooLong | Self::PayloadTooLarge => 413,
+            Self::ModelUnavailable => 503,
+            Self::InferenceFailure => 500,
+        }
+    }
+}
 
 /// A request that failed validation, or an artifact that failed to load.
 #[derive(Debug, thiserror::Error)]
@@ -48,6 +107,44 @@ pub enum Error {
     /// A request field failed JSON decoding.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+}
+
+impl Error {
+    /// The refusal class this error publishes when a handler answers with it.
+    ///
+    /// `Json` lands under [`RefusalCode::InvalidRequest`] because the only
+    /// JSON failures a request handler can raise are decodings of the
+    /// request itself; the artifact's own JSON is read while loading, before
+    /// any request arrives.
+    #[must_use]
+    pub fn refusal(&self) -> RefusalCode {
+        match self {
+            Self::InvalidRequest(_)
+            | Self::EmptyQuestions
+            | Self::UnsupportedQuestionType { .. }
+            | Self::MissingChoiceCriteria { .. }
+            | Self::MissingScoreCriteria { .. }
+            | Self::TooFewLevels { .. }
+            | Self::Json(_) => RefusalCode::InvalidRequest,
+            Self::TooManyOptions { .. } => RefusalCode::TooManyOptions,
+            Self::StateTooLong { .. } | Self::BranchTooLong { .. } => RefusalCode::BranchTooLong,
+            Self::UnknownModel { .. } | Self::Artifact(_) => RefusalCode::ModelUnavailable,
+            Self::Tokenize(_) | Self::Candle(_) => RefusalCode::InferenceFailure,
+        }
+    }
+
+    /// The question id an error names, when it names one.
+    #[must_use]
+    pub fn question(&self) -> Option<&str> {
+        match self {
+            Self::UnsupportedQuestionType { id, .. }
+            | Self::MissingChoiceCriteria { id }
+            | Self::MissingScoreCriteria { id }
+            | Self::TooManyOptions { id, .. }
+            | Self::TooFewLevels { id, .. } => Some(id.as_str()),
+            _ => None,
+        }
+    }
 }
 
 /// One result of validating or evaluating.

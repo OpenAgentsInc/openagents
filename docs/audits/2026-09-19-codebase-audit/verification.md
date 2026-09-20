@@ -366,3 +366,31 @@ recording test proves that this claim is recorded; it does not independently
 verify executor enforcement. The worktree tests establish separate checkouts,
 not a read-only boundary. These checks credit partial progress on A18 and do not
 replace the negative acceptance tests in #9427 or a review of the entire runtime.
+
+### A07 after the fix
+
+The refusal regression runs the real Kev router over a tiny generated model
+through the Jev HTTP client and Gym classifier. It needs no downloaded weights.
+Eight tests cover a successful answer, invalid input, unknown models, token and
+HTTP body capacity, a tensor inference failure on valid input, connection loss,
+incomplete response bodies, and legacy untyped error bodies. Typed refusals
+produce refused rows; transport losses do not. The body-limit regression failed
+with the old plain-text 413 response before the extractor rejection was mapped.
+
+The historical reconciliation selects #9384's exact four run timestamps. Each
+has all 157 expected item/split pairs once, every row scored. It verifies the
+complete receipt chain, suite and gate digests, and full recorded base signatures.
+The original 0.5B run has no verified base signature; the test preserves that
+limitation. No retained result rows were edited, and the numerical comparisons
+remain unchanged. Final-row coverage does not prove that no failed attempts or
+retries occurred; the committed run record contains no raw failed-response log.
+
+Run the checks with separate target directories for separate worktrees:
+
+```sh
+cargo +1.97.1 test -p kev --features serve --test refusals
+cargo +1.97.1 test -p gym --test kev_variant_rows
+```
+
+The audit harness's typed-envelope line checks Gym's interpretation of an
+authored body. The HTTP tests above establish that Kev sends the envelope.

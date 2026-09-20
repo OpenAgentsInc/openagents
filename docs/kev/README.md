@@ -41,6 +41,19 @@ and `score` questions, so the official `typesafe-sdk` — and this
 repository's `crates/jev` — work against a local kev server with a
 `base_url` change.
 
+When the server declines a request it answers with the refusal envelope the
+System One doors share: `{"detail": …, "error": {"code", "message",
+"question"}}`, at 422 for contract violations (`invalid_request`,
+`too_many_options`), 413 for a branch over the token budget
+(`branch_too_long`) or an HTTP body over the byte limit
+(`payload_too_large`), 503 for a `model` the server does not hold
+(`model_unavailable`), and 500 when its own runtime fails
+(`inference_failure`). `detail` keeps the FastAPI reference's shape;
+`error.code` is the stable label `gym::eval::classify` reads, so a declined
+item stays in the denominator as a refusal rather than reading as a harness
+failure. Kev serves no `busy` code: a request that reaches the model is
+evaluated, and the server sheds no load of its own.
+
 One caveat travels with `score`. On `kev-0.5b` the weighted mean it returns
 is not a usable position on the rubric, and a caller should read the level
 with the greatest probability instead: [Do not read this checkpoint's `score`

@@ -63,7 +63,7 @@ describe engineering impact, not a vulnerability scoring system.
 | A04 | P1 | CoderBench accepts unverified answers and incomplete evidence | Reproduced and source-confirmed |
 | A05 | P1 | Calibration can change the answer without changing its correctness label | Reproduced |
 | A06 | P1 | Concurrent callers can spend the same locked partition as a first read | Reproduced |
-| A07 | P1 | Gym classifies Kev's refusals as harness failures | Reproduced |
+| A07 | P1 | Gym classifies Kev's refusals as harness failures | Fixed; HTTP and historical-row checks |
 | A08 | P1 | Relay responses are not bound locally to the current job | Source-confirmed |
 | A09 | P2 | HTTP streaming corrupts split UTF-8 and accepts premature EOF | Reproduced |
 | A10 | P2 | Relay subscriptions accumulate and failed sockets remain cached | Source-confirmed |
@@ -239,6 +239,17 @@ training-data contamination: a clean partition still needs a reliable read budge
 ### A07. Give Kev refusals the contract Gym consumes
 
 Tracking: [#9421](https://github.com/OpenAgentsInc/openagents/issues/9421).
+
+**Remediation, 2026-09-20:** Kev now returns stable refusal codes, including
+for the HTTP body limit. Eight self-contained HTTP tests exercise real Kev
+responses through Jev and Gym, including capacity and inference failures,
+while connection and incomplete-response failures remain harness outcomes.
+A separate reconciliation verifies all four historical runs, their receipt
+chain, suite and gate digests, and full recorded checkpoint signatures.
+The historical scores remain supported; the old classifier did not establish
+refusal accounting. See [post-fix verification](verification.md#a07-after-the-fix).
+
+The original finding follows.
 
 [Kev's refusal helper](https://github.com/OpenAgentsInc/openagents/blob/1843fa6c18a05537bf2b022f69361a9ba3ef12a1/crates/kev/src/serve.rs#L97) returns HTTP `422` with
 `{"detail": "..."}` for request and inference errors.

@@ -1,0 +1,602 @@
+//! Kev's refusal contract end to end: real `kev-serve` responses parsed by
+//! `jev` and filed by `gym::eval::classify`.
+//!
+//! The door is the real router over a real `DecisionModel`, but the model is
+//! a one-layer backbone this file writes itself — a few kilobytes of
+//! safetensors and a word-level tokenizer — so no downloaded weights or paid
+//! inference are involved. Two variants load: `kev-test`, which answers, and
+//! `kev-broken`, whose embedding table is too small for the tokenizer's ids,
+//! so a valid request to it fails inside the forward pass — a door-owned
+//! `inference_failure` on input the contract accepts.
+//!
+//! Builds only under `--features serve`.
+
+#![cfg(feature = "serve")]
+
+use std::io::{Read, Write};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
+
+use candle_core::Device;
+use gym::eval::{Disposition, observations};
+use gym::row::RefusalCode;
+use kev::decision::DecisionModel;
+use kev::serve::{ServeState, Variant, router};
+use serde_json::{Value, json};
+
+const HIDDEN: usize = 16;
+const INTER: usize = 32;
+const DP: usize = 8;
+
+/// A word-level tokenizer that knows the five delimiter tokens `encode`
+/// needs and maps every other word to `[UNK]`: one token per word, which is
+/// all the budget tests need.
+const TOKENIZER_JSON: &str = r#"{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [
+    {"id": 1, "content": "<|fim_prefix|>", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+    {"id": 2, "content": "<|fim_middle|>", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+    {"id": 3, "content": "<|box_start|>", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+    {"id": 4, "content": "<|box_end|>", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+    {"id": 5, "content": "<|fim_suffix|>", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true}
+  ],
+  "normalizer": null,
+  "pre_tokenizer": {"type": "WhitespaceSplit"},
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "WordLevel",
+    "unk_token": "[UNK]",
+    "vocab": {
+      "[UNK]": 0,
+      "<|fim_prefix|>": 1,
+      "<|fim_middle|>": 2,
+      "<|box_start|>": 3,
+      "<|box_end|>": 4,
+      "<|fim_suffix|>": 5,
+      "word": 6
+    }
+  }
+}"#;
+
+/// One safetensors file: an 8-byte header length, the JSON header, then the
+/// F32 payload each entry's `data_offsets` spans. Every tensor is zeros —
+/// the forward pass still runs and the pointer head returns a uniform
+/// distribution, which is all the answering path needs.
+fn write_safetensors(path: &Path, tensors: &[(&str, &[usize])]) {
+    let mut header = String::from("{");
+    let mut data: Vec<u8> = Vec::new();
+    for (i, (name, shape)) in tensors.iter().enumerate() {
+        let count: usize = shape.iter().product();
+        let start = data.len();
+        data.resize(start + count * 4, 0);
+        if i > 0 {
+            header.push(',');
+        }
+        let shape = shape
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        header.push_str(&format!(
+            "\"{name}\":{{\"dtype\":\"F32\",\"shape\":[{shape}],\"data_offsets\":[{start},{}]}}",
+            data.len()
+        ));
+    }
+    header.push('}');
+    let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+    bytes.extend_from_slice(header.as_bytes());
+    bytes.extend_from_slice(&data);
+    std::fs::write(path, bytes).expect("write safetensors");
+}
+
+/// Write one variant's files and return `(base_dir, adapter_dir)` for
+/// [`DecisionModel::load`]. `<name>-base/` holds the one-layer backbone with
+/// `vocab` embedding rows; `<name>/` holds the adapter the serving path
+/// reads — tokenizer, pointer head, and a LoRA config that targets nothing.
+fn write_variant(root: &Path, name: &str, vocab: usize) -> (PathBuf, PathBuf) {
+    let adapter = root.join(name);
+    let base = root.join(format!("{name}-base"));
+    std::fs::create_dir_all(&adapter).expect("adapter dir");
+    std::fs::create_dir_all(&base).expect("base dir");
+
+    std::fs::write(
+        base.join("config.json"),
+        json!({
+            "architectures": ["Qwen2ForCausalLM"],
+            "hidden_size": HIDDEN,
+            "intermediate_size": INTER,
+            "num_hidden_layers": 1,
+            "num_attention_heads": 2,
+            "num_key_value_heads": 2,
+            "rms_norm_eps": 1e-6,
+            "rope_theta": 10000.0,
+            "vocab_size": vocab,
+            "max_position_embeddings": 32768,
+        })
+        .to_string(),
+    )
+    .expect("write config");
+    write_safetensors(
+        &base.join("model.safetensors"),
+        &[
+            ("model.embed_tokens.weight", &[vocab, HIDDEN]),
+            ("model.layers.0.self_attn.q_proj.weight", &[HIDDEN, HIDDEN]),
+            ("model.layers.0.self_attn.q_proj.bias", &[HIDDEN]),
+            ("model.layers.0.self_attn.k_proj.weight", &[HIDDEN, HIDDEN]),
+            ("model.layers.0.self_attn.k_proj.bias", &[HIDDEN]),
+            ("model.layers.0.self_attn.v_proj.weight", &[HIDDEN, HIDDEN]),
+            ("model.layers.0.self_attn.v_proj.bias", &[HIDDEN]),
+            ("model.layers.0.self_attn.o_proj.weight", &[HIDDEN, HIDDEN]),
+            ("model.layers.0.mlp.gate_proj.weight", &[INTER, HIDDEN]),
+            ("model.layers.0.mlp.up_proj.weight", &[INTER, HIDDEN]),
+            ("model.layers.0.mlp.down_proj.weight", &[HIDDEN, INTER]),
+            ("model.layers.0.input_layernorm.weight", &[HIDDEN]),
+            ("model.layers.0.post_attention_layernorm.weight", &[HIDDEN]),
+            ("model.norm.weight", &[HIDDEN]),
+        ],
+    );
+
+    std::fs::write(adapter.join("tokenizer.json"), TOKENIZER_JSON).expect("write tokenizer");
+    std::fs::write(
+        adapter.join("adapter_config.json"),
+        json!({"r": 1, "lora_alpha": 1.0, "target_modules": []}).to_string(),
+    )
+    .expect("write adapter config");
+    write_safetensors(
+        &adapter.join("adapter_model.safetensors"),
+        &[("unused.weight", &[1])],
+    );
+    write_safetensors(
+        &adapter.join("head.safetensors"),
+        &[
+            ("q.weight", &[DP, HIDDEN]),
+            ("q.bias", &[DP]),
+            ("k.weight", &[DP, HIDDEN]),
+            ("k.bias", &[DP]),
+        ],
+    );
+    std::fs::write(
+        adapter.join("head_meta.json"),
+        json!({"base": "tiny-test-base", "option_isolation": false}).to_string(),
+    )
+    .expect("write head meta");
+
+    (base, adapter)
+}
+
+/// The tempdir the variants live in, kept alive for the test process.
+struct Rig {
+    _dir: tempfile::TempDir,
+    state: Arc<ServeState>,
+}
+
+fn rig() -> &'static Rig {
+    static RIG: OnceLock<Rig> = OnceLock::new();
+    RIG.get_or_init(|| {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut variants = Vec::new();
+        // `kev-broken` loads an embedding table smaller than any id the
+        // tokenizer emits, so every valid request to it fails at the
+        // embedding lookup — a deterministic inference failure.
+        for (name, vocab) in [("kev-test", 64usize), ("kev-broken", 4usize)] {
+            let (base, adapter) = write_variant(dir.path(), name, vocab);
+            let model = DecisionModel::load(&base, &adapter, Device::Cpu).expect("load");
+            variants.push(Variant {
+                model,
+                model_id: name.to_string(),
+                run: adapter.display().to_string(),
+                base: "tiny-test-base".to_string(),
+                base_revision: "test-revision".to_string(),
+                lora: 1,
+            });
+        }
+        Rig {
+            _dir: dir,
+            state: Arc::new(ServeState {
+                variants,
+                default: 0,
+                aliases: vec!["jev-latest".to_string()],
+                device: "cpu".to_string(),
+            }),
+        }
+    })
+}
+
+/// Bind the router on an ephemeral port; returns its base URL.
+async fn serve() -> String {
+    let state = rig().state.clone();
+    let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("local_addr");
+    tokio::spawn(async move {
+        axum::serve(listener, router(state)).await.expect("serve");
+    });
+    format!("http://{addr}")
+}
+
+/// Run the blocking jev client off the test's runtime thread.
+fn blocking<F, T>(f: F) -> T
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    std::thread::spawn(f).join().expect("client thread")
+}
+
+fn client(url: &str) -> jev::BlockingClient {
+    jev::BlockingClient::new(
+        jev::Config::new()
+            .api_key("kev-test")
+            .base_url(url)
+            .default_model("kev-latest"),
+    )
+    .expect("client")
+}
+
+/// No retries: the refusal under test is the first answer, not the settled
+/// one a retry policy would wait for.
+fn no_retry() -> jev::RetryPolicy {
+    jev::RetryPolicy {
+        max_retries: 0,
+        ..jev::RetryPolicy::default()
+    }
+}
+
+/// One valid request: a short state and one `noul` question.
+fn request(instructions: &str) -> jev::SystemOneRequest {
+    jev::SystemOneRequest::new(
+        "The package arrived two days late and the box was torn.",
+        jev::Questions::new().with("verdict", jev::Noul::new(instructions)),
+    )
+    .retry(no_retry())
+}
+
+/// The `jev::Error` one refused call returns, and nothing else.
+fn refused_error(result: jev::Result<jev::SystemOneResponse>) -> jev::Error {
+    match result {
+        Err(error) => error,
+        Ok(_) => panic!("the door answered a request it should refuse"),
+    }
+}
+
+/// The `jev::Error` the client builds for one raw response — the path
+/// `system_one` takes for bodies jev's own checks will not send.
+fn api_error(status: u16, headers: &reqwest::header::HeaderMap, body: Value) -> jev::Error {
+    jev::Error::from(jev::ApiError {
+        status,
+        headers: headers.clone(),
+        body: Some(jev::ResponseBody::Json(body)),
+        request_id: None,
+        endpoint: "POST http://kev-test/v1/systemone".to_string(),
+        kind: jev::ApiErrorKind::of(status, headers),
+    })
+}
+
+/// The item and the run a refused disposition turns into a row under.
+fn item() -> gym::suite::Item {
+    gym::suite::Item {
+        id: "t-1".to_string(),
+        family: "returns".to_string(),
+        kind: "noul".to_string(),
+        state: Value::Null,
+        question: None,
+        truth: "yes".to_string(),
+        partition: gym::suite::Partition::Development,
+        label_source: None,
+        label_rule: None,
+    }
+}
+
+fn run() -> gym::eval::Run {
+    gym::eval::Run {
+        suite: "test-suite".to_string(),
+        suite_digest: "test-digest".to_string(),
+        question_set: None,
+        question_digest: None,
+        door: "kev-test".to_string(),
+        door_identity: gym::row::DoorIdentity::published("kev-test", "sig", "adapter"),
+        estimator: "unreported".to_string(),
+        samples: None,
+        seed_base: None,
+        recorded_at: "2026-09-20T00:00:00Z".to_string(),
+        gate_id: None,
+        gate_digest: None,
+    }
+}
+
+/// The whole contract for one refusal: the wire body carries the typed code
+/// beside `detail`, `classify` files it as the door's answer, and the row it
+/// produces keeps the item in the denominator and out of the numerator.
+fn expect_refusal(error: &jev::Error, status: u16, label: &str) {
+    let jev::Error::Api(api) = error else {
+        panic!("expected an API refusal, got {error:?}");
+    };
+    assert_eq!(api.status, status);
+    let body = api
+        .body
+        .as_ref()
+        .and_then(|body| body.as_json())
+        .unwrap_or_else(|| panic!("expected a JSON refusal body, got {:?}", api.body));
+    assert_eq!(body["error"]["code"], label, "body: {body}");
+    assert!(body["detail"].is_string(), "body: {body}");
+    assert_eq!(body["error"]["message"], body["detail"], "body: {body}");
+
+    let disposition = gym::eval::classify(error);
+    assert_eq!(
+        disposition,
+        Disposition::Refused(RefusalCode::from(label.to_string()))
+    );
+    assert!(disposition.is_recorded());
+    let row = run()
+        .row(&item(), None, &disposition, Some(1.0))
+        .expect("a refusal produces a row");
+    assert!(row.is_refused());
+    assert!(!row.is_scored());
+    row.check().expect("the refused row is consistent");
+    assert!(observations(&[row]).is_empty());
+}
+
+/// The valid requests the door refuses, sent through the real `jev` client.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn door_refusals_classify_through_jev_and_gym() {
+    let url = serve().await;
+    blocking(move || {
+        let client = client(&url);
+
+        // Model selection: the named variant is not loaded.
+        let error = refused_error(client.system_one(request("Was it late?").model("kev-nope")));
+        expect_refusal(&error, 503, "model_unavailable");
+
+        // Capacity: a state over the serving budget on an otherwise valid
+        // request — a door-owned refusal, not a malformed body.
+        let error = refused_error(client.system_one(jev::SystemOneRequest::new(
+            "word ".repeat(9000),
+            jev::Questions::new().with("verdict", jev::Noul::new("Was it late?")),
+        )));
+        expect_refusal(&error, 413, "branch_too_long");
+
+        // Inference failure: `kev-broken`'s embedding table is too small for
+        // the tokenizer's ids, so the request fails inside the forward pass.
+        let error = refused_error(client.system_one(request("Was it late?").model("kev-broken")));
+        expect_refusal(&error, 500, "inference_failure");
+
+        // A question type the SDK ships verbatim and the door does not
+        // model: `invalid_request`, naming the question at fault.
+        let error = refused_error(client.system_one(jev::SystemOneRequest::new(
+            "A short state.",
+            jev::Questions::new().with(
+                "verdict",
+                json!({"type": "mystery", "instructions": "Was it late?"}),
+            ),
+        )));
+        expect_refusal(&error, 422, "invalid_request");
+        let jev::Error::Api(api) = &error else {
+            unreachable!("checked above")
+        };
+        let body = api.body.as_ref().and_then(|b| b.as_json()).expect("json");
+        assert_eq!(body["error"]["question"], "verdict");
+    });
+}
+
+/// Bodies jev's own checks will not send, posted raw and classified through
+/// the same `jev::Error` the client would have built.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn raw_refusals_classify_too() {
+    let url = serve().await;
+    let http = reqwest::Client::new();
+    let post = |body: &str| {
+        let body = body.to_owned();
+        let http = http.clone();
+        let url = url.clone();
+        async move {
+            let response = http
+                .post(format!("{url}/v1/systemone"))
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+                .await
+                .expect("send");
+            let status = response.status().as_u16();
+            let headers = response.headers().clone();
+            let body: Value = response.json().await.expect("json");
+            (status, headers, body)
+        }
+    };
+
+    // Malformed JSON: the body never became a request, and the door still
+    // answers with a typed code rather than an error page.
+    let (status, headers, body) = post("{not json").await;
+    expect_refusal(&api_error(status, &headers, body), 422, "invalid_request");
+
+    // Empty questions: jev refuses this before any request, so it goes over
+    // the wire the way a raw caller sends it.
+    let (status, headers, body) = post(r#"{"state":"x","questions":{}}"#).await;
+    expect_refusal(&api_error(status, &headers, body), 422, "invalid_request");
+
+    // A score with one level: below the contract's minimum, with the
+    // question named.
+    let (status, headers, body) =
+        post(r#"{"state":"x","questions":{"verdict":{"type":"score","criteria":["only"]}}}"#).await;
+    let error = api_error(status, &headers, body.clone());
+    expect_refusal(&error, 422, "invalid_request");
+    assert_eq!(body["error"]["question"], "verdict");
+
+    // A choice over the contract's 255-option bound gets its own code.
+    let criteria: serde_json::Map<String, Value> = (0..256)
+        .map(|i| (format!("option-{i}"), Value::Null))
+        .collect();
+    let (status, headers, body) = post(
+        &json!({
+            "state": "x",
+            "questions": {"verdict": {"type": "choice", "criteria": criteria}},
+        })
+        .to_string(),
+    )
+    .await;
+    let error = api_error(status, &headers, body.clone());
+    expect_refusal(&error, 422, "too_many_options");
+    assert_eq!(body["error"]["question"], "verdict");
+}
+
+/// The failure modes that are not the door's answer stay out of the record.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn transport_failures_stay_harness() {
+    // A port nothing listens on: the request never became a response.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind")
+        .local_addr()
+        .expect("addr")
+        .port();
+    let url = format!("http://127.0.0.1:{port}");
+    blocking(move || {
+        let client = client(&url);
+        let error = refused_error(client.system_one(request("Was it late?")));
+        assert!(
+            matches!(&error, jev::Error::Connection { .. }),
+            "expected a connection failure, got {error:?}"
+        );
+        let disposition = gym::eval::classify(&error);
+        assert!(
+            matches!(disposition, Disposition::Harness(_)),
+            "{disposition:?}"
+        );
+        assert!(!disposition.is_recorded());
+        // A harness failure produces no row: the item leaves the record
+        // entirely rather than reading as a door answer.
+        assert!(run().row(&item(), None, &disposition, None).is_none());
+    });
+}
+
+/// A reachable endpoint whose error body carries no code is not a refusal
+/// either — the classifier reads the code, never the prose.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_error_body_without_a_code_stays_harness() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
+    let server = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "client did not connect"
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(error) => panic!("accept: {error}"),
+            }
+        };
+        let timeout = Some(std::time::Duration::from_secs(5));
+        stream.set_read_timeout(timeout).expect("read timeout");
+        stream.set_write_timeout(timeout).expect("write timeout");
+        let mut buf = [0u8; 8192];
+        assert!(stream.read(&mut buf).expect("request") > 0);
+        let body = "too busy, come back later";
+        stream.write_all(
+            format!(
+                "HTTP/1.1 503 Service Unavailable\r\ncontent-type: text/plain\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            ).as_bytes(),
+        ).expect("response");
+    });
+    let url = format!("http://127.0.0.1:{port}");
+    blocking(move || {
+        let client = client(&url);
+        let error = refused_error(client.system_one(request("Was it late?")));
+        let jev::Error::Api(api) = &error else {
+            panic!("a 503 is an API error: {error:?}");
+        };
+        assert_eq!(api.status, 503);
+        assert!(api.body.as_ref().and_then(|b| b.as_json()).is_none());
+        let disposition = gym::eval::classify(&error);
+        assert!(
+            matches!(disposition, Disposition::Harness(_)),
+            "{disposition:?}"
+        );
+    });
+    server.join().expect("server thread");
+}
+
+/// The body kev sent before this contract: `detail` alone is prose, not a
+/// refusal code, and nothing may read it as one.
+#[test]
+fn a_detail_only_body_is_not_a_refusal() {
+    let body = jev::ResponseBody::Json(json!({
+        "detail": "questions must hold at least one question"
+    }));
+    let disposition = gym::eval::classify_response(422, Some(&body), "HTTP 422");
+    assert!(
+        matches!(disposition, Disposition::Harness(_)),
+        "{disposition:?}"
+    );
+}
+
+/// Sanity for the test model itself: a valid request is answered, not
+/// refused, and jev decodes it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_valid_request_round_trips() {
+    let url = serve().await;
+    blocking(move || {
+        let response = client(&url)
+            .system_one(request("Was the delivery late?"))
+            .expect("system_one");
+        assert_eq!(response.model, "kev-test");
+        assert_eq!(response.answers.len(), 1);
+        let noul = response.noul("verdict").expect("noul answer");
+        assert!((0.0..=1.0).contains(&noul.noul));
+    });
+}
+
+/// The HTTP body cap is also a door-owned capacity refusal.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oversized_http_body_is_a_typed_refusal() {
+    let url = serve().await;
+    blocking(move || {
+        let request = jev::SystemOneRequest::new(
+            "x".repeat(3 * 1024 * 1024),
+            jev::Questions::new().with("verdict", jev::Noul::new("Was it late?")),
+        )
+        .retry(no_retry());
+        let error = refused_error(client(&url).system_one(request));
+        expect_refusal(&error, 413, "payload_too_large");
+    });
+}
+
+/// A response cut off before its declared body length is a transport loss.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn incomplete_response_body_stays_harness() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let url = format!("http://{}", listener.local_addr().expect("address"));
+    let server = tokio::spawn(async move {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut request = [0; 8192];
+            assert!(stream.read(&mut request).await.expect("request") > 0);
+            stream.write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{}").await.expect("partial response");
+            stream.shutdown().await.expect("disconnect");
+        }).await.expect("bounded server");
+    });
+    blocking(move || {
+        let error = refused_error(client(&url).system_one(request("Was it late?")));
+        let disposition = gym::eval::classify(&error);
+        assert!(
+            matches!(disposition, Disposition::Harness(_)),
+            "{disposition:?}"
+        );
+        assert!(run().row(&item(), None, &disposition, None).is_none());
+    });
+    server.await.expect("server task");
+}

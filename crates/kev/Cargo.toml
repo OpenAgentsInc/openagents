@@ -28,8 +28,10 @@ tokio = { version = "1", features = ["full"], optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dev-dependencies]
+gym = { path = "../gym" }
 jev = { path = "../jev", features = ["blocking"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 
 [[bin]]

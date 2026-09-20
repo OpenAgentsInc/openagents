@@ -45,6 +45,23 @@ The rows land in `crates/gym/results/support-v2-three-way.jsonl` beside the
 receipt-chained file rather than four pasted tables. The store now holds 785
 rows over five doors and the chain verifies.
 
+**Correction, 2026-09-20 (openagents#9421).** When this ran, `kev-serve`
+answered refusals with only the FastAPI `{"detail": …}` body — no typed code
+— so the `gym::eval::classify` rule then in force would have filed any Kev
+refusal as a harness loss rather than a refusal. The "refused none, lost
+none" claim above therefore does not rest on the classifier: a refused item
+would have left no scored row, and the committed store shows no missing
+pair. Each Kev door holds all 157 open item/split pairs, every one scored,
+the receipt chain verifying;
+[`crates/gym/tests/kev_variant_rows.rs`](../../../crates/gym/tests/kev_variant_rows.rs)
+reconciles the four row sets against the pinned suite, including gate,
+model, and run provenance. The classifier implementation establishes how a detail-only refusal would
+have been classified. Complete final-row coverage does not establish that
+no failed attempt or retry occurred. The committed run record contains no
+raw failed-response or refusal log that could resolve that question. New
+refusal-path tests establish the corrected behavior; they do not reconstruct
+historical responses.
+
 ## The panel
 
 All 157 open items, both partitions pooled, from
@@ -128,8 +145,9 @@ failed: 157 of 157 items produced a scored row for every door, with no typed
 refusal from any door and nothing lost to the harness. That distinction is
 the one `gym::eval::classify` draws — a typed refusal code in the body is the
 door's own answer and stays in the denominator, while a failure carrying no
-code is the harness and produces no row at all. Under this much load the
-second kind is what you would expect to see, and none appeared.
+code is the harness and produces no row at all. For Kev it could not draw
+that distinction yet — see the correction above — but under this much load
+the second kind is what you would expect to see, and none appeared.
 
 The medians are also longer than the figures in
 [`../jev-comparison.md`](../jev-comparison.md), which came from a nine-case

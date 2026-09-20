@@ -5,23 +5,31 @@
 //! The served model identifies itself as kev; the `jev-latest` alias keeps
 //! the wire contract reachable for callers that name TypeSafe's model id,
 //! matching the reference server's alias list.
+//!
+//! A refusal answers with the envelope every System One door shares —
+//! `{"detail": …, "error": {"code", "message", "question"}}` — at the
+//! status its [`RefusalCode`] class carries. `detail` keeps the FastAPI
+//! reference's shape for older readers; `error.code` is the stable label
+//! `gym::eval::classify` reads, so a request the door declines is recorded
+//! as the door's answer rather than a harness failure.
 
 use std::sync::Arc;
 use std::time::Instant;
 
+use axum::Router;
 use axum::body::Bytes;
 use axum::extract::State;
+use axum::extract::rejection::BytesRejection;
 use axum::http::StatusCode;
 use axum::response::Json;
 use axum::routing::{get, post};
-use axum::Router;
 use indexmap::IndexMap;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokenizers::Tokenizer;
 
 use crate::api::{Answer, Record, SystemOneRequest, to_answers, to_record};
 use crate::decision::DecisionModel;
-use crate::error::Error;
+use crate::error::{Error, RefusalCode};
 
 /// The state budget serving admits; the reference serves with the training
 /// bounds relaxed to the branch ceiling.
@@ -76,11 +84,7 @@ impl ServeState {
             .find(|v| v.model_id == model)
             .ok_or_else(|| Error::UnknownModel {
                 model: model.to_string(),
-                known: self
-                    .variants
-                    .iter()
-                    .map(|v| v.model_id.clone())
-                    .collect(),
+                known: self.variants.iter().map(|v| v.model_id.clone()).collect(),
             })
     }
 
@@ -89,31 +93,102 @@ impl ServeState {
     /// # Errors
     ///
     /// [`Error::UnknownModel`] when `model` names no loaded variant.
-    pub fn pick<'a>(&'a self, request: &crate::api::SystemOneRequest) -> Result<&'a Variant, Error> {
+    pub fn pick<'a>(
+        &'a self,
+        request: &crate::api::SystemOneRequest,
+    ) -> Result<&'a Variant, Error> {
         self.select(&request.model)
     }
 }
 
-/// The error body every refusal shares: FastAPI's `{"detail": …}`.
-fn refuse(status: StatusCode, detail: impl Into<String>) -> (StatusCode, Json<Value>) {
-    (status, Json(json!({ "detail": detail.into() })))
+/// The error body every refusal shares: the reference's `detail` beside the
+/// typed `error` object the System One contract publishes.
+///
+/// `detail` is the human-readable line the FastAPI reference sent and older
+/// readers look for; `error.code` is the stable refusal code
+/// `gym::eval::classify` reads, `error.message` carries the same text for
+/// readers of that envelope, and `error.question` names the question the
+/// refusal is about when there is one.
+fn refuse(
+    status: StatusCode,
+    code: RefusalCode,
+    detail: impl Into<String>,
+    question: Option<&str>,
+) -> (StatusCode, Json<Value>) {
+    let detail = detail.into();
+    let message = detail.clone();
+    (
+        status,
+        Json(json!({
+            "detail": detail,
+            "error": {
+                "code": code.label(),
+                "message": message,
+                "question": question,
+            },
+        })),
+    )
 }
 
-fn unprocessable(error: impl std::fmt::Display) -> (StatusCode, Json<Value>) {
-    refuse(StatusCode::UNPROCESSABLE_ENTITY, error.to_string())
+/// A request that fails before evaluation: a body that is not a request, or
+/// a field the contract does not carry.
+fn invalid(detail: impl Into<String>) -> (StatusCode, Json<Value>) {
+    refuse(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        RefusalCode::InvalidRequest,
+        detail,
+        None,
+    )
+}
+
+/// The refusal one [`Error`] publishes, at the status its class answers with.
+fn refused(error: &Error) -> (StatusCode, Json<Value>) {
+    let code = error.refusal();
+    let status = StatusCode::from_u16(code.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    refuse(status, code, error.to_string(), error.question())
+}
+
+/// A panic in the evaluation task: the door's own runtime failed on a
+/// request it accepted.
+fn panicked(error: impl std::fmt::Display) -> (StatusCode, Json<Value>) {
+    refuse(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        RefusalCode::InferenceFailure,
+        error.to_string(),
+        None,
+    )
+}
+
+/// The body limit is a capacity refusal; other body-read failures remain
+/// transport errors without a refusal code.
+fn received(body: Result<Bytes, BytesRejection>) -> Result<Bytes, (StatusCode, Json<Value>)> {
+    body.map_err(|error| {
+        let status = error.status();
+        if status == StatusCode::PAYLOAD_TOO_LARGE {
+            refuse(
+                status,
+                RefusalCode::PayloadTooLarge,
+                error.body_text(),
+                None,
+            )
+        } else {
+            (status, Json(json!({ "detail": error.body_text() })))
+        }
+    })
 }
 
 /// `POST /v1/systemone`: typed questions in, typed answers out, one prefill.
 async fn systemone(
     State(state): State<Arc<ServeState>>,
-    body: Bytes,
+    body: Result<Bytes, BytesRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let request: SystemOneRequest = serde_json::from_slice(&body)
-        .map_err(|e| unprocessable(format!("request body: {e}")))?;
+    let body = received(body)?;
+    let request: SystemOneRequest =
+        serde_json::from_slice(&body).map_err(|e| invalid(format!("request body: {e}")))?;
     let out = tokio::task::spawn_blocking(move || evaluate(&state, &request))
         .await
-        .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .map_err(unprocessable)?;
+        .map_err(panicked)?
+        .map_err(|e| refused(&e))?;
     Ok(Json(out))
 }
 
@@ -121,14 +196,15 @@ async fn systemone(
 /// same state, for packed-vs-separate comparison.
 async fn systemone_separate(
     State(state): State<Arc<ServeState>>,
-    body: Bytes,
+    body: Result<Bytes, BytesRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let request: SystemOneRequest = serde_json::from_slice(&body)
-        .map_err(|e| unprocessable(format!("request body: {e}")))?;
+    let body = received(body)?;
+    let request: SystemOneRequest =
+        serde_json::from_slice(&body).map_err(|e| invalid(format!("request body: {e}")))?;
     tokio::task::spawn_blocking(move || evaluate_separate(&state, &request))
         .await
-        .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .map_err(unprocessable)
+        .map_err(panicked)?
+        .map_err(|e| refused(&e))
         .map(Json)
 }
 
@@ -180,13 +256,14 @@ async fn info(State(state): State<Arc<ServeState>>) -> Json<Value> {
 /// `/v1/systemone` does.
 async fn predict(
     State(state): State<Arc<ServeState>>,
-    body: Bytes,
+    body: Result<Bytes, BytesRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let body: Value = serde_json::from_slice(&body)
-        .map_err(|e| unprocessable(format!("request body: {e}")))?;
+    let body = received(body)?;
+    let body: Value =
+        serde_json::from_slice(&body).map_err(|e| invalid(format!("request body: {e}")))?;
     let model_field = body["model"].as_str().unwrap_or("kev-latest").to_string();
-    let record: Record = serde_json::from_value(body.clone())
-        .map_err(|e| unprocessable(format!("request body: {e}")))?;
+    let record: Record =
+        serde_json::from_value(body.clone()).map_err(|e| invalid(format!("request body: {e}")))?;
     tokio::task::spawn_blocking(move || {
         let variant = state.select(&model_field)?;
         let enc = variant
@@ -205,8 +282,8 @@ async fn predict(
         }))
     })
     .await
-    .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .map_err(unprocessable)
+    .map_err(panicked)?
+    .map_err(|e| refused(&e))
     .map(Json)
 }
 

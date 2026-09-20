@@ -182,7 +182,8 @@ async fn refusals_are_typed() {
         eprintln!("skipping: no artifact bundle");
         return;
     };
-    // Empty questions: validation refusal, `{"detail": …}`, 422.
+    // Empty questions: validation refusal — `detail` for compatibility and
+    // the typed `error.code` `gym::eval::classify` reads, at 422.
     let http = reqwest::Client::new();
     let response = http
         .post(format!("{url}/v1/systemone"))
@@ -196,6 +197,12 @@ async fn refusals_are_typed() {
         body["detail"],
         "questions must hold at least one question"
     );
+    assert_eq!(body["error"]["code"], "invalid_request");
+    assert_eq!(
+        body["error"]["message"],
+        "questions must hold at least one question"
+    );
+    assert!(body["error"]["question"].is_null());
 
     // Malformed body: same refusal shape, not an HTML error page.
     let response = http
@@ -208,4 +215,5 @@ async fn refusals_are_typed() {
     assert_eq!(response.status(), 422);
     let body: serde_json::Value = response.json().await.expect("json");
     assert!(body["detail"].as_str().unwrap().starts_with("request body:"));
+    assert_eq!(body["error"]["code"], "invalid_request");
 }

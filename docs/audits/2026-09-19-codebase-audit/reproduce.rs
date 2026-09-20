@@ -247,11 +247,25 @@ async fn main() {
     }
     println!("locked_first_reads_accepted={race_found:?}");
 
+    // A07: the body kev-serve answered before #9421 classifies as a harness
+    // loss; the typed envelope it answers now classifies as a refusal.
     let refusal =
         jev::ResponseBody::Json(json!({"detail": "questions must hold at least one question"}));
     println!(
         "kev_refusal_classification={:?}",
         gym::eval::classify_response(422, Some(&refusal), "audit")
+    );
+    let refusal_typed = jev::ResponseBody::Json(json!({
+        "detail": "questions must hold at least one question",
+        "error": {
+            "code": "invalid_request",
+            "message": "questions must hold at least one question",
+            "question": null
+        }
+    }));
+    println!(
+        "kev_refusal_classification_post_9421={:?}",
+        gym::eval::classify_response(422, Some(&refusal_typed), "audit")
     );
 
     let executor = coder::delegate::Executor {
