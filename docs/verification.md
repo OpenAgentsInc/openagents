@@ -119,3 +119,17 @@ Metal F32 conformance passed for all four retained variants, but the full
 `serve,metal` test command failed in its CPU HTTP round-trip test at the
 unchanged 10-second client deadline. bf16 remains unmeasured. This is a partial
 matrix, not a successful full gate; #9426 stays open.
+
+## Progress during the manual gate
+
+Each manual-gate phase prints its name when it starts, an elapsed-time heartbeat
+at least every 30 seconds while its command runs, and its elapsed time and exit
+status when it finishes. Command output streams directly to the terminal. Cargo
+tests use `--nocapture`, so test diagnostics appear while tests run rather than
+only after a failure. The gate still stops at the first failing phase; a
+heartbeat reports activity, not success or a timeout extension.
+
+The phase runner forwards interrupt, termination, and hangup signals to the
+command's process group and waits for the direct child. It does not add a test
+timeout, change feature or device settings, or skip an assertion. A test that
+prints no internal progress still produces the elapsed-time heartbeat.
