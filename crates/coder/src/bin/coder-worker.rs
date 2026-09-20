@@ -11,7 +11,11 @@
 //! publishes the reply as `27000` partial feedback and one `26900` result.
 //! The relay carries ciphertext and holds nothing: every kind is
 //! ephemeral, so a worker that is not connected when a request is
-//! published never sees it, and there is no queue to drain.
+//! published never sees it, and there is no queue to drain. For the same
+//! reason a relay that drops the socket or restarts does not end the
+//! worker: it reconnects with backoff, from one second up to a minute,
+//! and subscribes again, so the outage costs the jobs published while it
+//! lasted and nothing after.
 //!
 //! ```sh
 //! export CODER_WORKER_SECRET=<64 hex or nsec>
@@ -67,13 +71,13 @@
 use std::env;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use coder::generate::{
     Door, Generate, GenerateError, Lane, Message, Role, Usage, WORKER_MODEL_VAR, model_from_env,
 };
 use coder::relay::{
-    DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND,
+    DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND, Socket,
     connect, parse_pubkey, partial_payload, payload_version, send,
 };
 use futures_util::StreamExt;
@@ -93,6 +97,12 @@ use tokio_tungstenite::tungstenite;
 /// than about the answer. The result carries the whole text anyway, so
 /// partials are a progress signal, not the payload.
 const PARTIAL_BYTES: usize = 160;
+
+/// The first wait after the relay goes away; each failure doubles it.
+const RECONNECT_FLOOR: Duration = Duration::from_secs(1);
+
+/// The longest wait between reconnect attempts.
+const RECONNECT_CEILING: Duration = Duration::from_secs(60);
 
 const USAGE: &str = "\
 coder-worker — answer NIP-CJ job requests from a relay.
@@ -207,8 +217,14 @@ async fn main() -> ExitCode {
     }
 }
 
-/// Connects, subscribes, and answers jobs until the socket closes or
-/// `--once` is satisfied.
+/// Connects, subscribes, and answers jobs until `--once` is satisfied.
+///
+/// A relay that drops the socket, restarts, or closes the subscription is
+/// a transport fault, not a reason to stop serving: the worker waits with
+/// backoff, connects again, and subscribes again, and a job that was
+/// running through the fault publishes on whichever socket is open when
+/// it finishes. Only configuration stops the worker, before the first
+/// connection.
 ///
 /// Jobs run concurrently, up to the worker's bound; the socket stays with
 /// this loop, and every job publishes through one channel it drains, so
@@ -255,95 +271,166 @@ async fn serve(options: &Options) -> Result<(), String> {
         None => eprintln!("admits  every customer ({ALLOW_VAR} unset)"),
     }
 
-    let mut socket = connect(&url, &identity)
-        .await
-        .map_err(|error| error.to_string())?;
-    send(
-        &mut socket,
-        json!(["REQ", "jobs", { "kinds": [REQUEST_KIND], "#p": [identity.pubkey()] }]),
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    eprintln!("waiting for jobs");
-
-    let (outgoing, mut frames) = mpsc::unbounded_channel::<Value>();
-    let running = Arc::new(Semaphore::new(jobs));
-    let mut tasks: JoinSet<Result<(), String>> = JoinSet::new();
-    let mut answered = 0usize;
+    let (outgoing, frames) = mpsc::unbounded_channel::<Value>();
+    let mut worker = Worker {
+        options,
+        identity,
+        door,
+        running: Arc::new(Semaphore::new(jobs)),
+        outgoing,
+        frames,
+        tasks: JoinSet::new(),
+        answered: 0,
+    };
+    let mut backoff = RECONNECT_FLOOR;
     loop {
-        tokio::select! {
-            frame = frames.recv() => {
-                let Some(frame) = frame else { continue };
-                send(&mut socket, frame).await.map_err(|error| error.to_string())?;
-            }
-            Some(ended) = tasks.join_next(), if !tasks.is_empty() => {
-                match ended {
-                    Ok(Ok(())) => {}
-                    Ok(Err(why)) => eprintln!("job: {why}"),
-                    Err(join) => eprintln!("job: {join}"),
+        let session = async {
+            let mut socket = connect(&url, &worker.identity)
+                .await
+                .map_err(|error| error.to_string())?;
+            send(
+                &mut socket,
+                json!(["REQ", "jobs", { "kinds": [REQUEST_KIND], "#p": [worker.identity.pubkey()] }]),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            eprintln!("waiting for jobs");
+            Ok::<Socket, String>(socket)
+        };
+        let why = match session.await {
+            Ok(socket) => match worker.session(socket).await {
+                Ok(()) => return Ok(()),
+                Err(Fault::Subscribed(why)) => {
+                    backoff = RECONNECT_FLOOR;
+                    why
                 }
-                answered += 1;
-                if options.once && answered >= 1 {
-                    // The job's frames were queued before its task ended;
-                    // drain them before the socket goes.
-                    while let Ok(frame) = frames.try_recv() {
-                        send(&mut socket, frame).await.map_err(|error| error.to_string())?;
+                Err(Fault::Early(why)) => why,
+            },
+            Err(why) => why,
+        };
+        eprintln!("relay: {why}; reconnecting in {} s", backoff.as_secs());
+        // Jobs keep running while the socket is down; their frames wait in
+        // the channel for the next one. Nothing is read from the relay
+        // until then, and nothing can be: the kinds are ephemeral, so a
+        // request published now is lost whatever the worker does.
+        tokio::time::sleep(backoff).await;
+        backoff = (backoff * 2).min(RECONNECT_CEILING);
+    }
+}
+
+/// Why one connection to the relay ended.
+enum Fault {
+    /// The relay confirmed the subscription before the fault, so the relay
+    /// was healthy and the next attempt starts from the shortest wait.
+    Subscribed(String),
+    /// The socket or the subscription failed before `EOSE`, which reads as
+    /// a relay still starting or still broken; the wait keeps growing.
+    Early(String),
+}
+
+/// The worker's state across relay connections.
+struct Worker<'a> {
+    options: &'a Options,
+    identity: Arc<Identity>,
+    door: Arc<Door>,
+    running: Arc<Semaphore>,
+    outgoing: mpsc::UnboundedSender<Value>,
+    frames: mpsc::UnboundedReceiver<Value>,
+    tasks: JoinSet<Result<(), String>>,
+    answered: usize,
+}
+
+impl Worker<'_> {
+    /// Serves one connection until it fails or `--once` is satisfied.
+    async fn session(&mut self, mut socket: Socket) -> Result<(), Fault> {
+        let mut subscribed = false;
+        let fault = |subscribed: bool, why: String| {
+            if subscribed {
+                Fault::Subscribed(why)
+            } else {
+                Fault::Early(why)
+            }
+        };
+        loop {
+            tokio::select! {
+                frame = self.frames.recv() => {
+                    let Some(frame) = frame else { continue };
+                    send(&mut socket, frame)
+                        .await
+                        .map_err(|error| fault(subscribed, error.to_string()))?;
+                }
+                Some(ended) = self.tasks.join_next(), if !self.tasks.is_empty() => {
+                    match ended {
+                        Ok(Ok(())) => {}
+                        Ok(Err(why)) => eprintln!("job: {why}"),
+                        Err(join) => eprintln!("job: {join}"),
                     }
-                    return Ok(());
+                    self.answered += 1;
+                    if self.options.once && self.answered >= 1 {
+                        // The job's frames were queued before its task
+                        // ended; drain them before the socket goes.
+                        while let Ok(frame) = self.frames.try_recv() {
+                            send(&mut socket, frame)
+                                .await
+                                .map_err(|error| fault(subscribed, error.to_string()))?;
+                        }
+                        return Ok(());
+                    }
                 }
-            }
-            frame = socket.next() => {
-                let Some(frame) = frame else {
-                    return Err("the relay closed the socket".to_string());
-                };
-                let frame = frame.map_err(|error| format!("socket: {error}"))?;
-                let tungstenite::Message::Text(text) = frame else {
-                    continue;
-                };
-                let Ok(value) = serde_json::from_str::<Value>(&text) else {
-                    continue;
-                };
-                if value[1].as_str() != Some("jobs") {
-                    continue;
-                }
-                // The relay buffers live events until the history query
-                // behind a REQ finishes, and a CLOSED subscription receives
-                // nothing at all. Both are the worker's business to report,
-                // because from the terminal each looks like a worker that
-                // is not there.
-                match value[0].as_str() {
-                    Some("EOSE") => {
-                        eprintln!("subscribed; jobs arrive live from here");
+                frame = socket.next() => {
+                    let Some(frame) = frame else {
+                        return Err(fault(subscribed, "the relay closed the socket".to_string()));
+                    };
+                    let frame = frame.map_err(|error| fault(subscribed, format!("socket: {error}")))?;
+                    let tungstenite::Message::Text(text) = frame else {
+                        continue;
+                    };
+                    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+                        continue;
+                    };
+                    if value[1].as_str() != Some("jobs") {
                         continue;
                     }
-                    Some("CLOSED") => {
-                        return Err(format!(
-                            "the relay closed the jobs subscription: {}",
-                            value[2].as_str().unwrap_or_default()
-                        ));
+                    // The relay buffers live events until the history query
+                    // behind a REQ finishes, and a CLOSED subscription
+                    // receives nothing at all. Both are the worker's
+                    // business to act on, because from the terminal each
+                    // looks like a worker that is not there.
+                    match value[0].as_str() {
+                        Some("EOSE") => {
+                            eprintln!("subscribed; jobs arrive live from here");
+                            subscribed = true;
+                            continue;
+                        }
+                        Some("CLOSED") => {
+                            return Err(fault(subscribed, format!(
+                                "the relay closed the jobs subscription: {}",
+                                value[2].as_str().unwrap_or_default()
+                            )));
+                        }
+                        Some("EVENT") => {}
+                        _ => continue,
                     }
-                    Some("EVENT") => {}
-                    _ => continue,
+                    let Ok(request) = serde_json::from_value::<Event>(value[2].clone()) else {
+                        continue;
+                    };
+                    if request.kind != REQUEST_KIND || request.validate_crypto().is_err() {
+                        continue;
+                    }
+                    // Admission is decided here, before anything is spawned:
+                    // a job over the bound is refused `busy` at once rather
+                    // than queued behind work the terminal cannot see.
+                    let permit = self.running.clone().try_acquire_owned().ok();
+                    let job = Job {
+                        identity: self.identity.clone(),
+                        door: self.door.clone(),
+                        decline: self.options.decline.clone(),
+                        allow: self.options.allow.clone(),
+                        publish: self.outgoing.clone(),
+                        permit,
+                    };
+                    self.tasks.spawn(async move { job.answer(&request).await });
                 }
-                let Ok(request) = serde_json::from_value::<Event>(value[2].clone()) else {
-                    continue;
-                };
-                if request.kind != REQUEST_KIND || request.validate_crypto().is_err() {
-                    continue;
-                }
-                // Admission is decided here, before anything is spawned: a
-                // job over the bound is refused `busy` at once rather than
-                // queued behind work the terminal cannot see.
-                let permit = running.clone().try_acquire_owned().ok();
-                let job = Job {
-                    identity: identity.clone(),
-                    door: door.clone(),
-                    decline: options.decline.clone(),
-                    allow: options.allow.clone(),
-                    publish: outgoing.clone(),
-                    permit,
-                };
-                tasks.spawn(async move { job.answer(&request).await });
             }
         }
     }
