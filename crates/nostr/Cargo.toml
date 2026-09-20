@@ -24,3 +24,13 @@ sha2 = "0.11.0"
 
 [lints]
 workspace = true
+
+# Test-only oracles for the hand-written NIP-44 primitives and the property
+# tests. Read docs/nostr/crypto-primitives.md before promoting one of these to
+# a runtime dependency.
+[dev-dependencies]
+chacha20 = "0.10.2"
+hkdf = "0.13.0"
+hmac = "0.13.0"
+proptest = "1.11.0"
+subtle = "2.6.1"
