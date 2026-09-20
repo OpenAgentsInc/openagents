@@ -225,8 +225,9 @@ while a backup is due.
 
 Test the newest unit immediately, into an empty database and an empty media
 root. The restore script checks both digests against the manifest before it
-writes, refuses a target that already holds tables or files, and fails if any
-ready blob row ends up without bytes:
+writes, refuses a target that already holds tables or files, moves bytes the
+archive holds only under `.deleted/` back to the live path when the dump still
+names the blob, and fails if any ready blob row ends up without bytes:
 
 ```sh
 sudo -u postgres createdb --owner=nostr-relay nostr_relay_restore_test
