@@ -184,7 +184,9 @@ Three things are worth taking.
    base-signature match, then the isolation probe passes, then a per-family
    admitted calibration record exists — otherwise serve the typed answer with
    probabilities omitted and refuse `uncalibrated`. Every piece exists; none
-   of them is keyed off a single manifest.
+   of them is keyed off a single manifest. *Status: built in
+   `crates/lev/src/admission.rs` (#9389); see
+   [`../../lev/manifest.md`](../../lev/manifest.md#where-the-last-issue-attaches).*
 
 3. **Prove revocation, because it is the one thing we demonstrably lack.**
    Publish the manifest with a freshness window, mark a release revoked, and

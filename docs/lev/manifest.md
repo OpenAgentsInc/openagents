@@ -129,13 +129,18 @@ update did not either.
 
 ## Where the last issue attaches
 
-A **behavioral admission floor** (#9389) is a stricter reading of the same
-rule: digest, then base signature, then the isolation probe, then a
-per-family admitted record, with anything short of that serving the typed
-answer and refusing `uncalibrated`. The probe's result joins the calibration
-record in `evalRef`; the document does not need reshaping.
-
-It is not built here.
+The **behavioral admission floor** (#9389) is a stricter reading of the same
+rule, and `lev-serve` runs it before it binds a port: digest, then base
+signature, then the isolation probe, then a per-family admitted record.
+`crates/lev/src/admission.rs` is the one function. A release that fails
+any of the first three does not start, and the console names the step
+(`admission step 2 (base signature) failed: ...`). The fourth does not stop
+the door: a named family with no admitted record serves the typed answer
+with `probabilities` and `confidence` omitted and refuses `uncalibrated`
+when the caller asks for them. The probe's measurement is reported on
+`GET /v1/models` as `isolation`; the document does not need reshaping.
+[`architecture.md`](architecture.md#question-isolation-without-a-mask)
+describes the probe and its control arm.
 
 ## What is deliberately absent
 

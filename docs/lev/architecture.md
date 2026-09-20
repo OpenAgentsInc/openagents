@@ -142,9 +142,17 @@ adapter uses and the one kev reproduces, computed on the calibrated
 distribution rather than the raw one.
 
 **No Lev number is a calibrated predictive probability, and the door says so
-in every response.** The original rule here was stricter: omit the
-distribution entirely until a map is fitted. The first measurement run
-changed it, and the reasoning is worth keeping visible.
+in every response.** The rule that follows from that is the one in
+[`calibration.md`](calibration.md), and since #9389 the door enforces it: a
+request that names a question family gets `probabilities` and `confidence`
+only when an admitted calibration record covers that family on that door.
+Otherwise the typed answer travels alone, and a caller that sends
+`extensions.require_calibration` is refused `uncalibrated`. A request that
+names no family asks for no family's map and receives the seeded frequency,
+which is what a measurement run reads to fit one.
+
+The rule was looser between the first measurement run and #9389, and the
+reasoning is worth keeping visible.
 
 The run found no signal to fit. Sampling spread does not track difficulty —
 top share sits between 0.81 and 1.00 on easy and hard items alike — and the
@@ -152,15 +160,19 @@ certainty band came back `likely` on every item including the wrong ones.
 There is no dynamic range to map, so "wait for a fitted map" would have meant
 "return nothing, indefinitely."
 
-What the door does instead:
+What the door did for a while instead was serve the L2 frequency in
+`probabilities` and a `confidence` computed from it, labelled in
+`extensions.calibration` as a measure of decoding consistency rather than
+correctness. The behavior record shows why that label was not enough: the
+model held a wrong answer at 0.81 as steadily as a right one, and a number
+that cannot tell those apart is the "90%" string this contract exists to
+replace. So the door now withholds it for a named family and keeps the
+label:
 
-- It serves the L2 frequency in `probabilities`, and `confidence` computed
-  from it, so an unmodified System One client round-trips.
 - Every response carries `extensions.calibration`, and `GET /v1/models`
-  repeats it: these are seeded-sampling frequencies measuring decoding
-  consistency, not correctness. The behavior record shows the model holding a
-  wrong answer at 0.81 as steadily as a right one.
-- A caller that will not accept an uncalibrated number sends
+  repeats it, saying whether the family's numbers come from a fitted map or
+  were omitted for want of one.
+- A caller that will not accept a typed answer without a probability sends
   `extensions.require_calibration` and gets a typed `uncalibrated` refusal.
 
 That posture is the same one kev's card and TypeSafe's own docs take — a
@@ -195,6 +207,23 @@ Two things follow:
   sibling must stay at chance. Move the secret into the state and the same
   question must find it. A Lev implementation that reuses one session across
   questions fails this, which is exactly what the test is for.
+
+A `.fmadapter` has no import list, so nothing about an adapter can be
+verified by reading it. The probe is therefore not only a test: it is step 3
+of the **admission floor** `lev-serve` runs before it binds a port. The gate
+in `crates/lev/src/admission.rs` checks, in order, that the artifact's bytes
+are the ones the manifest names, that the runtime reports the pinned base
+signature, and that a three-arm probe passes — the secret in a sibling
+question, absent as a control, and in the state — and a release that fails
+any of the three does not start, with an error naming the step. The fourth
+step, an admitted calibration record per family, does not stop the door; it
+decides per request whether a probability travels, as described above. The
+control arm is what makes the probe readable: a model that always picks the
+first option names the secret in a quarter of the draws in every arm, and
+only a sibling rate that exceeds the control by more than the margin is a
+leak. `crates/lev/tests/admission.rs` proves the gate against a fake
+runtime that leaks and one that does not; whether Apple's runtime isolates
+sessions is measured by `crates/lev/tests/isolation.rs` on a Mac.
 
 Whether the framework recomputes the shared prefix on every session, or
 caches something Lev benefits from, is not observable from outside. It is
