@@ -76,7 +76,7 @@ The panel is in `crates/coderbench/goldens/devin-fan-out-six.evidence.json`.
 **The capability probe cannot trust `PATH`.** The first attempt at the
 delegations failed six times with `command not found: devin`. The binary is
 on the operator's interactive `PATH` and not on the one a spawned subshell
-inherits. [NIP-CC](../nips/coder/NIP-CC.md)'s `detect` resolves a binary
+inherits. [NIP-CC](../nips/openagents/NIP-CC.md)'s `detect` resolves a binary
 rather than assuming a name resolves, and this is why. A probe that shelled
 out to `devin --version` would have reported the capability absent on a
 machine that has it.
@@ -88,6 +88,25 @@ answer is 9. The delegate read what was there. Any future task whose grade
 depends on repository contents has to pin the commit, which is why the task
 manifest carries `requires.repository` and why the reference
 implementation's manifests carry a `base` commit.
+
+## A recorded golden is not retconned
+
+On 2026-09-20 the `nips/coder/` lane was renamed `nips/openagents/`. One of
+the six delegations asks about `nips/coder/NIP-CC.md`, and that prompt was
+**left as it was recorded**.
+
+A golden says what happened. The delegate was asked about a path that
+existed at the time and answered correctly, and rewriting the question to
+match today's tree would make the file say something that never occurred.
+The same rule the receipt chain enforces for rows applies to a trace: the
+record is evidence, and evidence that is edited to stay tidy is not
+evidence.
+
+The consequence is that **this task no longer reproduces**. A rerun would
+ask about a path that is gone and the delegate would say so. That is a stale
+task rather than a corrupt golden, and the fix is a new task at a new commit
+rather than an edit to this one — which is the argument for `requires.repository`
+carrying a pinned commit, made by the first thing that moved underneath it.
 
 ## What is not tested yet
 

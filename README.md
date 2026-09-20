@@ -42,7 +42,7 @@ Coder's backend is a relay, not a service.
   itself; every event is already signed. No signup, no GitHub OAuth, no
   bearer tokens to leak — a fresh keypair on first run is a working
   anonymous identity, and an allowance ledger keys off the public key.
-- **The wire protocol is public and inspectable.** NIP-CJ (`nips/coder/`)
+- **The wire protocol is public and inspectable.** NIP-CJ (`nips/openagents/`)
   defines the job traffic: ephemeral, NIP-44-encrypted request events to
   the worker, `judgment`/`partial`/`status`/`result` events back. The
   relay stores nothing — it fans ciphertext out to subscribers and

@@ -12,6 +12,39 @@ operator policies, which say **which executors an operator prefers**; and
 `kind:30182` programs, which are **the reusable, composable unit of work**
 the decision engine selects.
 
+## Capabilities and programs
+
+A **capability** is something you can reach. A **program** is something you
+can run. They are separate kinds because they change for different reasons
+and at different rates.
+
+| | Capability | Program |
+| --- | --- | --- |
+| Answers | What is available, and what will it promise? | What are the steps, and what bounds them? |
+| Belongs to | the machine and the executor | the work |
+| Changes when | you install, upgrade, or lose an executor | you decide to do the work differently |
+| Portable? | No. Presence is per machine. | Yes. A program says nothing about where it runs. |
+| Names | `devin-local`, `codex`, `coder-cloud` | `delegate-fan-out`, `review-changes` |
+
+The two are many-to-many. One program reaches several capabilities, and one
+capability serves many programs. Installing the Devin CLI does not tell you
+what to do with it, and writing `delegate-fan-out` does not require Devin —
+the program names a step of kind `delegate`, and which executor fills it is
+resolved at run time from what the machine has and what the operator
+prefers.
+
+The join between them is bounds. A program's step states the bounds it needs
+and a capability manifest states the bounds its executor will keep, so a
+host can refuse a pairing before it runs anything. That is the whole reason
+`cannot_enforce` is stated positively.
+
+One way to keep them apart: **a capability can be absent, and a program
+cannot be wrong about the machine.** If `devin` is not installed, the
+capability is simply not an option. The program is unchanged, and runs with
+whatever executor is.
+
+## The taxonomy
+
 The taxonomy is deliberate, and it is the glossary's rather than this
 document's. A **capability** is a granted ability. An **executor** is the
 implementation that performs an agent session, reached through an executor

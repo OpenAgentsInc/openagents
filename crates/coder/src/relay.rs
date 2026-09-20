@@ -1,4 +1,4 @@
-//! The relay door: a Coder Jobs client ([`nips/coder/NIP-CJ.md`]) over a
+//! The relay door: a Coder Jobs client ([`nips/openagents/NIP-CJ.md`]) over a
 //! Nostr relay.
 //!
 //! The terminal holds a secp256k1 identity under `~/.openagents/`, answers

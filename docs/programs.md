@@ -65,7 +65,7 @@ prefer, how wide a fan-out may go, and what is never to be used.
 query, a decision, a deterministic check, or a delegation.
 
 All three are addressable Nostr events under
-[NIP-CC](../nips/coder/NIP-CC.md) — `30180`, `30181`, `30182`. The relay is
+[NIP-CC](../nips/openagents/NIP-CC.md) — `30180`, `30181`, `30182`. The relay is
 the workspace, which is the pattern `AGENTS.md` names for application
 behaviour: event kinds and relay policy rather than a private backend.
 

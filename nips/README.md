@@ -10,9 +10,9 @@ in this repository.
 | --- | --- | --- |
 | `nips/official/` | [nostr-protocol/nips](https://github.com/nostr-protocol/nips) | The standard NIPs |
 | `nips/block/` | [block/buzz](https://github.com/block/buzz/tree/main/docs/nips) | The Buzz extension NIPs |
-| `nips/coder/` | this repository | Coder product specifications, authored here |
+|  `nips/openagents/` | this repository | OpenAgents specifications, authored here |
 
-`nips/coder/` is not synced: its files are the source of truth and the
+ `nips/openagents/` is not synced: its files are the source of truth and the
 manifest does not track them.
 
 `nips/manifest.json` records the exact upstream commit for each synced lane, with

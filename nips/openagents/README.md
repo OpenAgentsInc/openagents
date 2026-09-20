@@ -1,4 +1,4 @@
-# Coder lane
+# OpenAgents lane
 
 Specifications authored in this repository for the Coder product. Unlike
 `official/` and `block/`, this lane is not synced from upstream — the files
