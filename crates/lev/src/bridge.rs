@@ -258,12 +258,22 @@ fn read_frames(mut stdout: impl BufRead, frames: &mpsc::Sender<Frame>) {
     }
 }
 
-/// Drains stderr so the helper never blocks on a full pipe, keeping a tail.
-fn drain_stderr(mut stderr: impl Read, tail: &Mutex<Tail>) {
+/// How long a retirement waits for the drainer to reach the end of stderr.
+///
+/// A killed helper's pipe closes at once; a grandchild it left behind can
+/// hold the pipe open, and a retirement does not wait on that.
+const STDERR_SETTLE: Duration = Duration::from_millis(250);
+
+/// Drains stderr so the helper never blocks on a full pipe, keeping a tail,
+/// and reports through `done` when the pipe closes.
+fn drain_stderr(mut stderr: impl Read, tail: &Mutex<Tail>, done: &mpsc::Sender<()>) {
     let mut buffer = [0_u8; 4096];
     loop {
         match stderr.read(&mut buffer) {
-            Ok(0) | Err(_) => return,
+            Ok(0) | Err(_) => {
+                let _ = done.send(());
+                return;
+            }
             Ok(read) => tail
                 .lock()
                 .expect("the stderr tail lock is not poisoned")
@@ -278,6 +288,7 @@ pub struct Bridge {
     stdin: ChildStdin,
     frames: Receiver<Frame>,
     stderr: Arc<Mutex<Tail>>,
+    stderr_done: Receiver<()>,
     deadline: Duration,
     retired: bool,
 }
@@ -324,9 +335,10 @@ impl Bridge {
             })?;
         let stderr = Arc::new(Mutex::new(Tail::default()));
         let tail = Arc::clone(&stderr);
+        let (done, stderr_done) = mpsc::channel();
         std::thread::Builder::new()
             .name("lev-bridge-stderr".to_string())
-            .spawn(move || drain_stderr(stderr_pipe, &tail))
+            .spawn(move || drain_stderr(stderr_pipe, &tail, &done))
             .map_err(|error| {
                 Refusal::new(
                     RefusalCode::BridgeError,
@@ -338,6 +350,7 @@ impl Bridge {
             stdin,
             frames,
             stderr,
+            stderr_done,
             deadline,
             retired: false,
         })
@@ -364,6 +377,7 @@ impl Bridge {
         self.retired = true;
         let _ = self.child.kill();
         let _ = self.child.wait();
+        let _ = self.stderr_done.recv_timeout(STDERR_SETTLE);
         let tail = self.stderr_tail();
         let message = if tail.is_empty() {
             why

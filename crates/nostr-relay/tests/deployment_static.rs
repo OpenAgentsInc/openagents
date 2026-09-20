@@ -62,15 +62,28 @@ fn proxy_templates_preserve_websocket_and_client_ip_contracts() {
 fn backup_is_private_atomic_retained_and_scheduled() {
     for required in [
         "umask 077",
-        "pg_dump --dbname=nostr_relay --format=custom",
-        "--file=\"${temporary}\"",
-        "mv -- \"${temporary}\" \"${destination}\"",
-        "tar --create --file=\"${media_temporary}\"",
-        "mv -- \"${media_temporary}\" \"${media_destination}\"",
-        "-mtime \"+${retention_days}\" -delete",
+        "pg_dump --dbname=\"${database}\" --format=custom",
+        "--file=\"${work}/db.dump\"",
+        "tar --create --file=\"${work}/media.tar\"",
+        "--exclude='./.tmp'",
+        "pg_restore --data-only --table=media_blob",
+        "no manifest written",
+        "mv -- \"${work}/db.dump\" \"${dump}\"",
+        "mv -- \"${work}/media.tar\" \"${archive}\"",
+        "mv -- \"${work}/manifest\" \"${manifest}\"",
+        "-mtime \"+${retention_days}\"",
     ] {
         assert!(BACKUP_SCRIPT.contains(required), "missing {required}");
     }
+    // The manifest is the last write: nothing moves it before the dump and
+    // the archive are in place.
+    let dump_at = BACKUP_SCRIPT
+        .find("mv -- \"${work}/db.dump\"")
+        .expect("the dump moves");
+    let manifest_at = BACKUP_SCRIPT
+        .find("mv -- \"${work}/manifest\"")
+        .expect("the manifest moves");
+    assert!(dump_at < manifest_at);
     assert!(BACKUP_UNIT.contains("User=postgres"));
     assert!(BACKUP_UNIT.contains("SupplementaryGroups=nostr-relay"));
     assert!(BACKUP_UNIT.contains("ReadWritePaths=/var/backups/nostr-relay"));
