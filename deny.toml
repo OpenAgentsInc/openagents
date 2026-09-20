@@ -37,3 +37,12 @@ ignore = true
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# Duplicate versions are reported, not refused: the numeric stack and the
+# tokenizer pin several. A wildcard registry requirement is refused because it
+# defeats the reviewed lockfile; workspace path dependencies are exempt.
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "simplest-path"

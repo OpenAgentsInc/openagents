@@ -61,6 +61,27 @@ infrastructure, not additional product implementation languages. Keep product
 code in Rust, with the existing Swift FoundationModels bridge exception.
 Preserve `docs/transcripts/` and do not add GitHub-billed automation.
 
+## Dependency policy
+
+[`deny.toml`](../deny.toml) is the dependency policy: advisories, licenses,
+sources, and bans over the resolved workspace graph with all features and
+development dependencies. The manual command that enforces it is:
+
+```sh
+./scripts/check-dependencies.sh
+```
+
+It requires `cargo-deny` 0.20.2 on the pinned toolchain; install it with
+`cargo +1.97.1 install cargo-deny --version 0.20.2 --locked`. The script
+refuses when the `RUSTSEC-2024-0436` exception is overdue for review or the
+resolved `paste` version differs from the reviewed one, then runs
+`cargo deny --locked check advisories licenses sources bans`. If `cargo-deny`
+is absent, `./scripts/verify-rust.sh` prints `SKIPPED: dependency policy`
+and continues; that result is a partial gate, not a pass.
+[The dependency policy](dependencies.md) records the exception's owner,
+reason, and review date, the `paste` dependency paths, and the license
+review.
+
 ## Current verification record
 
 On 2026-09-20, the workspace passed strict all-target Clippy on Rust 1.97.1

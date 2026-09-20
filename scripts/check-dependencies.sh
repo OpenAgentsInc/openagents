@@ -15,4 +15,4 @@ if [ "$paste_version" != 'paste v1.0.15 (proc-macro)' ]; then
     echo 'The reviewed paste dependency changed. Revisit its advisory exception.' >&2
     exit 1
 fi
-cargo +1.97.1 deny --locked check advisories licenses sources
+cargo +1.97.1 deny --locked check advisories licenses sources bans

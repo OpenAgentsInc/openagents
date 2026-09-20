@@ -27,6 +27,12 @@ the reviewed lockfile.
 - Registry packages must come from crates.io. Unapproved Git sources and
   other registries fail. Local workspace code requires the provenance review
   below; a path dependency is not proof of trustworthy origin.
+- A wildcard version requirement on a registry dependency fails, because it
+  leaves the reviewed version to whatever the resolver picks next. Workspace
+  path dependencies are exempt. Duplicate versions of one crate are reported
+  as warnings, not failures; the numeric stack and the two tokenizer releases
+  pin several, and collapsing them is a dependency change to review on its
+  own, not a policy setting.
 
 The checker fetches RustSec data during normal online runs. Offline data may
 be at most seven days old, but release review should run online. A clean
@@ -50,7 +56,7 @@ The script refuses on that date or later and refuses a different resolved
 `paste` version. `cargo-deny` also fails if an ignored advisory is no longer
 encountered, so obsolete exceptions must be removed.
 
-At `94944556de`, the dependency paths are:
+At `94944556de`, and unchanged at `5f0e67b9f2`, the dependency paths are:
 
 - `kev -> candle-core 0.11.0 -> gemm 0.19.0` and its `gemm-c32`,
   `gemm-c64`, `gemm-common`, `gemm-f16`, `gemm-f32`, and `gemm-f64` crates.
@@ -105,6 +111,15 @@ source checks with `cargo-deny 0.20.2`. The sole advisory exception is the
 maintenance finding above. No dependency version, source, or numeric
 implementation changed. Numeric regression tests were therefore not rerun
 for this policy-only change. Workspace license resolution remains outstanding.
+
+Later on 2026-09-20 at `5f0e67b9f2`, the gate added the bans check and
+passed all four: `advisories ok, bans ok, licenses ok, sources ok`. The bans
+check reported 21 duplicate-version warnings (for example `thiserror` 1 and
+2, `tokenizers` 0.22.2 and 0.23.2, `getrandom` three times) and no wildcard
+requirement. The `paste` paths above were reproduced unchanged. The eight
+allowed license identifiers are the ones the resolved graph declares; no
+identifier is allowed that no dependency uses, and no clarification or
+exception entry exists.
 
 To inspect license assignments without changing policy:
 

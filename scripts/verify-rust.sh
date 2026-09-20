@@ -23,7 +23,11 @@ cargo test --locked --workspace
 cargo test --locked --workspace --features "$features"
 cargo +1.95.0 check --locked --workspace --all-targets --features "$features"
 cargo +1.94.0 check --locked -p kev --lib
-./scripts/check-dependencies.sh
+if cargo +1.97.1 deny --version >/dev/null 2>&1; then
+  ./scripts/check-dependencies.sh
+else
+  echo 'SKIPPED: dependency policy; cargo-deny is not installed, so this is a partial gate.'
+fi
 
 if (( postgres )); then
   ./scripts/test-postgres.sh
