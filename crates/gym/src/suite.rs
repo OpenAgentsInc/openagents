@@ -36,9 +36,32 @@
 //! number was wanted. One read per suite, and an override that leaves a
 //! trace, is the rule that fits the failure that happened.
 //!
-//! The ledger is an append-only file meant to be committed, not a lock. It
-//! stops an accidental second read and makes a deliberate one visible in
-//! review. It does not stop two processes racing, and it is not trying to.
+//! The ledger is an append-only file meant to be committed, and the read
+//! itself is a transaction. [`LockedLedger::read_locked`] takes the ledger's
+//! lock — a sibling `*.lock` file created with `create_new`, the same
+//! discipline the result store keeps for its single writer — and holds it
+//! across reading the file, deciding eligibility, appending the record, and
+//! syncing the append to durable storage. Only then are the items handed
+//! back, so a read that returned is a read that was recorded, and two
+//! racing readers cannot both be first: the loser finds the winner's
+//! committed record and is refused.
+//!
+//! The lock is taken on the ledger's canonical path, so two spellings of
+//! one file — a symlink, a `..` segment, a relative path — still take one
+//! lock. Two names for one inode cannot be told apart that way, so a ledger
+//! with more than one name is refused rather than half-serialized, and so
+//! is a symlink whose target does not exist.
+//!
+//! An interrupted append fails closed rather than opening a second spend.
+//! A last line that parses is a committed record and counts; a last line
+//! that does not parse means a writer died mid-record, and the ledger
+//! reports [`SuiteError::Interrupted`] rather than read past it — the read
+//! that line was writing may or may not have committed, and guessing wrong
+//! is how a locked partition gets spent twice. A lock that outlives the
+//! wait bound is reported rather than waited on forever; whether the
+//! holder is a live read or a file a killed reader left is a person's
+//! check, not the wait's. `docs/gym/ledger.md` covers the transaction, the
+//! alias policy, and the recovery rules.
 //!
 //! # What the digest covers
 //!
@@ -68,12 +91,14 @@ use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::row::LabelSource;
+use crate::store::{StoreError, WriteLock};
 
 /// The schema tag a three-way suite carries.
 pub const SUITE_SCHEMA: &str = "openagents.gym.suite.v1";
@@ -181,6 +206,42 @@ pub enum SuiteError {
         /// What the filesystem or the parser said.
         message: String,
     },
+    /// The ledger's lock stayed held past the wait bound. That may be a
+    /// read still running or a file a killed reader left; the message
+    /// names the lock and the pid it claims so a person can check before
+    /// removing it.
+    #[error(
+        "the ledger lock {lock} stayed held{holder}. That may be a read still running or a file \
+         a killed reader left; check the holder before removing it"
+    )]
+    Locked {
+        /// The lock file's path.
+        lock: String,
+        /// Who holds it, when the file says.
+        holder: String,
+    },
+    /// The ledger's last line is incomplete. An earlier append was
+    /// interrupted, and whether the read it was writing committed cannot be
+    /// told from what landed, so the ledger fails closed rather than guess
+    /// and spend a partition twice.
+    #[error(
+        "the read ledger {path} ends mid-record: an earlier append was interrupted, and whether \
+         its read committed cannot be told from what landed. Remove or complete the last line \
+         before spending again"
+    )]
+    Interrupted {
+        /// The ledger's path.
+        path: String,
+    },
+}
+
+impl SuiteError {
+    /// Whether the ledger's lock stayed held past the wait bound. A caller
+    /// that meets this can retry; every other refusal means the spend was
+    /// wrong, not early.
+    pub fn is_locked(&self) -> bool {
+        matches!(self, SuiteError::Locked { .. })
+    }
 }
 
 /// Which partition an item belongs to.
@@ -372,7 +433,11 @@ impl Suite {
                 return Err(SuiteError::EmptyPartition { partition });
             }
         }
-        let carried = suite.items.iter().filter(|item| item.question.is_some()).count();
+        let carried = suite
+            .items
+            .iter()
+            .filter(|item| item.question.is_some())
+            .count();
         if carried != 0 && carried != suite.items.len() {
             return Err(SuiteError::MixedQuestions {
                 carried,
@@ -456,7 +521,9 @@ impl Suite {
     pub fn evidence_counts(&self) -> BTreeMap<String, usize> {
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         for item in &self.items {
-            *counts.entry(item.evidence().label().to_string()).or_insert(0) += 1;
+            *counts
+                .entry(item.evidence().label().to_string())
+                .or_insert(0) += 1;
         }
         counts
     }
@@ -537,21 +604,53 @@ pub struct LockedRead {
     pub overrides: Option<Override>,
 }
 
+/// How long a read waits for the process holding the ledger's lock before
+/// reporting the hold. An expired wait does not establish whether the
+/// holder is still running, wedged, or dead. Check it before removing a
+/// lock file.
+const DEFAULT_LOCK_WAIT: Duration = Duration::from_secs(10);
+
+/// How often a read that is waiting on the lock retries it.
+const LOCK_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
 /// An append-only record of every locked-partition read.
 ///
 /// Point it at a file that is committed. The ledger's value is that a
 /// second read shows up in review, which it cannot do from a temporary
 /// directory.
+///
+/// A read is a transaction, not a look followed by an append: a sibling
+/// `*.lock` file is taken first and held until the record is synced to
+/// durable storage, so two racing readers cannot both be first and a read
+/// that returned is a read that survives a crash. The lock lives beside
+/// the ledger under its canonical name, so spellings that resolve to the
+/// same file take the same lock; a ledger with more than one name is
+/// refused rather than half-serialized.
 #[derive(Clone, Debug)]
 pub struct LockedLedger {
     path: PathBuf,
+    wait: Duration,
 }
 
 impl LockedLedger {
     /// A ledger kept at this path. The file is created on the first append.
     #[must_use]
     pub fn at(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+        Self {
+            path: path.into(),
+            wait: DEFAULT_LOCK_WAIT,
+        }
+    }
+
+    /// How long a read waits for the process holding the ledger's lock
+    /// before reporting the hold. The default is ten seconds. A hold that
+    /// outlasts the wait is reported with the lock's path and the pid it
+    /// claims; whether that holder is alive is a check for the person
+    /// removing it.
+    #[must_use]
+    pub fn lock_wait(mut self, wait: Duration) -> Self {
+        self.wait = wait;
+        self
     }
 
     /// Where the ledger is kept.
@@ -561,19 +660,16 @@ impl LockedLedger {
     }
 
     /// Every read the ledger holds, oldest first.
+    ///
+    /// The file is read without the lock, so a `reads` that meets a writer
+    /// mid-append can see the torn line that writer is still writing; the
+    /// report is [`SuiteError::Interrupted`] either way, because an
+    /// interrupted write and a write in flight cannot be told apart.
     pub fn reads(&self) -> Result<Vec<LockedRead>, SuiteError> {
-        let text = match fs::read_to_string(&self.path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(self.trouble(&error.to_string())),
+        let Some(text) = self.read_text()? else {
+            return Ok(Vec::new());
         };
-        let mut reads = Vec::new();
-        for line in text.lines().filter(|line| !line.trim().is_empty()) {
-            let read: LockedRead =
-                serde_json::from_str(line).map_err(|error| self.trouble(&error.to_string()))?;
-            reads.push(read);
-        }
-        Ok(reads)
+        self.parse(&text)
     }
 
     /// Every read of one suite, by its digest, oldest first.
@@ -587,8 +683,11 @@ impl LockedLedger {
 
     /// Reads the locked partition and records the read.
     ///
-    /// The read is counted against the suite's digest. If that digest has
-    /// been read before, this is refused: a second read is an override, and
+    /// The read is counted against the suite's digest, and it is one
+    /// transaction: the ledger's lock is taken, the file is read, the check
+    /// runs against what is committed, the record is appended and synced,
+    /// and only then are the items handed back. If that digest has been
+    /// read before, this is refused: a second read is an override, and
     /// [`LockedLedger::read_locked_again`] is how you take one deliberately.
     pub fn read_locked<'a>(
         &self,
@@ -596,15 +695,14 @@ impl LockedLedger {
         spend: &Spend<'_>,
     ) -> Result<Vec<&'a Item>, SuiteError> {
         spend.check()?;
-        let earlier = self.reads_of(&suite.digest)?;
-        if let Some(first) = earlier.first() {
-            return Err(SuiteError::AlreadyRead {
+        self.spend(suite, spend, |earlier| match earlier.first() {
+            Some(first) => Err(SuiteError::AlreadyRead {
                 suite: suite.name.clone(),
                 at: first.at.clone(),
                 subject: first.subject.clone(),
-            });
-        }
-        self.spend(suite, spend, None)
+            }),
+            None => Ok(None),
+        })
     }
 
     /// Reads the locked partition again, against an explicit override that
@@ -626,31 +724,56 @@ impl LockedLedger {
         if because.trim().is_empty() {
             return Err(SuiteError::Unrecorded { field: "because" });
         }
-        let earlier = self.reads_of(&suite.digest)?;
-        if earlier.is_empty() {
-            return Err(SuiteError::NothingToOverride {
-                suite: suite.name.clone(),
-            });
-        }
-        self.spend(
-            suite,
-            spend,
-            Some(Override {
+        self.spend(suite, spend, |earlier| {
+            if earlier.is_empty() {
+                return Err(SuiteError::NothingToOverride {
+                    suite: suite.name.clone(),
+                });
+            }
+            Ok(Some(Override {
                 read: earlier.len(),
                 authority: authority.to_owned(),
                 because: because.to_owned(),
-            }),
-        )
+            }))
+        })
     }
 
-    /// Appends the record, then hands back the items. The record is written
-    /// first on purpose: a read that fails to record is not a read.
+    /// The transaction both read paths share. The lock goes on before the
+    /// file is read and stays on until the record is durable, so `decide`
+    /// runs against what is committed rather than what was committed when
+    /// the caller last looked, and two callers cannot both pass it. A
+    /// refusal drops the lock without touching the file, and the items are
+    /// handed back only after the record is on disk and synced.
     fn spend<'a>(
         &self,
         suite: &'a Suite,
         spend: &Spend<'_>,
-        overrides: Option<Override>,
+        decide: impl FnOnce(&[LockedRead]) -> Result<Option<Override>, SuiteError>,
     ) -> Result<Vec<&'a Item>, SuiteError> {
+        // A symlink whose target does not exist would be created through
+        // the link, under a lock covering only this spelling of it: two
+        // dangling aliases of one target would not serialize.
+        if let Ok(meta) = fs::symlink_metadata(&self.path)
+            && meta.file_type().is_symlink()
+            && !self.path.exists()
+        {
+            return Err(self.trouble(
+                "the path is a symlink whose target does not exist; name the target, because two \
+                 dangling aliases of it would not serialize",
+            ));
+        }
+        // The directories a first write would create, captured before the
+        // lock or the file can create any of them: the durable commit syncs
+        // every directory that gained a name in this transaction.
+        let new_dirs = self.new_dirs();
+        let lock = self.lock()?;
+        let text = self.read_text()?;
+        let reads = self.parse(text.as_deref().unwrap_or_default())?;
+        let earlier: Vec<LockedRead> = reads
+            .into_iter()
+            .filter(|read| read.digest == suite.digest)
+            .collect();
+        let overrides = decide(&earlier)?;
         let items: Vec<&Item> = suite
             .items
             .iter()
@@ -666,8 +789,146 @@ impl LockedLedger {
             items: items.len(),
             overrides,
         };
-        let line = serde_json::to_string(&record)
+        self.commit(text.as_deref(), &record, &new_dirs)?;
+        drop(lock);
+        Ok(items)
+    }
+
+    /// The ledger's canonical path, for locking: the lock lives beside the
+    /// ledger under the name the filesystem gives it, so callers that spell
+    /// the same ledger differently — a symlink, a `..` segment, a relative
+    /// path — still serialize. Components that do not exist yet are
+    /// reattached to the deepest ancestor that does.
+    fn resolved_path(&self) -> PathBuf {
+        let absolute = std::path::absolute(&self.path).unwrap_or_else(|_| self.path.clone());
+        let mut cursor = absolute.clone();
+        let mut tail = Vec::new();
+        while !cursor.exists() {
+            match (cursor.file_name(), cursor.parent()) {
+                (Some(name), Some(parent)) => {
+                    tail.push(name.to_os_string());
+                    cursor = parent.to_path_buf();
+                }
+                _ => break,
+            }
+        }
+        let mut resolved = fs::canonicalize(&cursor).unwrap_or(cursor);
+        for name in tail.iter().rev() {
+            resolved.push(name);
+        }
+        resolved
+    }
+
+    /// The directories from the ledger's parent up to the first one that
+    /// already exists, deepest first. Captured before anything is created,
+    /// so a durable commit can sync every directory that gained a name in
+    /// this transaction: the file's name lives in its parent, and each new
+    /// directory's name lives in the next one up.
+    fn new_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs = Vec::new();
+        let mut dir = self
+            .path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        loop {
+            let existed = dir.exists();
+            dirs.push(dir.to_path_buf());
+            if existed {
+                break;
+            }
+            match dir.parent() {
+                Some(parent) if !parent.as_os_str().is_empty() => dir = parent,
+                Some(_) => dir = Path::new("."),
+                None => break,
+            }
+        }
+        dirs
+    }
+
+    /// Takes the ledger's lock, waiting a holder out and reporting the hold
+    /// once the wait runs out. The lock is the result store's: a sibling
+    /// `*.lock` file created with `create_new` beside the ledger's
+    /// canonical name, which holds across processes on one machine and not
+    /// only across threads. The wait is measured as elapsed time, so an
+    /// unbounded `lock_wait` is a promise to wait rather than an overflow.
+    fn lock(&self) -> Result<WriteLock, SuiteError> {
+        let ledger = self.resolved_path();
+        let started = Instant::now();
+        loop {
+            match WriteLock::acquire(&ledger) {
+                Ok(lock) => return Ok(lock),
+                Err(StoreError::Locked { lock, holder }) => {
+                    if started.elapsed() >= self.wait {
+                        return Err(SuiteError::Locked { lock, holder });
+                    }
+                    std::thread::sleep(LOCK_POLL_INTERVAL);
+                }
+                Err(error) => return Err(self.trouble(&error.to_string())),
+            }
+        }
+    }
+
+    /// The ledger's raw text, when the file exists.
+    fn read_text(&self) -> Result<Option<String>, SuiteError> {
+        match fs::read_to_string(&self.path) {
+            Ok(text) => Ok(Some(text)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(self.trouble(&error.to_string())),
+        }
+    }
+
+    /// Every record in `text`, oldest first.
+    ///
+    /// A line that does not parse is a corrupted ledger — unless it is the
+    /// last line of a file that does not end in a newline, which is what an
+    /// interrupted append leaves. That line is reported as
+    /// [`SuiteError::Interrupted`]: the read it was writing may or may not
+    /// have committed, so it is neither counted nor written off.
+    fn parse(&self, text: &str) -> Result<Vec<LockedRead>, SuiteError> {
+        let complete = text.is_empty() || text.ends_with('\n');
+        let lines: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        let mut reads = Vec::with_capacity(lines.len());
+        for (index, line) in lines.iter().enumerate() {
+            match serde_json::from_str(line) {
+                Ok(read) => reads.push(read),
+                Err(_) if !complete && index == lines.len() - 1 => {
+                    return Err(SuiteError::Interrupted {
+                        path: self.path.display().to_string(),
+                    });
+                }
+                Err(error) => return Err(self.trouble(&error.to_string())),
+            }
+        }
+        Ok(reads)
+    }
+
+    /// Appends one record and makes it durable before returning: the record
+    /// is written, the file is synced, and when this write is the ledger's
+    /// first every directory that gained a name in this transaction is
+    /// synced too, so the file's name and each new directory's name survive
+    /// the same crash the contents do. The record is written first on
+    /// purpose: a read that fails to record is not a read.
+    ///
+    /// `prior` is the file's text as read under the lock. A prior text that
+    /// does not end in a newline holds a record that parsed but whose
+    /// terminating newline never landed; completing its line before the new
+    /// record repairs the file without changing what the line says.
+    ///
+    /// `new_dirs` is the [`LockedLedger::new_dirs`] snapshot taken before
+    /// the lock, deepest first.
+    fn commit(
+        &self,
+        prior: Option<&str>,
+        record: &LockedRead,
+        new_dirs: &[PathBuf],
+    ) -> Result<(), SuiteError> {
+        let mut line = serde_json::to_string(record)
             .map_err(|error| SuiteError::Malformed(error.to_string()))?;
+        line.push('\n');
         if let Some(parent) = self
             .path
             .parent()
@@ -680,8 +941,70 @@ impl LockedLedger {
             .append(true)
             .open(&self.path)
             .map_err(|error| self.trouble(&error.to_string()))?;
-        writeln!(file, "{line}").map_err(|error| self.trouble(&error.to_string()))?;
-        Ok(items)
+        self.refuse_hardlinked(&file)?;
+        if prior.is_some_and(|text| !text.is_empty() && !text.ends_with('\n')) {
+            file.write_all(b"\n")
+                .map_err(|error| self.trouble(&error.to_string()))?;
+        }
+        file.write_all(line.as_bytes())
+            .map_err(|error| self.trouble(&error.to_string()))?;
+        file.sync_all()
+            .map_err(|error| self.trouble(&error.to_string()))?;
+        if prior.is_none_or(str::is_empty) {
+            self.sync_dirs(new_dirs)?;
+        }
+        Ok(())
+    }
+
+    /// One ledger, one name. A hardlinked alias reaches the same bytes
+    /// through a path the canonical lock cannot see — two names for one
+    /// inode resolve to two locks — so a ledger that has more than one is
+    /// refused rather than half-serialized.
+    #[cfg(unix)]
+    fn refuse_hardlinked(&self, file: &fs::File) -> Result<(), SuiteError> {
+        use std::os::unix::fs::MetadataExt;
+
+        let metadata = file
+            .metadata()
+            .map_err(|error| self.trouble(&error.to_string()))?;
+        if metadata.nlink() > 1 {
+            return Err(self.trouble(
+                "the ledger has more than one name; a hardlinked alias is not serialized, so point \
+                 every reader at one path",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The non-Unix stand-in: hardlink detection relies on the link count,
+    /// which other platforms do not expose this way.
+    #[cfg(not(unix))]
+    fn refuse_hardlinked(&self, _file: &fs::File) -> Result<(), SuiteError> {
+        Ok(())
+    }
+
+    /// Syncs each directory that gained a name in this transaction, deepest
+    /// first: the ledger file's name lives in its parent, and each new
+    /// directory's name lives in the next one up, so a ledger created under
+    /// a new directory chain is durable end to end. A relative ledger path
+    /// resolves its parent to the working directory, so `ledger.jsonl`
+    /// syncs `.` rather than skipping the sync. A filesystem that cannot
+    /// sync a directory gets the error, not silence.
+    #[cfg(unix)]
+    fn sync_dirs(&self, dirs: &[PathBuf]) -> Result<(), SuiteError> {
+        for dir in dirs {
+            fs::File::open(dir)
+                .and_then(|dir| dir.sync_all())
+                .map_err(|error| self.trouble(&error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// The non-Unix stand-in: the record's own sync still holds; the
+    /// directory-entry guarantee does not exist there.
+    #[cfg(not(unix))]
+    fn sync_dirs(&self, _dirs: &[PathBuf]) -> Result<(), SuiteError> {
+        Ok(())
     }
 
     fn trouble(&self, message: &str) -> SuiteError {
@@ -732,8 +1055,11 @@ mod tests {
     /// to embed and this is not, and a suite does not have to be embedded to
     /// be scored: `gym eval --suite` takes a path.
     fn coder_turns() -> Suite {
-        Suite::load_file(concat!(env!("CARGO_MANIFEST_DIR"), "/suites/coder-turns-v1.json"))
-            .expect("the committed coder suite loads")
+        Suite::load_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/suites/coder-turns-v1.json"
+        ))
+        .expect("the committed coder suite loads")
     }
 
     #[test]
@@ -758,7 +1084,11 @@ mod tests {
                 "{} does not say what its label rests on",
                 item.id
             );
-            assert!(item.label_rule.is_some(), "{} does not name its label rule", item.id);
+            assert!(
+                item.label_rule.is_some(),
+                "{} does not name its label rule",
+                item.id
+            );
         }
     }
 
@@ -770,7 +1100,11 @@ mod tests {
         let suite = coder_turns();
         let mut seen: BTreeMap<String, Partition> = BTreeMap::new();
         for item in &suite.items {
-            let state = item.id.split_once('/').map_or("", |(_, rest)| rest).to_string();
+            let state = item
+                .id
+                .split_once('/')
+                .map_or("", |(_, rest)| rest)
+                .to_string();
             match seen.get(&state) {
                 Some(partition) => assert_eq!(
                     *partition, item.partition,
@@ -920,8 +1254,8 @@ mod tests {
         // The digest covers the items, so which rule judges them is outside
         // it. That is what lets this change land without moving
         // 54fbf4137c…, and the assertion below is the promise.
-        let repointed =
-            SUPPORT_V2_THREE_WAY.replace("\"gate\": \"probability-v1\"", "\"gate\": \"decision-v1\"");
+        let repointed = SUPPORT_V2_THREE_WAY
+            .replace("\"gate\": \"probability-v1\"", "\"gate\": \"decision-v1\"");
         assert_ne!(repointed, SUPPORT_V2_THREE_WAY, "the gate was in the file");
         let judged_by_another = Suite::load(&repointed).expect("a repointed gate is not drift");
         assert_eq!(judged_by_another.gate.as_deref(), Some("decision-v1"));
@@ -949,8 +1283,8 @@ mod tests {
             SUPPORT_V2_THREE_WAY.contains("\"questions\": \"support-v2-three-way-v1\""),
             "the manifest names its question set"
         );
-        let unnamed = SUPPORT_V2_THREE_WAY
-            .replace(" \"questions\": \"support-v2-three-way-v1\",\n", "");
+        let unnamed =
+            SUPPORT_V2_THREE_WAY.replace(" \"questions\": \"support-v2-three-way-v1\",\n", "");
         assert_ne!(unnamed, SUPPORT_V2_THREE_WAY, "the field was in the file");
         let without = Suite::load(&unnamed).expect("a suite may carry its text inline");
         assert_eq!(without.questions, None);
@@ -973,11 +1307,14 @@ mod tests {
         let mut reworded = authored.clone();
         reworded.questions.get_mut("routing").expect("routing")["instructions"] =
             serde_json::json!("Which team handles this?");
-        assert_ne!(reworded.digest(), authored.digest(), "the reword is a new set");
+        assert_ne!(
+            reworded.digest(),
+            authored.digest(),
+            "the reword is a new set"
+        );
         assert_eq!(pinned.compute_digest().expect("a digest"), pinned.digest);
         assert_eq!(
-            pinned.digest,
-            "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+            pinned.digest, "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
             "the items did not move, so neither did what every row pins"
         );
     }
@@ -1018,7 +1355,10 @@ mod tests {
         let text = serde_json::to_string(&half).expect("a suite serializes");
         assert!(matches!(
             Suite::load(&text),
-            Err(SuiteError::MixedQuestions { carried: 1, total: 196 })
+            Err(SuiteError::MixedQuestions {
+                carried: 1,
+                total: 196
+            })
         ));
     }
 
@@ -1141,6 +1481,324 @@ mod tests {
     }
 
     #[test]
+    fn sixteen_callers_get_exactly_one_first_read() {
+        // The A06 race. Before the lock covered the transaction, callers
+        // released together each read an empty ledger and most of them
+        // appended as the first reader. Now the eligibility check runs
+        // under the lock, so exactly one wins and the rest meet the
+        // committed record.
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        let ledger = &ledger;
+        let suite = &suite;
+        let barrier = std::sync::Barrier::new(16);
+        let outcomes: Vec<Result<usize, SuiteError>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..16)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        ledger.read_locked(suite, &SPEND).map(|items| items.len())
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("a caller finished"))
+                .collect()
+        });
+        let accepted = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+        let refused = outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, Err(SuiteError::AlreadyRead { .. })))
+            .count();
+        assert_eq!(accepted, 1, "exactly one first read: {outcomes:?}");
+        assert_eq!(refused, 15, "everyone else met the committed record");
+        assert_eq!(ledger.reads().expect("the ledger reads back").len(), 1);
+        assert_eq!(
+            outcomes.iter().find_map(|outcome| outcome.as_ref().ok()),
+            Some(&39),
+            "the winner got the items"
+        );
+    }
+
+    #[test]
+    fn an_interrupted_append_fails_closed_until_the_line_is_repaired() {
+        // A writer killed mid-append leaves a last line that does not
+        // parse. The ledger cannot tell whether the read it was writing
+        // committed, so it refuses to read past the tear rather than permit
+        // a second spend.
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        ledger.read_locked(&suite, &SPEND).expect("the first read");
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(ledger.path())
+            .expect("the ledger opens");
+        file.write_all(b"{\"schema\":\"openagents.gym.locked_read.v1\",\"suite\":\"sup")
+            .expect("the torn write lands");
+        file.sync_all().expect("the torn write is durable");
+        drop(file);
+
+        let error = ledger.read_locked(&suite, &SPEND).unwrap_err();
+        assert!(
+            matches!(error, SuiteError::Interrupted { .. }),
+            "a torn tail is not AlreadyRead and not a second spend: {error}"
+        );
+        assert!(error.to_string().contains("interrupted"), "{error}");
+        assert!(
+            matches!(ledger.reads().unwrap_err(), SuiteError::Interrupted { .. }),
+            "inspection fails closed too"
+        );
+
+        // Repair is a person's, not the ledger's: truncate the file to the
+        // last committed line. The read that committed still counts.
+        let bytes = fs::read(ledger.path()).expect("the ledger reads");
+        let committed = bytes.iter().rposition(|byte| *byte == b'\n').unwrap() + 1;
+        fs::write(ledger.path(), &bytes[..committed]).expect("the repair writes");
+        assert!(
+            matches!(
+                ledger.read_locked(&suite, &SPEND),
+                Err(SuiteError::AlreadyRead { .. })
+            ),
+            "the committed record survives the repair"
+        );
+    }
+
+    #[test]
+    fn a_record_that_lost_its_newline_still_counts_and_the_next_append_repairs_it() {
+        // The other shape an interrupted write leaves: the record landed
+        // whole and the newline did not. The record parses, so the spend
+        // counts — reading past it would spend the partition twice.
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        ledger.read_locked(&suite, &SPEND).expect("the first read");
+        let text = fs::read_to_string(ledger.path()).expect("the ledger reads");
+        fs::write(ledger.path(), text.trim_end_matches('\n')).expect("the newline is removed");
+
+        assert!(
+            matches!(
+                ledger.read_locked(&suite, &SPEND),
+                Err(SuiteError::AlreadyRead { .. })
+            ),
+            "a committed record counts whether or not its newline landed"
+        );
+
+        ledger
+            .read_locked_again(&suite, &SPEND, "chris", "the newline never landed")
+            .expect("an override still works");
+        let repaired = fs::read_to_string(ledger.path()).expect("the ledger reads");
+        assert!(
+            repaired.ends_with('\n'),
+            "the append repaired the line it would have joined"
+        );
+        assert_eq!(ledger.reads().expect("the ledger reads back").len(), 2);
+    }
+
+    #[test]
+    fn a_held_lock_is_reported_after_the_wait() {
+        // The lock is a file, so a killed reader leaves it behind. A read
+        // waits the hold out, then reports the file it is stuck on —
+        // naming it, and naming the pid it claims, so a person can check
+        // whether the holder is a live read before removing it. A zero
+        // wait reports the hold at once.
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        // The lock lives beside the ledger's canonical name, which a
+        // tempdir under `/var` already aliases on macOS.
+        let lock_path = PathBuf::from(format!("{}.lock", ledger.resolved_path().display()));
+        fs::write(&lock_path, "999999\n").expect("a stale lock file");
+
+        let ledger = ledger.lock_wait(Duration::from_millis(50));
+        let error = ledger.read_locked(&suite, &SPEND).unwrap_err();
+        assert!(matches!(error, SuiteError::Locked { .. }), "{error}");
+        assert!(error.is_locked(), "a caller may retry on it");
+        let message = error.to_string();
+        assert!(message.contains(".lock"), "{message}");
+        assert!(message.contains("999999"), "{message}");
+
+        let zero = ledger.clone().lock_wait(Duration::ZERO);
+        assert!(
+            matches!(
+                zero.read_locked(&suite, &SPEND),
+                Err(SuiteError::Locked { .. })
+            ),
+            "a zero wait reports the hold without waiting"
+        );
+
+        fs::remove_file(&lock_path).expect("the repair");
+        ledger
+            .read_locked(&suite, &SPEND)
+            .expect("a cleared lock reads");
+    }
+
+    #[test]
+    fn an_extreme_lock_wait_neither_panics_nor_waits_on_a_free_ledger() {
+        // The wait is measured as elapsed time rather than added to an
+        // instant, so an unbounded value is a promise to wait, not an
+        // overflow — and a free ledger answers at once.
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        let ledger = ledger.lock_wait(Duration::MAX);
+        ledger
+            .read_locked(&suite, &SPEND)
+            .expect("a free ledger reads at once");
+    }
+
+    #[test]
+    fn a_refused_read_leaves_no_lock_and_no_record() {
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        ledger.read_locked(&suite, &SPEND).expect("the first read");
+        assert!(matches!(
+            ledger.read_locked(&suite, &SPEND),
+            Err(SuiteError::AlreadyRead { .. })
+        ));
+        let lock_path = PathBuf::from(format!("{}.lock", ledger.resolved_path().display()));
+        assert!(!lock_path.exists(), "a refusal released the lock");
+        assert_eq!(ledger.reads().expect("the ledger reads back").len(), 1);
+    }
+
+    #[test]
+    fn aliased_spellings_of_one_ledger_share_one_first_read() {
+        // The lock lives beside the ledger under its canonical name, so
+        // callers that spell the same file differently still serialize: a
+        // canonical path against the lexical one, a `..` segment, and on
+        // Unix a symlinked directory.
+        let suite = suite();
+        let (directory, _ledger) = ledger();
+        let lexical = directory.path().join("ledger.jsonl");
+        let canonical = fs::canonicalize(directory.path())
+            .expect("the directory resolves")
+            .join("ledger.jsonl");
+        let dotdot = directory.path().join("subdir/../ledger.jsonl");
+        let mut spellings = vec![lexical, canonical, dotdot];
+        #[cfg(unix)]
+        {
+            let alias = directory.path().join("alias");
+            std::os::unix::fs::symlink(directory.path(), &alias).expect("the symlink lands");
+            spellings.push(alias.join("ledger.jsonl"));
+        }
+        let spellings = &spellings;
+        let suite = &suite;
+        let barrier = std::sync::Barrier::new(8);
+        let outcomes: Vec<Result<usize, SuiteError>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|index| {
+                    let path = &spellings[index % spellings.len()];
+                    let barrier = &barrier;
+                    scope.spawn(move || {
+                        barrier.wait();
+                        LockedLedger::at(path)
+                            .read_locked(suite, &SPEND)
+                            .map(|items| items.len())
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("a caller finished"))
+                .collect()
+        });
+        assert_eq!(
+            outcomes.iter().filter(|outcome| outcome.is_ok()).count(),
+            1,
+            "one ledger, one first read, however it is spelled: {outcomes:?}"
+        );
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, Err(SuiteError::AlreadyRead { .. })))
+                .count(),
+            7,
+            "every other spelling met the committed record"
+        );
+    }
+
+    #[test]
+    fn a_ledger_under_new_directories_is_created_and_committed() {
+        // A ledger path whose parent chain does not exist is created end
+        // to end, and the commit syncs every directory that gained a name:
+        // the file's in its parent, each new directory's in the next one
+        // up.
+        let suite = suite();
+        let (directory, _ledger) = ledger();
+        let ledger = LockedLedger::at(directory.path().join("a/b/c/ledger.jsonl"));
+        ledger.read_locked(&suite, &SPEND).expect("the first read");
+        assert!(ledger.path().exists());
+        assert_eq!(ledger.reads().expect("the ledger reads back").len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_symlinked_ledger_is_refused() {
+        // Two dangling aliases of one target would take two locks and write
+        // one file, so the write is refused and the operator names the
+        // target.
+        let suite = suite();
+        let (directory, _ledger) = ledger();
+        let alias = directory.path().join("alias.jsonl");
+        std::os::unix::fs::symlink("missing/ledger.jsonl", &alias).expect("the symlink lands");
+        let error = LockedLedger::at(&alias)
+            .read_locked(&suite, &SPEND)
+            .unwrap_err();
+        assert!(error.to_string().contains("symlink"), "{error}");
+        assert!(
+            !directory.path().join("missing").exists(),
+            "nothing was created through the link"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_hardlinked_ledger_is_refused() {
+        // Two names for one inode resolve to two canonical paths and so to
+        // two locks; rather than half-serialize, the ledger refuses to be
+        // written under more than one name.
+        let suite = suite();
+        let (directory, ledger) = ledger();
+        fs::write(ledger.path(), "").expect("the ledger file exists");
+        let alias = directory.path().join("same-bytes.jsonl");
+        fs::hard_link(ledger.path(), &alias).expect("the hard link lands");
+        for path in [ledger.path().to_path_buf(), alias] {
+            let error = LockedLedger::at(&path)
+                .read_locked(&suite, &SPEND)
+                .unwrap_err();
+            assert!(error.to_string().contains("more than one name"), "{error}");
+        }
+        assert_eq!(
+            fs::read_to_string(ledger.path()).expect("the ledger reads"),
+            "",
+            "nothing was written"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_commit_that_fails_returns_no_items_and_spends_nothing() {
+        // Fault injection through the real write path: the ledger file
+        // refuses the append, so no items come back and no spend is
+        // recorded. The next read is a first read, not a repeated one —
+        // a failed commit committed nothing.
+        use std::os::unix::fs::PermissionsExt;
+
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        fs::write(ledger.path(), "").expect("the ledger file exists");
+        fs::set_permissions(ledger.path(), fs::Permissions::from_mode(0o444))
+            .expect("the ledger is read-only");
+
+        let error = ledger.read_locked(&suite, &SPEND).unwrap_err();
+        assert!(matches!(error, SuiteError::Ledger { .. }), "{error}");
+
+        fs::set_permissions(ledger.path(), fs::Permissions::from_mode(0o644))
+            .expect("the ledger is writable again");
+        ledger
+            .read_locked(&suite, &SPEND)
+            .expect("a clean first read");
+        assert_eq!(ledger.reads().expect("the ledger reads back").len(), 1);
+    }
+
+    #[test]
     fn a_suite_tagged_with_another_schema_is_refused() {
         let mistagged = SUPPORT_V2_THREE_WAY.replace(SUITE_SCHEMA, "openagents.gym.suite.v2");
         assert!(matches!(
@@ -1162,9 +1820,7 @@ mod tests {
         // Its digest is pinned by rows and calibration records too, and it
         // is a file this change does not touch.
         assert!(
-            two_way.contains(
-                "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368"
-            ),
+            two_way.contains("6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368"),
             "support-v2 still records the digest its rows pin"
         );
     }

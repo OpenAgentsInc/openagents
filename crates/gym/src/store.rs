@@ -846,13 +846,17 @@ fn hex_digest(bytes: &[u8]) -> String {
 /// only across threads. Dropping the guard removes the file, including while
 /// a panic unwinds; a writer killed outright leaves the file behind, and the
 /// error names it so a person can remove it.
+///
+/// `crate::suite::LockedLedger` holds the same guard across a read's whole
+/// transaction — read, eligibility check, append, and durable commit — for
+/// the same reason an append holds it across the head check and the write.
 #[derive(Debug)]
-struct WriteLock {
+pub(crate) struct WriteLock {
     path: PathBuf,
 }
 
 impl WriteLock {
-    fn acquire(store: &Path) -> Result<Self, StoreError> {
+    pub(crate) fn acquire(store: &Path) -> Result<Self, StoreError> {
         let path = lock_path(store);
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
