@@ -73,10 +73,15 @@ for variant in "${variants[@]}"; do
   adapter="$root/$variant"
   mkdir -p "$adapter"
   echo "$variant -> $adapter"
-  for file in adapter_config.json adapter_model.safetensors eval.json head.pt \
+  # Only kev-0.5b publishes eval.json; the previews publish result.json and
+  # their manifests pin neither, so eval.json is fetched only where pinned.
+  for file in adapter_config.json adapter_model.safetensors head.pt \
       merges.txt special_tokens_map.json tokenizer.json tokenizer_config.json vocab.json; do
     fetch "jaredpalmer/$variant" main "$file" "$adapter/$file"
   done
+  if grep -q '"eval.json"' "$manifest"; then
+    fetch "jaredpalmer/$variant" main eval.json "$adapter/eval.json"
+  fi
 
   ensure_converter
   "$venv/bin/python" - "$adapter" <<'EOF'
