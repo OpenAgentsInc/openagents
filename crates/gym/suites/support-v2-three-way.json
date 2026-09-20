@@ -6,6 +6,12 @@
  "tier": "scored",
  "gate": "probability-v2",
  "questions": "support-v2-three-way-v1",
+ "exposure": {
+  "partition": "locked",
+  "items": 20,
+  "through": "training/lev-adapter/convert.py, which trained every Lev adapter from the support-v2 calibration split before this suite locked 20 of those 98 items; fixed forward on 2026-09-20 (openagents#9399)",
+  "successor": "support-v2-unseen"
+ },
  "items": [
   {
    "id": "routing/000",
