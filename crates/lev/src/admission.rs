@@ -254,6 +254,20 @@ impl Gate {
     /// Returns the [`Denied`] naming the first of steps 1 to 3 that failed.
     /// Step 4 does not fail here; the [`Floor`] carries its result.
     pub fn run(self, pool: &Pool) -> Result<Floor, Denied> {
+        self.run_observed(pool, &mut |_, _, _| {})
+    }
+
+    /// Runs the same floor while exposing only its fixed probe calls and outcomes.
+    /// The observer receives each arm's batch in request order, before failures
+    /// are propagated. It never observes workload requests.
+    ///
+    /// # Errors
+    /// Returns the same admission denial as [`Self::run`].
+    pub fn run_observed(
+        self,
+        pool: &Pool,
+        observer: &mut ProbeObserver<'_>,
+    ) -> Result<Floor, Denied> {
         let Self {
             manifest,
             os_build,
@@ -285,7 +299,8 @@ impl Gate {
             .artifact
             .as_ref()
             .map(|artifact| artifact.resolved_path().display().to_string());
-        let report = probe(pool, adapter.as_deref(), seeds).map_err(Denied::Unprobed)?;
+        let report =
+            probe_observed(pool, adapter.as_deref(), seeds, observer).map_err(Denied::Unprobed)?;
         if let Some(reason) = report.fault() {
             return Err(Denied::Isolation { report, reason });
         }
@@ -595,6 +610,18 @@ const PLAIN: &str = "An ordinary support message about a duplicate charge.";
 /// Returns the refusal of the first draw the runtime would not answer. A
 /// probe that did not finish proves nothing.
 pub fn probe(pool: &Pool, adapter: Option<&str>, seeds: u64) -> Result<Isolation, Refusal> {
+    probe_observed(pool, adapter, seeds, &mut |_, _, _| {})
+}
+
+/// Receives an admission arm, its exact call, and the runtime result.
+pub type ProbeObserver<'a> = dyn FnMut(&str, &Call, &Result<crate::bridge::Outcome, Refusal>) + 'a;
+
+fn probe_observed(
+    pool: &Pool,
+    adapter: Option<&str>,
+    seeds: u64,
+    observer: &mut ProbeObserver<'_>,
+) -> Result<Isolation, Refusal> {
     let seeds = seeds.max(1);
     let mut options = vec![SECRET];
     options.extend_from_slice(&DECOYS);
@@ -624,12 +651,33 @@ pub fn probe(pool: &Pool, adapter: Option<&str>, seeds: u64) -> Result<Isolation
         Call::decide(&sibling_compiled["planted"], Sampling::Greedy),
         adapter,
     );
-    for outcome in pool.decide_all(&[planted]) {
+    for outcome in observed_batch(pool, "planted", &[planted], observer) {
         outcome?;
     }
-    let sibling = rate(pool, &sibling_compiled["probe"], adapter, seeds)?;
-    let absent = rate(pool, &compile(&absent)?["probe"], adapter, seeds)?;
-    let state = rate(pool, &compile(&in_state)?["probe"], adapter, seeds)?;
+    let sibling = rate(
+        pool,
+        &sibling_compiled["probe"],
+        adapter,
+        seeds,
+        "sibling",
+        observer,
+    )?;
+    let absent = rate(
+        pool,
+        &compile(&absent)?["probe"],
+        adapter,
+        seeds,
+        "absent",
+        observer,
+    )?;
+    let state = rate(
+        pool,
+        &compile(&in_state)?["probe"],
+        adapter,
+        seeds,
+        "state",
+        observer,
+    )?;
     Ok(Isolation {
         seeds,
         sibling,
@@ -640,7 +688,14 @@ pub fn probe(pool: &Pool, adapter: Option<&str>, seeds: u64) -> Result<Isolation
 
 /// How often the probe names the secret over `seeds` draws, with the option
 /// order rotated by the seed so position bias spreads across the options.
-fn rate(pool: &Pool, probe: &Compiled, adapter: Option<&str>, seeds: u64) -> Result<f64, Refusal> {
+fn rate(
+    pool: &Pool,
+    probe: &Compiled,
+    adapter: Option<&str>,
+    seeds: u64,
+    arm: &str,
+    observer: &mut ProbeObserver<'_>,
+) -> Result<f64, Refusal> {
     let calls: Vec<Call> = (0..seeds)
         .map(|seed| {
             let mut rotated = probe.clone();
@@ -659,12 +714,25 @@ fn rate(pool: &Pool, probe: &Compiled, adapter: Option<&str>, seeds: u64) -> Res
         })
         .collect();
     let mut hits = 0_u64;
-    for outcome in pool.decide_all(&calls) {
+    for outcome in observed_batch(pool, arm, &calls, observer) {
         if outcome?.choice.as_deref() == Some(SECRET) {
             hits += 1;
         }
     }
     Ok(hits as f64 / seeds as f64)
+}
+
+fn observed_batch(
+    pool: &Pool,
+    arm: &str,
+    calls: &[Call],
+    observer: &mut ProbeObserver<'_>,
+) -> Vec<Result<crate::bridge::Outcome, Refusal>> {
+    let outcomes = pool.decide_all(calls);
+    for (call, outcome) in calls.iter().zip(&outcomes) {
+        observer(arm, call, outcome);
+    }
+    outcomes
 }
 
 fn attach(call: Call, adapter: Option<&str>) -> Call {

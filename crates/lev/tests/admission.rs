@@ -69,6 +69,7 @@ while IFS= read -r line; do
             printf '{"id":"%s","ok":true,"compatibleAdapters":["fmadapter-lev-@SIGNATURE@"]}\n' "$id"
             continue ;;
     esac
+    if [ "@MODE@" = refused ]; then exit 1; fi
     choice=$(first_option "$line")
     if field prompt "$line" | grep -q '@TOKEN@' && offers_token "$line"; then
         choice=@TOKEN@
@@ -471,4 +472,78 @@ fn the_isolation_report_names_what_failed() {
         ..passing
     };
     assert!(deaf.fault().is_some_and(|reason| reason.contains("state")));
+}
+
+#[test]
+fn observing_the_probe_preserves_its_calls_and_verdict() {
+    for mode in ["isolated", "leaky"] {
+        let plain = Fixture::new(mode, &BASE[..7]);
+        let baseline = Gate::new(plain.manifest()).run(&plain.pool());
+        let fixture = Fixture::new(mode, &BASE[..7]);
+        let mut rows = Vec::new();
+        let observed = Gate::new(fixture.manifest()).run_observed(
+            &fixture.pool(),
+            &mut |arm, call, outcome| {
+                rows.push((
+                    arm.to_string(),
+                    serde_json::to_value(call).unwrap(),
+                    outcome.clone(),
+                ));
+            },
+        );
+        assert_eq!(rows.len(), 25);
+        assert_eq!(rows[0].0, "planted");
+        let mut rates = Vec::new();
+        for arm in ["sibling", "absent", "state"] {
+            let arm_rows: Vec<_> = rows.iter().filter(|row| row.0 == arm).collect();
+            assert_eq!(arm_rows.len(), 8);
+            for (seed, (_, call, _)) in arm_rows.iter().enumerate() {
+                assert_eq!(call["sampling"]["seed"], seed);
+            }
+            rates.push(
+                arm_rows
+                    .iter()
+                    .filter(|row| row.2.as_ref().unwrap().choice.as_deref() == Some(TOKEN))
+                    .count() as f64
+                    / 8.0,
+            );
+        }
+        match (baseline, observed) {
+            (Ok(before), Ok(after)) => {
+                assert_eq!(before.isolation(), after.isolation());
+                assert_eq!(
+                    [
+                        after.isolation().sibling,
+                        after.isolation().absent,
+                        after.isolation().state
+                    ],
+                    rates.as_slice()
+                );
+            }
+            (Err(before), Err(after)) => assert_eq!(before.to_string(), after.to_string()),
+            _ => panic!("observer changed the result"),
+        }
+    }
+}
+
+#[test]
+fn observing_a_runtime_failure_keeps_the_original_denial() {
+    let plain = Fixture::new("refused", &BASE[..7]);
+    let baseline = Gate::new(plain.manifest())
+        .run(&plain.pool())
+        .err()
+        .unwrap();
+    let fixture = Fixture::new("refused", &BASE[..7]);
+    let mut observations = 0;
+    let observed = Gate::new(fixture.manifest())
+        .run_observed(&fixture.pool(), &mut |arm, _, outcome| {
+            assert_eq!(arm, "planted");
+            assert!(outcome.is_err());
+            observations += 1;
+        })
+        .err()
+        .unwrap();
+    assert_eq!(observations, 1);
+    assert_eq!(baseline.step(), observed.step());
+    assert!(matches!(observed, Denied::Unprobed(_)));
 }

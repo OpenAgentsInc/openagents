@@ -49,6 +49,7 @@ async fn main() {
     let mut adapter: Option<String> = None;
     let mut calibration: Option<String> = None;
     let mut manifest: Option<String> = None;
+    let mut admission_record: Option<String> = None;
     let mut refresh = Some(15 * 60_u64);
     let mut loose = Vec::new();
     let mut args = std::env::args().skip(1);
@@ -64,6 +65,12 @@ async fn main() {
             // estimator, and the sample count, so those flags are refused
             // beside it rather than silently overriding the document.
             "--manifest" => manifest = args.next(),
+            "--admission-record" => {
+                admission_record = Some(args.next().unwrap_or_else(|| {
+                    eprintln!("--admission-record requires a new output path");
+                    std::process::exit(2);
+                }));
+            }
             "--adapter" => {
                 adapter = args.next();
                 loose.push("--adapter");
@@ -129,6 +136,10 @@ async fn main() {
         std::process::exit(2);
     }
 
+    if admission_record.is_some() && manifest.is_none() {
+        eprintln!("--admission-record requires --manifest");
+        std::process::exit(2);
+    }
     let pool = match Pool::discover(helpers) {
         Ok(pool) => pool,
         Err(refusal) => {
@@ -142,7 +153,12 @@ async fn main() {
     // does not start, and the step it failed is on the console.
     let mut door = match &manifest {
         Some(path) => {
-            let floor = admitted(path, &pool, calibration.as_deref());
+            let floor = admitted(
+                path,
+                &pool,
+                calibration.as_deref(),
+                admission_record.as_deref(),
+            );
             let manifest = floor.manifest();
             eprintln!(
                 "lev-serve: serving {} — {}",
@@ -285,7 +301,7 @@ async fn refresher(policy: Policy, every: u64) {
 /// Its denial names the step that failed, and that line is the whole
 /// diagnosis: the console says `admission step 2 (base signature) failed`
 /// rather than leaving an operator to work out which of four checks refused.
-fn admitted(path: &str, pool: &Pool, calibration: Option<&str>) -> Floor {
+fn admitted(path: &str, pool: &Pool, calibration: Option<&str>, record: Option<&str>) -> Floor {
     let manifest = match Manifest::load(path) {
         Ok(manifest) => manifest,
         Err(fault) => {
@@ -297,7 +313,35 @@ fn admitted(path: &str, pool: &Pool, calibration: Option<&str>) -> Floor {
     if let Some(dir) = calibration {
         gate = gate.with_calibration(dir);
     }
-    match gate.run(pool) {
+    let result = if let Some(path) = record {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .unwrap_or_else(|error| {
+                eprintln!("lev-serve: cannot create admission record {path}: {error}");
+                std::process::exit(2);
+            });
+        let mut rows = Vec::new();
+        let result = gate.run_observed(pool, &mut |arm, call, outcome| {
+            let outcome = match outcome {
+                Ok(value) => serde_json::json!({"choice": value.choice, "band": value.band, "latency_ms": value.latency_ms}),
+                Err(error) => serde_json::json!({"refusal": error.to_string()}),
+            };
+            rows.push(serde_json::json!({"schema": "openagents.lev.admission_probe_row.v1", "arm": arm, "call": call, "outcome": outcome}));
+        });
+        for row in rows {
+            if let Err(error) = writeln!(file, "{row}") {
+                eprintln!("lev-serve: cannot write admission record {path}: {error}");
+                std::process::exit(2);
+            }
+        }
+        result
+    } else {
+        gate.run(pool)
+    };
+    match result {
         Ok(floor) => floor,
         Err(denied) => {
             eprintln!("lev-serve: {path}: {denied}");

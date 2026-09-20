@@ -111,3 +111,13 @@ was changed.
 and that the controller stopped it after observation. It is not evidence of
 an independently observed clean server exit. The retained evidence contains
 aggregate probe rates only; it does not supply the uncaptured per-seed choices.
+
+For a subsequent startup, `lev-serve --manifest <manifest> --admission-record
+<new-path>` records the fixed admission probe's exact calls and runtime
+outcomes as JSON Lines. The flag requires a manifest and a new output file;
+it never captures workload requests. Each row identifies the arm and carries
+the call's seed and rotated options, plus its choice or refusal. The planted
+question is included. Capturing does not add model calls or change the floor.
+The file is written before the admission result is handled, including on a
+probe refusal. A file creation or write failure prevents startup. This option
+does not recover choices from the earlier run recorded above.
