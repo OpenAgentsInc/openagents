@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/tmp/openagents-supervision/root-target/debug/lev-serve",
+    "--manifest",
+    "crates/lev/manifests/lev-base-v1.json",
+    "--port",
+    "11456",
+    "--policy-refresh",
+    "off"
+  ],
+  "source": "0fb6320b2e8240be82994d80185dbf0cd7d38f44",
+  "load_before": "10:36  up 2 days, 11:25, 3 users, load averages: 3.39 2.97 2.87",
+  "listening": true,
+  "seconds": 6.375891209,
+  "exit_code": null,
+  "load_after": "10:36  up 2 days, 11:25, 3 users, load averages: 3.44 2.99 2.87",
+  "stopped_after_observation": true
+}

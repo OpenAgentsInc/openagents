@@ -91,3 +91,23 @@ admission, out-of-domain accuracy, state-budget fit, or a quiet latency ranking.
 The eight-draw floor is a startup behavior check, not a statistical proof that
 cross-session leakage is impossible. No suite, question, gate, or test was
 changed to obtain the result.
+
+## Retained startup evidence
+
+The startup response, server log, and controller result are retained beside
+this record. The only redaction replaces the local user's absolute policy-cache
+path with `$HOME/.lev/policy/current.json` in the response and log. These
+hashes describe the retained files after that redaction, not the original
+local files. No runtime answer, count, timing, policy digest, or source revision
+was changed.
+
+| Evidence | SHA-256 |
+| --- | --- |
+| [models.json](2026-09-20-admission-live/models.json) | `e08f5edcc90df843829a3d735ce87c88abd93b5c1e4a6f4cc455818bf4ff6f01` |
+| [startup.log](2026-09-20-admission-live/startup.log) | `b84592d3ddbf0aa6f1ec2e2dc71040599ca297ce4917c9ca0ac794b9b69ef9c7` |
+| [run.json](2026-09-20-admission-live/run.json) | `cae36f322997c8ad32d7e3eccb6e2d830bfb1a3e785a58dc50958822e018b3ba` |
+
+`run.json` records a live server at the observation point (`exit_code: null`)
+and that the controller stopped it after observation. It is not evidence of
+an independently observed clean server exit. The retained evidence contains
+aggregate probe rates only; it does not supply the uncaptured per-seed choices.
