@@ -57,6 +57,11 @@ large one.
 
 ## The best Kev, which is not the one this page measured
 
+The Kev rows below identify the historical fixture checkpoints. The new
+Hub adapters have not been measured on this suite; see the
+[2026-09-20 review](../kev/2026-09-20-upstream-review.md). This distinction
+does not change the Lev admission decisions on this page.
+
 | Door | Accuracy | ECE | Brier | NLL | Confident errors |
 | --- | --- | --- | --- | --- | --- |
 | `kev-8b` | **0.879** | **0.044** | **0.086** | **0.279** | **1** |

@@ -16,13 +16,19 @@ client:
 | lev (Apple, N=8) | 0.85 | **0.087** | 0.127 | ~1,600 ms |
 
 Lev has the lowest calibration error and the second-worst Brier, which is
-what honestly vague numbers look like. The Kev rows are the two smallest of
-four published checkpoints on 26 evaluation items; on 157 items of
+what honestly vague numbers look like. The Kev rows cover two of four
+published model sizes on 26 evaluation items; on 157 items of
 `support-v2-three-way`, `kev-8b` scores 0.879 with an ECE of 0.044 and Lev
-0.783, so read this table as Lev against small Kev. See
+0.783, so this table does not include the strongest Kev measured here. See
 [`../kev/measurements/2026-09-19-variant-scores.md`](../kev/measurements/2026-09-19-variant-scores.md). [`disposition.md`](disposition.md) is
 where to start: what Lev is admitted for, what it is refused for, and the
 ranked list of what would improve it.
+
+These Kev comparisons use the historical adapters pinned in this
+repository. Upstream replaced the Qwen3 adapters under the same names;
+the [2026-09-20 Kev review](../kev/2026-09-20-upstream-review.md) recommends
+a new 4B evaluation. The update does not change Lev's measured admission
+or establish a comparison with the new weights.
 
 [`roadmap.md`](roadmap.md) holds the issue sequence and the state of each
 step.
@@ -48,9 +54,9 @@ Three properties make it worth building:
 - **The answer shape is guaranteed by the runtime, not by a prompt.**
   Apple's guided generation constrains decoding to a schema, so a Choice
   over an admitted option set cannot return an option that is not in the
-  set. Caller text cannot add one either. That is a stronger structural
-  guarantee than kev's delimiter hardening, which detects forgery rather
-  than preventing it.
+  set. Caller text cannot add one either. Kev enforces its option set
+  through sanitized delimiters and a pointer readout over the supplied
+  options. Both constrain answer shape; neither establishes correctness.
 - **The marginal cost is zero.** No tokens are billed, nothing leaves the
   machine, and the model is resident between requests. That is the right
   economics for a judgment that runs in front of every metered agent turn.
@@ -75,10 +81,12 @@ an estimator over observable behavior plus a calibration map fitted on
 labelled data, and until that map is fitted for a question family, Lev
 refuses to report a probability at all.
 
-Expect Lev to be worse than kev at the judgment and better than kev at
-everything around it: availability, cost, privacy, and startup. Which kev
-decides how much worse: Lev and `kev-0.5b` are 0.070 apart on our suite,
-which the suite cannot resolve, while `kev-8b` is 0.096 ahead of Lev. Whether it
+Both Lev and local Kev can keep requests on the machine without an API
+charge. Lev depends on Apple's model availability and admitted question
+families; Kev requires downloaded weights and sufficient memory. Judgment
+quality depends on the checkpoint: Lev and `kev-0.5b` are 0.070 apart on
+our suite, which the suite cannot resolve, while `kev-8b` is 0.096 ahead
+of Lev. Whether it
 is good enough for any particular workflow is a measurement;
 [`disposition.md`](disposition.md) holds the ones made so far.
 
@@ -113,7 +121,7 @@ is good enough for any particular workflow is a measurement;
 
 ## Related
 
-- `docs/jev/knowledge-base.md` — the System One contract, the design rules,
+- [The Jev knowledge base](../decision-models/jev/knowledge-base.md) — the System One contract, the design rules,
   and the cookbook results. Lev speaks this contract.
 - `docs/kev/architecture.md` — the mechanism Lev cannot use, described
   precisely enough to explain why.

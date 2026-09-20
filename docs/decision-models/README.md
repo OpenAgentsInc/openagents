@@ -32,9 +32,14 @@ No answer becomes context for another.
 | Weights | closed, hosted | open adapter and head on an open base | closed, on-device, shipped by the OS |
 | Readout | direct, trained against outcomes | pointer head, cross-entropy | none; estimated from behaviour |
 | Cost per request | metered | our hardware | none |
-| Docs | [`jev/`](jev/) | [`kev/`](kev/) | [`lev/`](lev/) |
+| Docs | [`jev/`](jev/) | [`../kev/`](../kev/) | [`../lev/`](../lev/) |
 
 `crates/jev` is the client for all three. A caller picks by `base_url`.
+Select a model explicitly when comparing variants and record its artifact
+identity. The [2026-09-20 Kev review](../kev/2026-09-20-upstream-review.md)
+finds that the current upstream 0.6B, 4B, and 8B weights differ from the
+ones pinned here, and recommends evaluating the new 4B on Coder's current
+questions before changing the default.
 
 ## Where to start
 
@@ -42,10 +47,11 @@ No answer becomes context for another.
 | --- | --- |
 | To pick one for a workload | [`choosing.md`](choosing.md) |
 | The contract, the limits, the design rules | [`jev/knowledge-base.md`](jev/knowledge-base.md) |
-| How a decision model works mechanically | [`kev/architecture.md`](kev/architecture.md) |
-| Why Apple's runtime needs a different mechanism | [`lev/architecture.md`](lev/architecture.md) |
-| What Lev is admitted and refused for | [`lev/disposition.md`](lev/disposition.md) |
-| How any of these numbers were produced | [`lev/measurements/`](lev/measurements/) |
+| How a decision model works mechanically | [`../kev/architecture.md`](../kev/architecture.md) |
+| What the new Kev release changes here | [`../kev/2026-09-20-upstream-review.md`](../kev/2026-09-20-upstream-review.md) |
+| Why Apple's runtime needs a different mechanism | [`../lev/architecture.md`](../lev/architecture.md) |
+| What Lev is admitted and refused for | [`../lev/disposition.md`](../lev/disposition.md) |
+| How any of these numbers were produced | [`../lev/measurements/`](../lev/measurements/) |
 | Whether a Score's ordering means anything, door by door | [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) |
 | What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
 | How big a `coder` state may be, and what shrinking it cost | [`2026-09-20-state-budget.md`](2026-09-20-state-budget.md) |

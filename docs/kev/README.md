@@ -1,12 +1,17 @@
 # Kev
 
-**Status:** ported, all four checkpoints. `kev` is Jared Palmer's
+**Status:** all four model sizes are ported, with conformance measured for
+the checkpoint contents pinned in this repository. `kev` is Jared Palmer's
 open-source reconstruction of a Jev-style decision model, tracked in this
 workspace as `projects/repos/kev/` (manifest entry `jaredpalmer/kev` in
 `~/work/projects/manifest.txt`). The Rust port lives in `crates/kev` and
-serves every published variant — `kev-0.5b`, `kev-0.6b`, `kev-4b`,
+serves all four variants — `kev-0.5b`, `kev-0.6b`, `kev-4b`,
 `kev-8b` — through `kev-serve` on CPU and Metal, with per-variant
 conformance fixtures pinning each checkpoint to the Python reference.
+Upstream has since replaced all three Qwen3 adapters under the same Hub
+names. Those new contents are not covered by the old measurements. Start
+with the [2026-09-20 release review](2026-09-20-upstream-review.md) for the
+artifact changes, serving gaps, and recommended 4B evaluation.
 [`port-roadmap.md`](port-roadmap.md) holds the issue sequence and the
 conformance measurements, [`jev-comparison.md`](jev-comparison.md) holds
 the per-variant side-by-side against hosted Jev,
@@ -122,10 +127,11 @@ no `selected`: on this door the pick is always the argmax of what it
 reported. An absent `selected` elsewhere is not proof a map never ran — only
 that none was reported.
 
-Kev is not Jev. It is a laptop-scale research prototype that shows the
-mechanism works; on out-of-domain suites it trails the hosted Jev by
-8–26 points depending on checkpoint size. [`model-cards.md`](model-cards.md)
-holds the numbers.
+Kev is an independently trained family of open decision models. Upstream's
+current 4B/8B transfer development results are about 6–7 percentage points
+behind its hosted Jev reference; the gap varies by task and checkpoint.
+[`model-cards.md`](model-cards.md) distinguishes those published results
+from the weights measured here.
 
 Which checkpoint you mean decides most of that sentence. On our own
 `support-v2-three-way` suite the four checkpoints run from 0.675 to 0.879
@@ -138,7 +144,7 @@ has the scores.
 ## Checkpoints
 
 All checkpoints are on the Hugging Face Hub in the
-[kev collection](https://huggingface.co/collections/jaredpalmer/kev-6aad9d0ea49f2589665e07cd).
+[Kev collection](https://huggingface.co/collections/jaredpalmer/kev).
 Weights ship as a LoRA adapter (`adapter_model.safetensors`), a pointer head
 (`head.pt`), tokenizer files, and evaluation/provenance records — the base
 model downloads separately under its own license.
@@ -150,6 +156,16 @@ pinned digests. It writes to `KEV_ARTIFACTS`, by default `../kev-artifacts`
 beside the checkout, and needs no token for these public checkpoints. The
 script prints the `cargo test -p kev --features serve --release` invocation
 that runs the weights-gated conformance tests against what it fetched.
+
+**Download limitation, 2026-09-20:** the script fetches adapter files from
+Hub `main`, which no longer matches the Qwen3 fixture manifests. A fresh
+download fails their digest checks. Existing matching artifacts remain
+usable. The [release review](2026-09-20-upstream-review.md#artifact-downloads-no-longer-reproduce-the-fixture-set)
+records matching historical revisions and the required downloader change.
+
+The following table describes the **historical fixture checkpoints**.
+For current Hub scores, use the
+[current upstream table](model-cards.md#current-upstream-checkpoints-reviewed-2026-09-20).
 
 | Checkpoint | Base | In-domain dev / locked test | Out-of-domain dev / locked test | Port status |
 | --- | --- | --- | --- | --- |
@@ -163,10 +179,11 @@ Conformance numbers are the max absolute probability delta between this
 Rust port and the Python reference on the committed golden fixtures; the
 dev/test columns are upstream's suite scores and describe the weights.
 
-The three previews fail kev's own predeclared release screen (both siblings
-of a held-out policy pair correct ≥ 70%; best is 0.67). `kev-0.5b`'s full
-card is in the upstream `MODEL_CARD.md` and digested in
-[`model-cards.md`](model-cards.md).
+These earlier Qwen3 previews did not clear upstream's held-out policy-pair
+screen. The current 4B candidate passes its individual research checks,
+but the recipe does not clear the pair-correctness threshold on every
+seed. [`model-cards.md`](model-cards.md) records the distinction and the
+0.5B reference card.
 
 ## Reference checkout
 
@@ -196,6 +213,7 @@ revision.
 
 | Document | Holds |
 | --- | --- |
+| [`2026-09-20-upstream-review.md`](2026-09-20-upstream-review.md) | Current upstream revisions, artifact drift, bf16 and caching gaps, and the next integration milestones. |
 | [`architecture.md`](architecture.md) | The mechanism kev implements: packing, block-causal mask, branch positions, pointer readout, delimiter hardening, and the wire contract. |
 | [`jev-unmasked.md`](jev-unmasked.md) | What Archer Hume's probes established about the real Jev, and what stays inferred. |
 | [`model-cards.md`](model-cards.md) | `kev-0.5b` in detail — data, recipe, metrics, mechanism tests, limitations — plus the preview family and the research findings behind it. |

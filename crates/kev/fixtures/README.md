@@ -5,6 +5,13 @@ Golden input/output pairs generated from the Python reference at
 phase of the Rust port is accepted by reproducing these numbers inside
 tolerance, per variant.
 
+These fixtures pin historical checkpoint contents. On 2026-09-20, the Hub
+`main` adapters for 0.6B, 4B, and 8B differ from these manifests. A matching
+variant name is not a matching checkpoint. The
+[release review](../../../docs/kev/2026-09-20-upstream-review.md#artifact-downloads-no-longer-reproduce-the-fixture-set)
+records the observed hashes and historical revisions. Preserve these
+fixtures when measuring a replacement adapter.
+
 ## Variants
 
 `fixtures/` holds the `kev-0.5b` set (checkpoint `jaredpalmer/kev-0.5b`
@@ -27,7 +34,9 @@ whose artifacts are absent. `KEV_VARIANT=<id>` selects one;
 
 Requires the reference checkout's `uv` environment (`uv sync --extra
 serve`) and the variant's run directory (`hf download jaredpalmer/<id>
---local-dir <run>`).
+--revision <immutable-hub-commit> --local-dir <run>`). Pin the reference
+code revision as well. Generate replacement checkpoints into a separate
+fixture directory until conformance and workload evaluation are complete.
 
 ```sh
 cd ~/work/projects/repos/kev

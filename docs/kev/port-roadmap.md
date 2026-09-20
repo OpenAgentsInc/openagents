@@ -1,11 +1,19 @@
 # Kev port roadmap
 
-**Status:** implemented, all four checkpoints. The kev mechanism is
+**Status:** implemented for the four checkpoint contents pinned by the
+committed fixtures. The Kev mechanism is
 ported from the Python reference (`~/work/projects/repos/kev`,
 `jaredpalmer/kev`) into this repository as `crates/kev`, a Rust
 implementation on [candle](https://crates.io/crates/candle-core) with the
 TypeSafe `/v1/systemone` wire contract. Every issue in both sequences is
 closed; the measurements below are the recorded evidence.
+
+Upstream's current Qwen3 adapters have different contents under the same
+names. This completed port sequence does not establish conformance for
+those replacements or include upstream's newer serving optimizations.
+The [2026-09-20 integration review](2026-09-20-upstream-review.md) identifies
+the next work: pin artifact revisions, evaluate the new 4B, align bf16
+merging, and measure attention and state-cache improvements.
 
 The deprecated `psionic` repository informed earlier drafts of this plan.
 Nothing is ported from there — the port pulls from the kev reference only.
@@ -42,7 +50,7 @@ Qwen3 base — then one issue per checkpoint, then bundle serving.
 | 9 | [#9358](https://github.com/OpenAgentsInc/openagents/issues/9358) | `kev-0.6b` artifacts + `fixtures/variants/kev-0.6b/` | Full battery on CPU; max delta 3.7e-6 |
 | 10 | [#9359](https://github.com/OpenAgentsInc/openagents/issues/9359) | `kev-4b` artifacts + fixtures | Full battery; max delta 2.6e-6 |
 | 11 | [#9360](https://github.com/OpenAgentsInc/openagents/issues/9360) | `kev-8b` artifacts + fixtures | Full battery; max delta 1.1e-6 |
-| 12 | [#9361](https://github.com/OpenAgentsInc/openagents/issues/9361) | `kev-serve --bundle-dir`: loads every variant under an artifacts root, routes on the request `model` field | Live: 4 variants in one process, `/v1/models` lists all, `kev-latest` → largest, unknown id → typed 422 |
+| 12 | [#9361](https://github.com/OpenAgentsInc/openagents/issues/9361) | `kev-serve --bundle-dir`: loads every variant under an artifacts root, routes on the request `model` field | Live: 4 variants in one process, `/v1/models` lists all, `kev-latest` → largest; current unknown-id refusal is `model_unavailable` at 503 |
 | 13 | [#9362](https://github.com/OpenAgentsInc/openagents/issues/9362) | Docs + per-variant Jev side-by-side | `jev-comparison.md` re-run for all four checkpoints |
 
 ## Artifact layout
@@ -103,7 +111,9 @@ port's evidence is conformance to the reference, measured above.
 
 Fleet fan-out, earn admission, catalog rows, and the service door at
 `openagents.com` are the separate program in [`mesh-plan.md`](mesh-plan.md).
-This sequence ends at every published kev checkpoint answering
-`/v1/systemone` on this machine from openagents code, with the mechanism
-probes passing — which they now do. Training new checkpoints and the
-`option_isolation` serving mode are follow-on work.
+This sequence ends at the four pinned checkpoints answering
+`/v1/systemone` from OpenAgents code, with the mechanism probes passing.
+Training and admission of replacement checkpoints are follow-on work.
+The encoder already reads `option_isolation` from head metadata; the
+published fixture checkpoints use `false`, so these measurements do not
+establish conformance for weights trained with it enabled.

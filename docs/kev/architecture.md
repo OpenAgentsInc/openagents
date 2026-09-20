@@ -8,6 +8,13 @@ branch mask, `model.rs`/`lora.rs` the backbone and adapter, `head.rs` the
 pointer readout, `decision.rs` the assembled model, `api.rs`/`render.rs`
 the TypeSafe shapes, and `serve.rs` the HTTP surface.
 
+This page describes the shared mechanism. Upstream's newer serving path
+also uses optimized attention, shape bucketing, and a state-prefix KV
+cache; the Rust port does not yet implement those optimizations. Both
+implementations merge LoRA at load time, but their bf16 cast order differs.
+See the [implementation review](2026-09-20-upstream-review.md#findings-in-this-repository)
+before applying upstream's latency or numerical-parity claims to the port.
+
 A kev checkpoint is two trained pieces on a frozen causal LM:
 
 1. A **LoRA adapter** on the backbone (`kev-0.5b`: rank 16, alpha 32,

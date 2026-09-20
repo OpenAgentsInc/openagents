@@ -128,9 +128,11 @@ hosted Jev's 0.87 — not from weakness but because 77 option descriptions do
 not fit the token budget its head reserves. Check the context arithmetic
 before comparing quality.
 
-**Must it stay on the machine?** Free, private, and always-resident is a
-category with no leaf. It is also the category where you give up reading a
-probability and start estimating one, which changes everything downstream.
+**Must it stay on the machine?** Local execution is a constraint the tree
+omits. Kev can return a trained distribution from open weights. Lev uses
+Apple's model and estimates a distribution from observable behavior. Both
+avoid an API charge, but their memory, availability, and calibration
+requirements differ.
 
 ## The tree we would draw
 
@@ -182,8 +184,9 @@ probability and start estimating one, which changes everything downstream.
 Overriding constraints, checked first because they eliminate branches:
 
 - **Must stay on device, or cost nothing per call.** You will estimate
-  probabilities rather than read them, at a resolution set by how many
-  samples you can afford.
+  probabilities with Lev's estimators, or read a trained distribution from
+  local Kev. Both require workload measurements; local execution does not
+  imply that probabilities must be estimated from generated answers.
 - **The state will not fit.** Count tokens for the state plus the full option
   set before comparing anything.
 - **Content that trips guardrails.** Moderation, safety, and abuse review are
@@ -260,12 +263,18 @@ and still rests on a 109M-parameter model someone else trained. It is a good
 deal, not a free one, and the distinction matters when the constraint is what
 runs on the device rather than what costs money to train.
 
+The Kev comparisons in this section refer to the historical fixture
+checkpoints. Upstream has replaced all three Qwen3 adapters under the same
+names. The [2026-09-20 review](../kev/2026-09-20-upstream-review.md)
+recommends measuring the new 4B before carrying these conclusions forward.
+
 **And the Kev row above is the weakest of four checkpoints, which costs this
 comparison most of its force.** `kev-0.5b` is the smallest published
 checkpoint, and it is the only one we had measured when this table was
 written. On the 157 items of `support-v2-three-way`, `kev-8b` scores **0.879
-with an ECE of 0.044** — leading every column of the panel, including hosted
-Jev's calibration. Against `kev-8b` on shared items the baseline's margin
+with an ECE of 0.044**, leading the measured local panel. Hosted Jev has no
+rows on that suite, so its calibration cannot be ranked on these items.
+Against `kev-8b` on shared items the baseline's margin
 falls from about +0.140 to roughly **+0.045, which is below the floor.**
 
 So the honest statement is narrower than the one this section opened with:
@@ -276,11 +285,11 @@ decision model is not worth the trouble.
 
 The same measurement retired a comparison that had been published here: *Lev
 beats kev-4b outright* is withdrawn at 0.038 against a 0.056 floor, paired
-*p* = 0.41. It also found that `kev-4b` — the checkpoint its own card
-recommends for serving — **is not competitive with anything, including
-`kev-0.5b`** (+0.032, *p* = 0.55). The capacity step that pays on our
-workload is 4B to 8B, not 0.6B to 4B. A card's serving recommendation is a
-claim about the author's workload, not yours.
+*p* = 0.41. The historical `kev-4b` also did not establish an accuracy
+advantage over `kev-0.5b` (+0.032, *p* = 0.55). That result does not show
+equivalence and does not test the new 4B. Among the checkpoints measured
+then, the larger improvement came from 4B to 8B. A card's serving
+recommendation still needs measurement on the intended workload.
 
 ## What the general model is actually for
 
@@ -309,5 +318,5 @@ this week has it as a branch.
 | [`2026-09-19-frozen-embedding-baseline.md`](2026-09-19-frozen-embedding-baseline.md) | The cheap baseline measured on our own suite, with its intervals and its refusals |
 | [`research/2026-09-19-compiled-functions.md`](research/2026-09-19-compiled-functions.md) | Whether a compiler can produce a working adapter without labels, which would move this page's root |
 | [`2026-09-20-compiled-functions.md`](2026-09-20-compiled-functions.md) | The measurement: a zero-label compile lands inside the floor of our 98-label LoRA on `routing`, and what that does and does not earn |
-| [`lev/disposition.md`](lev/disposition.md) | A worked example of admitting and refusing one model per workload |
+| [`lev/disposition.md`](../lev/disposition.md) | A worked example of admitting and refusing one model per workload |
 | [`../gym.md`](../gym.md) | The machinery that decides any of this on your own data |

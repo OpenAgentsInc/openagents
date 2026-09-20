@@ -1,5 +1,11 @@
 # Every kev checkpoint on one suite
 
+**Checkpoint scope, added 2026-09-20:** this record measures the historical
+adapters pinned in `crates/kev/fixtures/`. Upstream has replaced all three
+Qwen3 adapters under the same names. The scores below remain evidence for
+the measured artifacts, not for the new Hub contents. See the
+[release review](../2026-09-20-upstream-review.md).
+
 Every Kev score this repository published on the suite it currently measures
 against came from `kev-0.5b` — the checkpoint kev's own card says is not the
 one to serve. The older 52-item table carried `kev-4b` as well, on 26
@@ -210,7 +216,7 @@ than an edit to a rule whose digest is already in 785 rows.
 
 ## Where the checkpoints differ by family
 
-**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`../decision-models/2026-09-20-instrument-validity.md`](../decision-models/2026-09-20-instrument-validity.md).
+**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`../decision-models/2026-09-20-instrument-validity.md`](../../decision-models/2026-09-20-instrument-validity.md).
 
 | Door | `routing`, 80 items | `urgency`, 48 items | `severity`, 29 items |
 | --- | --- | --- | --- |

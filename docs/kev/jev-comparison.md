@@ -10,6 +10,11 @@ illustration, not benchmark. The request texts are the same cases as the
 original 0.5b run, reconstructed; small wording differences shift the
 absolute numbers but not the shape of the result.
 
+The Kev rows describe the historical adapters pinned by the fixture
+manifests. They do not measure the replacement Qwen3 weights now on the
+Hub. See the [2026-09-20 review](2026-09-20-upstream-review.md) and
+[current upstream results](model-cards.md#current-upstream-checkpoints-reviewed-2026-09-20).
+
 ## Per-variant results
 
 | Case | kev-0.5b | kev-0.6b | kev-4b | kev-8b | Jev |
@@ -51,29 +56,32 @@ kev-0.6b is the softest but never wrong on argmax in this battery.
 ## What did not close
 
 - **Calibration.** kev-8b overshoots on `frustration` (1.74 vs Jev's
-  1.05 on a 0–2 legend) and `escalate` (0.91 vs 0.72). The family's own
-  cards report ECE in-distribution only; none of these checkpoints is
-  temperature-calibrated for transfer.
+  1.05 on a 0–2 legend) and `escalate` (0.91 vs 0.72). Upstream reports
+  out-of-domain calibration metrics too, but a temperature fitted
+  in-domain does not establish calibration for a new workload.
 - **Mechanism probe weakness at 4b.** `state_in_state` isolation is
-  0.63 for kev-4b (vs 0.997 at 0.5b, 0.85 at 8b) — this checkpoint leaks
-  less cleanly. It is a weights property reproduced faithfully by the
-  port, not a port defect.
+  0.63 for kev-4b (vs 0.997 at 0.5b, 0.85 at 8b). That is weaker use of
+  evidence in the shared state, not evidence of sibling-question leakage.
+  The sibling and absent conditions agree; the port reproduces the
+  checkpoint's behavior.
 
 ## The remaining gap
 
 The contract, mechanism, and now the full checkpoint family are ported
-with per-variant conformance ≤ 3.7e-6 against the Python reference. What
+with per-variant conformance ≤ 4.1e-6 against the Python reference. What
 separates kev from Jev is no longer mechanical and, at 4B+, no longer
 primarily about these prompts either:
 
-1. **Training breadth.** Six public datasets (~13.5k questions) vs
-   TypeSafe's corpus; upstream's OOD dev curve still runs
-   0.774 (8b) vs 0.857 (Jev).
+1. **Training breadth.** The 0.5B used six public datasets; the pinned
+   Qwen3 adapters used broader suites. The historical 8B's upstream OOD
+   development score was 0.774 against Jev's 0.857. The new 8B records
+   0.796, which has not been measured on this page's requests.
 2. **Calibration for transfer.** kev's temperature is fitted on its own
    dev distribution.
-3. **The release screen.** Every published kev checkpoint still fails
-   upstream's declared OOD-transfer screen; these previews are
-   research artifacts, not Jev replacements.
+3. **The release screen.** The historical Qwen3 previews did not clear
+   upstream's declared transfer screen. The new 4B clears the individual
+   research checks, but not the policy-pair threshold across all recipe
+   seeds. Neither result establishes suitability for a Coder workload.
 
 For local routing and intent workloads, kev-4b on this machine agrees with
 Jev's argmax on every in-distribution case tested, and kev-8b is the

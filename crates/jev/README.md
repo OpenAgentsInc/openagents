@@ -18,8 +18,8 @@ Content-Type: application/json
 It mirrors TypeSafe's official Python SDK (`typesafe-sdk` 0.6.0) and JavaScript
 SDK (`@typesafe-ai/sdk` 0.6.0): the same defaults, the same retry policy, the
 same headers, the same message extraction, and the same lenient decoding. The
-design is `docs/jev/rust-sdk.md`, and the wire contract is
-`docs/jev/knowledge-base.md`.
+design is [the Rust SDK reference](../../docs/decision-models/jev/rust-sdk.md),
+and the wire contract is [the Jev knowledge base](../../docs/decision-models/jev/knowledge-base.md).
 
 ## Asking a question
 
@@ -89,6 +89,35 @@ trailing slashes are dropped from the base URL.
 
 A missing key, a base URL that is not an http or https URL, a zero timeout, and
 a retry field out of range each fail at `Client::new`.
+
+## Local Kev and Lev servers
+
+The same client reaches either local implementation. For a running
+`kev-serve` that has loaded `kev-4b`:
+
+```rust
+let client = jev::Client::new(
+    jev::Config::new()
+        .api_key("local")
+        .base_url("http://127.0.0.1:8009")
+        .default_model("kev-4b"),
+)?;
+# Ok::<(), jev::Error>(())
+```
+
+`local` is a nonempty placeholder for the client's required key; the local
+Kev server does not authenticate it. Environment-based callers use
+`TYPESAFE_API_KEY=local`, `TYPESAFE_BASE_URL=http://127.0.0.1:8009`, and
+`TYPESAFE_DEFAULT_MODEL=kev-4b`. The Rust server also accepts `jev-latest`
+as an alias for its default variant, but comparisons should select a model
+explicitly and record its artifact identity.
+
+For Lev, select the URL and model advertised by its `/v1/models` endpoint;
+its estimator and calibration admission determine which requests it can
+answer. The shared API does not transfer calibration or quality between
+models. Use 2–10 Score levels for portability, even though Kev's raw HTTP
+endpoint accepts more. See the [Kev integration review](../../docs/kev/2026-09-20-upstream-review.md)
+and [Lev admission record](../../docs/lev/disposition.md).
 
 ## Retries
 

@@ -2,13 +2,62 @@
 
 **Status:** records external measurements from `projects/repos/kev/`
 (`MODEL_CARD.md`, `docs/model-cards/`, `runs/leaderboard.md`, `PLAN.md`)
-and the Hugging Face model pages. They are quoted here so the integration
+and the Hugging Face model pages. They are summarized here so the integration
 plan in [`mesh-plan.md`](mesh-plan.md) can reason about them without
 re-deriving them.
 
 Where a block holds our own measurement instead, it says so in its first
 line, as [Do not read this checkpoint's `score` as a
 position](#do-not-read-this-checkpoints-score-as-a-position) does.
+
+## Current upstream checkpoints, reviewed 2026-09-20
+
+The Hub names are mutable. The following revisions contain newer Qwen3
+adapters than the ones pinned by our fixtures. These are upstream results;
+none of the new adapters has an OpenAgents measurement in this review.
+
+| Checkpoint and immutable Hub revision | In-domain dev / locked test | Out-of-domain dev / locked test | Brier, OOD dev | Confident errors, OOD dev |
+| --- | --- | --- | --- | --- |
+| [Kev-0.6B, `9399493`](https://huggingface.co/jaredpalmer/kev-0.6b/tree/93994937d1f83a06c801f7469b6793ec4c29edd5) | 0.801 / 0.808 | 0.620 / 0.642 | 0.536 | 10.8% |
+| [Kev-4B, `c4bfa11`](https://huggingface.co/jaredpalmer/kev-4b/tree/c4bfa11b0dc07691884f2d97f1c4c4c05c92e416) | 0.854 / 0.856 | 0.790 / 0.806 | 0.328 | 8.2% |
+| [Kev-8B, `d275200`](https://huggingface.co/jaredpalmer/kev-8b/tree/d275200d3b79b83ef949adafd2e27bd69e93b2f4) | 0.863 / 0.870 | 0.796 / 0.780 | 0.337 | 9.9% |
+| Jev, upstream's hosted reference | 0.845 / – | 0.857 / – | 0.211 | 3.7% |
+
+Development metrics come from each revision's `result.json`; locked-test
+metrics and the hosted reference come from its model card. The result
+files count 1,264 clean in-domain questions and 656 clean transfer
+questions. The cards also mention 1,200 and 560 questions, and 1,204 and
+764 records in metadata; do not treat these as the aggregate denominators.
+The result files are the source for the aggregate development columns:
+[0.6B result](https://huggingface.co/jaredpalmer/kev-0.6b/resolve/93994937d1f83a06c801f7469b6793ec4c29edd5/result.json),
+[4B result](https://huggingface.co/jaredpalmer/kev-4b/resolve/c4bfa11b0dc07691884f2d97f1c4c4c05c92e416/result.json),
+[8B result](https://huggingface.co/jaredpalmer/kev-8b/resolve/d275200d3b79b83ef949adafd2e27bd69e93b2f4/result.json).
+Confident errors mean the fraction of all evaluated questions answered
+incorrectly with top probability at least 0.9, not the error rate among
+only high-confidence answers.
+
+The selected runs are `v7-06b/02-trial-2`, `v7-rc3/01-trial-1`, and
+`v7-final/00-trial-0`. All use `decision-v7`; 4B/8B use lr `5e-5`, and
+0.6B uses `1e-4`. The v7 cards describe 10,000 public records, 896 policy
+records, and 1,680 records from 60 random rule structures. Their recorded
+training times are about 11, 40, and 83
+minutes, respectively, from `training_resources.wall_seconds`. Older
+recipe sections and metadata in the upstream cards still describe some
+superseded runs. Use the pinned result provenance when reproducing a run.
+
+The selected 4B run passes its individual research screen with 0.734
+held-out pair correctness. Its three seeds score 0.62, 0.73, and 0.67 on
+that measure, so the recipe does not meet the 0.70 screen across seeds.
+The selected 8B run scores 0.688 and fails that check; 0.6B also fails the
+pair and confident-error checks. All three result files retain
+`promotable: false`. Availability on the Hub is not an OpenAgents admission.
+
+The new 4B is a useful candidate because it nearly matches 8B's development
+accuracy with lower Brier and fewer confident errors, while its locked
+transfer score is higher. The 8B card still records substantial gaps to
+Jev on MMLU (0.70 versus 0.90) and deadline arithmetic (0.60 versus 0.93).
+The [integration review](2026-09-20-upstream-review.md) turns these findings
+into a workload evaluation and serving plan.
 
 ## kev-0.5b (released v0.1.0)
 
@@ -147,7 +196,11 @@ true levels span the whole scale.
 Full method, per-door numbers, intervals, and what would change the reading:
 [`docs/decision-models/2026-09-19-score-ordinality.md`](../decision-models/2026-09-19-score-ordinality.md).
 
-## The preview family
+## Historical preview checkpoints pinned here
+
+This table describes the adapters used to generate the committed fixtures
+and the 2026-09-19 OpenAgents comparisons. It is retained to identify those
+measurements; it does not describe today's Hub `main` contents.
 
 The research track moved to Qwen3 bases and frozen suites
 (`evals/decision-v4`/`v6` for in-distribution, `evals/transfer-v4` for
@@ -162,9 +215,9 @@ per candidate.
 | kev-8b | 0.869 / 0.869 | 0.774 / 0.799 | 0.339 | 8.2% | 0.61 | 0.03 |
 | Jev | 0.845 / – | 0.857 / – | 0.211 | 3.7% | 0.86 | 0.00 |
 
-The previews fail kev's own release screen (held-out policy pairs >= 0.70
-both-siblings-correct; best 0.67). They ship as research previews with the
-failure recorded on each card — which is the honest pattern worth copying.
+These previews failed the held-out policy-pair screen of 0.70
+both-siblings-correct. The current candidates and their individual versus
+recipe-level checks are recorded above.
 
 ## What the research log established
 
@@ -191,18 +244,20 @@ H100 time):
 
 ## Practical reading for the mesh plan
 
-- `kev-0.5b` proves the mechanism and costs nothing to serve — it is the
+- `kev-0.5b` proves the mechanism and has no per-request API charge — it is the
   right conformance target for a Rust port. It is not a reading of what Kev
   can do, and using it as one is the error
   [`measurements/2026-09-19-variant-scores.md`](measurements/2026-09-19-variant-scores.md)
   corrects.
-- `kev-4b` is the serving sweet spot the upstream README recommends: best
-  accuracy per byte, ~1 s in bf16 on a 32 GB Mac. **Our own suite does not
-  reproduce that recommendation.** On 157 support items `kev-4b` scores
+- Upstream recommends the current `kev-4b` for serving on a 32 GB Mac in
+  bf16. **Our own suite measured an earlier adapter.** On 157 support items
+  that `kev-4b` scores
   0.745 against `kev-0.5b`'s 0.713, a difference of 0.6 noise floors, while
   `kev-8b` scores 0.879. On these items the capacity step that pays is 4B to
   8B, not 0.6B to 4B. The card's out-of-domain table has the opposite shape,
-  so treat the sweet spot as workload-dependent and measure it per workload.
+  so measure the new 4B on the workload before adopting or rejecting it.
+  The [release review](2026-09-20-upstream-review.md) also separates current
+  upstream latency from this port's measurements.
 - None of these checkpoints is production-calibrated. Out-of-domain ECE is
   ~0.1, and temperature fitted in-domain does not transfer. Any deployment
   needs per-workflow measurement before a probability gates an action —
