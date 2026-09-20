@@ -4,10 +4,10 @@
 //! The config names the suite, gate, workload budget, and an ordered list of
 //! doors. The first door is the regression baseline. Each door names its store
 //! and explicitly supplies its cost, or null when no current price is known.
-use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::Path;
 
+use gym::coverage::{Coverage, Expected};
 use gym::gate::{Budget, Cost, Deployment, Gate, Profile};
 use gym::row::Row;
 use gym::store::Store;
@@ -31,14 +31,17 @@ struct Door {
 }
 
 fn profile(rows: &[Row], suite: &Suite, door: &Door) -> Result<Profile, Box<dyn Error>> {
-    let mut expected = BTreeSet::new();
-    for partition in [Partition::Calibration, Partition::Development] {
-        for item in suite.partition(partition)? {
-            expected.insert((partition.as_str(), item.id.as_str()));
-        }
-    }
+    // The same expected-selection and coverage accounting `gym report`
+    // renders: here a gap is an error rather than a table row, because a
+    // deployment verdict exists only over a complete comparable pass.
+    let expected = Expected::of(
+        suite,
+        &[Partition::Calibration, Partition::Development],
+        None,
+        None,
+        vec![],
+    )?;
     let first = rows.first().ok_or("door has no rows")?;
-    let mut seen = BTreeSet::new();
     let mut latencies = Vec::new();
     for row in rows {
         if row.suite_digest != suite.digest
@@ -51,9 +54,6 @@ fn profile(rows: &[Row], suite: &Suite, door: &Door) -> Result<Profile, Box<dyn 
         {
             return Err("mixed or missing workload or door identity".into());
         }
-        if !seen.insert((row.split.as_str(), row.item_id.as_str())) {
-            return Err("repeated item: select a store with exactly one pass per door".into());
-        }
         if row.answered == row.refusal.is_some() {
             return Err("row is neither an answer nor a refusal, or claims both".into());
         }
@@ -65,7 +65,11 @@ fn profile(rows: &[Row], suite: &Suite, door: &Door) -> Result<Profile, Box<dyn 
         }
         latencies.push(latency);
     }
-    if seen != expected {
+    let coverage = Coverage::of(rows, expected.items());
+    if !coverage.duplicates.is_empty() {
+        return Err("repeated item: select a store with exactly one pass per door".into());
+    }
+    if !coverage.complete() {
         return Err("pass does not contain exactly the suite's open items".into());
     }
     let mut profile = Profile::timed(&latencies)
