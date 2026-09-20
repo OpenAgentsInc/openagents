@@ -718,15 +718,18 @@ fn token_bounds_admit_at_the_limit_and_refuse_past_it() {
     let error = admission
         .admit_tokens(8193)
         .expect_err("the token limit applies");
-    assert!(matches!(
-        error,
-        kev::Error::TooManyTokens {
-            tokens: 8193,
-            max: 8192,
-            attention_bytes: 4_ * 8193 * 8193,
-        }
-    ));
     assert_eq!(error.refusal().status(), 413);
+    let kev::Error::TooManyTokens {
+        tokens,
+        max,
+        attention_bytes,
+    } = error
+    else {
+        panic!("expected a token-bound refusal");
+    };
+    assert_eq!(tokens, 8193);
+    assert_eq!(max, 8192);
+    assert_eq!(attention_bytes, 4 * 8193 * 8193);
 
     let admission = Admission {
         max_total_tokens: 10_000,
@@ -785,7 +788,8 @@ fn the_delimiter_floor_is_refused_before_encoding() {
 
 #[test]
 fn every_advertised_alias_resolves() {
-    let state = rig().state;
+    let rig = rig();
+    let state = rig.state;
     assert!(state.aliases.iter().any(|a| a == jev::defaults::MODEL));
     for model in ["jev-latest", "", "kev-latest"] {
         assert_eq!(
