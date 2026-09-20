@@ -1,0 +1,202 @@
+{
+  "started_utc": "2026-09-20T18:52:23.648279+00:00",
+  "overall_deadline_seconds": 21600,
+  "per_request_timeout_seconds": 120,
+  "retained_rows_before": 0,
+  "reason": "Measure the admitted choice adapter on every unchanged state-budget rung.",
+  "ood_prerequisites": [
+    {
+      "case": "band",
+      "rows": 130,
+      "sha256": "bc7d017b4fb2a8d55aeda188effa4352daf08073630c5b2fb7c06a3e7b0951e7"
+    },
+    {
+      "case": "permutation",
+      "rows": 130,
+      "sha256": "af71a8649fe9b2cfc885b0d0c85dbc4a03100b9caef13a480946991320d5c178"
+    },
+    {
+      "case": "external",
+      "rows": 160,
+      "sha256": "b06562ba82cbe99e54e12a7d363b5726a9cb5e98ddd30b1573659b6c71f37665"
+    }
+  ],
+  "source": "4edf4f1d16573801411a6f4b02d62e7e3d607045",
+  "git_status": " M scripts/fetch-kev-artifacts.sh\n?? .claude/\n?? scripts/fetch-kev-artifacts.py\n?? scripts/test_fetch_kev_artifacts.py\n",
+  "chip": "Apple M5 Max",
+  "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "load_before": [
+    5.24560546875,
+    4.6298828125,
+    5.3798828125
+  ],
+  "environment_overrides": {
+    "LEV_OS_BUILD": "25E246",
+    "LEV_BRIDGE_BIN": "/Users/christopherdavid/work/openagents/swift/lev-bridge/.build/release/lev-bridge",
+    "STATE_SWEEP_ROWS": "/tmp/openagents-apple-handoff/state-budget-lev-choice.jsonl"
+  },
+  "environment_removed": [
+    "LEV_BRIDGE_ALLOW_UNSIGNED",
+    "LEV_BRIDGE_DEADLINE_MS"
+  ],
+  "bridge_codesign": {
+    "command": [
+      "codesign",
+      "--verify",
+      "--strict",
+      "/Users/christopherdavid/work/openagents/swift/lev-bridge/.build/release/lev-bridge"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "hashes": {
+    "/tmp/openagents-supervision/root-target/debug/lev-serve": "ea1d0bb06fe7f8a515aaa912b527a6f0a529a553d04db2f6ea75dfcf4795a3d9",
+    "/tmp/openagents-apple-handoff/sweep-choice-target/debug/lev-state-sweep-choice": "716e3d87d5a0c5d1e22f91287f5fd20aefcc64236c2abb2ee969e80e0db99e65",
+    "/Users/christopherdavid/work/openagents/swift/lev-bridge/.build/release/lev-bridge": "c0a3d48cedc2214fd87bdfd8f2c7d5097088192d6f165327c6b1b50ecc7a764d",
+    "/Users/christopherdavid/work/openagents/crates/lev/manifests/lev-adapted-v1.json": "aae4e831b88149bfe1e728c1dc83ad30367cd0e741c000f2ea840d0b1a023f3f",
+    "/Users/christopherdavid/work/openagents/docs/decision-models/2026-09-20-state-budget-lev.jsonl": "22535d570d20436d99c7f0c192e5b253cd7b5ce02d8f10a93ae357de26bb8e8a",
+    "/tmp/openagents-apple-handoff/state-sweep-choice/src/main.rs": "7cc7a4e40a23680e2ac5ee72dd1d49bf6e5e02ca1daed94a2f84a37a3a81e100",
+    "/tmp/openagents-apple-handoff/state-sweep-choice/Cargo.toml": "b1306cf11dcf722dffaad7c9e2b13e8e170433b34d791d73f0c52d72773408a4",
+    "/tmp/openagents-apple-handoff/state-sweep-choice/Cargo.lock": "a8eab603fa54852e044a8e1653aa4c610060ff9e503e783233ca76cc6fc29d6e",
+    "/Users/christopherdavid/code/lev-adapter-work/runs/lev-v1/lev.fmadapter/adapter_weights.bin": "5668e4af683b66f458e8c87e6c79f12b36a53bc96a0c0643d079472846411a93",
+    "/Users/christopherdavid/code/lev-adapter-work/runs/lev-v1/lev.fmadapter/metadata.json": "fc8334b161513dac16487d85c10ab2a1e333aee304af59c03d4e8ad66b03605e"
+  },
+  "manifest": {
+    "schema": "openagents.lev.decision_model_manifest.v1",
+    "name": "lev-adapted",
+    "version": 1,
+    "description": "Support-desk judgments on support-v2, trained on the choice objective alone.",
+    "created": "2026-09-19",
+    "artifact": {
+      "path": "~/code/lev-adapter-work/runs/lev-v1/lev.fmadapter",
+      "format": "fmadapter",
+      "sha256": "5668e4af683b66f458e8c87e6c79f12b36a53bc96a0c0643d079472846411a93",
+      "sizeBytes": 133312320,
+      "metadataSha256": "fc8334b161513dac16487d85c10ab2a1e333aee304af59c03d4e8ad66b03605e",
+      "loraRank": 32,
+      "adapterIdentifier": "fmadapter-lev-9799725"
+    },
+    "base": {
+      "signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+      "minOsBuild": "25E246",
+      "runtime": "Apple FoundationModels"
+    },
+    "policySnapshot": {
+      "source": "../policy/current.json",
+      "cache": "~/.lev/policy/current.json",
+      "freshnessWindowSeconds": 86400
+    },
+    "interface": {
+      "contract": "openagents.systemone.v1",
+      "endpoint": "POST /v1/systemone",
+      "questions": {
+        "choice": {
+          "minCriteria": 2,
+          "maxCriteria": 255,
+          "answer": [
+            "choice",
+            "confidence",
+            "probabilities"
+          ]
+        },
+        "noul": {
+          "answer": [
+            "noul"
+          ]
+        },
+        "score": {
+          "minCriteria": 2,
+          "maxCriteria": 10,
+          "answer": [
+            "score",
+            "confidence",
+            "legend",
+            "probabilities"
+          ]
+        }
+      },
+      "extensions": [
+        "estimator",
+        "require_calibration",
+        "family"
+      ],
+      "families": [
+        "routing",
+        "severity",
+        "urgency"
+      ]
+    },
+    "estimator": {
+      "estimator": "l2",
+      "samples": 8,
+      "seed_base": 0
+    },
+    "evalRef": [
+      {
+        "family": "routing",
+        "record": "../calibration/lev-adapted@1/routing.json",
+        "sha256": "a5b7b034f0bdcca1f2ffef1dae70411879a3f85618470a049ec0d09072a29f21",
+        "suite": "support-v2-three-way",
+        "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+        "partitionId": "calibration",
+        "gateId": "probability-v1",
+        "admitted": true,
+        "verdict": "passed: log loss 1.397 to 0.200, confident errors 2 to 2 over 40 items"
+      },
+      {
+        "family": "severity",
+        "record": "../calibration/lev-adapted@1/severity.json",
+        "sha256": "23c5a027243e0d855aeb611c583e78aaf3dd8ecafe3d4704c95f521f8651990c",
+        "suite": "support-v2-three-way",
+        "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+        "partitionId": "calibration",
+        "gateId": "probability-v1",
+        "admitted": false,
+        "verdict": "unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)"
+      },
+      {
+        "family": "urgency",
+        "record": "../calibration/lev-adapted@1/urgency.json",
+        "sha256": "5f68f6daa48809b63d0bf359fc544ab5f8aa28653ee48de619d3ba4b16685a0d",
+        "suite": "support-v2-three-way",
+        "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+        "partitionId": "calibration",
+        "gateId": "probability-v1",
+        "admitted": false,
+        "verdict": "unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)"
+      }
+    ],
+    "observationRef": [
+      {
+        "record": "../../gym/results/coder-turns-v1.jsonl",
+        "sha256": "772a046ee4dcd7f187fc99d7e16a3544406e3fd2a0be559e06147bc9f1a9518a",
+        "suite": "coder-turns-v1",
+        "suiteDigest": "f619db3613b83e45ea9c897341e6ba81964f8c983420a11bec5ee72e353f21d9",
+        "partitionId": "development",
+        "door": "lev-adapted",
+        "doorIdentity": {
+          "model": "lev-adapted",
+          "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+          "adapter": "/Users/christopherdavid/code/lev-adapter-work/runs/lev-v1/lev.fmadapter",
+          "verified": true
+        },
+        "rows": 130
+      }
+    ]
+  },
+  "server_command": [
+    "/tmp/openagents-supervision/root-target/debug/lev-serve",
+    "--manifest",
+    "/Users/christopherdavid/work/openagents/crates/lev/manifests/lev-adapted-v1.json",
+    "--port",
+    "11456",
+    "--policy-refresh",
+    "off",
+    "--admission-record",
+    "/tmp/openagents-apple-handoff/state-sweep-choice-admission.jsonl"
+  ],
+  "run_command": [
+    "/tmp/openagents-apple-handoff/sweep-choice-target/debug/lev-state-sweep-choice"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "change": "Add one stderr JSON diagnostic for API errors: response body, HTTP status, rung and state ID only. No headers, client config, credentials, or request payload. No change to questions, retries, timeout, caps, chosen answers or row serialization.",
+  "original_source_sha256": "7cc7a4e40a23680e2ac5ee72dd1d49bf6e5e02ca1daed94a2f84a37a3a81e100",
+  "recovery_source_sha256": "ad5e5b559fa07b53dd0774620dac070af0c31c2640f2d137b22501011c1a863e",
+  "compile_status": "not compiled; deferred until current Metal tests finish",
+  "build_command": [
+    "env",
+    "CARGO_TARGET_DIR=/tmp/openagents-apple-handoff/sweep-choice-recovery-target",
+    "cargo",
+    "build",
+    "--manifest-path",
+    "/tmp/openagents-apple-handoff/state-sweep-choice-recovery/Cargo.toml",
+    "--locked"
+  ],
+  "binary_path": "/tmp/openagents-apple-handoff/sweep-choice-recovery-target/debug/lev-state-sweep-choice-recovery"
+}

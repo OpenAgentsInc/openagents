@@ -1,0 +1,18 @@
+--- original/src/main.rs
++++ recovery/src/main.rs
+@@ -344,6 +344,15 @@
+                     }
+                 }
+                 Err(error) => {
++                    if let jev::Error::Api(api) = &error {
++                        eprintln!("{}", json!({
++                            "diagnostic": "api_response_body",
++                            "rung": rung,
++                            "state": turn.key,
++                            "status": api.status,
++                            "body": api.body.as_ref().map(ToString::to_string),
++                        }));
++                    }
+                     refused += 1;
+                     let refusal = match &error {
+                         jev::Error::Api(api) => format!("api {}: {:?}", api.status, api.kind),

@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/tmp/openagents-apple-handoff/run-choice-state-sweep.py", line 198, in <module>
+    sys.exit(main())
+  File "/tmp/openagents-apple-handoff/run-choice-state-sweep.py", line 189, in main
+    common.stop(run);common.stop(server)
+  File "/tmp/openagents-apple-handoff/run-quiet-kev.py", line 59, in stop
+    os.killpg(child.pid, signal.SIGKILL)
+PermissionError: [Errno 1] Operation not permitted

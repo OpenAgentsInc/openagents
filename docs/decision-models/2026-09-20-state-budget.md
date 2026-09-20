@@ -389,3 +389,63 @@ truths against the retained Jev rows. Scoped Coder Clippy with
 formatting passed before publication. The original suite,
 question files, gates, and production tests remain unchanged by this
 measurement.
+
+
+## Choice adapter comparison
+
+The completed `lev-adapted@1` sweep uses the same sixteen development states,
+four historical questions, and eleven rungs as the base comparison. At the
+production caps it answers all 16 requests and scores 25/64, versus base
+38/64 and hosted Jev 32/64. State fit alone does not make this adapter a better
+coding router. Keep the current caps and door disposition; the adapter's
+support-routing admission does not establish coding-task quality.
+
+| Rung | Median B | Largest B | Pooled | `action` | `needs_code` | `progress` | `risk` | Refused requests |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| unbudgeted | 11,914 | 20,053 | 12/64 | 2/16 | 3/16 | 3/16 | 4/16 | 9 |
+| output 512 | 10,064 | 15,561 | 15/64 | 2/16 | 3/16 | 2/16 | 8/16 | 6 |
+| output 256 | 9,240 | 14,781 | 16/64 | 2/16 | 3/16 | 2/16 | 9/16 | 5 |
+| commands 3 | 9,240 | 14,781 | 16/64 | 2/16 | 3/16 | 2/16 | 9/16 | 5 |
+| turns 8 | 6,766 | 9,945 | 26/64 | 6/16 | 6/16 | 2/16 | 12/16 | 0 |
+| turns 6 | 5,649 | 8,021 | 25/64 | 7/16 | 5/16 | 3/16 | 10/16 | 0 |
+| turns 4 | 3,546 | 5,473 | 28/64 | 10/16 | 6/16 | 2/16 | 10/16 | 0 |
+| turns 6, message 1024 | 3,631 | 4,879 | 24/64 | 6/16 | 6/16 | 3/16 | 9/16 | 0 |
+| **production: turns 6, message 768** | 3,106 | 4,100 | 25/64 | 7/16 | 6/16 | 4/16 | 8/16 | 0 |
+| turns 6, message 512 | 2,717 | 3,309 | 24/64 | 7/16 | 6/16 | 4/16 | 7/16 | 0 |
+| turns 4, message 512 | 1,806 | 2,312 | 24/64 | 9/16 | 6/16 | 3/16 | 6/16 | 0 |
+
+Refused requests counts SDK request failures, each contributing four incorrect
+rows. Exact error categories are retained in the JSON summary; an SDK `Other`
+category does not identify a more specific server cause.
+
+| Rung | Choice | Base | Jev | Choice − base | Choice − Jev |
+| --- | --- | --- | --- | --- | --- |
+| unbudgeted | 12/64 | 21/64 | 33/64 | -9/64 | -21/64 |
+| output 512 | 15/64 | 25/64 | 32/64 | -10/64 | -17/64 |
+| output 256 | 16/64 | 26/64 | 33/64 | -10/64 | -17/64 |
+| commands 3 | 16/64 | 26/64 | 36/64 | -10/64 | -20/64 |
+| turns 8 | 26/64 | 39/64 | 36/64 | -13/64 | -10/64 |
+| turns 6 | 25/64 | 41/64 | 35/64 | -16/64 | -10/64 |
+| turns 4 | 28/64 | 38/64 | 34/64 | -10/64 | -6/64 |
+| turns 6, message 1024 | 24/64 | 37/64 | 34/64 | -13/64 | -10/64 |
+| production: turns 6, message 768 | 25/64 | 38/64 | 32/64 | -13/64 | -7/64 |
+| turns 6, message 512 | 24/64 | 40/64 | 33/64 | -16/64 | -9/64 |
+| turns 4, message 512 | 24/64 | 35/64 | 36/64 | -11/64 | -12/64 |
+
+This is a declared two-attempt composite. The first six rungs retain exactly
+384 original rows, including 24 HTTP 413 requests and one timeout. An HTTP
+500 failure beginning in the next rung led to repeating the entire five-rung
+suffix: all 80 requests, including its originally answered requests. The fresh
+suffix completes with no failed requests. The original full 704-row failed
+attempt, including 272 HTTP 500 rows, remains retained separately. Its outer
+queue observes controller exit 1; its inner runner exit is unknown because
+cleanup suppressed terminal metadata. Recovery records runner exit 0 and
+no cleanup errors.
+
+The [choice measurement record](2026-09-20-state-budget-choice.md) retains both
+attempts, immutable hashes, per-family results, timing limitations, source,
+model identities, and offline reproduction. The questions match this historical
+comparison, including three since-retired production questions. These 64 rows
+per rung are four correlated questions over 16 states; the always-`respond`
+`action` label is not a balanced routing task. This evidence does not justify
+selecting a new rung or changing today's production routing policy.

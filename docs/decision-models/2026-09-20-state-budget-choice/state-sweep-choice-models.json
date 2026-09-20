@@ -1,0 +1,57 @@
+{
+  "models": [
+    {
+      "name": "lev-adapted",
+      "release_date": "2026-09-19",
+      "description": "Apple's on-device foundation model, answering the System One contract. Its probabilities are seeded-sampling frequencies, not calibrated predictive probabilities.",
+      "availability": "available",
+      "unavailable_reason": null,
+      "estimator": "l2",
+      "samples": 8,
+      "seed_base": 0,
+      "pool_width": 4,
+      "resolution": 0.125,
+      "adapter": "lev-adapted@1",
+      "manifest": {
+        "schema": "openagents.lev.decision_model_manifest.v1",
+        "release": "lev-adapted@1",
+        "version": 1,
+        "artifact_sha256": "5668e4af683b66f458e8c87e6c79f12b36a53bc96a0c0643d079472846411a93",
+        "min_os_build": "25E246",
+        "admitted_families": [
+          "routing"
+        ]
+      },
+      "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+      "os_build": "25E246",
+      "policy": {
+        "state": "current",
+        "detail": null,
+        "source": "/Users/christopherdavid/work/openagents/crates/lev/manifests/../policy/current.json",
+        "cache": "/Users/christopherdavid/.lev/policy/current.json",
+        "issued": "Sat, 19 Sep 2026 23:28:37 GMT",
+        "freshness_window_seconds": 86400,
+        "expires_in_seconds": 16563,
+        "snapshot_sha256": "5dad31052293237f5e9c61b6007e37e588bfd41d8acc8e83eb2b67294105b711",
+        "revoked": []
+      },
+      "isolation": {
+        "seeds": 8,
+        "sibling": 0.125,
+        "absent": 0.125,
+        "state": 1.0
+      },
+      "calibration": "none",
+      "calibrated_families": [],
+      "serving": [],
+      "calibration_refused": [],
+      "question_types": [
+        "noul",
+        "choice",
+        "score"
+      ],
+      "max_options": 255,
+      "max_levels": 10
+    }
+  ]
+}
