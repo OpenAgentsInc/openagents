@@ -176,17 +176,30 @@ and a lookup that executed a manifest's argv because it had read that
 manifest is the finding rather than the fix. An operator who wants the open
 issues writes them to a work list with one command of their own.
 
-A work list names what each item touches and what it comes after:
+A work list names what each item touches, what it comes after, and what
+answer it expects back:
 
 ```jsonc
 {
   "v": 1,
   "work": [
-    {"id": "9391", "prompt": "…", "reads": "crates/gym/src/digest.rs", "writes": true},
+    {"id": "9391", "prompt": "…", "reads": "crates/gym/src/digest.rs", "writes": true,
+     "expects": "3"},
     {"id": "9401", "prompt": "…", "touches": ["crates/gym/src/gate.rs"], "after": ["9391"]}
   ]
 }
 ```
+
+`expects` is the item's stated answer, the way a CoderBench task's
+`expects` entry states one, and it is what the `accept` step judges: a
+delegation whose output matches it passes, one whose output does not
+fails, and an item that states none is **unverifiable**. An unverifiable
+item is never counted as passed, however plausible its output reads; the
+run's summary counts the three apart (`1 passed, 1 failed, 1
+unverifiable`) and the acceptance state carries each requirement's
+`expects` and `verdict`. The first burn-down episode reported "0 of 0
+correct" because its items stated nothing to judge
+([#9413](https://github.com/OpenAgentsInc/openagents/issues/9413)).
 
 ### An explicit list is a source, not a shortcut
 
@@ -510,7 +523,12 @@ that was there before. Three rules hold the path together:
   place of `request`, `isolation: worktree`, and thirty minutes per item:
   the program the backlog runs through, where the work is written to
   `.coder/work-list.json` by inspection and every delegate's worktree is
-  kept for review. It gates on `openagents.independence.v2`, whose
+  kept for review. Its `fan_out` step carries a `briefing`, the text every
+  delegate reads before its item: the common Git directory is sealed, a
+  change is committed to a scratch Git directory inside the worktree, and
+  the reviewer fetches from that directory. A briefing is not a
+  question's wording and not a command; it is what the program knows
+  about the place the delegate runs in and the work list does not. It gates on `openagents.independence.v2`, whose
   wording speaks of the listed tasks; v1 says "the six tasks", which is
   the golden's count, and a three-item list asked v1 came back at 0.06
   on the first real run. A writing task runs the manifest's

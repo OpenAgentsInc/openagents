@@ -358,6 +358,9 @@ impl Work {
         body.insert("prompt".to_string(), json!(self.task.prompt));
         body.insert("reads".to_string(), json!(self.task.reads));
         body.insert("writes".to_string(), json!(self.task.writes));
+        if let Some(expects) = &self.task.expected {
+            body.insert("expects".to_string(), json!(expects));
+        }
         if self.paths_add_anything() {
             body.insert("touches".to_string(), json!(self.touches));
         }
@@ -383,8 +386,11 @@ struct Declared {
     after: Vec<String>,
     #[serde(default)]
     writes: bool,
-    #[serde(default)]
-    expected: Option<String>,
+    /// The answer the item expects back, the way a CoderBench task's
+    /// `expects` entry states one. An item without it is judged
+    /// `unverifiable`, never passed.
+    #[serde(default, alias = "expected")]
+    expects: Option<String>,
 }
 
 /// A work list, as a file source's document spells it.
@@ -427,7 +433,7 @@ impl Declared {
                 prompt: self.prompt,
                 purpose,
                 reads: self.reads,
-                expected: self.expected,
+                expected: self.expects,
                 bounds: Bounds::minutes(TASK_MINUTES),
                 isolation: crate::delegate::Isolation::Directory,
                 writes: self.writes,
@@ -978,6 +984,35 @@ mod tests {
             "Read crates/gym/src/digest.rs and answer one question."
         );
         assert_eq!(work[1].after, ["9391"]);
+    }
+
+    /// A work item states the answer it expects under `expects`, the way
+    /// a CoderBench task does, and the item reads back with it; an item
+    /// without one carries none, and is judged unverifiable downstream.
+    #[test]
+    fn a_work_item_states_what_it_expects() {
+        let work = read_list(
+            r#"{"v":1,"work":[
+                {"id":"count","prompt":"How many steps","reads":"a.rs","expects":"5"},
+                {"id":"older","prompt":"How many calls","expected":"2"},
+                {"id":"open","prompt":"Describe the module"}]}"#,
+        )
+        .expect("the list reads");
+
+        assert_eq!(work[0].task.expected.as_deref(), Some("5"));
+        assert_eq!(
+            work[1].task.expected.as_deref(),
+            Some("2"),
+            "the older spelling still reads"
+        );
+        assert_eq!(work[2].task.expected, None);
+
+        assert_eq!(work[0].value()["expects"], json!("5"));
+        assert_eq!(work[1].value()["expects"], json!("2"));
+        assert!(
+            work[2].value().get("expects").is_none(),
+            "an item that states nothing does not read back as expecting an empty answer"
+        );
     }
 
     #[test]

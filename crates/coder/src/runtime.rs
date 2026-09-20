@@ -57,7 +57,9 @@ use jev::{Answer, SystemOneRequest};
 use serde_json::{Map, Value, json};
 
 use crate::capability::{self, Presence};
-use crate::delegate::{Bounds, Delegation, Delegator, Isolation, Task, boundary_supported};
+use crate::delegate::{
+    Bounds, Delegation, Delegator, Isolation, Task, Verdict, boundary_supported,
+};
 use crate::program::{Kind, Program, Step};
 use crate::questions::{self, Fill, Set};
 use crate::relay::RelayDoor;
@@ -96,6 +98,10 @@ const HOST_BOUNDS: &[&str] = &["concurrent_max", "isolation", "minutes"];
 
 /// The one condition a `check` step's `refuse_on` may name here.
 const INTERSECTION: &str = "cannot_enforce_intersection";
+
+/// The field of a `delegate` step that every delegate reads before its
+/// item.
+const BRIEFING: &str = "briefing";
 
 /// What a check refuses on beyond the condition the bound names: a bound
 /// nobody has claimed either way.
@@ -367,12 +373,38 @@ impl Run {
         (graded.iter().filter(|right| **right).count(), graded.len())
     }
 
+    /// Each delegation's completion verdict, under the requirement name
+    /// the `accept` step asks about it by.
+    #[must_use]
+    pub fn verdicts(&self) -> Vec<(String, Verdict)> {
+        self.delegations
+            .iter()
+            .enumerate()
+            .map(|(n, delegation)| (requirement_name(n), delegation.verdict()))
+            .collect()
+    }
+
+    /// How many delegations passed, failed, and could not be verified.
+    /// The three sum to the delegations; only the first is a pass.
+    #[must_use]
+    pub fn tally(&self) -> Tally {
+        let mut tally = Tally::default();
+        for delegation in &self.delegations {
+            match delegation.verdict() {
+                Verdict::Passed => tally.passed += 1,
+                Verdict::Failed => tally.failed += 1,
+                Verdict::Unverifiable => tally.unverifiable += 1,
+            }
+        }
+        tally
+    }
+
     /// What the run comes to, in the sentence a reader sees last.
     #[must_use]
     pub fn summary(&self) -> String {
         let program = self.program.as_deref().unwrap_or("no program");
         let Some(stopped) = &self.stopped else {
-            let (right, graded) = self.correct();
+            let tally = self.tally();
             let wall: f64 = self
                 .delegations
                 .iter()
@@ -384,7 +416,7 @@ impl Run {
                 .map(|delegation| delegation.elapsed.as_secs_f64())
                 .sum();
             return format!(
-                "{program} ran its {} steps: {} delegations, {} answered, {right} of {graded} correct, \
+                "{program} ran its {} steps: {} delegations, {} answered, {tally}, \
                  in {wall:.1} seconds of wall clock against {summed:.1} seconds of summed agent time.",
                 self.steps.len(),
                 self.delegations.len(),
@@ -392,6 +424,27 @@ impl Run {
             );
         };
         format!("{program} stopped at {stopped}.")
+    }
+}
+
+/// A run's completion verdicts, counted.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Tally {
+    /// Delegations whose answer is the one the work item stated.
+    pub passed: usize,
+    /// Delegations whose work item stated an answer they did not give.
+    pub failed: usize,
+    /// Delegations whose work item stated no answer to check.
+    pub unverifiable: usize,
+}
+
+impl std::fmt::Display for Tally {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} passed, {} failed, {} unverifiable",
+            self.passed, self.failed, self.unverifiable
+        )
     }
 }
 
@@ -1102,6 +1155,12 @@ impl Runtime {
             }
         }
         let Some(floor) = floor else {
+            // A per-requirement step is the acceptance: what it comes to
+            // is each work item's verdict against the answer it stated,
+            // not the count of questions the door answered.
+            if set.templated() {
+                return Ok(run.tally().to_string());
+            }
             return Ok(format!("{} answers", response.answers.len()));
         };
         let Some(read) = response.answers.get(&gate).and_then(probability) else {
@@ -1312,6 +1371,16 @@ impl Runtime {
             .map(|count| usize::try_from(count).expect("admission checked the concurrency bound"))
             .unwrap_or(1);
         let minutes = step.bounds.get("minutes").and_then(Value::as_u64);
+        // A step's `briefing` is what every delegate is told before its
+        // item: the shape of the place it runs in, which the program knows
+        // and the work list does not. The burn-down's says the common Git
+        // directory is sealed and where a commit goes instead.
+        let briefing = step
+            .rest
+            .get(BRIEFING)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|briefing| !briefing.is_empty());
         let bounded: Vec<Task> = selection
             .tasks()
             .into_iter()
@@ -1320,6 +1389,9 @@ impl Runtime {
                 task.isolation = isolation;
                 if let Some(minutes) = minutes {
                     task.bounds = Bounds::minutes(minutes);
+                }
+                if let Some(briefing) = briefing {
+                    task.prompt = format!("{briefing}\n\n{}", task.prompt);
                 }
                 task
             })
@@ -1531,6 +1603,8 @@ fn requirements_state(run: &Run, selection: &Selection) -> Value {
                 "reads": delegation.task.reads,
                 "status": delegation.status.to_string(),
                 "answer": delegation.recorded_output(),
+                "expects": delegation.task.expected,
+                "verdict": delegation.verdict().to_string(),
             }),
         );
     }
@@ -1577,6 +1651,8 @@ fn read_of(response: &jev::SystemOneResponse, gate: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     fn empty_runtime() -> Runtime {
@@ -1593,6 +1669,75 @@ mod tests {
             repository: None,
             host: Host::without_repository(),
         }
+    }
+
+    fn delegation(task: Task, output: &str) -> Delegation {
+        Delegation {
+            task,
+            capability: "stub-local".to_string(),
+            binary: PathBuf::from("/bin/stub"),
+            workdir: PathBuf::from("/work"),
+            concurrent_max: 6,
+            status: crate::delegate::Status::Answered,
+            output: output.to_string(),
+            detail: String::new(),
+            bytes: output.len() as u64,
+            elapsed: Duration::from_secs(1),
+            boundary: None,
+            retained: None,
+            relayed: None,
+        }
+    }
+
+    /// Completion is a verdict per work item: the answer it stated is
+    /// passed or failed, and an item that stated none is unverifiable.
+    /// An unverifiable item is never counted as passed, so a list that
+    /// states nothing reads `0 passed`, not `0 of 0 correct`.
+    #[test]
+    fn acceptance_grades_each_item_against_what_it_expects() {
+        let run = Run {
+            program: Some("burn-down".to_string()),
+            steps: Vec::new(),
+            stopped: None,
+            selection: None,
+            delegations: vec![
+                delegation(Task::reading("how many", "a.rs").expecting("5"), "5\n"),
+                delegation(Task::reading("how many", "b.rs").expecting("5"), "6"),
+                delegation(Task::reading("describe it", "c.rs"), "a module that counts"),
+            ],
+            answers: BTreeMap::new(),
+        };
+
+        assert_eq!(
+            run.verdicts(),
+            [
+                ("t1".to_string(), Verdict::Passed),
+                ("t2".to_string(), Verdict::Failed),
+                ("t3".to_string(), Verdict::Unverifiable),
+            ]
+        );
+        let tally = run.tally();
+        assert_eq!(
+            tally,
+            Tally {
+                passed: 1,
+                failed: 1,
+                unverifiable: 1
+            }
+        );
+        assert_eq!(tally.to_string(), "1 passed, 1 failed, 1 unverifiable");
+        assert!(run.summary().contains("1 passed, 1 failed, 1 unverifiable"));
+
+        let selection = Selection::of(&Source::request(), Vec::new(), 6, OnOverflow::Refuse);
+        let state = requirements_state(&run, &selection);
+        assert_eq!(state["requirements"]["t1"]["expects"], json!("5"));
+        assert_eq!(state["requirements"]["t1"]["verdict"], json!("passed"));
+        assert_eq!(state["requirements"]["t2"]["verdict"], json!("failed"));
+        assert_eq!(state["requirements"]["t3"]["expects"], Value::Null);
+        assert_eq!(
+            state["requirements"]["t3"]["verdict"],
+            json!("unverifiable")
+        );
     }
 
     #[test]
