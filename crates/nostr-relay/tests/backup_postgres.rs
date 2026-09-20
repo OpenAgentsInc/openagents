@@ -140,13 +140,18 @@ async fn backup_unit_restores_whole_under_concurrent_mutation() {
             assert_eq!(http_body(&response), body.as_slice());
         }
         // The blob deleted during the backup is either still referenced
-        // by the dump, and then served from its retained bytes, or gone
-        // from both; never referenced without bytes.
+        // by the dump, and then served whole from the bytes the archive
+        // retained, or gone from both; never referenced without bytes.
         let response = get(restored_address, &deleted_during.0);
-        assert!(
-            response.starts_with(b"HTTP/1.1 200 OK\r\n")
-                || response.starts_with(b"HTTP/1.1 404 Not Found\r\n")
-        );
+        if response.starts_with(b"HTTP/1.1 200 OK\r\n") {
+            assert_eq!(http_body(&response), deleted_during.1.as_slice());
+        } else {
+            assert!(
+                response.starts_with(b"HTTP/1.1 404 Not Found\r\n"),
+                "deleted-during blob answered {:?}",
+                String::from_utf8_lossy(&response[..response.len().min(40)])
+            );
+        }
     })
     .await
     .unwrap();
