@@ -1,0 +1,27 @@
+{
+  "capture": "/tmp/openagents-apple-handoff/state-sweep-choice-recovery-admission.jsonl",
+  "models": "/tmp/openagents-apple-handoff/state-sweep-choice-recovery-models.json",
+  "source": "/Users/christopherdavid/work/openagents/crates/lev/src/admission.rs",
+  "verified": true,
+  "errors": [],
+  "capture_sha256": "3cb3ef8733f0bedabab93d78812b577c6787b5bfe0396c722bb9336601bf122c",
+  "models_sha256": "63b5ef615912305dfab923b6972ad39b215388c17e2a8ac25418c5ea615cab72",
+  "source_sha256": "55ec421faae9f38dbd1aa9a523712bd4a105ee64ecf505c977a2f538228deeb1",
+  "rows": 25,
+  "hits": {
+    "sibling": 1,
+    "absent": 1,
+    "state": 8
+  },
+  "reconstructed_rates": {
+    "sibling": 0.125,
+    "absent": 0.125,
+    "state": 1.0
+  },
+  "published_isolation": {
+    "seeds": 8,
+    "sibling": 0.125,
+    "absent": 0.125,
+    "state": 1.0
+  }
+}

@@ -1,0 +1,6 @@
+lev-serve: serving lev-adapted@1 — artifact 5668e4af683b66f4
+lev-serve: isolation probe passed: sibling 0.125, absent 0.125, state 1.000 over 8 seeds
+lev-serve: policy ac531fb0f31a7c79 from /Users/christopherdavid/work/openagents/crates/lev/manifests/../policy/current.json (/Users/christopherdavid/.lev/policy/current.json)
+lev-serve: lev-adapted@1 serves for another 86359 seconds unless the snapshot is refreshed
+lev-serve: policy refresh is off; this door serves until its snapshot goes stale
+lev-serve on http://127.0.0.1:11456, 8 samples per question from seed block 0 across 4 helpers

@@ -1,0 +1,268 @@
+{
+  "started_utc": "2026-09-20T20:42:28.143696+00:00",
+  "overall_deadline_seconds": 10800,
+  "per_request_timeout_seconds": 120,
+  "retained_rows_before": 384,
+  "reason": "Two-attempt recovery: retain the complete first six rungs unchanged, including failures, and rerun every request in the five-rung suffix after fresh server startup.",
+  "composite_provenance": {
+    "original_rows": "/tmp/openagents-apple-handoff/state-budget-lev-choice.jsonl",
+    "original_rows_sha256": "8fe1d847aafb3d46433636b66d94c91b0f13045f82b185722d25115b051a28aa",
+    "original_row_count": 704,
+    "original_controller_exit": "unknown; terminal evidence was suppressed by cleanup failure",
+    "original_retained_line_range": [
+      1,
+      384
+    ],
+    "retained_rungs": [
+      "unbudgeted",
+      "output 512",
+      "output 256",
+      "commands 3",
+      "turns 8",
+      "turns 6"
+    ],
+    "retained_timeout_and_413": true,
+    "rerun_request_count": 80,
+    "rerun_rungs": [
+      "turns 4",
+      "turns 6, message 1024",
+      "production: turns 6, message 768",
+      "turns 6, message 512",
+      "turns 4, message 512"
+    ],
+    "selection_rule": "Rerun the entire suffix from the first failing rung, including every original answer; no selection by correctness.",
+    "original_failed_rows_preserved": true
+  },
+  "original_rows_sha256": "8fe1d847aafb3d46433636b66d94c91b0f13045f82b185722d25115b051a28aa",
+  "recovery_rungs": [
+    "turns 4",
+    "turns 6, message 1024",
+    "production: turns 6, message 768",
+    "turns 6, message 512",
+    "turns 4, message 512"
+  ],
+  "policy_preflight": {
+    "source": "/Users/christopherdavid/work/openagents/crates/lev/manifests/../policy/current.json",
+    "sha256": "ac531fb0f31a7c7906504b5b93af6bb6393c63b23f2492ee7b385ac72a20ba91",
+    "remaining_seconds": 86374.85310792923,
+    "required_remaining_seconds": 10520,
+    "budget_components_seconds": {
+      "requests": 9600,
+      "startup": 900,
+      "cleanup": 20
+    }
+  },
+  "ood_prerequisites": [
+    {
+      "case": "band",
+      "rows": 130,
+      "sha256": "bc7d017b4fb2a8d55aeda188effa4352daf08073630c5b2fb7c06a3e7b0951e7"
+    },
+    {
+      "case": "permutation",
+      "rows": 130,
+      "sha256": "af71a8649fe9b2cfc885b0d0c85dbc4a03100b9caef13a480946991320d5c178"
+    },
+    {
+      "case": "external",
+      "rows": 160,
+      "sha256": "b06562ba82cbe99e54e12a7d363b5726a9cb5e98ddd30b1573659b6c71f37665"
+    }
+  ],
+  "source": "19f57190b2851a2ee0a211174d9d832aca5aaf9a",
+  "git_status": "?? .claude/\n",
+  "chip": "Apple M5 Max",
+  "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "load_before": [
+    6.75,
+    5.36083984375,
+    5.5029296875
+  ],
+  "environment_overrides": {
+    "LEV_OS_BUILD": "25E246",
+    "LEV_BRIDGE_BIN": "/Users/christopherdavid/work/openagents/swift/lev-bridge/.build/release/lev-bridge",
+    "STATE_SWEEP_ROWS": "/tmp/openagents-apple-handoff/state-budget-lev-choice-recovery.jsonl"
+  },
+  "environment_removed": [
+    "LEV_BRIDGE_ALLOW_UNSIGNED",
+    "LEV_BRIDGE_DEADLINE_MS"
+  ],
+  "bridge_codesign": {
+    "command": [
+      "codesign",
+      "--verify",
+      "--strict",
+      "/Users/christopherdavid/work/openagents/swift/lev-bridge/.build/release/lev-bridge"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "hashes": {
+    "/tmp/openagents-supervision/root-target/debug/lev-serve": "3123ab1ab72aa0eb165cff27d6d7090a68ff9f55b77fd27745c96e4a6f0d7456",
+    "/tmp/openagents-apple-handoff/sweep-choice-recovery-target/debug/lev-state-sweep-choice-recovery": "9accc67777feab60dc12ab9523fccd73ab2c04775d78373f9c055af15734e898",
+    "/Users/christopherdavid/work/openagents/swift/lev-bridge/.build/release/lev-bridge": "c0a3d48cedc2214fd87bdfd8f2c7d5097088192d6f165327c6b1b50ecc7a764d",
+    "/Users/christopherdavid/work/openagents/crates/lev/manifests/lev-adapted-v1.json": "101c4c0441d9b310321946d0b40f993acaa94bd12021bcdadea1bb8210924357",
+    "/Users/christopherdavid/work/openagents/docs/decision-models/2026-09-20-state-budget-lev.jsonl": "22535d570d20436d99c7f0c192e5b253cd7b5ce02d8f10a93ae357de26bb8e8a",
+    "/tmp/openagents-apple-handoff/state-sweep-choice-recovery/src/main.rs": "ad5e5b559fa07b53dd0774620dac070af0c31c2640f2d137b22501011c1a863e",
+    "/tmp/openagents-apple-handoff/state-sweep-choice-recovery/Cargo.toml": "6c27f4f49193b982c96a454dbcae53c740e8552ae48a655315735408cb75dc2e",
+    "/tmp/openagents-apple-handoff/state-sweep-choice-recovery/Cargo.lock": "18fb17e0cbc26de2b0618e65e60b96e7617ebd09415e97976eb1319a6053ac73",
+    "/tmp/openagents-apple-handoff/choice-recovery-response-body.patch": "6db06ad5934e139107e2f52622c2adad75a1d8c23bf2d10934a55bbe64f1d18a",
+    "/Users/christopherdavid/code/lev-adapter-work/runs/lev-v1/lev.fmadapter/adapter_weights.bin": "5668e4af683b66f458e8c87e6c79f12b36a53bc96a0c0643d079472846411a93",
+    "/Users/christopherdavid/code/lev-adapter-work/runs/lev-v1/lev.fmadapter/metadata.json": "fc8334b161513dac16487d85c10ab2a1e333aee304af59c03d4e8ad66b03605e"
+  },
+  "runner_change": "Recovery-only stderr API response-body logging; original runner unchanged. Questions, caps, timeout, retry policy and row serialization unchanged.",
+  "manifest": {
+    "schema": "openagents.lev.decision_model_manifest.v1",
+    "name": "lev-adapted",
+    "version": 1,
+    "description": "Support-desk judgments on support-v2, trained on the choice objective alone.",
+    "created": "2026-09-19",
+    "artifact": {
+      "path": "~/code/lev-adapter-work/runs/lev-v1/lev.fmadapter",
+      "format": "fmadapter",
+      "sha256": "5668e4af683b66f458e8c87e6c79f12b36a53bc96a0c0643d079472846411a93",
+      "sizeBytes": 133312320,
+      "metadataSha256": "fc8334b161513dac16487d85c10ab2a1e333aee304af59c03d4e8ad66b03605e",
+      "loraRank": 32,
+      "adapterIdentifier": "fmadapter-lev-9799725"
+    },
+    "base": {
+      "signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+      "minOsBuild": "25E246",
+      "runtime": "Apple FoundationModels"
+    },
+    "policySnapshot": {
+      "source": "../policy/current.json",
+      "cache": "~/.lev/policy/current.json",
+      "freshnessWindowSeconds": 86400
+    },
+    "interface": {
+      "contract": "openagents.systemone.v1",
+      "endpoint": "POST /v1/systemone",
+      "questions": {
+        "choice": {
+          "minCriteria": 2,
+          "maxCriteria": 255,
+          "answer": [
+            "choice",
+            "confidence",
+            "probabilities"
+          ]
+        },
+        "noul": {
+          "answer": [
+            "noul"
+          ]
+        },
+        "score": {
+          "minCriteria": 2,
+          "maxCriteria": 10,
+          "answer": [
+            "score",
+            "confidence",
+            "legend",
+            "probabilities"
+          ]
+        }
+      },
+      "extensions": [
+        "estimator",
+        "require_calibration",
+        "family"
+      ],
+      "families": [
+        "routing",
+        "severity",
+        "urgency"
+      ]
+    },
+    "estimator": {
+      "estimator": "l2",
+      "samples": 8,
+      "seed_base": 0
+    },
+    "evalRef": [
+      {
+        "family": "routing",
+        "record": "../calibration/lev-adapted@1/routing.json",
+        "sha256": "a5b7b034f0bdcca1f2ffef1dae70411879a3f85618470a049ec0d09072a29f21",
+        "suite": "support-v2-three-way",
+        "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+        "partitionId": "calibration",
+        "gateId": "probability-v1",
+        "admitted": true,
+        "verdict": "passed: log loss 1.397 to 0.200, confident errors 2 to 2 over 40 items"
+      },
+      {
+        "family": "severity",
+        "record": "../calibration/lev-adapted@1/severity.json",
+        "sha256": "23c5a027243e0d855aeb611c583e78aaf3dd8ecafe3d4704c95f521f8651990c",
+        "suite": "support-v2-three-way",
+        "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+        "partitionId": "calibration",
+        "gateId": "probability-v1",
+        "admitted": false,
+        "verdict": "unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)"
+      },
+      {
+        "family": "urgency",
+        "record": "../calibration/lev-adapted@1/urgency.json",
+        "sha256": "5f68f6daa48809b63d0bf359fc544ab5f8aa28653ee48de619d3ba4b16685a0d",
+        "suite": "support-v2-three-way",
+        "suiteDigest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+        "partitionId": "calibration",
+        "gateId": "probability-v1",
+        "admitted": false,
+        "verdict": "unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)"
+      }
+    ],
+    "observationRef": [
+      {
+        "record": "../../../docs/decision-models/2026-09-20-lev-domain-gap/historical-coder-turns-v1.jsonl",
+        "sha256": "772a046ee4dcd7f187fc99d7e16a3544406e3fd2a0be559e06147bc9f1a9518a",
+        "suite": "coder-turns-v1",
+        "suiteDigest": "f619db3613b83e45ea9c897341e6ba81964f8c983420a11bec5ee72e353f21d9",
+        "partitionId": "development",
+        "door": "lev-adapted",
+        "doorIdentity": {
+          "model": "lev-adapted",
+          "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+          "adapter": "/Users/christopherdavid/code/lev-adapter-work/runs/lev-v1/lev.fmadapter",
+          "verified": true
+        },
+        "rows": 130
+      }
+    ]
+  },
+  "server_command": [
+    "/tmp/openagents-supervision/root-target/debug/lev-serve",
+    "--manifest",
+    "/Users/christopherdavid/work/openagents/crates/lev/manifests/lev-adapted-v1.json",
+    "--port",
+    "11456",
+    "--policy-refresh",
+    "off",
+    "--admission-record",
+    "/tmp/openagents-apple-handoff/state-sweep-choice-recovery-admission.jsonl"
+  ],
+  "run_command": [
+    "/tmp/openagents-apple-handoff/sweep-choice-recovery-target/debug/lev-state-sweep-choice-recovery"
+  ],
+  "seeded_prefix_sha256": "957478b93999f40f971d3afda13ec60bbe0d1843aca398ce9a00967a0a25e55e",
+  "exit_code": 0,
+  "rows": 704,
+  "rows_sha256": "776409b53c017d24ff07951de82d5f8bf3fb3505642398c66905418925b8070e",
+  "validated_complete_paired_sweep": true,
+  "measurement_completed_utc": "2026-09-20T21:16:40.158633+00:00",
+  "measurement_phase_finished_utc": "2026-09-20T21:16:40.159161+00:00",
+  "observed_runner_returncode_before_cleanup": 0,
+  "cleanup_errors": [],
+  "seconds": 2051.973209541,
+  "load_after": [
+    4.3515625,
+    4.41162109375,
+    4.33642578125
+  ],
+  "finished_utc": "2026-09-20T21:16:40.164065+00:00"
+}

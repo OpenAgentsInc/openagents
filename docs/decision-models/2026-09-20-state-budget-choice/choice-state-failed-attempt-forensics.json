@@ -1,0 +1,1754 @@
+{
+  "classification": "structurally complete failed attempt; terminal controller result absent",
+  "rows_sha256": "8fe1d847aafb3d46433636b66d94c91b0f13045f82b185722d25115b051a28aa",
+  "rows": 704,
+  "paired_keys_validated": true,
+  "terminal_result_present": false,
+  "request_error_counts": {
+    "api 413: Other": 24,
+    "the request timed out after 120000ms": 1,
+    "api 500: InternalServer": 68
+  },
+  "row_error_counts": {
+    "api 413: Other": 96,
+    "the request timed out after 120000ms": 4,
+    "api 500: InternalServer": 272
+  },
+  "first_http500": {
+    "index": 98,
+    "rung": "turns 4",
+    "state": "1d845d65#10",
+    "refusal": "api 500: InternalServer",
+    "latency_ms": 13177.981458,
+    "cumulative_request_seconds_before": 4668.9667524199995,
+    "correct": 0
+  },
+  "last_http500": {
+    "index": 168,
+    "rung": "turns 4, message 512",
+    "state": "1d845d65#28",
+    "refusal": "api 500: InternalServer",
+    "latency_ms": 135.714625,
+    "cumulative_request_seconds_before": 4763.745445713001,
+    "correct": 0
+  },
+  "requests": [
+    {
+      "index": 1,
+      "rung": "unbudgeted",
+      "state": "1d845d65#1",
+      "refusal": null,
+      "latency_ms": 109448.7385,
+      "cumulative_request_seconds_before": 0,
+      "correct": 3
+    },
+    {
+      "index": 2,
+      "rung": "unbudgeted",
+      "state": "1d845d65#10",
+      "refusal": "api 413: Other",
+      "latency_ms": 7638.214584,
+      "cumulative_request_seconds_before": 109.4487385,
+      "correct": 0
+    },
+    {
+      "index": 3,
+      "rung": "unbudgeted",
+      "state": "1d845d65#16",
+      "refusal": "api 413: Other",
+      "latency_ms": 10146.85375,
+      "cumulative_request_seconds_before": 117.086953084,
+      "correct": 0
+    },
+    {
+      "index": 4,
+      "rung": "unbudgeted",
+      "state": "1d845d65#17",
+      "refusal": "api 413: Other",
+      "latency_ms": 8262.934292,
+      "cumulative_request_seconds_before": 127.233806834,
+      "correct": 0
+    },
+    {
+      "index": 5,
+      "rung": "unbudgeted",
+      "state": "1d845d65#21",
+      "refusal": "api 413: Other",
+      "latency_ms": 10007.40425,
+      "cumulative_request_seconds_before": 135.49674112600002,
+      "correct": 0
+    },
+    {
+      "index": 6,
+      "rung": "unbudgeted",
+      "state": "1d845d65#22",
+      "refusal": "api 413: Other",
+      "latency_ms": 9285.84625,
+      "cumulative_request_seconds_before": 145.50414537600003,
+      "correct": 0
+    },
+    {
+      "index": 7,
+      "rung": "unbudgeted",
+      "state": "1d845d65#23",
+      "refusal": "api 413: Other",
+      "latency_ms": 11337.81675,
+      "cumulative_request_seconds_before": 154.78999162600002,
+      "correct": 0
+    },
+    {
+      "index": 8,
+      "rung": "unbudgeted",
+      "state": "1d845d65#28",
+      "refusal": null,
+      "latency_ms": 115142.735417,
+      "cumulative_request_seconds_before": 166.12780837600002,
+      "correct": 1
+    },
+    {
+      "index": 9,
+      "rung": "unbudgeted",
+      "state": "1d845d65#3",
+      "refusal": "api 413: Other",
+      "latency_ms": 7341.26325,
+      "cumulative_request_seconds_before": 281.270543793,
+      "correct": 0
+    },
+    {
+      "index": 10,
+      "rung": "unbudgeted",
+      "state": "1d845d65#7",
+      "refusal": "api 413: Other",
+      "latency_ms": 5407.962917,
+      "cumulative_request_seconds_before": 288.611807043,
+      "correct": 0
+    },
+    {
+      "index": 11,
+      "rung": "unbudgeted",
+      "state": "1d845d65#8",
+      "refusal": null,
+      "latency_ms": 91591.21766699999,
+      "cumulative_request_seconds_before": 294.01976996,
+      "correct": 1
+    },
+    {
+      "index": 12,
+      "rung": "unbudgeted",
+      "state": "9b37638d#0",
+      "refusal": null,
+      "latency_ms": 8361.833625,
+      "cumulative_request_seconds_before": 385.610987627,
+      "correct": 0
+    },
+    {
+      "index": 13,
+      "rung": "unbudgeted",
+      "state": "9b37638d#18",
+      "refusal": null,
+      "latency_ms": 85547.625417,
+      "cumulative_request_seconds_before": 393.97282125199996,
+      "correct": 1
+    },
+    {
+      "index": 14,
+      "rung": "unbudgeted",
+      "state": "9b37638d#23",
+      "refusal": null,
+      "latency_ms": 88311.538208,
+      "cumulative_request_seconds_before": 479.52044666899997,
+      "correct": 2
+    },
+    {
+      "index": 15,
+      "rung": "unbudgeted",
+      "state": "9b37638d#4",
+      "refusal": null,
+      "latency_ms": 108086.754916,
+      "cumulative_request_seconds_before": 567.831984877,
+      "correct": 4
+    },
+    {
+      "index": 16,
+      "rung": "unbudgeted",
+      "state": "9b37638d#7",
+      "refusal": "the request timed out after 120000ms",
+      "latency_ms": 120003.42266699999,
+      "cumulative_request_seconds_before": 675.918739793,
+      "correct": 0
+    },
+    {
+      "index": 17,
+      "rung": "output 512",
+      "state": "1d845d65#1",
+      "refusal": null,
+      "latency_ms": 76152.69541700001,
+      "cumulative_request_seconds_before": 795.92216246,
+      "correct": 3
+    },
+    {
+      "index": 18,
+      "rung": "output 512",
+      "state": "1d845d65#10",
+      "refusal": null,
+      "latency_ms": 93865.66862499999,
+      "cumulative_request_seconds_before": 872.074857877,
+      "correct": 1
+    },
+    {
+      "index": 19,
+      "rung": "output 512",
+      "state": "1d845d65#16",
+      "refusal": "api 413: Other",
+      "latency_ms": 5174.182583000001,
+      "cumulative_request_seconds_before": 965.940526502,
+      "correct": 0
+    },
+    {
+      "index": 20,
+      "rung": "output 512",
+      "state": "1d845d65#17",
+      "refusal": "api 413: Other",
+      "latency_ms": 7089.264458,
+      "cumulative_request_seconds_before": 971.114709085,
+      "correct": 0
+    },
+    {
+      "index": 21,
+      "rung": "output 512",
+      "state": "1d845d65#21",
+      "refusal": "api 413: Other",
+      "latency_ms": 7383.822375000001,
+      "cumulative_request_seconds_before": 978.203973543,
+      "correct": 0
+    },
+    {
+      "index": 22,
+      "rung": "output 512",
+      "state": "1d845d65#22",
+      "refusal": "api 413: Other",
+      "latency_ms": 7934.566917,
+      "cumulative_request_seconds_before": 985.587795918,
+      "correct": 0
+    },
+    {
+      "index": 23,
+      "rung": "output 512",
+      "state": "1d845d65#23",
+      "refusal": "api 413: Other",
+      "latency_ms": 7856.934125000001,
+      "cumulative_request_seconds_before": 993.522362835,
+      "correct": 0
+    },
+    {
+      "index": 24,
+      "rung": "output 512",
+      "state": "1d845d65#28",
+      "refusal": null,
+      "latency_ms": 92627.782917,
+      "cumulative_request_seconds_before": 1001.3792969599999,
+      "correct": 1
+    },
+    {
+      "index": 25,
+      "rung": "output 512",
+      "state": "1d845d65#3",
+      "refusal": "api 413: Other",
+      "latency_ms": 5889.804667,
+      "cumulative_request_seconds_before": 1094.007079877,
+      "correct": 0
+    },
+    {
+      "index": 26,
+      "rung": "output 512",
+      "state": "1d845d65#7",
+      "refusal": null,
+      "latency_ms": 99640.688541,
+      "cumulative_request_seconds_before": 1099.896884544,
+      "correct": 1
+    },
+    {
+      "index": 27,
+      "rung": "output 512",
+      "state": "1d845d65#8",
+      "refusal": null,
+      "latency_ms": 83122.602875,
+      "cumulative_request_seconds_before": 1199.5375730849998,
+      "correct": 1
+    },
+    {
+      "index": 28,
+      "rung": "output 512",
+      "state": "9b37638d#0",
+      "refusal": null,
+      "latency_ms": 8819.478541,
+      "cumulative_request_seconds_before": 1282.6601759599998,
+      "correct": 0
+    },
+    {
+      "index": 29,
+      "rung": "output 512",
+      "state": "9b37638d#18",
+      "refusal": null,
+      "latency_ms": 100248.10220899999,
+      "cumulative_request_seconds_before": 1291.479654501,
+      "correct": 1
+    },
+    {
+      "index": 30,
+      "rung": "output 512",
+      "state": "9b37638d#23",
+      "refusal": null,
+      "latency_ms": 94176.682458,
+      "cumulative_request_seconds_before": 1391.72775671,
+      "correct": 2
+    },
+    {
+      "index": 31,
+      "rung": "output 512",
+      "state": "9b37638d#4",
+      "refusal": null,
+      "latency_ms": 78373.394292,
+      "cumulative_request_seconds_before": 1485.904439168,
+      "correct": 4
+    },
+    {
+      "index": 32,
+      "rung": "output 512",
+      "state": "9b37638d#7",
+      "refusal": null,
+      "latency_ms": 70795.862083,
+      "cumulative_request_seconds_before": 1564.27783346,
+      "correct": 1
+    },
+    {
+      "index": 33,
+      "rung": "output 256",
+      "state": "1d845d65#1",
+      "refusal": null,
+      "latency_ms": 57713.282333,
+      "cumulative_request_seconds_before": 1635.073695543,
+      "correct": 2
+    },
+    {
+      "index": 34,
+      "rung": "output 256",
+      "state": "1d845d65#10",
+      "refusal": null,
+      "latency_ms": 79838.532708,
+      "cumulative_request_seconds_before": 1692.786977876,
+      "correct": 1
+    },
+    {
+      "index": 35,
+      "rung": "output 256",
+      "state": "1d845d65#16",
+      "refusal": "api 413: Other",
+      "latency_ms": 6251.131667000001,
+      "cumulative_request_seconds_before": 1772.625510584,
+      "correct": 0
+    },
+    {
+      "index": 36,
+      "rung": "output 256",
+      "state": "1d845d65#17",
+      "refusal": "api 413: Other",
+      "latency_ms": 6145.372416,
+      "cumulative_request_seconds_before": 1778.876642251,
+      "correct": 0
+    },
+    {
+      "index": 37,
+      "rung": "output 256",
+      "state": "1d845d65#21",
+      "refusal": "api 413: Other",
+      "latency_ms": 6098.1625,
+      "cumulative_request_seconds_before": 1785.0220146670001,
+      "correct": 0
+    },
+    {
+      "index": 38,
+      "rung": "output 256",
+      "state": "1d845d65#22",
+      "refusal": null,
+      "latency_ms": 113525.84229199999,
+      "cumulative_request_seconds_before": 1791.120177167,
+      "correct": 2
+    },
+    {
+      "index": 39,
+      "rung": "output 256",
+      "state": "1d845d65#23",
+      "refusal": "api 413: Other",
+      "latency_ms": 5574.75625,
+      "cumulative_request_seconds_before": 1904.646019459,
+      "correct": 0
+    },
+    {
+      "index": 40,
+      "rung": "output 256",
+      "state": "1d845d65#28",
+      "refusal": null,
+      "latency_ms": 57408.324791,
+      "cumulative_request_seconds_before": 1910.220775709,
+      "correct": 1
+    },
+    {
+      "index": 41,
+      "rung": "output 256",
+      "state": "1d845d65#3",
+      "refusal": "api 413: Other",
+      "latency_ms": 5201.724792,
+      "cumulative_request_seconds_before": 1967.6291005,
+      "correct": 0
+    },
+    {
+      "index": 42,
+      "rung": "output 256",
+      "state": "1d845d65#7",
+      "refusal": null,
+      "latency_ms": 84882.391,
+      "cumulative_request_seconds_before": 1972.830825292,
+      "correct": 1
+    },
+    {
+      "index": 43,
+      "rung": "output 256",
+      "state": "1d845d65#8",
+      "refusal": null,
+      "latency_ms": 81957.204875,
+      "cumulative_request_seconds_before": 2057.713216292,
+      "correct": 1
+    },
+    {
+      "index": 44,
+      "rung": "output 256",
+      "state": "9b37638d#0",
+      "refusal": null,
+      "latency_ms": 8305.660542,
+      "cumulative_request_seconds_before": 2139.6704211670003,
+      "correct": 0
+    },
+    {
+      "index": 45,
+      "rung": "output 256",
+      "state": "9b37638d#18",
+      "refusal": null,
+      "latency_ms": 57922.83175,
+      "cumulative_request_seconds_before": 2147.9760817090005,
+      "correct": 1
+    },
+    {
+      "index": 46,
+      "rung": "output 256",
+      "state": "9b37638d#23",
+      "refusal": null,
+      "latency_ms": 78559.808458,
+      "cumulative_request_seconds_before": 2205.8989134590006,
+      "correct": 2
+    },
+    {
+      "index": 47,
+      "rung": "output 256",
+      "state": "9b37638d#4",
+      "refusal": null,
+      "latency_ms": 74906.974375,
+      "cumulative_request_seconds_before": 2284.4587219170007,
+      "correct": 4
+    },
+    {
+      "index": 48,
+      "rung": "output 256",
+      "state": "9b37638d#7",
+      "refusal": null,
+      "latency_ms": 60180.693167,
+      "cumulative_request_seconds_before": 2359.365696292001,
+      "correct": 1
+    },
+    {
+      "index": 49,
+      "rung": "commands 3",
+      "state": "1d845d65#1",
+      "refusal": null,
+      "latency_ms": 56268.82175,
+      "cumulative_request_seconds_before": 2419.5463894590007,
+      "correct": 2
+    },
+    {
+      "index": 50,
+      "rung": "commands 3",
+      "state": "1d845d65#10",
+      "refusal": null,
+      "latency_ms": 88235.84854199999,
+      "cumulative_request_seconds_before": 2475.8152112090006,
+      "correct": 1
+    },
+    {
+      "index": 51,
+      "rung": "commands 3",
+      "state": "1d845d65#16",
+      "refusal": "api 413: Other",
+      "latency_ms": 5630.475375,
+      "cumulative_request_seconds_before": 2564.0510597510006,
+      "correct": 0
+    },
+    {
+      "index": 52,
+      "rung": "commands 3",
+      "state": "1d845d65#17",
+      "refusal": "api 413: Other",
+      "latency_ms": 5182.70975,
+      "cumulative_request_seconds_before": 2569.6815351260007,
+      "correct": 0
+    },
+    {
+      "index": 53,
+      "rung": "commands 3",
+      "state": "1d845d65#21",
+      "refusal": "api 413: Other",
+      "latency_ms": 4579.961875,
+      "cumulative_request_seconds_before": 2574.8642448760006,
+      "correct": 0
+    },
+    {
+      "index": 54,
+      "rung": "commands 3",
+      "state": "1d845d65#22",
+      "refusal": null,
+      "latency_ms": 96484.47941700001,
+      "cumulative_request_seconds_before": 2579.444206751001,
+      "correct": 2
+    },
+    {
+      "index": 55,
+      "rung": "commands 3",
+      "state": "1d845d65#23",
+      "refusal": "api 413: Other",
+      "latency_ms": 5422.213084,
+      "cumulative_request_seconds_before": 2675.9286861680007,
+      "correct": 0
+    },
+    {
+      "index": 56,
+      "rung": "commands 3",
+      "state": "1d845d65#28",
+      "refusal": null,
+      "latency_ms": 54618.241584,
+      "cumulative_request_seconds_before": 2681.3508992520005,
+      "correct": 1
+    },
+    {
+      "index": 57,
+      "rung": "commands 3",
+      "state": "1d845d65#3",
+      "refusal": "api 413: Other",
+      "latency_ms": 5217.354875,
+      "cumulative_request_seconds_before": 2735.9691408360004,
+      "correct": 0
+    },
+    {
+      "index": 58,
+      "rung": "commands 3",
+      "state": "1d845d65#7",
+      "refusal": null,
+      "latency_ms": 88665.02779200001,
+      "cumulative_request_seconds_before": 2741.1864957110006,
+      "correct": 1
+    },
+    {
+      "index": 59,
+      "rung": "commands 3",
+      "state": "1d845d65#8",
+      "refusal": null,
+      "latency_ms": 95198.751833,
+      "cumulative_request_seconds_before": 2829.8515235030004,
+      "correct": 1
+    },
+    {
+      "index": 60,
+      "rung": "commands 3",
+      "state": "9b37638d#0",
+      "refusal": null,
+      "latency_ms": 8306.143667,
+      "cumulative_request_seconds_before": 2925.0502753360006,
+      "correct": 0
+    },
+    {
+      "index": 61,
+      "rung": "commands 3",
+      "state": "9b37638d#18",
+      "refusal": null,
+      "latency_ms": 58222.432125,
+      "cumulative_request_seconds_before": 2933.3564190030006,
+      "correct": 1
+    },
+    {
+      "index": 62,
+      "rung": "commands 3",
+      "state": "9b37638d#23",
+      "refusal": null,
+      "latency_ms": 72923.55462499999,
+      "cumulative_request_seconds_before": 2991.5788511280007,
+      "correct": 2
+    },
+    {
+      "index": 63,
+      "rung": "commands 3",
+      "state": "9b37638d#4",
+      "refusal": null,
+      "latency_ms": 68564.91466699999,
+      "cumulative_request_seconds_before": 3064.502405753001,
+      "correct": 4
+    },
+    {
+      "index": 64,
+      "rung": "commands 3",
+      "state": "9b37638d#7",
+      "refusal": null,
+      "latency_ms": 58473.560249999995,
+      "cumulative_request_seconds_before": 3133.0673204200007,
+      "correct": 1
+    },
+    {
+      "index": 65,
+      "rung": "turns 8",
+      "state": "1d845d65#1",
+      "refusal": null,
+      "latency_ms": 43460.942625,
+      "cumulative_request_seconds_before": 3191.5408806700007,
+      "correct": 3
+    },
+    {
+      "index": 66,
+      "rung": "turns 8",
+      "state": "1d845d65#10",
+      "refusal": null,
+      "latency_ms": 58989.341125000006,
+      "cumulative_request_seconds_before": 3235.0018232950006,
+      "correct": 0
+    },
+    {
+      "index": 67,
+      "rung": "turns 8",
+      "state": "1d845d65#16",
+      "refusal": null,
+      "latency_ms": 71077.302917,
+      "cumulative_request_seconds_before": 3293.9911644200006,
+      "correct": 3
+    },
+    {
+      "index": 68,
+      "rung": "turns 8",
+      "state": "1d845d65#17",
+      "refusal": null,
+      "latency_ms": 57945.850541,
+      "cumulative_request_seconds_before": 3365.0684673370006,
+      "correct": 2
+    },
+    {
+      "index": 69,
+      "rung": "turns 8",
+      "state": "1d845d65#21",
+      "refusal": null,
+      "latency_ms": 74393.375959,
+      "cumulative_request_seconds_before": 3423.0143178780004,
+      "correct": 2
+    },
+    {
+      "index": 70,
+      "rung": "turns 8",
+      "state": "1d845d65#22",
+      "refusal": null,
+      "latency_ms": 58394.630833,
+      "cumulative_request_seconds_before": 3497.4076938370004,
+      "correct": 1
+    },
+    {
+      "index": 71,
+      "rung": "turns 8",
+      "state": "1d845d65#23",
+      "refusal": null,
+      "latency_ms": 65373.269083,
+      "cumulative_request_seconds_before": 3555.8023246700004,
+      "correct": 1
+    },
+    {
+      "index": 72,
+      "rung": "turns 8",
+      "state": "1d845d65#28",
+      "refusal": null,
+      "latency_ms": 45430.687542,
+      "cumulative_request_seconds_before": 3621.1755937530006,
+      "correct": 1
+    },
+    {
+      "index": 73,
+      "rung": "turns 8",
+      "state": "1d845d65#3",
+      "refusal": null,
+      "latency_ms": 56085.334625,
+      "cumulative_request_seconds_before": 3666.606281295001,
+      "correct": 1
+    },
+    {
+      "index": 74,
+      "rung": "turns 8",
+      "state": "1d845d65#7",
+      "refusal": null,
+      "latency_ms": 50180.71025,
+      "cumulative_request_seconds_before": 3722.691615920001,
+      "correct": 1
+    },
+    {
+      "index": 75,
+      "rung": "turns 8",
+      "state": "1d845d65#8",
+      "refusal": null,
+      "latency_ms": 50748.316167,
+      "cumulative_request_seconds_before": 3772.872326170001,
+      "correct": 1
+    },
+    {
+      "index": 76,
+      "rung": "turns 8",
+      "state": "9b37638d#0",
+      "refusal": null,
+      "latency_ms": 8439.73675,
+      "cumulative_request_seconds_before": 3823.6206423370013,
+      "correct": 0
+    },
+    {
+      "index": 77,
+      "rung": "turns 8",
+      "state": "9b37638d#18",
+      "refusal": null,
+      "latency_ms": 32964.893291,
+      "cumulative_request_seconds_before": 3832.0603790870014,
+      "correct": 2
+    },
+    {
+      "index": 78,
+      "rung": "turns 8",
+      "state": "9b37638d#23",
+      "refusal": null,
+      "latency_ms": 48959.706459,
+      "cumulative_request_seconds_before": 3865.0252723780013,
+      "correct": 3
+    },
+    {
+      "index": 79,
+      "rung": "turns 8",
+      "state": "9b37638d#4",
+      "refusal": null,
+      "latency_ms": 41607.607166999995,
+      "cumulative_request_seconds_before": 3913.984978837001,
+      "correct": 4
+    },
+    {
+      "index": 80,
+      "rung": "turns 8",
+      "state": "9b37638d#7",
+      "refusal": null,
+      "latency_ms": 44754.910707999996,
+      "cumulative_request_seconds_before": 3955.592586004001,
+      "correct": 1
+    },
+    {
+      "index": 81,
+      "rung": "turns 6",
+      "state": "1d845d65#1",
+      "refusal": null,
+      "latency_ms": 32087.746417,
+      "cumulative_request_seconds_before": 4000.347496712001,
+      "correct": 3
+    },
+    {
+      "index": 82,
+      "rung": "turns 6",
+      "state": "1d845d65#10",
+      "refusal": null,
+      "latency_ms": 50019.698625,
+      "cumulative_request_seconds_before": 4032.435243129001,
+      "correct": 0
+    },
+    {
+      "index": 83,
+      "rung": "turns 6",
+      "state": "1d845d65#16",
+      "refusal": null,
+      "latency_ms": 62747.949292000005,
+      "cumulative_request_seconds_before": 4082.4549417540006,
+      "correct": 3
+    },
+    {
+      "index": 84,
+      "rung": "turns 6",
+      "state": "1d845d65#17",
+      "refusal": null,
+      "latency_ms": 40711.593625,
+      "cumulative_request_seconds_before": 4145.202891046,
+      "correct": 1
+    },
+    {
+      "index": 85,
+      "rung": "turns 6",
+      "state": "1d845d65#21",
+      "refusal": null,
+      "latency_ms": 56312.09325,
+      "cumulative_request_seconds_before": 4185.9144846710005,
+      "correct": 1
+    },
+    {
+      "index": 86,
+      "rung": "turns 6",
+      "state": "1d845d65#22",
+      "refusal": null,
+      "latency_ms": 41998.739499999996,
+      "cumulative_request_seconds_before": 4242.226577921,
+      "correct": 1
+    },
+    {
+      "index": 87,
+      "rung": "turns 6",
+      "state": "1d845d65#23",
+      "refusal": null,
+      "latency_ms": 46478.305417,
+      "cumulative_request_seconds_before": 4284.225317421,
+      "correct": 1
+    },
+    {
+      "index": 88,
+      "rung": "turns 6",
+      "state": "1d845d65#28",
+      "refusal": null,
+      "latency_ms": 38515.035542,
+      "cumulative_request_seconds_before": 4330.703622838,
+      "correct": 3
+    },
+    {
+      "index": 89,
+      "rung": "turns 6",
+      "state": "1d845d65#3",
+      "refusal": null,
+      "latency_ms": 43162.707708,
+      "cumulative_request_seconds_before": 4369.21865838,
+      "correct": 2
+    },
+    {
+      "index": 90,
+      "rung": "turns 6",
+      "state": "1d845d65#7",
+      "refusal": null,
+      "latency_ms": 41279.794083,
+      "cumulative_request_seconds_before": 4412.3813660880005,
+      "correct": 1
+    },
+    {
+      "index": 91,
+      "rung": "turns 6",
+      "state": "1d845d65#8",
+      "refusal": null,
+      "latency_ms": 41100.598791000004,
+      "cumulative_request_seconds_before": 4453.661160171,
+      "correct": 1
+    },
+    {
+      "index": 92,
+      "rung": "turns 6",
+      "state": "9b37638d#0",
+      "refusal": null,
+      "latency_ms": 8366.548458000001,
+      "cumulative_request_seconds_before": 4494.761758962,
+      "correct": 0
+    },
+    {
+      "index": 93,
+      "rung": "turns 6",
+      "state": "9b37638d#18",
+      "refusal": null,
+      "latency_ms": 31151.422125,
+      "cumulative_request_seconds_before": 4503.12830742,
+      "correct": 0
+    },
+    {
+      "index": 94,
+      "rung": "turns 6",
+      "state": "9b37638d#23",
+      "refusal": null,
+      "latency_ms": 31133.095666999998,
+      "cumulative_request_seconds_before": 4534.279729545,
+      "correct": 3
+    },
+    {
+      "index": 95,
+      "rung": "turns 6",
+      "state": "9b37638d#4",
+      "refusal": null,
+      "latency_ms": 36347.389458000005,
+      "cumulative_request_seconds_before": 4565.412825212,
+      "correct": 4
+    },
+    {
+      "index": 96,
+      "rung": "turns 6",
+      "state": "9b37638d#7",
+      "refusal": null,
+      "latency_ms": 41006.32075,
+      "cumulative_request_seconds_before": 4601.76021467,
+      "correct": 1
+    },
+    {
+      "index": 97,
+      "rung": "turns 4",
+      "state": "1d845d65#1",
+      "refusal": null,
+      "latency_ms": 26200.216999999997,
+      "cumulative_request_seconds_before": 4642.76653542,
+      "correct": 2
+    },
+    {
+      "index": 98,
+      "rung": "turns 4",
+      "state": "1d845d65#10",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 13177.981458,
+      "cumulative_request_seconds_before": 4668.9667524199995,
+      "correct": 0
+    },
+    {
+      "index": 99,
+      "rung": "turns 4",
+      "state": "1d845d65#16",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 76.96283299999999,
+      "cumulative_request_seconds_before": 4682.144733878,
+      "correct": 0
+    },
+    {
+      "index": 100,
+      "rung": "turns 4",
+      "state": "1d845d65#17",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 76.547333,
+      "cumulative_request_seconds_before": 4682.221696711,
+      "correct": 0
+    },
+    {
+      "index": 101,
+      "rung": "turns 4",
+      "state": "1d845d65#21",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 76.083,
+      "cumulative_request_seconds_before": 4682.298244044,
+      "correct": 0
+    },
+    {
+      "index": 102,
+      "rung": "turns 4",
+      "state": "1d845d65#22",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 77.314958,
+      "cumulative_request_seconds_before": 4682.374327044,
+      "correct": 0
+    },
+    {
+      "index": 103,
+      "rung": "turns 4",
+      "state": "1d845d65#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 78.0065,
+      "cumulative_request_seconds_before": 4682.451642002,
+      "correct": 0
+    },
+    {
+      "index": 104,
+      "rung": "turns 4",
+      "state": "1d845d65#28",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 74.489166,
+      "cumulative_request_seconds_before": 4682.529648502,
+      "correct": 0
+    },
+    {
+      "index": 105,
+      "rung": "turns 4",
+      "state": "1d845d65#3",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 66.887792,
+      "cumulative_request_seconds_before": 4682.604137668,
+      "correct": 0
+    },
+    {
+      "index": 106,
+      "rung": "turns 4",
+      "state": "1d845d65#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 70.868208,
+      "cumulative_request_seconds_before": 4682.671025459999,
+      "correct": 0
+    },
+    {
+      "index": 107,
+      "rung": "turns 4",
+      "state": "1d845d65#8",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 73.445125,
+      "cumulative_request_seconds_before": 4682.741893668,
+      "correct": 0
+    },
+    {
+      "index": 108,
+      "rung": "turns 4",
+      "state": "9b37638d#0",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 65.357917,
+      "cumulative_request_seconds_before": 4682.815338793,
+      "correct": 0
+    },
+    {
+      "index": 109,
+      "rung": "turns 4",
+      "state": "9b37638d#18",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 71.211459,
+      "cumulative_request_seconds_before": 4682.88069671,
+      "correct": 0
+    },
+    {
+      "index": 110,
+      "rung": "turns 4",
+      "state": "9b37638d#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 73.020875,
+      "cumulative_request_seconds_before": 4682.951908169,
+      "correct": 0
+    },
+    {
+      "index": 111,
+      "rung": "turns 4",
+      "state": "9b37638d#4",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 71.279667,
+      "cumulative_request_seconds_before": 4683.024929044,
+      "correct": 0
+    },
+    {
+      "index": 112,
+      "rung": "turns 4",
+      "state": "9b37638d#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 78.861,
+      "cumulative_request_seconds_before": 4683.096208711,
+      "correct": 0
+    },
+    {
+      "index": 113,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#1",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 75.29504200000001,
+      "cumulative_request_seconds_before": 4683.175069711,
+      "correct": 0
+    },
+    {
+      "index": 114,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#10",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 74.157916,
+      "cumulative_request_seconds_before": 4683.250364753,
+      "correct": 0
+    },
+    {
+      "index": 115,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#16",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 75.001584,
+      "cumulative_request_seconds_before": 4683.3245226690005,
+      "correct": 0
+    },
+    {
+      "index": 116,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#17",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 73.01270799999999,
+      "cumulative_request_seconds_before": 4683.399524253001,
+      "correct": 0
+    },
+    {
+      "index": 117,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#21",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 77.66758399999999,
+      "cumulative_request_seconds_before": 4683.4725369610005,
+      "correct": 0
+    },
+    {
+      "index": 118,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#22",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 77.027208,
+      "cumulative_request_seconds_before": 4683.550204545,
+      "correct": 0
+    },
+    {
+      "index": 119,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 75.632958,
+      "cumulative_request_seconds_before": 4683.627231753,
+      "correct": 0
+    },
+    {
+      "index": 120,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#28",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 73.679625,
+      "cumulative_request_seconds_before": 4683.702864711,
+      "correct": 0
+    },
+    {
+      "index": 121,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#3",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 73.23687500000001,
+      "cumulative_request_seconds_before": 4683.776544336,
+      "correct": 0
+    },
+    {
+      "index": 122,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 72.94933400000001,
+      "cumulative_request_seconds_before": 4683.849781211,
+      "correct": 0
+    },
+    {
+      "index": 123,
+      "rung": "turns 6, message 1024",
+      "state": "1d845d65#8",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 67.38695799999999,
+      "cumulative_request_seconds_before": 4683.922730545,
+      "correct": 0
+    },
+    {
+      "index": 124,
+      "rung": "turns 6, message 1024",
+      "state": "9b37638d#0",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 59.138375,
+      "cumulative_request_seconds_before": 4683.990117503,
+      "correct": 0
+    },
+    {
+      "index": 125,
+      "rung": "turns 6, message 1024",
+      "state": "9b37638d#18",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 69.105041,
+      "cumulative_request_seconds_before": 4684.049255878,
+      "correct": 0
+    },
+    {
+      "index": 126,
+      "rung": "turns 6, message 1024",
+      "state": "9b37638d#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 70.21950000000001,
+      "cumulative_request_seconds_before": 4684.118360918999,
+      "correct": 0
+    },
+    {
+      "index": 127,
+      "rung": "turns 6, message 1024",
+      "state": "9b37638d#4",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 69.028708,
+      "cumulative_request_seconds_before": 4684.188580419,
+      "correct": 0
+    },
+    {
+      "index": 128,
+      "rung": "turns 6, message 1024",
+      "state": "9b37638d#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 73.71125,
+      "cumulative_request_seconds_before": 4684.257609126999,
+      "correct": 0
+    },
+    {
+      "index": 129,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#1",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 65.922042,
+      "cumulative_request_seconds_before": 4684.331320376999,
+      "correct": 0
+    },
+    {
+      "index": 130,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#10",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 70.653959,
+      "cumulative_request_seconds_before": 4684.397242419,
+      "correct": 0
+    },
+    {
+      "index": 131,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#16",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 70.400375,
+      "cumulative_request_seconds_before": 4684.467896378,
+      "correct": 0
+    },
+    {
+      "index": 132,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#17",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 68.921667,
+      "cumulative_request_seconds_before": 4684.5382967529995,
+      "correct": 0
+    },
+    {
+      "index": 133,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#21",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 70.55579200000001,
+      "cumulative_request_seconds_before": 4684.607218419999,
+      "correct": 0
+    },
+    {
+      "index": 134,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#22",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 71.30425,
+      "cumulative_request_seconds_before": 4684.677774211999,
+      "correct": 0
+    },
+    {
+      "index": 135,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 74.24875,
+      "cumulative_request_seconds_before": 4684.7490784619995,
+      "correct": 0
+    },
+    {
+      "index": 136,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#28",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 72.408416,
+      "cumulative_request_seconds_before": 4684.823327212,
+      "correct": 0
+    },
+    {
+      "index": 137,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#3",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 69.149959,
+      "cumulative_request_seconds_before": 4684.895735628,
+      "correct": 0
+    },
+    {
+      "index": 138,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 69.812792,
+      "cumulative_request_seconds_before": 4684.964885587,
+      "correct": 0
+    },
+    {
+      "index": 139,
+      "rung": "production: turns 6, message 768",
+      "state": "1d845d65#8",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 69.767709,
+      "cumulative_request_seconds_before": 4685.0346983790005,
+      "correct": 0
+    },
+    {
+      "index": 140,
+      "rung": "production: turns 6, message 768",
+      "state": "9b37638d#0",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 65.568167,
+      "cumulative_request_seconds_before": 4685.104466088001,
+      "correct": 0
+    },
+    {
+      "index": 141,
+      "rung": "production: turns 6, message 768",
+      "state": "9b37638d#18",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 72.09412499999999,
+      "cumulative_request_seconds_before": 4685.170034255,
+      "correct": 0
+    },
+    {
+      "index": 142,
+      "rung": "production: turns 6, message 768",
+      "state": "9b37638d#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 72.51091699999999,
+      "cumulative_request_seconds_before": 4685.24212838,
+      "correct": 0
+    },
+    {
+      "index": 143,
+      "rung": "production: turns 6, message 768",
+      "state": "9b37638d#4",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 69.858,
+      "cumulative_request_seconds_before": 4685.314639297,
+      "correct": 0
+    },
+    {
+      "index": 144,
+      "rung": "production: turns 6, message 768",
+      "state": "9b37638d#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 71.156291,
+      "cumulative_request_seconds_before": 4685.384497297,
+      "correct": 0
+    },
+    {
+      "index": 145,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#1",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 71.61770800000001,
+      "cumulative_request_seconds_before": 4685.455653588,
+      "correct": 0
+    },
+    {
+      "index": 146,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#10",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 67.77974999999999,
+      "cumulative_request_seconds_before": 4685.527271296,
+      "correct": 0
+    },
+    {
+      "index": 147,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#16",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 69.559959,
+      "cumulative_request_seconds_before": 4685.595051046001,
+      "correct": 0
+    },
+    {
+      "index": 148,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#17",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 63.643292,
+      "cumulative_request_seconds_before": 4685.664611005001,
+      "correct": 0
+    },
+    {
+      "index": 149,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#21",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 64.002084,
+      "cumulative_request_seconds_before": 4685.728254297001,
+      "correct": 0
+    },
+    {
+      "index": 150,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#22",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 63.915167,
+      "cumulative_request_seconds_before": 4685.792256381001,
+      "correct": 0
+    },
+    {
+      "index": 151,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 65.493583,
+      "cumulative_request_seconds_before": 4685.856171548001,
+      "correct": 0
+    },
+    {
+      "index": 152,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#28",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 71.530916,
+      "cumulative_request_seconds_before": 4685.921665131001,
+      "correct": 0
+    },
+    {
+      "index": 153,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#3",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 67.306125,
+      "cumulative_request_seconds_before": 4685.993196047,
+      "correct": 0
+    },
+    {
+      "index": 154,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 67.127917,
+      "cumulative_request_seconds_before": 4686.060502172,
+      "correct": 0
+    },
+    {
+      "index": 155,
+      "rung": "turns 6, message 512",
+      "state": "1d845d65#8",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 67.061292,
+      "cumulative_request_seconds_before": 4686.127630089,
+      "correct": 0
+    },
+    {
+      "index": 156,
+      "rung": "turns 6, message 512",
+      "state": "9b37638d#0",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 64.16149999999999,
+      "cumulative_request_seconds_before": 4686.194691381001,
+      "correct": 0
+    },
+    {
+      "index": 157,
+      "rung": "turns 6, message 512",
+      "state": "9b37638d#18",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 71.198375,
+      "cumulative_request_seconds_before": 4686.258852881001,
+      "correct": 0
+    },
+    {
+      "index": 158,
+      "rung": "turns 6, message 512",
+      "state": "9b37638d#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 66.999625,
+      "cumulative_request_seconds_before": 4686.330051256001,
+      "correct": 0
+    },
+    {
+      "index": 159,
+      "rung": "turns 6, message 512",
+      "state": "9b37638d#4",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 65.174833,
+      "cumulative_request_seconds_before": 4686.397050881001,
+      "correct": 0
+    },
+    {
+      "index": 160,
+      "rung": "turns 6, message 512",
+      "state": "9b37638d#7",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 65.045792,
+      "cumulative_request_seconds_before": 4686.462225714001,
+      "correct": 0
+    },
+    {
+      "index": 161,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#1",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 68.408833,
+      "cumulative_request_seconds_before": 4686.527271506001,
+      "correct": 0
+    },
+    {
+      "index": 162,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#10",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 2616.2273750000004,
+      "cumulative_request_seconds_before": 4686.595680339001,
+      "correct": 0
+    },
+    {
+      "index": 163,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#16",
+      "refusal": null,
+      "latency_ms": 21148.534333,
+      "cumulative_request_seconds_before": 4689.2119077140005,
+      "correct": 3
+    },
+    {
+      "index": 164,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#17",
+      "refusal": null,
+      "latency_ms": 17360.957625000003,
+      "cumulative_request_seconds_before": 4710.360442047,
+      "correct": 0
+    },
+    {
+      "index": 165,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#21",
+      "refusal": null,
+      "latency_ms": 22510.602958,
+      "cumulative_request_seconds_before": 4727.721399672,
+      "correct": 0
+    },
+    {
+      "index": 166,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#22",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 13371.3045,
+      "cumulative_request_seconds_before": 4750.23200263,
+      "correct": 0
+    },
+    {
+      "index": 167,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#23",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 142.138583,
+      "cumulative_request_seconds_before": 4763.603307130001,
+      "correct": 0
+    },
+    {
+      "index": 168,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#28",
+      "refusal": "api 500: InternalServer",
+      "latency_ms": 135.714625,
+      "cumulative_request_seconds_before": 4763.745445713001,
+      "correct": 0
+    },
+    {
+      "index": 169,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#3",
+      "refusal": null,
+      "latency_ms": 25565.553666,
+      "cumulative_request_seconds_before": 4763.881160338001,
+      "correct": 1
+    },
+    {
+      "index": 170,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#7",
+      "refusal": null,
+      "latency_ms": 19940.639167,
+      "cumulative_request_seconds_before": 4789.446714004001,
+      "correct": 0
+    },
+    {
+      "index": 171,
+      "rung": "turns 4, message 512",
+      "state": "1d845d65#8",
+      "refusal": null,
+      "latency_ms": 19812.947791,
+      "cumulative_request_seconds_before": 4809.3873531710005,
+      "correct": 1
+    },
+    {
+      "index": 172,
+      "rung": "turns 4, message 512",
+      "state": "9b37638d#0",
+      "refusal": null,
+      "latency_ms": 8474.900125,
+      "cumulative_request_seconds_before": 4829.200300962,
+      "correct": 0
+    },
+    {
+      "index": 173,
+      "rung": "turns 4, message 512",
+      "state": "9b37638d#18",
+      "refusal": null,
+      "latency_ms": 15349.344958,
+      "cumulative_request_seconds_before": 4837.6752010870005,
+      "correct": 1
+    },
+    {
+      "index": 174,
+      "rung": "turns 4, message 512",
+      "state": "9b37638d#23",
+      "refusal": null,
+      "latency_ms": 16291.491375,
+      "cumulative_request_seconds_before": 4853.0245460450005,
+      "correct": 4
+    },
+    {
+      "index": 175,
+      "rung": "turns 4, message 512",
+      "state": "9b37638d#4",
+      "refusal": null,
+      "latency_ms": 11948.193167,
+      "cumulative_request_seconds_before": 4869.316037420001,
+      "correct": 2
+    },
+    {
+      "index": 176,
+      "rung": "turns 4, message 512",
+      "state": "9b37638d#7",
+      "refusal": null,
+      "latency_ms": 17498.33025,
+      "cumulative_request_seconds_before": 4881.264230587,
+      "correct": 1
+    }
+  ],
+  "rungs": [
+    {
+      "rung": "unbudgeted",
+      "requests": 16,
+      "answered_requests": 7,
+      "request_errors": {
+        "api 413: Other": 8,
+        "the request timed out after 120000ms": 1
+      },
+      "correct_rows": 12,
+      "total_request_seconds": 795.92216246,
+      "first_request_index": 1,
+      "cumulative_request_seconds_before": 0
+    },
+    {
+      "rung": "output 512",
+      "requests": 16,
+      "answered_requests": 10,
+      "request_errors": {
+        "api 413: Other": 6
+      },
+      "correct_rows": 15,
+      "total_request_seconds": 839.151533083,
+      "first_request_index": 17,
+      "cumulative_request_seconds_before": 795.92216246
+    },
+    {
+      "rung": "output 256",
+      "requests": 16,
+      "answered_requests": 11,
+      "request_errors": {
+        "api 413: Other": 5
+      },
+      "correct_rows": 16,
+      "total_request_seconds": 784.4726939159998,
+      "first_request_index": 33,
+      "cumulative_request_seconds_before": 1635.073695543
+    },
+    {
+      "rung": "commands 3",
+      "requests": 16,
+      "answered_requests": 11,
+      "request_errors": {
+        "api 413: Other": 5
+      },
+      "correct_rows": 16,
+      "total_request_seconds": 771.994491211,
+      "first_request_index": 49,
+      "cumulative_request_seconds_before": 2419.5463894590007
+    },
+    {
+      "rung": "turns 8",
+      "requests": 16,
+      "answered_requests": 16,
+      "request_errors": {},
+      "correct_rows": 26,
+      "total_request_seconds": 808.806616042,
+      "first_request_index": 65,
+      "cumulative_request_seconds_before": 3191.5408806700007
+    },
+    {
+      "rung": "turns 6",
+      "requests": 16,
+      "answered_requests": 16,
+      "request_errors": {},
+      "correct_rows": 25,
+      "total_request_seconds": 642.419038708,
+      "first_request_index": 81,
+      "cumulative_request_seconds_before": 4000.347496712001
+    },
+    {
+      "rung": "turns 4",
+      "requests": 16,
+      "answered_requests": 1,
+      "request_errors": {
+        "api 500: InternalServer": 15
+      },
+      "correct_rows": 2,
+      "total_request_seconds": 40.408534291,
+      "first_request_index": 97,
+      "cumulative_request_seconds_before": 4642.76653542
+    },
+    {
+      "rung": "turns 6, message 1024",
+      "requests": 16,
+      "answered_requests": 0,
+      "request_errors": {
+        "api 500: InternalServer": 16
+      },
+      "correct_rows": 0,
+      "total_request_seconds": 1.156250666,
+      "first_request_index": 113,
+      "cumulative_request_seconds_before": 4683.175069711
+    },
+    {
+      "rung": "production: turns 6, message 768",
+      "requests": 16,
+      "answered_requests": 0,
+      "request_errors": {
+        "api 500: InternalServer": 16
+      },
+      "correct_rows": 0,
+      "total_request_seconds": 1.124333211,
+      "first_request_index": 129,
+      "cumulative_request_seconds_before": 4684.331320376999
+    },
+    {
+      "rung": "turns 6, message 512",
+      "requests": 16,
+      "answered_requests": 0,
+      "request_errors": {
+        "api 500: InternalServer": 16
+      },
+      "correct_rows": 0,
+      "total_request_seconds": 1.0716179179999998,
+      "first_request_index": 145,
+      "cumulative_request_seconds_before": 4685.455653588
+    },
+    {
+      "rung": "turns 4, message 512",
+      "requests": 16,
+      "answered_requests": 11,
+      "request_errors": {
+        "api 500: InternalServer": 5
+      },
+      "correct_rows": 13,
+      "total_request_seconds": 212.23528933100002,
+      "first_request_index": 161,
+      "cumulative_request_seconds_before": 4686.527271506001
+    }
+  ],
+  "sum_request_latency_seconds": 4898.762560837001,
+  "timing_limit": "Rows have no per-request timestamps. Cumulative timing sums observed latencies only; checkpoint, scheduling and startup overhead are excluded. Do not label these as exact UTC times."
+}
